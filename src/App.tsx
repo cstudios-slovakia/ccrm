@@ -504,6 +504,7 @@ function App() {
           systemLanguage={userLanguage}
           tasks={tasks}
           setTasks={updateTasksAndSync}
+          leadCategories={leadCategories}
         />
       );
     }
@@ -565,6 +566,7 @@ function App() {
             systemLanguage={userLanguage}
             tasks={tasks}
             setTasks={updateTasksAndSync}
+            leadCategories={leadCategories}
           />
         );
       case "files":

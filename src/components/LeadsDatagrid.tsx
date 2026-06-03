@@ -1058,10 +1058,114 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         {/* Master Dual-Panel Dashboard Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           
-          {/* LEFT PANEL: Lead Details Form & Client Card */}
+          {/* LEFT PANEL: Client Card & Lead Details Form */}
           <div className="lg:col-span-5 space-y-6">
-            
-            {/* 1. Lead Details Panel */}
+
+            {/* 1. Client Profile Card (On Top) */}
+            {clientCardData && (
+              <div className="glass-panel p-6 rounded-[28px] border-2 border-emerald-450 bg-emerald-50/70 shadow-xl space-y-4 text-emerald-950">
+                <div className="border-b-2 border-emerald-200/50 pb-3 flex items-center justify-between">
+                  <span className="text-[9px] font-black text-emerald-700 uppercase tracking-wider flex items-center gap-1">
+                    <Briefcase className="h-4 w-4 text-emerald-600" /> {getTranslation(systemLanguage, "common.client_relationship_card")}
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[8px] font-black bg-emerald-100 text-emerald-800 border border-emerald-250 uppercase tracking-wider animate-pulse">
+                    {getTranslation(systemLanguage, "common.synced_profile")}
+                  </span>
+                </div>
+
+                <div className="space-y-3.5">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-2 border-emerald-700 flex items-center justify-center font-heading font-black text-sm shadow">
+                      {getInitials(clientCardData.name)}
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-slate-850 line-clamp-1">{clientCardData.name}</h4>
+                      {isEditingLead ? (
+                        <div className="mt-1 space-y-1">
+                          <label className="text-[8px] font-black text-emerald-700/80 uppercase tracking-wider block">Client Type</label>
+                          <select
+                            value={leadClientType}
+                            onChange={(e) => setLeadClientType(e.target.value as any)}
+                            className="px-2.5 py-1 text-[11px] rounded-lg bg-white border border-slate-200 text-slate-800 font-bold focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                          >
+                            <option value="person">{systemLanguage === "sk" ? "Súkromná osoba" : systemLanguage === "hu" ? "Magánszemély" : "Private Person"}</option>
+                            <option value="business">{systemLanguage === "sk" ? "Firma / Podnikanie" : systemLanguage === "hu" ? "Cég / Vállalkozás" : "Company / Business"}</option>
+                            <option value="partner">{systemLanguage === "sk" ? "Obchodný partner" : systemLanguage === "hu" ? "Kereskedő partner" : "Dealer Partner"}</option>
+                          </select>
+                        </div>
+                      ) : (
+                        <span className="text-[9px] font-extrabold uppercase tracking-wide text-emerald-700">
+                          {leadClientType === "business" && `🏢 ${systemLanguage === "sk" ? "Firma / Podnikanie" : systemLanguage === "hu" ? "Cég / Vállalkozás" : "Company / Business"}`}
+                          {leadClientType === "partner" && `🤝 ${systemLanguage === "sk" ? "Obchodný partner" : systemLanguage === "hu" ? "Kereskedő partner" : "Dealer Partner"}`}
+                          {leadClientType === "person" && `👤 ${systemLanguage === "sk" ? "Súkromná osoba" : systemLanguage === "hu" ? "Magánszemély" : "Private Person"}`}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 text-[11px] bg-white/70 p-3 rounded-xl border border-emerald-250/50">
+                    <div className="space-y-0.5">
+                      <span className="text-[8px] font-black text-emerald-700/60 uppercase tracking-wider block">{getTranslation(systemLanguage, "profile.phone_number")}</span>
+                      <span className="font-extrabold text-slate-700">
+                        {clientCardData.phone ? (
+                          <span className="flex items-center gap-1"><Phone className="h-3 w-3 text-emerald-600" /> {clientCardData.phone}</span>
+                        ) : (
+                          <span className="text-slate-350 italic">{getTranslation(systemLanguage, "profile.none_added")}</span>
+                        )}
+                      </span>
+                    </div>
+                    <div className="space-y-0.5">
+                      <span className="text-[8px] font-black text-emerald-700/60 uppercase tracking-wider block">{getTranslation(systemLanguage, "profile.email_address")}</span>
+                      <span className="font-extrabold text-slate-700 truncate block text-slate-700">
+                        {clientCardData.email ? (
+                          <span className="flex items-center gap-1"><Mail className="h-3 w-3 text-emerald-600" /> {clientCardData.email}</span>
+                        ) : (
+                          <span className="text-slate-350 italic">{getTranslation(systemLanguage, "profile.none_added")}</span>
+                        )}
+                      </span>
+                    </div>
+                    <div className="space-y-0.5 col-span-2 border-t border-emerald-200/50 pt-2 mt-1">
+                      <span className="text-[8px] font-black text-emerald-700/60 uppercase tracking-wider block">{getTranslation(systemLanguage, "profile.location_address")}</span>
+                      <span className="font-extrabold text-slate-700 block">
+                        <span className="flex items-center gap-1">
+                          <MapPin className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                          <span className="line-clamp-1">
+                            {clientCardData.street ? `${clientCardData.street}, ` : ""}
+                            {clientCardData.city}
+                            {clientCardData.postalCode ? ` (${clientCardData.postalCode})` : ""}
+                          </span>
+                        </span>
+                      </span>
+                    </div>
+                    {clientCardData.website && (
+                      <div className="space-y-0.5 col-span-2 border-t border-emerald-200/50 pt-2 mt-1">
+                        <span className="text-[8px] font-black text-emerald-700/60 uppercase tracking-wider block">{getTranslation(systemLanguage, "profile.website_link")}</span>
+                        <a 
+                          href={`https://${clientCardData.website}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-extrabold text-blue-600 hover:underline flex items-center gap-1"
+                        >
+                          <Globe className="h-3.5 w-3.5 text-emerald-600" /> {clientCardData.website}
+                        </a>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="button"
+                      onClick={() => { window.location.hash = `client-${encodeURIComponent(clientCardData.name)}`; }}
+                      className="w-fit px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-black uppercase tracking-wider shadow transition-all active:scale-95 flex items-center justify-center gap-1.5 border border-emerald-700"
+                    >
+                      {getTranslation(systemLanguage, "common.view_full_profile")} <ArrowLeft className="h-3.5 w-3.5 rotate-180" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 2. Lead Details Panel (On Bottom) */}
             <div className="glass-panel p-6 rounded-[28px] border-2 border-blue-450 bg-white shadow-xl space-y-6 overflow-hidden relative">
               {/* Pipeline State Progress Bar at the top edge of the card */}
               <div 
@@ -1248,45 +1352,23 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                   </div>
                 </div>
 
-                {/* Value & Client Type */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">{getTranslation(systemLanguage, "profile.lead_valuation")}</label>
-                    <input
-                      type="number"
-                      required
-                      min="0"
-                      step="0.01"
-                      disabled={!isEditingLead}
-                      value={leadValue}
-                      onChange={(e) => setLeadValue(e.target.value)}
-                      className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all ${
-                        isEditingLead 
-                          ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-blue-500 text-slate-800" 
-                          : "bg-transparent border-2 border-transparent pl-0 text-slate-900 text-sm font-black cursor-default select-all"
-                      }`}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">{getTranslation(systemLanguage, "profile.client_type")}</label>
-                    {isEditingLead ? (
-                      <select
-                        value={leadClientType}
-                        onChange={(e) => setLeadClientType(e.target.value as any)}
-                        className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:outline-none text-slate-800"
-                      >
-                        <option value="person">{systemLanguage === "sk" ? "Súkromná osoba" : systemLanguage === "hu" ? "Magánszemély" : "Private Person"}</option>
-                        <option value="business">{systemLanguage === "sk" ? "Firma / Podnikanie" : systemLanguage === "hu" ? "Cég / Vállalkozás" : "Company / Business"}</option>
-                        <option value="partner">{systemLanguage === "sk" ? "Obchodný partner" : systemLanguage === "hu" ? "Kereskedő partner" : "Dealer Partner"}</option>
-                      </select>
-                    ) : (
-                      <div className="pt-2 pl-0 text-slate-900 text-sm font-black uppercase tracking-wider cursor-default select-all">
-                        {leadClientType === "business" && `🏢 ${systemLanguage === "sk" ? "Firma / Podnikanie" : systemLanguage === "hu" ? "Cég / Vállalkozás" : "Company / Business"}`}
-                        {leadClientType === "partner" && `🤝 ${systemLanguage === "sk" ? "Obchodný partner" : systemLanguage === "hu" ? "Kereskedő partner" : "Dealer Partner"}`}
-                        {leadClientType === "person" && `👤 ${systemLanguage === "sk" ? "Súkromná osoba" : systemLanguage === "hu" ? "Magánszemély" : "Private Person"}`}
-                      </div>
-                    )}
-                  </div>
+                {/* Valuation */}
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">{getTranslation(systemLanguage, "profile.lead_valuation")}</label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    step="0.01"
+                    disabled={!isEditingLead}
+                    value={leadValue}
+                    onChange={(e) => setLeadValue(e.target.value)}
+                    className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all ${
+                      isEditingLead 
+                        ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-blue-500 text-slate-800" 
+                        : "bg-transparent border-2 border-transparent pl-0 text-slate-900 text-sm font-black cursor-default select-all"
+                    }`}
+                  />
                 </div>
 
                 {/* State & Source */}
@@ -1331,23 +1413,33 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         onChange={(e) => setLeadOwner(e.target.value)}
                         className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:outline-none text-slate-800"
                       >
+                        <option value="">{systemLanguage === "sk" ? "Nepriradený" : systemLanguage === "hu" ? "Nincs kijelölve" : "Unassigned"}</option>
                         {projectManagers.map(pm => (
                           <option key={pm} value={pm}>{pm}</option>
                         ))}
                       </select>
                     ) : (
                       <div className="pt-2 pl-0 flex items-center">
-                        <span 
-                          className="px-2.5 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition-all shadow-sm"
-                          style={{ 
-                            backgroundColor: `${getSafePMColor(leadOwner)}15`, 
-                            color: getSafePMColor(leadOwner), 
-                            borderColor: `${getSafePMColor(leadOwner)}30` 
-                          }}
-                        >
-                          <User className="h-3 w-3 shrink-0" />
-                          {leadOwner}
-                        </span>
+                        {!leadOwner || leadOwner.toLowerCase() === "unassigned" ? (
+                          <span 
+                            className="px-2.5 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition-all shadow-sm bg-rose-50 border-rose-300 text-rose-600 animate-pulse"
+                          >
+                            <User className="h-3 w-3 shrink-0" />
+                            {systemLanguage === "sk" ? "Nepriradený" : systemLanguage === "hu" ? "Nincs kijelölve" : "Unassigned"}
+                          </span>
+                        ) : (
+                          <span 
+                            className="px-2.5 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition-all shadow-sm"
+                            style={{ 
+                              backgroundColor: `${getSafePMColor(leadOwner)}15`, 
+                              color: getSafePMColor(leadOwner), 
+                              borderColor: `${getSafePMColor(leadOwner)}30` 
+                            }}
+                          >
+                            <User className="h-3 w-3 shrink-0" />
+                            {leadOwner}
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1437,94 +1529,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
               </form>
             </div>
 
-            {/* 2. Client Profile Card */}
-            {clientCardData && (
-              <div className="glass-panel p-6 rounded-[28px] border-2 border-emerald-450 bg-white shadow-xl space-y-4">
-                <div className="border-b-2 border-slate-150 pb-3 flex items-center justify-between">
-                  <span className="text-[9px] font-black text-emerald-600 uppercase tracking-wider flex items-center gap-1">
-                    <Briefcase className="h-4 w-4" /> {getTranslation(systemLanguage, "common.client_relationship_card")}
-                  </span>
-                  <span className="px-2 py-0.5 rounded-full text-[8px] font-black bg-emerald-50 text-emerald-700 border border-emerald-250 uppercase tracking-wider">
-                    {getTranslation(systemLanguage, "common.synced_profile")}
-                  </span>
-                </div>
-
-                <div className="space-y-3.5">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-2 border-emerald-700 flex items-center justify-center font-heading font-black text-sm shadow">
-                      {getInitials(clientCardData.name)}
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-black text-slate-850 line-clamp-1">{clientCardData.name}</h4>
-                      <span className="text-[9px] font-extrabold uppercase tracking-wide text-slate-400">
-                        {clientCardData.clientType === "business" && `🏢 ${systemLanguage === "sk" ? "Firma / Podnikanie" : systemLanguage === "hu" ? "Cég / Vállalkozás" : "Company / Business"}`}
-                        {clientCardData.clientType === "partner" && `🤝 ${systemLanguage === "sk" ? "Obchodný partner" : systemLanguage === "hu" ? "Kereskedő partner" : "Dealer Partner"}`}
-                        {clientCardData.clientType === "person" && `👤 ${systemLanguage === "sk" ? "Súkromná osoba" : systemLanguage === "hu" ? "Magánszemély" : "Private Person"}`}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3 text-[11px] bg-slate-50/50 p-3 rounded-xl border border-slate-200">
-                    <div className="space-y-0.5">
-                      <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">{getTranslation(systemLanguage, "profile.phone_number")}</span>
-                      <span className="font-extrabold text-slate-700">
-                        {clientCardData.phone ? (
-                          <span className="flex items-center gap-1"><Phone className="h-3 w-3 text-emerald-500" /> {clientCardData.phone}</span>
-                        ) : (
-                          <span className="text-slate-350 italic">{getTranslation(systemLanguage, "profile.none_added")}</span>
-                        )}
-                      </span>
-                    </div>
-                    <div className="space-y-0.5">
-                      <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">{getTranslation(systemLanguage, "profile.email_address")}</span>
-                      <span className="font-extrabold text-slate-700 truncate block text-slate-700">
-                        {clientCardData.email ? (
-                          <span className="flex items-center gap-1"><Mail className="h-3 w-3 text-emerald-500" /> {clientCardData.email}</span>
-                        ) : (
-                          <span className="text-slate-350 italic">{getTranslation(systemLanguage, "profile.none_added")}</span>
-                        )}
-                      </span>
-                    </div>
-                    <div className="space-y-0.5 col-span-2 border-t border-slate-200 pt-2 mt-1">
-                      <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">{getTranslation(systemLanguage, "profile.location_address")}</span>
-                      <span className="font-extrabold text-slate-700 block">
-                        <span className="flex items-center gap-1">
-                          <MapPin className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                          <span className="line-clamp-1">
-                            {clientCardData.street ? `${clientCardData.street}, ` : ""}
-                            {clientCardData.city}
-                            {clientCardData.postalCode ? ` (${clientCardData.postalCode})` : ""}
-                          </span>
-                        </span>
-                      </span>
-                    </div>
-                    {clientCardData.website && (
-                      <div className="space-y-0.5 col-span-2 border-t border-slate-200 pt-2 mt-1">
-                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">{getTranslation(systemLanguage, "profile.website_link")}</span>
-                        <a 
-                          href={`https://${clientCardData.website}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-extrabold text-blue-600 hover:underline flex items-center gap-1"
-                        >
-                          <Globe className="h-3.5 w-3.5 text-emerald-500" /> {clientCardData.website}
-                        </a>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex justify-end pt-1">
-                    <button
-                      type="button"
-                      onClick={() => { window.location.hash = `client-${encodeURIComponent(clientCardData.name)}`; }}
-                      className="w-fit px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-black uppercase tracking-wider shadow transition-all active:scale-95 flex items-center justify-center gap-1.5 border border-emerald-700"
-                    >
-                      {getTranslation(systemLanguage, "common.view_full_profile")} <ArrowLeft className="h-3.5 w-3.5 rotate-180" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
+            {/* Remove Old Duplicate Client Profile Card since it was moved to the top */}
 
             {/* 3. Pipeline Stage Gate & Tasks Card */}
             <div className="glass-panel p-6 rounded-[28px] border-2 border-violet-400 bg-white shadow-xl space-y-4">
@@ -2522,19 +2527,26 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                    </select>
                                  ) : (
                                    <div className="flex items-center gap-1.5">
-                                     <span className="text-[9px] font-black text-slate-400 lg:hidden uppercase tracking-wider">PM:</span>
-                                     <span 
-                                       className="px-2.5 py-0.5 lg:py-1 rounded-full border text-[9px] lg:text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition-all shadow-sm"
-                                       style={{ 
-                                         backgroundColor: `${getSafePMColor(lead.owner)}15`, 
-                                         color: getSafePMColor(lead.owner), 
-                                         borderColor: `${getSafePMColor(lead.owner)}30` 
-                                       }}
-                                     >
-                                       <User className="h-2.5 w-2.5 shrink-0" />
-                                       {lead.owner}
-                                     </span>
-                                   </div>
+                                      <span className="text-[9px] font-black text-slate-400 lg:hidden uppercase tracking-wider">PM:</span>
+                                      {!lead.owner || lead.owner.toLowerCase() === "unassigned" ? (
+                                        <span className="px-2.5 py-0.5 lg:py-1 rounded-full border text-[9px] lg:text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition-all shadow-sm bg-rose-50 border-rose-300 text-rose-600 animate-pulse">
+                                          <User className="h-2.5 w-2.5 shrink-0" />
+                                          {systemLanguage === "sk" ? "Nepriradený" : systemLanguage === "hu" ? "Nincs" : "Unassigned"}
+                                        </span>
+                                      ) : (
+                                        <span 
+                                          className="px-2.5 py-0.5 lg:py-1 rounded-full border text-[9px] lg:text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition-all shadow-sm"
+                                          style={{ 
+                                            backgroundColor: `${getSafePMColor(lead.owner)}15`, 
+                                            color: getSafePMColor(lead.owner), 
+                                            borderColor: `${getSafePMColor(lead.owner)}30` 
+                                          }}
+                                        >
+                                          <User className="h-2.5 w-2.5 shrink-0" />
+                                          {lead.owner}
+                                        </span>
+                                      )}
+                                    </div>
                                  )}
                                </td>
 
@@ -2913,17 +2925,26 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                   {leadSource}
                                 </span>
 
-                                {pmName && (
-                                  <div 
-                                    className={`rounded-full flex items-center justify-center font-black text-white shadow-sm border border-white ${
-                                      compactMode ? "h-4.5 w-4.5 text-[6.5px]" : "h-5.5 w-5.5 text-[7.5px]"
-                                    }`}
-                                    style={{ backgroundColor: getSafePMColor(pmName) }}
-                                    title={pmName}
-                                  >
-                                    {initials}
-                                  </div>
-                                )}
+                                {!pmName || pmName.toLowerCase() === "unassigned" ? (
+                                   <div 
+                                     className={`rounded-full flex items-center justify-center font-black text-white shadow-sm border border-white bg-rose-500 animate-pulse ${
+                                       compactMode ? "h-4.5 w-4.5 text-[6.5px]" : "h-5.5 w-5.5 text-[7.5px]"
+                                     }`}
+                                     title="Unassigned"
+                                   >
+                                     ?
+                                   </div>
+                                 ) : (
+                                   <div 
+                                     className={`rounded-full flex items-center justify-center font-black text-white shadow-sm border border-white ${
+                                       compactMode ? "h-4.5 w-4.5 text-[6.5px]" : "h-5.5 w-5.5 text-[7.5px]"
+                                     }`}
+                                     style={{ backgroundColor: getSafePMColor(pmName) }}
+                                     title={pmName}
+                                   >
+                                     {initials}
+                                   </div>
+                                 )}
                               </div>
                             </div>
 

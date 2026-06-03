@@ -18,6 +18,7 @@ interface ClientsViewProps {
   systemLanguage: Language;
   tasks: Task[];
   setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
+  leadCategories: string[];
 }
 
 export const ClientsView: React.FC<ClientsViewProps> = ({
@@ -28,7 +29,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   initialSelectedClient,
   systemLanguage,
   tasks: _tasks,
-  setTasks
+  setTasks,
+  leadCategories
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState("all");
@@ -68,6 +70,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       contactPerson: string;
       website: string;
       timeline: TimelineEvent[];
+      categories: string[];
     }> = {};
 
     leads.forEach(lead => {
@@ -93,12 +96,21 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           vatId: lead.vatId || "",
           contactPerson: lead.contactPerson || "",
           website: lead.website || "",
-          timeline: lead.timeline || []
+          timeline: lead.timeline || [],
+          categories: []
         };
       }
       profilesMap[clientKey].totalValue += lead.value;
       profilesMap[clientKey].leadsCount += 1;
       profilesMap[clientKey].associatedLeads.push(lead);
+
+      if (lead.categories && Array.isArray(lead.categories)) {
+        lead.categories.forEach(cat => {
+          if (!profilesMap[clientKey].categories.includes(cat)) {
+            profilesMap[clientKey].categories.push(cat);
+          }
+        });
+      }
       
       // Merge unique timeline events safely
       if (lead.timeline && lead.timeline.length > 0) {
@@ -155,6 +167,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [profileVatId, setProfileVatId] = useState("");
   const [profileContactPerson, setProfileContactPerson] = useState("");
   const [profileWebsite, setProfileWebsite] = useState("");
+  const [profileCategories, setProfileCategories] = useState<string[]>([]);
 
   // --- EVENT TIMELINE LOGGING STATES ---
   const [logType, setLogType] = useState<"phone" | "email" | "note" | "offer" | "appointment" | null>(null);
@@ -199,6 +212,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       setProfileVatId(activeClient.vatId);
       setProfileContactPerson(activeClient.contactPerson);
       setProfileWebsite(activeClient.website);
+      setProfileCategories(activeClient.categories || []);
       setIsEditingProfile(false); // Reset to read-only by default on transition
     }
   }, [activeClient]);
@@ -232,7 +246,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           taxId: profileType !== "person" ? profileTaxId.trim() : undefined,
           vatId: profileType !== "person" ? profileVatId.trim() : undefined,
           contactPerson: profileType !== "person" ? profileContactPerson.trim() : undefined,
-          website: profileType !== "person" ? profileWebsite.trim() : undefined
+          website: profileType !== "person" ? profileWebsite.trim() : undefined,
+          categories: profileCategories
         };
       }
       return lead;
@@ -812,6 +827,60 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 ) : (
                   <div className="pl-0 text-slate-900 font-black cursor-default select-all">
                     👤 {profileOwner}
+                  </div>
+                )}
+              </div>
+
+              {/* Client Categories */}
+              <div className="border-t-2 border-slate-100 pt-4 space-y-2 text-left">
+                <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                  📁 {systemLanguage === "sk" ? "Kategórie Klienta" : systemLanguage === "hu" ? "Ügyfél kategóriák" : "Client Categories"}
+                </label>
+                {isEditingProfile ? (
+                  <div className="grid grid-cols-2 gap-2 bg-emerald-50/5 border border-slate-200/60 p-3 rounded-2xl">
+                    {leadCategories.map((cat) => {
+                      const isChecked = profileCategories.includes(cat);
+                      return (
+                        <label 
+                          key={cat} 
+                          className={`flex items-center gap-2 p-2 rounded-xl border text-[10px] font-black uppercase tracking-wide cursor-pointer transition-all ${
+                            isChecked 
+                              ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700" 
+                              : "bg-white border-slate-200/60 text-slate-500 hover:border-slate-350"
+                          }`}
+                        >
+                          <input 
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => {
+                              if (isChecked) {
+                                setProfileCategories(prev => prev.filter(c => c !== cat));
+                              } else {
+                                setProfileCategories(prev => [...prev, cat]);
+                              }
+                            }}
+                            className="hidden"
+                          />
+                          <span className={`h-2 w-2 rounded-full ${isChecked ? "bg-emerald-500 animate-pulse" : "bg-slate-300"}`} />
+                          <span className="truncate">{cat}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {profileCategories.length === 0 ? (
+                      <span className="text-[10px] text-slate-400 italic">None</span>
+                    ) : (
+                      profileCategories.map((cat) => (
+                        <span 
+                          key={cat}
+                          className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-255 text-[9px] font-extrabold uppercase"
+                        >
+                          {cat}
+                        </span>
+                      ))
+                    )}
                   </div>
                 )}
               </div>
@@ -1590,7 +1659,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         <div className="h-7 w-7 rounded-lg bg-emerald-600 text-white border border-emerald-700 font-heading font-black text-[9px] flex items-center justify-center shrink-0 shadow">
                           {getInitials(client.name)}
                         </div>
-                        <span className="line-clamp-1 group-hover:text-emerald-700 transition-colors font-black text-sm lg:text-xs text-slate-850">{client.name}</span>
+                        <div className="flex flex-col">
+                          <span className="line-clamp-1 group-hover:text-emerald-700 transition-colors font-black text-sm lg:text-xs text-slate-850">{client.name}</span>
+                          {client.categories && client.categories.length > 0 && (
+                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider line-clamp-1 mt-0.5">
+                              {client.categories.join(", ")}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </td>
 
