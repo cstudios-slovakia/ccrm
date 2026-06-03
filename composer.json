@@ -1,0 +1,28 @@
+{
+    "name": "cstudios-slovakia/ccrm",
+    "description": "Laminam CRM Core Engine with persistent database connection and beautiful installation wizard.",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "CStudios Slovakia",
+            "email": "info@cstudios.sk"
+        }
+    ],
+    "require": {
+        "php": ">=7.4"
+    },
+    "autoload": {
+        "psr-4": {
+            "CCRM\\": "src-php/"
+        }
+    },
+    "scripts": {
+        "post-install-cmd": [
+            "CCRM\\Installer::publishAssets"
+        ],
+        "post-update-cmd": [
+            "CCRM\\Installer::publishAssets"
+        ]
+    }
+}

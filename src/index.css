@@ -1,0 +1,219 @@
+@import "tailwindcss";
+
+@theme {
+  --color-border: rgb(var(--border));
+  --color-input: rgb(var(--input));
+  --color-ring: rgb(var(--ring));
+  --color-background: rgb(var(--background));
+  --color-foreground: rgb(var(--foreground));
+  --color-primary: rgb(var(--primary));
+  --color-primary-foreground: rgb(var(--primary-foreground));
+  --color-secondary: rgb(var(--secondary));
+  --color-secondary-foreground: rgb(var(--secondary-foreground));
+  --color-destructive: rgb(var(--destructive));
+  --color-destructive-foreground: rgb(var(--destructive-foreground));
+  --color-muted: rgb(var(--muted));
+  --color-muted-foreground: rgb(var(--muted-foreground));
+  --color-accent: rgb(var(--accent));
+  --color-accent-foreground: rgb(var(--accent-foreground));
+  --color-popover: rgb(var(--popover));
+  --color-popover-foreground: rgb(var(--popover-foreground));
+  --color-card: rgb(var(--card));
+  --color-card-foreground: rgb(var(--card-foreground));
+  --color-sidebar: rgb(var(--sidebar));
+  --color-sidebar-foreground: rgb(var(--sidebar-foreground));
+  
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 4px);
+  --radius-sm: calc(var(--radius) - 8px);
+  
+  --font-sans: "Inter", sans-serif;
+  --font-heading: "Outfit", sans-serif;
+  
+  --shadow-glass: 0 10px 40px -10px rgba(79, 70, 229, 0.08), 0 2px 12px -2px rgba(0, 0, 0, 0.03);
+  --shadow-glass-sm: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+
+  --animate-slide-in-right: slide-in-right 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  --animate-slide-out-right: slide-out-right 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  --animate-slide-in-bottom: slide-in-bottom 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  --animate-slide-out-bottom: slide-out-bottom 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  --animate-fade-in: fade-in 0.25s ease-out forwards;
+  --animate-fade-out: fade-out 0.25s ease-out forwards;
+
+  @keyframes slide-in-right {
+    0% { transform: translate3d(100%, 0, 0); }
+    100% { transform: translate3d(0, 0, 0); }
+  }
+  @keyframes slide-out-right {
+    0% { transform: translate3d(0, 0, 0); }
+    100% { transform: translate3d(100%, 0, 0); }
+  }
+  @keyframes slide-in-bottom {
+    0% { transform: translate3d(0, 100%, 0); }
+    100% { transform: translate3d(0, 0, 0); }
+  }
+  @keyframes slide-out-bottom {
+    0% { transform: translate3d(0, 0, 0); }
+    100% { transform: translate3d(0, 100%, 0); }
+  }
+  @keyframes fade-in {
+    0% { opacity: 0; }
+    100% { opacity: 1; }
+  }
+  @keyframes fade-out {
+    0% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+}
+
+:root {
+  /* Default premium light theme tokens matching the target dashboard style */
+  --background: 243 246 255;
+  --foreground: 15 23 42; /* slate-900 */
+
+  --card: 255 255 255;
+  --card-foreground: 15 23 42;
+
+  --popover: 255 255 255;
+  --popover-foreground: 15 23 42;
+
+  --primary: 37 99 235; /* Vibrant blue-600 */
+  --primary-foreground: 255 255 255;
+
+  --secondary: 249 115 22; /* Coral orange-500 */
+  --secondary-foreground: 255 255 255;
+
+  --muted: 241 245 249; /* slate-100 */
+  --muted-foreground: 100 116 139; /* slate-500 */
+
+  --accent: 139 92 246; /* purple-500 */
+  --accent-foreground: 255 255 255;
+
+  --border: 226 232 240; /* slate-200 */
+  --input: 226 232 240;
+  --ring: 37 99 235;
+
+  --sidebar: 255 255 255;
+  --sidebar-foreground: 71 85 105;
+
+  --radius: 1.75rem; /* Generous round corners like the source */
+}
+
+* {
+  border-color: rgb(var(--border) / 0.5);
+  outline-color: rgb(var(--ring) / 0.5);
+}
+
+body {
+  background: linear-gradient(135deg, #e3eeff 0%, #ebebfb 50%, #fef0e7 100%);
+  color: rgb(var(--foreground));
+  font-family: "Inter", sans-serif;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  min-height: 100vh;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--muted) / 0.8);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--primary) / 0.5);
+}
+
+/* Premium Light Glassmorphism Helper */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: var(--shadow-glass);
+}
+
+/* Glow decoration styles for light mode */
+.glow-primary {
+  box-shadow: 0 10px 30px -5px rgba(37, 99, 235, 0.12);
+}
+.glow-secondary {
+  box-shadow: 0 10px 30px -5px rgba(249, 115, 22, 0.12);
+}
+
+/* Modern CSS Dialog / Popover Entry & Exit Transitions */
+dialog[open],
+[popover]:popover-open {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+
+  @starting-style {
+    opacity: 0;
+    transform: scale(0.95) translateY(12px);
+  }
+}
+
+dialog,
+[popover] {
+  opacity: 0;
+  transform: scale(0.95) translateY(12px);
+  transition-property: opacity, transform, display, overlay;
+  transition-duration: 0.25s;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  transition-behavior: allow-discrete;
+}
+
+dialog::backdrop {
+  background-color: rgba(15, 23, 42, 0);
+  transition:
+    display 0.25s allow-discrete,
+    overlay 0.25s allow-discrete,
+    background-color 0.25s ease-out;
+}
+
+dialog[open]::backdrop {
+  background-color: rgba(15, 23, 42, 0.3);
+  backdrop-filter: blur(6px);
+
+  @starting-style {
+    background-color: rgba(15, 23, 42, 0);
+    backdrop-filter: blur(0px);
+  }
+}
+
+/* Slide-over drawers */
+.drawer-right[open] {
+  transform: translateX(0);
+  @starting-style {
+    transform: translateX(100%);
+  }
+}
+
+.drawer-right {
+  transform: translateX(100%);
+  transition-property: transform, opacity, display, overlay;
+  transition-duration: 0.3s;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  transition-behavior: allow-discrete;
+}
+
+/* Hide native default popover borders and outline shadow */
+[popover] {
+  border: none;
+  background: transparent;
+  padding: 0;
+  overflow: visible;
+}
+
+/* Enable text selection and copying globally, overriding select-none restrictions */
+.select-none {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+}
+
