@@ -280,10 +280,14 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
             </div>
 
             {/* Form actions */}
-            <div className="pt-4">
+            <div className="pt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="text-[10px] text-emerald-400 font-bold flex items-center gap-1.5 bg-emerald-500/10 px-3 py-1.5 rounded-xl border border-emerald-500/20 w-fit">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                {lang === "sk" ? "Uložené hodnoty načítané" : lang === "hu" ? "Mentett értékek betöltve" : "Saved credentials loaded"}
+              </div>
               <button
                 type="submit"
-                className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all duration-150 flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 active:scale-[0.99] hover:scale-[1.01]"
+                className="w-full sm:w-auto px-8 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all duration-150 flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 active:scale-[0.99] hover:scale-[1.01] shrink-0"
               >
                 {t[lang].btnNext}
               </button>
