@@ -1,16 +1,16 @@
 {
     "name": "cstudios-slovakia/ccrm",
-    "description": "Laminam CRM Core Engine with persistent database connection and beautiful installation wizard.",
+    "description": "This package is the base for the Cstudios CRM system",
     "type": "composer-plugin",
     "license": "MIT",
     "authors": [
         {
-            "name": "CStudios Slovakia",
-            "email": "info@cstudios.sk"
+            "name": "Cstudios Slovakia",
+            "email": "cstudios@softwaresolutions.sk"
         }
     ],
     "require": {
-        "php": ">=7.4",
+        "php": ">=8.0",
         "composer-plugin-api": "^1.1 || ^2.0"
     },
     "autoload": {
