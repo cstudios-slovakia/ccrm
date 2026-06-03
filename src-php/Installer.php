@@ -33,9 +33,14 @@ class Installer {
      */
     public static function publishAssets() {
         $packageDist = dirname(__DIR__) . '/dist';
-        // In composer vendor context, package root is vendor/cstudios-slovakia/ccrm
-        // Project root is 3 levels up from this installer file in psr-4
-        $projectRoot = dirname(dirname(dirname(dirname(__DIR__))));
+        
+        // Detect if we are in composer vendor context
+        if (strpos(__DIR__, 'vendor/cstudios-slovakia/ccrm') !== false || strpos(__DIR__, 'vendor' . DIRECTORY_SEPARATOR . 'cstudios-slovakia') !== false) {
+            $projectRoot = dirname(dirname(dirname(dirname(__DIR__))));
+        } else {
+            // Local development mode: source and destination are the same, do nothing to prevent self-copy/infinite recursion
+            return true;
+        }
         
         if (is_dir($packageDist)) {
             self::copyDir($packageDist, $projectRoot);

@@ -1,7 +1,7 @@
 {
     "name": "cstudios-slovakia/ccrm",
     "description": "Laminam CRM Core Engine with persistent database connection and beautiful installation wizard.",
-    "type": "library",
+    "type": "composer-plugin",
     "license": "MIT",
     "authors": [
         {
@@ -10,12 +10,16 @@
         }
     ],
     "require": {
-        "php": ">=7.4"
+        "php": ">=7.4",
+        "composer-plugin-api": "^1.1 || ^2.0"
     },
     "autoload": {
         "psr-4": {
             "CCRM\\": "src-php/"
         }
+    },
+    "extra": {
+        "class": "CCRM\\ComposerPlugin"
     },
     "scripts": {
         "post-install-cmd": [
