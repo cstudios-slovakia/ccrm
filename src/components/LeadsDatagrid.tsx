@@ -5,7 +5,8 @@ import {
   X, Tag, Euro, UserCheck, Share2, TableProperties,
   Edit3, Check, Layers, SlidersHorizontal,
   ArrowLeft, PencilLine, Phone, Mail, Globe,
-  Calendar, FolderOpen, FileText, Minimize2, CheckSquare, Lock
+  Calendar, FolderOpen, FileText, Minimize2, CheckSquare, Lock,
+  CornerDownLeft, CornerLeftDown, Loader2
 } from "lucide-react";
 import type { Lead, TimelineEvent, Task, UserProfile } from "../types";
 import { getTranslation } from "../utils/translations";
@@ -424,6 +425,62 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
   const [leadEmails, setLeadEmails] = useState<TimelineEvent[]>([]);
   const [isLoadingMails, setIsLoadingMails] = useState(false);
 
+  // --- TIMELINE EMAIL VIEW DRAWER STATE ---
+  const [selectedTimelineEmail, setSelectedTimelineEmail] = useState<any | null>(null);
+  const [isClosingEmailDetail, setIsClosingEmailDetail] = useState(false);
+
+  const closeEmailDetailSlideout = () => {
+    setIsClosingEmailDetail(true);
+    setTimeout(() => {
+      setSelectedTimelineEmail(null);
+      setIsClosingEmailDetail(false);
+    }, 350);
+  };
+
+  const [isLoadingEmailDetail, setIsLoadingEmailDetail] = useState(false);
+  const [timelineEmailDetailBody, setTimelineEmailDetailBody] = useState<any | null>(null);
+
+  const handleTimelineEmailClick = async (event: any) => {
+    if (event.type !== "email") return;
+    
+    setSelectedTimelineEmail(event);
+    setIsLoadingEmailDetail(true);
+    setTimelineEmailDetailBody(null);
+    
+    try {
+      const parts = event.id.split("-");
+      const uid = parts[parts.length - 1];
+      const folder = event.isOutgoing ? "Sent" : "INBOX";
+      
+      const currentUserStr = sessionStorage.getItem("crm_current_user_rbac");
+      const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null;
+      
+      const res = await fetch(
+        `/api/mail_broker.php?action=get_email_detail&folder=${folder}&uid=${uid}`,
+        { headers: { "X-User-Email": currentUser?.email || "" } }
+      );
+      const data = await res.json();
+      if (data.success && data.email) {
+        setTimelineEmailDetailBody(data.email);
+      } else {
+        setTimelineEmailDetailBody({
+          uid,
+          html: "",
+          text: event.content || "No message content."
+        });
+      }
+    } catch (e) {
+      console.error("Failed to load email details", e);
+      setTimelineEmailDetailBody({
+        uid: event.id,
+        html: "",
+        text: event.content || "No message content."
+      });
+    } finally {
+      setIsLoadingEmailDetail(false);
+    }
+  };
+
   useEffect(() => {
     if (!activeLead || !activeLead.email || !userEmailSettings || !userEmailSettings.isValidated) {
       setLeadEmails([]);
@@ -454,13 +511,16 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         const combinedEmails: TimelineEvent[] = [];
         
         const processMail = (mail: any) => {
+          const isOutgoing = mail.from?.address?.toLowerCase() === currentUser?.email?.toLowerCase();
+          const folderPrefix = isOutgoing ? "sent" : "inbox";
           return {
-            id: `email-${mail.uid}`,
+            id: `email-${folderPrefix}-${mail.uid}`,
             type: "email" as const,
             timestamp: mail.date.substring(0, 16),
             title: mail.subject || "(No Subject)",
             content: `From: ${mail.from.name || mail.from.address} <${mail.from.address}>\nDate: ${mail.date}\n\nTo view this email or reply, please open the Mail Client.`,
-            seen: mail.seen
+            seen: mail.seen,
+            isOutgoing: isOutgoing
           };
         };
 
@@ -2031,6 +2091,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     {/* PAST EVENTS */}
                     {pastEvents.map((event) => {
                       const colors = getEventColors(event.type);
+                      const pmName = event.type === "email"
+                        ? (event.isOutgoing ? (currentUser?.name || "Erik") : (activeLead.owner || "Erik"))
+                        : (activeLead.owner || "Erik");
+                      const pmColor = projectManagerColors[pmName] || "#6366f1";
                       return (
                         <div key={event.id} className="relative flex flex-row items-start gap-4 md:gap-8 group animate-in fade-in slide-in-from-bottom duration-250">
                           
@@ -2050,25 +2114,64 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                           </div>
 
                           {/* Right Content box */}
-                          <div className="flex-1 bg-white p-4.5 rounded-[22px] border-2 border-slate-200 shadow-md group-hover:shadow-lg transition-all duration-200 relative select-text">
+                          <div 
+                            onClick={() => event.type === "email" && handleTimelineEmailClick(event)}
+                            className={`flex-1 bg-white p-4.5 rounded-[22px] border-2 border-slate-200 shadow-md group-hover:shadow-lg transition-all duration-200 relative select-text ${event.type === "email" ? "cursor-pointer hover:border-indigo-400 active:scale-[0.99]" : ""}`}
+                          >
                             <div className="absolute -left-[7px] top-[14px] w-3 h-3 bg-white border-l-2 border-b-2 border-slate-200 transform rotate-45 hidden md:block"></div>
                             
-                            <div className="flex items-start justify-between gap-4">
+                            <div className="flex items-start justify-between gap-4 border-b-2 border-slate-100 pb-2 mb-2.5">
                               <h4 className="font-heading font-black text-[11px] uppercase tracking-tight text-slate-850 leading-tight">
                                 {event.title}
                               </h4>
-                              <span className={`px-2.5 py-0.5 rounded-full text-[8.5px] font-extrabold uppercase border shrink-0 ${colors.badgeBg}`}>
-                                {event.type === "phone" && getTranslation(systemLanguage, "timeline.badge.phone")}
-                                {event.type === "email" && getTranslation(systemLanguage, "timeline.badge.email")}
-                                {event.type === "note" && getTranslation(systemLanguage, "timeline.badge.note")}
-                                {event.type === "offer" && getTranslation(systemLanguage, "timeline.badge.offer")}
-                                {event.type === "appointment" && getTranslation(systemLanguage, "timeline.badge.appointment")}
-                              </span>
+                              {event.type === "email" ? (
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full border tracking-widest shadow-inner ${colors.badgeBg} flex items-center gap-1.5`}>
+                                    {event.isOutgoing ? (
+                                      <>
+                                        <CornerDownLeft className="h-3 w-3 stroke-[2.5]" />
+                                        <span>Outgoing</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <CornerLeftDown className="h-3 w-3 stroke-[2.5]" />
+                                        <span>Incoming</span>
+                                      </>
+                                    )}
+                                  </span>
+                                  <span 
+                                    className="inline-flex items-center gap-1 text-[8px] font-black uppercase px-2.5 py-0.5 rounded-full border shadow-sm text-white"
+                                    style={{ backgroundColor: pmColor, borderColor: pmColor }}
+                                  >
+                                    @ {pmName}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className={`px-2.5 py-0.5 rounded-full text-[8.5px] font-extrabold uppercase border shrink-0 ${colors.badgeBg}`}>
+                                  {event.type === "phone" && getTranslation(systemLanguage, "timeline.badge.phone")}
+                                  {event.type === "note" && getTranslation(systemLanguage, "timeline.badge.note")}
+                                  {event.type === "offer" && getTranslation(systemLanguage, "timeline.badge.offer")}
+                                  {event.type === "appointment" && getTranslation(systemLanguage, "timeline.badge.appointment")}
+                                </span>
+                              )}
                             </div>
 
-                            <p className="text-slate-600 mt-2 text-xs font-semibold leading-relaxed whitespace-pre-line">
-                              {event.content}
-                            </p>
+                            {(() => {
+                              const lines = event.content.split("\n");
+                              const showGradient = lines.length > 5 || event.content.length > 250;
+                              return (
+                                <div className={`relative ${showGradient ? "max-h-[8.1em] overflow-hidden" : ""}`} style={{ lineHeight: 1.35 }}>
+                                  <p className="text-[11px] text-slate-700 font-bold select-text whitespace-pre-wrap">
+                                    {event.content}
+                                  </p>
+                                  {showGradient && (
+                                    <div 
+                                      className="absolute bottom-0 left-0 right-0 pointer-events-none bg-gradient-to-t from-white via-white/70 to-transparent h-10" 
+                                    />
+                                  )}
+                                </div>
+                              );
+                            })()}
 
                             {/* Offer details & document badges */}
                             {event.type === "offer" && event.fileName && (
@@ -2107,6 +2210,88 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
           </div>
 
         </div>
+
+        {/* TIMELINE EMAIL DETAIL SLIDEOUT OVERLAY */}
+        {(selectedTimelineEmail || isClosingEmailDetail) && (
+          <div className={`fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex justify-end ${isClosingEmailDetail ? "animate-fade-out" : "animate-fade-in"}`}>
+            {/* Backdrop click close */}
+            <div className="flex-1" onClick={closeEmailDetailSlideout} />
+            
+            <div className={`w-[550px] max-w-full bg-white h-full shadow-2xl flex flex-col relative ${isClosingEmailDetail ? "animate-slide-out-right" : "animate-slide-in-right"}`}>
+              {/* Header */}
+              <div className="bg-slate-900 text-white p-4 flex items-center justify-between shrink-0">
+                <div className="text-left min-w-0 flex-1 pr-4">
+                  <span className="text-[10px] font-black uppercase text-pink-500 tracking-wider">Email Correspondence</span>
+                  <h3 className="text-sm font-heading font-black uppercase tracking-tight truncate">{selectedTimelineEmail.title}</h3>
+                </div>
+                <button
+                  onClick={closeEmailDetailSlideout}
+                  className="text-slate-400 hover:text-white p-1 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              
+              {/* Body / parsed content */}
+              <div className="flex-1 overflow-y-auto p-5 flex flex-col">
+                {isLoadingEmailDetail ? (
+                  <div className="flex flex-col items-center justify-center py-12 gap-2 text-slate-400 my-auto">
+                    <Loader2 className="animate-spin text-pink-500" size={24} />
+                    <span className="text-[9px] font-bold uppercase tracking-wider">Loading mail contents...</span>
+                  </div>
+                ) : timelineEmailDetailBody ? (
+                  <div className="flex-1 flex flex-col justify-between">
+                    <div className="border-b border-slate-150 pb-3 mb-4 text-left">
+                      <p className="text-[10px] text-slate-500 font-bold">
+                        Subject: <strong className="text-slate-800">{selectedTimelineEmail.title}</strong>
+                      </p>
+                      <p className="text-[10px] text-slate-550 font-bold mt-1">
+                        Date: <span className="text-slate-700">{selectedTimelineEmail.timestamp}</span>
+                      </p>
+                    </div>
+                    <div className="flex-1 min-h-[300px]">
+                      {timelineEmailDetailBody.html ? (
+                        <iframe 
+                          className="w-full h-full min-h-[400px] border-0 rounded-2xl bg-transparent"
+                          title="Timeline parsed mail content"
+                          srcDoc={`
+                            <html>
+                              <head>
+                                <style>
+                                  body {
+                                    font-family: system-ui, -apple-system, sans-serif;
+                                    color: #0f172a;
+                                    background-color: transparent;
+                                    line-height: 1.6;
+                                    font-size: 13px;
+                                  }
+                                  a { color: #db2777; text-decoration: none; }
+                                  a:hover { text-decoration: underline; }
+                                  blockquote { border-left: 3px solid #cbd5e1; padding-left: 12px; color: #64748b; margin: 12px 0; }
+                                </style>
+                              </head>
+                              <body>
+                                ${timelineEmailDetailBody.html}
+                              </body>
+                            </html>
+                          `}
+                        />
+                      ) : (
+                        <div className="text-left text-xs text-slate-700 font-semibold whitespace-pre-wrap leading-relaxed select-text p-4 bg-slate-50 rounded-2xl border border-slate-150">
+                          {timelineEmailDetailBody.text || "No message content."}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center text-slate-400 py-12 text-xs font-semibold my-auto">
+                    No message content.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
     );

@@ -146,7 +146,7 @@ function safe_utf8($str) {
     if (!is_string($str)) {
         return '';
     }
-    return mb_convert_encoding($str, 'UTF-8', 'UTF-8, ASCII, ISO-8859-1, ISO-8859-2, Windows-1250, Windows-1252');
+    return mb_convert_encoding($str, 'UTF-8', 'UTF-8, ASCII, ISO-8859-1, ISO-8859-2, Windows-1252');
 }
 
 function get_imap_credentials($settings) {
@@ -252,15 +252,25 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
         throw new Exception('IMAP Connection failed: ' . imap_last_error());
     }
     
-    $criteria = 'ALL';
-    if ($filter === 'unread') {
-        $criteria = 'UNSEEN';
-    }
+    $uids = [];
     if (!empty($searchEmail)) {
-        $criteria = 'OR FROM "' . $searchEmail . '" TO "' . $searchEmail . '"';
+        $uidsFrom = imap_search($imapStream, 'FROM "' . $searchEmail . '"', SE_FREE);
+        $uidsTo = imap_search($imapStream, 'TO "' . $searchEmail . '"', SE_FREE);
+        $uidsCombined = [];
+        if (is_array($uidsFrom)) {
+            $uidsCombined = array_merge($uidsCombined, $uidsFrom);
+        }
+        if (is_array($uidsTo)) {
+            $uidsCombined = array_merge($uidsCombined, $uidsTo);
+        }
+        $uids = array_unique($uidsCombined);
+    } else {
+        $criteria = 'ALL';
+        if ($filter === 'unread') {
+            $criteria = 'UNSEEN';
+        }
+        $uids = imap_search($imapStream, $criteria, SE_FREE);
     }
-    
-    $uids = imap_search($imapStream, $criteria, SE_FREE);
     $emails = [];
     $total = 0;
     $unseen = 0;
@@ -293,6 +303,16 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                     $fromName = trim($matches[1], '"\' ');
                     $fromAddress = trim($matches[2]);
                 }
+
+                // Parse "To" header
+                $toHeader = isset($o->to) ? $o->to : '';
+                $toName = $toHeader;
+                $toAddress = $toHeader;
+                
+                if (preg_match('/^(.*?)\s*<(.*?)>$/', $toHeader, $matches)) {
+                    $toName = trim($matches[1], '"\' ');
+                    $toAddress = trim($matches[2]);
+                }
                 
                 $emailsMap[$o->uid] = [
                     'uid' => $o->uid,
@@ -301,10 +321,53 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                         'name' => safe_utf8($fromName),
                         'address' => safe_utf8($fromAddress)
                     ],
+                    'to' => [
+                        'name' => safe_utf8($toName),
+                        'address' => safe_utf8($toAddress)
+                    ],
                     'date' => isset($o->date) ? date('Y-m-d H:i:s', strtotime($o->date)) : '',
                     'seen' => isset($o->seen) ? (bool)$o->seen : false,
                     'size' => isset($o->size) ? intval($o->size) : 0
                 ];
+
+                // Auto-upsert timeline email entries to database with email date and time
+                if (isset($GLOBALS['pdo'])) {
+                    $pdo = $GLOBALS['pdo'];
+                    $matchedLeadId = null;
+
+                    if (!empty($fromAddress)) {
+                        $leadStmt = $pdo->prepare("SELECT `id` FROM `leads` WHERE LOWER(`email`) = ? LIMIT 1");
+                        $leadStmt->execute([strtolower($fromAddress)]);
+                        $matchedLeadId = $leadStmt->fetchColumn();
+                    }
+                    if (!$matchedLeadId && !empty($toAddress)) {
+                        $leadStmt = $pdo->prepare("SELECT `id` FROM `leads` WHERE LOWER(`email`) = ? LIMIT 1");
+                        $leadStmt->execute([strtolower($toAddress)]);
+                        $matchedLeadId = $leadStmt->fetchColumn();
+                    }
+                    if (!$matchedLeadId && !empty($searchEmail)) {
+                        $leadStmt = $pdo->prepare("SELECT `id` FROM `leads` WHERE LOWER(`email`) = ? LIMIT 1");
+                        $leadStmt->execute([strtolower($searchEmail)]);
+                        $matchedLeadId = $leadStmt->fetchColumn();
+                    }
+
+                    if ($matchedLeadId) {
+                        $eventId = "email-" . $o->uid;
+                        $timestamp = isset($o->date) ? date('Y-m-d H:i:s', strtotime($o->date)) : date('Y-m-d H:i:s');
+                        $title = isset($o->subject) ? safe_utf8(imap_utf8($o->subject)) : '(No Subject)';
+                        $content = "From: " . $fromName . " <" . $fromAddress . ">\nTo: " . $toName . " <" . $toAddress . ">\nSubject: " . $title;
+
+                        $checkStmt = $pdo->prepare("SELECT 1 FROM `timeline_events` WHERE `id` = ?");
+                        $checkStmt->execute([$eventId]);
+                        if (!$checkStmt->fetchColumn()) {
+                            $insStmt = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`) VALUES (?, ?, 'email', ?, ?, ?)");
+                            $insStmt->execute([$eventId, $matchedLeadId, $timestamp, $title, $content]);
+                        } else {
+                            $upStmt = $pdo->prepare("UPDATE `timeline_events` SET `timestamp` = ?, `title` = ? WHERE `id` = ?");
+                            $upStmt->execute([$timestamp, $title, $eventId]);
+                        }
+                    }
+                }
             }
             
             // Retain sorting

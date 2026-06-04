@@ -56,6 +56,8 @@ $configContent = "<?php
 // Database credentials file
 // Automatically created by the Laminam CRM Installation Wizard
 
+date_default_timezone_set('Europe/Bratislava');
+
 define('DB_HOST', " . var_export($host, true) . ");
 define('DB_PORT', " . var_export($port, true) . ");
 define('DB_NAME', " . var_export($dbname, true) . ");

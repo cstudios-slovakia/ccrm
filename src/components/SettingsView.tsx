@@ -2973,7 +2973,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <ul className="text-xs text-slate-700 space-y-2 leading-relaxed font-semibold">
                     <li><code>email</code>, <code>phone</code>, <code>city</code>, <code>country</code> <span className="text-[10px] text-slate-400 font-normal">({userLanguage === "sk" ? "Osobné údaje" : userLanguage === "hu" ? "Személyes adatok" : "Personal info"})</span></li>
                     <li><code>message</code> <span className="text-[10px] text-slate-400 font-normal">({userLanguage === "sk" ? "Mapované do poznámky na časovej osi leadu" : userLanguage === "hu" ? "A lead idővonal jegyzetébe kerül leképezésre" : "Mapped into Lead timeline note"})</span></li>
-                    <li><code>value</code> <span className="text-[10px] text-slate-400 font-normal">({userLanguage === "sk" ? "Číselná hodnota leadu - predvolená hodnota 1500" : userLanguage === "hu" ? "Numerikus lead érték - alapértelmezetten 1500" : "Numerical lead worth - defaults to 1500"})</span></li>
+                    <li><code>value</code> <span className="text-[10px] text-slate-400 font-normal">({userLanguage === "sk" ? "Číselná hodnota leadu - predvolená hodnota 0" : userLanguage === "hu" ? "Numerikus lead érték - alapértelmezetten 0" : "Numerical lead worth - defaults to 0"})</span></li>
                     <li><code>source_id</code> <span className="text-[10px] text-slate-400 font-normal">({userLanguage === "sk" ? "ID zdroja návštevnosti - mapuje sa na zoznam aktívnych nastavení" : userLanguage === "hu" ? "A forgalmi csatorna azonosítója - az aktív beállítások listájára képeződik le" : "ID of the traffic channel - maps to active settings list"})</span></li>
                   </ul>
                 </div>

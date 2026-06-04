@@ -15,6 +15,7 @@ interface FilesViewProps {
 export const FilesView: React.FC<FilesViewProps> = ({ leads, systemLanguage }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<"all" | "offer" | "contract" | "invoice">("all");
+  const [selectedClientFilter, setSelectedClientFilter] = useState("all");
 
   // Dynamic files aggregator: scan all client timelines for offer attachments
   const filesList = useMemo(() => {
@@ -50,6 +51,12 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, systemLanguage }) =
     return files.sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt));
   }, [leads]);
 
+  // Extract unique client names dynamically
+  const clientNames = useMemo(() => {
+    const names = new Set(filesList.map(f => f.clientName));
+    return Array.from(names).sort();
+  }, [filesList]);
+
   // Filtered files for the datagrid
   const filteredFiles = useMemo(() => {
     return filesList.filter(file => {
@@ -59,10 +66,11 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, systemLanguage }) =
         file.uploadedAt.toLowerCase().includes(searchQuery.toLowerCase());
 
       const matchesType = selectedTypeFilter === "all" || file.fileType === selectedTypeFilter;
+      const matchesClient = selectedClientFilter === "all" || file.clientName === selectedClientFilter;
 
-      return matchesSearch && matchesType;
+      return matchesSearch && matchesType && matchesClient;
     });
-  }, [filesList, searchQuery, selectedTypeFilter]);
+  }, [filesList, searchQuery, selectedTypeFilter, selectedClientFilter]);
 
   // Helper to color-code files based on type
   const getFileTypeProps = (type: "offer" | "contract" | "invoice") => {
@@ -140,16 +148,33 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, systemLanguage }) =
           </div>
         </div>
 
-        {/* Live Search input */}
-        <div className="relative w-full border-t border-slate-100 pt-4">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 mt-2 h-4.5 w-4.5 text-amber-700 stroke-[2.5]" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={getTranslation(systemLanguage, "files.search_placeholder")}
-            className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-amber-50/10 border-2 border-amber-250 text-xs text-slate-800 placeholder:text-slate-400 font-bold focus:outline-none focus:bg-white focus:border-amber-700 focus:ring-1 focus:ring-amber-500"
-          />
+        {/* Live Search and Client Filter grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-slate-100 pt-4">
+          <div className="relative w-full">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4.5 w-4.5 text-amber-700 stroke-[2.5]" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={getTranslation(systemLanguage, "files.search_placeholder")}
+              className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-amber-50/10 border-2 border-amber-250 text-xs text-slate-800 placeholder:text-slate-400 font-bold focus:outline-none focus:bg-white focus:border-amber-700 focus:ring-1 focus:ring-amber-500"
+            />
+          </div>
+
+          <div className="relative w-full">
+            <select
+              value={selectedClientFilter}
+              onChange={(e) => setSelectedClientFilter(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-2xl bg-amber-50/10 border-2 border-amber-250 text-xs text-slate-850 font-bold focus:outline-none focus:bg-white focus:border-amber-700 focus:ring-1 focus:ring-amber-500 cursor-pointer"
+            >
+              <option value="all">
+                {systemLanguage === "sk" ? "Všetci klienti" : systemLanguage === "hu" ? "Minden ügyfél" : "All Clients"}
+              </option>
+              {clientNames.map(name => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -246,14 +271,17 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, systemLanguage }) =
                             <span>{getTranslation(systemLanguage, "files.btn_client")}</span>
                             <ArrowRight className="h-3 w-3 stroke-[2.5]" />
                           </a>
-                          <button 
-                            onClick={() => alert(`Simulating file download: ${file.fileName}`)}
-                            className="px-2.5 py-1.5 rounded-xl bg-amber-700 hover:bg-amber-600 border border-amber-800 text-white transition-all text-[8px] font-black uppercase flex items-center gap-1 shadow-sm"
+                          <a 
+                            href={`/uploads/${file.id}_${file.fileName}`}
+                            download={file.fileName}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2.5 py-1.5 rounded-xl bg-amber-700 hover:bg-amber-600 border border-amber-800 text-white transition-all text-[8px] font-black uppercase flex items-center gap-1 shadow-sm inline-flex items-center cursor-pointer"
                             title="Download offer document"
                           >
                             <Download className="h-3 w-3 stroke-[2.5]" />
                             <span>{getTranslation(systemLanguage, "files.btn_view")}</span>
-                          </button>
+                          </a>
                         </div>
                       </td>
 

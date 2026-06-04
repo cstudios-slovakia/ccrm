@@ -41,6 +41,15 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
   // Add Task Drawer State
   const [isAddDrawerOpen, setIsAddDrawerOpen] = useState(false);
+  const [isClosingDrawer, setIsClosingDrawer] = useState(false);
+
+  const closeAddDrawer = () => {
+    setIsClosingDrawer(true);
+    setTimeout(() => {
+      setIsAddDrawerOpen(false);
+      setIsClosingDrawer(false);
+    }, 350);
+  };
   const [newTitle, setNewTitle] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newPriority, setNewPriority] = useState<"low" | "medium" | "high">("medium");
@@ -143,7 +152,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     setNewRelatedLeadId("");
     setNewIsLocking(false);
     setNewAssignedUser("");
-    setIsAddDrawerOpen(false);
+    closeAddDrawer();
   };
 
   // --- RENDERING ---
@@ -568,18 +577,18 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
   // Helper function to render drawer
   function renderAddDrawer() {
-    if (!isAddDrawerOpen) return null;
+    if (!isAddDrawerOpen && !isClosingDrawer) return null;
     if (typeof document === "undefined") return null;
     return createPortal(
       <div className="fixed inset-0 z-[100000] flex justify-end">
-        <div onClick={() => setIsAddDrawerOpen(false)} className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-in fade-in" />
-        <div className="relative w-full max-w-md bg-white shadow-2xl h-full flex flex-col p-6 animate-in slide-in-from-right overflow-y-auto">
+        <div onClick={closeAddDrawer} className={`absolute inset-0 bg-slate-900/40 backdrop-blur-sm ${isClosingDrawer ? "animate-fade-out" : "animate-fade-in"}`} />
+        <div className={`relative w-full max-w-md bg-white shadow-2xl h-full flex flex-col p-6 overflow-y-auto ${isClosingDrawer ? "animate-slide-out-right" : "animate-slide-in-right"}`}>
           <div className="flex items-center justify-between pb-4 border-b border-slate-100">
             <h2 className="text-sm font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
               <CheckSquare className="h-5 w-5 text-indigo-600" />
               {t("Create New Task", "Vytvoriť novú úlohu", "Új feladat")}
             </h2>
-            <button onClick={() => setIsAddDrawerOpen(false)} className="p-1 hover:bg-slate-100 rounded-lg text-slate-400">
+            <button onClick={closeAddDrawer} className="p-1 hover:bg-slate-100 rounded-lg text-slate-400">
               <X className="h-5 w-5" />
             </button>
           </div>

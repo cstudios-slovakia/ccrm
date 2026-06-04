@@ -150,7 +150,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $name = !empty($contactName) ? $contactName : $companyName;
     $city = isset($payload['city']) ? trim($payload['city']) : (isset($payload['country']) ? trim($payload['country']) : "Bratislava");
     $clientType = !empty($companyName) ? "business" : "person";
-    $value = isset($payload['value']) ? floatval($payload['value']) : 1500.00;
+    $value = isset($payload['value']) ? floatval($payload['value']) : 0.00;
     $phone = isset($payload['phone']) ? trim($payload['phone']) : "";
     $email = isset($payload['email']) ? trim($payload['email']) : "";
     $country = isset($payload['country']) ? trim($payload['country']) : "Slovakia";

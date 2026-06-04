@@ -3,7 +3,8 @@ import {
   Users, MapPin, Search, Clock, User, Briefcase, Handshake, 
   Euro, UserCheck, Check, Layers, Phone, Mail, Globe, 
   Calendar, ArrowLeft, Plus, TrendingUp, PencilLine, FileText,
-  X, FolderOpen, Download, Trash2, SlidersHorizontal
+  X, FolderOpen, Download, Trash2, SlidersHorizontal,
+  CornerDownLeft, CornerLeftDown, Loader2
 } from "lucide-react";
 import type { Lead, TimelineEvent, Task } from "../types";
 import { getTranslation } from "../utils/translations";
@@ -13,6 +14,7 @@ interface ClientsViewProps {
   leads: Lead[];
   setLeads: React.Dispatch<React.SetStateAction<Lead[]>>;
   projectManagers: string[];
+  projectManagerColors?: Record<string, string>;
   leadSources: string[];
   initialSelectedClient?: string;
   systemLanguage: Language;
@@ -25,6 +27,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   leads,
   setLeads,
   projectManagers,
+  projectManagerColors = {},
   leadSources,
   initialSelectedClient,
   systemLanguage,
@@ -193,20 +196,31 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         const combinedEmails: TimelineEvent[] = [];
         
         const processMail = (mail: any) => {
+          const isOutgoing = mail.from?.address?.toLowerCase() === currentUser?.email?.toLowerCase();
+          const folderPrefix = isOutgoing ? "sent" : "inbox";
           return {
-            id: `email-${mail.uid}`,
+            id: `email-${folderPrefix}-${mail.uid}`,
             type: "email" as const,
             timestamp: mail.date.substring(0, 16),
             title: mail.subject || "(No Subject)",
-            content: `From: ${mail.from.name || mail.from.address} <${mail.from.address}>\nDate: ${mail.date}\n\nTo view this email or reply, please open the Mail Client.`,
-            seen: mail.seen
+            content: `From: ${mail.from.name || mail.from.address} <${mail.from.address}>\n\nTo view this email or reply, please open the Mail Client.`,
+            seen: mail.seen,
+            isOutgoing: isOutgoing
           };
         };
 
         if (inboxData.success && Array.isArray(inboxData.emails)) {
-          inboxData.emails.forEach((m: any) => combinedEmails.push(processMail(m)));
+          inboxData.emails.forEach((m: any) => {
+            const isMatch = m.from?.address?.toLowerCase() === activeClient.email?.toLowerCase() ||
+                            m.to?.address?.toLowerCase() === activeClient.email?.toLowerCase();
+            if (isMatch) combinedEmails.push(processMail(m));
+          });
         }
-        sentEmails.forEach((m: any) => combinedEmails.push(processMail(m)));
+        sentEmails.forEach((m: any) => {
+          const isMatch = m.from?.address?.toLowerCase() === activeClient.email?.toLowerCase() ||
+                          m.to?.address?.toLowerCase() === activeClient.email?.toLowerCase();
+          if (isMatch) combinedEmails.push(processMail(m));
+        });
 
         setClientEmails(combinedEmails);
       } catch (err) {
@@ -232,8 +246,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
   // Group events into future and past relative to current timestamp
   const { futureEvents, pastEvents } = useMemo(() => {
-    if (!activeClient) return { futureEvents: [], pastEvents: [] };
-    const nowStr = new Date().toISOString().replace("T", " ").substring(0, 16);
+    const tzOffset = new Date().getTimezoneOffset() * 60000;
+    const nowStr = new Date(Date.now() - tzOffset).toISOString().replace("T", " ").substring(0, 16);
     
     const future = activeClientTimeline
       .filter(e => e.timestamp > nowStr)
@@ -283,11 +297,69 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   });
 
   // --- DETAIL TABS & DOCUMENT UPLOADER STATE ---
-  const [activeDetailTab, setActiveDetailTab] = useState<"timeline" | "files">("timeline");
+  const [activeDetailTab, setActiveDetailTab] = useState<"timeline" | "files" | "leads">("timeline");
   const [uploadFileName, setUploadFileName] = useState("");
   const [uploadFileSize, setUploadFileSize] = useState("");
   const [uploadFileType, setUploadFileType] = useState<"offer" | "contract" | "invoice">("offer");
   const [uploadDescription, setUploadDescription] = useState("");
+
+  // --- TIMELINE EMAIL VIEW DRAWER STATE ---
+  const [selectedTimelineEmail, setSelectedTimelineEmail] = useState<any | null>(null);
+  const [isClosingEmailDetail, setIsClosingEmailDetail] = useState(false);
+
+  const closeEmailDetailSlideout = () => {
+    setIsClosingEmailDetail(true);
+    setTimeout(() => {
+      setSelectedTimelineEmail(null);
+      setIsClosingEmailDetail(false);
+    }, 350);
+  };
+
+  const [isLoadingEmailDetail, setIsLoadingEmailDetail] = useState(false);
+  const [timelineEmailDetailBody, setTimelineEmailDetailBody] = useState<any | null>(null);
+  const [selectedUploadFile, setSelectedUploadFile] = useState<File | null>(null);
+  const [selectedLogFile, setSelectedLogFile] = useState<File | null>(null);
+
+  const handleTimelineEmailClick = async (event: any) => {
+    if (event.type !== "email") return;
+    
+    setSelectedTimelineEmail(event);
+    setIsLoadingEmailDetail(true);
+    setTimelineEmailDetailBody(null);
+    
+    try {
+      const parts = event.id.split("-");
+      const uid = parts[parts.length - 1];
+      const folder = event.isOutgoing ? "Sent" : "INBOX";
+      
+      const currentUserStr = sessionStorage.getItem("crm_current_user_rbac");
+      const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null;
+      
+      const res = await fetch(
+        `/api/mail_broker.php?action=get_email_detail&folder=${folder}&uid=${uid}`,
+        { headers: { "X-User-Email": currentUser?.email || "" } }
+      );
+      const data = await res.json();
+      if (data.success && data.email) {
+        setTimelineEmailDetailBody(data.email);
+      } else {
+        setTimelineEmailDetailBody({
+          uid,
+          html: "",
+          text: event.content || "No message content."
+        });
+      }
+    } catch (e) {
+      console.error("Failed to load email details", e);
+      setTimelineEmailDetailBody({
+        uid: event.id,
+        html: "",
+        text: event.content || "No message content."
+      });
+    } finally {
+      setIsLoadingEmailDetail(false);
+    }
+  };
 
   // Sync form states with activeClient properties when deep-route is loaded
   useEffect(() => {
@@ -354,7 +426,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   };
 
   // --- LOG A NEW EVENT INTO TIMELINE ---
-  const handleAddTimelineEvent = (e: React.FormEvent) => {
+  const handleAddTimelineEvent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeClient || !logType) return;
     if (!logContent.trim()) {
@@ -374,8 +446,33 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       }
     };
 
+    const eventId = `ev-${Date.now()}`;
+
+    // Upload file if selected
+    if (logType === "offer" && selectedLogFile) {
+      const formData = new FormData();
+      formData.append("file", selectedLogFile);
+      formData.append("eventId", eventId);
+      
+      try {
+        const uploadRes = await fetch("/upload.php", {
+          method: "POST",
+          body: formData
+        });
+        const uploadData = await uploadRes.json();
+        if (!uploadData.success) {
+          alert("File upload failed: " + uploadData.error);
+          return;
+        }
+      } catch (err) {
+        console.error("Error uploading file", err);
+        alert("Error uploading file to server.");
+        return;
+      }
+    }
+
     const newEvent: TimelineEvent = {
-      id: `ev-${Date.now()}`,
+      id: eventId,
       type: logType,
       timestamp: `${logDate} ${logTimeOfEvent}`,
       title: getEventDefaultTitle(logType),
@@ -443,6 +540,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     setLogFileName("");
     setLogFileSize("");
     setLogFileType("offer");
+    setSelectedLogFile(null);
     setLogType(null); // Reset selector so fields close smoothly
     
     // Reset date/time to now
@@ -452,12 +550,37 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     alert("Event logged successfully!");
   };
 
-  const handleAttachFile = (e: React.FormEvent) => {
+  const handleAttachFile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeClient || !uploadFileName) return;
 
+    const eventId = `ev-${Date.now()}`;
+
+    // Upload file if selected
+    if (selectedUploadFile) {
+      const formData = new FormData();
+      formData.append("file", selectedUploadFile);
+      formData.append("eventId", eventId);
+      
+      try {
+        const uploadRes = await fetch("/upload.php", {
+          method: "POST",
+          body: formData
+        });
+        const uploadData = await uploadRes.json();
+        if (!uploadData.success) {
+          alert("File upload failed: " + uploadData.error);
+          return;
+        }
+      } catch (err) {
+        console.error("Error uploading file", err);
+        alert("Error uploading file to server.");
+        return;
+      }
+    }
+
     const newEvent: TimelineEvent = {
-      id: "evt_" + Math.random().toString(36).substring(2, 9),
+      id: eventId,
       type: "offer",
       timestamp: new Date().toISOString().replace("T", " ").substring(0, 16),
       title: `Document Attached: ${uploadFileName}`,
@@ -481,6 +604,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     setUploadFileName("");
     setUploadFileSize("");
     setUploadDescription("");
+    setSelectedUploadFile(null);
     alert("Document attached successfully!");
   };
 
@@ -1016,15 +1140,26 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   onClick={() => setActiveDetailTab("files")}
                   className={`px-5 py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all text-center flex items-center justify-center gap-2 border-2 ${
                     activeDetailTab === "files"
-                      ? "bg-blue-600 text-white shadow-md shadow-blue-500/10 border-blue-700"
+                      ? "bg-[#5c4033] text-white shadow-md shadow-[#5c4033]/15 border-[#3d2b1f]"
                       : "text-slate-550 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border-slate-200"
                   }`}
                 >
                   <FileText className="h-4.5 w-4.5 stroke-[2.5]" /> {getTranslation(systemLanguage, "common.attached_files")} ({activeClient.timeline.filter(e => e.fileName).length})
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveDetailTab("leads")}
+                  className={`px-5 py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all text-center flex items-center justify-center gap-2 border-2 ${
+                    activeDetailTab === "leads"
+                      ? "bg-blue-600 text-white shadow-md shadow-blue-500/10 border-blue-700"
+                      : "text-slate-550 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border-slate-200"
+                  }`}
+                >
+                  <Layers className="h-4.5 w-4.5 stroke-[2.5]" /> {systemLanguage === "sk" ? "Aktívne Leady" : systemLanguage === "hu" ? "Aktív leadek" : "Active Leads"} ({(activeClient.associatedLeads || []).filter((l: any) => l.status.toLowerCase() !== "won" && l.status.toLowerCase() !== "lost").length})
+                </button>
               </div>
 
-              {activeDetailTab === "timeline" ? (
+              {activeDetailTab === "timeline" && (
                 <>
                   {/* Log event Form (New Event Bar) */}
                   <div>
@@ -1120,6 +1255,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                         onChange={(e) => {
                                           const file = e.target.files?.[0];
                                           if (file) {
+                                            setSelectedLogFile(file);
                                             setLogFileName(file.name);
                                             setLogFileSize((file.size / 1024 / 1024).toFixed(2) + " MB");
                                           }
@@ -1260,7 +1396,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
                               {/* Event Card */}
                               <div className="flex-1 min-w-0 pl-3 md:pl-0">
-                                <div className={`bg-amber-50/10 border-2 border-dashed border-amber-300 rounded-2xl p-4 transition-all shadow-md hover:shadow-lg ${colors.cardBorder}`}>
+                                <div 
+                                  onClick={() => event.type === "email" && handleTimelineEmailClick(event)}
+                                  className={`${event.type === "email" ? "cursor-pointer hover:border-indigo-400 active:scale-[0.99]" : ""} bg-amber-50/10 border-2 border-dashed border-amber-300 rounded-2xl p-4 transition-all shadow-md hover:shadow-lg ${colors.cardBorder}`}
+                                >
                                   <div className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-slate-200/50 pb-2 mb-2.5">
                                     <div className="flex items-center gap-2">
                                       <span className="text-[10px] font-black text-slate-900 uppercase tracking-wide">
@@ -1278,9 +1417,23 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                     </span>
                                   </div>
 
-                                  <p className="text-[11px] text-slate-700 leading-relaxed font-bold select-text">
-                                    {event.content}
-                                  </p>
+                                  {(() => {
+                                    const lines = event.content.split("\n");
+                                    const showGradient = lines.length > 5 || event.content.length > 250;
+                                    return (
+                                      <div className={`relative ${showGradient ? "max-h-[8.1em] overflow-hidden" : ""}`} style={{ lineHeight: 1.35 }}>
+                                        <p className="text-[11px] text-slate-700 font-bold select-text whitespace-pre-wrap">
+                                          {event.content}
+                                        </p>
+                                        {showGradient && (
+                                          <div 
+                                            className="absolute bottom-0 left-0 right-0 pointer-events-none bg-gradient-to-t from-slate-50 via-slate-50/70 to-transparent" 
+                                            style={{ height: "2.7em" }}
+                                          />
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
 
                                   {/* Extra values */}
                                   {event.type === "offer" && event.amount !== undefined && (
@@ -1304,9 +1457,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                         <span className="text-[9px] font-extrabold text-slate-400">({event.fileSize})</span>
                                       </div>
                                       <a 
-                                        href="#"
-                                        onClick={(e) => { e.preventDefault(); alert(`Simulating file download: ${event.fileName}`); }}
-                                        className="px-2.5 py-1 rounded bg-amber-100 border border-amber-300 hover:bg-amber-250 transition-all text-[8px] font-black uppercase text-amber-800 tracking-wider shadow-sm"
+                                        href={`/uploads/${event.id}_${event.fileName}`}
+                                        download={event.fileName}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="px-2.5 py-1 rounded bg-amber-100 border border-amber-300 hover:bg-amber-250 transition-all text-[8px] font-black uppercase text-amber-800 tracking-wider shadow-sm cursor-pointer"
                                       >
                                         View File
                                       </a>
@@ -1334,12 +1489,16 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         {/* 3. PAST EVENTS (Rendered at bottom, most recent closest to line) */}
                         {pastEvents.map((event) => {
                           const colors = getEventColors(event.type);
+                          const pmName = event.type === "email"
+                            ? (event.isOutgoing ? (currentUser?.name || "Erik") : (activeClient.owner || "Erik"))
+                            : (activeClient.owner || "Erik");
+                          const pmColor = projectManagerColors[pmName] || "#6366f1";
                           return (
                             <div key={event.id} className="relative flex flex-row items-start gap-4 md:gap-8 group animate-in fade-in slide-in-from-bottom duration-250">
                               
                               {/* Left Date / Time part */}
                               <div className="hidden md:block w-[100px] text-right pt-1.5 shrink-0 select-text">
-                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider block">
+                                <span className="text-[10px] font-black text-slate-550 uppercase tracking-wider block">
                                   {event.timestamp.substring(0, 10)}
                                 </span>
                                 <span className="text-[9px] font-extrabold text-slate-400 block mt-0.5">
@@ -1356,24 +1515,65 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
                               {/* Event Card */}
                               <div className="flex-1 min-w-0 pl-3 md:pl-0">
-                                <div className={`bg-slate-50/60 border rounded-2xl p-4 transition-all shadow-md hover:shadow-lg ${colors.cardBorder}`}>
+                                <div 
+                                  onClick={() => event.type === "email" && handleTimelineEmailClick(event)}
+                                  className={`${event.type === "email" ? "cursor-pointer hover:border-indigo-400 active:scale-[0.99]" : ""} bg-slate-50/60 border rounded-2xl p-4 transition-all shadow-md hover:shadow-lg ${colors.cardBorder}`}
+                                >
                                   <div className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-slate-200/50 pb-2 mb-2.5">
                                     <div className="flex items-center gap-2">
                                       <span className="text-[10px] font-black text-slate-900 uppercase tracking-wide">
                                         {event.title}
                                       </span>
-                                      <span className={`text-[8px] font-black uppercase px-2.5 py-0.5 rounded-full border tracking-widest shadow-inner ${colors.badgeBg}`}>
-                                        {event.type}
-                                      </span>
+                                      {event.type === "email" ? (
+                                        <>
+                                          <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full border tracking-widest shadow-inner ${colors.badgeBg} flex items-center gap-1.5`}>
+                                            {event.isOutgoing ? (
+                                              <>
+                                                <CornerDownLeft className="h-3 w-3 stroke-[2.5]" />
+                                                <span>Outgoing</span>
+                                              </>
+                                            ) : (
+                                              <>
+                                                <CornerLeftDown className="h-3 w-3 stroke-[2.5]" />
+                                                <span>Incoming</span>
+                                              </>
+                                            )}
+                                          </span>
+                                          <span 
+                                            className="inline-flex items-center gap-1 text-[8px] font-black uppercase px-2.5 py-0.5 rounded-full border shadow-sm text-white"
+                                            style={{ backgroundColor: pmColor, borderColor: pmColor }}
+                                          >
+                                            @ {pmName}
+                                          </span>
+                                        </>
+                                      ) : (
+                                        <span className={`text-[8px] font-black uppercase px-2.5 py-0.5 rounded-full border tracking-widest shadow-inner ${colors.badgeBg}`}>
+                                          {event.type}
+                                        </span>
+                                      )}
                                     </div>
-                                    <span className="block md:hidden text-[9px] font-black text-slate-450 uppercase tracking-wider">
+                                    <span className="block md:hidden text-[9px] font-black text-slate-400 uppercase tracking-wider">
                                       {event.timestamp}
                                     </span>
                                   </div>
 
-                                  <p className="text-[11px] text-slate-700 leading-relaxed font-bold select-text">
-                                    {event.content}
-                                  </p>
+                                  {(() => {
+                                    const lines = event.content.split("\n");
+                                    const showGradient = lines.length > 5 || event.content.length > 250;
+                                    return (
+                                      <div className={`relative ${showGradient ? "max-h-[8.1em] overflow-hidden" : ""}`} style={{ lineHeight: 1.35 }}>
+                                        <p className="text-[11px] text-slate-700 font-bold select-text whitespace-pre-wrap">
+                                          {event.content}
+                                        </p>
+                                        {showGradient && (
+                                          <div 
+                                            className="absolute bottom-0 left-0 right-0 pointer-events-none bg-gradient-to-t from-slate-50 via-slate-50/70 to-transparent" 
+                                            style={{ height: "2.7em" }}
+                                          />
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
 
                                   {/* Extra values */}
                                   {event.type === "offer" && event.amount !== undefined && (
@@ -1397,9 +1597,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                         <span className="text-[9px] font-extrabold text-slate-400">({event.fileSize})</span>
                                       </div>
                                       <a 
-                                        href="#"
-                                        onClick={(e) => { e.preventDefault(); alert(`Simulating file download: ${event.fileName}`); }}
-                                        className="px-2.5 py-1 rounded bg-amber-100 border border-amber-300 hover:bg-amber-250 transition-all text-[8px] font-black uppercase text-amber-800 tracking-wider shadow-sm"
+                                        href={`/uploads/${event.id}_${event.fileName}`}
+                                        download={event.fileName}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="px-2.5 py-1 rounded bg-amber-100 border border-amber-300 hover:bg-amber-250 transition-all text-[8px] font-black uppercase text-amber-800 tracking-wider shadow-sm cursor-pointer"
                                       >
                                         View File
                                       </a>
@@ -1415,7 +1617,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     )}
                   </div>
                 </>
-              ) : (
+              )}
+
+              {activeDetailTab === "files" && (
                 <div className="space-y-6">
                   {/* Attach New Document Form */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border-2 border-slate-200">
@@ -1438,6 +1642,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                 onChange={(e) => {
                                   const file = e.target.files?.[0];
                                   if (file) {
+                                    setSelectedUploadFile(file);
                                     setUploadFileName(file.name);
                                     setUploadFileSize((file.size / 1024 / 1024).toFixed(2) + " MB");
                                   }
@@ -1562,18 +1767,21 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                               </div>
 
                               <div className="flex items-center gap-1.5 shrink-0">
-                                <button
-                                  type="button"
-                                  onClick={() => alert(systemLanguage === "sk" ? `Simulované sťahovanie súboru: ${file.fileName}` : systemLanguage === "hu" ? `Fájl letöltés szimulációja: ${file.fileName}` : `Simulating file download: ${file.fileName}`)}
-                                  className="p-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-all text-slate-650 hover:text-slate-900 shadow-sm"
+                                <a
+                                  href={`/uploads/${file.id}_${file.fileName}`}
+                                  download={file.fileName}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-all text-slate-600 hover:text-slate-900 shadow-sm flex items-center justify-center cursor-pointer"
                                   title={systemLanguage === "sk" ? "Stiahnuť dokument" : systemLanguage === "hu" ? "Dokumentum letöltése" : "Download Document"}
                                 >
                                   <Download className="h-4 w-4" />
-                                </button>
+                                </a>
                                 <button
                                   type="button"
                                   onClick={() => {
                                     if (confirm(systemLanguage === "sk" ? "Naozaj chcete natrvalo odpojiť tento dokument?" : systemLanguage === "hu" ? "Biztosan véglegesen le szeretné választani ezt a dokumentumot?" : "Are you sure you want to permanently detach this document?")) {
+                                      const backupLeads = [...leads];
                                       setLeads(prev => prev.map(lead => {
                                         if (lead.name.trim().toLowerCase() === activeClient.name.trim().toLowerCase()) {
                                           return {
@@ -1583,7 +1791,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                         }
                                         return lead;
                                       }));
-                                      alert(systemLanguage === "sk" ? "Dokument bol úspešne odpojený!" : systemLanguage === "hu" ? "Dokumentum sikeresen leválasztva!" : "Document detached successfully!");
+                                      (window as any).showToast(
+                                        systemLanguage === "sk" ? "Dokument bol úspešne odpojený!" : systemLanguage === "hu" ? "Dokumentum sikeresen leválasztva!" : "Document detached successfully!",
+                                        {
+                                          label: systemLanguage === "sk" ? "Krok späť" : systemLanguage === "hu" ? "Visszavonás" : "Undo",
+                                          onClick: () => setLeads(backupLeads)
+                                        }
+                                      );
                                     }
                                   }}
                                   className="p-2 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition-all text-rose-600 hover:text-rose-700 shadow-sm"
@@ -1598,6 +1812,63 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       </div>
                     )}
                   </div>
+                </div>
+              )}
+
+              {activeDetailTab === "leads" && (
+                <div className="space-y-4 text-left">
+                  <h3 className="text-xs font-black text-slate-450 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
+                    <Layers className="h-4.5 w-4.5 text-blue-600 stroke-[2.5]" /> {systemLanguage === "sk" ? "Aktívne obchodné prípady (Leady)" : systemLanguage === "hu" ? "Aktív leadek" : "Active Leads / Deals"}
+                  </h3>
+                  {((activeClient.associatedLeads || []).filter((l: any) => l.status.toLowerCase() !== "won" && l.status.toLowerCase() !== "lost")).length === 0 ? (
+                    <div className="py-8 text-center text-slate-400 text-xs font-bold uppercase tracking-wider">
+                      {systemLanguage === "sk" ? "Žiadne aktívne leady pre tohto klienta" : systemLanguage === "hu" ? "Nincsenek aktív leadek ehhez az ügyfélhez" : "No active leads for this client"}
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {(activeClient.associatedLeads || [])
+                        .filter((l: any) => l.status.toLowerCase() !== "won" && l.status.toLowerCase() !== "lost")
+                        .map((lead: any) => {
+                          const stateColors: Record<string, string> = {
+                            todo: "#2563eb",
+                            "contacted / in progress": "#eab308",
+                            "in progress": "#eab308",
+                            proposal: "#8b5cf6",
+                            negotiation: "#ec4899",
+                            won: "#10b981",
+                            lost: "#ef4444"
+                          };
+                          const stateColor = stateColors[(lead.status || "").toLowerCase()] || "#64748b";
+                          return (
+                            <div 
+                              key={lead.id} 
+                              className="p-4 rounded-2xl border-2 border-slate-150 bg-slate-50/50 hover:bg-slate-50 transition-all shadow-sm flex items-center justify-between gap-4 cursor-pointer"
+                              onClick={() => {
+                                window.location.hash = `lead-${lead.id}`;
+                              }}
+                            >
+                              <div className="min-w-0">
+                                <h4 className="font-heading font-black text-xs uppercase text-slate-800 tracking-tight truncate max-w-[280px]">{lead.name || "Untitled Lead"}</h4>
+                                <div className="flex flex-wrap items-center gap-2 mt-1.5 text-[9px] font-black uppercase text-slate-450 tracking-wider">
+                                  <span>Worth: <strong className="text-emerald-700 font-extrabold">&euro; {lead.value.toLocaleString()}</strong></span>
+                                  <span>&bull;</span>
+                                  <span>PM: <strong className="text-slate-600 font-extrabold">{lead.owner || "Unassigned"}</strong></span>
+                                </div>
+                              </div>
+                              <div className="shrink-0 flex items-center gap-2">
+                                <span 
+                                  className="px-2.5 py-0.5 rounded-full text-[8.5px] font-black uppercase text-white shadow-sm"
+                                  style={{ backgroundColor: stateColor }}
+                                >
+                                  {lead.status}
+                                </span>
+                                <span className="text-slate-400 font-black text-xs">&rarr;</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1862,6 +2133,88 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* TIMELINE EMAIL DETAIL SLIDEOUT OVERLAY */}
+      {(selectedTimelineEmail || isClosingEmailDetail) && (
+        <div className={`fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex justify-end ${isClosingEmailDetail ? "animate-fade-out" : "animate-fade-in"}`}>
+          {/* Backdrop click close */}
+          <div className="flex-1" onClick={closeEmailDetailSlideout} />
+          
+          <div className={`w-[550px] max-w-full bg-white h-full shadow-2xl flex flex-col relative ${isClosingEmailDetail ? "animate-slide-out-right" : "animate-slide-in-right"}`}>
+            {/* Header */}
+            <div className="bg-slate-900 text-white p-4 flex items-center justify-between shrink-0">
+              <div className="text-left min-w-0 flex-1 pr-4">
+                <span className="text-[10px] font-black uppercase text-pink-500 tracking-wider">Email Correspondence</span>
+                <h3 className="text-sm font-heading font-black uppercase tracking-tight truncate">{selectedTimelineEmail.title}</h3>
+              </div>
+              <button
+                onClick={closeEmailDetailSlideout}
+                className="text-slate-400 hover:text-white p-1 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            
+            {/* Body / parsed content */}
+            <div className="flex-1 overflow-y-auto p-5 flex flex-col">
+              {isLoadingEmailDetail ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-2 text-slate-400 my-auto">
+                  <Loader2 className="animate-spin text-pink-500" size={24} />
+                  <span className="text-[9px] font-bold uppercase tracking-wider">Loading mail contents...</span>
+                </div>
+              ) : timelineEmailDetailBody ? (
+                <div className="flex-1 flex flex-col justify-between">
+                  <div className="border-b border-slate-150 pb-3 mb-4 text-left">
+                    <p className="text-[10px] text-slate-500 font-bold">
+                      Subject: <strong className="text-slate-800">{selectedTimelineEmail.title}</strong>
+                    </p>
+                    <p className="text-[10px] text-slate-500 font-bold mt-1">
+                      Date: <span className="text-slate-700">{selectedTimelineEmail.timestamp}</span>
+                    </p>
+                  </div>
+                  <div className="flex-1 min-h-[300px]">
+                    {timelineEmailDetailBody.html ? (
+                      <iframe 
+                        className="w-full h-full min-h-[400px] border-0 rounded-2xl bg-transparent"
+                        title="Timeline parsed mail content"
+                        srcDoc={`
+                          <html>
+                            <head>
+                              <style>
+                                body {
+                                  font-family: system-ui, -apple-system, sans-serif;
+                                  color: #0f172a;
+                                  background-color: transparent;
+                                  line-height: 1.6;
+                                  font-size: 13px;
+                                }
+                                a { color: #db2777; text-decoration: none; }
+                                a:hover { text-decoration: underline; }
+                                blockquote { border-left: 3px solid #cbd5e1; padding-left: 12px; color: #64748b; margin: 12px 0; }
+                              </style>
+                            </head>
+                            <body>
+                              ${timelineEmailDetailBody.html}
+                            </body>
+                          </html>
+                        `}
+                      />
+                    ) : (
+                      <div className="text-left text-xs text-slate-700 font-semibold whitespace-pre-wrap leading-relaxed select-text p-4 bg-slate-50 rounded-2xl border border-slate-150">
+                        {timelineEmailDetailBody.text || "No message content."}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center text-slate-400 py-12 text-xs font-semibold my-auto">
+                  No message content.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

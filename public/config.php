@@ -2,6 +2,8 @@
 // Database credentials file
 // Automatically created by the Laminam CRM Installation Wizard
 
+date_default_timezone_set('Europe/Bratislava');
+
 define('DB_HOST', 'db.r5.websupport.sk');
 define('DB_PORT', '3306');
 define('DB_NAME', 'Dg1SeyNV');

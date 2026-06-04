@@ -16,6 +16,7 @@ export interface TimelineEvent {
   fileName?: string; // name of attached file
   fileSize?: string; // size of attached file e.g. "1.5 MB"
   fileType?: "offer" | "contract" | "invoice";
+  isOutgoing?: boolean;
 }
 
 export interface Lead {

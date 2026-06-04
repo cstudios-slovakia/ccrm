@@ -32,6 +32,22 @@ function App() {
 
   const [activeTab, setActiveTab] = useState(getTabFromHash);
   const [isInitialSyncResolved, setIsInitialSyncResolved] = useState(false);
+  const [toast, setToast] = useState<{
+    message: string;
+    action?: { label: string; onClick: () => void };
+  } | null>(null);
+
+  useEffect(() => {
+    (window as any).showToast = (message: string, action?: { label: string; onClick: () => void }) => {
+      setToast({ message, action });
+      // Auto close after 5 seconds if no action is provided
+      if (!action) {
+        setTimeout(() => {
+          setToast(curr => curr?.message === message ? null : curr);
+        }, 5000);
+      }
+    };
+  }, []);
   const [systemName, setSystemName] = useState("CCRM");
   const [systemLanguage, setSystemLanguage] = useState<"en" | "sk" | "hu">("sk");
   const [userLanguage, setUserLanguage] = useState<"en" | "sk" | "hu">("sk");
@@ -578,6 +594,7 @@ function App() {
             leads={leads}
             setLeads={updateLeadsAndSync}
             projectManagers={projectManagers}
+            projectManagerColors={projectManagerColors}
             leadSources={leadSources}
             systemLanguage={userLanguage}
             tasks={tasks}
@@ -608,6 +625,7 @@ function App() {
             leads={leads}
             setLeads={updateLeadsAndSync}
             systemLanguage={userLanguage}
+            projectManagerColors={projectManagerColors}
           />
         );
       case "settings":
@@ -795,6 +813,32 @@ function App() {
           </footer>
         </main>
       </div>
+      
+      {/* Toast Notification Container */}
+      {toast && (
+        <div className="fixed bottom-6 left-6 z-[100] animate-in slide-in-from-bottom duration-300">
+          <div className="bg-slate-900 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-4 text-xs font-black uppercase tracking-wider border border-slate-800">
+            <span>{toast.message}</span>
+            {toast.action && (
+              <button
+                onClick={() => {
+                  toast.action?.onClick();
+                  setToast(null);
+                }}
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold cursor-pointer transition-all active:scale-95 text-[10px]"
+              >
+                {toast.action.label}
+              </button>
+            )}
+            <button 
+              onClick={() => setToast(null)}
+              className="text-slate-400 hover:text-white font-black ml-2 cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
