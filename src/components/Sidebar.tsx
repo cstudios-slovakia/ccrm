@@ -139,7 +139,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             : item.id === "overview"
                               ? "bg-cyan-600 text-white font-bold shadow-lg shadow-cyan-600/30 border border-cyan-500/20"
                               : item.id === "email"
-                                ? "bg-pink-650 text-white font-bold shadow-lg shadow-pink-650/30 border border-pink-600/20"
+                                ? "bg-pink-600 text-white font-bold shadow-lg shadow-pink-600/30 border border-pink-500/20"
                                 : "bg-orange-500 text-white font-bold shadow-lg shadow-orange-500/30 border border-orange-400/20"
                         )
                     : "text-slate-400 hover:text-slate-700 hover:bg-slate-100/50"
@@ -293,7 +293,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                               : item.id === "clients"
                                 ? "bg-emerald-600 border-emerald-700 text-white"
                                 : item.id === "email"
-                                  ? "bg-pink-650 border-pink-700 text-white"
+                                  ? "bg-pink-600 border-pink-700 text-white"
                                   : item.id === "tasks"
                                     ? "bg-violet-600 border-violet-700 text-white"
                                     : "bg-amber-700 border-amber-800 text-white"

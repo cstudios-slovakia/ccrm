@@ -142,6 +142,13 @@ exit;
 
 // --- DEDICATED MAIL BROKER HELPER FUNCTIONS ---
 
+function safe_utf8($str) {
+    if (!is_string($str)) {
+        return '';
+    }
+    return mb_convert_encoding($str, 'UTF-8', 'UTF-8, UTF-7, ASCII, ISO-8859-1, ISO-8859-2, CP1250, CP1252, Windows-1252');
+}
+
 function get_imap_credentials($settings) {
     $user = !empty($settings['imapUsername']) ? $settings['imapUsername'] : (isset($settings['username']) ? $settings['username'] : '');
     $pass = !empty($settings['imapPassword']) ? $settings['imapPassword'] : (isset($settings['password']) ? $settings['password'] : '');
@@ -289,10 +296,10 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                 
                 $emailsMap[$o->uid] = [
                     'uid' => $o->uid,
-                    'subject' => isset($o->subject) ? imap_utf8($o->subject) : '(No Subject)',
+                    'subject' => isset($o->subject) ? safe_utf8(imap_utf8($o->subject)) : '(No Subject)',
                     'from' => [
-                        'name' => $fromName,
-                        'address' => $fromAddress
+                        'name' => safe_utf8($fromName),
+                        'address' => safe_utf8($fromAddress)
                     ],
                     'date' => isset($o->date) ? date('Y-m-d H:i:s', strtotime($o->date)) : '',
                     'seen' => isset($o->seen) ? (bool)$o->seen : false,
@@ -331,12 +338,17 @@ function fetch_imap_email_detail($settings, $folder, $uid) {
         throw new Exception('IMAP Detail Connection failed: ' . imap_last_error());
     }
     
+    $msgNo = @imap_msgno($imapStream, $uid);
+    if (!$msgNo) {
+        $msgNo = $uid;
+    }
+    
     // Fetch body parts
     $html = '';
     $text = '';
     
     // Helper to get structured body parts
-    $structure = imap_fetchstructure($imapStream, $uid, FT_UID);
+    $structure = imap_fetchstructure($imapStream, $msgNo);
     if ($structure) {
         if (isset($structure->parts) && count($structure->parts)) {
             foreach ($structure->parts as $partNo => $part) {
@@ -344,29 +356,29 @@ function fetch_imap_email_detail($settings, $folder, $uid) {
                 if (isset($part->parts)) {
                     foreach ($part->parts as $nestedPartNo => $nestedPart) {
                         $partStr = ($partNo + 1) . '.' . ($nestedPartNo + 1);
-                        $body = imap_fetchbody($imapStream, $uid, $partStr, FT_UID);
+                        $body = imap_fetchbody($imapStream, $msgNo, $partStr);
                         $body = decode_imap_body($body, $nestedPart->encoding);
-                        if ($nestedPart->subtype === 'HTML') {
+                        if (isset($nestedPart->subtype) && $nestedPart->subtype === 'HTML') {
                             $html = $body;
-                        } elseif ($nestedPart->subtype === 'PLAIN') {
+                        } elseif (isset($nestedPart->subtype) && $nestedPart->subtype === 'PLAIN') {
                             $text = $body;
                         }
                     }
                 } else {
-                    $body = imap_fetchbody($imapStream, $uid, $partNo + 1, FT_UID);
+                    $body = imap_fetchbody($imapStream, $msgNo, (string)($partNo + 1));
                     $body = decode_imap_body($body, $part->encoding);
-                    if ($part->subtype === 'HTML') {
+                    if (isset($part->subtype) && $part->subtype === 'HTML') {
                         $html = $body;
-                    } elseif ($part->subtype === 'PLAIN') {
+                    } elseif (isset($part->subtype) && $part->subtype === 'PLAIN') {
                         $text = $body;
                     }
                 }
             }
         } else {
             // Simple structure
-            $body = imap_body($imapStream, $uid, FT_UID);
+            $body = imap_body($imapStream, $msgNo);
             $body = decode_imap_body($body, $structure->encoding);
-            if ($structure->subtype === 'HTML') {
+            if (isset($structure->subtype) && $structure->subtype === 'HTML') {
                 $html = $body;
             } else {
                 $text = $body;
@@ -375,14 +387,14 @@ function fetch_imap_email_detail($settings, $folder, $uid) {
     }
     
     // Mark as read
-    @imap_setflag_full($imapStream, $uid, "\\Seen", ST_UID);
+    @imap_setflag_full($imapStream, $msgNo, "\\Seen");
     
     @imap_close($imapStream);
     
     return [
         'uid' => $uid,
-        'html' => $html,
-        'text' => $text
+        'html' => safe_utf8($html),
+        'text' => safe_utf8($text)
     ];
 }
 

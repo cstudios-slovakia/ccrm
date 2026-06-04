@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { 
-  Inbox, Send, Trash2, Search, Mail, Plus, X, Loader2, 
+  Send, Trash2, Search, Mail, Plus, X, Loader2, 
   Reply, CheckCircle2, CircleAlert
 } from "lucide-react";
 import type { Lead } from "../types";
@@ -43,14 +43,12 @@ export const EmailView: React.FC<EmailViewProps> = ({
   systemLanguage: _systemLanguage
 }) => {
   // Folder & Email States
-  const [folders, setFolders] = useState<any[]>([]);
-  const [activeFolder, setActiveFolder] = useState("INBOX");
+  const activeFolder = "INBOX";
   const [emails, setEmails] = useState<any[]>([]);
   const [selectedEmail, setSelectedEmail] = useState<any | null>(null);
   const [threadBodies, setThreadBodies] = useState<Record<string, any>>({});
   
   // Filtering & Pagination
-  const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "unread">("all");
   
@@ -83,26 +81,8 @@ export const EmailView: React.FC<EmailViewProps> = ({
     setTimeout(() => setNotification(null), 4000);
   };
 
-  // Load Folders list
-  const loadFolders = async () => {
-    if (!userEmailSettings) return;
-    try {
-      const res = await fetch("/api/mail_broker.php?action=get_folders", {
-        headers: { "X-User-Email": currentUser.email }
-      });
-      const data = await res.json();
-      if (data.success) {
-        setFolders(data.folders);
-      } else {
-        notify(data.error || "Failed to load mail folders", "error");
-      }
-    } catch (err) {
-      notify("Mail server unreachable while loading folders", "error");
-    }
-  };
-
   // Load Emails headers list
-  const loadEmails = async (folder = activeFolder, currPage = page, currFilter = filter) => {
+  const loadEmails = async (folder = activeFolder, currPage = 1, currFilter = filter) => {
     if (!userEmailSettings) return;
     setIsLoadingEmails(true);
     try {
@@ -153,7 +133,6 @@ export const EmailView: React.FC<EmailViewProps> = ({
   // Initial loads
   useEffect(() => {
     if (userEmailSettings) {
-      loadFolders();
       loadEmails(activeFolder, 1, filter);
     }
   }, [userEmailSettings, activeFolder, filter]);
@@ -247,59 +226,39 @@ export const EmailView: React.FC<EmailViewProps> = ({
         </div>
       )}
 
-      {/* COLUMN 1: Folders Menu */}
-      <div className="lg:col-span-2 glass-panel p-4 rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-full overflow-y-auto">
-        <button
-          onClick={() => openNewComposer()}
-          className="w-full mb-4 py-3 bg-pink-650 hover:bg-pink-550 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 shadow"
-        >
-          <Plus size={16} /> New Message
-        </button>
-
-        <div className="space-y-1">
-          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2.5 pb-2.5 border-b border-slate-150 block mb-1">
-            Mailboxes
-          </span>
-          {folders.map(f => (
-            <button
-              key={f.path}
-              onClick={() => { setActiveFolder(f.path); setPage(1); }}
-              className={`w-full text-left px-3.5 py-2.5 rounded-xl font-bold text-[11px] uppercase tracking-wider flex items-center gap-2.5 transition-all ${
-                activeFolder === f.path 
-                  ? "bg-slate-900 text-white shadow-md" 
-                  : "text-slate-650 hover:bg-slate-100 hover:text-slate-950"
-              }`}
-            >
-              <Inbox size={14} /> <span className="truncate">{f.name}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* COLUMN 2: Headers List */}
-      <div className="lg:col-span-4 glass-panel p-4 rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-full">
+      {/* COLUMN 1: Headers List */}
+      <div className="lg:col-span-5 glass-panel p-4 rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-full">
         {/* Search & Filter Header */}
         <div className="space-y-3 pb-3 border-b border-slate-150">
-          <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search conversations..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 focus:outline-none"
-            />
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search conversations..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 focus:outline-none"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => openNewComposer()}
+              className="py-2 px-3.5 bg-pink-600 hover:bg-pink-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow shrink-0 cursor-pointer"
+            >
+              <Plus size={14} /> New
+            </button>
           </div>
           <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200/50 text-[10px] font-black uppercase tracking-wider w-full">
             <button
               onClick={() => setFilter("all")}
-              className={`flex-1 py-1.5 rounded-lg transition-all ${filter === "all" ? "bg-white text-slate-900 shadow-sm" : "text-slate-550 hover:text-slate-800"}`}
+              className={`flex-1 py-1.5 rounded-lg transition-all ${filter === "all" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
             >
               All Threads
             </button>
             <button
               onClick={() => setFilter("unread")}
-              className={`flex-1 py-1.5 rounded-lg transition-all ${filter === "unread" ? "bg-white text-slate-900 shadow-sm" : "text-slate-550 hover:text-slate-800"}`}
+              className={`flex-1 py-1.5 rounded-lg transition-all ${filter === "unread" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
             >
               Unread
             </button>
@@ -363,8 +322,8 @@ export const EmailView: React.FC<EmailViewProps> = ({
         </div>
       </div>
 
-      {/* COLUMN 3: Mail Thread Detail Pane */}
-      <div className="lg:col-span-6 glass-panel p-4 rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-full overflow-hidden">
+      {/* COLUMN 2: Mail Thread Detail Pane */}
+      <div className="lg:col-span-7 glass-panel p-4 rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-full overflow-hidden">
         {isLoadingDetail ? (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-slate-400">
             <Loader2 className="animate-spin text-pink-500" size={32} />
@@ -490,7 +449,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                 type="button"
                 onClick={() => handleSendEmail(comp)}
                 disabled={isSending}
-                className="px-5 py-2.5 bg-pink-650 hover:bg-pink-550 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer shadow"
+                className="px-5 py-2.5 bg-pink-600 hover:bg-pink-700 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer shadow"
               >
                 {isSending ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />} Send Email
               </button>
