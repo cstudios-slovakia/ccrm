@@ -303,6 +303,12 @@ function App() {
     setUsers(prev => {
       const nextUsers = typeof newUsers === "function" ? newUsers(prev) : newUsers;
       pushStateToServer(leads, tasks, roles, integrationsConfig, nextUsers);
+      if (currentUser) {
+        const updatedMe = nextUsers.find(u => u.email === currentUser.email);
+        if (updatedMe) {
+          setCurrentUser(updatedMe);
+        }
+      }
       return nextUsers;
     });
   };
