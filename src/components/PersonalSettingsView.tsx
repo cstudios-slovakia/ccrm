@@ -208,7 +208,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
         {/* Left Side Navigation Sidebar */}
         <div className="lg:col-span-3 space-y-2 lg:sticky lg:top-24 select-none shrink-0">
           <div className="glass-panel p-4 rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col gap-1.5">
-            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-3 pb-2.5 border-b border-slate-150 mb-1.5 block">
+            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-3 pb-2.5 border-b border-slate-200 mb-1.5 block">
               {userLanguage === "sk" ? "Nastavenia Konta" : "Account Categories"}
             </span>
             <button
@@ -217,7 +217,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
               className={`w-full text-left px-4 py-3 rounded-2xl font-black text-[10.5px] uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
                 activeSubTab === "profile" 
                   ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 border border-indigo-700" 
-                  : "text-slate-650 hover:text-slate-900 hover:bg-slate-50 border border-transparent"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-transparent"
               }`}
             >
               <User className="h-4 w-4" /> {userLanguage === "sk" ? "Základný profil" : "My Profile"}
@@ -227,8 +227,8 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
               onClick={() => setActiveSubTab("email")}
               className={`w-full text-left px-4 py-3 rounded-2xl font-black text-[10.5px] uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
                 activeSubTab === "email" 
-                  ? "bg-pink-650 text-white shadow-lg shadow-pink-655/20 border border-pink-700" 
-                  : "text-slate-650 hover:text-slate-900 hover:bg-slate-50 border border-transparent"
+                  ? "bg-pink-600 text-white shadow-lg shadow-pink-600/20 border border-pink-700" 
+                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-transparent"
               }`}
             >
               <Mail className="h-4 w-4" /> {userLanguage === "sk" ? "E-mailová schránka" : "Email Server"}
@@ -247,7 +247,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
               </h3>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider">{userLanguage === "sk" ? "Meno a priezvisko" : "Display Name"}</label>
+                <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">{userLanguage === "sk" ? "Meno a priezvisko" : "Display Name"}</label>
                 <input
                   type="text"
                   required
@@ -258,7 +258,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider">{userLanguage === "sk" ? "E-mailová adresa" : "Email Address"}</label>
+                <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">{userLanguage === "sk" ? "E-mailová adresa" : "Email Address"}</label>
                 <input
                   type="email"
                   required
@@ -269,7 +269,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider">{userLanguage === "sk" ? "Nové heslo" : "New Password"}</label>
+                <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">{userLanguage === "sk" ? "Nové heslo" : "New Password"}</label>
                 <input
                   type="password"
                   placeholder="••••••••"
@@ -280,7 +280,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider">{userLanguage === "sk" ? "Jazyk rozhrania" : "Display Language"}</label>
+                <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">{userLanguage === "sk" ? "Jazyk rozhrania" : "Display Language"}</label>
                 <select
                   value={userLanguage}
                   onChange={(e) => setUserLanguage(e.target.value as Language)}
@@ -295,7 +295,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
               <div className="flex justify-end pt-2">
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-indigo-650 hover:bg-indigo-550 rounded-xl text-xs font-semibold text-white shadow-lg shadow-indigo-600/20 transition-all flex items-center justify-center gap-1.5"
+                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 rounded-xl text-xs font-semibold text-white shadow-lg shadow-indigo-600/20 transition-all flex items-center justify-center gap-1.5"
                 >
                   <Save className="h-4 w-4" /> {userLanguage === "sk" ? "Uložiť zmeny" : "Save Changes"}
                 </button>
@@ -307,9 +307,9 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
           {activeSubTab === "email" && (
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 max-w-5xl">
               {emailSettings.isValidated === true ? (
-                <div className="xl:col-span-8 glass-panel p-6 rounded-3xl space-y-6 border-2 border-emerald-450 bg-emerald-50/20 shadow-glass flex flex-col justify-between text-left animate-fade-in">
+                <div className="xl:col-span-8 glass-panel p-6 rounded-3xl space-y-6 border-2 border-emerald-500 bg-emerald-50 shadow-glass flex flex-col justify-between text-left animate-fade-in">
                   <div>
-                    <h3 className="text-sm font-heading font-bold text-emerald-950 uppercase tracking-wider flex items-center gap-2 border-b-2 border-emerald-250/60 pb-3">
+                    <h3 className="text-sm font-heading font-bold text-emerald-950 uppercase tracking-wider flex items-center gap-2 border-b-2 border-emerald-300 pb-3">
                       <CheckCircle2 className="h-5 w-5 text-emerald-600 animate-bounce" />
                       {userLanguage === "sk" ? "E-mailová Integrácia Aktívna" : "Email Integration Active"}
                     </h3>
@@ -609,7 +609,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                           <button
                             type="button"
                             onClick={() => setShowPass(!showPass)}
-                            className="text-[9px] font-black uppercase text-indigo-600 hover:text-indigo-850"
+                            className="text-[9px] font-black uppercase text-indigo-600 hover:text-indigo-900"
                           >
                             {showPass ? "Hide" : "Show"}
                           </button>
@@ -646,7 +646,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                         type="button"
                         onClick={handleTestConnection}
                         disabled={isTesting}
-                        className="px-4.5 py-2.5 rounded-xl border-2 border-slate-350 text-slate-700 hover:border-slate-800 hover:text-slate-950 font-black text-[10px] uppercase tracking-wider flex items-center gap-1.5 shadow-sm transition-all"
+                        className="px-4.5 py-2.5 rounded-xl border-2 border-slate-300 text-slate-700 hover:border-slate-800 hover:text-slate-950 font-black text-[10px] uppercase tracking-wider flex items-center gap-1.5 shadow-sm transition-all"
                       >
                         {isTesting ? (
                           <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -658,7 +658,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
 
                       <button
                         type="submit"
-                        className="px-5 py-2.5 bg-pink-650 hover:bg-pink-550 rounded-xl text-xs font-semibold text-white shadow-lg shadow-pink-650/20 transition-all flex items-center justify-center gap-1.5"
+                        className="px-5 py-2.5 bg-pink-600 hover:bg-pink-700 rounded-xl text-xs font-semibold text-white shadow-lg shadow-pink-600/20 transition-all flex items-center justify-center gap-1.5"
                       >
                         <Save className="h-4 w-4" /> {userLanguage === "sk" ? "Uložiť integráciu" : "Save Integration"}
                       </button>
