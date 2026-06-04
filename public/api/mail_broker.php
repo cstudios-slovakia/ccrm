@@ -8,7 +8,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit(0);
 }
 
-$configFile = dirname(dirname(__DIR__)) . '/public/config.php';
+$configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
     http_response_code(503);
     echo json_encode(['success' => false, 'error' => 'CRM is not installed yet.']);
