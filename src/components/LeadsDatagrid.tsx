@@ -397,21 +397,114 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
   });
   const [inlineTaskIsLocking, setInlineTaskIsLocking] = useState(true);
 
+  // Retrieve current user session to authenticate API requests to mail_broker.php
+  const currentUser = useMemo(() => {
+    try {
+      const stored = sessionStorage.getItem("crm_current_user_rbac");
+      return stored ? JSON.parse(stored) : null;
+    } catch (e) {
+      return null;
+    }
+  }, []);
+
+  const userEmailSettings = useMemo(() => {
+    try {
+      if (currentUser && currentUser.metadata_json) {
+        const metadata = typeof currentUser.metadata_json === 'string' 
+          ? JSON.parse(currentUser.metadata_json) 
+          : currentUser.metadata_json;
+        return metadata.emailSettings || null;
+      }
+    } catch (e) {
+      console.warn("Error parsing user emailSettings", e);
+    }
+    return null;
+  }, [currentUser]);
+
+  const [leadEmails, setLeadEmails] = useState<TimelineEvent[]>([]);
+  const [isLoadingMails, setIsLoadingMails] = useState(false);
+
+  useEffect(() => {
+    if (!activeLead || !activeLead.email || !userEmailSettings || !userEmailSettings.isValidated) {
+      setLeadEmails([]);
+      return;
+    }
+
+    const fetchLeadMails = async () => {
+      setIsLoadingMails(true);
+      try {
+        const inboxRes = await fetch(
+          `/api/mail_broker.php?action=get_emails&folder=INBOX&email=${encodeURIComponent(activeLead.email || "")}`,
+          { headers: { "X-User-Email": currentUser.email } }
+        );
+        const inboxData = await inboxRes.json();
+        
+        let sentEmails: any[] = [];
+        try {
+          const sentRes = await fetch(
+            `/api/mail_broker.php?action=get_emails&folder=Sent&email=${encodeURIComponent(activeLead.email || "")}`,
+            { headers: { "X-User-Email": currentUser.email } }
+          );
+          const sentData = await sentRes.json();
+          if (sentData.success && Array.isArray(sentData.emails)) {
+            sentEmails = sentData.emails;
+          }
+        } catch (e) {}
+
+        const combinedEmails: TimelineEvent[] = [];
+        
+        const processMail = (mail: any) => {
+          return {
+            id: `email-${mail.uid}`,
+            type: "email" as const,
+            timestamp: mail.date.substring(0, 16),
+            title: mail.subject || "(No Subject)",
+            content: `From: ${mail.from.name || mail.from.address} <${mail.from.address}>\nDate: ${mail.date}\n\nTo view this email or reply, please open the Mail Client.`,
+            seen: mail.seen
+          };
+        };
+
+        if (inboxData.success && Array.isArray(inboxData.emails)) {
+          inboxData.emails.forEach((m: any) => combinedEmails.push(processMail(m)));
+        }
+        sentEmails.forEach((m: any) => combinedEmails.push(processMail(m)));
+
+        setLeadEmails(combinedEmails);
+      } catch (err) {
+        console.error("Failed to load timeline lead emails", err);
+      } finally {
+        setIsLoadingMails(false);
+      }
+    };
+
+    fetchLeadMails();
+  }, [activeLead, userEmailSettings, currentUser]);
+
+  const activeLeadTimeline = useMemo(() => {
+    if (!activeLead) return [];
+    const standardEvents = activeLead.timeline || [];
+    const emailIds = new Set(leadEmails.map(e => e.id));
+    const merged = [
+      ...standardEvents.filter(e => !emailIds.has(e.id)),
+      ...leadEmails
+    ];
+    return merged.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  }, [activeLead, leadEmails]);
+
   const { futureEvents, pastEvents } = useMemo(() => {
     if (!activeLead) return { futureEvents: [], pastEvents: [] };
     const nowStr = new Date().toISOString().replace("T", " ").substring(0, 16);
-    const timeline = activeLead.timeline || [];
     
-    const future = timeline
+    const future = activeLeadTimeline
       .filter(e => e.timestamp > nowStr)
       .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
       
-    const past = timeline
+    const past = activeLeadTimeline
       .filter(e => e.timestamp <= nowStr)
       .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
       
     return { futureEvents: future, pastEvents: past };
-  }, [activeLead]);
+  }, [activeLead, activeLeadTimeline]);
 
   const getEventColors = (type: string) => {
     switch (type) {
@@ -444,8 +537,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
   const handleUpdateLeadProfile = (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeLead) return;
-    if (!leadName.trim() || !leadValue.trim() || !leadCity.trim()) {
-      alert("Name, City and Value are strictly required!");
+    if (!leadName.trim() || !leadValue.trim()) {
+      alert("Name and Value are strictly required!");
       return;
     }
     const valNum = parseFloat(leadValue);
@@ -630,8 +723,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
   const handleSaveClientDetails = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedClientName) return;
-    if (!editClientName.trim() || !editClientCity.trim()) {
-      alert("Name and City fields are required!");
+    if (!editClientName.trim()) {
+      alert("Name field is required!");
       return;
     }
 
@@ -666,7 +759,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
   // Save inline edit
   const saveInlineEdit = (id: string) => {
-    if (!inlineName.trim() || !inlineCity.trim() || !inlineValue.trim()) {
+    if (!inlineName.trim() || !inlineValue.trim()) {
       alert("Fields cannot be left blank!");
       return;
     }
@@ -749,7 +842,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
    */
   const handleCreateLead = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newLeadName.trim() || !newLeadCity.trim() || !newLeadValue.trim()) {
+    if (!newLeadName.trim() || !newLeadValue.trim()) {
       alert("Please fill in all required fields!");
       return;
     }
@@ -767,7 +860,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       clientType: newLeadType,
       status: newLeadStatus || leadStates[0] || "new",
       source: newLeadSource || leadSources[0] || "website",
-      owner: newLeadOwner || projectManagers[0] || "Tomi",
+      owner: newLeadOwner || "",
       value: valNum,
       createdAt: new Date().toISOString().split("T")[0],
       rating: newLeadRating,
@@ -1336,10 +1429,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">{systemLanguage === "sk" ? "Lokalita / Mesto *" : systemLanguage === "hu" ? "Helyszín / Város *" : "City Location *"}</label>
+                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">{systemLanguage === "sk" ? "Lokalita / Mesto" : systemLanguage === "hu" ? "Helyszín / Város" : "City Location"}</label>
                     <input
                       type="text"
-                      required
                       disabled={!isEditingLead}
                       value={leadCity}
                       onChange={(e) => setLeadCity(e.target.value)}
@@ -1865,9 +1957,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
               <div className="border-t-2 border-slate-150 pt-6 space-y-4">
                 <h3 className="text-xs font-black text-slate-450 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
                   <Clock className="h-4.5 w-4.5 text-blue-650 animate-pulse stroke-[2.5]" /> {getTranslation(systemLanguage, "common.chronological_timeline")}
+                  {isLoadingMails && <span className="ml-2 text-[9px] text-blue-500 font-extrabold uppercase animate-pulse">Syncing Mail...</span>}
                 </h3>
 
-                {(activeLead.timeline || []).length === 0 ? (
+                {activeLeadTimeline.length === 0 ? (
                   <div className="py-12 text-center text-slate-400">
                     <div className="text-3xl mb-2 animate-bounce">📜</div>
                     <div className="font-black text-slate-700 uppercase tracking-wider">{getTranslation(systemLanguage, "timeline.no_events")}</div>
@@ -3111,10 +3204,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">City *</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">City</label>
                   <input
                     type="text"
-                    required
                     value={newLeadCity}
                     onChange={(e) => setNewLeadCity(e.target.value)}
                     placeholder="e.g. Bratislava"
@@ -3302,10 +3394,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
               {/* City */}
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">City Location Name *</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">City Location Name</label>
                 <input
                   type="text"
-                  required
                   value={editClientCity}
                   onChange={(e) => setEditClientCity(e.target.value)}
                   className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-850 focus:outline-none focus:bg-white focus:border-emerald-500"

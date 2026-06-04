@@ -81,7 +81,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           city: lead.city || "",
           clientType: lead.clientType || "person",
           source: lead.source || "website",
-          owner: lead.owner || "Tomi",
+          owner: lead.owner || "",
           totalValue: 0,
           leadsCount: 0,
           associatedLeads: [],
@@ -136,21 +136,115 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     return clientProfiles.find(c => c.name.toLowerCase() === initialSelectedClient.toLowerCase()) || null;
   }, [clientProfiles, initialSelectedClient]);
 
+  // Retrieve current user session to authenticate API requests to mail_broker.php
+  const currentUser = useMemo(() => {
+    try {
+      const stored = sessionStorage.getItem("crm_current_user_rbac");
+      return stored ? JSON.parse(stored) : null;
+    } catch (e) {
+      return null;
+    }
+  }, []);
+
+  const userEmailSettings = useMemo(() => {
+    try {
+      if (currentUser && currentUser.metadata_json) {
+        const metadata = typeof currentUser.metadata_json === 'string' 
+          ? JSON.parse(currentUser.metadata_json) 
+          : currentUser.metadata_json;
+        return metadata.emailSettings || null;
+      }
+    } catch (e) {
+      console.warn("Error parsing user emailSettings", e);
+    }
+    return null;
+  }, [currentUser]);
+
+  const [clientEmails, setClientEmails] = useState<TimelineEvent[]>([]);
+  const [isLoadingMails, setIsLoadingMails] = useState(false);
+
+  useEffect(() => {
+    if (!activeClient || !activeClient.email || !userEmailSettings || !userEmailSettings.isValidated) {
+      setClientEmails([]);
+      return;
+    }
+
+    const fetchClientMails = async () => {
+      setIsLoadingMails(true);
+      try {
+        const inboxRes = await fetch(
+          `/api/mail_broker.php?action=get_emails&folder=INBOX&email=${encodeURIComponent(activeClient.email)}`,
+          { headers: { "X-User-Email": currentUser.email } }
+        );
+        const inboxData = await inboxRes.json();
+        
+        let sentEmails: any[] = [];
+        try {
+          const sentRes = await fetch(
+            `/api/mail_broker.php?action=get_emails&folder=Sent&email=${encodeURIComponent(activeClient.email)}`,
+            { headers: { "X-User-Email": currentUser.email } }
+          );
+          const sentData = await sentRes.json();
+          if (sentData.success && Array.isArray(sentData.emails)) {
+            sentEmails = sentData.emails;
+          }
+        } catch (e) {}
+
+        const combinedEmails: TimelineEvent[] = [];
+        
+        const processMail = (mail: any) => {
+          return {
+            id: `email-${mail.uid}`,
+            type: "email" as const,
+            timestamp: mail.date.substring(0, 16),
+            title: mail.subject || "(No Subject)",
+            content: `From: ${mail.from.name || mail.from.address} <${mail.from.address}>\nDate: ${mail.date}\n\nTo view this email or reply, please open the Mail Client.`,
+            seen: mail.seen
+          };
+        };
+
+        if (inboxData.success && Array.isArray(inboxData.emails)) {
+          inboxData.emails.forEach((m: any) => combinedEmails.push(processMail(m)));
+        }
+        sentEmails.forEach((m: any) => combinedEmails.push(processMail(m)));
+
+        setClientEmails(combinedEmails);
+      } catch (err) {
+        console.error("Failed to load timeline client emails", err);
+      } finally {
+        setIsLoadingMails(false);
+      }
+    };
+
+    fetchClientMails();
+  }, [activeClient, userEmailSettings, currentUser]);
+
+  const activeClientTimeline = useMemo(() => {
+    if (!activeClient) return [];
+    const standardEvents = activeClient.timeline || [];
+    const emailIds = new Set(clientEmails.map(e => e.id));
+    const merged = [
+      ...standardEvents.filter(e => !emailIds.has(e.id)),
+      ...clientEmails
+    ];
+    return merged.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  }, [activeClient, clientEmails]);
+
   // Group events into future and past relative to current timestamp
   const { futureEvents, pastEvents } = useMemo(() => {
     if (!activeClient) return { futureEvents: [], pastEvents: [] };
     const nowStr = new Date().toISOString().replace("T", " ").substring(0, 16);
     
-    const future = activeClient.timeline
+    const future = activeClientTimeline
       .filter(e => e.timestamp > nowStr)
       .sort((a, b) => a.timestamp.localeCompare(b.timestamp)); // ascending: closest future event at the bottom
       
-    const past = activeClient.timeline
+    const past = activeClientTimeline
       .filter(e => e.timestamp <= nowStr)
       .sort((a, b) => b.timestamp.localeCompare(a.timestamp)); // descending: most recent past event at the top
       
     return { futureEvents: future, pastEvents: past };
-  }, [activeClient]);
+  }, [activeClient, activeClientTimeline]);
 
   // --- CLIENT DETAIL VIEW FORM STATE HOOKS ---
   const [profileName, setProfileName] = useState("");
@@ -221,8 +315,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const handleUpdateClientProfile = (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeClient) return;
-    if (!profileName.trim() || !profileCity.trim()) {
-      alert("Client Name and City fields are strictly required!");
+    if (!profileName.trim()) {
+      alert("Client Name is strictly required!");
       return;
     }
 
@@ -1127,9 +1221,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   <div className="border-t-2 border-slate-150 pt-6 space-y-4">
                     <h3 className="text-xs font-black text-slate-450 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
                       <Clock className="h-4.5 w-4.5 text-emerald-600 animate-pulse stroke-[2.5]" /> {getTranslation(systemLanguage, "common.chronological_timeline")}
+                      {isLoadingMails && <span className="ml-2 text-[9px] text-emerald-500 font-extrabold uppercase animate-pulse">Syncing Mail...</span>}
                     </h3>
 
-                    {activeClient.timeline.length === 0 ? (
+                    {activeClientTimeline.length === 0 ? (
                       <div className="py-12 text-center text-slate-400">
                         <div className="text-3xl mb-2 animate-bounce">📜</div>
                         <div className="font-black text-slate-700 uppercase tracking-wider">No events logged yet</div>

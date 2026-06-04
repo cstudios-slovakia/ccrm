@@ -15,6 +15,7 @@ interface HeaderProps {
   systemLanguage: Language;
   setSystemLanguage: (lang: Language) => void;
   isDemoMode?: boolean;
+  onOpenPersonalSettings: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({ 
@@ -26,7 +27,8 @@ export const Header: React.FC<HeaderProps> = ({
   onLogout,
   systemLanguage,
   setSystemLanguage,
-  isDemoMode
+  isDemoMode,
+  onOpenPersonalSettings
 }) => {
   const [isProfileOpen, setIsProfileOpen] = React.useState(false);
   const [isClosing, setIsClosing] = React.useState(false);
@@ -241,15 +243,22 @@ export const Header: React.FC<HeaderProps> = ({
                       </div>
                     </div>
 
-                    {/* Future Placeholders */}
-                    <div className="p-6 text-center space-y-3 select-none opacity-40 mt-8">
-                      <span className="text-3xl block">⚙️</span>
-                      <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest block">
-                        {getTranslation(systemLanguage, "header.drawer_coming_soon")}
-                      </span>
-                      <p className="text-[9.5px] text-slate-500 max-w-[210px] mx-auto leading-relaxed">
-                        {getTranslation(systemLanguage, "header.drawer_coming_soon_desc")}
-                      </p>
+                    {/* Personal Settings Button */}
+                    <div className="p-5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onOpenPersonalSettings();
+                          handleClose();
+                        }}
+                        className="w-full py-3.5 px-4 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 hover:text-indigo-850 transition-all text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        {systemLanguage === "sk" ? "Osobné nastavenia" : systemLanguage === "hu" ? "Személyes beállítások" : "Personal Settings"}
+                      </button>
                     </div>
                   </div>
 

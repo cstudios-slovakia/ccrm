@@ -282,7 +282,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'role' => $row['role'] === 'admin' ? 'Admin' : 'Project Manager',
             'color' => $row['color'] ?? '#3b82f6',
             'avatar' => $row['avatar'] ?? null,
-            'activityLog' => [] // Kept dynamic in localStorage for sessions, or empty array fallback
+            'activityLog' => [], // Kept dynamic in localStorage for sessions, or empty array fallback
+            'metadata_json' => $row['metadata_json']
         ];
     }
 
@@ -400,7 +401,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingUserIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedUserIds = [];
 
-            $insUser = $pdo->prepare("INSERT INTO `users` (`id`, `name`, `email`, `password_hash`, `role`, `avatar`, `color`) VALUES (?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `email` = VALUES(`email`), `password_hash` = VALUES(`password_hash`), `role` = VALUES(`role`), `avatar` = VALUES(`avatar`), `color` = VALUES(`color`)");
+             $insUser = $pdo->prepare("INSERT INTO `users` (`id`, `name`, `email`, `password_hash`, `role`, `avatar`, `color`, `metadata_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `email` = VALUES(`email`), `password_hash` = VALUES(`password_hash`), `role` = VALUES(`role`), `avatar` = VALUES(`avatar`), `color` = VALUES(`color`), `metadata_json` = VALUES(`metadata_json`)");
             
             foreach ($payload['users'] as $u) {
                 // Generate simple hash or ID from name
@@ -410,6 +411,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $role = 'viewer';
                 }
                 
+                $metaJson = isset($u['metadata_json']) ? $u['metadata_json'] : (isset($u['metadata']) ? json_encode($u['metadata']) : null);
+
                 $insUser->execute([
                     $userId,
                     $u['name'],
@@ -417,7 +420,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $u['password'] ?? 'password',
                     $role,
                     $u['avatar'] ?? null,
-                    $u['color'] ?? '#3b82f6'
+                    $u['color'] ?? '#3b82f6',
+                    $metaJson
                 ]);
                 $processedUserIds[] = $userId;
             }

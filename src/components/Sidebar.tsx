@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { LayoutDashboard, ChevronLeft, ChevronRight, Settings, LogOut, TableProperties, Users, FolderOpen, BarChart3 } from "lucide-react";
+import { LayoutDashboard, ChevronLeft, ChevronRight, Settings, LogOut, TableProperties, Users, FolderOpen, BarChart3, Mail } from "lucide-react";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { cn } from "../utils/cn";
@@ -11,6 +11,7 @@ interface SidebarProps {
   showSettings?: boolean;
   onLogout?: () => void;
   systemLanguage: Language;
+  showMailIcon?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -19,7 +20,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   systemName,
   showSettings = true,
   onLogout,
-  systemLanguage
+  systemLanguage,
+  showMailIcon = false
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(true); // Default collapsed for the minimalist aesthetic
   const sidebarRef = React.useRef<HTMLElement>(null);
@@ -65,6 +67,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: "clients", label: getTranslation(systemLanguage, "sidebar.clients"), icon: Users },
     { id: "files", label: getTranslation(systemLanguage, "sidebar.files"), icon: FolderOpen },
   ];
+
+  if (showMailIcon) {
+    menuItems.push({
+      id: "email",
+      label: systemLanguage === "sk" ? "Pošta" : systemLanguage === "hu" ? "Levelezés" : "Mail Client",
+      icon: Mail
+    });
+  }
 
   return (
     <>
@@ -128,7 +138,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             ? "bg-amber-700 text-white font-bold shadow-lg shadow-amber-700/30 border border-amber-600/20"
                             : item.id === "overview"
                               ? "bg-cyan-600 text-white font-bold shadow-lg shadow-cyan-600/30 border border-cyan-500/20"
-                              : "bg-orange-500 text-white font-bold shadow-lg shadow-orange-500/30 border border-orange-400/20"
+                              : item.id === "email"
+                                ? "bg-pink-650 text-white font-bold shadow-lg shadow-pink-650/30 border border-pink-600/20"
+                                : "bg-orange-500 text-white font-bold shadow-lg shadow-orange-500/30 border border-orange-400/20"
                         )
                     : "text-slate-400 hover:text-slate-700 hover:bg-slate-100/50"
                 )}
@@ -280,9 +292,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                               ? "bg-blue-600 border-blue-700 text-white"
                               : item.id === "clients"
                                 ? "bg-emerald-600 border-emerald-700 text-white"
-                                : item.id === "tasks"
-                                  ? "bg-violet-600 border-violet-700 text-white"
-                                  : "bg-amber-700 border-amber-800 text-white"
+                                : item.id === "email"
+                                  ? "bg-pink-650 border-pink-700 text-white"
+                                  : item.id === "tasks"
+                                    ? "bg-violet-600 border-violet-700 text-white"
+                                    : "bg-amber-700 border-amber-800 text-white"
                         )
                       : (isMobileMenuOpen 
                           ? "bg-transparent border-transparent text-slate-500 hover:text-slate-800" 

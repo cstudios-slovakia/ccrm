@@ -156,6 +156,126 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $country = isset($payload['country']) ? trim($payload['country']) : "Slovakia";
     $created_at = date('Y-m-d');
     
+    // Check if there is an active lead (not closed) for this client
+    $existingLead = null;
+    $leadStageGroups = get_db_setting($pdo, 'LEAD_STAGE_GROUPS', [
+        "new" => "new",
+        "contacted" => "in_progress",
+        "offer sent" => "in_progress",
+        "accepted" => "closed",
+        "rejected" => "closed"
+    ]);
+
+    $potentialLeads = [];
+    if (!empty($email) || !empty($phone)) {
+        $stmt = $pdo->prepare("SELECT * FROM `leads` WHERE (email = ? AND email != '') OR (phone = ? AND phone != '') ORDER BY `created_at` DESC");
+        $stmt->execute([$email, $phone]);
+        $potentialLeads = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } else {
+        $stmt = $pdo->prepare("SELECT * FROM `leads` WHERE name = ? ORDER BY `created_at` DESC");
+        $stmt->execute([$name]);
+        $potentialLeads = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    foreach ($potentialLeads as $pl) {
+        $leadStatus = $pl['status'];
+        $group = isset($leadStageGroups[$leadStatus]) ? $leadStageGroups[$leadStatus] : 'new';
+        if ($group !== 'closed') {
+            $existingLead = $pl;
+            break;
+        }
+    }
+
+    if ($existingLead !== null) {
+        $existingLeadId = $existingLead['id'];
+        try {
+            $pdo->beginTransaction();
+
+            // 1. Update contact fields on the existing lead if they were empty
+            $updateFields = [];
+            $updateParams = [];
+            if (empty($existingLead['email']) && !empty($email)) {
+                $updateFields[] = "`email` = ?";
+                $updateParams[] = $email;
+            }
+            if (empty($existingLead['phone']) && !empty($phone)) {
+                $updateFields[] = "`phone` = ?";
+                $updateParams[] = $phone;
+            }
+            if (empty($existingLead['city']) && !empty($city)) {
+                $updateFields[] = "`city` = ?";
+                $updateParams[] = $city;
+            }
+            if (!empty($updateFields)) {
+                $updateParams[] = $existingLeadId;
+                $updStmt = $pdo->prepare("UPDATE `leads` SET " . implode(', ', $updateFields) . " WHERE `id` = ?");
+                $updStmt->execute($updateParams);
+            }
+
+            // 2. Add categories if not already associated
+            if (!empty($categories)) {
+                $catStmt = $pdo->prepare("SELECT `category_name` FROM `lead_categories` WHERE `lead_id` = ?");
+                $catStmt->execute([$existingLeadId]);
+                $existingCats = $catStmt->fetchAll(PDO::FETCH_COLUMN);
+
+                $insCat = $pdo->prepare("INSERT INTO `lead_categories` (`lead_id`, `category_name`) VALUES (?, ?)");
+                foreach ($categories as $catName) {
+                    if (!in_array($catName, $existingCats)) {
+                        $insCat->execute([$existingLeadId, $catName]);
+                    }
+                }
+            }
+
+            // 3. Insert timeline event note representing the new form submission
+            $messageLines = [];
+            $messageLines[] = "Form submission received from source: " . $source;
+            $messageLines[] = "Name: " . $name;
+            if (!empty($email)) $messageLines[] = "Email: " . $email;
+            if (!empty($phone)) $messageLines[] = "Phone: " . $phone;
+            if (!empty($city)) $messageLines[] = "City: " . $city;
+            if (!empty($categories)) $messageLines[] = "Categories: " . implode(', ', $categories);
+            if (isset($payload['value'])) $messageLines[] = "Value: " . $payload['value'] . " EUR";
+            
+            $formMsg = isset($payload['message']) ? trim($payload['message']) : "";
+            if (!empty($formMsg)) {
+                $messageLines[] = "Message: " . $formMsg;
+            } else {
+                $messageLines[] = "Message: Form submitted (no message content).";
+            }
+            
+            $teContent = implode("\n", $messageLines);
+            $teId = 'ev-' . uniqid();
+            $insTe = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`) VALUES (?, ?, 'note', ?, 'Form Inquiry (Existing Active Lead)', ?)");
+            $insTe->execute([
+                $teId,
+                $existingLeadId,
+                date('Y-m-d H:i:s'),
+                $teContent
+            ]);
+
+            $pdo->commit();
+
+            echo json_encode([
+                'status' => 'success',
+                'message' => 'Lead inquiry appended to existing active lead',
+                'lead_id' => $existingLeadId,
+                'data' => [
+                    'name' => $existingLead['name'],
+                    'status' => $existingLead['status'],
+                    'source' => $existingLead['source'],
+                    'appended_categories' => $categories
+                ]
+            ]);
+        } catch (\Exception $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            http_response_code(500);
+            echo json_encode(['status' => 'error', 'message' => 'Database write failed: ' . $e->getMessage()]);
+        }
+        exit;
+    }
+
     try {
         $pdo->beginTransaction();
 

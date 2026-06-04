@@ -8,11 +8,13 @@ import { ClientsView } from "./components/ClientsView";
 import { FilesView } from "./components/FilesView";
 import { LoginView } from "./components/LoginView";
 import { TaskDashboardView } from "./components/TaskDashboardView";
+import { PersonalSettingsView } from "./components/PersonalSettingsView";
+import { EmailView } from "./components/EmailView";
 import type { Lead, UserProfile, RolePermission, Task } from "./types";
 import { VERSION } from "./utils/version";
 import { getTranslation } from "./utils/translations";
 import { InstallerWizard } from "./components/InstallerWizard";
-import { RefreshCw, Play, Pause, Terminal, X } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 
 function App() {
   const [isInstalled, setIsInstalled] = useState(true);
@@ -24,7 +26,7 @@ function App() {
     if (hashLower.startsWith("client-") || hashLower.startsWith("lead-") || hashLower.startsWith("user-")) {
       return rawHash; // Keep case sensitivity
     }
-    const validTabs = ["dashboard", "overview", "leads", "clients", "tasks", "files", "settings"];
+    const validTabs = ["dashboard", "overview", "leads", "clients", "tasks", "files", "settings", "personal-settings", "email"];
     return validTabs.includes(hashLower) ? hashLower : "dashboard";
   };
 
@@ -113,11 +115,7 @@ function App() {
     campaigns: []
   });
 
-  // --- ADMIN DEVELOPER DEBUG BAR STATES ---
-  const [isPollingPaused, setIsPollingPaused] = useState(false);
-  const [lastSyncTime, setLastSyncTime] = useState(() => new Date().toLocaleTimeString());
-  const [syncLogs, setSyncLogs] = useState<string[]>(["Developer sandbox connected", "MySQL connection active"]);
-  const [isDebugBarCollapsed, setIsDebugBarCollapsed] = useState(() => sessionStorage.getItem("crm_debug_bar_collapsed") === "true");
+
 
   // Roles Registry
   const [roles, setRoles] = useState<RolePermission[]>([]);
@@ -250,21 +248,13 @@ function App() {
       }
     };
     try {
-      setSyncLogs(prev => [`[${new Date().toLocaleTimeString()}] Pushing updates to DB...`, ...prev.slice(0, 4)]);
-      const res = await fetch("/sync.php", {
+      await fetch("/sync.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
-      if (res.ok) {
-        setLastSyncTime(new Date().toLocaleTimeString());
-        setSyncLogs(prev => [`[${new Date().toLocaleTimeString()}] DB sync completed!`, ...prev.slice(0, 4)]);
-      } else {
-        setSyncLogs(prev => [`[${new Date().toLocaleTimeString()}] DB push returned status ${res.status}`, ...prev.slice(0, 4)]);
-      }
     } catch (err) {
       console.warn("Failed immediate push to sync.php", err);
-      setSyncLogs(prev => [`[${new Date().toLocaleTimeString()}] Sync failed: ${err}`, ...prev.slice(0, 4)]);
     }
   };
 
@@ -384,7 +374,6 @@ function App() {
     syncFromServer();
 
     const poller = setInterval(async () => {
-      if (isPollingPaused) return;
       try {
         const res = await fetch(`/sync.php?t=${Date.now()}`);
         if (res.ok) {
@@ -573,6 +562,27 @@ function App() {
         return (
           <FilesView leads={leads} systemLanguage={userLanguage} />
         );
+      case "personal-settings":
+        return (
+          <PersonalSettingsView
+            currentUser={currentUser!}
+            users={users}
+            setUsers={setUsers}
+            systemLanguage={systemLanguage}
+            userLanguage={userLanguage}
+            setUserLanguage={setUserLanguage}
+            onSync={() => pushStateToServer()}
+          />
+        );
+      case "email":
+        return (
+          <EmailView
+            currentUser={currentUser!}
+            leads={leads}
+            setLeads={updateLeadsAndSync}
+            systemLanguage={userLanguage}
+          />
+        );
       case "settings":
         return (
           <SettingsView 
@@ -690,6 +700,18 @@ function App() {
     );
   }
 
+  const showMailIcon = (() => {
+    try {
+      if (currentUser && currentUser.metadata_json) {
+        const metadata = typeof currentUser.metadata_json === 'string' 
+          ? JSON.parse(currentUser.metadata_json) 
+          : currentUser.metadata_json;
+        return metadata?.emailSettings?.isValidated === true;
+      }
+    } catch (e) {}
+    return false;
+  })();
+
   return (
     <div className="flex min-h-screen relative font-sans overflow-x-hidden antialiased text-slate-800 bg-slate-50/50">
       {/* Sidebar navigation with role-gated settings visibility */}
@@ -706,6 +728,7 @@ function App() {
           window.location.hash = "dashboard";
         }}
         systemLanguage={userLanguage}
+        showMailIcon={showMailIcon}
       />
       
       {/* Workspace Area - Add pb-20 on mobile viewports so that the bottom navigation bar never overlaps content */}
@@ -729,6 +752,10 @@ function App() {
           systemLanguage={userLanguage}
           setSystemLanguage={setUserLanguage}
           isDemoMode={isDemoMode}
+          onOpenPersonalSettings={() => {
+            setActiveTab("personal-settings");
+            window.location.hash = "personal-settings";
+          }}
         />
         
         <main className="flex-1 p-4 md:p-6 overflow-y-auto max-w-[1600px] mx-auto w-full relative z-40 flex flex-col justify-between">
@@ -737,107 +764,10 @@ function App() {
           </div>
           <footer className="mt-12 pt-4 border-t border-slate-200/50 flex justify-between items-center text-[10px] text-slate-400 select-none font-semibold uppercase tracking-wider">
             <span>{systemName} CRM &bull; Active Node</span>
-            <span>v{VERSION} "banana"</span>
+            <span>v{VERSION} "Clementine"</span>
           </footer>
         </main>
       </div>
-
-      {/* DEVELOPER / ADMIN DEBUG BAR */}
-      {currentUser.role.toLowerCase() === "admin" && (
-        isDebugBarCollapsed ? (
-          /* FLOATING COLLAPSED TRIGGER */
-          <button
-            type="button"
-            onClick={() => {
-              setIsDebugBarCollapsed(true);
-              sessionStorage.setItem("crm_debug_bar_collapsed", "true");
-            }}
-            className="fixed bottom-4 right-4 z-50 h-10 w-10 bg-slate-950/95 border border-slate-800 text-indigo-400 hover:text-indigo-300 rounded-full flex items-center justify-center shadow-2xl hover:scale-105 active:scale-95 transition-all"
-            title="Open Admin Debug Bar"
-          >
-            <Terminal className="h-4.5 w-4.5 animate-pulse" />
-          </button>
-        ) : (
-          /* FLOATING COLLAPSED TRIGGER */
-          <div className="fixed bottom-4 left-4 right-4 z-50 bg-slate-950/95 text-white backdrop-blur border border-slate-800 shadow-2xl rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 animate-fade-in transition-all select-none relative">
-            {/* Close/Collapse button */}
-            <button
-              type="button"
-              onClick={() => {
-                setIsDebugBarCollapsed(true);
-                sessionStorage.setItem("crm_debug_bar_collapsed", "true");
-              }}
-              className="absolute top-2 right-2 p-1.5 hover:bg-slate-900 rounded-lg text-slate-400 hover:text-slate-200 transition-all active:scale-95"
-              title="Collapse Debug Bar"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 bg-indigo-650/20 text-indigo-400 border border-indigo-500/20 rounded-xl flex items-center justify-center shadow-inner">
-                <Terminal className="h-4 w-4 animate-pulse" />
-              </div>
-              <div className="text-left pr-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400">
-                    DEVELOPER / ADMIN DEBUG BAR
-                  </span>
-                  <span className={`inline-block h-2 w-2 rounded-full ${isPollingPaused ? "bg-amber-500 animate-pulse" : "bg-emerald-500 animate-pulse"}`} />
-                  <span className="text-[9px] font-bold text-slate-455 uppercase tracking-wider font-mono">
-                    {isPollingPaused ? "SYNC PAUSED" : "ACTIVE SYNC"}
-                  </span>
-                </div>
-                <p className="text-[9.5px] font-semibold text-slate-300 uppercase tracking-wider mt-0.5">
-                  Last DB Sync: <span className="font-mono text-indigo-300 font-bold">{lastSyncTime}</span> &bull; Active Role: <span className="font-mono text-emerald-400 font-bold">{currentUser.name} ({currentUser.role})</span>
-                </p>
-              </div>
-            </div>
-
-            {/* Sync logs display */}
-            <div className="hidden lg:flex flex-col text-left max-w-sm flex-1 bg-slate-950/70 px-3 py-1.5 rounded-xl border border-slate-900 font-mono text-[8.5px] text-slate-500 space-y-0.5 shadow-inner">
-              <div className="text-[7.5px] font-black tracking-widest text-slate-650 uppercase pb-0.5 border-b border-slate-900">
-                Database Sync Logs
-              </div>
-              {syncLogs.map((log, idx) => (
-                <div key={idx} className="truncate font-semibold select-text">
-                  {log}
-                </div>
-              ))}
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0 pr-4 md:pr-0">
-              {/* Pause/Resume Poller */}
-              <button
-                type="button"
-                onClick={() => {
-                  setIsPollingPaused(!isPollingPaused);
-                  setSyncLogs(prev => [`[${new Date().toLocaleTimeString()}] Polling ${!isPollingPaused ? "Paused" : "Resumed"}`, ...prev.slice(0, 4)]);
-                }}
-                className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 flex items-center gap-1.5 border shadow-sm ${
-                  isPollingPaused
-                    ? "bg-amber-600 border-amber-500 hover:bg-amber-500 text-white"
-                    : "bg-slate-900 border-slate-800 hover:bg-slate-800 text-slate-300"
-                }`}
-              >
-                {isPollingPaused ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}
-                <span>{isPollingPaused ? "Resume Poller" : "Pause Poller"}</span>
-              </button>
-
-              {/* Sync Now */}
-              <button
-                type="button"
-                onClick={() => {
-                  pushStateToServer();
-                }}
-                className="px-3.5 py-2 bg-indigo-650 hover:bg-indigo-550 border border-indigo-500/30 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 flex items-center gap-1.5 shadow-md shadow-indigo-600/10"
-              >
-                <RefreshCw className="h-3 w-3" />
-                <span>Force Sync</span>
-              </button>
-            </div>
-          </div>
-        )
-      )}
     </div>
   );
 }

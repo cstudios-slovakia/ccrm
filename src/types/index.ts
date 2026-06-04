@@ -172,6 +172,7 @@ export interface UserProfile {
   role: string;
   color: string;
   activityLog?: UserActivityLog[];
+  metadata_json?: any;
 }
 
 export interface RolePermission {
