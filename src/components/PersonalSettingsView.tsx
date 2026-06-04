@@ -28,14 +28,33 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
   const [email, setEmail] = useState(currentUser.email);
   const [password, setPassword] = useState(currentUser.password || "");
 
-  // Email Server config states (loaded from currentUser.metadata_json)
   const loadEmailSettings = () => {
     try {
       if (currentUser.metadata_json) {
         const metadata = typeof currentUser.metadata_json === 'string' 
           ? JSON.parse(currentUser.metadata_json) 
           : currentUser.metadata_json;
-        if (metadata.emailSettings) return metadata.emailSettings;
+        if (metadata.emailSettings) {
+          const s = metadata.emailSettings;
+          return {
+            provider: s.provider || "smtp",
+            imapHost: s.imapHost || "",
+            imapPort: s.imapPort || "993",
+            imapSecure: s.imapSecure !== undefined ? s.imapSecure : "ssl",
+            smtpHost: s.smtpHost || "",
+            smtpPort: s.smtpPort || "465",
+            smtpSecure: s.smtpSecure !== undefined ? s.smtpSecure : "ssl",
+            imapUsername: s.imapUsername || s.username || "",
+            imapPassword: s.imapPassword || s.password || "",
+            smtpUsername: s.smtpUsername || s.username || "",
+            smtpPassword: s.smtpPassword || s.password || "",
+            exchangeUrl: s.exchangeUrl || "",
+            exchangeDomain: s.exchangeDomain || "",
+            exchangeMailbox: s.exchangeMailbox || "",
+            username: s.username || "",
+            password: s.password || ""
+          };
+        }
       }
     } catch (e) {
       console.warn("Error parsing user metadata_json", e);
@@ -44,15 +63,19 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
       provider: "smtp",
       imapHost: "",
       imapPort: "993",
-      imapSecure: true,
+      imapSecure: "ssl",
       smtpHost: "",
       smtpPort: "465",
-      smtpSecure: true,
-      username: "",
-      password: "",
+      smtpSecure: "ssl",
+      imapUsername: "",
+      imapPassword: "",
+      smtpUsername: "",
+      smtpPassword: "",
       exchangeUrl: "",
       exchangeDomain: "",
-      exchangeMailbox: ""
+      exchangeMailbox: "",
+      username: "",
+      password: ""
     };
   };
 
@@ -292,26 +315,31 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                       <option value="exchange">MS Exchange</option>
                     </select>
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{userLanguage === "sk" ? "E-mail používateľa" : "Username / Login Address"}</label>
-                    <input
-                      type="email"
-                      required
-                      value={emailSettings.username}
-                      onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, username: e.target.value }))}
-                      placeholder="e.g. user@domain.sk"
-                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none focus:bg-white"
-                    />
-                  </div>
+                  {emailSettings.provider === "exchange" && (
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{userLanguage === "sk" ? "E-mail používateľa" : "Username / Login Address"}</label>
+                      <input
+                        type="email"
+                        required
+                        value={emailSettings.username}
+                        onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, username: e.target.value }))}
+                        placeholder="e.g. user@domain.sk"
+                        className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none focus:bg-white"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {emailSettings.provider === "smtp" ? (
                   <>
-                    <div className="border-t border-slate-100 pt-3 space-y-3">
-                      <span className="text-[10px] font-black text-indigo-600 uppercase tracking-wider block">{userLanguage === "sk" ? "Nastavenia Prichádzajúcej pošty (IMAP)" : "Incoming Connection (IMAP)"}</span>
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="space-y-1 col-span-2">
-                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">Host</label>
+                    {/* IMAP Config Panel */}
+                    <div className="border-t border-slate-100 pt-4 space-y-3">
+                      <span className="text-[10px] font-black text-pink-600 uppercase tracking-wider block">
+                        {userLanguage === "sk" ? "1. Nastavenia prichádzajúcej pošty (IMAP)" : "1. Incoming Mail Configuration (IMAP)"}
+                      </span>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">IMAP Server Host</label>
                           <input
                             type="text"
                             required
@@ -322,24 +350,64 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                           />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">Port</label>
+                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">IMAP Port</label>
                           <input
                             type="text"
                             required
                             value={emailSettings.imapPort}
                             onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, imapPort: e.target.value }))}
                             placeholder="993"
+                            className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none font-mono"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">Connection Security</label>
+                          <select
+                            value={emailSettings.imapSecure}
+                            onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, imapSecure: e.target.value }))}
+                            className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none font-bold"
+                          >
+                            <option value="ssl">SSL / TLS (Secure)</option>
+                            <option value="tls">STARTTLS</option>
+                            <option value="none">None / Unencrypted</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">IMAP Username</label>
+                          <input
+                            type="text"
+                            required
+                            value={emailSettings.imapUsername}
+                            onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, imapUsername: e.target.value }))}
+                            placeholder="imap-login@domain.sk"
+                            className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">IMAP Password</label>
+                          <input
+                            type="password"
+                            required
+                            value={emailSettings.imapPassword}
+                            onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, imapPassword: e.target.value }))}
+                            placeholder="••••••••••••"
                             className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none"
                           />
                         </div>
                       </div>
                     </div>
 
-                    <div className="border-t border-slate-100 pt-3 space-y-3">
-                      <span className="text-[10px] font-black text-indigo-600 uppercase tracking-wider block">{userLanguage === "sk" ? "Nastavenia Odchádzajúcej pošty (SMTP)" : "Outgoing Connection (SMTP)"}</span>
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="space-y-1 col-span-2">
-                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">Host</label>
+                    {/* SMTP Config Panel */}
+                    <div className="border-t border-slate-100 pt-4 space-y-3">
+                      <span className="text-[10px] font-black text-pink-600 uppercase tracking-wider block">
+                        {userLanguage === "sk" ? "2. Nastavenia odchádzajúcej pošty (SMTP)" : "2. Outgoing Mail Configuration (SMTP)"}
+                      </span>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">SMTP Server Host</label>
                           <input
                             type="text"
                             required
@@ -350,13 +418,50 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                           />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">Port</label>
+                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">SMTP Port</label>
                           <input
                             type="text"
                             required
                             value={emailSettings.smtpPort}
                             onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, smtpPort: e.target.value }))}
                             placeholder="465"
+                            className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none font-mono"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">Connection Security</label>
+                          <select
+                            value={emailSettings.smtpSecure}
+                            onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, smtpSecure: e.target.value }))}
+                            className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none font-bold"
+                          >
+                            <option value="ssl">SSL / TLS (Secure)</option>
+                            <option value="tls">STARTTLS</option>
+                            <option value="none">None / Unencrypted</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">SMTP Username</label>
+                          <input
+                            type="text"
+                            required
+                            value={emailSettings.smtpUsername}
+                            onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, smtpUsername: e.target.value }))}
+                            placeholder="smtp-login@domain.sk"
+                            className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">SMTP Password</label>
+                          <input
+                            type="password"
+                            required
+                            value={emailSettings.smtpPassword}
+                            onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, smtpPassword: e.target.value }))}
+                            placeholder="••••••••••••"
                             className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none"
                           />
                         </div>
@@ -391,26 +496,28 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                   </div>
                 )}
 
-                <div className="space-y-1 border-t border-slate-100 pt-3">
-                  <div className="flex justify-between items-center">
-                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{userLanguage === "sk" ? "Heslo k účtu / App Password" : "Account Password"}</label>
-                    <button
-                      type="button"
-                      onClick={() => setShowPass(!showPass)}
-                      className="text-[9px] font-black uppercase text-indigo-600 hover:text-indigo-850"
-                    >
-                      {showPass ? "Hide" : "Show"}
-                    </button>
+                {emailSettings.provider === "exchange" && (
+                  <div className="space-y-1 border-t border-slate-100 pt-3">
+                    <div className="flex justify-between items-center">
+                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{userLanguage === "sk" ? "Heslo k účtu / App Password" : "Account Password"}</label>
+                      <button
+                        type="button"
+                        onClick={() => setShowPass(!showPass)}
+                        className="text-[9px] font-black uppercase text-indigo-600 hover:text-indigo-850"
+                      >
+                        {showPass ? "Hide" : "Show"}
+                      </button>
+                    </div>
+                    <input
+                      type={showPass ? "text" : "password"}
+                      required
+                      value={emailSettings.password}
+                      onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, password: e.target.value }))}
+                      placeholder="••••••••••••"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none focus:bg-white"
+                    />
                   </div>
-                  <input
-                    type={showPass ? "text" : "password"}
-                    required
-                    value={emailSettings.password}
-                    onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, password: e.target.value }))}
-                    placeholder="••••••••••••"
-                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none focus:bg-white"
-                  />
-                </div>
+                )}
 
                 {/* Validation outcome */}
                 {testResult && (

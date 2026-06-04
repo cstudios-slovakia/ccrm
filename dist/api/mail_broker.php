@@ -142,10 +142,29 @@ exit;
 
 // --- DEDICATED MAIL BROKER HELPER FUNCTIONS ---
 
+function get_imap_credentials($settings) {
+    $user = !empty($settings['imapUsername']) ? $settings['imapUsername'] : (isset($settings['username']) ? $settings['username'] : '');
+    $pass = !empty($settings['imapPassword']) ? $settings['imapPassword'] : (isset($settings['password']) ? $settings['password'] : '');
+    return [$user, $pass];
+}
+
+function get_smtp_credentials($settings) {
+    $user = !empty($settings['smtpUsername']) ? $settings['smtpUsername'] : (isset($settings['username']) ? $settings['username'] : '');
+    $pass = !empty($settings['smtpPassword']) ? $settings['smtpPassword'] : (isset($settings['password']) ? $settings['password'] : '');
+    return [$user, $pass];
+}
+
 function get_imap_mailbox_string($settings, $folder = '') {
     $host = $settings['imapHost'];
     $port = $settings['imapPort'];
-    $ssl = $settings['imapSecure'] ? '/ssl/novalidate-cert' : '/novalidate-cert';
+    
+    $sec = isset($settings['imapSecure']) ? $settings['imapSecure'] : 'ssl';
+    $ssl = '/novalidate-cert';
+    if ($sec === 'ssl' || $sec === true) {
+        $ssl = '/ssl/novalidate-cert';
+    } elseif ($sec === 'tls') {
+        $ssl = '/tls/novalidate-cert';
+    }
     
     // Autodetect MS Exchange URL or custom Exchange setup if provider is Exchange
     if ($settings['provider'] === 'exchange') {
@@ -161,7 +180,8 @@ function get_imap_mailbox_string($settings, $folder = '') {
 function test_mail_connections($settings) {
     // 1. Test IMAP
     $mailbox = get_imap_mailbox_string($settings);
-    $imapStream = @imap_open($mailbox, $settings['username'], $settings['password'], OP_HALFOPEN, 1, ['DISABLE_AUTHENTICATOR' => 'GSSAPI']);
+    list($imapUser, $imapPass) = get_imap_credentials($settings);
+    $imapStream = @imap_open($mailbox, $imapUser, $imapPass, OP_HALFOPEN, 1, ['DISABLE_AUTHENTICATOR' => 'GSSAPI']);
     
     if (!$imapStream) {
         return ['success' => false, 'error' => 'IMAP connection failed: ' . imap_last_error()];
@@ -177,9 +197,9 @@ function test_mail_connections($settings) {
         $port = 587;
     }
     
-    $secure = $settings['smtpSecure'] ? 'ssl://' : '';
-    if ($port === 587) {
-        // STARTTLS connection
+    $sec = isset($settings['smtpSecure']) ? $settings['smtpSecure'] : 'ssl';
+    $secure = ($sec === 'ssl' || $sec === true) ? 'ssl://' : '';
+    if ($port === 587 || $sec === 'tls') {
         $secure = '';
     }
     
@@ -194,7 +214,8 @@ function test_mail_connections($settings) {
 
 function fetch_imap_folders($settings) {
     $mailbox = get_imap_mailbox_string($settings);
-    $imapStream = @imap_open($mailbox, $settings['username'], $settings['password'], OP_HALFOPEN, 1, ['DISABLE_AUTHENTICATOR' => 'GSSAPI']);
+    list($imapUser, $imapPass) = get_imap_credentials($settings);
+    $imapStream = @imap_open($mailbox, $imapUser, $imapPass, OP_HALFOPEN, 1, ['DISABLE_AUTHENTICATOR' => 'GSSAPI']);
     if (!$imapStream) {
         throw new Exception('IMAP connection failed: ' . imap_last_error());
     }
@@ -218,7 +239,8 @@ function fetch_imap_folders($settings) {
 
 function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEmail = null) {
     $mailbox = get_imap_mailbox_string($settings, $folder);
-    $imapStream = @imap_open($mailbox, $settings['username'], $settings['password'], 0, 1, ['DISABLE_AUTHENTICATOR' => 'GSSAPI']);
+    list($imapUser, $imapPass) = get_imap_credentials($settings);
+    $imapStream = @imap_open($mailbox, $imapUser, $imapPass, 0, 1, ['DISABLE_AUTHENTICATOR' => 'GSSAPI']);
     if (!$imapStream) {
         throw new Exception('IMAP Connection failed: ' . imap_last_error());
     }
@@ -303,7 +325,8 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
 
 function fetch_imap_email_detail($settings, $folder, $uid) {
     $mailbox = get_imap_mailbox_string($settings, $folder);
-    $imapStream = @imap_open($mailbox, $settings['username'], $settings['password'], 0, 1, ['DISABLE_AUTHENTICATOR' => 'GSSAPI']);
+    list($imapUser, $imapPass) = get_imap_credentials($settings);
+    $imapStream = @imap_open($mailbox, $imapUser, $imapPass, 0, 1, ['DISABLE_AUTHENTICATOR' => 'GSSAPI']);
     if (!$imapStream) {
         throw new Exception('IMAP Detail Connection failed: ' . imap_last_error());
     }
@@ -374,7 +397,8 @@ function decode_imap_body($body, $encoding) {
 
 function delete_imap_email($settings, $folder, $uid) {
     $mailbox = get_imap_mailbox_string($settings, $folder);
-    $imapStream = @imap_open($mailbox, $settings['username'], $settings['password'], 0, 1, ['DISABLE_AUTHENTICATOR' => 'GSSAPI']);
+    list($imapUser, $imapPass) = get_imap_credentials($settings);
+    $imapStream = @imap_open($mailbox, $imapUser, $imapPass, 0, 1, ['DISABLE_AUTHENTICATOR' => 'GSSAPI']);
     if (!$imapStream) {
         throw new Exception('IMAP connection failed.');
     }
@@ -394,8 +418,11 @@ function send_smtp_email($settings, $to, $subject, $html) {
         $port = 587;
     }
     
-    $secure = $settings['smtpSecure'] ? 'ssl://' : '';
-    if ($port === 587) {
+    list($smtpUser, $smtpPass) = get_smtp_credentials($settings);
+    
+    $sec = isset($settings['smtpSecure']) ? $settings['smtpSecure'] : 'ssl';
+    $secure = ($sec === 'ssl' || $sec === true) ? 'ssl://' : '';
+    if ($port === 587 || $sec === 'tls') {
         $secure = '';
     }
     
@@ -411,8 +438,8 @@ function send_smtp_email($settings, $to, $subject, $html) {
     fwrite($socket, "EHLO " . $_SERVER['SERVER_NAME'] . "\r\n");
     fgets($socket, 515);
     
-    // STARTTLS if Port 587
-    if ($port === 587) {
+    // STARTTLS if Port 587 or security is tls
+    if ($port === 587 || $sec === 'tls') {
         fwrite($socket, "STARTTLS\r\n");
         fgets($socket, 515);
         if (!stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
@@ -427,17 +454,17 @@ function send_smtp_email($settings, $to, $subject, $html) {
     fwrite($socket, "AUTH LOGIN\r\n");
     fgets($socket, 515);
     
-    fwrite($socket, base64_encode($settings['username']) . "\r\n");
+    fwrite($socket, base64_encode($smtpUser) . "\r\n");
     fgets($socket, 515);
     
-    fwrite($socket, base64_encode($settings['password']) . "\r\n");
+    fwrite($socket, base64_encode($smtpPass) . "\r\n");
     $authResponse = fgets($socket, 515);
     if (strpos($authResponse, '235') === false) {
         throw new Exception("SMTP Authentication failed: " . $authResponse);
     }
     
     // Headers
-    fwrite($socket, "MAIL FROM: <" . $settings['username'] . ">\r\n");
+    fwrite($socket, "MAIL FROM: <" . $smtpUser . ">\r\n");
     fgets($socket, 515);
     
     fwrite($socket, "RCPT TO: <" . $to . ">\r\n");
@@ -448,7 +475,7 @@ function send_smtp_email($settings, $to, $subject, $html) {
     
     $headers = "MIME-Version: 1.0\r\n";
     $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
-    $headers .= "From: <" . $settings['username'] . ">\r\n";
+    $headers .= "From: <" . $smtpUser . ">\r\n";
     $headers .= "To: <" . $to . ">\r\n";
     $headers .= "Subject: =?UTF-8?B?" . base64_encode($subject) . "?=\r\n";
     $headers .= "Date: " . date('r') . "\r\n\r\n";
