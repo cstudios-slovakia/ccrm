@@ -225,13 +225,14 @@ function App() {
     nextLeads?: Lead[],
     nextTasks?: Task[],
     nextRoles?: RolePermission[],
-    nextIntegrationsConfig?: any
+    nextIntegrationsConfig?: any,
+    nextUsers?: UserProfile[]
   ) => {
     if (!isInstalled) return;
     const payload = {
       leads: nextLeads || leads,
       tasks: nextTasks || tasks,
-      users: users,
+      users: nextUsers || users,
       roles: nextRoles || roles,
       settings: {
         systemName,
@@ -295,6 +296,14 @@ function App() {
       const nextTasks = typeof newTasks === "function" ? newTasks(prev) : newTasks;
       pushStateToServer(leads, nextTasks, roles);
       return nextTasks;
+    });
+  };
+
+  const updateUsersAndSync = (newUsers: UserProfile[] | ((prev: UserProfile[]) => UserProfile[])) => {
+    setUsers(prev => {
+      const nextUsers = typeof newUsers === "function" ? newUsers(prev) : newUsers;
+      pushStateToServer(leads, tasks, roles, integrationsConfig, nextUsers);
+      return nextUsers;
     });
   };
 
@@ -567,11 +576,11 @@ function App() {
           <PersonalSettingsView
             currentUser={currentUser!}
             users={users}
-            setUsers={setUsers}
+            setUsers={updateUsersAndSync}
             systemLanguage={systemLanguage}
             userLanguage={userLanguage}
             setUserLanguage={setUserLanguage}
-            onSync={() => pushStateToServer()}
+            onSync={() => {}}
           />
         );
       case "email":
@@ -593,7 +602,7 @@ function App() {
             leadSources={leadSources}
             setLeadSources={setLeadSources}
             users={users}
-            setUsers={setUsers}
+            setUsers={updateUsersAndSync}
             roles={roles}
             setRoles={updateRolesAndSync}
             getPermission={getPermission}
