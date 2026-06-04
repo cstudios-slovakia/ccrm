@@ -119,7 +119,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
   const handleSaveEmailSettings = (e: React.FormEvent) => {
     e.preventDefault();
 
-    const isValidated = testResult?.status === "success";
+    const isValidated = true;
     const updatedSettings = {
       ...emailSettings,
       isValidated

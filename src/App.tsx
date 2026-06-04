@@ -359,6 +359,12 @@ function App() {
             }
             if (data.users && Array.isArray(data.users)) {
               setUsers(data.users);
+              if (currentUser) {
+                const updatedMe = data.users.find((u: UserProfile) => u.email === currentUser.email);
+                if (updatedMe && JSON.stringify(updatedMe) !== JSON.stringify(currentUser)) {
+                  setCurrentUser(updatedMe);
+                }
+              }
             }
             if (data.roles && Array.isArray(data.roles)) {
               setRoles(data.roles);
@@ -424,6 +430,12 @@ function App() {
                 }
                 return prev;
               });
+              if (currentUser) {
+                const updatedMe = data.users.find((u: UserProfile) => u.email === currentUser.email);
+                if (updatedMe && JSON.stringify(updatedMe) !== JSON.stringify(currentUser)) {
+                  setCurrentUser(updatedMe);
+                }
+              }
             }
             if (data.roles && Array.isArray(data.roles)) {
               setRoles((prev) => {
