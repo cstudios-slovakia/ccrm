@@ -146,7 +146,7 @@ function safe_utf8($str) {
     if (!is_string($str)) {
         return '';
     }
-    return mb_convert_encoding($str, 'UTF-8', 'UTF-8, UTF-7, ASCII, ISO-8859-1, ISO-8859-2, CP1250, CP1252, Windows-1252');
+    return mb_convert_encoding($str, 'UTF-8', 'UTF-8, ASCII, ISO-8859-1, ISO-8859-2, Windows-1250, Windows-1252');
 }
 
 function get_imap_credentials($settings) {
