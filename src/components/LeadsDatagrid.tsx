@@ -598,12 +598,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     e.preventDefault();
     if (!activeLead) return;
     if (!leadName.trim() || !leadValue.trim()) {
-      alert("Name and Value are strictly required!");
+      (window as any).showToast("Name and Value are strictly required!");
       return;
     }
     const valNum = parseFloat(leadValue);
     if (isNaN(valNum)) {
-      alert("Please enter a valid numeric value!");
+      (window as any).showToast("Please enter a valid numeric value!");
       return;
     }
 
@@ -645,13 +645,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     } else if (logType === "note") {
       titleString = "Internal Note Added";
       if (!contentString) {
-        alert("Please write down some details for the note!");
+        (window as any).showToast("Please write down some details for the note!");
         return;
       }
     } else if (logType === "appointment") {
       titleString = "Meeting Pinned";
       if (!logTime.trim()) {
-        alert("Please select appointment time!");
+        (window as any).showToast("Please select appointment time!");
         return;
       }
       if (!contentString) contentString = `Client appointment set for ${logTime.trim()}`;
@@ -659,7 +659,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       titleString = "Commercial Proposal Submitted";
       const amt = parseFloat(logAmount);
       if (isNaN(amt) || amt <= 0) {
-        alert("Offer amount must be a positive number!");
+        (window as any).showToast("Offer amount must be a positive number!");
         return;
       }
       titleString = `Commercial Proposal Sent (€ ${amt.toLocaleString()})`;
@@ -735,7 +735,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     e.preventDefault();
     if (!activeLead) return;
     if (!inlineTaskTitle.trim()) {
-      alert(systemLanguage === "sk" ? "Zadajte názov úlohy!" : systemLanguage === "hu" ? "Adja meg a feladat címét!" : "Please enter a task title!");
+      (window as any).showToast(systemLanguage === "sk" ? "Zadajte názov úlohy!" : systemLanguage === "hu" ? "Adja meg a feladat címét!" : "Please enter a task title!");
       return;
     }
 
@@ -784,7 +784,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     e.preventDefault();
     if (!selectedClientName) return;
     if (!editClientName.trim()) {
-      alert("Name field is required!");
+      (window as any).showToast("Name field is required!");
       return;
     }
 
@@ -820,12 +820,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
   // Save inline edit
   const saveInlineEdit = (id: string) => {
     if (!inlineName.trim() || !inlineValue.trim()) {
-      alert("Fields cannot be left blank!");
+      (window as any).showToast("Fields cannot be left blank!");
       return;
     }
     const valNum = parseFloat(inlineValue);
     if (isNaN(valNum) || valNum < 0) {
-      alert("Invalid numeric value!");
+      (window as any).showToast("Invalid numeric value!");
       return;
     }
 
@@ -878,7 +878,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
           : systemLanguage === "hu"
             ? `Nem változtathatja meg az érdeklődő állapotát! Először be kell fejeznie a blokkoló feladatokat:\n\n` + lockingTasks.map(t => `• ${t.title}`).join("\n")
             : `Cannot transition pipeline stage! Please complete the following locking tasks first:\n\n` + lockingTasks.map(t => `• ${t.title}`).join("\n");
-        alert(`${warningTitle}\n\n${warningMsg}`);
+        (window as any).showToast(`${warningTitle}\n\n${warningMsg}`);
         return;
       }
     }
@@ -903,13 +903,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
   const handleCreateLead = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newLeadName.trim() || !newLeadValue.trim()) {
-      alert("Please fill in all required fields!");
+      (window as any).showToast("Please fill in all required fields!");
       return;
     }
 
     const valNum = parseFloat(newLeadValue);
     if (isNaN(valNum) || valNum < 0) {
-      alert("Please enter a valid numeric lead value!");
+      (window as any).showToast("Please enter a valid numeric lead value!");
       return;
     }
 

@@ -126,7 +126,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
   const handleCreateTask = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) {
-      alert(t("Please enter a task title!", "Prosím zadajte názov úlohy!", "Kérjük, adja meg a feladat címét!"));
+      (window as any).showToast(t("Please enter a task title!", "Prosím zadajte názov úlohy!", "Kérjük, adja meg a feladat címét!"));
       return;
     }
 

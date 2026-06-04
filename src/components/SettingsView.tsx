@@ -119,7 +119,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           [key]: parentCandidate
         }));
       } else {
-        alert(
+        (window as any).showToast(
           userLanguage === "sk" 
             ? "Na vytvorenie podstavu musí predchádzať hlavný stav v rovnakej skupine!" 
             : userLanguage === "hu" 
@@ -337,7 +337,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       });
     }
 
-    alert(
+    (window as any).showToast(
       userLanguage === "sk" 
         ? "Konfigurácia e-mailového servera bola úspešne uložená!" 
         : userLanguage === "hu" 
@@ -425,7 +425,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         const data = await res.json();
         if (data.status === "success" && data.api_key) {
           setApiKey(data.api_key);
-          alert(
+          (window as any).showToast(
             userLanguage === "sk" 
               ? "Nový kľúč API bol úspešne vygenerovaný a aktívne externé zdroje musia byť aktualizované." 
               : userLanguage === "hu" 
@@ -584,7 +584,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     if (!tempName.trim()) return;
     if (getPermission("general_config") !== "edit") return;
     setSystemName(tempName);
-    alert(userLanguage === "sk" ? "Nastavenia značky boli úspešne uložené!" : userLanguage === "hu" ? "Márkajelzés beállításai sikeresen mentve!" : "Branding settings saved successfully!");
+    (window as any).showToast(userLanguage === "sk" ? "Nastavenia značky boli úspešne uložené!" : userLanguage === "hu" ? "Márkajelzés beállításai sikeresen mentve!" : "Branding settings saved successfully!");
   };
 
   const handleReset = () => {
@@ -620,7 +620,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       });
       const data = await res.json();
       if (data.success) {
-        alert(
+        (window as any).showToast(
           userLanguage === "sk"
             ? "Demo dáta boli úspešne odstránené a CRM bol resetovaný."
             : userLanguage === "hu"
@@ -641,10 +641,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         }
         window.location.reload();
       } else {
-        alert("Wipe failed: " + data.message);
+        (window as any).showToast("Wipe failed: " + data.message);
       }
     } catch (err) {
-      alert("Error wiping demo data.");
+      (window as any).showToast("Error wiping demo data.");
     }
   };
 
@@ -654,7 +654,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     const val = newState.trim().toLowerCase();
     if (!val) return;
     if (leadStates.includes(val)) {
-      alert(
+      (window as any).showToast(
         userLanguage === "sk" 
           ? "Tento stav leadu už existuje!" 
           : userLanguage === "hu" 
@@ -685,7 +685,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const handleRemoveState = (state: string) => {
     if (getPermission("pipeline_stages") !== "edit") return;
     if (leadStates.length <= 1) {
-      alert(
+      (window as any).showToast(
         userLanguage === "sk" 
           ? "Pre správne fungovanie je potrebný aspoň jeden stav leadu!" 
           : userLanguage === "hu" 
@@ -732,7 +732,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     const val = newSource.trim().toLowerCase();
     if (!val) return;
     if (leadSources.includes(val)) {
-      alert(
+      (window as any).showToast(
         userLanguage === "sk" 
           ? "Tento zdroj leadu už existuje!" 
           : userLanguage === "hu" 
@@ -752,7 +752,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const handleRemoveSource = (source: string) => {
     if (getPermission("traffic_sources") !== "edit") return;
     if (leadSources.length <= 1) {
-      alert(
+      (window as any).showToast(
         userLanguage === "sk" 
           ? "Pre správne fungovanie je potrebný aspoň jeden zdroj leadu!" 
           : userLanguage === "hu" 
@@ -783,7 +783,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     const val = newCategory.trim();
     if (!val) return;
     if (leadCategories.some(c => c.toLowerCase() === val.toLowerCase())) {
-      alert(
+      (window as any).showToast(
         userLanguage === "sk" 
           ? "Táto kategória už existuje!" 
           : userLanguage === "hu" 
@@ -803,7 +803,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const handleRemoveCategory = (cat: string) => {
     if (getPermission("traffic_sources") !== "edit") return;
     if (leadCategories.length <= 1) {
-      alert(
+      (window as any).showToast(
         userLanguage === "sk" 
           ? "Vyžaduje sa aspoň jedna kategória záujmu!" 
           : userLanguage === "hu" 
@@ -838,7 +838,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     const pwdVal = newUserPassword.trim();
     
     if (!nameVal || !emailVal) {
-      alert(
+      (window as any).showToast(
         userLanguage === "sk" 
           ? "Používateľské meno a e-mail sú povinné!" 
           : userLanguage === "hu" 
@@ -849,7 +849,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
 
     if (users.some(u => u.name.toLowerCase() === nameVal.toLowerCase() || u.email.toLowerCase() === emailVal.toLowerCase())) {
-      alert(
+      (window as any).showToast(
         userLanguage === "sk" 
           ? "Používateľ s týmto menom alebo e-mailom už existuje!" 
           : userLanguage === "hu" 
@@ -879,7 +879,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const handleRemoveUser = (name: string) => {
     if (getPermission("pm_managers") !== "edit") return;
     if (name.toLowerCase() === "erik") {
-      alert(
+      (window as any).showToast(
         userLanguage === "sk" 
           ? "Predvolený účet správcu 'Erik' je chránený systémom a nemožno ho vymazať." 
           : userLanguage === "hu" 
@@ -889,7 +889,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       return;
     }
     if (name.toLowerCase() === currentUser.name.toLowerCase()) {
-      alert(
+      (window as any).showToast(
         userLanguage === "sk" 
           ? "Nemôžete vymazať svoje vlastné aktuálne aktívne relácie používateľa!" 
           : userLanguage === "hu" 
@@ -899,7 +899,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       return;
     }
     if (users.length <= 1) {
-      alert(
+      (window as any).showToast(
         userLanguage === "sk" 
           ? "Vyžaduje sa aspoň jeden aktívny používateľ!" 
           : userLanguage === "hu" 
@@ -934,7 +934,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     const nameVal = newRoleName.trim();
     if (!nameVal) return;
     if (roles.some(r => r.name.toLowerCase() === nameVal.toLowerCase())) {
-      alert(
+      (window as any).showToast(
         userLanguage === "sk" 
           ? "Táto rola už existuje!" 
           : userLanguage === "hu" 
@@ -962,7 +962,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const handleRemoveRole = (roleName: string) => {
     if (getPermission("pm_managers") !== "edit") return;
     if (roleName === "Admin" || roleName === "Project Manager") {
-      alert(
+      (window as any).showToast(
         userLanguage === "sk" 
           ? `Rola "${roleName}" je chránená systémom a nemožno ju vymazať.` 
           : userLanguage === "hu" 
@@ -972,7 +972,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       return;
     }
     if (users.some(u => u.role === roleName)) {
-      alert(
+      (window as any).showToast(
         userLanguage === "sk" 
           ? `Rolovú skupinu "${roleName}" nemožno vymazať, pretože je priradená jednému alebo viacerým aktívnym používateľom.` 
           : userLanguage === "hu" 
@@ -995,7 +995,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const updateRolePermission = (roleName: string, section: keyof RolePermission["permissions"], value: "edit" | "view" | "nothing") => {
     if (getPermission("pm_managers") !== "edit") return;
     if (roleName === "Admin") {
-      alert(
+      (window as any).showToast(
         userLanguage === "sk" 
           ? "Oprávnenia roly správcu Admin sú systémovo uzamknuté na úpravy, aby bol zaručený trvalý prístup." 
           : userLanguage === "hu" 
@@ -2660,7 +2660,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     disabled={isSyncing || getPermission("general_config") === "view"}
                     onClick={() => {
                       if (!metaAppId.trim() && !googleDevToken.trim()) {
-                        alert(
+                        (window as any).showToast(
                           userLanguage === "sk" 
                             ? "Vyplňte prosím aspoň jedno rozloženie poverení rozhrania API na autorizáciu synchronizácie integrácie!" 
                             : userLanguage === "hu" 
@@ -2688,7 +2688,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         } else {
                           localStorage.setItem("ads_connected", "true");
                         }
-                        alert(
+                        (window as any).showToast(
                           userLanguage === "sk" 
                             ? "Zabezpečené overenie API úspešne dokončené! Databázy kampaní boli úspešne synchronizované." 
                             : userLanguage === "hu" 
@@ -2883,7 +2883,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     onClick={() => {
                       if (!apiKey) return;
                       navigator.clipboard.writeText(apiKey);
-                      alert(userLanguage === "sk" ? "API kľúč bol skopírovaný do schránky!" : userLanguage === "hu" ? "Az API kulcs másolva a vágólapra!" : "API Key copied to clipboard!");
+                      (window as any).showToast(userLanguage === "sk" ? "API kľúč bol skopírovaný do schránky!" : userLanguage === "hu" ? "Az API kulcs másolva a vágólapra!" : "API Key copied to clipboard!");
                     }}
                     disabled={!apiKey}
                     className="flex-1 sm:flex-none px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-black uppercase tracking-wider transition-all border border-slate-200 cursor-pointer active:scale-95 disabled:opacity-50"

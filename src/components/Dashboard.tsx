@@ -93,11 +93,28 @@ const CalendarPane: React.FC<{
     return (firstDay + 6) % 7;
   }, [year, month]);
 
-  // Generate week annotations
+  // Generate week annotations dynamically
   const weekNumbers = useMemo(() => {
-    const startWeek = month === 4 ? 19 : 23;
-    return Array.from({ length: 5 }, (_, i) => `W${startWeek + i}`);
-  }, [month]);
+    // For each of the 5 rows, find the first day of that row to calculate its week number.
+    return Array.from({ length: 5 }, (_, weekIdx) => {
+      // Find the day index relative to the start of the grid
+      const dayOffset = weekIdx * 7 - paddingDays;
+      // Get the date for this row's Monday (or first day)
+      const targetDate = new Date(year, month, dayOffset + 1);
+      
+      // Calculate ISO week number
+      const tempDate = new Date(targetDate.valueOf());
+      const dayNum = (targetDate.getDay() + 6) % 7;
+      tempDate.setDate(tempDate.getDate() - dayNum + 3);
+      const firstThursday = tempDate.valueOf();
+      tempDate.setMonth(0, 1);
+      if (tempDate.getDay() !== 4) {
+        tempDate.setMonth(0, 1 + ((4 - tempDate.getDay() + 7) % 7));
+      }
+      const weekNum = 1 + Math.ceil((firstThursday - tempDate.valueOf()) / 604800000);
+      return `W${weekNum}`;
+    });
+  }, [year, month, paddingDays]);
 
   return (
     <div className="flex-1 flex flex-col space-y-2 select-none">
@@ -133,13 +150,24 @@ const CalendarPane: React.FC<{
                 const isEnd = selectedEnd && dayDate.toDateString() === selectedEnd.toDateString();
                 const inRange = selectedStart && selectedEnd && dayDate > selectedStart && dayDate < selectedEnd;
 
-                let dayClass = "text-[10px] font-black cursor-pointer hover:bg-purple-50 transition-colors h-7 w-7 rounded-full flex items-center justify-center ";
+                const realToday = new Date();
+                const mockToday = new Date(2026, 5, 4);
+                const isToday = dayDate && (
+                  (dayDate.getDate() === realToday.getDate() && dayDate.getMonth() === realToday.getMonth() && dayDate.getFullYear() === realToday.getFullYear()) ||
+                  (dayDate.getDate() === mockToday.getDate() && dayDate.getMonth() === mockToday.getMonth() && dayDate.getFullYear() === mockToday.getFullYear())
+                );
+
+                let dayClass = "text-[10px] font-black cursor-pointer hover:bg-purple-50 transition-colors h-7 w-7 rounded-full flex items-center justify-center relative ";
                 if (isStart || isEnd) {
                   dayClass += "bg-purple-600 text-white shadow-md shadow-purple-600/25 scale-105";
                 } else if (inRange) {
                   dayClass += "bg-purple-100/60 text-purple-800 rounded-none h-7 w-full";
                 } else {
                   dayClass += "text-slate-700 hover:text-purple-650";
+                }
+
+                if (isToday && !isStart && !isEnd && !inRange) {
+                  dayClass += " border-2 border-purple-600 bg-purple-50/50";
                 }
 
                 return (
@@ -150,6 +178,9 @@ const CalendarPane: React.FC<{
                       className={dayClass}
                     >
                       {dayDate.getDate()}
+                      {isToday && (
+                        <span className={`absolute bottom-0.5 h-1 w-1 rounded-full ${isStart || isEnd ? 'bg-white' : 'bg-purple-600'}`} />
+                      )}
                     </button>
                   </div>
                 );
@@ -750,29 +781,29 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 pl-1">{getTranslation(systemLanguage, "dashboard.quick_intervals")}</span>
                 <div className="grid grid-cols-2 gap-1.5">
                   {[
-                    { name: "Today", getRange: () => { const d = new Date(2026, 4, 30); return { start: d, end: d }; } }, // mock today is May 30, 2026
-                    { name: "Yesterday", getRange: () => { const d = new Date(2026, 4, 29); return { start: d, end: d }; } },
+                    { name: "Today", getRange: () => { const d = new Date(2026, 5, 4); return { start: d, end: d }; } }, // mock today is June 4, 2026
+                    { name: "Yesterday", getRange: () => { const d = new Date(2026, 5, 3); return { start: d, end: d }; } },
                     { name: "This week", getRange: () => {
-                        const start = new Date(2026, 4, 25); // Monday, May 25, 2026
-                        const end = new Date(2026, 4, 30);
+                        const start = new Date(2026, 5, 1); // Monday, June 1, 2026
+                        const end = new Date(2026, 5, 4);
                         return { start, end };
                       }
                     },
                     { name: "Last week", getRange: () => {
-                        const start = new Date(2026, 4, 18);
-                        const end = new Date(2026, 4, 24);
+                        const start = new Date(2026, 4, 25);
+                        const end = new Date(2026, 4, 31);
                         return { start, end };
                       }
                     },
                     { name: "This month", getRange: () => {
-                        const start = new Date(2026, 4, 1);
-                        const end = new Date(2026, 4, 30);
+                        const start = new Date(2026, 5, 1);
+                        const end = new Date(2026, 5, 30);
                         return { start, end };
                       }
                     },
                     { name: "Last month", getRange: () => {
-                        const start = new Date(2026, 3, 1);
-                        const end = new Date(2026, 3, 30);
+                        const start = new Date(2026, 4, 1);
+                        const end = new Date(2026, 4, 31);
                         return { start, end };
                       }
                     },
@@ -832,20 +863,35 @@ export const Dashboard: React.FC<DashboardProps> = ({
               {/* Right side: Dual calendars */}
               <div className="flex-1 flex flex-col space-y-4">
                 <div className="flex flex-col sm:flex-row gap-6">
-                  {/* Calendar 1: May 2026 */}
+                  {/* Calendar 1: Current Month */}
                   <CalendarPane 
-                    title="May 2026"
-                    year={2026}
-                    month={4} // May (0-indexed)
+                    title={(() => {
+                      const d = new Date();
+                      return d.toLocaleDateString(systemLanguage === "sk" ? "sk-SK" : systemLanguage === "hu" ? "hu-HU" : "en-US", { month: "long", year: "numeric" });
+                    })()}
+                    year={new Date().getFullYear()}
+                    month={new Date().getMonth()}
                     selectedStart={filterStartDate}
                     selectedEnd={filterEndDate}
                     onSelect={(date) => handleCalendarSelect(date)}
                   />
-                  {/* Calendar 2: June 2026 */}
+                  {/* Calendar 2: Next Month */}
                   <CalendarPane 
-                    title="June 2026"
-                    year={2026}
-                    month={5} // June (0-indexed)
+                    title={(() => {
+                      const d = new Date();
+                      d.setMonth(d.getMonth() + 1);
+                      return d.toLocaleDateString(systemLanguage === "sk" ? "sk-SK" : systemLanguage === "hu" ? "hu-HU" : "en-US", { month: "long", year: "numeric" });
+                    })()}
+                    year={(() => {
+                      const d = new Date();
+                      d.setMonth(d.getMonth() + 1);
+                      return d.getFullYear();
+                    })()}
+                    month={(() => {
+                      const d = new Date();
+                      d.setMonth(d.getMonth() + 1);
+                      return d.getMonth();
+                    })()}
                     selectedStart={filterStartDate}
                     selectedEnd={filterEndDate}
                     onSelect={(date) => handleCalendarSelect(date)}

@@ -91,7 +91,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !email.trim()) {
-      alert("Name and email are strictly required!");
+      (window as any).showToast("Name and email are strictly required!");
       return;
     }
 
@@ -112,7 +112,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
 
     setTimeout(() => {
       onSync();
-      alert(userLanguage === "sk" ? "Profil bol úspešne aktualizovaný!" : "Profile updated successfully!");
+      (window as any).showToast(userLanguage === "sk" ? "Profil bol úspešne aktualizovaný!" : "Profile updated successfully!");
     }, 100);
   };
 
@@ -152,7 +152,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
 
     setTimeout(() => {
       onSync();
-      alert(userLanguage === "sk" ? "E-mailové nastavenia boli uložené!" : "Email settings saved successfully!");
+      (window as any).showToast(userLanguage === "sk" ? "E-mailové nastavenia boli uložené!" : "Email settings saved successfully!");
     }, 100);
   };
 

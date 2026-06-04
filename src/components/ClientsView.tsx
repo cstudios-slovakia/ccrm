@@ -388,7 +388,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     e.preventDefault();
     if (!activeClient) return;
     if (!profileName.trim()) {
-      alert("Client Name is strictly required!");
+      (window as any).showToast("Client Name is strictly required!");
       return;
     }
 
@@ -422,7 +422,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     setIsEditingProfile(false); // Toggle back to read-only
     // Update dynamic URL to reflect new client profile name
     window.location.hash = `client-${encodeURIComponent(profileName.trim())}`;
-    alert("Client profile parameters successfully updated!");
+    (window as any).showToast("Client profile parameters successfully updated!");
   };
 
   // --- LOG A NEW EVENT INTO TIMELINE ---
@@ -430,7 +430,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     e.preventDefault();
     if (!activeClient || !logType) return;
     if (!logContent.trim()) {
-      alert("Please specify a description log note!");
+      (window as any).showToast("Please specify a description log note!");
       return;
     }
 
@@ -461,12 +461,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         });
         const uploadData = await uploadRes.json();
         if (!uploadData.success) {
-          alert("File upload failed: " + uploadData.error);
+          (window as any).showToast("File upload failed: " + uploadData.error);
           return;
         }
       } catch (err) {
         console.error("Error uploading file", err);
-        alert("Error uploading file to server.");
+        (window as any).showToast("Error uploading file to server.");
         return;
       }
     }
@@ -547,7 +547,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     const tzOffset = (new Date()).getTimezoneOffset() * 60000;
     setLogDate((new Date(Date.now() - tzOffset)).toISOString().split("T")[0]);
     setLogTimeOfEvent(new Date().toTimeString().substring(0, 5));
-    alert("Event logged successfully!");
+    (window as any).showToast("Event logged successfully!");
   };
 
   const handleAttachFile = async (e: React.FormEvent) => {
@@ -569,12 +569,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         });
         const uploadData = await uploadRes.json();
         if (!uploadData.success) {
-          alert("File upload failed: " + uploadData.error);
+          (window as any).showToast("File upload failed: " + uploadData.error);
           return;
         }
       } catch (err) {
         console.error("Error uploading file", err);
-        alert("Error uploading file to server.");
+        (window as any).showToast("Error uploading file to server.");
         return;
       }
     }

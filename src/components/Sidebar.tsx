@@ -207,7 +207,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               if (onLogout) {
                 onLogout();
               } else {
-                alert("Sign out simulation active. Workspace locked.");
+                (window as any).showToast("Sign out simulation active. Workspace locked.");
               }
             }}
             className="w-full flex items-center gap-3.5 px-3 py-2.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50/50 transition-all duration-200 text-left group"
@@ -360,7 +360,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 if (onLogout) {
                   onLogout();
                 } else {
-                  alert("Sign out simulation active. Workspace locked.");
+                  (window as any).showToast("Sign out simulation active. Workspace locked.");
                 }
                 setIsMobileMenuOpen(false);
               }}
