@@ -35,16 +35,23 @@ try {
 }
 
 // 2. Perform automated DDL auto-migrations on load
-// Check if the system_settings table exists
+// Check if the system_settings and meeting_tasks tables exist
 $tableExists = false;
+$meetingTasksTableExists = false;
 try {
     $result = $pdo->query("SELECT 1 FROM `system_settings` LIMIT 1");
     $tableExists = true;
 } catch (\Exception $e) {
     $tableExists = false;
 }
+try {
+    $result = $pdo->query("SELECT 1 FROM `meeting_tasks` LIMIT 1");
+    $meetingTasksTableExists = true;
+} catch (\Exception $e) {
+    $meetingTasksTableExists = false;
+}
 
-if (!$tableExists) {
+if (!$tableExists || !$meetingTasksTableExists) {
     // Database schema is missing tables, trigger automated migration
     try {
         $queries = [
@@ -148,12 +155,44 @@ if (!$tableExists) {
               FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
-            "CREATE TABLE IF NOT EXISTS `system_settings` (
-              `key` VARCHAR(100) NOT NULL,
-              `value` TEXT NOT NULL,
-              PRIMARY KEY (`key`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
-        ];
+             "CREATE TABLE IF NOT EXISTS `system_settings` (
+               `key` VARCHAR(100) NOT NULL,
+               `value` TEXT NOT NULL,
+               PRIMARY KEY (`key`)
+             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+             "CREATE TABLE IF NOT EXISTS `meeting_notes` (
+               id VARCHAR(50) NOT NULL,
+               title VARCHAR(255) NOT NULL,
+               date DATE NOT NULL,
+               lead_id VARCHAR(50) NULL,
+               lead_name VARCHAR(150) NULL,
+               duration INT NOT NULL DEFAULT 0,
+               notes TEXT NULL,
+               ai_summary_json TEXT NULL,
+               summary_generated TINYINT(1) NOT NULL DEFAULT 0,
+               attached_leads_json TEXT NULL,
+               attached_clients_json TEXT NULL,
+               attached_users_json TEXT NULL,
+               archived TINYINT(1) NOT NULL DEFAULT 0,
+               created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+               updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+               PRIMARY KEY (id)
+             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+             "CREATE TABLE IF NOT EXISTS `meeting_tasks` (
+               id VARCHAR(50) NOT NULL,
+               meeting_id VARCHAR(50) NOT NULL,
+               title VARCHAR(255) NOT NULL,
+               description TEXT NULL,
+               assigned_user VARCHAR(100) NULL,
+               due_date DATE NULL,
+               priority ENUM('low', 'medium', 'high') NOT NULL DEFAULT 'medium',
+               status ENUM('todo', 'in_progress', 'done') NOT NULL DEFAULT 'todo',
+               PRIMARY KEY (id),
+               FOREIGN KEY (meeting_id) REFERENCES meeting_notes (id) ON DELETE CASCADE
+             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
+         ];
         
         foreach ($queries as $q) {
             $pdo->exec($q);
@@ -165,6 +204,13 @@ if (!$tableExists) {
         ]);
         exit;
     }
+}
+
+// Ensure the archived column exists on meeting_notes table (migration for existing database)
+try {
+    $pdo->exec("ALTER TABLE `meeting_notes` ADD COLUMN `archived` TINYINT(1) NOT NULL DEFAULT 0");
+} catch (\Exception $e) {
+    // Ignore if column already exists
 }
 
 // Helper to query and fetch all system settings
@@ -300,7 +346,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'pm_managers' => 'edit',
                     'pipeline_stages' => 'edit',
                     'traffic_sources' => 'edit',
-                    'system_reset' => 'edit'
+                    'system_reset' => 'edit',
+                    'ai_config' => 'edit'
                 ]
             ],
             [
@@ -310,7 +357,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'pm_managers' => 'nothing',
                     'pipeline_stages' => 'nothing',
                     'traffic_sources' => 'nothing',
-                    'system_reset' => 'nothing'
+                    'system_reset' => 'nothing',
+                    'ai_config' => 'nothing'
                 ]
             ]
         ];
@@ -327,6 +375,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $leadStateParents = isset($settings['LEAD_STATE_PARENTS']) ? json_decode($settings['LEAD_STATE_PARENTS'], true) : (object)[];
     $integrationsConfig = isset($settings['INTEGRATIONS_CONFIG']) ? json_decode($settings['INTEGRATIONS_CONFIG'], true) : (object)[];
 
+    // Fetch Meeting Notes
+    $meetingNotes = [];
+    try {
+        $meetingsStmt = $pdo->query("SELECT * FROM `meeting_notes` ORDER BY `date` DESC, `created_at` DESC");
+        while ($row = $meetingsStmt->fetch()) {
+            $meetingId = $row['id'];
+            
+            // Fetch Tasks
+            $tStmt = $pdo->prepare("SELECT * FROM `meeting_tasks` WHERE `meeting_id` = ?");
+            $tStmt->execute([$meetingId]);
+            $automatedTasks = [];
+            while ($tr = $tStmt->fetch()) {
+                $automatedTasks[] = [
+                    'id' => $tr['id'],
+                    'title' => $tr['title'],
+                    'description' => $tr['description'] ?? '',
+                    'assignedUser' => $tr['assigned_user'] ?? '',
+                    'dueDate' => $tr['due_date'] ?? '',
+                    'priority' => $tr['priority'],
+                    'status' => $tr['status']
+                ];
+            }
+            
+            $aiSummary = json_decode($row['ai_summary_json'] ?? '{}', true);
+            if (!isset($aiSummary['summary'])) {
+                $aiSummary = [
+                    'summary' => $aiSummary['summary'] ?? '',
+                    'actionItems' => $aiSummary['actionItems'] ?? [],
+                    'sentiment' => $aiSummary['sentiment'] ?? 'neutral',
+                    'topics' => $aiSummary['topics'] ?? []
+                ];
+            }
+            
+            $meetingNotes[] = [
+                'id' => $meetingId,
+                'title' => $row['title'],
+                'date' => $row['date'],
+                'leadId' => $row['lead_id'] ?? '',
+                'leadName' => $row['lead_name'] ?? '',
+                'duration' => (int)$row['duration'],
+                'notes' => $row['notes'] ?? '[]',
+                'aiSummary' => $aiSummary,
+                'summaryGenerated' => (int)$row['summary_generated'] === 1,
+                'attachedLeads' => json_decode($row['attached_leads_json'] ?? '[]', true),
+                'attachedClients' => json_decode($row['attached_clients_json'] ?? '[]', true),
+                'attachedUsers' => json_decode($row['attached_users_json'] ?? '[]', true),
+                'automatedTasks' => $automatedTasks,
+                'archived' => isset($row['archived']) && (int)$row['archived'] === 1
+            ];
+        }
+    } catch (\Exception $e) {
+        // Fallback
+    }
+
     echo json_encode([
         'installed' => true,
         'demoMode' => $isDemoMode,
@@ -334,6 +436,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'tasks' => $tasks,
         'users' => $users,
         'roles' => $roles,
+        'meetingNotes' => $meetingNotes,
+        'db_info' => [
+            'host' => DB_HOST,
+            'port' => DB_PORT,
+            'name' => DB_NAME,
+            'user' => DB_USER
+        ],
         'settings' => [
             'systemName' => $settings['SYSTEM_NAME'] ?? 'Laminam CRM',
             'systemLanguage' => $settings['SYSTEM_LANGUAGE'] ?? 'sk',
@@ -566,6 +675,65 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $delTask = $pdo->prepare("DELETE FROM `tasks` WHERE `id` = ?");
                 foreach ($tasksToDelete as $tid) {
                     $delTask->execute([$tid]);
+                }
+            }
+        }
+
+        // 4.5. Synchronize Meeting Notes & meeting_tasks
+        if (isset($payload['meetingNotes']) && is_array($payload['meetingNotes'])) {
+            // Fetch existing ids to delete
+            $stmt = $pdo->query("SELECT `id` FROM `meeting_notes`");
+            $existingMeetingIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $processedMeetingIds = [];
+
+            $insMeeting = $pdo->prepare("INSERT INTO `meeting_notes` (`id`, `title`, `date`, `lead_id`, `lead_name`, `duration`, `notes`, `ai_summary_json`, `summary_generated`, `attached_leads_json`, `attached_clients_json`, `attached_users_json`, `archived`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `date` = VALUES(`date`), `lead_id` = VALUES(`lead_id`), `lead_name` = VALUES(`lead_name`), `duration` = VALUES(`duration`), `notes` = VALUES(`notes`), `ai_summary_json` = VALUES(`ai_summary_json`), `summary_generated` = VALUES(`summary_generated`), `attached_leads_json` = VALUES(`attached_leads_json`), `attached_clients_json` = VALUES(`attached_clients_json`), `attached_users_json` = VALUES(`attached_users_json`), `archived` = VALUES(`archived`)");
+            
+            foreach ($payload['meetingNotes'] as $mn) {
+                $meetingId = $mn['id'];
+                $insMeeting->execute([
+                    $meetingId,
+                    $mn['title'] ?? '',
+                    $mn['date'] ?? date('Y-m-d'),
+                    (isset($mn['leadId']) && $mn['leadId'] !== '') ? $mn['leadId'] : null,
+                    (isset($mn['leadName']) && $mn['leadName'] !== '') ? $mn['leadName'] : null,
+                    $mn['duration'] ?? 0,
+                    $mn['notes'] ?? '[]',
+                    json_encode($mn['aiSummary'] ?? (object)[]),
+                    ($mn['summaryGenerated'] ?? false) ? 1 : 0,
+                    json_encode($mn['attachedLeads'] ?? []),
+                    json_encode($mn['attachedClients'] ?? []),
+                    json_encode($mn['attachedUsers'] ?? []),
+                    ($mn['archived'] ?? false) ? 1 : 0
+                ]);
+                $processedMeetingIds[] = $meetingId;
+
+                // Sync meeting_tasks (Delete & Insert list)
+                $delTasks = $pdo->prepare("DELETE FROM `meeting_tasks` WHERE `meeting_id` = ?");
+                $delTasks->execute([$meetingId]);
+
+                if (isset($mn['automatedTasks']) && is_array($mn['automatedTasks'])) {
+                    $insTask = $pdo->prepare("INSERT INTO `meeting_tasks` (`id`, `meeting_id`, `title`, `description`, `assigned_user`, `due_date`, `priority`, `status`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+                    foreach ($mn['automatedTasks'] as $task) {
+                        $insTask->execute([
+                            $task['id'],
+                            $meetingId,
+                            $task['title'] ?? '',
+                            $task['description'] ?? '',
+                            (isset($task['assignedUser']) && $task['assignedUser'] !== '') ? $task['assignedUser'] : null,
+                            (isset($task['dueDate']) && $task['dueDate'] !== '') ? $task['dueDate'] : null,
+                            $task['priority'] ?? 'medium',
+                            $task['status'] ?? 'todo'
+                        ]);
+                    }
+                }
+            }
+
+            // Delete any meeting notes not present in payload
+            $meetingsToDelete = array_diff($existingMeetingIds, $processedMeetingIds);
+            if (!empty($meetingsToDelete)) {
+                $delMeeting = $pdo->prepare("DELETE FROM `meeting_notes` WHERE `id` = ?");
+                foreach ($meetingsToDelete as $mid) {
+                    $delMeeting->execute([$mid]);
                 }
             }
         }

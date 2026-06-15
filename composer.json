@@ -23,10 +23,12 @@
     },
     "scripts": {
         "post-install-cmd": [
-            "CCRM\\Installer::publishAssets"
+            "CCRM\\Installer::publishAssets",
+            "CCRM\\Installer::migrateDatabase"
         ],
         "post-update-cmd": [
-            "CCRM\\Installer::publishAssets"
+            "CCRM\\Installer::publishAssets",
+            "CCRM\\Installer::migrateDatabase"
         ]
     }
 }

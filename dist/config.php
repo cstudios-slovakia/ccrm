@@ -4,11 +4,15 @@
 
 date_default_timezone_set('Europe/Bratislava');
 
-define('DB_HOST', 'db.r5.websupport.sk');
+if (file_exists('/.dockerenv')) {
+    define('DB_HOST', 'db'); // Inside docker network
+} else {
+    define('DB_HOST', '127.0.0.1'); // On host machine mapping container port
+}
 define('DB_PORT', '3306');
-define('DB_NAME', 'Dg1SeyNV');
-define('DB_USER', 'JQLZ4I98');
-define('DB_PASS', '[2.^~8L])EdPgu|Fc1*}');
+define('DB_NAME', 'ccrm');
+define('DB_USER', 'ccrm_user');
+define('DB_PASS', 'ccrm_password');
 
 try {
     $dsn = "mysql:host=" . DB_HOST . ";port=" . DB_PORT . ";dbname=" . DB_NAME . ";charset=utf8mb4";

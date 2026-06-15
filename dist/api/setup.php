@@ -230,11 +230,12 @@ $queries = [
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
 ];
 
+foreach ($queries as $q) {
+    $pdo->exec($q);
+}
+
 try {
     $pdo->beginTransaction();
-    foreach ($queries as $q) {
-        $pdo->exec($q);
-    }
     
     // Seed Permissions slugs
     $permissionsSlugs = [
@@ -258,6 +259,7 @@ try {
         ['pm_managers', 'Manage PM manager users directories'],
         ['pipeline_stages', 'Rearrange Kanban pipelines stages'],
         ['traffic_sources', 'Manage lead marketing sources and color badges'],
+        ['ai_config', 'Configure OpenAI API credentials and settings'],
         ['system_reset', 'Truncate database or restore mock seeders']
     ];
 
@@ -393,9 +395,14 @@ try {
     $pdo->commit();
     echo json_encode(['success' => true, 'message' => 'Laminam CRM successfully provisioned!']);
 } catch (\Exception $e) {
-    if ($pdo->inTransaction()) {
-        $pdo->rollBack();
+    $errorMsg = $e->getMessage();
+    try {
+        if (isset($pdo) && $pdo && $pdo->inTransaction()) {
+            @$pdo->rollBack();
+        }
+    } catch (\Exception $rollbackEx) {
+        // Ignore rollback failure to preserve original exception
     }
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Migrations or seeding failed: ' . $e->getMessage()]);
+    echo json_encode(['success' => false, 'message' => 'Migrations or seeding failed: ' . $errorMsg]);
 }
