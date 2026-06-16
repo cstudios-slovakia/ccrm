@@ -10,8 +10,11 @@ import { LoginView } from "./components/LoginView";
 import { TaskDashboardView } from "./components/TaskDashboardView";
 import { PersonalSettingsView } from "./components/PersonalSettingsView";
 import { EmailView } from "./components/EmailView";
+import { RagAiView } from "./components/RagAiView";
 import type { Lead, UserProfile, RolePermission, Task } from "./types";
 import { VERSION } from "./utils/version";
+import { MeetingRoomView } from "./components/MeetingRoomView";
+import type { MeetingNote } from "./components/MeetingRoomView";
 import { getTranslation } from "./utils/translations";
 import { InstallerWizard } from "./components/InstallerWizard";
 import { RefreshCw } from "lucide-react";
@@ -19,14 +22,16 @@ import { RefreshCw } from "lucide-react";
 function App() {
   const [isInstalled, setIsInstalled] = useState(true);
   const [isDemoMode, setIsDemoMode] = useState(false);
+  const [dbInfo, setDbInfo] = useState<{ host: string; port: string; name: string; user: string } | null>(null);
 
   const getTabFromHash = () => {
     const rawHash = window.location.hash.replace("#", "");
-    const hashLower = rawHash.toLowerCase();
+    const baseHash = rawHash.split(/[/?]/)[0];
+    const hashLower = baseHash.toLowerCase();
     if (hashLower.startsWith("client-") || hashLower.startsWith("lead-") || hashLower.startsWith("user-")) {
       return rawHash; // Keep case sensitivity
     }
-    const validTabs = ["dashboard", "overview", "leads", "clients", "tasks", "files", "settings", "personal-settings", "email"];
+    const validTabs = ["dashboard", "overview", "leads", "clients", "tasks", "files", "settings", "personal-settings", "email", "rag_ai", "meetings"];
     return validTabs.includes(hashLower) ? hashLower : "dashboard";
   };
 
@@ -51,6 +56,74 @@ function App() {
   const [systemName, setSystemName] = useState("CCRM");
   const [systemLanguage, setSystemLanguage] = useState<"en" | "sk" | "hu">("sk");
   const [userLanguage, setUserLanguage] = useState<"en" | "sk" | "hu">("sk");
+
+  // Meeting Room state
+  const [meetingsAction, setMeetingsAction] = useState<"list" | "new">("list");
+  const [meetingNotes, setMeetingNotes] = useState<MeetingNote[]>(() => {
+    const stored = localStorage.getItem("crm_meeting_notes");
+    if (stored) {
+      try {
+        return JSON.parse(stored);
+      } catch (e) {}
+    }
+    return [
+      {
+        id: "meet-1",
+        title: "Initial Budget Alignment Call",
+        date: "2026-06-10",
+        leadId: "lead-1",
+        leadName: "Ján Novák",
+        duration: 25,
+        notes: JSON.stringify([
+          { id: "b-init-1", type: "h2", content: "Countertop Slab Price Negotiation" },
+          { id: "b-init-2", type: "paragraph", content: "Ján from Bratislava showroom discussed countertop materials. He is interested in Laminam Ceramic slabs but is concerned about the price." },
+          { id: "b-init-3", type: "banner", bannerType: "info", content: "Proposed a bundle discount of 15% if they proceed with flooring tiles as well." },
+          { id: "b-init-4", type: "todo", content: "Prepare a unified quote for countertops and flooring tiles by Friday", "checked": false },
+          { id: "b-init-5", type: "todo", content: "Send gray marble sample slabs package via courier", "checked": true }
+        ]),
+        aiSummary: {
+          summary: "Discussion regarding Laminam Ceramic slabs pricing and interested cross-sell for flooring tiles. The lead is price-sensitive but open to discounts.",
+          actionItems: [
+            "Prepare unified quote for countertops and flooring tiles",
+            "Send sample package via courier"
+          ],
+          sentiment: "neutral",
+          topics: ["Pricing & Budget", "Material Selection"]
+        }
+      },
+      {
+        id: "meet-2",
+        title: "Technical Spec & Timeline Review",
+        date: "2026-06-12",
+        leadId: "lead-2",
+        leadName: "Martina Kováčová",
+        duration: 45,
+        notes: JSON.stringify([
+          { id: "b-init-6", type: "h2", content: "Onsite Measurements & Finish Approvals" },
+          { id: "b-init-7", type: "paragraph", content: "Conducted full onsite measurements at Martina's kitchen in Trnava. Physical layout details recorded successfully." },
+          { id: "b-init-8", type: "banner", bannerType: "success", content: "Client officially approved the Calacatta Gold polished finish quartz countertop!" },
+          { id: "b-init-9", type: "todo", content: "Send measurements sheet to fabrication team", "checked": false },
+          { id: "b-init-10", type: "todo", content: "Book installation window for early July", "checked": false }
+        ]),
+        aiSummary: {
+          summary: "Onsite physical measurements completed. Client approved Calacatta Gold quartz in polished finish. Milestone delivery dates established.",
+          actionItems: [
+            "Send measurements sheet to fabrication team",
+            "Book installation window for early July"
+          ],
+          sentiment: "positive",
+          topics: ["Onsite Measurement", "Milestones", "Material Selection"]
+        }
+      }
+    ];
+  });
+
+  useEffect(() => {
+    localStorage.setItem("crm_meeting_notes", JSON.stringify(meetingNotes));
+    if (isInitialSyncResolved) {
+      pushStateToServer(leads, tasks, roles, integrationsConfig, users, meetingNotes);
+    }
+  }, [meetingNotes, isInitialSyncResolved]);
 
   // Initial states set to empty / defaults without localStorage or mockData loaders
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -226,7 +299,8 @@ function App() {
     getPermission("pm_managers") !== "nothing" ||
     getPermission("pipeline_stages") !== "nothing" ||
     getPermission("traffic_sources") !== "nothing" ||
-    getPermission("system_reset") !== "nothing";
+    getPermission("system_reset") !== "nothing" ||
+    getPermission("ai_config") !== "nothing";
 
   // Guard routing pathway from unauthorised users
   useEffect(() => {
@@ -242,7 +316,8 @@ function App() {
     nextTasks?: Task[],
     nextRoles?: RolePermission[],
     nextIntegrationsConfig?: any,
-    nextUsers?: UserProfile[]
+    nextUsers?: UserProfile[],
+    nextMeetingNotes?: MeetingNote[]
   ) => {
     if (!isInstalled) return;
     const payload = {
@@ -250,6 +325,7 @@ function App() {
       tasks: nextTasks || tasks,
       users: nextUsers || users,
       roles: nextRoles || roles,
+      meetingNotes: nextMeetingNotes || meetingNotes,
       settings: {
         systemName,
         systemLanguage,
@@ -312,6 +388,14 @@ function App() {
       const nextTasks = typeof newTasks === "function" ? newTasks(prev) : newTasks;
       pushStateToServer(leads, nextTasks, roles);
       return nextTasks;
+    });
+  };
+
+  const updateMeetingNotesAndSync = (newNotes: MeetingNote[] | ((prev: MeetingNote[]) => MeetingNote[])) => {
+    setMeetingNotes(prev => {
+      const nextNotes = typeof newNotes === "function" ? newNotes(prev) : newNotes;
+      pushStateToServer(leads, tasks, roles, integrationsConfig, users, nextNotes);
+      return nextNotes;
     });
   };
 
@@ -382,8 +466,14 @@ function App() {
                 }
               }
             }
+            if (data.db_info) {
+              setDbInfo(data.db_info);
+            }
             if (data.roles && Array.isArray(data.roles)) {
               setRoles(data.roles);
+            }
+            if (data.meetingNotes && Array.isArray(data.meetingNotes)) {
+              setMeetingNotes(data.meetingNotes);
             }
             if (data.settings) {
               const s = data.settings;
@@ -461,6 +551,17 @@ function App() {
                 return prev;
               });
             }
+            if (data.meetingNotes && Array.isArray(data.meetingNotes)) {
+              setMeetingNotes((prev) => {
+                if (JSON.stringify(data.meetingNotes) !== JSON.stringify(prev)) {
+                  return data.meetingNotes;
+                }
+                return prev;
+              });
+            }
+            if (data.db_info) {
+              setDbInfo(data.db_info);
+            }
             if (data.settings) {
               const s = data.settings;
               if (s.systemName) setSystemName(s.systemName);
@@ -520,6 +621,7 @@ function App() {
           leadStateParents={leadStateParents}
           setLeadStateParents={setLeadStateParents}
           isDemoMode={isDemoMode}
+          dbInfo={dbInfo || undefined}
         />
       );
     }
@@ -661,6 +763,7 @@ function App() {
             isDemoMode={isDemoMode}
             integrationsConfig={integrationsConfig}
             updateIntegrationsConfig={updateIntegrationsConfigAndSync}
+            dbInfo={dbInfo || undefined}
           />
         );
       case "overview":
@@ -676,6 +779,23 @@ function App() {
             systemLanguage={userLanguage}
             leadStateParents={leadStateParents}
             campaigns={integrationsConfig.campaigns}
+          />
+        );
+      case "rag_ai":
+        return (
+          <RagAiView systemLanguage={userLanguage} currentUser={currentUser || undefined} />
+        );
+      case "meetings":
+        return (
+          <MeetingRoomView 
+            leads={leads}
+            users={users}
+            systemLanguage={userLanguage}
+            meetingNotes={meetingNotes}
+            setMeetingNotes={updateMeetingNotesAndSync}
+            initialView={meetingsAction}
+            onClearInitialView={() => setMeetingsAction("list")}
+            integrationsConfig={integrationsConfig}
           />
         );
       default:
@@ -758,7 +878,7 @@ function App() {
   })();
 
   return (
-    <div className="flex min-h-screen relative font-sans overflow-x-hidden antialiased text-slate-800 bg-slate-50/50">
+    <div className="flex h-screen overflow-hidden relative font-sans antialiased text-slate-800 bg-slate-50/50">
       {/* Sidebar navigation with role-gated settings visibility */}
       <Sidebar 
         activeTab={activeTab} 
@@ -774,6 +894,8 @@ function App() {
         }}
         systemLanguage={userLanguage}
         showMailIcon={showMailIcon}
+        integrationsConfig={integrationsConfig}
+        showRagAi={getPermission("rag_view") !== "nothing"}
       />
       
       {/* Workspace Area - Add pb-20 on mobile viewports so that the bottom navigation bar never overlaps content */}
@@ -801,6 +923,11 @@ function App() {
             setActiveTab("personal-settings");
             window.location.hash = "personal-settings";
           }}
+          onNavigateMeetings={(action) => {
+            setMeetingsAction(action);
+            setActiveTab("meetings");
+            window.location.hash = "meetings";
+          }}
         />
         
         <main className="flex-1 p-4 md:p-6 overflow-y-auto max-w-[1600px] mx-auto w-full relative z-40 flex flex-col justify-between">
@@ -809,7 +936,7 @@ function App() {
           </div>
           <footer className="mt-12 pt-4 border-t border-slate-200/50 flex justify-between items-center text-[10px] text-slate-400 select-none font-semibold uppercase tracking-wider">
             <span>{systemName} CRM &bull; Active Node</span>
-            <span>v{VERSION} "Clementine"</span>
+            <span>v{VERSION} "Elderberry"</span>
           </footer>
         </main>
       </div>

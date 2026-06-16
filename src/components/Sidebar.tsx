@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { LayoutDashboard, ChevronLeft, ChevronRight, Settings, LogOut, TableProperties, Users, FolderOpen, BarChart3, Mail } from "lucide-react";
+import { LayoutDashboard, ChevronLeft, ChevronRight, Settings, LogOut, TableProperties, Users, FolderOpen, BarChart3, Mail, Brain, PencilLine } from "lucide-react";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { cn } from "../utils/cn";
@@ -12,6 +12,8 @@ interface SidebarProps {
   onLogout?: () => void;
   systemLanguage: Language;
   showMailIcon?: boolean;
+  integrationsConfig?: any;
+  showRagAi?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -21,7 +23,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   showSettings = true,
   onLogout,
   systemLanguage,
-  showMailIcon = false
+  showMailIcon = false,
+  integrationsConfig,
+  showRagAi = false
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(true); // Default collapsed for the minimalist aesthetic
   const sidebarRef = React.useRef<HTMLElement>(null);
@@ -60,13 +64,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
-  const menuItems = [
+  const menuItems: any[] = [
     { id: "dashboard", label: systemLanguage === "sk" ? "Panel úloh" : systemLanguage === "hu" ? "Feladat Irányítópult" : "Task Dashboard", icon: LayoutDashboard },
     { id: "overview", label: getTranslation(systemLanguage, "sidebar.dashboard"), icon: BarChart3 },
+  ];
+
+  if (showRagAi && integrationsConfig?.vectorDbValidated === true && integrationsConfig?.vectorDb && integrationsConfig?.vectorDb !== "none") {
+    menuItems.push({
+      id: "rag_ai",
+      label: systemLanguage === "sk" ? "RAG AI Asistent" : systemLanguage === "hu" ? "RAG AI Asszisztens" : "RAG AI Assistant",
+      icon: Brain,
+      isPurple: true
+    } as any);
+  }
+
+  menuItems.push(
     { id: "leads", label: getTranslation(systemLanguage, "sidebar.leads"), icon: TableProperties },
     { id: "clients", label: getTranslation(systemLanguage, "sidebar.clients"), icon: Users },
-    { id: "files", label: getTranslation(systemLanguage, "sidebar.files"), icon: FolderOpen },
-  ];
+    { id: "meetings", label: getTranslation(systemLanguage, "sidebar.meetings"), icon: PencilLine, isNightBlue: true },
+    { id: "files", label: getTranslation(systemLanguage, "sidebar.files"), icon: FolderOpen }
+  );
 
   if (showMailIcon) {
     menuItems.push({
@@ -117,7 +134,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Nav List */}
         <nav className="flex-1 px-4 py-4 overflow-y-auto space-y-2 scrollbar-thin">
-          {menuItems.map((item) => {
+          {menuItems.map((item: any) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id || (item.id === "clients" && activeTab.startsWith("client-"));
             return (
@@ -129,31 +146,47 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 }}
                 className={cn(
                   "w-full flex items-center gap-3.5 px-3 py-3 rounded-2xl transition-all duration-200 group text-left relative",
-                  isActive 
-                    ? (item.id === "leads"
-                        ? "bg-blue-600 text-white font-bold shadow-lg shadow-blue-600/30 border border-blue-500/20"
-                        : item.id === "clients"
-                          ? "bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-600/30 border border-emerald-500/20"
-                          : item.id === "files"
-                            ? "bg-amber-700 text-white font-bold shadow-lg shadow-amber-700/30 border border-amber-600/20"
-                            : item.id === "overview"
-                              ? "bg-cyan-600 text-white font-bold shadow-lg shadow-cyan-600/30 border border-cyan-500/20"
-                              : item.id === "email"
-                                ? "bg-pink-600 text-white font-bold shadow-lg shadow-pink-600/30 border border-pink-500/20"
-                                : "bg-orange-500 text-white font-bold shadow-lg shadow-orange-500/30 border border-orange-400/20"
-                        )
-                    : "text-slate-400 hover:text-slate-700 hover:bg-slate-100/50"
+                  item.isPurple
+                    ? (isActive
+                        ? "bg-purple-600 text-white font-bold shadow-lg shadow-purple-600/30 border border-purple-500/20"
+                        : "text-purple-600 hover:text-purple-700 hover:bg-purple-50/50")
+                    : item.isNightBlue
+                      ? (isActive
+                          ? "bg-slate-900 text-white font-bold shadow-lg shadow-slate-900/30 border border-slate-800/20"
+                          : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/50")
+                      : isActive 
+                        ? (item.id === "leads"
+                            ? "bg-blue-600 text-white font-bold shadow-lg shadow-blue-600/30 border border-blue-500/20"
+                            : item.id === "clients"
+                              ? "bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-600/30 border border-emerald-500/20"
+                              : item.id === "files"
+                                ? "bg-amber-700 text-white font-bold shadow-lg shadow-amber-700/30 border border-amber-600/20"
+                                : item.id === "overview"
+                                  ? "bg-cyan-600 text-white font-bold shadow-lg shadow-cyan-600/30 border border-cyan-500/20"
+                                  : item.id === "email"
+                                    ? "bg-pink-600 text-white font-bold shadow-lg shadow-pink-600/30 border border-pink-500/20"
+                                    : "bg-orange-500 text-white font-bold shadow-lg shadow-orange-500/30 border border-orange-400/20"
+                            )
+                        : "text-slate-400 hover:text-slate-700 hover:bg-slate-100/50"
                 )}
               >
                 <Icon 
                   className={cn(
                     "h-5 w-5 shrink-0 transition-transform duration-200",
-                    isActive ? "text-white" : "text-slate-400 group-hover:scale-105"
+                    item.isPurple
+                      ? (isActive ? "text-white" : "text-purple-600 group-hover:scale-110")
+                      : item.isNightBlue
+                        ? (isActive ? "text-white" : "text-slate-700 group-hover:scale-110")
+                        : isActive ? "text-white" : "text-slate-400 group-hover:scale-105"
                   )} 
                 />
                 
                 {!isCollapsed && (
-                  <span className="text-sm font-heading font-medium tracking-wide">
+                  <span className={cn(
+                    "text-sm font-heading font-medium tracking-wide",
+                    item.isPurple ? (isActive ? "text-white font-bold" : "text-purple-600 font-bold") : "",
+                    item.isNightBlue ? (isActive ? "text-white font-bold" : "text-slate-800 font-semibold") : ""
+                  )}>
                     {item.label}
                   </span>
                 )}
@@ -267,7 +300,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             "flex transition-all duration-300",
             isMobileMenuOpen ? "flex-col w-full space-y-3" : "flex-row items-center gap-2 flex-1 pr-2"
           )}>
-            {menuItems.map((item) => {
+            {menuItems.map((item: any) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id || (item.id === "clients" && activeTab.startsWith("client-"));
               return (
@@ -283,25 +316,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     isMobileMenuOpen 
                       ? "w-full px-5 py-3.5 rounded-2xl gap-3 text-left font-black" 
                       : "h-11 w-11 rounded-xl justify-center",
-                    isActive
-                      ? (item.id === "dashboard"
-                          ? "bg-[#ff5d00] border-[#ff5d00] text-white"
-                          : item.id === "overview"
-                            ? "bg-cyan-600 border-cyan-700 text-white"
-                            : item.id === "leads"
-                              ? "bg-blue-600 border-blue-700 text-white"
-                              : item.id === "clients"
-                                ? "bg-emerald-600 border-emerald-700 text-white"
-                                : item.id === "email"
-                                  ? "bg-pink-600 border-pink-700 text-white"
-                                  : item.id === "tasks"
-                                    ? "bg-violet-600 border-violet-700 text-white"
-                                    : "bg-amber-700 border-amber-800 text-white"
-                        )
-                      : (isMobileMenuOpen 
-                          ? "bg-transparent border-transparent text-slate-500 hover:text-slate-800" 
-                          : "bg-slate-50/50 border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-                        )
+                    item.isPurple
+                      ? (isActive
+                          ? "bg-purple-600 border-purple-700 text-white"
+                          : (isMobileMenuOpen
+                              ? "bg-purple-50 border-purple-200 text-purple-600"
+                              : "bg-purple-50/50 border-purple-100 text-purple-500 hover:bg-purple-100 hover:text-purple-700"))
+                      : item.isNightBlue
+                        ? (isActive
+                            ? "bg-slate-900 border-slate-950 text-white"
+                            : (isMobileMenuOpen
+                                ? "bg-slate-100 border-slate-200 text-slate-800"
+                                : "bg-slate-50/50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900"))
+                        : isActive
+                          ? (item.id === "dashboard"
+                              ? "bg-[#ff5d00] border-[#ff5d00] text-white"
+                              : item.id === "overview"
+                                ? "bg-cyan-600 border-cyan-700 text-white"
+                                : item.id === "leads"
+                                  ? "bg-blue-600 border-blue-700 text-white"
+                                  : item.id === "clients"
+                                    ? "bg-emerald-600 border-emerald-700 text-white"
+                                    : item.id === "email"
+                                      ? "bg-pink-600 border-pink-700 text-white"
+                                      : item.id === "tasks"
+                                        ? "bg-violet-600 border-violet-700 text-white"
+                                        : "bg-amber-700 border-amber-800 text-white"
+                            )
+                          : (isMobileMenuOpen 
+                              ? "bg-transparent border-transparent text-slate-500 hover:text-slate-800" 
+                              : "bg-slate-50/50 border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                            )
                   )}
                   title={item.label}
                 >

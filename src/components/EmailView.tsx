@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { 
   Send, Trash2, Search, Mail, Plus, X, Loader2, 
   Reply, CheckCircle2, CircleAlert, Clock, Phone, FileText, Calendar, TrendingUp,
-  CornerDownLeft, CornerLeftDown
+  CornerDownLeft, CornerLeftDown, ChevronDown, ChevronUp
 } from "lucide-react";
 import type { Lead } from "../types";
 
@@ -51,6 +51,11 @@ export const EmailView: React.FC<EmailViewProps> = ({
   const [selectedEmail, setSelectedEmail] = useState<any | null>(null);
   const [threadBodies, setThreadBodies] = useState<Record<string, any>>({});
   
+  // Thread mode configurations
+  const [isThreadedMode, setIsThreadedMode] = useState(false);
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  const [expandedEmailUids, setExpandedEmailUids] = useState<Record<string, boolean>>({});
+
   // Slideout timeline state
   const [slideoutLead, setSlideoutLead] = useState<any | null>(null);
   const [isTimelineSlideoutOpen, setIsTimelineSlideoutOpen] = useState(false);
@@ -226,7 +231,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
     }
   };
 
-  // Expand Thread Message
+  // Expand Single message details
   const expandThreadMessage = async (email: any) => {
     if (threadBodies[email.uid]) {
       setSelectedEmail(email);
@@ -324,10 +329,96 @@ export const EmailView: React.FC<EmailViewProps> = ({
     }
   };
 
+  // Group emails to Conversation flows (threads)
+  const threadedEmails = useMemo(() => {
+    const query = searchQuery.toLowerCase();
+    
+    // First, filter individual emails by search query
+    const filtered = emails.filter(e => {
+      if (!query) return true;
+      return (
+        (e.subject || "").toLowerCase().includes(query) ||
+        (e.from.name || "").toLowerCase().includes(query) ||
+        (e.from.address || "").toLowerCase().includes(query) ||
+        (e.to?.name || "").toLowerCase().includes(query) ||
+        (e.to?.address || "").toLowerCase().includes(query)
+      );
+    });
 
+    const threadsMap: Record<string, any[]> = {};
+    
+    filtered.forEach(email => {
+      // Strips Re:, Fwd:, etc.
+      let normSubject = (email.subject || "")
+        .replace(/^(re|fwd|fw|odp|odpověď|rehg|ref|odpověd|odp):\s*/i, "")
+        .trim();
+      if (!normSubject) {
+        normSubject = "(No Subject)";
+      }
+      
+      if (!threadsMap[normSubject]) {
+        threadsMap[normSubject] = [];
+      }
+      threadsMap[normSubject].push(email);
+    });
+    
+    const threadsList = Object.keys(threadsMap).map(subject => {
+      const list = threadsMap[subject];
+      // Sort oldest to newest
+      list.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      
+      const latestEmail = list[list.length - 1];
+      const hasUnseen = list.some(e => !e.seen);
+      
+      return {
+        id: subject,
+        subject: subject,
+        latestEmail,
+        emails: list,
+        seen: !hasUnseen,
+        date: latestEmail.date
+      };
+    });
+    
+    // Sort threads by latest message date DESC
+    threadsList.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    
+    return threadsList;
+  }, [emails, searchQuery]);
 
-  // Filtered emails
-  const filteredEmails = useMemo(() => {
+  const activeThread = useMemo(() => {
+    if (!isThreadedMode || !selectedThreadId) return null;
+    return threadedEmails.find(t => t.id === selectedThreadId) || null;
+  }, [isThreadedMode, selectedThreadId, threadedEmails]);
+
+  // Toggle expand/collapse inside conversation flow and load detail inline lazily
+  const toggleEmailExpand = async (email: any) => {
+    const isExpanded = !expandedEmailUids[email.uid];
+    setExpandedEmailUids(prev => ({ ...prev, [email.uid]: isExpanded }));
+    
+    if (isExpanded && !threadBodies[email.uid]) {
+      setIsLoadingDetail(true);
+      const folderToUse = email.isSent ? "Sent" : activeFolder;
+      try {
+        const res = await fetch(`/api/mail_broker.php?action=get_email_detail&uid=${email.uid}&folder=${encodeURIComponent(folderToUse)}`, {
+          headers: { "X-User-Email": currentUser.email }
+        });
+        const data = await res.json();
+        if (data.success) {
+          setThreadBodies(prev => ({ ...prev, [email.uid]: data.email }));
+          // Mark as seen locally
+          setEmails(prev => prev.map(e => e.uid === email.uid ? { ...e, seen: true } : e));
+        }
+      } catch (err) {
+        console.warn("Failed to retrieve threaded email detail", err);
+      } finally {
+        setIsLoadingDetail(false);
+      }
+    }
+  };
+
+  // Filtered individual emails for unthreaded mode
+  const filteredIndividualEmails = useMemo(() => {
     return emails.filter(e => {
       const query = searchQuery.toLowerCase();
       if (!query) return true;
@@ -340,7 +431,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
   }, [emails, searchQuery]);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 select-none h-[calc(100vh-140px)] items-start overflow-hidden">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 select-none h-[calc(100vh-140px)] items-start overflow-hidden animate-slide-up">
       {/* Notifications banner */}
       {notification && (
         <div className={`fixed bottom-4 right-4 z-50 px-5 py-3.5 rounded-2xl flex items-center gap-3 border shadow-2xl ${
@@ -374,19 +465,41 @@ export const EmailView: React.FC<EmailViewProps> = ({
               <Plus size={14} /> New
             </button>
           </div>
-          <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200/50 text-[10px] font-black uppercase tracking-wider w-full">
-            <button
-              onClick={() => setFilter("all")}
-              className={`flex-1 py-1.5 rounded-lg transition-all ${filter === "all" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
-            >
-              All Threads
-            </button>
-            <button
-              onClick={() => setFilter("unread")}
-              className={`flex-1 py-1.5 rounded-lg transition-all ${filter === "unread" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
-            >
-              Unread
-            </button>
+          
+          <div className="flex items-center justify-between bg-slate-55 p-1 rounded-2xl border border-slate-200/40">
+            <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200/50 text-[10px] font-black uppercase tracking-wider flex-1 mr-3">
+              <button
+                onClick={() => setFilter("all")}
+                className={`flex-1 py-1.5 rounded-lg transition-all ${filter === "all" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+              >
+                All Threads
+              </button>
+              <button
+                onClick={() => setFilter("unread")}
+                className={`flex-1 py-1.5 rounded-lg transition-all ${filter === "unread" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+              >
+                Unread
+              </button>
+            </div>
+            
+            {/* Threaded Toggle Switch */}
+            <div className="flex items-center gap-2 select-none border-l border-slate-200 pl-3.5">
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Flow Mode</span>
+              <label className="relative inline-flex items-center cursor-pointer select-none">
+                <input 
+                  type="checkbox" 
+                  checked={isThreadedMode} 
+                  onChange={(e) => {
+                    setIsThreadedMode(e.target.checked);
+                    setSelectedEmail(null);
+                    setSelectedThreadId(null);
+                    setExpandedEmailUids({});
+                  }} 
+                  className="sr-only peer" 
+                />
+                <div className="w-8 h-4.5 bg-slate-250 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-pink-600"></div>
+              </label>
+            </div>
           </div>
         </div>
 
@@ -397,179 +510,417 @@ export const EmailView: React.FC<EmailViewProps> = ({
               <Loader2 className="animate-spin text-pink-500" size={24} />
               <span className="text-[10px] font-bold uppercase tracking-wider">Syncing Envelopes...</span>
             </div>
-          ) : filteredEmails.length === 0 ? (
-            <div className="text-center py-12 text-slate-400 text-xs font-semibold">
-              No conversations found.
-            </div>
+          ) : isThreadedMode ? (
+            /* Threaded List View */
+            threadedEmails.length === 0 ? (
+              <div className="text-center py-12 text-slate-400 text-xs font-semibold">
+                No threads found.
+              </div>
+            ) : (
+              threadedEmails.map(thread => {
+                const isSelected = selectedThreadId === thread.id;
+                const latest = thread.latestEmail;
+                const matchedClient = leads.find(l => l.email && l.email.toLowerCase() === latest.from.address.toLowerCase());
+                
+                return (
+                  <div
+                    key={thread.id}
+                    onClick={() => {
+                      setSelectedThreadId(thread.id);
+                      setExpandedEmailUids({ [latest.uid]: true });
+                      // Load details for latest message
+                      toggleEmailExpand(latest);
+                    }}
+                    className={`p-3.5 rounded-2xl border text-left cursor-pointer transition-all flex flex-col gap-1.5 ${
+                      isSelected 
+                        ? "border-pink-300 bg-pink-50/20 shadow-sm" 
+                        : !thread.seen 
+                          ? "border-slate-200 bg-white font-black shadow-sm" 
+                          : "border-slate-100 bg-white/40 text-slate-600"
+                    }`}
+                  >
+                    <div className="flex justify-between items-start gap-1">
+                      <span className={`text-[12px] truncate max-w-[170px] ${!thread.seen ? "text-slate-900 font-extrabold" : "text-slate-800"}`}>
+                        {latest.isSent ? (
+                          <><span className="text-slate-400 font-bold">To:</span> {latest.to?.name || latest.to?.address || "Unknown"}</>
+                        ) : (
+                          <><span className="text-slate-400 font-bold">From:</span> {latest.from.name || latest.from.address}</>
+                        )}
+                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-[8.5px] font-extrabold bg-pink-100/80 text-pink-700 px-1.5 py-0.5 rounded-md leading-none">
+                          {thread.emails.length} msg
+                        </span>
+                        <span className="text-[8.5px] text-slate-400 font-semibold">
+                          {new Date(thread.date).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <GeometricIcon emailString={latest.isSent ? (latest.to?.address || "") : latest.from.address} />
+                      <span className={`text-[11px] truncate max-w-[240px] ${!thread.seen ? "text-slate-900 font-bold" : "text-slate-700"}`}>
+                        {thread.subject}
+                      </span>
+                    </div>
+
+                    {matchedClient && (
+                      <span className="w-fit text-[8px] font-black uppercase tracking-widest text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md border border-emerald-250">
+                        🤝 CRM Match: {matchedClient.name}
+                      </span>
+                    )}
+                  </div>
+                );
+              })
+            )
           ) : (
-            filteredEmails.map(email => {
-              const isSelected = selectedEmail?.uid === email.uid;
-              // Check if sender matches an active CRM client
-              const matchedClient = leads.find(l => l.email && l.email.toLowerCase() === email.from.address.toLowerCase());
-              
-              return (
-                <div
-                  key={email.uid}
-                  onClick={() => expandThreadMessage(email)}
-                  className={`p-3 rounded-2xl border text-left cursor-pointer transition-all flex flex-col gap-1.5 ${
-                    isSelected 
-                      ? "border-pink-300 bg-pink-50/20 shadow-sm" 
-                      : !email.seen 
-                        ? "border-slate-200 bg-white/70 font-black shadow-xs" 
-                        : "border-slate-100 bg-white/30 text-slate-600"
-                  }`}
-                >
-                  <div className="flex justify-between items-start gap-1">
-                    <span className={`text-[12px] truncate max-w-[200px] ${!email.seen ? "text-slate-900 font-extrabold" : "text-slate-800"}`}>
-                      {email.isSent ? (
-                        <>
-                          <span className="text-slate-400 font-bold">To:</span>{" "}
-                          {email.to?.name || email.to?.address || "Unknown"}
-                        </>
-                      ) : (
-                        <>
-                          <span className="text-slate-400 font-bold">From:</span>{" "}
-                          {email.from.name || email.from.address}
-                        </>
-                      )}
-                    </span>
-                    <span className="text-[9px] text-slate-400 font-medium shrink-0">
-                      {new Date(email.date).toLocaleDateString()}
-                    </span>
-                  </div>
+            /* Unthreaded List View */
+            filteredIndividualEmails.length === 0 ? (
+              <div className="text-center py-12 text-slate-400 text-xs font-semibold">
+                No conversations found.
+              </div>
+            ) : (
+              filteredIndividualEmails.map(email => {
+                const isSelected = selectedEmail?.uid === email.uid;
+                const matchedClient = leads.find(l => l.email && l.email.toLowerCase() === email.from.address.toLowerCase());
+                
+                return (
+                  <div
+                    key={email.uid}
+                    onClick={() => expandThreadMessage(email)}
+                    className={`p-3 rounded-2xl border text-left cursor-pointer transition-all flex flex-col gap-1.5 ${
+                      isSelected 
+                        ? "border-pink-300 bg-pink-50/20 shadow-sm" 
+                        : !email.seen 
+                          ? "border-slate-200 bg-white font-black shadow-xs" 
+                          : "border-slate-100 bg-white/30 text-slate-600"
+                    }`}
+                  >
+                    <div className="flex justify-between items-start gap-1">
+                      <span className={`text-[12px] truncate max-w-[200px] ${!email.seen ? "text-slate-900 font-extrabold" : "text-slate-800"}`}>
+                        {email.isSent ? (
+                          <><span className="text-slate-400 font-bold">To:</span> {email.to?.name || email.to?.address || "Unknown"}</>
+                        ) : (
+                          <><span className="text-slate-400 font-bold">From:</span> {email.from.name || email.from.address}</>
+                        )}
+                      </span>
+                      <span className="text-[9px] text-slate-400 font-medium shrink-0">
+                        {new Date(email.date).toLocaleDateString()}
+                      </span>
+                    </div>
 
-                  <div className="flex items-center gap-1.5">
-                    <GeometricIcon emailString={email.isSent ? (email.to?.address || "") : email.from.address} />
-                    <span className={`text-[11px] truncate max-w-[260px] ${!email.seen ? "text-slate-900 font-bold" : "text-slate-700"}`}>
-                      {email.isSent ? "📤 " : "📥 "}{email.subject || "(No Subject)"}
-                    </span>
-                  </div>
+                    <div className="flex items-center gap-1.5">
+                      <GeometricIcon emailString={email.isSent ? (email.to?.address || "") : email.from.address} />
+                      <span className={`text-[11px] truncate max-w-[260px] ${!email.seen ? "text-slate-900 font-bold" : "text-slate-700"}`}>
+                        {email.isSent ? "📤 " : "📥 "}{email.subject || "(No Subject)"}
+                      </span>
+                    </div>
 
-                  {matchedClient && (
-                    <span className="w-fit text-[8px] font-black uppercase tracking-widest text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md border border-emerald-250">
-                      🤝 CRM Match: {matchedClient.name}
-                    </span>
-                  )}
-                </div>
-              );
-            })
+                    {matchedClient && (
+                      <span className="w-fit text-[8px] font-black uppercase tracking-widest text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md border border-emerald-250">
+                        🤝 CRM Match: {matchedClient.name}
+                      </span>
+                    )}
+                  </div>
+                );
+              })
+            )
           )}
         </div>
       </div>
 
-      {/* COLUMN 2: Mail Thread Detail Pane */}
+      {/* COLUMN 2: Mail Detail / Conversation flow Detail Pane */}
       <div className="lg:col-span-7 glass-panel p-4 rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-full overflow-hidden">
-        {isLoadingDetail ? (
-          <div className="flex flex-col items-center justify-center h-full gap-2 text-slate-400">
-            <Loader2 className="animate-spin text-pink-500" size={32} />
-            <span className="text-[10px] font-bold uppercase tracking-wider">Decoding Message...</span>
-          </div>
-        ) : selectedEmail ? (() => {
-          const bodyObj = threadBodies[selectedEmail.uid];
-          
-          return (
-            <div className="h-full flex flex-col justify-between">
-              {/* Header */}
-              <div className="border-b border-slate-150 pb-3 flex items-center justify-between gap-3 shrink-0">
-                <div className="text-left">
-                  <h3 className="text-sm font-heading font-black text-slate-900 uppercase tracking-tight">{selectedEmail.subject || "(No Subject)"}</h3>
-                  <p className="text-[10px] text-slate-500 font-bold mt-1">
-                    From: <strong className="text-slate-800">{selectedEmail.from.name || selectedEmail.from.address}</strong> &lt;{selectedEmail.from.address}&gt;
-                  </p>
+        {isThreadedMode ? (
+          /* Render Thread Flow */
+          activeThread ? (
+            <div className="h-full flex flex-col justify-between overflow-hidden">
+              {/* Thread Header */}
+              <div className="border-b border-slate-150 pb-3 flex items-center justify-between shrink-0 text-left">
+                <div>
+                  <h3 className="text-sm font-heading font-black text-slate-900 uppercase tracking-tight">{activeThread.subject}</h3>
+                  <span className="text-[9px] text-slate-400 font-bold tracking-wider uppercase block mt-1">
+                    Thread Flow ({activeThread.emails.length} correspondence units)
+                  </span>
                 </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => openNewComposer(selectedEmail.from.address, `Re: ${selectedEmail.subject}`)}
-                    className="p-2 hover:bg-slate-100 text-slate-655 rounded-xl border border-slate-250 hover:text-slate-900 cursor-pointer"
-                    title="Reply"
-                  >
-                    <Reply size={15} />
-                  </button>
-                  <button
-                    onClick={() => handleDeleteEmail(selectedEmail.uid)}
-                    className="p-2 hover:bg-rose-50 text-rose-655 rounded-xl border border-rose-250 hover:text-rose-700 cursor-pointer"
-                    title="Delete Message"
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </div>
+                
+                {/* Global reply button to latest sender */}
+                <button
+                  onClick={() => openNewComposer(activeThread.latestEmail.from.address, `Re: ${activeThread.subject}`)}
+                  className="px-3.5 py-1.5 rounded-xl border border-pink-200 bg-pink-50 text-pink-700 hover:bg-pink-100 hover:text-pink-800 text-[10px] font-black uppercase flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
+                >
+                  <Reply size={13} />
+                  Reply Thread
+                </button>
               </div>
 
-              {/* CRM Match Card */}
-              {matchedClient && (
-                <div className="bg-emerald-50 border border-emerald-250 p-3.5 rounded-2xl flex items-center justify-between gap-3 text-left mt-3 shrink-0 animate-fade-in shadow-sm">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl">🤝</span>
-                    <div>
-                      <h4 className="text-[10px] font-black text-emerald-950 uppercase tracking-tight">CRM Client / Lead</h4>
-                      <p className="text-[11px] text-emerald-850 font-extrabold mt-0.5">
-                        Name: <span className="text-emerald-950 font-black">{matchedClient.name}</span> ({matchedClient.email})
-                      </p>
+              {/* CRM Match Info card */}
+              {(() => {
+                const client = leads.find(l => l.email && l.email.toLowerCase() === activeThread.latestEmail.from.address.toLowerCase());
+                if (!client) return null;
+                return (
+                  <div className="bg-emerald-50 border border-emerald-250 p-3 rounded-2xl flex items-center justify-between gap-3 text-left mt-3 shrink-0 animate-fade-in shadow-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">🤝</span>
+                      <div>
+                        <h4 className="text-[9px] font-black text-emerald-950 uppercase tracking-tight">CRM Client / Lead</h4>
+                        <p className="text-[10.5px] text-emerald-850 font-extrabold mt-0.5">
+                          Name: <span className="text-emerald-950 font-black">{client.name}</span>
+                        </p>
+                      </div>
                     </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          setSlideoutLead(client);
+                          setIsTimelineSlideoutOpen(true);
+                        }}
+                        className="px-2.5 py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300 rounded-xl text-[9px] font-black uppercase tracking-wider cursor-pointer"
+                      >
+                        Timeline
+                      </button>
+                      <button
+                        onClick={() => window.location.hash = `client-${encodeURIComponent(client.name)}`}
+                        className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[9px] font-black uppercase tracking-wider cursor-pointer"
+                      >
+                        Profile
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Message cards chronological flow */}
+              <div className="flex-1 overflow-y-auto space-y-3 py-4 pr-1 scrollbar-thin">
+                {activeThread.emails.map((email) => {
+                  const isExpanded = !!expandedEmailUids[email.uid];
+                  const bodyObj = threadBodies[email.uid];
+                  const isOut = email.isSent;
+
+                  return (
+                    <div 
+                      key={email.uid} 
+                      className={`border rounded-2xl overflow-hidden shadow-sm transition-all duration-200 text-left ${
+                        isExpanded ? "border-slate-205 bg-slate-50/10" : "border-slate-150 hover:bg-slate-50/20 bg-white"
+                      }`}
+                    >
+                      {/* Email Header line */}
+                      <div 
+                        onClick={() => toggleEmailExpand(email)}
+                        className={`p-3.5 flex items-center justify-between gap-3 cursor-pointer select-none ${
+                          isExpanded ? "bg-slate-50 border-b border-slate-200/80" : "bg-transparent"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className={`h-6 w-6 rounded-lg flex items-center justify-center shrink-0 text-xs font-black ${
+                            isOut ? "bg-pink-100 text-pink-700" : "bg-indigo-100 text-indigo-700"
+                          }`}>
+                            {isOut ? "📤" : "📥"}
+                          </span>
+                          <div className="min-w-0">
+                            <span className="text-[11px] font-extrabold text-slate-800 truncate block">
+                              {isOut ? `To: ${email.to?.name || email.to?.address}` : `From: ${email.from.name || email.from.address}`}
+                            </span>
+                            <span className="text-[9px] text-slate-400 block mt-0.5">
+                              {email.subject || "(No Subject)"}
+                            </span>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-3.5 shrink-0">
+                          <span className="text-[9px] text-slate-400 font-bold">
+                            {new Date(email.date).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                          </span>
+                          
+                          {/* Mini Expand Icon */}
+                          <div className="text-slate-400 hover:text-slate-700">
+                            {isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Email Card Body content */}
+                      {isExpanded && (
+                        <div className="p-4 bg-white min-h-[150px]">
+                          {isLoadingDetail && !bodyObj ? (
+                            <div className="flex items-center justify-center py-6 gap-2 text-slate-400">
+                              <Loader2 className="animate-spin text-pink-500" size={16} />
+                              <span className="text-[9px] font-bold uppercase tracking-wider">Decoding part...</span>
+                            </div>
+                          ) : bodyObj ? (
+                            <iframe 
+                              className="w-full min-h-[220px] max-h-[400px] border-0 bg-transparent"
+                              title={`Thread body ${email.uid}`}
+                              srcDoc={`
+                                <html>
+                                  <head>
+                                    <style>
+                                      body {
+                                        font-family: system-ui, -apple-system, sans-serif;
+                                        color: #1e293b;
+                                        line-height: 1.5;
+                                        font-size: 12.5px;
+                                        margin: 0;
+                                        padding: 4px;
+                                      }
+                                      a { color: #db2777; text-decoration: none; }
+                                      blockquote { border-left: 2px solid #cbd5e1; padding-left: 10px; color: #64748b; margin: 8px 0; }
+                                    </style>
+                                  </head>
+                                  <body>
+                                    ${bodyObj.html || bodyObj.text || ''}
+                                  </body>
+                                </html>
+                              `}
+                            />
+                          ) : (
+                            <div className="text-center py-6 text-[10px] font-bold text-slate-400 uppercase">
+                              Content not found.
+                            </div>
+                          )}
+                          
+                          {/* Footer Action items inside card */}
+                          <div className="mt-3.5 pt-3 border-t border-slate-100 flex justify-end gap-2.5">
+                            <button
+                              onClick={() => openNewComposer(email.from.address, `Re: ${email.subject}`)}
+                              className="px-3 py-1.5 border border-slate-200 bg-white hover:bg-slate-50 text-[9px] font-bold text-slate-600 hover:text-slate-800 rounded-xl flex items-center gap-1 transition-all cursor-pointer"
+                            >
+                              <Reply size={11} /> Reply
+                            </button>
+                            <button
+                              onClick={() => handleDeleteEmail(email.uid)}
+                              className="px-3 py-1.5 border border-rose-200 bg-white hover:bg-rose-50 text-[9px] font-bold text-rose-600 hover:text-rose-800 rounded-xl flex items-center gap-1 transition-all cursor-pointer"
+                            >
+                              <Trash2 size={11} /> Delete
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2">
+              <Mail size={40} className="stroke-[1.5] text-slate-350 animate-pulse" />
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Select a threaded conversation flow</span>
+            </div>
+          )
+        ) : (
+          /* Render Traditional Unthreaded Details */
+          isLoadingDetail ? (
+            <div className="flex flex-col items-center justify-center h-full gap-2 text-slate-400">
+              <Loader2 className="animate-spin text-pink-500" size={32} />
+              <span className="text-[10px] font-bold uppercase tracking-wider">Decoding Message...</span>
+            </div>
+          ) : selectedEmail ? (() => {
+            const bodyObj = threadBodies[selectedEmail.uid];
+            
+            return (
+              <div className="h-full flex flex-col justify-between">
+                {/* Header */}
+                <div className="border-b border-slate-150 pb-3 flex items-center justify-between gap-3 shrink-0">
+                  <div className="text-left">
+                    <h3 className="text-sm font-heading font-black text-slate-900 uppercase tracking-tight">{selectedEmail.subject || "(No Subject)"}</h3>
+                    <p className="text-[10px] text-slate-500 font-bold mt-1">
+                      From: <strong className="text-slate-800">{selectedEmail.from.name || selectedEmail.from.address}</strong> &lt;{selectedEmail.from.address}&gt;
+                    </p>
                   </div>
                   <div className="flex gap-2">
                     <button
-                      onClick={() => {
-                        setSlideoutLead(matchedClient);
-                        setIsTimelineSlideoutOpen(true);
-                      }}
-                      className="px-3 py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-xs cursor-pointer"
+                      onClick={() => openNewComposer(selectedEmail.from.address, `Re: ${selectedEmail.subject}`)}
+                      className="p-2 hover:bg-slate-100 text-slate-655 rounded-xl border border-slate-250 hover:text-slate-900 cursor-pointer"
+                      title="Reply"
                     >
-                      View Timeline
+                      <Reply size={15} />
                     </button>
                     <button
-                      onClick={() => {
-                        window.location.hash = `client-${encodeURIComponent(matchedClient.name)}`;
-                      }}
-                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-sm cursor-pointer"
+                      onClick={() => handleDeleteEmail(selectedEmail.uid)}
+                      className="p-2 hover:bg-rose-50 text-rose-655 rounded-xl border border-rose-250 hover:text-rose-700 cursor-pointer"
+                      title="Delete Message"
                     >
-                      Open Client
+                      <Trash2 size={15} />
                     </button>
                   </div>
                 </div>
-              )}
 
-              {/* parsed email iframe preview */}
-              <div className="flex-1 overflow-y-auto py-4">
-                {bodyObj ? (
-                  <iframe 
-                    className="w-full h-full border-0 rounded-2xl bg-transparent"
-                    title="Parsed mail content"
-                    srcDoc={`
-                      <html>
-                        <head>
-                          <style>
-                            body {
-                              font-family: system-ui, -apple-system, sans-serif;
-                              color: #0f172a;
-                              background-color: transparent;
-                              line-height: 1.6;
-                              font-size: 13px;
-                            }
-                            a { color: #db2777; text-decoration: none; }
-                            a:hover { text-decoration: underline; }
-                            blockquote { border-left: 3px solid #cbd5e1; padding-left: 12px; color: #64748b; margin: 12px 0; }
-                          </style>
-                        </head>
-                        <body>
-                          ${bodyObj.html || bodyObj.text || ''}
-                        </body>
-                      </html>
-                    `}
-                  />
-                ) : (
-                  <div className="text-center text-slate-400 py-12 text-xs font-semibold">
-                    No message content.
+                {/* CRM Match Card */}
+                {matchedClient && (
+                  <div className="bg-emerald-50 border border-emerald-250 p-3.5 rounded-2xl flex items-center justify-between gap-3 text-left mt-3 shrink-0 animate-fade-in shadow-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl">🤝</span>
+                      <div>
+                        <h4 className="text-[10px] font-black text-emerald-950 uppercase tracking-tight">CRM Client / Lead</h4>
+                        <p className="text-[11px] text-emerald-850 font-extrabold mt-0.5">
+                          Name: <span className="text-emerald-950 font-black">{matchedClient.name}</span> ({matchedClient.email})
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          setSlideoutLead(matchedClient);
+                          setIsTimelineSlideoutOpen(true);
+                        }}
+                        className="px-3 py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-xs cursor-pointer"
+                      >
+                        View Timeline
+                      </button>
+                      <button
+                        onClick={() => {
+                          window.location.hash = `client-${encodeURIComponent(matchedClient.name)}`;
+                        }}
+                        className="px-3 py-1.5 bg-emerald-650 hover:bg-emerald-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-sm cursor-pointer"
+                      >
+                        Open Client
+                      </button>
+                    </div>
                   </div>
                 )}
+
+                {/* parsed email iframe preview */}
+                <div className="flex-1 overflow-y-auto py-4">
+                  {bodyObj ? (
+                    <iframe 
+                      className="w-full h-full border-0 rounded-2xl bg-transparent"
+                      title="Parsed mail content"
+                      srcDoc={`
+                        <html>
+                          <head>
+                            <style>
+                              body {
+                                font-family: system-ui, -apple-system, sans-serif;
+                                color: #0f172a;
+                                background-color: transparent;
+                                line-height: 1.6;
+                                font-size: 13px;
+                              }
+                              a { color: #db2777; text-decoration: none; }
+                              a:hover { text-decoration: underline; }
+                              blockquote { border-left: 3px solid #cbd5e1; padding-left: 12px; color: #64748b; margin: 12px 0; }
+                            </style>
+                          </head>
+                          <body>
+                            ${bodyObj.html || bodyObj.text || ''}
+                          </body>
+                        </html>
+                      `}
+                    />
+                  ) : (
+                    <div className="text-center text-slate-400 py-12 text-xs font-semibold">
+                      No message content.
+                    </div>
+                  )}
+                </div>
               </div>
+            );
+          })() : (
+            <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2">
+              <Mail size={40} className="stroke-[1.5] text-slate-300 animate-pulse" />
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Select a conversation thread</span>
             </div>
-          );
-        })() : (
-          <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2">
-            <Mail size={40} className="stroke-[1.5] text-slate-300 animate-pulse" />
-            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Select a conversation thread</span>
-          </div>
+          )
         )}
       </div>
 
@@ -626,6 +977,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
           </div>
         </div>
       ))}
+
       {/* TIMELINE SLIDEOUT OVERLAY */}
       {(isTimelineSlideoutOpen || isClosingTimeline) && slideoutLead && (
         <div className={`fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex justify-end ${isClosingTimeline ? "animate-fade-out" : "animate-fade-in"}`}>
@@ -723,11 +1075,11 @@ export const EmailView: React.FC<EmailViewProps> = ({
                             const showGradient = lines.length > 5 || event.content.length > 250;
                             return (
                               <div className={`relative ${showGradient ? "max-h-[90px] overflow-hidden" : ""}`}>
-                                <p className="text-[10.5px] text-slate-650 leading-[1.35] font-bold select-text whitespace-pre-wrap">
+                                <p className="text-[10.5px] text-slate-655 leading-[1.35] font-bold select-text whitespace-pre-wrap">
                                   {event.content}
                                 </p>
                                 {showGradient && (
-                                  <div className="absolute bottom-0 left-0 right-0 h-[35px] bg-gradient-to-t from-slate-50 via-slate-50/70 to-transparent pointer-events-none" />
+                                  <div className="absolute bottom-0 left-0 right-0 h-[35px] bg-gradient-to-t from-slate-55 via-slate-55/70 to-transparent pointer-events-none" />
                                 )}
                               </div>
                             );

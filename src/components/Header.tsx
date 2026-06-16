@@ -1,6 +1,6 @@
 import React from "react";
 import { createPortal } from "react-dom";
-import { Search, User } from "lucide-react";
+import { User, PencilLine, Mic, Plus, List } from "lucide-react";
 import type { UserProfile } from "../types";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
@@ -16,6 +16,7 @@ interface HeaderProps {
   setSystemLanguage: (lang: Language) => void;
   isDemoMode?: boolean;
   onOpenPersonalSettings: () => void;
+  onNavigateMeetings?: (action: "list" | "new") => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({ 
@@ -28,11 +29,14 @@ export const Header: React.FC<HeaderProps> = ({
   systemLanguage,
   setSystemLanguage,
   isDemoMode,
-  onOpenPersonalSettings
+  onOpenPersonalSettings,
+  onNavigateMeetings
 }) => {
   const [isProfileOpen, setIsProfileOpen] = React.useState(false);
   const [isClosing, setIsClosing] = React.useState(false);
+  const [isMeetingsOpen, setIsMeetingsOpen] = React.useState(false);
   const dropdownRef = React.useRef<HTMLDivElement>(null);
+  const meetingsDropdownRef = React.useRef<HTMLDivElement>(null);
 
   const handleClose = () => {
     setIsClosing(true);
@@ -46,6 +50,9 @@ export const Header: React.FC<HeaderProps> = ({
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsProfileOpen(false);
+      }
+      if (meetingsDropdownRef.current && !meetingsDropdownRef.current.contains(event.target as Node)) {
+        setIsMeetingsOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -104,14 +111,82 @@ export const Header: React.FC<HeaderProps> = ({
           </a>
         )}
 
-        {/* Search Bar Simulator */}
-        <div className="relative w-64 hidden md:block">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-          <input
-            type="text"
-            placeholder={getTranslation(systemLanguage, "header.search_placeholder")}
-            className="w-full pl-9 pr-4 py-1.5 rounded-xl bg-white/80 border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 transition-all placeholder:text-slate-400"
-          />
+
+
+        {/* Meeting Room Popover Utilities */}
+        <div className="relative" ref={meetingsDropdownRef}>
+          <button
+            onClick={() => setIsMeetingsOpen(!isMeetingsOpen)}
+            className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-colors shadow-sm cursor-pointer ${
+              isMeetingsOpen 
+                ? "bg-[#0b1329] border-[#0b1329] text-white" 
+                : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-350 hover:bg-slate-50"
+            }`}
+            aria-label="Meeting Room Menu"
+            title={systemLanguage === "sk" ? "Zasadačka a stretnutia" : systemLanguage === "hu" ? "Tárgyaló és megbeszélések" : "Meetings & Notes"}
+          >
+            <PencilLine className="h-5 w-5" />
+          </button>
+
+          {/* Popover Dropdown Panel */}
+          {isMeetingsOpen && (
+            <div className="absolute right-0 mt-2.5 w-60 bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-2xl rounded-2xl p-2.5 z-50 flex flex-col gap-1 select-none animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="px-3 py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 mb-1">
+                {systemLanguage === "sk" ? "Rýchle akcie zasadačky" : systemLanguage === "hu" ? "Gyors tárgyaló műveletek" : "Meeting Room Quick Actions"}
+              </div>
+
+              {/* Record Meeting */}
+              <button
+                onClick={() => {
+                  setIsMeetingsOpen(false);
+                  if (typeof (window as any).showToast === "function") {
+                    (window as any).showToast(
+                      systemLanguage === "sk" 
+                        ? "Nahrávanie stretnutia: Audio nahrávanie bude k dispozícii v ďalšej aktualizácii." 
+                        : systemLanguage === "hu" 
+                          ? "Megbeszélés rögzítése: A hangfelvétel a következő frissítésben érhető el." 
+                          : "Record Meeting: Audio recording feature will be implemented in the next update."
+                    );
+                  }
+                }}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-all cursor-pointer group"
+              >
+                <Mic className="h-4 w-4 text-slate-400 group-hover:text-slate-500" />
+                <div className="flex flex-col">
+                  <span>{systemLanguage === "sk" ? "Nahrať stretnutie" : systemLanguage === "hu" ? "Megbeszélés rögzítése" : "Record Meeting"}</span>
+                  <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">{systemLanguage === "sk" ? "Pripravuje sa" : systemLanguage === "hu" ? "Fejlesztés alatt" : "Coming soon"}</span>
+                </div>
+              </button>
+
+              {/* New Meeting */}
+              <button
+                onClick={() => {
+                  setIsMeetingsOpen(false);
+                  if (onNavigateMeetings) {
+                    onNavigateMeetings("new");
+                  }
+                }}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-[#0b1329] hover:bg-slate-100/60 transition-all cursor-pointer group"
+              >
+                <Plus className="h-4 w-4 text-[#0b1329]" />
+                <span>{systemLanguage === "sk" ? "Nové stretnutie" : systemLanguage === "hu" ? "Új megbeszélés" : "New Meeting"}</span>
+              </button>
+
+              {/* Show Meetings */}
+              <button
+                onClick={() => {
+                  setIsMeetingsOpen(false);
+                  if (onNavigateMeetings) {
+                    onNavigateMeetings("list");
+                  }
+                }}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-slate-700 hover:text-[#0b1329] hover:bg-slate-100/60 transition-all cursor-pointer group"
+              >
+                <List className="h-4 w-4 text-slate-400 group-hover:text-[#0b1329]" />
+                <span>{systemLanguage === "sk" ? "Zobraziť stretnutia" : systemLanguage === "hu" ? "Megbeszélések mutatása" : "Show Meetings"}</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* User Account Trigger Button */}

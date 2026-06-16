@@ -72,7 +72,8 @@ const CalendarPane: React.FC<{
   selectedStart: Date | null;
   selectedEnd: Date | null;
   onSelect: (date: Date) => void;
-}> = ({ title, year, month, selectedStart, selectedEnd, onSelect }) => {
+  systemLanguage: Language;
+}> = ({ title, year, month, selectedStart, selectedEnd, onSelect, systemLanguage }) => {
   // Get list of days in the month
   const daysInMonth = useMemo(() => {
     const date = new Date(year, month, 1);
@@ -116,6 +117,12 @@ const CalendarPane: React.FC<{
     });
   }, [year, month, paddingDays]);
 
+  const getDayNames = () => {
+    if (systemLanguage === "sk") return ["Po", "Ut", "St", "Št", "Pi", "So", "Ne"];
+    if (systemLanguage === "hu") return ["H", "K", "Sze", "Cs", "P", "Szo", "V"];
+    return ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  };
+
   return (
     <div className="flex-1 flex flex-col space-y-2 select-none">
       <div className="flex justify-between items-center px-1">
@@ -124,8 +131,8 @@ const CalendarPane: React.FC<{
       
       <div className="grid grid-cols-8 gap-y-1 text-center items-center">
         {/* Week column header */}
-        <span className="text-[8px] font-black text-slate-350 uppercase tracking-wider">Week</span>
-        {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(d => (
+        <span className="text-[8px] font-black text-slate-350 uppercase tracking-wider">{getTranslation(systemLanguage, "dashboard.picker.week_label")}</span>
+        {getDayNames().map(d => (
           <span key={d} className="text-[8px] font-black text-slate-400 uppercase tracking-wider">{d}</span>
         ))}
 
@@ -151,10 +158,10 @@ const CalendarPane: React.FC<{
                 const inRange = selectedStart && selectedEnd && dayDate > selectedStart && dayDate < selectedEnd;
 
                 const realToday = new Date();
-                const mockToday = new Date(2026, 5, 4);
                 const isToday = dayDate && (
-                  (dayDate.getDate() === realToday.getDate() && dayDate.getMonth() === realToday.getMonth() && dayDate.getFullYear() === realToday.getFullYear()) ||
-                  (dayDate.getDate() === mockToday.getDate() && dayDate.getMonth() === mockToday.getMonth() && dayDate.getFullYear() === mockToday.getFullYear())
+                  dayDate.getDate() === realToday.getDate() && 
+                  dayDate.getMonth() === realToday.getMonth() && 
+                  dayDate.getFullYear() === realToday.getFullYear()
                 );
 
                 let dayClass = "text-[10px] font-black cursor-pointer hover:bg-purple-50 transition-colors h-7 w-7 rounded-full flex items-center justify-center relative ";
@@ -208,6 +215,23 @@ interface InspectableSparkline {
   valueSuffix?: string;
   valuePrefix?: string;
 }
+
+const getPresetTranslationKey = (name: string) => {
+  switch (name) {
+    case "Today": return "dashboard.picker.today";
+    case "Yesterday": return "dashboard.picker.yesterday";
+    case "This week": return "dashboard.picker.this_week";
+    case "Last week": return "dashboard.picker.last_week";
+    case "This month": return "dashboard.picker.this_month";
+    case "Last month": return "dashboard.picker.last_month";
+    case "This quarter": return "dashboard.picker.this_quarter";
+    case "Last quarter": return "dashboard.picker.last_quarter";
+    case "This year": return "dashboard.picker.this_year";
+    case "Last year": return "dashboard.picker.last_year";
+    case "All Time": return "dashboard.picker.all_time";
+    default: return "";
+  }
+};
 
 export const Dashboard: React.FC<DashboardProps> = ({
   systemName,
@@ -764,7 +788,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             className="flex items-center gap-2 px-4 py-2.5 bg-white border-2 border-slate-205 hover:border-purple-500 rounded-2xl text-[10px] font-heading font-black text-slate-800 uppercase tracking-wider transition-all shadow-sm cursor-pointer select-none"
           >
             <Compass className="h-4 w-4 text-purple-600 animate-spin-slow" />
-            {getTranslation(systemLanguage, "dashboard.analyze_interval")} <span className="text-purple-650 font-black">{filterPresetName}</span>
+            {getTranslation(systemLanguage, "dashboard.analyze_interval")} <span className="text-purple-650 font-black">{getTranslation(systemLanguage, getPresetTranslationKey(filterPresetName) as any) || filterPresetName}</span>
             {filterStartDate && (
               <span className="text-slate-400 font-bold ml-1">
                 ({filterStartDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
@@ -781,53 +805,71 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 pl-1">{getTranslation(systemLanguage, "dashboard.quick_intervals")}</span>
                 <div className="grid grid-cols-2 gap-1.5">
                   {[
-                    { name: "Today", getRange: () => { const d = new Date(2026, 5, 4); return { start: d, end: d }; } }, // mock today is June 4, 2026
-                    { name: "Yesterday", getRange: () => { const d = new Date(2026, 5, 3); return { start: d, end: d }; } },
+                    { name: "Today", getRange: () => { const d = new Date(); return { start: d, end: d }; } },
+                    { name: "Yesterday", getRange: () => { const d = new Date(); d.setDate(d.getDate() - 1); return { start: d, end: d }; } },
                     { name: "This week", getRange: () => {
-                        const start = new Date(2026, 5, 1); // Monday, June 1, 2026
-                        const end = new Date(2026, 5, 4);
+                        const start = new Date();
+                        const day = start.getDay();
+                        const diff = day === 0 ? -6 : 1 - day;
+                        start.setDate(start.getDate() + diff);
+                        const end = new Date();
                         return { start, end };
                       }
                     },
                     { name: "Last week", getRange: () => {
-                        const start = new Date(2026, 4, 25);
-                        const end = new Date(2026, 4, 31);
+                        const start = new Date();
+                        const day = start.getDay();
+                        const diff = (day === 0 ? -6 : 1 - day) - 7;
+                        start.setDate(start.getDate() + diff);
+                        const end = new Date(start);
+                        end.setDate(end.getDate() + 6);
                         return { start, end };
                       }
                     },
                     { name: "This month", getRange: () => {
-                        const start = new Date(2026, 5, 1);
-                        const end = new Date(2026, 5, 30);
+                        const start = new Date();
+                        start.setDate(1);
+                        const end = new Date();
                         return { start, end };
                       }
                     },
                     { name: "Last month", getRange: () => {
-                        const start = new Date(2026, 4, 1);
-                        const end = new Date(2026, 4, 31);
+                        const start = new Date();
+                        start.setMonth(start.getMonth() - 1);
+                        start.setDate(1);
+                        const end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
                         return { start, end };
                       }
                     },
                     { name: "This quarter", getRange: () => {
-                        const start = new Date(2026, 3, 1); // Q2 start: April 1, 2026
-                        const end = new Date(2026, 5, 30);   // Q2 end: June 30, 2026
+                        const start = new Date();
+                        const currentMonth = start.getMonth();
+                        const quarterStartMonth = Math.floor(currentMonth / 3) * 3;
+                        start.setMonth(quarterStartMonth);
+                        start.setDate(1);
+                        const end = new Date();
                         return { start, end };
                       }
                     },
                     { name: "Last quarter", getRange: () => {
-                        const start = new Date(2026, 0, 1); // Q1 start: January 1, 2026
-                        const end = new Date(2026, 2, 31);   // Q1 end: March 31, 2026
+                        const start = new Date();
+                        const currentMonth = start.getMonth();
+                        const lastQuarterStartMonth = (Math.floor(currentMonth / 3) - 1) * 3;
+                        start.setMonth(lastQuarterStartMonth);
+                        start.setDate(1);
+                        const end = new Date(start.getFullYear(), start.getMonth() + 3, 0);
                         return { start, end };
                       }
                     },
                     { name: "This year", getRange: () => {
-                        const start = new Date(2026, 0, 1);  // Jan 1, 2026
-                        const end = new Date(2026, 11, 31); // Dec 31, 2026
+                        const start = new Date(new Date().getFullYear(), 0, 1);
+                        const end = new Date();
                         return { start, end };
                       }
                     },
                     { name: "Last year", getRange: () => {
-                        const start = new Date(2025, 0, 1);  // Jan 1, 2025
-                        const end = new Date(2025, 11, 31); // Dec 31, 2025
+                        const start = new Date(new Date().getFullYear() - 1, 0, 1);
+                        const end = new Date(new Date().getFullYear() - 1, 11, 31);
                         return { start, end };
                       }
                     },
@@ -853,7 +895,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             : "text-slate-500 hover:text-slate-800 hover:bg-slate-50 border-transparent"
                         }`}
                       >
-                        {preset.name}
+                        {getTranslation(systemLanguage, getPresetTranslationKey(preset.name) as any)}
                       </button>
                     );
                   })}
@@ -864,7 +906,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <div className="flex-1 flex flex-col space-y-4">
                 <div className="flex flex-col sm:flex-row gap-6">
                   {/* Calendar 1: Current Month */}
-                  <CalendarPane 
+                   <CalendarPane 
                     title={(() => {
                       const d = new Date();
                       return d.toLocaleDateString(systemLanguage === "sk" ? "sk-SK" : systemLanguage === "hu" ? "hu-HU" : "en-US", { month: "long", year: "numeric" });
@@ -874,6 +916,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     selectedStart={filterStartDate}
                     selectedEnd={filterEndDate}
                     onSelect={(date) => handleCalendarSelect(date)}
+                    systemLanguage={systemLanguage}
                   />
                   {/* Calendar 2: Next Month */}
                   <CalendarPane 
@@ -895,12 +938,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     selectedStart={filterStartDate}
                     selectedEnd={filterEndDate}
                     onSelect={(date) => handleCalendarSelect(date)}
+                    systemLanguage={systemLanguage}
                   />
                 </div>
 
                 {/* Actions bottom block */}
                 <div className="flex justify-between items-center border-t border-slate-100 pt-4 text-[10px] font-bold text-slate-400">
-                  <span>Click starting & ending days to define range</span>
+                  <span>{getTranslation(systemLanguage, "dashboard.picker.info")}</span>
                   <div className="flex gap-2">
                     <button 
                       type="button"
@@ -912,14 +956,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       }}
                       className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-black uppercase tracking-wider transition-colors cursor-pointer border border-slate-200"
                     >
-                      Reset
+                      {getTranslation(systemLanguage, "dashboard.picker.reset")}
                     </button>
                     <button 
                       type="button"
                       onClick={() => setIsDatePickerOpen(false)}
                       className="px-3.5 py-1.5 bg-purple-650 hover:bg-purple-700 text-white rounded-xl font-black uppercase tracking-wider transition-colors cursor-pointer shadow-md shadow-purple-600/10"
                     >
-                      Apply
+                      {getTranslation(systemLanguage, "dashboard.picker.apply")}
                     </button>
                   </div>
                 </div>

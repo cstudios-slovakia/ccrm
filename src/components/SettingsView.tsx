@@ -49,6 +49,7 @@ interface SettingsViewProps {
   
   integrationsConfig?: any;
   updateIntegrationsConfig?: (next: any) => void;
+  dbInfo?: { host: string; port: string; name: string; user: string };
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
@@ -82,7 +83,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setLeadStateParents,
   isDemoMode,
   integrationsConfig,
-  updateIntegrationsConfig
+  updateIntegrationsConfig,
+  dbInfo
 }) => {
   const [tempName, setTempName] = React.useState(systemName);
   const [newState, setNewState] = React.useState("");
@@ -232,7 +234,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // Role creation states
   const [newRoleName, setNewRoleName] = React.useState("");
 
-  const [activeSubTab, setActiveSubTab] = React.useState<"branding" | "managers" | "rbac" | "states" | "sources" | "danger" | "ads" | "api" | "email">("branding");
+  const [activeSubTab, setActiveSubTab] = React.useState<"branding" | "managers" | "rbac" | "states" | "sources" | "danger" | "ads" | "api" | "email" | "ai">("branding");
 
   React.useEffect(() => {
     if (initialSelectedUserName) {
@@ -274,8 +276,49 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setGoogleRefreshToken(integrationsConfig.googleRefreshToken || "");
       setIsConnected(integrationsConfig.adsConnected === true);
       setCampaigns(integrationsConfig.campaigns || []);
+      setOpenAiKey(integrationsConfig.openAiKey || "");
+      setVectorDb(integrationsConfig.vectorDb || "none");
+      setMariaDbHost(integrationsConfig.mariaDbHost || "");
+      setMariaDbPort(integrationsConfig.mariaDbPort || "3306");
+      setMariaDbUser(integrationsConfig.mariaDbUser || "");
+      setMariaDbPassword(integrationsConfig.mariaDbPassword || "");
+      setMariaDbName(integrationsConfig.mariaDbName || "");
+      setQdrantUrl(integrationsConfig.qdrantUrl || "");
+      setQdrantApiKey(integrationsConfig.qdrantApiKey || "");
+      setPineconeApiKey(integrationsConfig.pineconeApiKey || "");
+      setPineconeIndex(integrationsConfig.pineconeIndex || "");
+      setVectorDbValidated(integrationsConfig.vectorDbValidated === true);
     }
   }, [integrationsConfig]);
+
+  // OpenAI & Vector DB Configuration States
+  const [openAiKey, setOpenAiKey] = React.useState("");
+  const [showOpenAiKey, setShowOpenAiKey] = React.useState(false);
+  const [vectorDb, setVectorDb] = React.useState<"none" | "mariadb" | "qdrant" | "pinecone">("none");
+  const [mariaDbHost, setMariaDbHost] = React.useState("");
+  const [mariaDbPort, setMariaDbPort] = React.useState("3306");
+  const [mariaDbUser, setMariaDbUser] = React.useState("");
+  const [mariaDbPassword, setMariaDbPassword] = React.useState("");
+  const [mariaDbName, setMariaDbName] = React.useState("");
+  const [qdrantUrl, setQdrantUrl] = React.useState("");
+  const [qdrantApiKey, setQdrantApiKey] = React.useState("");
+  const [pineconeApiKey, setPineconeApiKey] = React.useState("");
+  const [pineconeIndex, setPineconeIndex] = React.useState("");
+  const [vectorDbValidated, setVectorDbValidated] = React.useState(false);
+
+  const [trainingStats, setTrainingStats] = React.useState<any>(null);
+  const [isTraining, setIsTraining] = React.useState(false);
+  const [trainingProgress, setTrainingProgress] = React.useState(0);
+  const [trainingLogs, setTrainingLogs] = React.useState<string[]>([]);
+  const [validationResult, setValidationResult] = React.useState<any>(null);
+  const [isValidating, setIsValidating] = React.useState(false);
+
+  // Auto-fetch stats if already validated and active sub-tab is AI
+  React.useEffect(() => {
+    if (activeSubTab === "ai" && vectorDbValidated) {
+      fetchTrainingStats();
+    }
+  }, [activeSubTab, vectorDbValidated]);
 
   // Email Server Configuration States
   const [emailProvider, setEmailProvider] = React.useState<"smtp" | "exchange">("smtp");
@@ -382,6 +425,151 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         }
       }
     }, 1800);
+  };
+
+  const fetchTrainingStats = async () => {
+    try {
+      const res = await fetch("/api/train_vector.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "stats" })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setTrainingStats(data.stats);
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to fetch training stats", err);
+    }
+  };
+
+  const handleValidateConnection = async () => {
+    setIsValidating(true);
+    setValidationResult(null);
+    try {
+      const res = await fetch("/api/validate_vector.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vectorDb,
+          mariaDbHost,
+          mariaDbPort,
+          mariaDbUser,
+          mariaDbPassword,
+          mariaDbName,
+          qdrantUrl,
+          qdrantApiKey,
+          pineconeApiKey,
+          pineconeIndex
+        })
+      });
+      const data = await res.json();
+      setIsValidating(false);
+      setValidationResult(data);
+      if (data.success) {
+        setVectorDbValidated(true);
+        if (updateIntegrationsConfig) {
+          updateIntegrationsConfig({
+            ...integrationsConfig,
+            vectorDb,
+            mariaDbHost,
+            mariaDbPort,
+            mariaDbUser,
+            mariaDbPassword,
+            mariaDbName,
+            qdrantUrl,
+            qdrantApiKey,
+            pineconeApiKey,
+            pineconeIndex,
+            vectorDbValidated: true
+          });
+        }
+      } else {
+        setVectorDbValidated(false);
+      }
+    } catch (err) {
+      setIsValidating(false);
+      setValidationResult({
+        success: false,
+        message: "Failed to communicate with vector DB validation API."
+      });
+      setVectorDbValidated(false);
+    }
+  };
+
+  const handleStartTraining = async () => {
+    setIsTraining(true);
+    setTrainingProgress(0);
+    setTrainingLogs(["[START] Starting database chunking and indexing sequence..."]);
+    
+    let step = 0;
+    let finished = false;
+    
+    while (!finished) {
+      try {
+        const res = await fetch("/api/train_vector.php", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "train", step, vectorDb })
+        });
+        if (!res.ok) {
+          throw new Error("HTTP error " + res.status);
+        }
+        const data = await res.json();
+        if (!data.success) {
+          throw new Error(data.message || "Unknown training error");
+        }
+        
+        finished = data.finished;
+        setTrainingProgress(data.progress);
+        if (data.logs) {
+          setTrainingLogs(prev => [...prev, ...data.logs]);
+        }
+        step = data.step;
+        
+        await new Promise(resolve => setTimeout(resolve, 800));
+      } catch (err: any) {
+        setTrainingLogs(prev => [...prev, `[ERROR] Ingestion failed: ${err.message}`]);
+        setIsTraining(false);
+        return;
+      }
+    }
+    
+    setIsTraining(false);
+    fetchTrainingStats();
+  };
+
+  const handleSaveAiSettings = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (getPermission("ai_config") !== "edit") return;
+
+    if (updateIntegrationsConfig) {
+      updateIntegrationsConfig({
+        ...integrationsConfig,
+        openAiKey,
+        vectorDb,
+        mariaDbHost,
+        mariaDbPort,
+        mariaDbUser,
+        mariaDbPassword,
+        mariaDbName,
+        qdrantUrl,
+        qdrantApiKey,
+        pineconeApiKey,
+        pineconeIndex,
+        vectorDbValidated
+      });
+    }
+
+    (window as any).showToast(
+      userLanguage === "sk" 
+        ? "Konfigurácia AI integrácie bola úspešne uložená!" 
+        : userLanguage === "hu" 
+          ? "Az AI integrációs beállítások sikeresen mentve!" 
+          : "AI integration settings saved successfully!"
+    );
   };
 
   // API Key management states
@@ -1029,6 +1217,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     { id: "email", label: "📧 Email Server", permKey: "general_config" as const },
     { id: "api", label: "🔌 Public API", permKey: "general_config" as const },
     { id: "ads", label: "📢 Ads APIs & Campaigns", permKey: "general_config" as const },
+    { id: "ai", label: "🧠 AI Integrations", permKey: "ai_config" as const },
     { id: "danger", label: "⚠️ System Reset", permKey: "system_reset" as const }
   ] as const).filter(tab => getPermission(tab.permKey) !== "nothing");
 
@@ -1162,11 +1351,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div className="space-y-2">
                     <div className="flex justify-between border-b border-slate-100 pb-1.5">
                       <span className="text-slate-450 uppercase text-[9px] tracking-wider">{getTranslation(userLanguage, "settings.general.db_host")}</span>
-                      <span className="text-slate-800">db.r5.websupport.sk</span>
+                      <span className="text-slate-800">{dbInfo?.host || "db.r5.websupport.sk"}</span>
                     </div>
                     <div className="flex justify-between border-b border-slate-100 pb-1.5">
                       <span className="text-slate-450 uppercase text-[9px] tracking-wider">{getTranslation(userLanguage, "settings.general.db_port")}</span>
-                      <span>3306</span>
+                      <span>{dbInfo?.port || "3306"}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-450 uppercase text-[9px] tracking-wider">{getTranslation(userLanguage, "settings.general.db_type")}</span>
@@ -1176,11 +1365,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div className="space-y-2">
                     <div className="flex justify-between border-b border-slate-100 pb-1.5">
                       <span className="text-slate-450 uppercase text-[9px] tracking-wider">{getTranslation(userLanguage, "settings.general.db_name")}</span>
-                      <span className="text-slate-800">Dg1SeyNV</span>
+                      <span className="text-slate-800">{dbInfo?.name || "Dg1SeyNV"}</span>
                     </div>
                     <div className="flex justify-between border-b border-slate-100 pb-1.5">
                       <span className="text-slate-450 uppercase text-[9px] tracking-wider">{getTranslation(userLanguage, "settings.general.db_user")}</span>
-                      <span>uid154715</span>
+                      <span>{dbInfo?.user || "uid154715"}</span>
                     </div>
                     <div className="flex justify-between font-bold">
                       <span className="text-slate-450 uppercase text-[9px] tracking-wider">{getTranslation(userLanguage, "settings.general.db_integrity")}</span>
@@ -1796,6 +1985,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             { key: "files.view", label: userLanguage === "sk" ? "Prezeranie súborov" : "Browse File Database", desc: userLanguage === "sk" ? "Sťahovanie zmlúv, cenových ponúk a priložených príloh" : "List, download, and review proposals, contracts, or offer attachments" },
                             { key: "files.create", label: userLanguage === "sk" ? "Nahrávanie súborov" : "Upload Documents", desc: userLanguage === "sk" ? "Nahrávanie zmlúv a príloh k zoznamu timeline udalostí" : "Upload contract proposals or attachment documents to timeline events" },
                             { key: "files.delete", label: userLanguage === "sk" ? "Odstránenie súborov" : "Delete Documents", desc: userLanguage === "sk" ? "Trvalé mazanie súborov z databázy príloh" : "Remove document uploads permanently from physical and db storage" }
+                          ]
+                        },
+                        {
+                          groupName: userLanguage === "sk" ? "Umelá Inteligencia (AI & RAG)" : "Artificial Intelligence (AI & RAG)",
+                          permissions: [
+                            { key: "ai_config", label: userLanguage === "sk" ? "AI Nastavenia & Model" : "AI Settings & Embeddings", desc: userLanguage === "sk" ? "Konfigurácia kľúčov OpenAI a výber vektorových DB" : "Configure OpenAI access keys, select vector databases, and manage client training data for RAG" },
+                            { key: "rag_view", label: userLanguage === "sk" ? "RAG AI Asistent (Prístup)" : "RAG AI Assistant Access", desc: userLanguage === "sk" ? "Umožňuje používateľom pristupovať a chatovať s RAG AI asistentom" : "Enable user profile access to view and chat with the CRM RAG AI assistant" }
                           ]
                         },
                         {
@@ -3353,6 +3549,400 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </form>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* TAB: AI & OpenAI Integration */}
+        {activeSubTab === "ai" && getPermission("ai_config") !== "nothing" && (
+          <div className="lg:col-span-12 space-y-6 animate-fade-in">
+            {renderReadOnlyBanner("ai_config")}
+
+            {vectorDbValidated ? (
+              /* CONFIRMED CONNECTION CARD */
+              <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4">
+                <div className="flex items-start justify-between gap-4 border-b border-slate-150 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-100">
+                      <ShieldCheck className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-heading font-extrabold text-slate-900 uppercase tracking-wider">
+                        Vector Database Connected
+                      </h3>
+                      <p className="text-[10px] text-slate-500 font-semibold mt-0.5">
+                        Your RAG pipeline backend is successfully configured and active.
+                      </p>
+                    </div>
+                  </div>
+                  {getPermission("ai_config") === "edit" && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setVectorDbValidated(false);
+                        setValidationResult(null);
+                        if (updateIntegrationsConfig) {
+                          updateIntegrationsConfig({
+                            ...integrationsConfig,
+                            vectorDbValidated: false
+                          });
+                        }
+                      }}
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-95"
+                    >
+                      Reset Configuration
+                    </button>
+                  )}
+                </div>
+                {/* Active database info summary */}
+                <div className="text-xs font-semibold text-slate-700 bg-slate-50 p-4 rounded-2xl border border-slate-150">
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-2">Active Backend Details</span>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <span className="text-[10px] text-slate-400 block">DB Type:</span>
+                      <span className="font-mono text-xs text-indigo-600 font-bold uppercase">{vectorDb}</span>
+                    </div>
+                    {vectorDb === "mariadb" && (
+                      <>
+                        <div>
+                          <span className="text-[10px] text-slate-400 block">Host:</span>
+                          <span className="font-mono text-xs">{mariaDbHost}:{mariaDbPort}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-slate-400 block">Database Name:</span>
+                          <span className="font-mono text-xs">{mariaDbName}</span>
+                        </div>
+                      </>
+                    )}
+                    {vectorDb === "qdrant" && (
+                      <div>
+                        <span className="text-[10px] text-slate-400 block">Host:</span>
+                        <span className="font-mono text-xs">{qdrantUrl}</span>
+                      </div>
+                    )}
+                    {vectorDb === "pinecone" && (
+                      <div>
+                        <span className="text-[10px] text-slate-400 block">Index Name:</span>
+                        <span className="font-mono text-xs">{pineconeIndex}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Training widget block */}
+                <div className="space-y-4 pt-4">
+                  <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
+                    <Database className="h-4 w-4 text-purple-500 animate-pulse" /> RAG Knowledge Index Ingestion
+                  </h4>
+                  
+                  {trainingStats ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                      <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-150">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Leads Chunks</span>
+                        <span className="text-base font-extrabold text-slate-800">{trainingStats.leads}</span>
+                      </div>
+                      <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-150">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Clients Chunks</span>
+                        <span className="text-base font-extrabold text-slate-800">{trainingStats.clients}</span>
+                      </div>
+                      <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-150">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Emails Indexed</span>
+                        <span className="text-base font-extrabold text-slate-800">{trainingStats.emails}</span>
+                      </div>
+                      <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-150">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Chats / Notes</span>
+                        <span className="text-base font-extrabold text-slate-800">{trainingStats.chats}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="h-12 flex items-center justify-center text-xs text-slate-400 font-semibold">
+                      Loading data statistics...
+                    </div>
+                  )}
+                  
+                  {/* Progress bar */}
+                  {isTraining && (
+                    <div className="space-y-2 animate-pulse">
+                      <div className="flex items-center justify-between text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
+                        <span>Ingestion in Progress...</span>
+                        <span>{trainingProgress}%</span>
+                      </div>
+                      <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
+                        <div className="h-full bg-gradient-to-r from-purple-500 to-indigo-600 rounded-full transition-all duration-300" style={{ width: `${trainingProgress}%` }} />
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Action buttons */}
+                  {getPermission("ai_config") === "edit" && !isTraining && (
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        onClick={handleStartTraining}
+                        className="px-5 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-lg shadow-purple-650/20 active:scale-95 transition-all cursor-pointer"
+                      >
+                        Train Existing Data
+                      </button>
+                      <button
+                        type="button"
+                        onClick={fetchTrainingStats}
+                        className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold active:scale-95 transition-all cursor-pointer"
+                      >
+                        Refresh Statistics
+                      </button>
+                    </div>
+                  )}
+                  
+                  {/* Logs widget */}
+                  {trainingLogs.length > 0 && (
+                    <div className="space-y-1.5">
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Indexation logs</span>
+                      <div className="bg-slate-950 text-slate-300 p-4 rounded-2xl font-mono text-[10px] leading-relaxed max-h-48 overflow-y-auto space-y-1 scrollbar-thin border border-slate-900 shadow-inner">
+                        {trainingLogs.map((log, idx) => (
+                          <div key={idx} className={log.includes("[ERROR]") ? "text-rose-400 font-bold" : log.includes("[SUCCESS]") ? "text-emerald-400 font-bold" : ""}>
+                            {log}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Autonomous Agents Cron Link */}
+                  <div className="pt-4 border-t border-slate-150 space-y-3">
+                    <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
+                      <Clock className="h-4 w-4 text-indigo-500 animate-pulse" /> Autonomous Agents Cron Link
+                    </h4>
+                    <div className="p-4 rounded-2xl bg-indigo-50/40 border border-indigo-100/50 text-xs font-semibold leading-relaxed text-slate-700 space-y-2.5">
+                      <p className="text-[11px] text-slate-500">
+                        To run autonomous agents automatically, configure your server cron manager (e.g. crontab or a webhook runner) to trigger the endpoint URL below:
+                      </p>
+                      <div className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm font-mono text-[10px] break-all select-all text-slate-850">
+                        <span>{window.location.origin}/api/cron_agents.php</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* CONFIGURATION FORM */
+              <form onSubmit={handleSaveAiSettings} className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
+                <h3 className="text-sm font-heading font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2 border-b border-slate-200 pb-3">
+                  <Globe className="h-4.5 w-4.5 text-indigo-500 animate-pulse" /> AI & OpenAI Integration
+                </h3>
+                
+                <div className="p-4 rounded-2xl bg-indigo-50/50 border border-indigo-100/80 text-xs text-slate-650 leading-relaxed font-semibold">
+                  Configure your OpenAI access credential. Once entered, you can proceed to select your vector database sidecar and enable semantic RAG lookup inside the CRM sidebar assistant.
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider block">
+                    OpenAI API Secret Key
+                  </label>
+                  <div className="relative max-w-2xl">
+                    <input
+                      type={showOpenAiKey ? "text" : "password"}
+                      disabled={getPermission("ai_config") === "view"}
+                      value={openAiKey}
+                      onChange={(e) => setOpenAiKey(e.target.value)}
+                      placeholder="sk-proj-..."
+                      className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-mono font-bold text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:bg-slate-50 disabled:text-slate-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowOpenAiKey(!showOpenAiKey)}
+                      className="absolute right-3.5 top-2.5 text-slate-400 hover:text-slate-650 cursor-pointer"
+                    >
+                      {showOpenAiKey ? <Minus className="h-4.5 w-4.5" /> : <Eye className="h-4.5 w-4.5" />}
+                    </button>
+                  </div>
+                </div>
+
+                {openAiKey.trim() !== "" && (
+                  <div className="space-y-4 pt-4 border-t border-slate-100 animate-slide-up">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider block">
+                        Vector Database Backend
+                      </label>
+                      <select
+                        disabled={getPermission("ai_config") === "view"}
+                        value={vectorDb}
+                        onChange={(e) => {
+                          setVectorDb(e.target.value as any);
+                          setValidationResult(null);
+                        }}
+                        className="max-w-2xl w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-semibold text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:bg-slate-50 disabled:text-slate-400"
+                      >
+                        <option value="none">Disabled</option>
+                        <option value="mariadb">MariaDB (Native SQL Vectors - Recommended)</option>
+                        <option value="qdrant">Qdrant Sidecar Container</option>
+                        <option value="pinecone">Pinecone Cloud Service</option>
+                      </select>
+                    </div>
+
+                    {vectorDb === "mariadb" && (
+                      <div className="p-5 rounded-2xl bg-slate-50 border border-slate-150 space-y-4 max-w-2xl animate-fade-in">
+                        <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                          <Database className="h-4 w-4 text-emerald-500" /> MariaDB Vector Connection Settings
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">Database Host</label>
+                            <input
+                              type="text"
+                              value={mariaDbHost}
+                              onChange={(e) => setMariaDbHost(e.target.value)}
+                              placeholder="e.g. localhost or vector_db"
+                              className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">Port</label>
+                            <input
+                              type="text"
+                              value={mariaDbPort}
+                              onChange={(e) => setMariaDbPort(e.target.value)}
+                              placeholder="3306 or 3307"
+                              className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">Username</label>
+                            <input
+                              type="text"
+                              value={mariaDbUser}
+                              onChange={(e) => setMariaDbUser(e.target.value)}
+                              placeholder="e.g. vector_user"
+                              className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">Password</label>
+                            <input
+                              type="password"
+                              value={mariaDbPassword}
+                              onChange={(e) => setMariaDbPassword(e.target.value)}
+                              placeholder="••••••••"
+                              className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
+                            />
+                          </div>
+                          <div className="space-y-1 md:col-span-2">
+                            <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">Database Name</label>
+                            <input
+                              type="text"
+                              value={mariaDbName}
+                              onChange={(e) => setMariaDbName(e.target.value)}
+                              placeholder="e.g. vector_db"
+                              className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {vectorDb === "qdrant" && (
+                      <div className="p-5 rounded-2xl bg-slate-50 border border-slate-150 space-y-4 max-w-2xl animate-fade-in">
+                        <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                          <Sliders className="h-4 w-4 text-purple-500" /> Qdrant Sidecar Settings
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-1 md:col-span-2">
+                            <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">Server URL</label>
+                            <input
+                              type="text"
+                              value={qdrantUrl}
+                              onChange={(e) => setQdrantUrl(e.target.value)}
+                              placeholder="e.g. http://localhost:6333"
+                              className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
+                            />
+                          </div>
+                          <div className="space-y-1 md:col-span-2">
+                            <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">API Key (Optional)</label>
+                            <input
+                              type="password"
+                              value={qdrantApiKey}
+                              onChange={(e) => setQdrantApiKey(e.target.value)}
+                              placeholder="Leave blank if unsecured"
+                              className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {vectorDb === "pinecone" && (
+                      <div className="p-5 rounded-2xl bg-slate-50 border border-slate-150 space-y-4 max-w-2xl animate-fade-in">
+                        <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                          <Globe className="h-4 w-4 text-indigo-500" /> Pinecone Cloud Settings
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-1 md:col-span-2">
+                            <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">API Key</label>
+                            <input
+                              type="password"
+                              value={pineconeApiKey}
+                              onChange={(e) => setPineconeApiKey(e.target.value)}
+                              placeholder="pcsk_..."
+                              className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
+                            />
+                          </div>
+                          <div className="space-y-1 md:col-span-2">
+                            <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">Index Name</label>
+                            <input
+                              type="text"
+                              value={pineconeIndex}
+                              onChange={(e) => setPineconeIndex(e.target.value)}
+                              placeholder="e.g. laminam-kb"
+                              className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {vectorDb !== "none" && (
+                      <div className="pt-2 max-w-2xl flex flex-col gap-3">
+                        <button
+                          type="button"
+                          disabled={isValidating}
+                          onClick={handleValidateConnection}
+                          className="w-fit px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md cursor-pointer active:scale-95 disabled:opacity-50"
+                        >
+                          {isValidating ? "Validating Connection..." : "Test Vector DB Connection"}
+                        </button>
+
+                        {validationResult && (
+                          <div className={`p-4 rounded-xl border text-xs font-semibold leading-relaxed animate-fade-in ${
+                            validationResult.success
+                              ? "bg-emerald-50 border-emerald-150 text-emerald-800"
+                              : "bg-rose-50 border-rose-150 text-rose-800"
+                          }`}>
+                            <div className="flex items-start gap-2.5">
+                              <span className={`h-2 w-2 rounded-full mt-1.5 shrink-0 ${validationResult.success ? "bg-emerald-500" : "bg-rose-500"}`} />
+                              <div>
+                                <span className="font-bold block mb-0.5">
+                                  {validationResult.success ? "Validation Succeeded" : "Validation Failed"}
+                                </span>
+                                <p className="text-[10px] text-slate-500">{validationResult.message}</p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {getPermission("ai_config") === "edit" && (
+                  <div className="flex justify-end pt-3">
+                    <button
+                      type="submit"
+                      className="px-6 py-3 bg-indigo-650 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-lg shadow-indigo-650/20 active:scale-95 transition-all cursor-pointer flex items-center gap-2"
+                    >
+                      <Save className="h-4 w-4" /> Save AI Configuration
+                    </button>
+                  </div>
+                )}
+              </form>
+            )}
           </div>
         )}
 

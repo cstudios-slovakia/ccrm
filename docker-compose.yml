@@ -1,0 +1,41 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      - db
+    restart: always
+
+  db:
+    image: mysql:8.0
+    command: --default-authentication-plugin=mysql_native_password
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_DATABASE: ccrm
+      MYSQL_USER: ccrm_user
+      MYSQL_PASSWORD: ccrm_password
+      MYSQL_ROOT_PASSWORD: ccrm_root_password
+    volumes:
+      - db_data:/var/lib/mysql
+    restart: always
+
+  vector_db:
+    image: mariadb:11.8
+    ports:
+      - "3307:3306"
+    environment:
+      MARIADB_DATABASE: vector_db
+      MARIADB_USER: vector_user
+      MARIADB_PASSWORD: vector_password
+      MARIADB_ROOT_PASSWORD: vector_root_password
+    volumes:
+      - vector_db_data:/var/lib/mysql
+    restart: always
+
+volumes:
+  db_data:
+  vector_db_data:

@@ -44,6 +44,108 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   // State hook to toggle detail card edit mode
   const [isEditingProfile, setIsEditingProfile] = useState(false);
 
+  // Register Client Drawer & Input States
+  const [showRegisterDrawer, setShowRegisterDrawer] = useState(false);
+  const [isClosingRegisterDrawer, setIsClosingRegisterDrawer] = useState(false);
+  
+  const [newClientName, setNewClientName] = useState("");
+  const [newClientPhone, setNewClientPhone] = useState("");
+  const [newClientEmail, setNewClientEmail] = useState("");
+  const [newClientType, setNewClientType] = useState<"person" | "business" | "partner">("person");
+  const [newClientCity, setNewClientCity] = useState("");
+  const [newClientStreet, setNewClientStreet] = useState("");
+  const [newClientPostalCode, setNewClientPostalCode] = useState("");
+  const [newClientCountry, setNewClientCountry] = useState("Slovakia");
+  const [newClientCompanyId, setNewClientCompanyId] = useState("");
+  const [newClientTaxId, setNewClientTaxId] = useState("");
+  const [newClientVatId, setNewClientVatId] = useState("");
+  const [newClientContactPerson, setNewClientContactPerson] = useState("");
+  const [newClientWebsite, setNewClientWebsite] = useState("");
+  const [newClientOwner, setNewClientOwner] = useState(projectManagers[0] || "");
+  const [newClientValue, setNewClientValue] = useState("");
+  const [newClientCategories, setNewClientCategories] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (projectManagers.length > 0 && !newClientOwner) {
+      setNewClientOwner(projectManagers[0]);
+    }
+  }, [projectManagers]);
+
+  const closeRegisterDrawer = () => {
+    setIsClosingRegisterDrawer(true);
+    setTimeout(() => {
+      setShowRegisterDrawer(false);
+      setIsClosingRegisterDrawer(false);
+    }, 350);
+  };
+
+  const handleRegisterClient = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newClientName.trim()) {
+      (window as any).showToast("Client name is required!");
+      return;
+    }
+    const leadId = `lead-${Date.now()}`;
+    const newLead: Lead = {
+      id: leadId,
+      name: newClientName.trim(),
+      city: newClientCity.trim(),
+      clientType: newClientType,
+      status: "accepted", // Won client status
+      source: "website",
+      owner: newClientOwner || projectManagers[0] || "Erik",
+      value: parseFloat(newClientValue) || 0,
+      createdAt: new Date().toISOString().split("T")[0],
+      rating: 5,
+      phone: newClientPhone.trim() || undefined,
+      email: newClientEmail.trim() || undefined,
+      address: {
+        street: newClientStreet.trim(),
+        city: newClientCity.trim(),
+        postalCode: newClientPostalCode.trim(),
+        country: newClientCountry
+      },
+      companyId: newClientType !== "person" ? newClientCompanyId.trim() : undefined,
+      taxId: newClientType !== "person" ? newClientTaxId.trim() : undefined,
+      vatId: newClientType !== "person" ? newClientVatId.trim() : undefined,
+      contactPerson: newClientType !== "person" ? newClientContactPerson.trim() : undefined,
+      website: newClientType !== "person" ? newClientWebsite.trim() : undefined,
+      categories: newClientCategories,
+      timeline: [
+        {
+          id: `ev-${Date.now()}`,
+          type: "note",
+          timestamp: new Date().toISOString().replace("T", " ").substring(0, 16),
+          title: "Client Registered",
+          content: "Client profile successfully registered inside CRM system."
+        }
+      ]
+    };
+
+    setLeads(prev => [newLead, ...prev]);
+
+    // Reset Form
+    setNewClientName("");
+    setNewClientPhone("");
+    setNewClientEmail("");
+    setNewClientType("person");
+    setNewClientCity("");
+    setNewClientStreet("");
+    setNewClientPostalCode("");
+    setNewClientCountry("Slovakia");
+    setNewClientCompanyId("");
+    setNewClientTaxId("");
+    setNewClientVatId("");
+    setNewClientContactPerson("");
+    setNewClientWebsite("");
+    setNewClientOwner(projectManagers[0] || "");
+    setNewClientValue("");
+    setNewClientCategories([]);
+    
+    closeRegisterDrawer();
+    (window as any).showToast("New client registered successfully!");
+  };
+
   /**
    * Dynamic Client Profile Aggregator:
    * Consolidates raw leads matching the same trimmed, case-insensitive client name into
@@ -1900,20 +2002,29 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             />
           </div>
 
+          {/* Register New Client Button */}
+          <button
+            type="button"
+            onClick={() => setShowRegisterDrawer(true)}
+            className="w-full sm:w-auto px-5 py-3 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 border-2 border-emerald-700 text-white font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-md shadow-emerald-500/10 hover:scale-[1.02] active:scale-95 cursor-pointer shrink-0"
+          >
+            <Plus className="h-4.5 w-4.5 text-emerald-100 stroke-[2.5]" />
+            {systemLanguage === "sk" ? "Registrovať klienta" : systemLanguage === "hu" ? "Ügyfél regisztráció" : "Register Client"}
+          </button>
+
           {/* Saturated Client Type Selector */}
           <div className="relative w-full sm:w-[180px] shrink-0">
-            <div className="flex items-center gap-2 bg-gradient-to-br from-emerald-600 to-emerald-700 border-2 border-emerald-800 text-white rounded-2xl px-4 py-3 shadow-md shadow-emerald-600/10">
-              <Users className="h-4.5 w-4.5 text-emerald-100 shrink-0" />
+            <div className="flex items-center gap-2 bg-slate-50 border-2 border-slate-200 text-slate-700 rounded-2xl px-4 py-3 shadow-sm hover:border-slate-300 transition-colors">
+              <Users className="h-4.5 w-4.5 text-slate-400 shrink-0" />
               <select
                 value={selectedType}
                 onChange={(e) => setSelectedType(e.target.value)}
-                className="bg-transparent text-[11px] font-black text-white focus:outline-none cursor-pointer uppercase tracking-wider w-full select-none"
-                style={{ colorScheme: "dark" }}
+                className="bg-transparent text-[11px] font-black text-slate-700 focus:outline-none cursor-pointer uppercase tracking-wider w-full select-none"
               >
-                <option value="all" className="bg-emerald-800 text-white">All Types</option>
-                <option value="person" className="bg-emerald-800 text-white">Person</option>
-                <option value="business" className="bg-emerald-800 text-white">Business</option>
-                <option value="partner" className="bg-emerald-800 text-white">Partner</option>
+                <option value="all" className="bg-white text-slate-700">All Types</option>
+                <option value="person" className="bg-white text-slate-700">Person</option>
+                <option value="business" className="bg-white text-slate-700">Business</option>
+                <option value="partner" className="bg-white text-slate-700">Partner</option>
               </select>
             </div>
           </div>
@@ -2212,6 +2323,331 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* REGISTER NEW CLIENT SLIDEOUT OVERLAY */}
+      {(showRegisterDrawer || isClosingRegisterDrawer) && (
+        <div className={`fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex flex-col justify-end ${isClosingRegisterDrawer ? "animate-fade-out" : "animate-fade-in"}`}>
+          {/* Backdrop click close */}
+          <div className="flex-1" onClick={closeRegisterDrawer} />
+          
+          <div className={`w-full max-w-4xl mx-auto bg-white rounded-t-[32px] border-t-2 border-emerald-450 shadow-2xl flex flex-col relative max-h-[85vh] ${isClosingRegisterDrawer ? "animate-slide-out-bottom" : "animate-slide-in-bottom"}`}>
+            {/* Header */}
+            <div className="bg-white border-b border-slate-100 px-6 py-5 rounded-t-[30px] flex items-center justify-between shrink-0">
+              <div className="text-left">
+                <span className="text-[10px] font-black uppercase text-emerald-600 tracking-wider">Laminam CRM System</span>
+                <h3 className="text-sm font-heading font-black uppercase tracking-tight text-slate-800">
+                  {systemLanguage === "sk" ? "Registrovať Nového Klienta" : systemLanguage === "hu" ? "Új Ügyfél Regisztrálása" : "Register New Client"}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={closeRegisterDrawer}
+                className="text-slate-400 hover:text-slate-600 p-1.5 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            
+            {/* Form Body */}
+            <form onSubmit={handleRegisterClient} className="flex-1 overflow-y-auto p-6 space-y-6 text-left text-xs font-bold text-slate-700">
+              {/* Basic Details Section */}
+              <div className="space-y-4">
+                <h4 className="text-[10px] font-black uppercase text-emerald-600 tracking-wider border-b border-slate-100 pb-1.5 flex items-center gap-1">
+                  <User className="h-3.5 w-3.5" />
+                  {systemLanguage === "sk" ? "Základné Informácie" : systemLanguage === "hu" ? "Alapvető Információk" : "Basic Information"}
+                </h4>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
+                      {systemLanguage === "sk" ? "Meno klienta *" : systemLanguage === "hu" ? "Ügyfél neve *" : "Client Name *"}
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={newClientName}
+                      onChange={(e) => setNewClientName(e.target.value)}
+                      placeholder={systemLanguage === "sk" ? "napr. Ján Novák alebo Acme Corp" : systemLanguage === "hu" ? "pl. Kiss János vagy Acme Corp" : "e.g. Ján Novák or Acme Corp"}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold"
+                    />
+                  </div>
+                  
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
+                      {systemLanguage === "sk" ? "Typ klienta" : systemLanguage === "hu" ? "Ügyfél típusa" : "Client Type"}
+                    </label>
+                    <select
+                      value={newClientType}
+                      onChange={(e) => setNewClientType(e.target.value as any)}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold cursor-pointer"
+                    >
+                      <option value="person">
+                        {systemLanguage === "sk" ? "Fyzická osoba" : systemLanguage === "hu" ? "Magánszemély" : "Person"}
+                      </option>
+                      <option value="business">
+                        {systemLanguage === "sk" ? "Firma / Právnická osoba" : systemLanguage === "hu" ? "Cég" : "Business"}
+                      </option>
+                      <option value="partner">
+                        {systemLanguage === "sk" ? "Partner" : systemLanguage === "hu" ? "Partner" : "Partner"}
+                      </option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
+                      {systemLanguage === "sk" ? "Odhadovaná hodnota (€)" : systemLanguage === "hu" ? "Becsült érték (€)" : "Estimated Worth (€)"}
+                    </label>
+                    <input
+                      type="number"
+                      value={newClientValue}
+                      onChange={(e) => setNewClientValue(e.target.value)}
+                      placeholder="0.00"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
+                      {systemLanguage === "sk" ? "Telefónne číslo" : systemLanguage === "hu" ? "Telefonszám" : "Phone Number"}
+                    </label>
+                    <input
+                      type="text"
+                      value={newClientPhone}
+                      onChange={(e) => setNewClientPhone(e.target.value)}
+                      placeholder="+421..."
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold"
+                    />
+                  </div>
+                  
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
+                      {systemLanguage === "sk" ? "E-mailová adresa" : systemLanguage === "hu" ? "E-mail cím" : "Email Address"}
+                    </label>
+                    <input
+                      type="email"
+                      value={newClientEmail}
+                      onChange={(e) => setNewClientEmail(e.target.value)}
+                      placeholder="client@email.com"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
+                      {systemLanguage === "sk" ? "Priradený PM manažér" : systemLanguage === "hu" ? "Hozzárendelt PM menedzser" : "Assigned PM Manager"}
+                    </label>
+                    <select
+                      value={newClientOwner}
+                      onChange={(e) => setNewClientOwner(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold cursor-pointer"
+                    >
+                      {projectManagers.map(pm => (
+                        <option key={pm} value={pm}>{pm}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Address Section */}
+              <div className="space-y-4">
+                <h4 className="text-[10px] font-black uppercase text-emerald-600 tracking-wider border-b border-slate-100 pb-1.5 flex items-center gap-1">
+                  <MapPin className="h-3.5 w-3.5" />
+                  {systemLanguage === "sk" ? "Adresa a Lokalita" : systemLanguage === "hu" ? "Cím és Elhelyezkedés" : "Address & Location"}
+                </h4>
+                
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="space-y-1 md:col-span-2">
+                    <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
+                      {systemLanguage === "sk" ? "Ulica a číslo" : systemLanguage === "hu" ? "Utca, házszám" : "Street Address"}
+                    </label>
+                    <input
+                      type="text"
+                      value={newClientStreet}
+                      onChange={(e) => setNewClientStreet(e.target.value)}
+                      placeholder={systemLanguage === "sk" ? "napr. Mlynské Nivy 42" : systemLanguage === "hu" ? "pl. Mlynské Nivy 42" : "e.g. Mlynské Nivy 42"}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold"
+                    />
+                  </div>
+                  
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
+                      {systemLanguage === "sk" ? "Mesto" : systemLanguage === "hu" ? "Város" : "City"}
+                    </label>
+                    <input
+                      type="text"
+                      value={newClientCity}
+                      onChange={(e) => setNewClientCity(e.target.value)}
+                      placeholder={systemLanguage === "sk" ? "napr. Bratislava" : systemLanguage === "hu" ? "pl. Pozsony" : "e.g. Bratislava"}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
+                      {systemLanguage === "sk" ? "PSČ" : systemLanguage === "hu" ? "Irányítószám" : "Postal Code"}
+                    </label>
+                    <input
+                      type="text"
+                      value={newClientPostalCode}
+                      onChange={(e) => setNewClientPostalCode(e.target.value)}
+                      placeholder={systemLanguage === "sk" ? "napr. 82109" : systemLanguage === "hu" ? "pl. 82109" : "e.g. 82109"}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="space-y-1 md:col-span-2">
+                    <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
+                      {systemLanguage === "sk" ? "Krajina" : systemLanguage === "hu" ? "Ország" : "Country"}
+                    </label>
+                    <select
+                      value={newClientCountry}
+                      onChange={(e) => setNewClientCountry(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold cursor-pointer"
+                    >
+                      {europeanCountries.map(country => (
+                        <option key={country} value={country}>{country}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1 md:col-span-2">
+                    <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
+                      {systemLanguage === "sk" ? "Zaujímavé kategórie" : systemLanguage === "hu" ? "Érdeklődési kategóriák" : "Interested Categories"}
+                    </label>
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {leadCategories.map(cat => {
+                        const isSelected = newClientCategories.includes(cat);
+                        return (
+                          <button
+                            key={cat}
+                            type="button"
+                            onClick={() => {
+                              if (isSelected) {
+                                setNewClientCategories(newClientCategories.filter(c => c !== cat));
+                              } else {
+                                setNewClientCategories([...newClientCategories, cat]);
+                              }
+                            }}
+                            className={`px-2.5 py-1 rounded-lg border text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                              isSelected
+                                ? "bg-emerald-600 text-white border-emerald-700 shadow-sm"
+                                : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                            }`}
+                          >
+                            {cat}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Corporate Register Section (Only for Business/Partner) */}
+              {newClientType !== "person" && (
+                <div className="space-y-4 animate-in fade-in slide-in-from-top-4 duration-200">
+                  <h4 className="text-[10px] font-black uppercase text-emerald-600 tracking-wider border-b border-slate-100 pb-1.5 flex items-center gap-1">
+                    <Briefcase className="h-3.5 w-3.5" />
+                    {systemLanguage === "sk" ? "Firemné Registre" : systemLanguage === "hu" ? "Céges adatok" : "Corporate Registers"}
+                  </h4>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
+                        {systemLanguage === "sk" ? "IČO (Identifikačné číslo)" : systemLanguage === "hu" ? "Cégjegyzékszám (IČO)" : "Company ID (IČO)"}
+                      </label>
+                      <input
+                        type="text"
+                        value={newClientCompanyId}
+                        onChange={(e) => setNewClientCompanyId(e.target.value)}
+                        placeholder="e.g. 36123456"
+                        className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold"
+                      />
+                    </div>
+                    
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
+                        {systemLanguage === "sk" ? "DIČ (Daňové registračné číslo)" : systemLanguage === "hu" ? "Adószám (DIČ)" : "Tax ID (DIČ)"}
+                      </label>
+                      <input
+                        type="text"
+                        value={newClientTaxId}
+                        onChange={(e) => setNewClientTaxId(e.target.value)}
+                        placeholder="e.g. 2021234567"
+                        className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
+                        {systemLanguage === "sk" ? "IČ DPH" : systemLanguage === "hu" ? "Közösségi adószám (IČ DPH)" : "VAT ID (IČ DPH)"}
+                      </label>
+                      <input
+                        type="text"
+                        value={newClientVatId}
+                        onChange={(e) => setNewClientVatId(e.target.value)}
+                        placeholder="e.g. SK2021234567"
+                        className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
+                        {systemLanguage === "sk" ? "Kontaktná osoba" : systemLanguage === "hu" ? "Kapcsolattartó személy" : "Contact Person"}
+                      </label>
+                      <input
+                        type="text"
+                        value={newClientContactPerson}
+                        onChange={(e) => setNewClientContactPerson(e.target.value)}
+                        placeholder={systemLanguage === "sk" ? "napr. Ing. Ján Novák" : systemLanguage === "hu" ? "pl. Kiss János" : "e.g. Ing. Ján Novák"}
+                        className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold"
+                      />
+                    </div>
+                    
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
+                        {systemLanguage === "sk" ? "Webstránka" : systemLanguage === "hu" ? "Weboldal" : "Website URL"}
+                      </label>
+                      <input
+                        type="text"
+                        value={newClientWebsite}
+                        onChange={(e) => setNewClientWebsite(e.target.value)}
+                        placeholder="https://..."
+                        className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Submit Buttons */}
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={closeRegisterDrawer}
+                  className="px-5 py-2.5 rounded-xl border-2 border-slate-200 bg-white text-slate-500 hover:bg-slate-50 transition-all text-xs font-black uppercase tracking-wider cursor-pointer"
+                >
+                  {systemLanguage === "sk" ? "Zrušiť" : systemLanguage === "hu" ? "Mégse" : "Cancel"}
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20 transition-all text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="h-4 w-4 stroke-[2.5]" />
+                  {systemLanguage === "sk" ? "Vytvoriť profil" : systemLanguage === "hu" ? "Profil létrehozása" : "Create Profile"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -30,7 +30,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     return en;
   };
 
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 5, 4)); // Mock today as June 4, 2026
+  const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
 
   // Expand/collapse states for task buckets
@@ -54,7 +54,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
   const [newDescription, setNewDescription] = useState("");
   const [newPriority, setNewPriority] = useState<"low" | "medium" | "high">("medium");
   const [newDeadline, setNewDeadline] = useState(() => {
-    const d = new Date(2026, 5, 4);
+    const d = new Date();
     return d.toISOString().split("T")[0];
   });
   const [newRelatedLeadId, setNewRelatedLeadId] = useState("");
@@ -62,7 +62,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
   const [newAssignedUser, setNewAssignedUser] = useState("");
 
   // Helpers
-  const today = new Date(2026, 5, 4);
+  const today = new Date();
   const todayStr = today.toISOString().split("T")[0];
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth();
