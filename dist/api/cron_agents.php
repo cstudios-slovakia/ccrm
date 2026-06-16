@@ -1,5 +1,13 @@
 <?php
+require_once __DIR__ . '/auth.php';
+
 header('Content-Type: application/json');
+
+// Runnable from the CLI (cron). Over HTTP it requires an admin session so it
+// cannot be triggered anonymously.
+if (php_sapi_name() !== 'cli') {
+    ccrm_require_admin();
+}
 require_once __DIR__ . '/agent_utils.php';
 
 try {

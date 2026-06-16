@@ -3,66 +3,139 @@ namespace CCRM;
 
 class Installer {
     /**
-     * Recursively copies a directory to another directory.
+     * Recursively copy a directory.
+     *
+     * @param string   $src              source directory
+     * @param string   $dst              destination directory
+     * @param string[] $preserveExisting basenames that must NOT be overwritten
+     *                                    when they already exist at $dst
+     *                                    (e.g. an operator's real config.php).
      */
-    public static function copyDir($src, $dst) {
+    public static function copyDir($src, $dst, array $preserveExisting = []) {
         if (!is_dir($src)) {
             return false;
         }
         if (!is_dir($dst)) {
-            if (!mkdir($dst, 0755, true)) {
+            if (!mkdir($dst, 0755, true) && !is_dir($dst)) {
                 return false;
             }
         }
         $dir = opendir($src);
         while (false !== ($file = readdir($dir))) {
-            if (($file != '.') && ($file != '..')) {
-                if (is_dir($src . '/' . $file)) {
-                    self::copyDir($src . '/' . $file, $dst . '/' . $file);
-                } else {
-                    copy($src . '/' . $file, $dst . '/' . $file);
+            if ($file === '.' || $file === '..') {
+                continue;
+            }
+            $srcPath = $src . '/' . $file;
+            $dstPath = $dst . '/' . $file;
+            if (is_dir($srcPath)) {
+                self::copyDir($srcPath, $dstPath, $preserveExisting);
+            } else {
+                // Never clobber files the operator owns (credentials, secrets).
+                if (in_array($file, $preserveExisting, true) && file_exists($dstPath)) {
+                    continue;
                 }
+                copy($srcPath, $dstPath);
             }
         }
         closedir($dir);
         return true;
     }
 
-    /**
-     * Copies compiled assets from vendor distribution folder to public parent directory.
-     */
-    public static function publishAssets() {
-        $packageDist = dirname(__DIR__) . '/dist';
-        
-        // Detect if we are in composer vendor context
-        if (strpos(__DIR__, 'vendor/cstudios-slovakia/ccrm') !== false || strpos(__DIR__, 'vendor' . DIRECTORY_SEPARATOR . 'cstudios-slovakia') !== false) {
-            $projectRoot = dirname(dirname(dirname(dirname(__DIR__))));
-        } else {
-            // Local development mode: source and destination are the same, do nothing to prevent self-copy/infinite recursion
-            return true;
+    /** Absolute path to the installed package root (the folder that holds dist/). */
+    private static function packageRoot() {
+        // __DIR__ is <package>/src-php
+        return dirname(__DIR__);
+    }
+
+    /** True when running from inside a consumer project's vendor/ directory. */
+    private static function isVendorContext() {
+        $here = str_replace('\\', '/', __DIR__);
+        return strpos($here, 'vendor/cstudios-slovakia') !== false;
+    }
+
+    /** Consumer project root (the directory that contains vendor/), or null in local dev. */
+    private static function projectRoot() {
+        if (!self::isVendorContext()) {
+            return null;
         }
-        
-        if (is_dir($packageDist)) {
-            self::copyDir($packageDist, $projectRoot);
-            return true;
-        }
-        return false;
+        // vendor/cstudios-slovakia/ccrm/src-php -> up 4 levels = project root
+        return dirname(__DIR__, 4);
     }
 
     /**
-     * Connects to host application database and performs structural migrations
+     * Resolve the public web document root to publish into.
+     *
+     * Resolution order:
+     *   1. CCRM_INSTALL_DIR environment variable (absolute path).
+     *   2. `extra.ccrm-install-dir` in the project's composer.json (relative to
+     *      the project root; created if missing). Use this for non-standard
+     *      layouts, e.g. publishing into a subfolder ("web/crm").
+     *   3. Auto-detection of a conventional docroot folder under the project.
+     *   4. The project root itself (last resort).
      */
-    public static function migrateDatabase() {
-        // Detect if we are in composer vendor context
-        if (strpos(__DIR__, 'vendor/cstudios-slovakia/ccrm') !== false || strpos(__DIR__, 'vendor' . DIRECTORY_SEPARATOR . 'cstudios-slovakia') !== false) {
-            $projectRoot = dirname(dirname(dirname(dirname(__DIR__))));
-        } else {
-            // Local development mode: try to use local config
-            $projectRoot = dirname(__DIR__) . '/public';
+    private static function webRoot($projectRoot) {
+        $env = getenv('CCRM_INSTALL_DIR');
+        if ($env && is_dir($env)) {
+            return rtrim($env, '/\\');
         }
 
-        $configFile = $projectRoot . '/config.php';
+        $composerJson = $projectRoot . '/composer.json';
+        if (is_file($composerJson)) {
+            $cfg = json_decode((string)file_get_contents($composerJson), true);
+            $rel = isset($cfg['extra']['ccrm-install-dir']) ? $cfg['extra']['ccrm-install-dir'] : null;
+            if (is_string($rel) && $rel !== '') {
+                $dir = $projectRoot . '/' . ltrim($rel, '/\\');
+                if (!is_dir($dir)) {
+                    @mkdir($dir, 0755, true);
+                }
+                if (is_dir($dir)) {
+                    return $dir;
+                }
+            }
+        }
+
+        foreach (['web', 'public', 'public_html', 'httpdocs', 'htdocs', 'www'] as $candidate) {
+            if (is_dir($projectRoot . '/' . $candidate)) {
+                return $projectRoot . '/' . $candidate;
+            }
+        }
+
+        return $projectRoot;
+    }
+
+    /**
+     * Publish the compiled frontend + PHP API into the project's web document
+     * root (NOT the project root). The operator's config.php is never
+     * overwritten, so real database credentials survive `composer update`.
+     */
+    public static function publishAssets() {
+        $projectRoot = self::projectRoot();
+        if ($projectRoot === null) {
+            // Local development: source and destination are the same tree.
+            return true;
+        }
+
+        $packageDist = self::packageRoot() . '/dist';
+        if (!is_dir($packageDist)) {
+            return false;
+        }
+
+        $target = self::webRoot($projectRoot);
+        return self::copyDir($packageDist, $target, ['config.php']);
+    }
+
+    /**
+     * Connect using the published config.php and apply the shared schema.
+     */
+    public static function migrateDatabase() {
+        $projectRoot = self::projectRoot();
+        $webRoot = $projectRoot !== null
+            ? self::webRoot($projectRoot)
+            : self::packageRoot() . '/public';
+
+        $configFile = $webRoot . '/config.php';
         if (!file_exists($configFile)) {
+            // Not installed yet — the wizard writes config.php on first run.
             return false;
         }
 
@@ -71,160 +144,19 @@ class Installer {
             return false;
         }
 
+        // Single source of truth for DDL + migrations (shipped in dist/).
+        $schemaFile = self::packageRoot() . '/dist/api/schema.php';
+        if (!is_file($schemaFile)) {
+            $schemaFile = self::packageRoot() . '/public/api/schema.php';
+        }
+        if (!is_file($schemaFile)) {
+            return false;
+        }
+        require_once $schemaFile;
+
         try {
             $pdo = get_db_connection();
-            
-            $queries = [
-                "CREATE TABLE IF NOT EXISTS `users` (
-                  `id` VARCHAR(50) NOT NULL,
-                  `name` VARCHAR(100) NOT NULL,
-                  `email` VARCHAR(150) NOT NULL UNIQUE,
-                  `password_hash` VARCHAR(255) NOT NULL,
-                  `role` ENUM('admin', 'project_manager', 'viewer') NOT NULL DEFAULT 'viewer',
-                  `avatar` VARCHAR(255) NULL,
-                  `color` VARCHAR(20) NULL,
-                  `metadata_json` TEXT NULL,
-                  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                  PRIMARY KEY (`id`),
-                  INDEX idx_user_email (`email`)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
-
-                "CREATE TABLE IF NOT EXISTS `permissions` (
-                  `id` INT AUTO_INCREMENT PRIMARY KEY,
-                  `slug` VARCHAR(100) NOT NULL UNIQUE,
-                  `description` VARCHAR(255) NULL
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
-
-                "CREATE TABLE IF NOT EXISTS `role_permissions` (
-                  `role` ENUM('admin', 'project_manager', 'viewer') NOT NULL,
-                  `permission_slug` VARCHAR(100) NOT NULL,
-                  PRIMARY KEY (`role`, `permission_slug`),
-                  FOREIGN KEY (`permission_slug`) REFERENCES `permissions` (`slug`) ON DELETE CASCADE
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
-
-                "CREATE TABLE IF NOT EXISTS `leads` (
-                  `id` VARCHAR(50) NOT NULL,
-                  `name` VARCHAR(150) NOT NULL,
-                  `city` VARCHAR(100) NULL,
-                  `client_type` ENUM('person', 'business', 'partner') NOT NULL DEFAULT 'person',
-                  `status` VARCHAR(50) NOT NULL DEFAULT 'new',
-                  `source` VARCHAR(50) NOT NULL DEFAULT 'website',
-                  `owner` VARCHAR(100) NOT NULL,
-                  `value` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
-                  `rating` INT NOT NULL DEFAULT 3,
-                  `phone` VARCHAR(30) NULL,
-                  `email` VARCHAR(150) NULL,
-                  `company_id` VARCHAR(50) NULL,
-                  `tax_id` VARCHAR(50) NULL,
-                  `vat_id` VARCHAR(50) NULL,
-                  `contact_person` VARCHAR(100) NULL,
-                  `website` VARCHAR(255) NULL,
-                  `street` VARCHAR(255) NULL,
-                  `postal_code` VARCHAR(20) NULL,
-                  `country` VARCHAR(100) NULL DEFAULT 'Slovakia',
-                  `metadata_json` TEXT NULL,
-                  `created_at` DATE NOT NULL,
-                  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                  PRIMARY KEY (`id`)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
-
-                "CREATE TABLE IF NOT EXISTS `lead_categories` (
-                  `lead_id` VARCHAR(50) NOT NULL,
-                  `category_name` VARCHAR(100) NOT NULL,
-                  PRIMARY KEY (`lead_id`, `category_name`),
-                  FOREIGN KEY (`lead_id`) REFERENCES `leads` (`id`) ON DELETE CASCADE
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
-
-                "CREATE TABLE IF NOT EXISTS `timeline_events` (
-                  `id` VARCHAR(50) NOT NULL,
-                  `lead_id` VARCHAR(50) NOT NULL,
-                  `type` ENUM('phone', 'email', 'note', 'offer', 'appointment') NOT NULL DEFAULT 'note',
-                  `timestamp` DATETIME NOT NULL,
-                  `title` VARCHAR(255) NOT NULL,
-                  `content` TEXT NULL,
-                  `amount` DECIMAL(12,2) NULL,
-                  `file_name` VARCHAR(255) NULL,
-                  `file_size` VARCHAR(50) NULL,
-                  `file_type` ENUM('offer', 'contract', 'invoice') NULL,
-                  `extra_time` VARCHAR(10) NULL,
-                  PRIMARY KEY (`id`),
-                  FOREIGN KEY (`lead_id`) REFERENCES `leads` (`id`) ON DELETE CASCADE
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
-
-                "CREATE TABLE IF NOT EXISTS `tasks` (
-                  `id` VARCHAR(50) NOT NULL,
-                  `title` VARCHAR(255) NOT NULL,
-                  `description` TEXT NULL,
-                  `priority` ENUM('low', 'medium', 'high') NOT NULL DEFAULT 'medium',
-                  `deadline` DATE NOT NULL,
-                  `status` ENUM('todo', 'in_progress', 'blocked', 'done') NOT NULL DEFAULT 'todo',
-                  `owner` VARCHAR(100) NOT NULL,
-                  `related_lead_id` VARCHAR(50) NULL,
-                  `is_locking` TINYINT(1) NOT NULL DEFAULT 0,
-                  `metadata_json` TEXT NULL,
-                  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                  PRIMARY KEY (`id`)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
-
-                "CREATE TABLE IF NOT EXISTS `task_assignees` (
-                  `task_id` VARCHAR(50) NOT NULL,
-                  `user_name` VARCHAR(100) NOT NULL,
-                  PRIMARY KEY (`task_id`, `user_name`),
-                  FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON DELETE CASCADE
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
-
-                "CREATE TABLE IF NOT EXISTS `system_settings` (
-                  `key` VARCHAR(100) NOT NULL,
-                  `value` TEXT NOT NULL,
-                  PRIMARY KEY (`key`)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
-
-                "CREATE TABLE IF NOT EXISTS `meeting_notes` (
-                  id VARCHAR(50) NOT NULL,
-                  title VARCHAR(255) NOT NULL,
-                  date DATE NOT NULL,
-                  lead_id VARCHAR(50) NULL,
-                  lead_name VARCHAR(150) NULL,
-                  duration INT NOT NULL DEFAULT 0,
-                  notes TEXT NULL,
-                  ai_summary_json TEXT NULL,
-                  summary_generated TINYINT(1) NOT NULL DEFAULT 0,
-                  attached_leads_json TEXT NULL,
-                  attached_clients_json TEXT NULL,
-                  attached_users_json TEXT NULL,
-                  archived TINYINT(1) NOT NULL DEFAULT 0,
-                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                  PRIMARY KEY (id)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
-
-                "CREATE TABLE IF NOT EXISTS `meeting_tasks` (
-                  id VARCHAR(50) NOT NULL,
-                  meeting_id VARCHAR(50) NOT NULL,
-                  title VARCHAR(255) NOT NULL,
-                  description TEXT NULL,
-                  assigned_user VARCHAR(100) NULL,
-                  due_date DATE NULL,
-                  priority ENUM('low', 'medium', 'high') NOT NULL DEFAULT 'medium',
-                  status ENUM('todo', 'in_progress', 'done') NOT NULL DEFAULT 'todo',
-                  PRIMARY KEY (id),
-                  FOREIGN KEY (meeting_id) REFERENCES meeting_notes (id) ON DELETE CASCADE
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
-            ];
-
-            foreach ($queries as $q) {
-                $pdo->exec($q);
-            }
-
-            // Migration script for meeting_notes archived column
-            try {
-                $pdo->exec("ALTER TABLE `meeting_notes` ADD COLUMN `archived` TINYINT(1) NOT NULL DEFAULT 0");
-            } catch (\Exception $e) {
-                // Ignore if it already exists
-            }
-
+            ccrm_apply_schema($pdo);
             return true;
         } catch (\Exception $e) {
             return false;

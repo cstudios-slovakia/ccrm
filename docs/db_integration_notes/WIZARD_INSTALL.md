@@ -24,11 +24,11 @@ graph TD
 ## 2. Database Wizard Connection Form
 
 The connection phase must display a high-fidelity visual interface asking the user to submit connection specifications:
-- **Host Address**: (e.g. `db.r5.websupport.sk`)
+- **Host Address**: (e.g. `db.example-host.tld`)
 - **Port Number**: (e.g. `3306`)
-- **Database Name**: (e.g. `Dg1SeyNV`)
-- **Username**: (e.g. `JQLZ4I98`)
-- **Password**: (e.g. `[2.^~8L])EdPgu|Fc1*}`)
+- **Database Name**: (e.g. `your_database_name`)
+- **Username**: (e.g. `your_database_user`)
+- **Password**: (your database password — never commit real values)
 
 Once submitted, the system attempts a connection test using standard PHP PDO connection flags.
 If successful:

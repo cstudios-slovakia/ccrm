@@ -1,7 +1,7 @@
 {
-  "name": "Laminam CRM",
-  "short_name": "LaminamCRM",
-  "description": "Next-generation client relationship and operations management dashboard for stone fabrication and cladding sales.",
+  "name": "CCRM",
+  "short_name": "CCRM",
+  "description": "Client relationship and operations management dashboard for modern sales pipelines, document flows, and team alignment.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f3f6ff",

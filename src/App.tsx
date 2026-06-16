@@ -177,22 +177,22 @@ function App() {
 
   const [integrationsConfig, setIntegrationsConfig] = useState<any>({
     emailProvider: "smtp",
-    smtpHost: "smtp.laminam.sk",
+    smtpHost: "",
     smtpPort: "465",
     smtpSecure: "ssl",
     smtpAuth: true,
-    smtpUser: "crm@laminam.sk",
-    smtpPassword: "••••••••••••",
-    senderName: "Geely CRM Portal",
-    senderEmail: "crm@laminam.sk",
+    smtpUser: "",
+    smtpPassword: "",
+    senderName: "CCRM",
+    senderEmail: "",
     exchUrl: "https://outlook.office365.com/EWS/Exchange.asmx",
-    exchDomain: "LAMINAM",
+    exchDomain: "",
     exchAuth: "oauth",
     exchClientId: "00000000-0000-0000-0000-000000000000",
     exchTenantId: "00000000-0000-0000-0000-000000000000",
-    exchClientSecret: "••••••••••••",
+    exchClientSecret: "",
     exchPassword: "",
-    exchMailbox: "crm@laminam.sk",
+    exchMailbox: "",
     metaAppId: "",
     metaAppSecret: "",
     metaAccessToken: "",
@@ -889,6 +889,7 @@ function App() {
         systemName={systemName}
         showSettings={hasSettingsAccess}
         onLogout={() => {
+          fetch("/api/logout.php", { method: "POST" }).catch(() => {});
           setCurrentUser(null);
           window.location.hash = "dashboard";
         }}
@@ -913,6 +914,7 @@ function App() {
             }
           }}
           onLogout={() => {
+            fetch("/api/logout.php", { method: "POST" }).catch(() => {});
             setCurrentUser(null);
             window.location.hash = "dashboard";
           }}

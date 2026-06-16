@@ -1,12 +1,11 @@
 <?php
-header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
+require_once __DIR__ . '/auth.php';
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    exit(0);
-}
+header('Content-Type: application/json');
+ccrm_send_cors('GET, POST, OPTIONS');
+
+// SECURITY: the assistant queries internal data — authenticated users only.
+ccrm_require_auth();
 
 require_once __DIR__ . '/agent_utils.php';
 

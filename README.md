@@ -1,4 +1,61 @@
-# React + TypeScript + Vite
+# CCRM
+
+CCRM is a React + TypeScript + Vite single-page CRM with a small PHP/MySQL
+backend, distributed as an updatable Composer package.
+
+## Installation (as a Composer package)
+
+```bash
+composer require cstudios-slovakia/ccrm
+```
+
+On `composer install` / `composer update` the bundled Composer plugin
+(`CCRM\ComposerPlugin`) publishes the compiled app + PHP API from the package's
+`dist/` into your project's **web document root**, then applies idempotent
+database migrations.
+
+### Where it publishes
+
+The web root is resolved in this order:
+
+1. `CCRM_INSTALL_DIR` environment variable (absolute path).
+2. `extra.ccrm-install-dir` in your project's `composer.json` (path relative to
+   the project root — e.g. `"web"` for Craft/Symfony or `"web/crm"` for a
+   subfolder install). The directory is created if missing.
+3. Auto-detection of a conventional docroot: `web`, `public`, `public_html`,
+   `httpdocs`, `htdocs`, `www`.
+4. The project root (last resort).
+
+Your real `config.php` is **never overwritten** by updates, so database
+credentials survive `composer update`.
+
+### First run
+
+Open the published app in a browser. If `config.php` does not yet exist you get
+the installation wizard (`api/setup.php`), which tests the DB connection, writes
+`config.php`, creates the schema, and creates your administrator account
+(passwords are stored as bcrypt hashes). The wizard is disabled once installed.
+
+A shipped `.htaccess` sets `DirectoryIndex index.html` so Apache serves the app
+instead of any default `index.php` (e.g. a shared-host parking page), and denies
+web access to `config.php` / secrets.
+
+## Security notes
+
+- Authentication is verified server-side (`api/login.php`) and uses a PHP
+  session; password hashes are never sent to the browser.
+- Mutating endpoints require an authenticated session; destructive/admin
+  operations require the admin role.
+- `config.php`, `api_key.txt` and `uploads/` are git-ignored. Never commit real
+  credentials.
+
+## Development
+
+This is a Vite app. `npm install` then `npm run build` regenerates `dist/`
+(the PHP API and `.htaccess` live in `public/` and are copied into `dist/` on
+build). The database DDL lives in a single source of truth: `public/api/schema.php`.
+
+---
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 

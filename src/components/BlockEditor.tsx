@@ -947,3 +947,5 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
     return activeMenuBlockId !== null;
   }
 };
+
+export default BlockEditor;
