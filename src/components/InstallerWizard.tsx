@@ -8,19 +8,23 @@ interface InstallerWizardProps {
 
 export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSuccess, systemLanguage = "sk" }) => {
   const [step, setStep] = useState(1);
-  const [host, setHost] = useState("db.r5.websupport.sk");
+  const [host, setHost] = useState("");
   const [port, setPort] = useState("3306");
-  const [dbname, setDbname] = useState("Dg1SeyNV");
-  const [user, setUser] = useState("JQLZ4I98");
-  const [pass, setPass] = useState("[2.^~8L])EdPgu|Fc1*}");
+  const [dbname, setDbname] = useState("");
+  const [user, setUser] = useState("");
+  const [pass, setPass] = useState("");
   const [installType, setInstallType] = useState<"fresh" | "demo">("demo");
+  const [adminName, setAdminName] = useState("");
+  const [adminEmail, setAdminEmail] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
+  const [generatedCreds, setGeneratedCreds] = useState<{ email: string; password: string } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lang, setLang] = useState<"en" | "sk" | "hu">(systemLanguage);
 
   const t = {
     en: {
-      title: "Laminam CRM Installation Wizard",
+      title: "CCRM Installation Wizard",
       subtitle: "Set up your secure MySQL database connection in a few seconds",
       step1: "Credentials",
       step2: "Seeding",
@@ -35,7 +39,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
       btnInstall: "Run Setup & Migrate",
       error_title: "Connection Failed",
       success_title: "Setup Complete!",
-      success_desc: "Laminam CRM has been successfully configured and migrated.",
+      success_desc: "CCRM has been successfully configured and migrated.",
       success_btn: "Proceed to Application",
       type_demo: "Seed with Demo Data (Recommended)",
       type_demo_desc: "Installs a fully populated CRM containing mock leads, pipelines, calendar logs, and project tasks for instant trial.",
@@ -44,7 +48,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
       checking: "Establishing secure PDO handshake..."
     },
     sk: {
-      title: "Inštalačný sprievodca Laminam CRM",
+      title: "Inštalačný sprievodca CCRM",
       subtitle: "Nastavte si bezpečné pripojenie k databáze MySQL v priebehu niekoľkých sekúnd",
       step1: "Údaje",
       step2: "Dáta",
@@ -59,7 +63,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
       btnInstall: "Spustiť inštaláciu",
       error_title: "Pripojenie zlyhalo",
       success_title: "Inštalácia úspešná!",
-      success_desc: "Laminam CRM bol úspešne nakonfigurovaný a databáza bola migrovaná.",
+      success_desc: "CCRM bol úspešne nakonfigurovaný a databáza bola migrovaná.",
       success_btn: "Prejsť do aplikácie",
       type_demo: "Nainštalovať demo dáta (odporúčané)",
       type_demo_desc: "Nainštaluje plne naplnený CRM obsahujúci ukážkové leady, pipeline, záznamy v kalendári a úlohy na okamžité testovanie.",
@@ -68,7 +72,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
       checking: "Nadväzuje sa bezpečné spojenie..."
     },
     hu: {
-      title: "Laminam CRM Telepítési Varázsló",
+      title: "CCRM Telepítési Varázsló",
       subtitle: "Állítsa be a biztonságos MySQL adatbázis-kapcsolatot néhány másodperc alatt",
       step1: "Adatok",
       step2: "Magvetés",
@@ -83,7 +87,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
       btnInstall: "Telepítés futtatása",
       error_title: "A kapcsolódás sikertelen",
       success_title: "A telepítés befejeződött!",
-      success_desc: "A Laminam CRM sikeresen konfigurálva és migrálva lett.",
+      success_desc: "A CCRM sikeresen konfigurálva és migrálva lett.",
       success_btn: "Továbblépés az alkalmazásba",
       type_demo: "Demo adatok telepítése (Ajánlott)",
       type_demo_desc: "Egy teljesen feltöltött CRM-et telepít ukrán leadekkel, csatornákkal, naptárakkal és feladatokkal az azonnali próba érdekében.",
@@ -104,11 +108,14 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ host, port, dbname, user, pass, type: "test_only" })
       });
-      
-      await res.text();
-      // Test only might fail on database credentials or trigger seeder
-      // Since setup.php runs migrations directly when receiving credentials, we can just proceed
-      setStep(2);
+
+      const data = await res.json().catch(() => null);
+      // test_only only verifies the connection — it never writes config or seeds.
+      if (res.ok && data && data.success) {
+        setStep(2);
+      } else {
+        setError((data && data.message) || (lang === "sk" ? "Nepodarilo sa overiť pripojenie. Skontrolujte parametre." : "Connection validation failed. Check settings."));
+      }
     } catch (err) {
       setError(lang === "sk" ? "Nepodarilo sa overiť pripojenie. Skontrolujte parametre." : "Connection validation failed. Check settings.");
     } finally {
@@ -124,11 +131,18 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
       const res = await fetch("/api/setup.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ host, port, dbname, user, pass, type: installType })
+        body: JSON.stringify({
+          host, port, dbname, user, pass,
+          type: installType,
+          adminName, adminEmail, adminPassword
+        })
       });
 
       const data = await res.json();
       if (data.success) {
+        if (data.generatedPassword) {
+          setGeneratedCreds({ email: data.adminEmail, password: data.generatedPassword });
+        }
         setStep(3);
       } else {
         setError(data.message || "Setup failed.");
@@ -281,9 +295,9 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
 
             {/* Form actions */}
             <div className="pt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <div className="text-[10px] text-emerald-400 font-bold flex items-center gap-1.5 bg-emerald-500/10 px-3 py-1.5 rounded-xl border border-emerald-500/20 w-fit">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                {lang === "sk" ? "Uložené hodnoty načítané" : lang === "hu" ? "Mentett értékek betöltve" : "Saved credentials loaded"}
+              <div className="text-[10px] text-slate-400 font-bold flex items-center gap-1.5 bg-white/5 px-3 py-1.5 rounded-xl border border-white/10 w-fit">
+                <span className="h-1.5 w-1.5 rounded-full bg-indigo-400 animate-pulse" />
+                {lang === "sk" ? "Zadajte údaje vašej databázy" : lang === "hu" ? "Adja meg az adatbázis adatait" : "Enter your database credentials"}
               </div>
               <button
                 type="submit"
@@ -353,6 +367,46 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
                 </div>
               </button>
 
+              {/* Administrator account (fresh install only) */}
+              {installType === "fresh" && (
+                <div className="p-5 rounded-[24px] border border-white/10 bg-white/5 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <span className="font-heading font-black text-[10px] uppercase tracking-widest text-slate-300 flex items-center gap-2">
+                    <Key className="h-3.5 w-3.5" />
+                    {lang === "sk" ? "Administrátorský účet" : lang === "hu" ? "Rendszergazdai fiók" : "Administrator account"}
+                  </span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <input
+                      type="text"
+                      value={adminName}
+                      onChange={(e) => setAdminName(e.target.value)}
+                      placeholder={lang === "sk" ? "Meno" : lang === "hu" ? "Név" : "Name"}
+                      className="w-full px-4 py-3 rounded-2xl bg-white/5 border border-white/10 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-all font-semibold"
+                    />
+                    <input
+                      type="email"
+                      value={adminEmail}
+                      onChange={(e) => setAdminEmail(e.target.value)}
+                      placeholder={lang === "sk" ? "E-mail (prihlásenie)" : lang === "hu" ? "E-mail (belépés)" : "Email (login)"}
+                      className="w-full px-4 py-3 rounded-2xl bg-white/5 border border-white/10 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-all font-semibold"
+                    />
+                  </div>
+                  <input
+                    type="password"
+                    value={adminPassword}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                    placeholder={lang === "sk" ? "Heslo" : lang === "hu" ? "Jelszó" : "Password"}
+                    className="w-full px-4 py-3 rounded-2xl bg-white/5 border border-white/10 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-all font-semibold"
+                  />
+                  <p className="text-[9px] text-slate-500 leading-relaxed">
+                    {lang === "sk"
+                      ? "Ak necháte polia prázdne, vytvorí sa účet admin@crm.com s náhodným heslom, ktoré sa zobrazí po inštalácii."
+                      : lang === "hu"
+                      ? "Ha üresen hagyja, létrejön az admin@crm.com fiók egy véletlenszerű jelszóval, amely a telepítés után jelenik meg."
+                      : "Leave blank to create admin@crm.com with a random password shown after install."}
+                  </p>
+                </div>
+              )}
+
             </div>
 
             {/* Stepper navigation actions */}
@@ -390,6 +444,21 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
                 {t[lang].success_desc}
               </p>
             </div>
+
+            {generatedCreds && (
+              <div className="w-full max-w-sm p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-left space-y-2">
+                <span className="text-[10px] font-black uppercase tracking-widest text-amber-300 block">
+                  {lang === "sk" ? "Uložte si tieto údaje" : lang === "hu" ? "Mentse el ezeket az adatokat" : "Save these credentials"}
+                </span>
+                <div className="text-xs font-mono text-slate-100 space-y-1 break-all">
+                  <div>{generatedCreds.email}</div>
+                  <div className="font-black">{generatedCreds.password}</div>
+                </div>
+                <p className="text-[9px] text-amber-200/80 leading-relaxed">
+                  {lang === "sk" ? "Heslo sa už nezobrazí. Po prihlásení si ho zmeňte." : lang === "hu" ? "A jelszó többé nem jelenik meg. Belépés után változtassa meg." : "This password will not be shown again. Change it after logging in."}
+                </p>
+              </div>
+            )}
 
             <button
               onClick={onInstallSuccess}

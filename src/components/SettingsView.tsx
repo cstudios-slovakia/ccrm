@@ -1162,7 +1162,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div className="space-y-2">
                     <div className="flex justify-between border-b border-slate-100 pb-1.5">
                       <span className="text-slate-450 uppercase text-[9px] tracking-wider">{getTranslation(userLanguage, "settings.general.db_host")}</span>
-                      <span className="text-slate-800">db.r5.websupport.sk</span>
+                      <span className="text-slate-800">localhost</span>
                     </div>
                     <div className="flex justify-between border-b border-slate-100 pb-1.5">
                       <span className="text-slate-450 uppercase text-[9px] tracking-wider">{getTranslation(userLanguage, "settings.general.db_port")}</span>
@@ -1176,11 +1176,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div className="space-y-2">
                     <div className="flex justify-between border-b border-slate-100 pb-1.5">
                       <span className="text-slate-450 uppercase text-[9px] tracking-wider">{getTranslation(userLanguage, "settings.general.db_name")}</span>
-                      <span className="text-slate-800">Dg1SeyNV</span>
+                      <span className="text-slate-800">ccrm</span>
                     </div>
                     <div className="flex justify-between border-b border-slate-100 pb-1.5">
                       <span className="text-slate-450 uppercase text-[9px] tracking-wider">{getTranslation(userLanguage, "settings.general.db_user")}</span>
-                      <span>uid154715</span>
+                      <span>ccrm_user</span>
                     </div>
                     <div className="flex justify-between font-bold">
                       <span className="text-slate-450 uppercase text-[9px] tracking-wider">{getTranslation(userLanguage, "settings.general.db_integrity")}</span>
@@ -1208,7 +1208,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-slate-400">{getTranslation(userLanguage, "settings.general.host_deployment")}</span>
-                    <span className="font-extrabold text-indigo-600">crm.laminam.sk</span>
+                    <span className="font-extrabold text-indigo-600">{typeof window !== "undefined" ? window.location.host : ""}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-slate-400">{getTranslation(userLanguage, "settings.general.host_laravel")}</span>
@@ -1391,7 +1391,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             type="text"
                             placeholder={getTranslation(userLanguage, "settings.managers.placeholder_password")}
                             disabled={getPermission("pm_managers") === "view"}
-                            value={selectedUser.password || "password"}
+                            value={selectedUser.password || ""}
                             onChange={(e) => {
                               const updated = { ...selectedUser, password: e.target.value };
                               handleUpdateUser(updated);
@@ -3173,7 +3173,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         disabled={getPermission("general_config") === "view"}
                         value={exchDomain}
                         onChange={(e) => setExchDomain(e.target.value)}
-                        placeholder="LAMINAM"
+                        placeholder="COMPANY"
                         className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all"
                       />
                     </div>
@@ -3278,7 +3278,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         disabled={getPermission("general_config") === "view"}
                         value={exchMailbox}
                         onChange={(e) => setExchMailbox(e.target.value)}
-                        placeholder="crm@laminam.sk"
+                        placeholder="crm@example.com"
                         className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all"
                       />
                     </div>
@@ -3316,7 +3316,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         required
                         value={testRecipient}
                         onChange={(e) => setTestRecipient(e.target.value)}
-                        placeholder="test@laminam.sk"
+                        placeholder="test@example.com"
                         className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
                       />
                     </div>

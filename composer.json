@@ -19,16 +19,7 @@
         }
     },
     "extra": {
-        "class": "CCRM\\ComposerPlugin"
-    },
-    "scripts": {
-        "post-install-cmd": [
-            "CCRM\\Installer::publishAssets",
-            "CCRM\\Installer::migrateDatabase"
-        ],
-        "post-update-cmd": [
-            "CCRM\\Installer::publishAssets",
-            "CCRM\\Installer::migrateDatabase"
-        ]
+        "class": "CCRM\\ComposerPlugin",
+        "comment-ccrm-install-dir": "Optional: relative path (from the consumer project root) to publish the built CRM into, e.g. \"web\" or \"web/crm\". When omitted, a conventional docroot (web/public/public_html/...) is auto-detected. Can also be overridden with the CCRM_INSTALL_DIR environment variable."
     }
 }

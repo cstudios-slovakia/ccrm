@@ -1,12 +1,11 @@
 <?php
-header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS, DELETE');
-header('Access-Control-Allow-Headers: Content-Type, X-User-Email');
+require_once __DIR__ . '/auth.php';
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    exit(0);
-}
+header('Content-Type: application/json');
+ccrm_send_cors('GET, POST, OPTIONS, DELETE');
+
+// SECURITY: mailbox access is restricted to authenticated users.
+ccrm_require_auth();
 
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
@@ -327,10 +326,7 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                     ],
                     'date' => isset($o->date) ? date('Y-m-d H:i:s', strtotime($o->date)) : '',
                     'seen' => isset($o->seen) ? (bool)$o->seen : false,
-                    'size' => isset($o->size) ? intval($o->size) : 0,
-                    'message_id' => isset($o->message_id) ? trim($o->message_id) : '',
-                    'in_reply_to' => isset($o->in_reply_to) ? trim($o->in_reply_to) : '',
-                    'references' => isset($o->references) ? trim($o->references) : ''
+                    'size' => isset($o->size) ? intval($o->size) : 0
                 ];
 
                 // Auto-upsert timeline email entries to database with email date and time

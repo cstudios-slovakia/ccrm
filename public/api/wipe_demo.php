@@ -1,18 +1,17 @@
 <?php
-header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
+require_once __DIR__ . '/auth.php';
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    exit(0);
-}
+header('Content-Type: application/json');
+ccrm_send_cors('POST, OPTIONS');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     echo json_encode(['success' => false, 'message' => 'Method Not Allowed']);
     exit;
 }
+
+// SECURITY: this endpoint truncates data — admins only.
+ccrm_require_admin();
 
 $input = file_get_contents('php://input');
 $data = json_decode($input, true);
@@ -21,7 +20,7 @@ $keepConfigs = isset($data['keep_configs']) ? (bool)$data['keep_configs'] : true
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
     http_response_code(400);
-    echo json_encode(['success' => false, 'message' => 'Laminam CRM is not installed yet.']);
+    echo json_encode(['success' => false, 'message' => 'CCRM is not installed yet.']);
     exit;
 }
 
@@ -46,12 +45,13 @@ try {
         $pdo->exec("TRUNCATE TABLE `system_settings`;");
         
         // Seed default Admin in system settings/users
+        $adminEmail = 'admin@crm.com';
         $insUser = $pdo->prepare("INSERT INTO `users` (`id`, `name`, `email`, `password_hash`, `role`, `avatar`, `color`) VALUES (?, ?, ?, ?, ?, ?, ?)");
-        $insUser->execute(['admin-1', 'Admin', 'admin@crm.com', 'password', 'admin', null, '#f43f5e']);
+        $insUser->execute(['u-' . md5($adminEmail), 'Admin', $adminEmail, password_hash('password', PASSWORD_DEFAULT), 'admin', null, '#f43f5e']);
 
         $settings = [
             'DEMO_MODE' => 'false',
-            'SYSTEM_NAME' => 'Laminam CRM',
+            'SYSTEM_NAME' => 'CCRM',
             'SYSTEM_LANGUAGE' => 'sk',
             'LEAD_STATES' => json_encode(["new", "contacted", "offer sent", "accepted", "rejected"]),
             'LEAD_SOURCES' => json_encode(["showroom", "facebook", "instagram", "website"]),

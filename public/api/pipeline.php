@@ -1,4 +1,10 @@
 <?php
+require_once __DIR__ . '/auth.php';
+
+// This file exposes a PUBLIC lead-capture webhook (POST, authenticated by the
+// X-API-KEY header) that is intentionally reachable cross-origin from external
+// website forms — hence the wildcard CORS below. The key-management actions
+// (get_key / reset_key) are admin-only and gated by the session further down.
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
@@ -15,7 +21,7 @@ $configFile = dirname(__DIR__) . '/config.php';
 // Check if installation exists
 if (!file_exists($configFile)) {
     http_response_code(503);
-    echo json_encode(['status' => 'error', 'message' => 'Laminam CRM is not installed yet.']);
+    echo json_encode(['status' => 'error', 'message' => 'CCRM is not installed yet.']);
     exit;
 }
 
@@ -45,15 +51,17 @@ function getOrGenerateKey($file) {
 
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 
-// 1. GET KEY Action
+// 1. GET KEY Action (admin only — reveals the integration secret)
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'get_key') {
+    ccrm_require_admin();
     $key = getOrGenerateKey($apiKeyFile);
     echo json_encode(['status' => 'success', 'api_key' => $key]);
     exit;
 }
 
-// 2. RESET KEY Action
+// 2. RESET KEY Action (admin only)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'reset_key') {
+    ccrm_require_admin();
     $key = 'sk_live_' . bin2hex(random_bytes(12));
     file_put_contents($apiKeyFile, $key);
     echo json_encode(['status' => 'success', 'api_key' => $key]);

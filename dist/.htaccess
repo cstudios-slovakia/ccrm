@@ -1,0 +1,23 @@
+# CCRM web root configuration.
+
+# Serve the CRM single-page app (index.html) as the directory index.
+# On shared hosts (e.g. Websupport) the default DirectoryIndex prefers
+# index.php, which served the host's parking page instead of the app.
+DirectoryIndex index.html index.php
+
+# Never expose secrets or documentation via direct web requests.
+# (These files are still readable by PHP's include/require server-side.)
+<IfModule mod_authz_core.c>
+    <FilesMatch "(^config\.php$|^api_key\.txt$|\.(md|sample\.php)$)">
+        Require all denied
+    </FilesMatch>
+</IfModule>
+<IfModule !mod_authz_core.c>
+    <FilesMatch "(^config\.php$|^api_key\.txt$|\.(md|sample\.php)$)">
+        Order allow,deny
+        Deny from all
+    </FilesMatch>
+</IfModule>
+
+# Disable directory listing.
+Options -Indexes

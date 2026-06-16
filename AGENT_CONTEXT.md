@@ -41,19 +41,20 @@ This file serves as the primary source of truth for subsequent development sessi
 
 ---
 
-## 4. Hosting & Deployment Credentials
+## 4. Hosting & Deployment
 
-*   **Deployment Endpoint**: `crm.laminam.sk` (and/or `laminam.sk/sub/crm/`)
-*   **Temporary Server SSH**:
-    *   **Host**: `uid154715@shell.r5.websupport.sk`
-    *   **Port**: `25009`
-    *   **Password**: `4d9ced823d`
-*   **Database Config (For Laravel phase)**:
-    *   **Address**: `db.r5.websupport.sk`
-    *   **Port**: `3306`
-    *   **Database Name**: `Dg1SeyNV`
-    *   **Login**: `JQLZ4I98`
-    *   **Password**: `[2.^~8L])EdPgu|Fc1*}`
+> ⚠️ Credentials are intentionally NOT stored in the repository. Hosting,
+> SSH and database secrets must live only in your password manager / the
+> server's environment. The runtime database configuration is created by the
+> installation wizard (`api/setup.php`) into a git-ignored `config.php`.
+>
+> NOTE: live credentials were previously committed here and in `server.md`.
+> They have been removed, but because they exist in git history they must be
+> **rotated** (DB password + user, SSH password) on the hosting provider.
+
+*   **Deployment**: deployed to the project's web document root (auto-detected,
+    or set `extra.ccrm-install-dir` in the consumer project's composer.json).
+*   **Database**: configured at install time; never hardcode credentials.
 
 ---
 

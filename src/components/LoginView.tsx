@@ -95,11 +95,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
       if (allSolved) {
         setTimeout(() => {
           setShowSuccessOverlay(true);
-          // Autofill reward
+          // Autofill reward (demo convenience: fills the admin email; the demo
+          // accounts all use the password "password").
           const adminUser = users.find(u => u.role.toLowerCase() === "admin") || users[0];
           if (adminUser) {
             setEmail(adminUser.email);
-            setPassword(adminUser.password || "password");
+            if (isDemoMode) setPassword("password");
           }
         }, 400);
       }
@@ -108,46 +109,40 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
     });
   };
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
+  // Verify credentials server-side. Passwords are never sent to or compared in
+  // the browser; api/login.php checks the bcrypt hash and opens a session.
+  const authenticate = async (loginEmail: string, loginPassword: string) => {
     setError(null);
     setIsLoading(true);
-
-    setTimeout(() => {
-      // Find matching user profile
-      const user = users.find(
-        (u) => u.email.trim().toLowerCase() === email.trim().toLowerCase()
-      );
-
-      if (!user) {
-        setError(getTranslation(systemLanguage, "login.error_user"));
-        setIsLoading(false);
+    try {
+      const res = await fetch("/api/login.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: loginEmail, password: loginPassword })
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data && data.success && data.user) {
+        onLoginSuccess(data.user as UserProfile);
         return;
       }
-
-      // In mock DB, we check against password
-      const expectedPassword = user.password || "password";
-      if (password !== expectedPassword) {
-        setError(getTranslation(systemLanguage, "login.error_pass"));
-        setIsLoading(false);
-        return;
-      }
-
+      setError(getTranslation(systemLanguage, "login.error_pass"));
+    } catch (err) {
+      setError(getTranslation(systemLanguage, "login.error_pass"));
+    } finally {
       setIsLoading(false);
-      onLoginSuccess(user);
-    }, 600);
+    }
+  };
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    authenticate(email, password);
   };
 
   const handleQuickLogin = (user: UserProfile) => {
     setEmail(user.email);
-    setPassword(user.password || "password");
-    setError(null);
-    setIsLoading(true);
-
-    setTimeout(() => {
-      setIsLoading(false);
-      onLoginSuccess(user);
-    }, 450);
+    // Demo preset accounts share the password "password".
+    setPassword("password");
+    authenticate(user.email, "password");
   };
 
   return (

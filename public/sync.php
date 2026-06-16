@@ -1,15 +1,20 @@
 <?php
-header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
-header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
-header('Cache-Control: post-check=0, pre-check=0', false);
-header('Pragma: no-cache');
+/**
+ * Live state sync endpoint.
+ *
+ * GET  — public read of CRM state used to bootstrap the SPA. It NEVER returns
+ *        password material (see "Fetch Users" below).
+ * POST — mutating sync; requires an authenticated session (see api/login.php).
+ *
+ * Schema/migrations come from the shared api/schema.php (single source of truth).
+ */
+require_once __DIR__ . '/api/auth.php';
+require_once __DIR__ . '/api/schema.php';
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    exit(0);
-}
+header('Content-Type: application/json');
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+ccrm_send_cors('GET, POST, OPTIONS');
 
 $configFile = __DIR__ . '/config.php';
 
@@ -17,7 +22,7 @@ $configFile = __DIR__ . '/config.php';
 if (!file_exists($configFile)) {
     echo json_encode([
         'installed' => false,
-        'message' => 'Laminam CRM is not installed yet.'
+        'message' => 'CCRM is not installed yet.'
     ]);
     exit;
 }
@@ -34,183 +39,15 @@ try {
     exit;
 }
 
-// 2. Perform automated DDL auto-migrations on load
-// Check if the system_settings and meeting_tasks tables exist
-$tableExists = false;
-$meetingTasksTableExists = false;
+// 2. Ensure schema is present and migrated (idempotent, single source of truth).
 try {
-    $result = $pdo->query("SELECT 1 FROM `system_settings` LIMIT 1");
-    $tableExists = true;
+    ccrm_apply_schema($pdo);
 } catch (\Exception $e) {
-    $tableExists = false;
-}
-try {
-    $result = $pdo->query("SELECT 1 FROM `meeting_tasks` LIMIT 1");
-    $meetingTasksTableExists = true;
-} catch (\Exception $e) {
-    $meetingTasksTableExists = false;
-}
-
-if (!$tableExists || !$meetingTasksTableExists) {
-    // Database schema is missing tables, trigger automated migration
-    try {
-        $queries = [
-            "CREATE TABLE IF NOT EXISTS `users` (
-              `id` VARCHAR(50) NOT NULL,
-              `name` VARCHAR(100) NOT NULL,
-              `email` VARCHAR(150) NOT NULL UNIQUE,
-              `password_hash` VARCHAR(255) NOT NULL,
-              `role` ENUM('admin', 'project_manager', 'viewer') NOT NULL DEFAULT 'viewer',
-              `avatar` VARCHAR(255) NULL,
-              `color` VARCHAR(20) NULL,
-              `metadata_json` TEXT NULL,
-              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-              PRIMARY KEY (`id`),
-              INDEX idx_user_email (`email`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
-
-            "CREATE TABLE IF NOT EXISTS `permissions` (
-              `id` INT AUTO_INCREMENT PRIMARY KEY,
-              `slug` VARCHAR(100) NOT NULL UNIQUE,
-              `description` VARCHAR(255) NULL
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
-
-            "CREATE TABLE IF NOT EXISTS `role_permissions` (
-              `role` ENUM('admin', 'project_manager', 'viewer') NOT NULL,
-              `permission_slug` VARCHAR(100) NOT NULL,
-              PRIMARY KEY (`role`, `permission_slug`),
-              FOREIGN KEY (`permission_slug`) REFERENCES `permissions` (`slug`) ON DELETE CASCADE
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
-
-            "CREATE TABLE IF NOT EXISTS `leads` (
-              `id` VARCHAR(50) NOT NULL,
-              `name` VARCHAR(150) NOT NULL,
-              `city` VARCHAR(100) NULL,
-              `client_type` ENUM('person', 'business', 'partner') NOT NULL DEFAULT 'person',
-              `status` VARCHAR(50) NOT NULL DEFAULT 'new',
-              `source` VARCHAR(50) NOT NULL DEFAULT 'website',
-              `owner` VARCHAR(100) NOT NULL,
-              `value` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
-              `rating` INT NOT NULL DEFAULT 3,
-              `phone` VARCHAR(30) NULL,
-              `email` VARCHAR(150) NULL,
-              `company_id` VARCHAR(50) NULL,
-              `tax_id` VARCHAR(50) NULL,
-              `vat_id` VARCHAR(50) NULL,
-              `contact_person` VARCHAR(100) NULL,
-              `website` VARCHAR(255) NULL,
-              `street` VARCHAR(255) NULL,
-              `postal_code` VARCHAR(20) NULL,
-              `country` VARCHAR(100) NULL DEFAULT 'Slovakia',
-              `metadata_json` TEXT NULL,
-              `created_at` DATE NOT NULL,
-              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-              PRIMARY KEY (`id`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
-
-            "CREATE TABLE IF NOT EXISTS `lead_categories` (
-              `lead_id` VARCHAR(50) NOT NULL,
-              `category_name` VARCHAR(100) NOT NULL,
-              PRIMARY KEY (`lead_id`, `category_name`),
-              FOREIGN KEY (`lead_id`) REFERENCES `leads` (`id`) ON DELETE CASCADE
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
-
-            "CREATE TABLE IF NOT EXISTS `timeline_events` (
-              `id` VARCHAR(50) NOT NULL,
-              `lead_id` VARCHAR(50) NOT NULL,
-              `type` ENUM('phone', 'email', 'note', 'offer', 'appointment') NOT NULL DEFAULT 'note',
-              `timestamp` DATETIME NOT NULL,
-              `title` VARCHAR(255) NOT NULL,
-              `content` TEXT NULL,
-              `amount` DECIMAL(12,2) NULL,
-              `file_name` VARCHAR(255) NULL,
-              `file_size` VARCHAR(50) NULL,
-              `file_type` ENUM('offer', 'contract', 'invoice') NULL,
-              `extra_time` VARCHAR(10) NULL,
-              PRIMARY KEY (`id`),
-              FOREIGN KEY (`lead_id`) REFERENCES `leads` (`id`) ON DELETE CASCADE
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
-
-            "CREATE TABLE IF NOT EXISTS `tasks` (
-              `id` VARCHAR(50) NOT NULL,
-              `title` VARCHAR(255) NOT NULL,
-              `description` TEXT NULL,
-              `priority` ENUM('low', 'medium', 'high') NOT NULL DEFAULT 'medium',
-              `deadline` DATE NOT NULL,
-              `status` ENUM('todo', 'in_progress', 'blocked', 'done') NOT NULL DEFAULT 'todo',
-              `owner` VARCHAR(100) NOT NULL,
-              `related_lead_id` VARCHAR(50) NULL,
-              `is_locking` TINYINT(1) NOT NULL DEFAULT 0,
-              `metadata_json` TEXT NULL,
-              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-              PRIMARY KEY (`id`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
-
-            "CREATE TABLE IF NOT EXISTS `task_assignees` (
-              `task_id` VARCHAR(50) NOT NULL,
-              `user_name` VARCHAR(100) NOT NULL,
-              PRIMARY KEY (`task_id`, `user_name`),
-              FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON DELETE CASCADE
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
-
-             "CREATE TABLE IF NOT EXISTS `system_settings` (
-               `key` VARCHAR(100) NOT NULL,
-               `value` TEXT NOT NULL,
-               PRIMARY KEY (`key`)
-             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
-
-             "CREATE TABLE IF NOT EXISTS `meeting_notes` (
-               id VARCHAR(50) NOT NULL,
-               title VARCHAR(255) NOT NULL,
-               date DATE NOT NULL,
-               lead_id VARCHAR(50) NULL,
-               lead_name VARCHAR(150) NULL,
-               duration INT NOT NULL DEFAULT 0,
-               notes TEXT NULL,
-               ai_summary_json TEXT NULL,
-               summary_generated TINYINT(1) NOT NULL DEFAULT 0,
-               attached_leads_json TEXT NULL,
-               attached_clients_json TEXT NULL,
-               attached_users_json TEXT NULL,
-               archived TINYINT(1) NOT NULL DEFAULT 0,
-               created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-               updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-               PRIMARY KEY (id)
-             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
-
-             "CREATE TABLE IF NOT EXISTS `meeting_tasks` (
-               id VARCHAR(50) NOT NULL,
-               meeting_id VARCHAR(50) NOT NULL,
-               title VARCHAR(255) NOT NULL,
-               description TEXT NULL,
-               assigned_user VARCHAR(100) NULL,
-               due_date DATE NULL,
-               priority ENUM('low', 'medium', 'high') NOT NULL DEFAULT 'medium',
-               status ENUM('todo', 'in_progress', 'done') NOT NULL DEFAULT 'todo',
-               PRIMARY KEY (id),
-               FOREIGN KEY (meeting_id) REFERENCES meeting_notes (id) ON DELETE CASCADE
-             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
-         ];
-        
-        foreach ($queries as $q) {
-            $pdo->exec($q);
-        }
-    } catch (\Exception $ex) {
-        echo json_encode([
-            'installed' => false,
-            'message' => 'Automated schema migration failed: ' . $ex->getMessage()
-        ]);
-        exit;
-    }
-}
-
-// Ensure the archived column exists on meeting_notes table (migration for existing database)
-try {
-    $pdo->exec("ALTER TABLE `meeting_notes` ADD COLUMN `archived` TINYINT(1) NOT NULL DEFAULT 0");
-} catch (\Exception $e) {
-    // Ignore if column already exists
+    echo json_encode([
+        'installed' => false,
+        'message' => 'Automated schema migration failed: ' . $e->getMessage()
+    ]);
+    exit;
 }
 
 // Helper to query and fetch all system settings
@@ -233,7 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $leads = [];
     while ($row = $leadsStmt->fetch()) {
         $leadId = $row['id'];
-        
+
         // Fetch Categories
         $catStmt = $pdo->prepare("SELECT `category_name` FROM `lead_categories` WHERE `lead_id` = ?");
         $catStmt->execute([$leadId]);
@@ -297,7 +134,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $tasks = [];
     while ($row = $tasksStmt->fetch()) {
         $taskId = $row['id'];
-        
+
         // Fetch Assignees
         $assStmt = $pdo->prepare("SELECT `user_name` FROM `task_assignees` WHERE `task_id` = ?");
         $assStmt->execute([$taskId]);
@@ -318,17 +155,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     }
 
     // 3.3. Fetch Users
+    // SECURITY: password hashes are never exposed to clients. Authentication is
+    // performed server-side by api/login.php.
     $usersStmt = $pdo->query("SELECT * FROM `users` ORDER BY `name` ASC");
     $users = [];
     while ($row = $usersStmt->fetch()) {
         $users[] = [
             'name' => $row['name'],
             'email' => $row['email'],
-            'password' => $row['password_hash'], // In high-fidelity mockup we use simple password text
-            'role' => $row['role'] === 'admin' ? 'Admin' : 'Project Manager',
+            'role' => ccrm_role_label($row['role']),
             'color' => $row['color'] ?? '#3b82f6',
             'avatar' => $row['avatar'] ?? null,
-            'activityLog' => [], // Kept dynamic in localStorage for sessions, or empty array fallback
+            'activityLog' => [],
             'metadata_json' => $row['metadata_json']
         ];
     }
@@ -381,7 +219,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $meetingsStmt = $pdo->query("SELECT * FROM `meeting_notes` ORDER BY `date` DESC, `created_at` DESC");
         while ($row = $meetingsStmt->fetch()) {
             $meetingId = $row['id'];
-            
+
             // Fetch Tasks
             $tStmt = $pdo->prepare("SELECT * FROM `meeting_tasks` WHERE `meeting_id` = ?");
             $tStmt->execute([$meetingId]);
@@ -397,7 +235,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'status' => $tr['status']
                 ];
             }
-            
+
             $aiSummary = json_decode($row['ai_summary_json'] ?? '{}', true);
             if (!isset($aiSummary['summary'])) {
                 $aiSummary = [
@@ -407,7 +245,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'topics' => $aiSummary['topics'] ?? []
                 ];
             }
-            
+
             $meetingNotes[] = [
                 'id' => $meetingId,
                 'title' => $row['title'],
@@ -437,14 +275,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'users' => $users,
         'roles' => $roles,
         'meetingNotes' => $meetingNotes,
-        'db_info' => [
-            'host' => DB_HOST,
-            'port' => DB_PORT,
-            'name' => DB_NAME,
-            'user' => DB_USER
-        ],
         'settings' => [
-            'systemName' => $settings['SYSTEM_NAME'] ?? 'Laminam CRM',
+            'systemName' => $settings['SYSTEM_NAME'] ?? 'CCRM',
             'systemLanguage' => $settings['SYSTEM_LANGUAGE'] ?? 'sk',
             'leadStates' => $leadStates,
             'leadSources' => $leadSources,
@@ -462,6 +294,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
 // 4. Handle POST Request: Write/Sync State to Database
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // SECURITY: writes require an authenticated session.
+    $sessionUser = ccrm_require_auth();
+
     $input = file_get_contents('php://input');
     $payload = json_decode($input, true);
 
@@ -478,7 +313,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (isset($payload['settings'])) {
             $s = $payload['settings'];
             $settingsList = [
-                'SYSTEM_NAME' => $s['systemName'] ?? 'Laminam CRM',
+                'SYSTEM_NAME' => $s['systemName'] ?? 'CCRM',
                 'SYSTEM_LANGUAGE' => $s['systemLanguage'] ?? 'sk',
                 'LEAD_STATES' => json_encode($s['leadStates'] ?? []),
                 'LEAD_SOURCES' => json_encode($s['leadSources'] ?? []),
@@ -505,28 +340,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // 4.2. Synchronize Users list
         if (isset($payload['users']) && is_array($payload['users'])) {
-            // Read current database users to handle deletes
-            $stmt = $pdo->query("SELECT `id` FROM `users`");
-            $existingUserIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            // Existing rows with their current password hashes so we can preserve
+            // a user's password when the client does not send a new one.
+            $existingHashes = $pdo->query("SELECT `id`, `password_hash` FROM `users`")->fetchAll(PDO::FETCH_KEY_PAIR);
+            $existingUserIds = array_keys($existingHashes);
             $processedUserIds = [];
 
-             $insUser = $pdo->prepare("INSERT INTO `users` (`id`, `name`, `email`, `password_hash`, `role`, `avatar`, `color`, `metadata_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `email` = VALUES(`email`), `password_hash` = VALUES(`password_hash`), `role` = VALUES(`role`), `avatar` = VALUES(`avatar`), `color` = VALUES(`color`), `metadata_json` = VALUES(`metadata_json`)");
-            
+            $insUser = $pdo->prepare("INSERT INTO `users` (`id`, `name`, `email`, `password_hash`, `role`, `avatar`, `color`, `metadata_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `email` = VALUES(`email`), `password_hash` = VALUES(`password_hash`), `role` = VALUES(`role`), `avatar` = VALUES(`avatar`), `color` = VALUES(`color`), `metadata_json` = VALUES(`metadata_json`)");
+
             foreach ($payload['users'] as $u) {
-                // Generate simple hash or ID from name
-                $userId = 'u-' . md5($u['email']);
-                $role = strtolower(str_replace(' ', '_', $u['role']));
-                if ($role !== 'admin' && $role !== 'project_manager') {
-                    $role = 'viewer';
+                if (empty($u['email'])) {
+                    continue;
                 }
-                
+                $userId = 'u-' . md5(strtolower(trim($u['email'])));
+                $role = ccrm_normalize_role($u['role'] ?? 'viewer');
+
                 $metaJson = isset($u['metadata_json']) ? $u['metadata_json'] : (isset($u['metadata']) ? json_encode($u['metadata']) : null);
+
+                // Password handling:
+                //  - a new, non-empty, non-hashed password is bcrypt-hashed;
+                //  - otherwise we preserve the existing hash;
+                //  - brand-new users with no password get an unusable random hash
+                //    (admin must set one) rather than a predictable default.
+                $incoming = isset($u['password']) ? trim((string)$u['password']) : '';
+                if ($incoming !== '') {
+                    $hash = ccrm_hash_password($incoming);
+                } elseif (isset($existingHashes[$userId]) && $existingHashes[$userId] !== '') {
+                    $hash = $existingHashes[$userId];
+                } else {
+                    $hash = password_hash(bin2hex(random_bytes(16)), PASSWORD_DEFAULT);
+                }
 
                 $insUser->execute([
                     $userId,
                     $u['name'],
                     $u['email'],
-                    $u['password'] ?? 'password',
+                    $hash,
                     $role,
                     $u['avatar'] ?? null,
                     $u['color'] ?? '#3b82f6',
@@ -535,11 +384,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $processedUserIds[] = $userId;
             }
 
-            // Remove any users not in payload (Erik Admin is protected)
+            // Remove any users not in payload, but never delete the account that
+            // is performing this sync (prevents accidental self-lockout).
             $usersToDelete = array_diff($existingUserIds, $processedUserIds);
             if (!empty($usersToDelete)) {
-                $delUser = $pdo->prepare("DELETE FROM `users` WHERE `id` = ? AND `name` != 'Erik'");
+                $delUser = $pdo->prepare("DELETE FROM `users` WHERE `id` = ?");
                 foreach ($usersToDelete as $uid) {
+                    if ($uid === $sessionUser['id']) {
+                        continue;
+                    }
                     $delUser->execute([$uid]);
                 }
             }
@@ -552,11 +405,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $processedLeadIds = [];
 
             $insLead = $pdo->prepare("INSERT INTO `leads` (`id`, `name`, `city`, `client_type`, `status`, `source`, `owner`, `value`, `rating`, `phone`, `email`, `company_id`, `tax_id`, `vat_id`, `contact_person`, `website`, `street`, `postal_code`, `country`, `created_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `city` = VALUES(`city`), `client_type` = VALUES(`client_type`), `status` = VALUES(`status`), `source` = VALUES(`source`), `owner` = VALUES(`owner`), `value` = VALUES(`value`), `rating` = VALUES(`rating`), `phone` = VALUES(`phone`), `email` = VALUES(`email`), `company_id` = VALUES(`company_id`), `tax_id` = VALUES(`tax_id`), `vat_id` = VALUES(`vat_id`), `contact_person` = VALUES(`contact_person`), `website` = VALUES(`website`), `street` = VALUES(`street`), `postal_code` = VALUES(`postal_code`), `country` = VALUES(`country`)");
-            
+
             foreach ($payload['leads'] as $l) {
                 $leadId = $l['id'];
                 $address = $l['address'] ?? [];
-                
+
                 // Write standard Opportunity Lead parameters
                 $insLead->execute([
                     $leadId,
@@ -605,7 +458,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             continue;
                         }
                         $timestamp = isset($te['timestamp']) ? date('Y-m-d H:i:s', strtotime($te['timestamp'])) : date('Y-m-d H:i:s');
-                        
+
                         $insTimeline->execute([
                             $teId,
                             $leadId,
@@ -640,10 +493,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $processedTaskIds = [];
 
             $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `deadline`, `status`, `owner`, `related_lead_id`, `is_locking`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `deadline` = VALUES(`deadline`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `is_locking` = VALUES(`is_locking`)");
-            
+
             foreach ($payload['tasks'] as $t) {
                 $taskId = $t['id'];
-                
+
                 $insTask->execute([
                     $taskId,
                     $t['title'],
@@ -687,7 +540,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $processedMeetingIds = [];
 
             $insMeeting = $pdo->prepare("INSERT INTO `meeting_notes` (`id`, `title`, `date`, `lead_id`, `lead_name`, `duration`, `notes`, `ai_summary_json`, `summary_generated`, `attached_leads_json`, `attached_clients_json`, `attached_users_json`, `archived`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `date` = VALUES(`date`), `lead_id` = VALUES(`lead_id`), `lead_name` = VALUES(`lead_name`), `duration` = VALUES(`duration`), `notes` = VALUES(`notes`), `ai_summary_json` = VALUES(`ai_summary_json`), `summary_generated` = VALUES(`summary_generated`), `attached_leads_json` = VALUES(`attached_leads_json`), `attached_clients_json` = VALUES(`attached_clients_json`), `attached_users_json` = VALUES(`attached_users_json`), `archived` = VALUES(`archived`)");
-            
+
             foreach ($payload['meetingNotes'] as $mn) {
                 $meetingId = $mn['id'];
                 $insMeeting->execute([
@@ -739,7 +592,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $pdo->commit();
-        echo json_encode(['success' => true, 'message' => 'Laminam CRM Database Synced Successfully!']);
+        echo json_encode(['success' => true, 'message' => 'CCRM Database Synced Successfully!']);
     } catch (\Exception $e) {
         if ($pdo->inTransaction()) {
             $pdo->rollBack();
