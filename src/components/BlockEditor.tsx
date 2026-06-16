@@ -69,6 +69,19 @@ const EditableBlock: React.FC<EditableBlockProps> = ({
     onChange(html);
   };
 
+  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const text = e.clipboardData.getData("text/plain");
+    
+    // Clean up list bullets, custom arrow artifacts, and inline bullets:
+    // This targets markers like ->, =>, -->, ==>, bullet symbols, and unicode arrows
+    let cleanedText = text
+      .replace(/^[\s]*([-\u2014\u2013=>➔➜➢➤➝➞➟➣➥➦➛➪➫➬➭➮➯➱➲➳➴➵➶➷➸•◦▪▫]+|\-\-+|\=\=+)\s+/gm, "")
+      .replace(/[\u2022\u25E6\u25AA\u25AB\u2023\u2043\u25C8]/g, "");
+
+    document.execCommand("insertText", false, cleanedText);
+  };
+
   return (
     <div
       ref={(el) => {
@@ -80,6 +93,7 @@ const EditableBlock: React.FC<EditableBlockProps> = ({
       onInput={handleInput}
       onKeyDown={onKeyDown}
       onBlur={onBlur}
+      onPaste={handlePaste}
       className={className}
       style={style}
       data-placeholder={placeholder}

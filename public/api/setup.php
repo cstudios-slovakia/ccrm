@@ -49,7 +49,7 @@ if (empty($host) || empty($dbname) || empty($user)) {
 
 // Once installed, the wizard is closed. Reconfiguration must be done by editing
 // config.php on the server — an anonymous request can no longer overwrite it.
-if ($installType !== 'test_only' && file_exists($configFile)) {
+if ($installType !== 'test_only' && file_exists($configFile) && @filesize($configFile) > 100) {
     http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'CRM is already installed. Setup is disabled.']);
     exit;

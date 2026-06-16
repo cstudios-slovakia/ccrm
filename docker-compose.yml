@@ -7,7 +7,10 @@ services:
       - "8080:80"
     depends_on:
       - db
+    volumes:
+      - ./config.php:/var/www/html/config.php
     restart: always
+
 
   db:
     image: mysql:8.0

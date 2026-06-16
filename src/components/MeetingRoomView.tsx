@@ -371,7 +371,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
   };
 
   return (
-    <div className="space-y-6 select-none max-w-7xl mx-auto">
+    <div className="space-y-6 max-w-7xl mx-auto">
       {/* HEADER SECTION */}
       {viewState !== "new" && (
         <div className="flex flex-row items-center justify-between gap-4 bg-white/40 backdrop-blur-md p-6 rounded-3xl border border-white/60 shadow-sm">
@@ -645,7 +645,36 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                 AI Analysis Summary
               </h3>
 
-              {!integrationsConfig?.openAiKey || integrationsConfig.openAiKey.trim() === "" ? (
+              {selectedMeeting.summaryGenerated ? (
+                /* AI Summary Display */
+                <div className="space-y-4">
+                  <div className="p-4 bg-indigo-50/40 border border-indigo-100/30 rounded-2xl space-y-2">
+                    <div className="text-[10px] font-black text-indigo-700 uppercase tracking-widest flex items-center gap-1">
+                      <Sparkles className="h-3.5 w-3.5" />
+                      Executive Summary
+                    </div>
+                    <p className="text-xs text-slate-705 font-semibold leading-relaxed">
+                      {selectedMeeting.aiSummary.summary}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div className="p-3 bg-slate-50 border border-slate-150 rounded-xl space-y-1">
+                      <div className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Sentiment</div>
+                      <div className="font-bold text-emerald-600 uppercase tracking-wide flex items-center gap-1 text-[10px]">
+                        {getSentimentBadge(selectedMeeting.aiSummary.sentiment)}
+                        {selectedMeeting.aiSummary.sentiment}
+                      </div>
+                    </div>
+                    <div className="p-3 bg-slate-50 border border-slate-150 rounded-xl space-y-1">
+                      <div className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Topics</div>
+                      <div className="font-bold text-indigo-600 truncate text-[9px] uppercase tracking-wide" title={selectedMeeting.aiSummary.topics.join(", ")}>
+                        {selectedMeeting.aiSummary.topics.slice(0, 2).join(" • ")}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : !integrationsConfig?.openAiKey || integrationsConfig.openAiKey.trim() === "" ? (
                 <div className="p-4 bg-amber-50/50 border border-amber-200/50 rounded-2xl space-y-2 text-center">
                   <p className="text-xs text-amber-900 font-extrabold leading-relaxed uppercase tracking-wider text-[10px]">
                     AI Assistant Inactive
@@ -661,7 +690,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                   <p className="text-xs font-extrabold text-slate-800 animate-pulse">Analyzing note content...</p>
                   <p className="text-[10px] text-slate-400 font-medium">Extracting actions & customer sentiment</p>
                 </div>
-              ) : !selectedMeeting.summaryGenerated ? (
+              ) : (
                 /* Make Summary Button */
                 <div className="p-4 bg-slate-50 border border-slate-150 rounded-2xl text-center space-y-3">
                   <p className="text-xs text-slate-650 font-medium leading-relaxed">
@@ -720,40 +749,11 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                     Make AI Summary
                   </button>
                 </div>
-              ) : (
-                /* AI Summary Display */
-                <div className="space-y-4">
-                  <div className="p-4 bg-indigo-50/40 border border-indigo-100/30 rounded-2xl space-y-2">
-                    <div className="text-[10px] font-black text-indigo-700 uppercase tracking-widest flex items-center gap-1">
-                      <Sparkles className="h-3.5 w-3.5" />
-                      Executive Summary
-                    </div>
-                    <p className="text-xs text-slate-705 font-semibold leading-relaxed">
-                      {selectedMeeting.aiSummary.summary}
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3 text-xs">
-                    <div className="p-3 bg-slate-50 border border-slate-150 rounded-xl space-y-1">
-                      <div className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Sentiment</div>
-                      <div className="font-bold text-emerald-600 uppercase tracking-wide flex items-center gap-1 text-[10px]">
-                        {getSentimentBadge(selectedMeeting.aiSummary.sentiment)}
-                        {selectedMeeting.aiSummary.sentiment}
-                      </div>
-                    </div>
-                    <div className="p-3 bg-slate-50 border border-slate-150 rounded-xl space-y-1">
-                      <div className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Topics</div>
-                      <div className="font-bold text-indigo-600 truncate text-[9px] uppercase tracking-wide" title={selectedMeeting.aiSummary.topics.join(", ")}>
-                        {selectedMeeting.aiSummary.topics.slice(0, 2).join(" • ")}
-                      </div>
-                    </div>
-                  </div>
-                </div>
               )}
             </div>
 
-            {/* AUTOMATED TASKS CARD (ONLY SHOWN IF KEY & SUMMARY GENERATED CRITERIA MET) */}
-            {integrationsConfig?.openAiKey && selectedMeeting.summaryGenerated && (
+            {/* AUTOMATED TASKS CARD */}
+            {selectedMeeting.summaryGenerated && (
               <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
                 <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5 border-b border-slate-100 pb-2.5">
                   <CheckSquare className="h-4 w-4 text-indigo-500" />
