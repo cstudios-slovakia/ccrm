@@ -76,7 +76,7 @@ if ($installType === 'test_only') {
     exit;
 }
 
-// 2. Persist credentials to config.php
+// 2. Prepare credentials for config.php (will be written upon successful migration and seeding)
 $configContent = "<?php
 // Database credentials file
 // Automatically created by the CCRM Installation Wizard
@@ -111,14 +111,16 @@ function get_db_connection() {
 }
 ";
 
-if (file_put_contents($configFile, $configContent) === false) {
-    http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Failed to write config.php file. Check directory permissions.']);
-    exit;
-}
 
 // 3. Apply schema (single source of truth) and seed.
 try {
+    $pdo->exec("SET FOREIGN_KEY_CHECKS = 0;");
+    $tables = ['meeting_tasks', 'meeting_notes', 'plugins', 'system_settings', 'task_assignees', 'tasks', 'timeline_events', 'lead_categories', 'leads', 'role_permissions', 'permissions', 'users'];
+    foreach ($tables as $table) {
+        $pdo->exec("DROP TABLE IF EXISTS `$table` CASCADE");
+    }
+    $pdo->exec("SET FOREIGN_KEY_CHECKS = 1;");
+
     ccrm_apply_schema($pdo);
 } catch (\Exception $e) {
     http_response_code(500);
@@ -287,6 +289,12 @@ try {
     }
 
     $pdo->commit();
+
+    if (file_put_contents($configFile, $configContent) === false) {
+        http_response_code(500);
+        echo json_encode(['success' => false, 'message' => 'Failed to write config.php file. Check directory permissions.']);
+        exit;
+    }
 
     $response = ['success' => true, 'message' => 'CCRM successfully provisioned!'];
     if (!empty($generatedPassword)) {
