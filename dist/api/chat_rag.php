@@ -208,11 +208,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         
-        $events_stmt = $pdo->prepare("SELECT `type`, `title`, `content` FROM `timeline_events` WHERE `lead_id` = ? LIMIT 10");
+        $events_stmt = $pdo->prepare("SELECT `type`, `title`, `content`, `amount`, `file_name`, `file_size`, `file_type` FROM `timeline_events` WHERE `lead_id` = ? LIMIT 15");
         $events_stmt->execute([$lead_id]);
         $events = $events_stmt->fetchAll(PDO::FETCH_ASSOC);
         foreach ($events as $ev) {
-            if (mb_strpos($normalized_query, mb_strtolower($ev['title'])) !== false || mb_strpos($normalized_query, mb_strtolower($ev['content'] ?? '')) !== false) {
+            if (mb_strpos($normalized_query, mb_strtolower($ev['title'])) !== false || 
+                mb_strpos($normalized_query, mb_strtolower($ev['content'] ?? '')) !== false ||
+                (!empty($ev['file_name']) && mb_strpos($normalized_query, mb_strtolower($ev['file_name'])) !== false)) {
                 $matches = true;
             }
         }
@@ -230,7 +232,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!empty($events)) {
             $block .= "- Chronological History & Communications:\n";
             foreach ($events as $ev) {
-                $block .= "  * [" . strtoupper($ev['type']) . "] " . $ev['title'] . ": " . strip_tags($ev['content'] ?? '') . "\n";
+                $evType = strtoupper($ev['type']);
+                if ($ev['type'] === 'offer') {
+                    $docType = !empty($ev['file_type']) ? strtoupper($ev['file_type']) : 'DOCUMENT';
+                    $evType = "DOCUMENT: " . $docType;
+                }
+                
+                $block .= "  * [" . $evType . "] " . $ev['title'] . ": " . strip_tags($ev['content'] ?? '');
+                if (!empty($ev['file_name'])) {
+                    $block .= " (File: " . $ev['file_name'] . ", Size: " . ($ev['file_size'] ?? 'N/A') . ")";
+                }
+                if (!empty($ev['amount'])) {
+                    $block .= " (Value: " . $ev['amount'] . " EUR)";
+                }
+                $block .= "\n";
             }
         }
 
@@ -346,7 +361,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $ch = curl_init('https://api.openai.com/v1/chat/completions');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 12);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // Bypass local container CA bundle issues
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
         'Content-Type: application/json',
         'Authorization: Bearer ' . $openAiKey
@@ -359,11 +376,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlErr = curl_error($ch);
     curl_close($ch);
 
     if ($httpCode !== 200) {
         $errData = json_decode($response, true);
-        $errMsg = $errData['error']['message'] ?? 'OpenAI API endpoint error';
+        $errMsg = $errData['error']['message'] ?? (!empty($curlErr) ? $curlErr : 'OpenAI API endpoint error');
         $reply = "Failed to fetch response from OpenAI. API returned code " . $httpCode . ": " . $errMsg;
     } else {
         $resData = json_decode($response, true);

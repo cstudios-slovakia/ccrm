@@ -68,6 +68,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `street` VARCHAR(255) NULL,
               `postal_code` VARCHAR(20) NULL,
               `country` VARCHAR(100) NULL DEFAULT 'Slovakia',
+              `ai_summary` TEXT NULL,
+              `ai_summary_fingerprint` TEXT NULL,
               `metadata_json` TEXT NULL COMMENT 'Plugin support',
               `created_at` DATE NOT NULL,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -110,6 +112,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `title` VARCHAR(255) NOT NULL,
               `description` TEXT NULL,
               `priority` ENUM('low', 'medium', 'high') NOT NULL DEFAULT 'medium',
+              `start_date` DATE NULL,
               `deadline` DATE NOT NULL,
               `status` ENUM('todo', 'in_progress', 'blocked', 'done') NOT NULL DEFAULT 'todo',
               `owner` VARCHAR(100) NOT NULL COMMENT 'Assigned Project Manager Name',
@@ -165,23 +168,37 @@ if (!function_exists('ccrm_schema_statements')) {
               `attached_clients_json` TEXT NULL,
               `attached_users_json` TEXT NULL,
               `archived` TINYINT(1) NOT NULL DEFAULT 0,
+              `audio_file` VARCHAR(255) NULL,
+              `transcription` LONGTEXT NULL,
+              `automated_notes` LONGTEXT NULL,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               PRIMARY KEY (`id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
-
             // Meeting Tasks
             "CREATE TABLE IF NOT EXISTS `meeting_tasks` (
               `id` VARCHAR(50) NOT NULL,
               `meeting_id` VARCHAR(50) NOT NULL,
               `title` VARCHAR(255) NOT NULL,
               `description` TEXT NULL,
+              `start_date` DATE NULL,
               `assigned_user` VARCHAR(100) NULL,
               `due_date` DATE NULL,
               `priority` ENUM('low', 'medium', 'high') NOT NULL DEFAULT 'medium',
               `status` ENUM('todo', 'in_progress', 'done') NOT NULL DEFAULT 'todo',
               PRIMARY KEY (`id`),
               FOREIGN KEY (`meeting_id`) REFERENCES `meeting_notes` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Email Summaries
+            "CREATE TABLE IF NOT EXISTS `email_summaries` (
+              `user_email` VARCHAR(150) NOT NULL,
+              `folder` VARCHAR(100) NOT NULL,
+              `email_uid` VARCHAR(150) NOT NULL,
+              `summary` TEXT NOT NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              PRIMARY KEY (`user_email`, `folder`, `email_uid`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
         ];
     }
@@ -207,6 +224,27 @@ if (!function_exists('ccrm_schema_statements')) {
         // `archived` was added to meeting_notes after the initial release.
         if (!ccrm_column_exists($pdo, 'meeting_notes', 'archived')) {
             $pdo->exec("ALTER TABLE `meeting_notes` ADD COLUMN `archived` TINYINT(1) NOT NULL DEFAULT 0");
+        }
+        if (!ccrm_column_exists($pdo, 'tasks', 'start_date')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `start_date` DATE NULL AFTER `priority`");
+        }
+        if (!ccrm_column_exists($pdo, 'meeting_tasks', 'start_date')) {
+            $pdo->exec("ALTER TABLE `meeting_tasks` ADD COLUMN `start_date` DATE NULL AFTER `description`");
+        }
+        if (!ccrm_column_exists($pdo, 'meeting_notes', 'audio_file')) {
+            $pdo->exec("ALTER TABLE `meeting_notes` ADD COLUMN `audio_file` VARCHAR(255) NULL AFTER `archived`");
+        }
+        if (!ccrm_column_exists($pdo, 'meeting_notes', 'transcription')) {
+            $pdo->exec("ALTER TABLE `meeting_notes` ADD COLUMN `transcription` LONGTEXT NULL AFTER `audio_file`");
+        }
+        if (!ccrm_column_exists($pdo, 'meeting_notes', 'automated_notes')) {
+            $pdo->exec("ALTER TABLE `meeting_notes` ADD COLUMN `automated_notes` LONGTEXT NULL AFTER `transcription`");
+        }
+        if (!ccrm_column_exists($pdo, 'leads', 'ai_summary')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `ai_summary` TEXT NULL AFTER `country`");
+        }
+        if (!ccrm_column_exists($pdo, 'leads', 'ai_summary_fingerprint')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `ai_summary_fingerprint` TEXT NULL AFTER `ai_summary`");
         }
     }
 

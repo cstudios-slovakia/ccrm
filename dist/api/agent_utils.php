@@ -232,6 +232,8 @@ function execute_autonomous_run($pdo, $ragPdo, $agent, $openAiKey) {
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
         'Content-Type: application/json',
         'Authorization: Bearer ' . $openAiKey
@@ -244,11 +246,12 @@ function execute_autonomous_run($pdo, $ragPdo, $agent, $openAiKey) {
 
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlErr = curl_error($ch);
     curl_close($ch);
 
     if ($httpCode !== 200) {
         $errData = json_decode($response, true);
-        $errMsg = $errData['error']['message'] ?? 'OpenAI API error';
+        $errMsg = $errData['error']['message'] ?? (!empty($curlErr) ? $curlErr : 'OpenAI API error');
         return "Autonomous Run failed: OpenAI API returned code " . $httpCode . ": " . $errMsg;
     } else {
         $resData = json_decode($response, true);

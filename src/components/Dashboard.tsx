@@ -292,6 +292,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // Filter leads based on selected date interval
   const filteredLeads = useMemo(() => {
     return leads.filter(l => {
+      if (l.id === "unassigned-docs") return false;
       if (!l.createdAt) return false;
       const date = new Date(l.createdAt);
       if (filterStartDate && date < filterStartDate) return false;

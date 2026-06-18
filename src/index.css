@@ -37,6 +37,8 @@
   --animate-slide-out-right: slide-out-right 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   --animate-slide-in-bottom: slide-in-bottom 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   --animate-slide-out-bottom: slide-out-bottom 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  --animate-slide-in-top: slide-in-top 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  --animate-slide-out-top: slide-out-top 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   --animate-fade-in: fade-in 0.25s ease-out forwards;
   --animate-fade-out: fade-out 0.25s ease-out forwards;
 
@@ -55,6 +57,14 @@
   @keyframes slide-out-bottom {
     0% { transform: translate3d(0, 0, 0); }
     100% { transform: translate3d(0, 100%, 0); }
+  }
+  @keyframes slide-in-top {
+    0% { transform: translate3d(0, -100%, 0); }
+    100% { transform: translate3d(0, 0, 0); }
+  }
+  @keyframes slide-out-top {
+    0% { transform: translate3d(0, 0, 0); }
+    100% { transform: translate3d(0, -100%, 0); }
   }
   @keyframes fade-in {
     0% { opacity: 0; }

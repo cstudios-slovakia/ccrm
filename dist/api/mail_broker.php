@@ -313,6 +313,17 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                     $toAddress = trim($matches[2]);
                 }
                 
+                $summary = '';
+                if (isset($GLOBALS['pdo']) && isset($GLOBALS['userEmail'])) {
+                    try {
+                        $sumStmt = $GLOBALS['pdo']->prepare("SELECT `summary` FROM `email_summaries` WHERE `user_email` = ? AND `folder` = ? AND `email_uid` = ?");
+                        $sumStmt->execute([$GLOBALS['userEmail'], $folder, $o->uid]);
+                        $summary = $sumStmt->fetchColumn() ?: '';
+                    } catch (\Exception $e) {
+                        $summary = '';
+                    }
+                }
+
                 $emailsMap[$o->uid] = [
                     'uid' => $o->uid,
                     'subject' => isset($o->subject) ? safe_utf8(imap_utf8($o->subject)) : '(No Subject)',
@@ -329,7 +340,8 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                     'size' => isset($o->size) ? intval($o->size) : 0,
                     'message_id' => isset($o->message_id) ? trim($o->message_id) : '',
                     'in_reply_to' => isset($o->in_reply_to) ? trim($o->in_reply_to) : '',
-                    'references' => isset($o->references) ? trim($o->references) : ''
+                    'references' => isset($o->references) ? trim($o->references) : '',
+                    'summary' => $summary
                 ];
 
                 // Auto-upsert timeline email entries to database with email date and time

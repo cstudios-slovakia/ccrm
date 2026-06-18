@@ -1,6 +1,6 @@
 import React from "react";
 import { createPortal } from "react-dom";
-import { User, PencilLine, Mic, Plus, List } from "lucide-react";
+import { User, PencilLine, Mic, Plus, List, CheckSquare } from "lucide-react";
 import type { UserProfile } from "../types";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
@@ -17,6 +17,7 @@ interface HeaderProps {
   isDemoMode?: boolean;
   onOpenPersonalSettings: () => void;
   onNavigateMeetings?: (action: "list" | "new") => void;
+  onAddTask?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({ 
@@ -30,7 +31,8 @@ export const Header: React.FC<HeaderProps> = ({
   setSystemLanguage,
   isDemoMode,
   onOpenPersonalSettings,
-  onNavigateMeetings
+  onNavigateMeetings,
+  onAddTask
 }) => {
   const [isProfileOpen, setIsProfileOpen] = React.useState(false);
   const [isClosing, setIsClosing] = React.useState(false);
@@ -111,7 +113,14 @@ export const Header: React.FC<HeaderProps> = ({
           </a>
         )}
 
-
+        {/* Create Task Top-Bar Action Button */}
+        <button
+          onClick={onAddTask}
+          className="h-10 w-10 rounded-xl border bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-350 hover:bg-slate-50 flex items-center justify-center transition-colors shadow-sm cursor-pointer shrink-0"
+          title={systemLanguage === "sk" ? "Vytvoriť novú úlohu" : systemLanguage === "hu" ? "Új feladat" : "Create New Task"}
+        >
+          <CheckSquare className="h-5 w-5 text-indigo-600" />
+        </button>
 
         {/* Meeting Room Popover Utilities */}
         <div className="relative" ref={meetingsDropdownRef}>

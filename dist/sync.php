@@ -125,7 +125,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             ],
             'createdAt' => $row['created_at'],
             'categories' => $categories,
-            'timeline' => $timeline
+            'timeline' => $timeline,
+            'aiSummary' => $row['ai_summary'] ?? '',
+            'aiSummaryFingerprint' => $row['ai_summary_fingerprint'] ?? ''
         ];
     }
 
@@ -145,6 +147,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'title' => $row['title'],
             'description' => $row['description'] ?? '',
             'priority' => $row['priority'],
+            'startDate' => $row['start_date'] ?? null,
             'deadline' => $row['deadline'],
             'status' => $row['status'],
             'owner' => $row['owner'],
@@ -229,6 +232,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'id' => $tr['id'],
                     'title' => $tr['title'],
                     'description' => $tr['description'] ?? '',
+                    'startDate' => $tr['start_date'] ?? null,
                     'assignedUser' => $tr['assigned_user'] ?? '',
                     'dueDate' => $tr['due_date'] ?? '',
                     'priority' => $tr['priority'],
@@ -260,7 +264,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'attachedClients' => json_decode($row['attached_clients_json'] ?? '[]', true),
                 'attachedUsers' => json_decode($row['attached_users_json'] ?? '[]', true),
                 'automatedTasks' => $automatedTasks,
-                'archived' => isset($row['archived']) && (int)$row['archived'] === 1
+                'archived' => isset($row['archived']) && (int)$row['archived'] === 1,
+                'audioFile' => $row['audio_file'] ?? null,
+                'transcription' => $row['transcription'] ?? null,
+                'automatedNotes' => $row['automated_notes'] ?? null
             ];
         }
     } catch (\Exception $e) {
@@ -404,7 +411,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingLeadIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedLeadIds = [];
 
-            $insLead = $pdo->prepare("INSERT INTO `leads` (`id`, `name`, `city`, `client_type`, `status`, `source`, `owner`, `value`, `rating`, `phone`, `email`, `company_id`, `tax_id`, `vat_id`, `contact_person`, `website`, `street`, `postal_code`, `country`, `created_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `city` = VALUES(`city`), `client_type` = VALUES(`client_type`), `status` = VALUES(`status`), `source` = VALUES(`source`), `owner` = VALUES(`owner`), `value` = VALUES(`value`), `rating` = VALUES(`rating`), `phone` = VALUES(`phone`), `email` = VALUES(`email`), `company_id` = VALUES(`company_id`), `tax_id` = VALUES(`tax_id`), `vat_id` = VALUES(`vat_id`), `contact_person` = VALUES(`contact_person`), `website` = VALUES(`website`), `street` = VALUES(`street`), `postal_code` = VALUES(`postal_code`), `country` = VALUES(`country`)");
+            $insLead = $pdo->prepare("INSERT INTO `leads` (`id`, `name`, `city`, `client_type`, `status`, `source`, `owner`, `value`, `rating`, `phone`, `email`, `company_id`, `tax_id`, `vat_id`, `contact_person`, `website`, `street`, `postal_code`, `country`, `ai_summary`, `ai_summary_fingerprint`, `created_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `city` = VALUES(`city`), `client_type` = VALUES(`client_type`), `status` = VALUES(`status`), `source` = VALUES(`source`), `owner` = VALUES(`owner`), `value` = VALUES(`value`), `rating` = VALUES(`rating`), `phone` = VALUES(`phone`), `email` = VALUES(`email`), `company_id` = VALUES(`company_id`), `tax_id` = VALUES(`tax_id`), `vat_id` = VALUES(`vat_id`), `contact_person` = VALUES(`contact_person`), `website` = VALUES(`website`), `street` = VALUES(`street`), `postal_code` = VALUES(`postal_code`), `country` = VALUES(`country`), `ai_summary` = VALUES(`ai_summary`), `ai_summary_fingerprint` = VALUES(`ai_summary_fingerprint`)");
 
             foreach ($payload['leads'] as $l) {
                 $leadId = $l['id'];
@@ -431,6 +438,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $address['street'] ?? null,
                     $address['postalCode'] ?? null,
                     $address['country'] ?? 'Slovakia',
+                    $l['aiSummary'] ?? null,
+                    $l['aiSummaryFingerprint'] ?? null,
                     $l['createdAt'] ?? date('Y-m-d')
                 ]);
                 $processedLeadIds[] = $leadId;
@@ -492,7 +501,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingTaskIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedTaskIds = [];
 
-            $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `deadline`, `status`, `owner`, `related_lead_id`, `is_locking`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `deadline` = VALUES(`deadline`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `is_locking` = VALUES(`is_locking`)");
+            $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `status`, `owner`, `related_lead_id`, `is_locking`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `is_locking` = VALUES(`is_locking`)");
 
             foreach ($payload['tasks'] as $t) {
                 $taskId = $t['id'];
@@ -502,6 +511,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $t['title'],
                     $t['description'] ?? '',
                     $t['priority'] ?? 'medium',
+                    (isset($t['startDate']) && $t['startDate'] !== '') ? $t['startDate'] : null,
                     $t['deadline'],
                     $t['status'] ?? 'todo',
                     $t['owner'],
@@ -539,7 +549,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingMeetingIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedMeetingIds = [];
 
-            $insMeeting = $pdo->prepare("INSERT INTO `meeting_notes` (`id`, `title`, `date`, `lead_id`, `lead_name`, `duration`, `notes`, `ai_summary_json`, `summary_generated`, `attached_leads_json`, `attached_clients_json`, `attached_users_json`, `archived`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `date` = VALUES(`date`), `lead_id` = VALUES(`lead_id`), `lead_name` = VALUES(`lead_name`), `duration` = VALUES(`duration`), `notes` = VALUES(`notes`), `ai_summary_json` = VALUES(`ai_summary_json`), `summary_generated` = VALUES(`summary_generated`), `attached_leads_json` = VALUES(`attached_leads_json`), `attached_clients_json` = VALUES(`attached_clients_json`), `attached_users_json` = VALUES(`attached_users_json`), `archived` = VALUES(`archived`)");
+            $insMeeting = $pdo->prepare("INSERT INTO `meeting_notes` (`id`, `title`, `date`, `lead_id`, `lead_name`, `duration`, `notes`, `ai_summary_json`, `summary_generated`, `attached_leads_json`, `attached_clients_json`, `attached_users_json`, `archived`, `audio_file`, `transcription`, `automated_notes`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `date` = VALUES(`date`), `lead_id` = VALUES(`lead_id`), `lead_name` = VALUES(`lead_name`), `duration` = VALUES(`duration`), `notes` = VALUES(`notes`), `ai_summary_json` = VALUES(`ai_summary_json`), `summary_generated` = VALUES(`summary_generated`), `attached_leads_json` = VALUES(`attached_leads_json`), `attached_clients_json` = VALUES(`attached_clients_json`), `attached_users_json` = VALUES(`attached_users_json`), `archived` = VALUES(`archived`), `audio_file` = VALUES(`audio_file`), `transcription` = VALUES(`transcription`), `automated_notes` = VALUES(`automated_notes`)");
 
             foreach ($payload['meetingNotes'] as $mn) {
                 $meetingId = $mn['id'];
@@ -556,7 +566,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     json_encode($mn['attachedLeads'] ?? []),
                     json_encode($mn['attachedClients'] ?? []),
                     json_encode($mn['attachedUsers'] ?? []),
-                    ($mn['archived'] ?? false) ? 1 : 0
+                    ($mn['archived'] ?? false) ? 1 : 0,
+                    $mn['audioFile'] ?? null,
+                    $mn['transcription'] ?? null,
+                    $mn['automatedNotes'] ?? null
                 ]);
                 $processedMeetingIds[] = $meetingId;
 
@@ -565,13 +578,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $delTasks->execute([$meetingId]);
 
                 if (isset($mn['automatedTasks']) && is_array($mn['automatedTasks'])) {
-                    $insTask = $pdo->prepare("INSERT INTO `meeting_tasks` (`id`, `meeting_id`, `title`, `description`, `assigned_user`, `due_date`, `priority`, `status`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+                    $insTask = $pdo->prepare("INSERT INTO `meeting_tasks` (`id`, `meeting_id`, `title`, `description`, `start_date`, `assigned_user`, `due_date`, `priority`, `status`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
                     foreach ($mn['automatedTasks'] as $task) {
                         $insTask->execute([
                             $task['id'],
                             $meetingId,
                             $task['title'] ?? '',
                             $task['description'] ?? '',
+                            (isset($task['startDate']) && $task['startDate'] !== '') ? $task['startDate'] : null,
                             (isset($task['assignedUser']) && $task['assignedUser'] !== '') ? $task['assignedUser'] : null,
                             (isset($task['dueDate']) && $task['dueDate'] !== '') ? $task['dueDate'] : null,
                             $task['priority'] ?? 'medium',

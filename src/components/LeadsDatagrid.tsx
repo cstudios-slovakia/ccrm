@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { 
   Users, MapPin, Plus, Search, Trash2, 
   Clock, User, Briefcase, Handshake, 
@@ -6,11 +7,312 @@ import {
   Edit3, Check, Layers, SlidersHorizontal,
   ArrowLeft, PencilLine, Phone, Mail, Globe,
   Calendar, FolderOpen, FileText, Minimize2, CheckSquare, Lock,
-  CornerDownLeft, CornerLeftDown, Loader2
+  CornerDownLeft, CornerLeftDown, Loader2, Brain, Mic, Play, Pause, Square, Sparkles
 } from "lucide-react";
 import type { Lead, TimelineEvent, Task, UserProfile } from "../types";
+import { cn } from "../utils/cn";
+import { BlockEditor } from "./BlockEditor";
+import type { EditorBlock } from "./BlockEditor";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
+
+const CalendarPane: React.FC<{
+  title: string;
+  year: number;
+  month: number;
+  selectedStart: Date | null;
+  selectedEnd: Date | null;
+  onSelect: (date: Date) => void;
+  systemLanguage: Language;
+}> = ({ title, year, month, selectedStart, selectedEnd, onSelect, systemLanguage }) => {
+  // Get list of days in the month
+  const daysInMonth = useMemo(() => {
+    const date = new Date(year, month, 1);
+    const days: Date[] = [];
+    while (date.getMonth() === month) {
+      days.push(new Date(date));
+      date.setDate(date.getDate() + 1);
+    }
+    return days;
+  }, [year, month]);
+
+  // Determine starting weekday padding (Monday is 1st day of week)
+  const paddingDays = useMemo(() => {
+    const firstDay = new Date(year, month, 1).getDay(); // Sunday=0, Monday=1, ...
+    return (firstDay + 6) % 7;
+  }, [year, month]);
+
+  // Generate week annotations dynamically
+  const weekNumbers = useMemo(() => {
+    return Array.from({ length: 5 }, (_, weekIdx) => {
+      const dayOffset = weekIdx * 7 - paddingDays;
+      const targetDate = new Date(year, month, dayOffset + 1);
+      
+      // Calculate ISO week number
+      const tempDate = new Date(targetDate.valueOf());
+      const dayNum = (targetDate.getDay() + 6) % 7;
+      tempDate.setDate(tempDate.getDate() - dayNum + 3);
+      const firstThursday = tempDate.valueOf();
+      tempDate.setMonth(0, 1);
+      if (tempDate.getDay() !== 4) {
+        tempDate.setMonth(0, 1 + ((4 - tempDate.getDay() + 7) % 7));
+      }
+      const weekNum = 1 + Math.ceil((firstThursday - tempDate.valueOf()) / 604800000);
+      return `W${weekNum}`;
+    });
+  }, [year, month, paddingDays]);
+
+  const getDayNames = () => {
+    if (systemLanguage === "sk") return ["Po", "Ut", "St", "Št", "Pi", "So", "Ne"];
+    if (systemLanguage === "hu") return ["H", "K", "Sze", "Cs", "P", "Szo", "V"];
+    return ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  };
+
+  return (
+    <div className="flex-1 flex flex-col space-y-2 select-none text-left">
+      <div className="flex justify-between items-center px-1">
+        <span className="text-[10px] font-heading font-black text-slate-800 uppercase tracking-widest">{title}</span>
+      </div>
+      
+      <div className="grid grid-cols-8 gap-y-1 text-center items-center">
+        {/* Week column header */}
+        <span className="text-[8px] font-black text-slate-350 uppercase tracking-wider">{systemLanguage === "sk" ? "Týž" : systemLanguage === "hu" ? "Hét" : "Wk"}</span>
+        {getDayNames().map(d => (
+          <span key={d} className="text-[8px] font-black text-slate-400 uppercase tracking-wider">{d}</span>
+        ))}
+
+        {/* Calendar Grid */}
+        {Array.from({ length: 5 }).map((_, weekIdx) => {
+          return (
+            <React.Fragment key={weekIdx}>
+              {/* Week Number Label */}
+              <span className="text-[9px] font-bold text-slate-450 py-1 bg-slate-50/50 rounded-lg">{weekNumbers[weekIdx]}</span>
+
+              {/* 7 Days of the Week */}
+              {Array.from({ length: 7 }).map((_, dayIdx) => {
+                const dayOffset = weekIdx * 7 + dayIdx - paddingDays;
+                const dayDate = daysInMonth[dayOffset];
+
+                if (!dayDate) {
+                  return <span key={dayIdx} className="h-7 w-7" />;
+                }
+
+                // Check selection status
+                const isStart = selectedStart && dayDate.toDateString() === selectedStart.toDateString();
+                const isEnd = selectedEnd && dayDate.toDateString() === selectedEnd.toDateString();
+                const inRange = selectedStart && selectedEnd && dayDate > selectedStart && dayDate < selectedEnd;
+
+                const realToday = new Date();
+                const isToday = dayDate && (
+                  dayDate.getDate() === realToday.getDate() && 
+                  dayDate.getMonth() === realToday.getMonth() && 
+                  dayDate.getFullYear() === realToday.getFullYear()
+                );
+
+                let dayClass = "text-[10px] font-black cursor-pointer hover:bg-purple-50 transition-colors h-7 w-7 rounded-full flex items-center justify-center relative ";
+                if (isStart || isEnd) {
+                  dayClass += "bg-purple-600 text-white shadow-md shadow-purple-600/25 scale-105";
+                } else if (inRange) {
+                  dayClass += "bg-purple-100/65 text-purple-800 rounded-none h-7 w-full";
+                } else {
+                  dayClass += "text-slate-700 hover:text-purple-650";
+                }
+
+                if (isToday && !isStart && !isEnd && !inRange) {
+                  dayClass += " border-2 border-purple-650 bg-purple-50/50";
+                }
+
+                return (
+                  <div key={dayIdx} className="flex justify-center items-center w-full">
+                    <button
+                      type="button"
+                      onClick={() => onSelect(dayDate)}
+                      className={dayClass}
+                    >
+                      {dayDate.getDate()}
+                      {isToday && (
+                        <span className={`absolute bottom-0.5 h-1 w-1 rounded-full ${isStart || isEnd ? 'bg-white' : 'bg-purple-600'}`} />
+                      )}
+                    </button>
+                  </div>
+                );
+              })}
+            </React.Fragment>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+const getPresetTranslationKey = (name: string) => {
+  switch (name) {
+    case "Today": return "dashboard.picker.today";
+    case "Yesterday": return "dashboard.picker.yesterday";
+    case "This week": return "dashboard.picker.this_week";
+    case "Last week": return "dashboard.picker.last_week";
+    case "This month": return "dashboard.picker.this_month";
+    case "Last month": return "dashboard.picker.last_month";
+    case "This quarter": return "dashboard.picker.this_quarter";
+    case "Last quarter": return "dashboard.picker.last_quarter";
+    case "This year": return "dashboard.picker.this_year";
+    case "Last year": return "dashboard.picker.last_year";
+    case "All Time": return "dashboard.picker.all_time";
+    default: return "";
+  }
+};
+
+const generateAiSummary = (lead: Lead, lang: Language): string => {
+  const typeText = lead.clientType === "person" 
+    ? (lang === "sk" ? "Súkromná osoba" : lang === "hu" ? "Magánszemély" : "Private person")
+    : lead.clientType === "business"
+    ? (lang === "sk" ? "Firma" : lang === "hu" ? "Cég" : "Company")
+    : (lang === "sk" ? "Partner" : lang === "hu" ? "Partner" : "Partner");
+    
+  const categoriesText = lead.categories && lead.categories.length > 0 ? lead.categories.join(", ") : "";
+  const ownerText = lead.owner ? lead.owner : "";
+  const statusLower = (lead.status || "").toLowerCase();
+  
+  const timeline = lead.timeline || [];
+  let latestEventStr = "";
+  if (timeline.length > 0) {
+    const sortedTimeline = [...timeline].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+    const latest = sortedTimeline[0];
+    
+    let typeLabel: string = latest.type;
+    if (lang === "sk") {
+      if (latest.type === "phone") typeLabel = "telefonát";
+      else if (latest.type === "email") typeLabel = "e-mail";
+      else if (latest.type === "note") typeLabel = "poznámka";
+      else if (latest.type === "offer") typeLabel = "ponuka";
+      else if (latest.type === "appointment") typeLabel = "stretnutie";
+    } else if (lang === "hu") {
+      if (latest.type === "phone") typeLabel = "telefonhívás";
+      else if (latest.type === "email") typeLabel = "e-mail";
+      else if (latest.type === "note") typeLabel = "jegyzet";
+      else if (latest.type === "offer") typeLabel = "ajánlat";
+      else if (latest.type === "appointment") typeLabel = "találkozó";
+    } else {
+      if (latest.type === "phone") typeLabel = "phone call";
+      else if (latest.type === "email") typeLabel = "email";
+      else if (latest.type === "note") typeLabel = "note";
+      else if (latest.type === "offer") typeLabel = "offer";
+      else if (latest.type === "appointment") typeLabel = "appointment";
+    }
+    
+    let details = latest.title || latest.content || "";
+    if (details.length > 50) {
+      details = details.substring(0, 50) + "...";
+    }
+    latestEventStr = details ? `${typeLabel} ("${details}")` : typeLabel;
+  }
+
+  if (lang === "sk") {
+    if (statusLower === "new") {
+      let desc = `Nový dopyt od ${lead.name} (${typeText.toLowerCase()}) z mesta ${lead.city || "neznáme"}`;
+      if (categoriesText) desc += ` so záujmom o ${categoriesText}`;
+      desc += `. Čaká na prvý kontakt a priradenie zodpovednej osoby.`;
+      return desc;
+    }
+    if (statusLower === "contacted") {
+      let desc = `Klient bol prvotne kontaktovaný. Prebieha analýza požiadaviek`;
+      if (categoriesText) desc += ` pre kategórie ${categoriesText}`;
+      if (latestEventStr) desc += `. Posledný kontakt: ${latestEventStr}`;
+      if (ownerText) desc += `. Zodpovedný: ${ownerText}`;
+      return desc;
+    }
+    if (statusLower === "offer sent") {
+      let desc = `Vypracovaná a odoslaná cenová ponuka`;
+      if (lead.value > 0) desc += ` v hodnote €${lead.value.toLocaleString()}`;
+      if (categoriesText) desc += ` na ${categoriesText}`;
+      desc += `. Čaká sa na spätnú väzbu od zákazníka.`;
+      if (latestEventStr) desc += ` Posledná komunikácia: ${latestEventStr}.`;
+      return desc;
+    }
+    if (statusLower === "accepted") {
+      let desc = `Úspešný obchod. Ponuka bola schválená klientom`;
+      if (lead.value > 0) desc += ` v celkovej hodnote €${lead.value.toLocaleString()}`;
+      desc += `. Projekt prechádza do realizačnej fázy`;
+      if (ownerText) desc += ` pod vedením manažéra ${ownerText}`;
+      return desc;
+    }
+    if (statusLower === "rejected") {
+      let desc = `Obchodný prípad bol uzavretý ako neúspešný.`;
+      if (latestEventStr) desc += ` Posledná aktivita pred uzavretím: ${latestEventStr}.`;
+      return desc;
+    }
+    return `Lead v stave ${lead.status}. ${typeText} z mesta ${lead.city || "neznáme"}.`;
+  } else if (lang === "hu") {
+    if (statusLower === "new") {
+      let desc = `Új megkeresés tőle: ${lead.name} (${typeText.toLowerCase()}), helyszín: ${lead.city || "ismeretlen"}`;
+      if (categoriesText) desc += `, érdeklődés: ${categoriesText}`;
+      desc += `. Első kapcsolatfelvételre és felelős kijelölésére vár.`;
+      return desc;
+    }
+    if (statusLower === "contacted") {
+      let desc = `Kezdeti kapcsolatfelvétel megtörtént. Igények felmérése folyamatban`;
+      if (categoriesText) desc += ` a következő kategóriákban: ${categoriesText}`;
+      if (latestEventStr) desc += `. Utolsó interakció: ${latestEventStr}`;
+      if (ownerText) desc += `. Felelős: ${ownerText}`;
+      return desc;
+    }
+    if (statusLower === "offer sent") {
+      let desc = `Árajánlat kiküldve`;
+      if (lead.value > 0) desc += ` €${lead.value.toLocaleString()} értékben`;
+      if (categoriesText) desc += ` (${categoriesText})`;
+      desc += `. Vevői visszajelzésre vár.`;
+      if (latestEventStr) desc += ` Utolsó egyeztetés: ${latestEventStr}.`;
+      return desc;
+    }
+    if (statusLower === "accepted") {
+      let desc = `Sikeres üzlet. Az ajánlatot elfogadta az ügyfél`;
+      if (lead.value > 0) desc += ` €${lead.value.toLocaleString()} összértékben`;
+      desc += `. Projekt átadva megvalósításra`;
+      if (ownerText) desc += `, projektmenedzser: ${ownerText}`;
+      return desc;
+    }
+    if (statusLower === "rejected") {
+      let desc = `Lezárt, sikertelen üzleti lehetőség.`;
+      if (latestEventStr) desc += ` Utolsó aktivitás a lezárás előtt: ${latestEventStr}.`;
+      return desc;
+    }
+    return `Lead állapot: ${lead.status}. ${typeText}, helyszín: ${lead.city || "ismeretlen"}.`;
+  } else {
+    if (statusLower === "new") {
+      let desc = `New request from ${lead.name} (${typeText.toLowerCase()}) from ${lead.city || "unknown"}`;
+      if (categoriesText) desc += ` interested in ${categoriesText}`;
+      desc += `. Awaiting initial contact and assignee.`;
+      return desc;
+    }
+    if (statusLower === "contacted") {
+      let desc = `Client has been initially contacted. Requirements analysis in progress`;
+      if (categoriesText) desc += ` for ${categoriesText}`;
+      if (latestEventStr) desc += `. Last contact: ${latestEventStr}`;
+      if (ownerText) desc += `. Owner: ${ownerText}`;
+      return desc;
+    }
+    if (statusLower === "offer sent") {
+      let desc = `Price proposal sent`;
+      if (lead.value > 0) desc += ` in the amount of €${lead.value.toLocaleString()}`;
+      if (categoriesText) desc += ` for ${categoriesText}`;
+      desc += `. Awaiting feedback from client.`;
+      if (latestEventStr) desc += ` Last activity: ${latestEventStr}.`;
+      return desc;
+    }
+    if (statusLower === "accepted") {
+      let desc = `Won deal. Offer was approved by client`;
+      if (lead.value > 0) desc += ` for a total value of €${lead.value.toLocaleString()}`;
+      desc += `. Moving to execution phase`;
+      if (ownerText) desc += ` managed by ${ownerText}`;
+      return desc;
+    }
+    if (statusLower === "rejected") {
+      let desc = `Lost deal. Case closed.`;
+      if (latestEventStr) desc += ` Last activity before close: ${latestEventStr}.`;
+      return desc;
+    }
+    return `Lead in status ${lead.status}. ${typeText} from ${lead.city || "unknown"}.`;
+  }
+};
 
 interface LeadsDatagridProps {
   systemName: string;
@@ -30,6 +332,9 @@ interface LeadsDatagridProps {
   tasks: Task[];
   setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
   users: UserProfile[];
+  taskStates?: string[];
+  taskStateColors?: Record<string, string>;
+  integrationsConfig?: any;
 }
 
 export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
@@ -49,12 +354,24 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
   leadStateParents,
   tasks,
   setTasks,
-  users: _users
+  users: _users,
+  taskStates = ["New", "In progress", "Blocked", "Done"],
+  taskStateColors = {
+    "New": "#3b82f6",
+    "In progress": "#f59e0b",
+    "Blocked": "#ef4444",
+    "Done": "#10b981"
+  },
+  integrationsConfig
 }) => {
   const getSafeStateColor = (stateName: string) => {
     if (!leadStateColors) return "#64748b";
     const key = (stateName || "").toLowerCase();
     return leadStateColors[key] || "#64748b";
+  };
+
+  const isDoneState = (status: string) => {
+    return status.toLowerCase() === "done" || (taskStates.length > 0 && status === taskStates[taskStates.length - 1]);
   };
 
   const StatusSelector: React.FC<{
@@ -114,7 +431,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     }
 
     return (
-      <div className="flex flex-wrap items-center gap-1.5 justify-center lg:justify-start">
+      <div className="flex flex-col items-center lg:items-start gap-1 justify-center">
         {/* Main Dropdown */}
         <select
           value={activeMain}
@@ -177,8 +494,430 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     return leadCategoryColors[catName] || "#6366f1";
   };
 
-  // Hover state for rendering responsive state progress bars on list rows
+  const getNextTaskForLead = (leadId: string) => {
+    const leadTasks = tasks.filter(t => t.relatedLeadId === leadId && !isDoneState(t.status));
+    if (leadTasks.length === 0) return null;
+    return leadTasks.sort((a, b) => a.deadline.localeCompare(b.deadline))[0];
+  };
+
+  const getNextState = (currentStatus: string) => {
+    const sName = (currentStatus || "").toLowerCase();
+    const activeMain = leadStateParents[sName] || sName;
+    const majorStates = leadStates.filter(s => !leadStateParents[s.toLowerCase()]).map(s => s.toLowerCase());
+    const activeSubstates = leadStates.filter(s => leadStateParents[s.toLowerCase()] === activeMain).map(s => s.toLowerCase());
+    
+    if (leadStateParents[sName]) {
+      const subIdx = activeSubstates.indexOf(sName);
+      if (subIdx !== -1 && subIdx < activeSubstates.length - 1) {
+        const nextSub = activeSubstates[subIdx + 1];
+        return leadStates.find(s => s.toLowerCase() === nextSub) || nextSub;
+      } else {
+        const mainIdx = majorStates.indexOf(activeMain);
+        if (mainIdx !== -1 && mainIdx < majorStates.length - 1) {
+          const nextMain = majorStates[mainIdx + 1];
+          return leadStates.find(s => s.toLowerCase() === nextMain) || nextMain;
+        }
+      }
+    } else {
+      if (activeSubstates.length > 0) {
+        const nextSub = activeSubstates[0];
+        return leadStates.find(s => s.toLowerCase() === nextSub) || nextSub;
+      } else {
+        const mainIdx = majorStates.indexOf(activeMain);
+        if (mainIdx !== -1 && mainIdx < majorStates.length - 1) {
+          const nextMain = majorStates[mainIdx + 1];
+          return leadStates.find(s => s.toLowerCase() === nextMain) || nextMain;
+        }
+      }
+    }
+    return null;
+  };
+
   const [hoveredLeadId, setHoveredLeadId] = useState<string | null>(null);
+
+  // Recording & transcription states for note logger
+  const [recordingState, setRecordingState] = useState<"idle" | "recording" | "paused" | "stopped" | "none">("none");
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+  const [recordDuration, setRecordDuration] = useState(0);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isUploadingAudio, setIsUploadingAudio] = useState(false);
+  const [uploadedAudioFile, setUploadedAudioFile] = useState<string | null>(null);
+  const [microphoneStream, setMicrophoneStream] = useState<MediaStream | null>(null);
+  const [recordingMeetingId, setRecordingMeetingId] = useState<string | null>(null);
+  const [editorKey, setEditorKey] = useState(0);
+  
+  // Audio Context and Visualizer states for note logger
+  const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
+  const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
+  const [dataArray, setDataArray] = useState<Uint8Array | null>(null);
+  
+  // Custom Audio Player states for note logger
+  const audioRef = React.useRef<HTMLAudioElement | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [audioDuration, setAudioDuration] = useState(0);
+  
+  // Blocks state for note logger
+  const [noteBlocks, setNoteBlocks] = useState<EditorBlock[]>([
+    { id: "b-1", type: "paragraph", content: "" }
+  ]);
+
+  // Recording timer
+  useEffect(() => {
+    if (recordingState !== "recording") return;
+    const interval = setInterval(() => {
+      setRecordDuration(prev => prev + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [recordingState]);
+
+  // Visualizer height updater
+  useEffect(() => {
+    if (recordingState !== "recording" || !analyser || !dataArray) {
+      return;
+    }
+
+    let animationFrameId: number;
+    const update = () => {
+      analyser.getByteFrequencyData(dataArray as any);
+      animationFrameId = requestAnimationFrame(update);
+    };
+
+    update();
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [recordingState, analyser, dataArray]);
+
+  const startVisualizer = (stream: MediaStream) => {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+
+    try {
+      const ctx = new AudioCtx();
+      const src = ctx.createMediaStreamSource(stream);
+      const ana = ctx.createAnalyser();
+      ana.fftSize = 64;
+      src.connect(ana);
+      const bufferLength = ana.frequencyBinCount;
+      const data = new Uint8Array(bufferLength);
+      setAudioContext(ctx);
+      setAnalyser(ana);
+      setDataArray(data);
+    } catch (e) {
+      console.warn("Visualizer init failed", e);
+    }
+  };
+
+  const startRecording = async () => {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("Microphone access is not supported by this browser.");
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setMicrophoneStream(stream);
+
+      let mimeType = "audio/webm";
+      if (typeof MediaRecorder !== "undefined") {
+        if (MediaRecorder.isTypeSupported("audio/webm")) {
+          mimeType = "audio/webm";
+        } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
+          mimeType = "audio/mp4";
+        }
+      }
+
+      const chunks: Blob[] = [];
+      const recorder = new MediaRecorder(stream, { mimeType });
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          chunks.push(e.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        setIsUploadingAudio(true);
+        const ext = mimeType.split("/")[1] || "webm";
+        const blob = new Blob(chunks, { type: mimeType });
+        const localUrl = URL.createObjectURL(blob);
+        setAudioUrl(localUrl);
+
+        const tempId = `note_event_${Date.now()}`;
+        setRecordingMeetingId(tempId);
+        const formData = new FormData();
+        formData.append("audio", blob, `meeting_${tempId}.${ext}`);
+        formData.append("meetingId", tempId);
+
+        try {
+          const res = await fetch("/api/upload_audio.php", {
+            method: "POST",
+            body: formData
+          });
+          const data = await res.json();
+          if (res.ok && data.success) {
+            setUploadedAudioFile(data.filePath);
+            if (typeof (window as any).showToast === "function") {
+              (window as any).showToast("Audio recording saved successfully!");
+            }
+          } else {
+            throw new Error(data.message || "Upload failed");
+          }
+        } catch (err: any) {
+          if (typeof (window as any).showToast === "function") {
+            (window as any).showToast("Failed to upload audio to server: " + err.message, "error");
+          }
+        } finally {
+          setIsUploadingAudio(false);
+        }
+      };
+
+      setMediaRecorder(recorder);
+      setRecordDuration(0);
+      recorder.start();
+      setRecordingState("recording");
+      startVisualizer(stream);
+    } catch (err: any) {
+      if (typeof (window as any).showToast === "function") {
+        (window as any).showToast("Microphone access denied: " + err.message, "error");
+      }
+    }
+  };
+
+  const pauseRecording = () => {
+    if (mediaRecorder && mediaRecorder.state === "recording") {
+      mediaRecorder.pause();
+      setRecordingState("paused");
+    }
+  };
+
+  const resumeRecording = () => {
+    if (mediaRecorder && mediaRecorder.state === "paused") {
+      mediaRecorder.resume();
+      setRecordingState("recording");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorder && mediaRecorder.state !== "inactive") {
+      mediaRecorder.stop();
+    }
+    if (microphoneStream) {
+      microphoneStream.getTracks().forEach(track => track.stop());
+      setMicrophoneStream(null);
+    }
+    if (audioContext) {
+      audioContext.close().catch(() => {});
+      setAudioContext(null);
+    }
+    setRecordingState("stopped");
+  };
+
+  const removeAudioFile = () => {
+    if (confirm(systemLanguage === "sk" ? "Naozaj chcete odstrániť túto nahrávku?" : "Are you sure you want to remove this recording?")) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      setAudioUrl(null);
+      setUploadedAudioFile(null);
+      setRecordingState("none");
+    }
+  };
+
+  const formatDuration = (sec: number): string => {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  };
+
+  const handleTranscribeMeeting = async () => {
+    setIsTranscribing(true);
+    const serializeBlocksToPlainText = (blocks: EditorBlock[]): string => {
+      return blocks.map(b => b.content.replace(/<[^>]*>/g, "")).join("\n");
+    };
+    const manualNotesText = serializeBlocksToPlainText(noteBlocks);
+
+    const activeMeetingId = recordingMeetingId || `note_event_${Date.now()}`;
+
+    try {
+      const res = await fetch("/api/transcribe_meeting.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          meetingId: activeMeetingId,
+          manualNotes: manualNotesText
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (data.transcription) {
+          // Append transcription to block editor
+          setNoteBlocks(prev => [
+            ...prev,
+            { id: `b-trans-${Date.now()}`, type: "paragraph", content: `<strong>Transcription:</strong> ${data.transcription}` }
+          ]);
+          setEditorKey(prev => prev + 1);
+        }
+        if (typeof (window as any).showToast === "function") {
+          (window as any).showToast("AI Transcription completed successfully!");
+        }
+      } else {
+        throw new Error(data.message || "Transcription failed");
+      }
+    } catch (err: any) {
+      if (typeof (window as any).showToast === "function") {
+        (window as any).showToast("Transcription failed: " + err.message, "error");
+      }
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
+  const renderCompactAudioRecorder = () => {
+    const isOpenAiConfigured = !!(integrationsConfig?.openAiKey && integrationsConfig.openAiKey.trim() !== "");
+    const transcriptionAvailable = false; // not processed initially
+
+    return (
+      <div className="flex items-center justify-between gap-3 bg-white p-2 rounded-lg border border-slate-200 shadow-sm text-xs select-none">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <div className="relative flex h-2.5 w-2.5 shrink-0">
+            {recordingState === "recording" && (
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+            )}
+            <span className={cn(
+              "relative inline-flex rounded-full h-2.5 w-2.5",
+              recordingState === "recording" ? "bg-rose-600" :
+              recordingState === "paused" ? "bg-amber-500" :
+              recordingState === "stopped" ? "bg-emerald-500" : "bg-slate-350"
+            )}></span>
+          </div>
+          
+          <div className="text-left truncate">
+            <span className="font-extrabold uppercase text-[9px] text-slate-700">
+              {recordingState === "none" && (systemLanguage === "sk" ? "Hlasový záznam" : systemLanguage === "hu" ? "Hangrögzítés" : "Voice Recording")}
+              {recordingState === "recording" && `${formatDuration(recordDuration)}`}
+              {recordingState === "paused" && (systemLanguage === "sk" ? "Pozastavené" : systemLanguage === "hu" ? "Megállítva" : "Paused")}
+              {recordingState === "stopped" && (systemLanguage === "sk" ? "Nahrávka" : systemLanguage === "hu" ? "Felvétel" : "Recording")}
+            </span>
+          </div>
+        </div>
+
+        {/* Small Audio Player */}
+        {recordingState === "stopped" && audioUrl && (
+          <div className="flex items-center gap-2 flex-1 max-w-[150px]">
+            <audio
+              ref={audioRef}
+              src={audioUrl}
+              onTimeUpdate={() => {
+                if (audioRef.current) setCurrentTime(audioRef.current.currentTime);
+              }}
+              onDurationChange={() => {
+                if (audioRef.current) setAudioDuration(audioRef.current.duration);
+              }}
+              onPlay={() => setIsPlaying(true)}
+              onPause={() => setIsPlaying(false)}
+              onEnded={() => setIsPlaying(false)}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                if (!audioRef.current) return;
+                if (isPlaying) {
+                  audioRef.current.pause();
+                } else {
+                  audioRef.current.play();
+                }
+              }}
+              className="p-1 rounded-full bg-slate-800 text-white flex items-center justify-center shrink-0 cursor-pointer"
+            >
+              {isPlaying ? <Pause className="h-3 w-3 fill-white" /> : <Play className="h-3 w-3 fill-white" />}
+            </button>
+            <span className="text-[8px] font-black text-slate-400">
+              {formatDuration(Math.floor(currentTime))} / {formatDuration(Math.floor(audioDuration))}
+            </span>
+            <button
+              type="button"
+              onClick={removeAudioFile}
+              className="text-slate-400 hover:text-rose-600 transition-colors p-1 cursor-pointer"
+              title="Delete audio"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+
+        {/* Controls */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {recordingState === "none" && (
+            <button
+              type="button"
+              onClick={startRecording}
+              className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white text-[9px] font-black uppercase tracking-wider rounded-lg cursor-pointer flex items-center gap-1 shadow-sm"
+            >
+              <Mic className="h-3 w-3 fill-white" />
+              <span>{systemLanguage === "sk" ? "Nahrať" : systemLanguage === "hu" ? "Felvétel" : "Record"}</span>
+            </button>
+          )}
+
+          {recordingState === "recording" && (
+            <>
+              <button
+                type="button"
+                onClick={pauseRecording}
+                className="p-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg cursor-pointer"
+                title="Pause"
+              >
+                <Pause className="h-3 w-3 fill-white" />
+              </button>
+              <button
+                type="button"
+                onClick={stopRecording}
+                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-900 text-white text-[9px] font-black uppercase tracking-wider rounded-lg cursor-pointer flex items-center gap-1"
+              >
+                <Square className="h-3 w-3 fill-white" />
+                <span>Stop</span>
+              </button>
+            </>
+          )}
+
+          {recordingState === "paused" && (
+            <>
+              <button
+                type="button"
+                onClick={resumeRecording}
+                className="p-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg cursor-pointer"
+                title="Resume"
+              >
+                <Play className="h-3 w-3 fill-white" />
+              </button>
+              <button
+                type="button"
+                onClick={stopRecording}
+                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-900 text-white text-[9px] font-black uppercase tracking-wider rounded-lg cursor-pointer flex items-center gap-1"
+              >
+                <Square className="h-3 w-3 fill-white" />
+                <span>Stop</span>
+              </button>
+            </>
+          )}
+
+          {recordingState === "stopped" && isOpenAiConfigured && !transcriptionAvailable && (
+            <button
+              type="button"
+              disabled={isTranscribing || isUploadingAudio || !uploadedAudioFile}
+              onClick={handleTranscribeMeeting}
+              className="px-2.5 py-1 bg-indigo-650 hover:bg-indigo-600 disabled:bg-slate-200 text-white text-[9px] font-black uppercase tracking-wider rounded-lg cursor-pointer flex items-center gap-1.5"
+            >
+              {isTranscribing ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Sparkles className="h-3 w-3" />
+              )}
+              <span>{systemLanguage === "sk" ? "Prepísať" : systemLanguage === "hu" ? "Átír" : "Transcribe"}</span>
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
   
   // Hover state for the detail view left card progress bar
   const [hoveredDetailTimeline, setHoveredDetailTimeline] = useState<boolean>(false);
@@ -225,6 +964,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
   const [selectedSource, setSelectedSource] = useState("all");
   const [selectedType, setSelectedType] = useState("all");
 
+  // Offer date filter states
+  const [filterOfferStartDate, setFilterOfferStartDate] = useState<Date | null>(null);
+  const [filterOfferEndDate, setFilterOfferEndDate] = useState<Date | null>(null);
+  const [offerPresetName, setOfferPresetName] = useState<string>("All Time");
+  const [isOfferDatePickerOpen, setIsOfferDatePickerOpen] = useState(false);
+
   // Collapsible Filters State
   const [showFilters, setShowFilters] = useState(false);
   const [selectedOwner, setSelectedOwner] = useState("all");
@@ -242,8 +987,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       selectedCity !== "all" || 
       selectedSource !== "all" || 
       selectedType !== "all" || 
-      selectedState !== "all";
-  }, [selectedOwner, selectedCity, selectedSource, selectedType, selectedState]);
+      selectedState !== "all" ||
+      offerPresetName !== "All Time";
+  }, [selectedOwner, selectedCity, selectedSource, selectedType, selectedState, offerPresetName]);
 
   // Create Lead modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -256,6 +1002,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
   const [newLeadOwner, setNewLeadOwner] = useState("");
   const [newLeadRating, setNewLeadRating] = useState(3);
   const [newLeadCategories, setNewLeadCategories] = useState<string[]>([]);
+  const [newLeadReferralId, setNewLeadReferralId] = useState("");
 
   const [clientMode, setClientMode] = useState<"existing" | "new">("new");
   const [selectedExistingClient, setSelectedExistingClient] = useState("");
@@ -324,10 +1071,104 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
   const [leadCity, setLeadCity] = useState("");
   const [leadClientType, setLeadClientType] = useState<"person" | "business" | "partner">("person");
   const [leadSelectedCategories, setLeadSelectedCategories] = useState<string[]>([]);
+  const [leadReferralId, setLeadReferralId] = useState("");
+
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [localSummary, setLocalSummary] = useState<string | undefined>(undefined);
+
+  // Filter tasks belonging to the active lead
+  const activeLeadTasks = useMemo(() => {
+    if (!activeLead) return [];
+    return tasks.filter(t => t.relatedLeadId === activeLead.id);
+  }, [tasks, activeLead]);
+
+  // Compute active lead data fingerprint to monitor changes
+  const activeLeadFingerprint = useMemo(() => {
+    if (!activeLead) return "";
+    const tasksStr = activeLeadTasks.map(t => `${t.id}-${t.status}-${t.title}-${t.deadline}`).join('|');
+    const timelineStr = (activeLead.timeline || []).map(e => `${e.id}-${e.type}-${e.timestamp}-${e.content || ''}-${e.amount || 0}`).join('|');
+    const detailsStr = `${activeLead.name}-${activeLead.city || ''}-${activeLead.clientType}-${activeLead.value}-${activeLead.status}-${activeLead.owner}-${activeLead.email || ''}-${activeLead.phone || ''}-${(activeLead.categories || []).join(',')}`;
+    return `${detailsStr}#${timelineStr}#${tasksStr}`;
+  }, [activeLead, activeLeadTasks]);
+
+  const isOpenAiConfigured = !!(integrationsConfig?.openAiKey && integrationsConfig.openAiKey.trim() !== "");
+
+  // Sync local summary state with activeLead's stored summary
+  useEffect(() => {
+    setLocalSummary(activeLead?.aiSummary);
+  }, [activeLead?.id, activeLead?.aiSummary]);
+
+  // Auto-regenerate summary if fingerprint changes
+  useEffect(() => {
+    if (!activeLead || !activeLeadFingerprint || !isOpenAiConfigured) return;
+    if (activeLead.aiSummaryFingerprint === activeLeadFingerprint) return;
+    if (isGeneratingSummary) return;
+
+    const generateSummary = async () => {
+      setIsGeneratingSummary(true);
+      try {
+        const leadTimeline = activeLead.timeline || [];
+        const priceOffers = leadTimeline.filter(e => e.type === "offer");
+        const otherData = {
+          city: activeLead.city || "",
+          clientType: activeLead.clientType,
+          status: activeLead.status,
+          owner: activeLead.owner,
+          categories: activeLead.categories || [],
+          value: activeLead.value,
+          email: activeLead.email || "",
+          phone: activeLead.phone || "",
+        };
+
+        const response = await fetch("/api/summarize_client_lead.php", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: activeLead.name,
+            type: "lead",
+            tasks: activeLeadTasks,
+            events: leadTimeline,
+            priceOffers: priceOffers,
+            otherData: otherData,
+            systemLanguage: systemLanguage
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to generate AI summary");
+        }
+
+        const data = await response.json();
+        if (data.success && data.summary) {
+          setLocalSummary(data.summary);
+          setLeads(prev => prev.map(l => {
+            if (l.id === activeLead.id) {
+              return {
+                ...l,
+                aiSummary: data.summary,
+                aiSummaryFingerprint: activeLeadFingerprint
+              };
+            }
+            return l;
+          }));
+        }
+      } catch (err) {
+        console.error("AI summary generation error:", err);
+      } finally {
+        setIsGeneratingSummary(false);
+      }
+    };
+
+    const timer = setTimeout(() => {
+      generateSummary();
+    }, 1200);
+
+    return () => clearTimeout(timer);
+  }, [activeLeadFingerprint, activeLead, isOpenAiConfigured, setLeads, systemLanguage]);
 
   // Sync state with active lead
   useEffect(() => {
-    if (activeLead) {
+    if (activeLead && !isEditingLead) {
       setLeadName(activeLead.name);
       setLeadValue(activeLead.value.toString());
       setLeadOwner(activeLead.owner);
@@ -337,9 +1178,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       setLeadCity(activeLead.city || "");
       setLeadClientType(activeLead.clientType || "person");
       setLeadSelectedCategories(activeLead.categories || []);
-      setIsEditingLead(false);
+      setLeadReferralId(activeLead.referralLeadId || "");
     }
-  }, [activeLead]);
+  }, [activeLead, isEditingLead]);
 
   // Aggregate Client Card details
   const clientCardData = useMemo(() => {
@@ -378,6 +1219,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
   const [logFileName, setLogFileName] = useState("");
   const [logFileSize, setLogFileSize] = useState("");
   const [logFileType, setLogFileType] = useState<"offer" | "contract" | "invoice">("offer");
+  const [logFileObject, setLogFileObject] = useState<File | null>(null);
   
   // Explicit Event Date/Time
   const [logDate, setLogDate] = useState(() => {
@@ -396,6 +1238,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     d.setDate(d.getDate() + 3);
     return d.toISOString().split("T")[0];
   });
+  const [inlineTaskDeadlineTime, setInlineTaskDeadlineTime] = useState("23:59");
   const [inlineTaskIsLocking, setInlineTaskIsLocking] = useState(true);
 
   // Retrieve current user session to authenticate API requests to mail_broker.php
@@ -619,7 +1462,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
           status: leadStatus.toLowerCase(),
           source: leadSource.toLowerCase(),
           rating: leadRating,
-          categories: leadSelectedCategories
+          categories: leadSelectedCategories,
+          referralLeadId: leadReferralId || undefined
         };
       }
       return l;
@@ -627,7 +1471,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     setIsEditingLead(false);
   };
 
-  const handleAddLeadTimelineEvent = (e: React.FormEvent) => {
+  const handleAddLeadTimelineEvent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeLead || !logType) return;
 
@@ -644,10 +1488,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       if (!contentString) contentString = "Outbound email correspondence successfully transmitted.";
     } else if (logType === "note") {
       titleString = "Internal Note Added";
-      if (!contentString) {
-        (window as any).showToast("Please write down some details for the note!");
+      // Note type is rich: saved as JSON stringified blocks
+      const hasContent = noteBlocks.some(b => b.content.trim().length > 0);
+      if (!hasContent && !uploadedAudioFile) {
+        (window as any).showToast("Please write down some details or record audio for the note!");
         return;
       }
+      contentString = JSON.stringify(noteBlocks);
     } else if (logType === "appointment") {
       titleString = "Meeting Pinned";
       if (!logTime.trim()) {
@@ -666,17 +1513,54 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       if (!contentString) contentString = `Submitted commercial proposal of € ${amt.toLocaleString()} to client.`;
     }
 
+    const eventId = "evt_" + Math.random().toString(36).substr(2, 9);
+    let finalFileName = logType === "offer" && logFileName ? logFileName : undefined;
+    let finalFileSize = logType === "offer" && logFileSize ? logFileSize : undefined;
+
+    // Handle physical file upload to backend if present
+    if (logType === "offer" && logFileObject) {
+      try {
+        const formData = new FormData();
+        formData.append("file", logFileObject);
+        formData.append("eventId", eventId);
+
+        const uploadRes = await fetch("/upload.php", {
+          method: "POST",
+          body: formData
+        });
+
+        if (!uploadRes.ok) {
+          const errData = await uploadRes.json();
+          throw new Error(errData.error || "Failed to upload file");
+        }
+
+        const uploadData = await uploadRes.json();
+        if (uploadData.success) {
+          finalFileName = uploadData.fileName || logFileObject.name;
+          if (uploadData.extractedText) {
+            contentString = `${contentString}\n\n--- Document Content ---\n${uploadData.extractedText}`;
+          }
+        }
+      } catch (err: any) {
+        console.error(err);
+        (window as any).showToast(err.message || "Failed to upload document file!");
+        return;
+      }
+    }
+
     const newEvent: TimelineEvent = {
-      id: "evt_" + Math.random().toString(36).substr(2, 9),
+      id: eventId,
       type: logType,
       timestamp: timestampStr,
       title: titleString,
       content: contentString,
       amount: logType === "offer" ? parseFloat(logAmount) : undefined,
       extraTime: logType === "appointment" ? logTime : undefined,
-      fileName: logType === "offer" && logFileName ? logFileName : undefined,
-      fileSize: logType === "offer" && logFileSize ? logFileSize : undefined,
-      fileType: logType === "offer" && logFileName ? logFileType : undefined
+      fileName: finalFileName,
+      fileSize: finalFileSize,
+      fileType: logType === "offer" && finalFileName ? logFileType : undefined,
+      audioFile: logType === "note" && uploadedAudioFile ? uploadedAudioFile : undefined,
+      transcription: logType === "note" && (window as any)._latestTranscription ? (window as any)._latestTranscription : undefined
     };
 
     setLeads(prev => prev.map(l => {
@@ -704,10 +1588,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       const autoPMTask: Task = {
         id: `task-${Date.now()}`,
         title: taskTitle,
-        description: contentString || `Scheduled for ${logDate} ${logTimeOfEvent}`,
-        status: "todo",
+        description: logType === "note" ? "Meeting Note Added" : (contentString || `Scheduled for ${logDate} ${logTimeOfEvent}`),
+        status: taskStates[0] || "New",
         priority: "medium",
         deadline: deadlineVal,
+        deadlineTime: "23:59",
         owner: activeLead.owner || "Erik",
         assignedUsers: [activeLead.owner || "Erik"],
         relatedLeadId: activeLead.id,
@@ -723,7 +1608,16 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     setLogTime("");
     setLogFileName("");
     setLogFileSize("");
+    setLogFileObject(null);
     setLogType(null);
+    
+    // Reset audio and note editor states
+    setNoteBlocks([{ id: "b-1", type: "paragraph", content: "" }]);
+    setAudioUrl(null);
+    setUploadedAudioFile(null);
+    setRecordingState("none");
+    setRecordingMeetingId(null);
+    if ((window as any)._latestTranscription) delete (window as any)._latestTranscription;
     
     // Reset date/time to now
     const tzOffset = (new Date()).getTimezoneOffset() * 60000;
@@ -739,13 +1633,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       return;
     }
 
-    const newLockingTask: Task = {
+     const newLockingTask: Task = {
       id: `task-${Date.now()}`,
       title: inlineTaskTitle.trim(),
       description: systemLanguage === "sk" ? "Vytvorené v detaile záujemcu" : systemLanguage === "hu" ? "Érdeklődő részleteinél létrehozva" : "Created from Lead detail drawer",
-      status: "todo",
+      status: taskStates[0] || "New",
       priority: "high",
       deadline: inlineTaskDeadline,
+      deadlineTime: inlineTaskDeadlineTime,
       owner: activeLead.owner || "Erik",
       assignedUsers: [activeLead.owner || "Erik"],
       relatedLeadId: activeLead.id,
@@ -757,6 +1652,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const d = new Date();
     d.setDate(d.getDate() + 3);
     setInlineTaskDeadline(d.toISOString().split("T")[0]);
+    setInlineTaskDeadlineTime("23:59");
     setInlineTaskIsLocking(true);
   };
 
@@ -870,7 +1766,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
   const handleUpdateLeadState = (id: string, newStatus: string) => {
     const lead = leads.find(l => l.id === id);
     if (lead && lead.status !== newStatus) {
-      const lockingTasks = tasks.filter(t => t.relatedLeadId === id && t.isLocking && t.status !== "done");
+      const lockingTasks = tasks.filter(t => t.relatedLeadId === id && t.isLocking && !isDoneState(t.status));
       if (lockingTasks.length > 0) {
         const warningTitle = systemLanguage === "sk" ? "Presun zablokovaný!" : systemLanguage === "hu" ? "Állapotváltozás blokkolva!" : "Pipeline Transition Blocked!";
         const warningMsg = systemLanguage === "sk" 
@@ -924,7 +1820,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       value: valNum,
       createdAt: new Date().toISOString().split("T")[0],
       rating: newLeadRating,
-      categories: newLeadCategories
+      categories: newLeadCategories,
+      referralLeadId: newLeadReferralId || undefined
     };
 
     setLeads(prev => [newLead, ...prev]);
@@ -939,6 +1836,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     setNewLeadOwner("");
     setNewLeadRating(3);
     setNewLeadCategories([]);
+    setNewLeadReferralId("");
     setClientMode("new");
     setSelectedExistingClient("");
   };
@@ -947,6 +1845,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
   const processedLeads = useMemo(() => {
     return leads
       .filter(lead => {
+        if (lead.id === "unassigned-docs") return false;
         const matchesSearch = 
           (lead.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
           (lead.city || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -958,10 +1857,35 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         const matchesOwner = selectedOwner === "all" || (lead.owner || "").toLowerCase() === selectedOwner.toLowerCase();
         const matchesCity = selectedCity === "all" || (lead.city || "").toLowerCase() === selectedCity.toLowerCase();
 
-        return matchesSearch && matchesState && matchesSource && matchesType && matchesOwner && matchesCity;
+        let matchesOfferDate = true;
+        if (offerPresetName !== "All Time" && (filterOfferStartDate || filterOfferEndDate)) {
+          const timeline = lead.timeline || [];
+          const offerEvents = timeline.filter(e => e.type === "offer" && e.timestamp);
+          if (offerEvents.length === 0) {
+            matchesOfferDate = false;
+          } else {
+            const latestOffer = offerEvents.reduce((latest, current) => {
+              if (!latest) return current;
+              return new Date(current.timestamp) > new Date(latest.timestamp) ? current : latest;
+            }, offerEvents[0]);
+            
+            const offerDate = new Date(latestOffer.timestamp);
+            const startLimit = filterOfferStartDate ? new Date(filterOfferStartDate.getFullYear(), filterOfferStartDate.getMonth(), filterOfferStartDate.getDate(), 0, 0, 0) : null;
+            const endLimit = filterOfferEndDate ? new Date(filterOfferEndDate.getFullYear(), filterOfferEndDate.getMonth(), filterOfferEndDate.getDate(), 23, 59, 59, 999) : null;
+            
+            if (startLimit && offerDate < startLimit) {
+              matchesOfferDate = false;
+            }
+            if (endLimit && offerDate > endLimit) {
+              matchesOfferDate = false;
+            }
+          }
+        }
+
+        return matchesSearch && matchesState && matchesSource && matchesType && matchesOwner && matchesCity && matchesOfferDate;
       })
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  }, [leads, searchQuery, selectedState, selectedSource, selectedType, selectedOwner, selectedCity]);
+  }, [leads, searchQuery, selectedState, selectedSource, selectedType, selectedOwner, selectedCity, filterOfferStartDate, filterOfferEndDate, offerPresetName]);
 
   // Group processed leads by lead states dynamically (always used for Kanban & Top Summary counters)
   const stateGroupedLeads = useMemo(() => {
@@ -1202,6 +2126,37 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
           </button>
 
           <div className="flex items-center gap-3">
+            {/* AI Summary Purple Card */}
+            {(!isOpenAiConfigured && !localSummary) ? (
+              <div className="flex items-center gap-2.5 bg-purple-50/50 border border-purple-250 p-2.5 px-3.5 rounded-2xl max-w-md text-xs font-bold text-purple-800 shadow-sm">
+                <Brain className="h-5 w-5 text-purple-400 shrink-0" />
+                <span className="text-[10px] text-purple-650 italic">
+                  {systemLanguage === "sk" ? "AI zhrnutie nie je k dispozícii. Nastavte OpenAI kľúč v nastaveniach." : systemLanguage === "hu" ? "Az AI összefoglaló nem érhető el. Állítsa be az OpenAI kulcsot a beállításokban." : "AI summary unavailable. Configure OpenAI Key in settings."}
+                </span>
+              </div>
+            ) : (localSummary || isGeneratingSummary) ? (
+              <div className="flex items-center gap-2.5 bg-purple-50 border-2 border-purple-200 p-2.5 px-3.5 rounded-2xl max-w-xl text-xs font-bold text-purple-900 shadow-sm hover:shadow-md transition-all animate-fade-in">
+                <Brain className={`h-5 w-5 text-purple-600 shrink-0 ${isGeneratingSummary ? 'animate-pulse' : ''}`} />
+                <div>
+                  {isGeneratingSummary && !localSummary ? (
+                    <span className="text-[10px] text-purple-650 italic animate-pulse flex items-center gap-1.5">
+                      <Loader2 className="h-3 w-3 animate-spin text-purple-600" />
+                      {systemLanguage === "sk" ? "Generuje sa AI zhrnutie..." : systemLanguage === "hu" ? "AI összefoglaló generálása..." : "Generating AI summary..."}
+                    </span>
+                  ) : (
+                    <p className="leading-relaxed text-[11px] font-semibold">
+                      {localSummary}
+                      {isGeneratingSummary && (
+                        <span className="ml-1 text-[9px] text-purple-500 animate-pulse">
+                          ({systemLanguage === "sk" ? "Aktualizuje sa..." : systemLanguage === "hu" ? "Frissítés..." : "Updating..."})
+                        </span>
+                      )}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : null}
+
             <span className="text-xs font-black uppercase tracking-widest text-blue-800 bg-blue-100 border-2 border-blue-300 px-4 py-2 rounded-2xl shadow-inner">
               {getTranslation(systemLanguage, "common.lead_value")}: &euro; {activeLead.value.toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </span>
@@ -1455,6 +2410,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                       setLeadRating(activeLead.rating || 3);
                       setLeadCity(activeLead.city || "");
                       setLeadClientType(activeLead.clientType || "person");
+                      setLeadReferralId(activeLead.referralLeadId || "");
                     }
                     setIsEditingLead(!isEditingLead);
                   }}
@@ -1666,6 +2622,50 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                   )}
                 </div>
 
+                {/* Lead Referral Selection & Display */}
+                <div className="space-y-2 border-t-2 border-slate-100 pt-3 text-left">
+                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <User className="h-3.5 w-3.5 text-blue-500" /> {systemLanguage === "sk" ? "Odporúčané klientom (Referral)" : systemLanguage === "hu" ? "Ajánló ügyfél (Referral)" : "Referred by client"}
+                  </label>
+                  {isEditingLead ? (
+                    <select
+                      value={leadReferralId}
+                      onChange={(e) => setLeadReferralId(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:outline-none text-slate-800"
+                    >
+                      <option value="">{systemLanguage === "sk" ? "Žiadny referral" : systemLanguage === "hu" ? "Nincs ajánló" : "No referral"}</option>
+                      {leads
+                        .filter(l => l.id !== activeLead.id)
+                        .map(l => (
+                          <option key={l.id} value={l.id}>{l.name} ({l.city || "N/A"})</option>
+                        ))
+                      }
+                    </select>
+                  ) : (
+                    <div className="pt-1">
+                      {(() => {
+                        const referredBy = leads.find(l => l.id === leadReferralId);
+                        if (referredBy) {
+                          return (
+                            <a
+                              href={`#lead-${referredBy.id}`}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100/50 text-indigo-700 hover:text-indigo-800 text-[10px] font-black uppercase tracking-wider shadow-sm transition-all"
+                            >
+                              <User className="h-3.5 w-3.5" />
+                              {referredBy.name} ({referredBy.city || "N/A"})
+                            </a>
+                          );
+                        }
+                        return (
+                          <span className="text-[10px] text-slate-400 font-bold italic uppercase tracking-wider">
+                            {systemLanguage === "sk" ? "Bez odporúčania" : systemLanguage === "hu" ? "Nincs ajánlás" : "No referral source"}
+                          </span>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </div>
+
                 {/* Save Changes button */}
                 {isEditingLead && (
                   <div className="pt-4 border-t-2 border-slate-100 flex animate-in fade-in duration-200 justify-end">
@@ -1705,7 +2705,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                   </div>
                 ) : (
                   tasks.filter(t => t.relatedLeadId === activeLead.id).map(task => {
-                    const isCompleted = task.status === "done";
+                    const isCompleted = isDoneState(task.status);
                     return (
                       <div 
                         key={task.id}
@@ -1718,20 +2718,39 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         }`}
                       >
                         <div className="flex items-start gap-2.5">
-                          {/* Checkbox */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: t.status === "done" ? "todo" : "done" } : t));
-                            }}
-                            className={`h-4.5 w-4.5 rounded-full shrink-0 flex items-center justify-center border transition-all mt-0.5 cursor-pointer ${
-                              isCompleted 
-                                ? "bg-emerald-500 border-emerald-500 text-white" 
-                                : "bg-white border-slate-350 text-transparent hover:border-violet-650"
-                            }`}
-                          >
-                            <Check className="h-3 w-3 stroke-[3]" />
-                          </button>
+                          {/* Dropdown status selector */}
+                          <div className="relative shrink-0 select-none mt-0.5">
+                            <select
+                              value={task.status}
+                              onChange={(e) => {
+                                const newStatus = e.target.value;
+                                const now = new Date();
+                                const completedAtStr = isDoneState(newStatus)
+                                  ? now.toISOString().split("T")[0] + " " + now.toTimeString().split(" ")[0].substring(0, 5)
+                                  : undefined;
+                                const completedByName = isDoneState(newStatus)
+                                  ? currentUser?.name || "Erik"
+                                  : undefined;
+                                
+                                setTasks(prev => prev.map(t => t.id === task.id ? {
+                                  ...t,
+                                  status: newStatus,
+                                  completedBy: completedByName,
+                                  completedAt: completedAtStr
+                                } : t));
+                              }}
+                              className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg border-2 cursor-pointer transition-all focus:outline-none max-w-[110px] truncate"
+                              style={{
+                                backgroundColor: `${taskStateColors[task.status] || "#64748b"}15`,
+                                color: taskStateColors[task.status] || "#64748b",
+                                borderColor: `${taskStateColors[task.status] || "#64748b"}35`
+                              }}
+                            >
+                              {taskStates.map(st => (
+                                <option key={st} value={st} className="bg-white text-slate-800 font-bold uppercase">{st}</option>
+                              ))}
+                            </select>
+                          </div>
 
                           <div className="space-y-0.5">
                             <span className={`text-[11px] font-extrabold tracking-wide block leading-tight ${isCompleted ? "line-through text-slate-400 font-bold" : "text-slate-700"}`}>
@@ -1746,7 +2765,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 </span>
                               )}
                               {/* Deadline */}
-                              <span className="text-[8.5px] text-slate-400 font-bold">{task.deadline}</span>
+                              <span className="text-[8.5px] text-slate-400 font-bold">{task.deadline} @ {task.deadlineTime || "23:59"}</span>
                             </div>
                           </div>
                         </div>
@@ -1794,11 +2813,25 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                       className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:outline-none font-bold text-[10px]"
                     />
                     
+                    <select
+                      value={inlineTaskDeadlineTime}
+                      onChange={(e) => setInlineTaskDeadlineTime(e.target.value)}
+                      className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:outline-none font-bold text-[10px]"
+                    >
+                      <option value="10:00">{systemLanguage === "sk" ? "Ráno (10:00)" : systemLanguage === "hu" ? "Reggel (10:00)" : "Morning (10:00)"}</option>
+                      <option value="12:00">{systemLanguage === "sk" ? "Poludnie (12:00)" : systemLanguage === "hu" ? "Dél (12:00)" : "Noon (12:00)"}</option>
+                      <option value="16:00">{systemLanguage === "sk" ? "Popoludnie (16:00)" : systemLanguage === "hu" ? "Délután (16:00)" : "Afternoon (16:00)"}</option>
+                      <option value="19:00">{systemLanguage === "sk" ? "Večer (19:00)" : systemLanguage === "hu" ? "Este (19:00)" : "Evening (19:00)"}</option>
+                      <option value="23:59">{systemLanguage === "sk" ? "Koniec dňa (23:59)" : systemLanguage === "hu" ? "Nap végén (23:59)" : "End of day (23:59)"}</option>
+                    </select>
+                  </div>
+                  
+                  <div>
                     {/* Locking switch */}
                     <button
                       type="button"
                       onClick={() => setInlineTaskIsLocking(!inlineTaskIsLocking)}
-                      className={`px-3 py-1.5 rounded-xl border font-black text-[9px] uppercase tracking-wider transition-all flex items-center justify-center gap-1 ${
+                      className={`w-full px-3 py-1.5 rounded-xl border font-black text-[9px] uppercase tracking-wider transition-all flex items-center justify-center gap-1 ${
                         inlineTaskIsLocking 
                           ? "bg-rose-50 border-rose-250 text-rose-700 font-extrabold" 
                           : "bg-slate-50 border-slate-200 text-slate-550"
@@ -1921,6 +2954,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                       if (file) {
                                         setLogFileName(file.name);
                                         setLogFileSize((file.size / 1024 / 1024).toFixed(2) + " MB");
+                                        setLogFileObject(file);
                                       }
                                     }} 
                                   />
@@ -1935,7 +2969,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 {logFileName && (
                                   <button 
                                     type="button" 
-                                    onClick={() => { setLogFileName(""); setLogFileSize(""); }} 
+                                    onClick={() => { setLogFileName(""); setLogFileSize(""); setLogFileObject(null); }} 
                                     className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl animate-in fade-in"
                                   >
                                     <X className="h-4 w-4" />
@@ -1990,14 +3024,35 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                       {/* Details */}
                       <div className="space-y-1">
                         <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">{getTranslation(systemLanguage, "logger.event_details")}</label>
-                        <textarea
-                          required={!!logType}
-                          rows={3}
-                          placeholder={logType ? getTranslation(systemLanguage, "logger.details_placeholder_log") : getTranslation(systemLanguage, "logger.details_placeholder_generic")}
-                          value={logContent}
-                          onChange={(e) => setLogContent(e.target.value)}
-                          className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:outline-none resize-none"
-                        />
+                        {logType === "note" ? (
+                          <div className="space-y-2 border-2 border-slate-200 rounded-xl p-3 bg-slate-50/50">
+                            {renderCompactAudioRecorder()}
+                            <div className="border border-slate-200 rounded-xl bg-white p-2 min-h-[140px] max-h-[260px] overflow-y-auto outline-none text-xs">
+                              <BlockEditor
+                                key={editorKey}
+                                initialBlocks={noteBlocks}
+                                onChange={(blocks) => {
+                                  setNoteBlocks(blocks);
+                                  // Auto-sync text content to logContent for fallback or compatibility
+                                  const serializeBlocksToPlainText = (blks: EditorBlock[]): string => {
+                                    return blks.map(b => b.content.replace(/<[^>]*>/g, "")).join("\n");
+                                  };
+                                  setLogContent(serializeBlocksToPlainText(blocks));
+                                }}
+                                systemLanguage={systemLanguage}
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          <textarea
+                            required={!!logType}
+                            rows={3}
+                            placeholder={logType ? getTranslation(systemLanguage, "logger.details_placeholder_log") : getTranslation(systemLanguage, "logger.details_placeholder_generic")}
+                            value={logContent}
+                            onChange={(e) => setLogContent(e.target.value)}
+                            className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:outline-none resize-none"
+                          />
+                        )}
                       </div>
 
                       <button
@@ -2056,7 +3111,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                           <div className="flex-1 bg-white p-4.5 rounded-[22px] border-2 border-slate-200 shadow-md group-hover:shadow-lg transition-all duration-200 relative select-text">
                             <div className="absolute -left-[7px] top-[14px] w-3 h-3 bg-white border-l-2 border-b-2 border-slate-200 transform rotate-45 hidden md:block"></div>
                             
-                            <div className="flex items-start justify-between gap-4">
+                            <div className="flex items-start justify-between gap-4 border-b-2 border-slate-100 pb-2 mb-2.5">
                               <h4 className="font-heading font-black text-[11px] uppercase tracking-tight text-slate-850 leading-tight">
                                 {event.title}
                               </h4>
@@ -2065,9 +3120,66 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                               </span>
                             </div>
 
-                            <p className="text-slate-600 mt-2 text-xs font-semibold leading-relaxed whitespace-pre-line leading-relaxed">
-                              {event.content}
-                            </p>
+                            {(() => {
+                              if (event.type === "note" && event.content.trim().startsWith("[")) {
+                                try {
+                                  const blocks: EditorBlock[] = JSON.parse(event.content);
+                                  return (
+                                    <div className="space-y-2 text-[11px] text-slate-700 font-bold select-text text-left mt-2">
+                                      {/* Audio file section */}
+                                      {event.audioFile && (
+                                        <div className="flex items-center gap-2 p-1.5 rounded-lg bg-slate-100/80 border border-slate-200 w-fit mb-2">
+                                          <audio src={event.audioFile} controls className="h-6 max-w-[180px] text-[8px]" />
+                                          {event.transcription && (
+                                            <details className="cursor-pointer">
+                                              <summary className="text-[9px] uppercase tracking-wider text-indigo-600 hover:text-indigo-800 font-extrabold select-none">
+                                                {systemLanguage === "sk" ? "Prepis" : "Transcript"}
+                                              </summary>
+                                              <div className="mt-1 p-2 bg-white rounded border border-slate-100 text-[9.5px] font-medium leading-relaxed max-w-[240px] whitespace-pre-wrap">
+                                                {event.transcription}
+                                              </div>
+                                            </details>
+                                          )}
+                                        </div>
+                                      )}
+                                      
+                                      {/* Parse blocks */}
+                                      <div className="space-y-1.5">
+                                        {blocks.map((b) => {
+                                          if (b.type === "todo") {
+                                            return (
+                                              <div key={b.id} className="flex items-center gap-1.5">
+                                                <input type="checkbox" checked={!!b.checked} readOnly className="rounded border-slate-300" />
+                                                <span className={b.checked ? "line-through text-slate-400" : ""}>{b.content.replace(/<[^>]*>/g, "")}</span>
+                                              </div>
+                                            );
+                                          }
+                                          if (b.type === "bullet") {
+                                            return (
+                                              <ul key={b.id} className="list-disc pl-4 space-y-0.5">
+                                                <li>{b.content.replace(/<[^>]*>/g, "")}</li>
+                                              </ul>
+                                            );
+                                          }
+                                          if (b.type.startsWith("h")) {
+                                            return <div key={b.id} className="font-black uppercase tracking-tight text-[11px] mt-1 text-slate-900">{b.content.replace(/<[^>]*>/g, "")}</div>;
+                                          }
+                                          return <p key={b.id} className="leading-normal">{b.content.replace(/<[^>]*>/g, "")}</p>;
+                                        })}
+                                      </div>
+                                    </div>
+                                  );
+                                } catch (e) {
+                                  console.error("Failed to parse JSON note blocks in future event", e);
+                                }
+                              }
+
+                              return (
+                                <p className="text-slate-600 mt-2 text-xs font-semibold leading-relaxed whitespace-pre-line">
+                                  {event.content}
+                                </p>
+                              );
+                            })()}
                           </div>
 
                         </div>
@@ -2157,6 +3269,59 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             </div>
 
                             {(() => {
+                              if (event.type === "note" && event.content.trim().startsWith("[")) {
+                                try {
+                                  const blocks: EditorBlock[] = JSON.parse(event.content);
+                                  return (
+                                    <div className="space-y-2 text-[11px] text-slate-700 font-bold select-text text-left">
+                                      {/* Audio file section */}
+                                      {event.audioFile && (
+                                        <div className="flex items-center gap-2 p-1.5 rounded-lg bg-slate-100/80 border border-slate-200 w-fit mb-2">
+                                          <audio src={event.audioFile} controls className="h-6 max-w-[180px] text-[8px]" />
+                                          {event.transcription && (
+                                            <details className="cursor-pointer">
+                                              <summary className="text-[9px] uppercase tracking-wider text-indigo-600 hover:text-indigo-800 font-extrabold select-none">
+                                                {systemLanguage === "sk" ? "Prepis" : "Transcript"}
+                                              </summary>
+                                              <div className="mt-1 p-2 bg-white rounded border border-slate-100 text-[9.5px] font-medium leading-relaxed max-w-[240px] whitespace-pre-wrap">
+                                                {event.transcription}
+                                              </div>
+                                            </details>
+                                          )}
+                                        </div>
+                                      )}
+                                      
+                                      {/* Parse blocks */}
+                                      <div className="space-y-1.5">
+                                        {blocks.map((b) => {
+                                          if (b.type === "todo") {
+                                            return (
+                                              <div key={b.id} className="flex items-center gap-1.5">
+                                                <input type="checkbox" checked={!!b.checked} readOnly className="rounded border-slate-300" />
+                                                <span className={b.checked ? "line-through text-slate-400" : ""}>{b.content.replace(/<[^>]*>/g, "")}</span>
+                                              </div>
+                                            );
+                                          }
+                                          if (b.type === "bullet") {
+                                            return (
+                                              <ul key={b.id} className="list-disc pl-4 space-y-0.5">
+                                                <li>{b.content.replace(/<[^>]*>/g, "")}</li>
+                                              </ul>
+                                            );
+                                          }
+                                          if (b.type.startsWith("h")) {
+                                            return <div key={b.id} className="font-black uppercase tracking-tight text-[11px] mt-1 text-slate-900">{b.content.replace(/<[^>]*>/g, "")}</div>;
+                                          }
+                                          return <p key={b.id} className="leading-normal">{b.content.replace(/<[^>]*>/g, "")}</p>;
+                                        })}
+                                      </div>
+                                    </div>
+                                  );
+                                } catch (e) {
+                                  console.error("Failed to parse JSON note blocks", e);
+                                }
+                              }
+
                               const lines = event.content.split("\n");
                               const showGradient = lines.length > 5 || event.content.length > 250;
                               return (
@@ -2175,14 +3340,22 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                             {/* Offer details & document badges */}
                             {event.type === "offer" && event.fileName && (
-                              <div className="mt-3.5 pt-3 border-t border-slate-100 flex items-center justify-between gap-2 bg-slate-50/50 p-2.5 rounded-xl border border-slate-150 animate-in slide-in-from-top-1">
+                              <div 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if ((window as any).previewFile) {
+                                    (window as any).previewFile(`/uploads/${event.id}_${event.fileName}`, event.fileName);
+                                  }
+                                }}
+                                className="mt-3.5 pt-3 border-t border-slate-100 flex items-center justify-between gap-2 bg-slate-50/50 p-2.5 rounded-xl border border-slate-150 animate-in slide-in-from-top-1 hover:bg-slate-100/80 cursor-pointer transition-colors"
+                              >
                                 <div className="flex items-center gap-2">
                                   <span className="text-[13px]">
                                     {event.fileType === "invoice" ? "💰" : event.fileType === "contract" ? "🤝" : "📄"}
                                   </span>
                                   <div className="flex flex-col">
                                     <span className="text-[9px] font-black uppercase text-amber-800">
-                                      {event.fileType || "offer"} {getTranslation(systemLanguage, "timeline.doc_suffix")}
+                                      {event.fileType || "offer"} {getTranslation(systemLanguage, "timeline.doc_suffix")} (Click to View)
                                     </span>
                                     <span className="text-[10px] font-extrabold text-slate-700 truncate max-w-[200px]">
                                       {event.fileName}
@@ -2212,12 +3385,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         </div>
 
         {/* TIMELINE EMAIL DETAIL SLIDEOUT OVERLAY */}
-        {(selectedTimelineEmail || isClosingEmailDetail) && (
-          <div className={`fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex justify-end ${isClosingEmailDetail ? "animate-fade-out" : "animate-fade-in"}`}>
-            {/* Backdrop click close */}
-            <div className="flex-1" onClick={closeEmailDetailSlideout} />
+        {(selectedTimelineEmail || isClosingEmailDetail) && typeof document !== "undefined" && createPortal(
+          <div className={`fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-[9999] flex flex-col justify-start ${isClosingEmailDetail ? "animate-fade-out" : "animate-fade-in"}`}>
             
-            <div className={`w-[550px] max-w-full bg-white h-full shadow-2xl flex flex-col relative ${isClosingEmailDetail ? "animate-slide-out-right" : "animate-slide-in-right"}`}>
+            <div className={`w-full max-w-4xl mx-auto bg-white rounded-b-[28px] border-b-2 border-slate-200 shadow-2xl flex flex-col relative overflow-hidden h-[75vh] max-h-[80vh] ${isClosingEmailDetail ? "animate-slide-out-top" : "animate-slide-in-top"}`}>
               {/* Header */}
               <div className="bg-slate-900 text-white p-4 flex items-center justify-between shrink-0">
                 <div className="text-left min-w-0 flex-1 pr-4">
@@ -2242,7 +3413,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 ) : timelineEmailDetailBody ? (
                   <div className="flex-1 flex flex-col justify-between">
                     <div className="border-b border-slate-150 pb-3 mb-4 text-left">
-                      <p className="text-[10px] text-slate-500 font-bold">
+                      <p className="text-[10px] text-slate-550 font-bold">
                         Subject: <strong className="text-slate-800">{selectedTimelineEmail.title}</strong>
                       </p>
                       <p className="text-[10px] text-slate-550 font-bold mt-1">
@@ -2290,7 +3461,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 )}
               </div>
             </div>
-          </div>
+
+            {/* Backdrop click close target */}
+            <div className="flex-1 w-full" onClick={closeEmailDetailSlideout} />
+          </div>,
+          document.body
         )}
 
       </div>
@@ -2350,7 +3525,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       </div>
 
       {/* 2. Control search, filter, and sort bar (Blue accents) */}
-      <div className="glass-panel p-6 rounded-[28px] border border-blue-100 bg-white/90 shadow-glass space-y-4">
+      <div className="glass-panel p-6 rounded-[28px] border border-blue-100 bg-white/90 shadow-glass space-y-4 relative z-30">
         
         <div className="flex flex-col sm:flex-row items-center gap-4 justify-between border-b border-slate-100/80 pb-4">
           <div className="flex items-center gap-2.5 w-full sm:max-w-md">
@@ -2388,6 +3563,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                   setSelectedSource("all");
                   setSelectedType("all");
                   setSelectedState("all");
+                  setFilterOfferStartDate(null);
+                  setFilterOfferEndDate(null);
+                  setOfferPresetName("All Time");
                 }}
                 className="px-3 py-2.5 rounded-2xl text-xs font-extrabold bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-600 hover:text-rose-700 transition-all flex items-center gap-1 shadow-sm shrink-0 uppercase tracking-wider animate-fade-in"
                 title="Clear all active filters"
@@ -2478,9 +3656,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
           </div>
         </div>
 
-        {/* Collapsible 5-column filter panels */}
+        {/* Collapsible 6-column filter panels */}
         {showFilters && (
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 bg-blue-50/10 p-3 rounded-2xl border border-blue-50 animate-fade-in">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-3 bg-blue-50/10 p-3 rounded-2xl border border-blue-50 animate-fade-in relative z-40">
             {/* Filter 1: Project Manager */}
             <div className="flex flex-col gap-1">
               <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider pl-1">{getTranslation(systemLanguage, "leads.table.pm")}</span>
@@ -2570,6 +3748,247 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 </select>
               </div>
             </div>
+
+            {/* Filter 6: Last Offer Sent Date */}
+            <div className="flex flex-col gap-1 relative z-50">
+              <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider pl-1">
+                {systemLanguage === "sk" ? "Posledná ponuka odoslaná" : systemLanguage === "hu" ? "Utolsó ajánlat elküldve" : "Last Offer Sent"}
+              </span>
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setIsOfferDatePickerOpen(!isOfferDatePickerOpen)}
+                  className="w-full flex items-center justify-between gap-1.5 bg-white border border-slate-200/70 rounded-xl px-2.5 py-1.5 text-left text-[11px] font-bold text-slate-750 hover:border-blue-400 transition-colors"
+                >
+                  <div className="flex items-center gap-1.5 truncate">
+                    <Calendar className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                    <span className="truncate uppercase tracking-wider">
+                      {offerPresetName === "Custom Range" && filterOfferStartDate
+                        ? `${filterOfferStartDate.toLocaleDateString(systemLanguage === "sk" ? "sk-SK" : systemLanguage === "hu" ? "hu-HU" : "en-US", {day: "numeric", month: "numeric"})} - ${filterOfferEndDate ? filterOfferEndDate.toLocaleDateString(systemLanguage === "sk" ? "sk-SK" : systemLanguage === "hu" ? "hu-HU" : "en-US", {day: "numeric", month: "numeric"}) : ""}`
+                        : offerPresetName === "All Time"
+                        ? (systemLanguage === "sk" ? "Všetok čas" : systemLanguage === "hu" ? "Mindig" : "All Time")
+                        : (getTranslation(systemLanguage, getPresetTranslationKey(offerPresetName) as any) || offerPresetName)}
+                    </span>
+                  </div>
+                  {offerPresetName !== "All Time" && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setFilterOfferStartDate(null);
+                        setFilterOfferEndDate(null);
+                        setOfferPresetName("All Time");
+                        setIsOfferDatePickerOpen(false);
+                      }}
+                      className="text-slate-400 hover:text-slate-650 rounded-full"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                </button>
+
+                {isOfferDatePickerOpen && (
+                  <div className="absolute top-12 right-0 bg-white border-2 border-slate-100 shadow-2xl rounded-[24px] p-4 flex flex-col md:flex-row gap-4 z-[999] animate-in fade-in slide-in-from-top-4 duration-200 w-[280px] md:w-[680px]">
+                    {/* Left sidebar: Preset quick intervals */}
+                    <div className="w-full md:w-[180px] border-r border-slate-100 pr-3 flex flex-col space-y-1 justify-start text-left shrink-0">
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 pl-1">
+                        {getTranslation(systemLanguage, "dashboard.quick_intervals")}
+                      </span>
+                      <div className="grid grid-cols-2 gap-1">
+                        {[
+                          { name: "Today", getRange: () => { const d = new Date(); return { start: d, end: d }; } },
+                          { name: "Yesterday", getRange: () => { const d = new Date(); d.setDate(d.getDate() - 1); return { start: d, end: d }; } },
+                          { name: "This week", getRange: () => {
+                              const start = new Date();
+                              const day = start.getDay();
+                              const diff = day === 0 ? -6 : 1 - day;
+                              start.setDate(start.getDate() + diff);
+                              const end = new Date();
+                              return { start, end };
+                            }
+                          },
+                          { name: "Last week", getRange: () => {
+                              const start = new Date();
+                              const day = start.getDay();
+                              const diff = (day === 0 ? -6 : 1 - day) - 7;
+                              start.setDate(start.getDate() + diff);
+                              const end = new Date(start);
+                              end.setDate(end.getDate() + 6);
+                              return { start, end };
+                            }
+                          },
+                          { name: "This month", getRange: () => {
+                              const start = new Date();
+                              start.setDate(1);
+                              const end = new Date();
+                              return { start, end };
+                            }
+                          },
+                          { name: "Last month", getRange: () => {
+                              const start = new Date();
+                              start.setMonth(start.getMonth() - 1);
+                              start.setDate(1);
+                              const end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+                              return { start, end };
+                            }
+                          },
+                          { name: "This quarter", getRange: () => {
+                              const start = new Date();
+                              const currentMonth = start.getMonth();
+                              const quarterStartMonth = Math.floor(currentMonth / 3) * 3;
+                              start.setMonth(quarterStartMonth);
+                              start.setDate(1);
+                              const end = new Date();
+                              return { start, end };
+                            }
+                          },
+                          { name: "Last quarter", getRange: () => {
+                              const start = new Date();
+                              const currentMonth = start.getMonth();
+                              const lastQuarterStartMonth = (Math.floor(currentMonth / 3) - 1) * 3;
+                              start.setMonth(lastQuarterStartMonth);
+                              start.setDate(1);
+                              const end = new Date(start.getFullYear(), start.getMonth() + 3, 0);
+                              return { start, end };
+                            }
+                          },
+                          { name: "This year", getRange: () => {
+                              const start = new Date(new Date().getFullYear(), 0, 1);
+                              const end = new Date();
+                              return { start, end };
+                            }
+                          },
+                          { name: "Last year", getRange: () => {
+                              const start = new Date(new Date().getFullYear() - 1, 0, 1);
+                              const end = new Date(new Date().getFullYear() - 1, 11, 31);
+                              return { start, end };
+                            }
+                          },
+                          { name: "All Time", getRange: () => ({ start: null, end: null }), fullWidth: true }
+                        ].map(preset => {
+                          const isSelected = offerPresetName === preset.name;
+                          return (
+                            <button
+                              key={preset.name}
+                              type="button"
+                              onClick={() => {
+                                const { start, end } = preset.getRange();
+                                setFilterOfferStartDate(start);
+                                setFilterOfferEndDate(end);
+                                setOfferPresetName(preset.name);
+                                setIsOfferDatePickerOpen(false);
+                              }}
+                              className={`text-left px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer border ${
+                                preset.fullWidth ? "col-span-2 text-center" : ""
+                              } ${
+                                isSelected 
+                                  ? "bg-purple-50 text-purple-700 border-purple-200" 
+                                  : "text-slate-500 hover:text-slate-800 hover:bg-slate-50 border-transparent"
+                              }`}
+                            >
+                              {getTranslation(systemLanguage, getPresetTranslationKey(preset.name) as any) || preset.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Right side: Dual calendars */}
+                    <div className="flex-1 flex flex-col space-y-3">
+                      <div className="flex flex-col sm:flex-row gap-4">
+                        {/* Calendar 1: Current Month */}
+                        <CalendarPane 
+                          title={(() => {
+                            const d = new Date();
+                            return d.toLocaleDateString(systemLanguage === "sk" ? "sk-SK" : systemLanguage === "hu" ? "hu-HU" : "en-US", { month: "long", year: "numeric" });
+                          })()}
+                          year={new Date().getFullYear()}
+                          month={new Date().getMonth()}
+                          selectedStart={filterOfferStartDate}
+                          selectedEnd={filterOfferEndDate}
+                          onSelect={(date) => {
+                            if (!filterOfferStartDate || (filterOfferStartDate && filterOfferEndDate)) {
+                              setFilterOfferStartDate(date);
+                              setFilterOfferEndDate(null);
+                              setOfferPresetName("Custom Range");
+                            } else if (filterOfferStartDate && !filterOfferEndDate) {
+                              if (date < filterOfferStartDate) {
+                                setFilterOfferStartDate(date);
+                              } else {
+                                setFilterOfferEndDate(date);
+                              }
+                              setOfferPresetName("Custom Range");
+                            }
+                          }}
+                          systemLanguage={systemLanguage}
+                        />
+                        {/* Calendar 2: Next Month */}
+                        <CalendarPane 
+                          title={(() => {
+                            const d = new Date();
+                            d.setMonth(d.getMonth() + 1);
+                            return d.toLocaleDateString(systemLanguage === "sk" ? "sk-SK" : systemLanguage === "hu" ? "hu-HU" : "en-US", { month: "long", year: "numeric" });
+                          })()}
+                          year={(() => {
+                            const d = new Date();
+                            d.setMonth(d.getMonth() + 1);
+                            return d.getFullYear();
+                          })()}
+                          month={(() => {
+                            const d = new Date();
+                            d.setMonth(d.getMonth() + 1);
+                            return d.getMonth();
+                          })()}
+                          selectedStart={filterOfferStartDate}
+                          selectedEnd={filterOfferEndDate}
+                          onSelect={(date) => {
+                            if (!filterOfferStartDate || (filterOfferStartDate && filterOfferEndDate)) {
+                              setFilterOfferStartDate(date);
+                              setFilterOfferEndDate(null);
+                              setOfferPresetName("Custom Range");
+                            } else if (filterOfferStartDate && !filterOfferEndDate) {
+                              if (date < filterOfferStartDate) {
+                                setFilterOfferStartDate(date);
+                              } else {
+                                setFilterOfferEndDate(date);
+                              }
+                              setOfferPresetName("Custom Range");
+                            }
+                          }}
+                          systemLanguage={systemLanguage}
+                        />
+                      </div>
+
+                      {/* Actions bottom block */}
+                      <div className="flex justify-between items-center border-t border-slate-100 pt-3 text-[9px] font-bold text-slate-400">
+                        <span>{getTranslation(systemLanguage, "dashboard.picker.info")}</span>
+                        <div className="flex gap-2">
+                          <button 
+                            type="button"
+                            onClick={() => {
+                              setFilterOfferStartDate(null);
+                              setFilterOfferEndDate(null);
+                              setOfferPresetName("All Time");
+                              setIsOfferDatePickerOpen(false);
+                            }}
+                            className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg font-black uppercase tracking-wider transition-colors cursor-pointer border border-slate-200"
+                          >
+                            {getTranslation(systemLanguage, "dashboard.picker.reset")}
+                          </button>
+                          <button 
+                            type="button"
+                            onClick={() => setIsOfferDatePickerOpen(false)}
+                            className="px-3 py-1 bg-purple-650 hover:bg-purple-700 text-white rounded-lg font-black uppercase tracking-wider transition-colors cursor-pointer shadow-md shadow-purple-600/10"
+                          >
+                            {getTranslation(systemLanguage, "dashboard.picker.apply")}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
@@ -2579,6 +3998,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
               <thead className="hidden lg:table-header-group">
                 <tr className="bg-white text-blue-600 text-[10px] font-black uppercase tracking-wider">
                   <th className="sticky top-0 bg-white z-10 py-4 px-6 rounded-tl-[24px] border-b-2 border-slate-100">{getTranslation(systemLanguage, "leads.table.client")}</th>
+                  <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{systemLanguage === "sk" ? "Dátum vytvorenia" : systemLanguage === "hu" ? "Létrehozás dátuma" : "Date Created"}</th>
                   <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "leads.table.city")}</th>
                   <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "leads.table.type")}</th>
                   <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "leads.table.source")}</th>
@@ -2598,17 +4018,16 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                       <React.Fragment key={group.state}>
                         {/* State/PM Group Header Row */}
                         {(orderingMode === "state" || orderingMode === "pm") && (
-                          <tr className="bg-slate-50/20 block lg:table-row">
+                          <tr className="block lg:table-row bg-transparent">
                             <td 
-                              colSpan={8} 
-                              className={`px-4 lg:px-6 font-bold border-l-4 align-middle select-none border-y border-blue-50/40 block lg:table-cell w-full lg:w-auto ${compactMode ? "py-1.5 lg:py-2" : "py-3 lg:py-3.5"}`}
+                              colSpan={9} 
+                              className={`px-4 lg:px-6 font-bold align-middle select-none block lg:table-cell w-full lg:w-auto ${compactMode ? "py-1" : "py-1.5"}`}
                               style={{ 
-                                borderLeftColor: stateColor,
-                                backgroundColor: `${stateColor}06`
+                                backgroundColor: "transparent"
                               }}
                             >
-                              <div className="flex items-center justify-between flex-wrap gap-2">
-                                <div className="flex items-center gap-2">
+                              <div className="flex items-center justify-between w-full gap-2">
+                                <div className="flex items-center gap-2 shrink-0">
                                   <span 
                                     className="text-[11px] font-black uppercase tracking-wider font-heading"
                                     style={{ color: stateColor }}
@@ -2626,8 +4045,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     {group.leads.length} {group.leads.length === 1 ? "lead" : "leads"}
                                   </span>
                                 </div>
+
+                                <div 
+                                  className="flex-1 h-[2px] rounded-full opacity-80"
+                                  style={{ backgroundColor: stateColor }}
+                                />
+
                                 <span 
-                                  className="text-[10px] font-heading font-black tracking-wide"
+                                  className="text-[10px] font-heading font-black tracking-wide shrink-0"
                                   style={{ color: stateColor }}
                                 >
                                   {orderingMode === "pm" ? "MANAGER VALUE" : "STAGE VALUE"}: &euro; {stageTotalValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
@@ -2641,7 +4066,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         {group.leads.length === 0 ? (
                           <tr className="block lg:table-row">
                             <td 
-                              colSpan={8} 
+                              colSpan={9} 
                               className="py-5 px-6 text-center text-slate-400 select-none uppercase font-black text-[9px] tracking-wider bg-slate-50/10 border-l-4 block lg:table-cell w-full lg:w-auto"
                               style={{ borderLeftColor: `${stateColor}15` }}
                             >
@@ -2651,6 +4076,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         ) : (
                           group.leads.map((lead) => {
                             const isInlineEditing = editingRowId === lead.id;
+                            const leadColor = getSafeStateColor(lead.status);
 
                           return (
                             <>
@@ -2658,7 +4084,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 key={lead.id}
                                 onMouseEnter={() => setHoveredLeadId(lead.id)}
                                 onMouseLeave={() => setHoveredLeadId(null)}
-                                className={`block lg:table-row border-b-[3px] border-slate-200/90 lg:border-b-0 p-4 lg:p-0 hover:bg-blue-50/30 transition-colors duration-150 group ${isInlineEditing ? "bg-blue-50/10" : ""}`}
+                                className={`block lg:table-row border-b-[3px] border-slate-200/90 lg:border-b-0 p-4 lg:p-0 transition-colors duration-150 group`}
+                                style={{
+                                  backgroundColor: isInlineEditing
+                                    ? `${leadColor}15`
+                                    : hoveredLeadId === lead.id
+                                    ? `${leadColor}12`
+                                    : `${leadColor}06`
+                                }}
                               >
                               
                               {/* --- COLUMN 1: CLIENT NAME --- */}
@@ -2697,6 +4130,35 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     </div>
                                   </div>
                                 )}
+                              </td>
+
+                              {/* --- COLUMN 1.5: CREATION DATE --- */}
+                              <td 
+                                onClick={() => !isInlineEditing && startInlineEdit(lead)}
+                                className={`inline-flex items-center lg:table-cell px-0 lg:px-4 text-slate-500 font-semibold cursor-pointer mr-3.5 ${cellPy}`}
+                              >
+                                <div className="flex items-center gap-1.5 text-slate-600">
+                                  <Calendar className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                                  <span>
+                                    {(() => {
+                                      if (!lead.createdAt) return "N/A";
+                                      const parts = lead.createdAt.split("-");
+                                      if (parts.length !== 3) return lead.createdAt;
+                                      const [yyyy, mm, dd] = parts;
+                                      
+                                      // EN: MM/DD/YYYY
+                                      // SK: DD.MM.YYYY
+                                      // HU: YYYY.MM.DD.
+                                      if (systemLanguage === "sk") {
+                                        return `${dd}.${mm}.${yyyy}`;
+                                      } else if (systemLanguage === "hu") {
+                                        return `${yyyy}.${mm}.${dd}.`;
+                                      } else {
+                                        return `${mm}/${dd}/${yyyy}`;
+                                      }
+                                    })()}
+                                  </span>
+                                </div>
                               </td>
 
                               {/* --- COLUMN 2: CITY --- */}
@@ -2852,13 +4314,49 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                               </td>
 
                               {/* --- COLUMN 7: LEAD STATE (Dropdown) --- */}
-                              <td className={`inline-flex items-center lg:table-cell px-0 lg:px-4 text-center mr-3.5 border-b border-slate-100 lg:border-b-0 ${cellPy}`}>
-                                <div className="flex items-center gap-1">
-                                  <span className="text-[9px] font-black text-slate-400 lg:hidden uppercase tracking-wider mr-1">Stage:</span>
-                                  <StatusSelector 
-                                    status={lead.status} 
-                                    onChange={(newStatus) => handleUpdateLeadState(lead.id, newStatus)} 
-                                  />
+                              <td className={`inline-flex items-center lg:table-cell px-0 lg:px-4 mr-3.5 border-b border-slate-100 lg:border-b-0 ${cellPy}`}>
+                                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 w-full">
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <span className="text-[9px] font-black text-slate-400 lg:hidden uppercase tracking-wider mr-1">Stage:</span>
+                                    <StatusSelector 
+                                      status={lead.status} 
+                                      onChange={(newStatus) => handleUpdateLeadState(lead.id, newStatus)} 
+                                    />
+                                  </div>
+
+                                  {/* Next Task or Next State */}
+                                  {(() => {
+                                    const nextTask = getNextTaskForLead(lead.id);
+                                    const nextUpLabel = systemLanguage === "sk" ? "Nasleduje" : systemLanguage === "hu" ? "Következik" : "Next Up";
+                                    
+                                    if (nextTask) {
+                                      return (
+                                        <div className="flex flex-col text-left shrink-0 min-w-[120px] max-w-[180px] lg:border-l lg:border-slate-200 lg:pl-3">
+                                          <span className="text-[8px] font-black text-purple-600 uppercase tracking-wider">
+                                            {nextUpLabel}
+                                          </span>
+                                          <span className="text-[10px] font-bold text-slate-700 truncate flex items-center gap-1" title={nextTask.title}>
+                                            {nextTask.isAiGenerated && (
+                                              <Brain className="h-3 w-3 text-purple-600 shrink-0" />
+                                            )}
+                                            {nextTask.title}
+                                          </span>
+                                        </div>
+                                      );
+                                    } else {
+                                      const nextState = getNextState(lead.status);
+                                      return (
+                                        <div className="flex flex-col text-left shrink-0 min-w-[120px] max-w-[180px] lg:border-l lg:border-slate-200 lg:pl-3">
+                                          <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider">
+                                            {nextUpLabel}
+                                          </span>
+                                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide truncate" title={nextState || ""}>
+                                            {nextState || (systemLanguage === "sk" ? "Koniec" : systemLanguage === "hu" ? "Vége" : "Done")}
+                                          </span>
+                                        </div>
+                                      );
+                                    }
+                                  })()}
                                 </div>
                               </td>
 
@@ -3027,6 +4525,26 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         );
                                       });
                                     })()}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+
+                            {/* AI Summary Row (only in non-compact mode) */}
+                            {!compactMode && (
+                              <tr 
+                                className="block lg:table-row transition-colors duration-150 shadow-sm/5 border-b border-slate-100"
+                                style={{
+                                  backgroundColor: hoveredLeadId === lead.id
+                                    ? `${leadColor}12`
+                                    : `${leadColor}06`
+                                }}
+                                onMouseEnter={() => setHoveredLeadId(lead.id)}
+                                onMouseLeave={() => setHoveredLeadId(null)}
+                              >
+                                <td colSpan={9} className="px-6 pb-3 pt-1 text-[10px] font-medium text-purple-650 tracking-wide text-left block lg:table-cell">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="italic" style={{ color: "#7c3aed" }}>{generateAiSummary(lead, systemLanguage)}</span>
                                   </div>
                                 </td>
                               </tr>
@@ -3500,6 +5018,20 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     );
                   })}
                 </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Lead Referral (Referred by Client)</label>
+                <select
+                  value={newLeadReferralId}
+                  onChange={(e) => setNewLeadReferralId(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl bg-blue-50/10 border border-blue-100 text-xs text-slate-800 focus:outline-none"
+                >
+                  <option value="">{systemLanguage === "sk" ? "Žiadny referral" : systemLanguage === "hu" ? "Nincs ajánló" : "No referral source"}</option>
+                  {leads.map(l => (
+                    <option key={l.id} value={l.id}>{l.name} ({l.city || "N/A"})</option>
+                  ))}
+                </select>
               </div>
 
               <div className="space-y-1">

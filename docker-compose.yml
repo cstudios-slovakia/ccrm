@@ -9,6 +9,7 @@ services:
       - db
     volumes:
       - ./config.php:/var/www/html/config.php
+      - ./uploads:/var/www/html/uploads
     restart: always
 
 

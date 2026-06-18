@@ -46,6 +46,9 @@ if ($action === 'stats') {
         $stmt = $pdo->query("SELECT COUNT(*) FROM `timeline_events` WHERE `type` = 'note'");
         $chatsCount = (int)$stmt->fetchColumn();
 
+        // Count documents
+        $documentsCount = (int)$pdo->query("SELECT COUNT(*) FROM `timeline_events` WHERE `type` = 'offer'")->fetchColumn();
+
         // Count meeting notes
         $meetingsCount = 0;
         try {
@@ -61,7 +64,8 @@ if ($action === 'stats') {
                 'emails' => $emailsCount,
                 'chats' => $chatsCount,
                 'meeting_notes' => $meetingsCount,
-                'total_items' => $leadsCount + $clientsCount + $emailsCount + $chatsCount + $meetingsCount
+                'documents' => $documentsCount,
+                'total_items' => $leadsCount + $clientsCount + $emailsCount + $chatsCount + $meetingsCount + $documentsCount
             ]
         ]);
     } catch (\Exception $e) {
@@ -82,6 +86,13 @@ if ($action === 'train') {
         $clients = $pdo->query("SELECT DISTINCT `name`, `city`, `client_type` FROM `leads` WHERE `name` IS NOT NULL AND TRIM(`name`) != '' LIMIT 20")->fetchAll();
         $emails = $pdo->query("SELECT `id`, `title`, `content` FROM `timeline_events` WHERE `type` = 'email' LIMIT 20")->fetchAll();
         $notes = $pdo->query("SELECT `id`, `title`, `content` FROM `timeline_events` WHERE `type` = 'note' LIMIT 20")->fetchAll();
+        $documents = $pdo->query("
+            SELECT te.`id`, te.`title`, te.`content`, te.`amount`, te.`file_name`, te.`file_size`, te.`file_type`, l.`name` as `lead_name`
+            FROM `timeline_events` te
+            LEFT JOIN `leads` l ON te.`lead_id` = l.`id`
+            WHERE te.`type` = 'offer'
+            LIMIT 40
+        ")->fetchAll();
         
         $meetings = [];
         try {
@@ -119,6 +130,27 @@ if ($action === 'train') {
                 'id' => $n['id'],
                 'label' => $n['title'],
                 'text' => "Note: " . $n['title'] . "\nContent: " . strip_tags($n['content'])
+            ];
+        }
+        foreach ($documents as $d) {
+            $categoryLabel = 'Document';
+            if ($d['file_type'] === 'offer') $categoryLabel = 'Offer Sheet';
+            if ($d['file_type'] === 'contract') $categoryLabel = 'Contract';
+            if ($d['file_type'] === 'invoice') $categoryLabel = 'Invoice';
+
+            $valText = !empty($d['amount']) ? "\nAmount/Value: €" . number_format($d['amount'], 2) : "";
+            $ownerText = !empty($d['lead_name']) ? "\nAssociated Client/Lead: " . $d['lead_name'] : "";
+
+            $allSourceItems[] = [
+                'type' => 'document',
+                'id' => $d['id'],
+                'label' => $d['file_name'] ?? $d['title'],
+                'text' => "Document (" . $categoryLabel . "): " . ($d['file_name'] ?? 'N/A') . 
+                          "\nTitle: " . $d['title'] . 
+                          "\nSize: " . ($d['file_size'] ?? 'N/A') .
+                          $ownerText .
+                          $valText .
+                          "\nDescription: " . ($d['content'] ?? 'N/A')
             ];
         }
         foreach ($meetings as $m) {

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Brain, Send, Bot, User, Sparkles, Database, Check, RotateCcw, Plus, X, FileText, Play, Clock } from "lucide-react";
 import type { Language } from "../utils/translations";
+import { Markdown } from "../utils/markdown";
 
 interface Message {
   id: string;
@@ -571,7 +572,11 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                     ? "bg-white border border-slate-100 text-slate-700 rounded-tl-none" 
                     : `${activeColorTheme.fill} text-white rounded-tr-none font-medium`
                 }`}>
-                  <p className="whitespace-pre-wrap">{msg.text}</p>
+                  {isAgent ? (
+                    <Markdown content={msg.text} />
+                  ) : (
+                    <p className="whitespace-pre-wrap">{msg.text}</p>
+                  )}
                   <span className={`text-[8px] block mt-1.5 text-right ${
                     isAgent ? "text-slate-400" : "text-white/80"
                   }`}>

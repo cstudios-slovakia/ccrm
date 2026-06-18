@@ -2,7 +2,7 @@ import React from "react";
 import { 
   Settings, Save, Database, Trash2, ShieldAlert, Sliders, 
   Globe, Plus, X, Tag, Share2, Users, ShieldCheck, Lock,
-  Eye, Pencil, Minus, GripVertical, ArrowLeft, Activity, Clock
+  Eye, Pencil, Minus, GripVertical, ArrowLeft, Activity, Clock, CheckSquare
 } from "lucide-react";
 import type { UserProfile, RolePermission } from "../types";
 import { getTranslation } from "../utils/translations";
@@ -50,6 +50,11 @@ interface SettingsViewProps {
   integrationsConfig?: any;
   updateIntegrationsConfig?: (next: any) => void;
   dbInfo?: { host: string; port: string; name: string; user: string };
+
+  taskStates: string[];
+  setTaskStates: React.Dispatch<React.SetStateAction<string[]>>;
+  taskStateColors: Record<string, string>;
+  setTaskStateColors: React.Dispatch<React.SetStateAction<Record<string, string>>>;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
@@ -84,11 +89,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   isDemoMode,
   integrationsConfig,
   updateIntegrationsConfig,
-  dbInfo
+  dbInfo,
+  taskStates,
+  setTaskStates,
+  taskStateColors,
+  setTaskStateColors
 }) => {
   const [tempName, setTempName] = React.useState(systemName);
   const [newState, setNewState] = React.useState("");
   const [newSource, setNewSource] = React.useState("");
+  const [newTaskState, setNewTaskState] = React.useState("");
   const [selectedUser, setSelectedUser] = React.useState<UserProfile | null>(null);
   const [simulatedAction, setSimulatedAction] = React.useState("");
   const [simulatedType, setSimulatedType] = React.useState<"login" | "create" | "update" | "delete" | "system">("login");
@@ -2682,6 +2692,145 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <Plus className="h-3.5 w-3.5" /> {getTranslation(userLanguage, "settings.sources.btn_add_category")}
                   </button>
                 </form>
+              )}
+            </div>
+
+            {/* Task States configuration card */}
+            <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass mt-6 animate-fade-in">
+              <h3 className="text-sm font-heading font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2 border-b border-slate-200 pb-3">
+                <CheckSquare className="h-4.5 w-4.5 text-indigo-500" /> {userLanguage === "sk" ? "Stavy úloh" : userLanguage === "hu" ? "Feladat állapotok" : "Task States"}
+              </h3>
+              
+              <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider text-left">
+                {userLanguage === "sk" ? "Definujte rôzne stavy pre úlohy, priraďte im farby a prispôsobte si pracovný postup." : userLanguage === "hu" ? "Határozzon meg különböző állapotokat a feladatokhoz, rendeljen hozzájuk színeket, és szabja személyre a munkafolyamatot." : "Define different states for tasks, assign colors to them, and customize your workflow."}
+              </p>
+
+              <div className="border border-slate-200/80 rounded-2xl overflow-hidden shadow-inner bg-white/50">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200/60 select-none">
+                      <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-44">{userLanguage === "sk" ? "Farba" : userLanguage === "hu" ? "Szín" : "Color"}</th>
+                      <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">{userLanguage === "sk" ? "Názov" : userLanguage === "hu" ? "Név" : "Name"}</th>
+                      <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-16 text-center">{userLanguage === "sk" ? "Odstrániť" : userLanguage === "hu" ? "Törlés" : "Delete"}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {taskStates.map((state) => {
+                      const color = taskStateColors[state] || "#64748b";
+                      return (
+                        <tr key={state} className="border-b border-slate-150 hover:bg-slate-50/50 transition-colors">
+                          {/* COLOR PICKER */}
+                          <td className="py-3 px-4 align-middle">
+                            <div className="flex items-center gap-2">
+                              {getPermission("traffic_sources") === "edit" ? (
+                                <label className="cursor-pointer relative flex items-center justify-center h-5 w-5 rounded-full border border-slate-200 hover:scale-115 transition-transform bg-slate-50 shadow-inner">
+                                  <span className="h-3 w-3 rounded-full border border-white" style={{ backgroundColor: color }} />
+                                  <input 
+                                    type="color" 
+                                    value={color} 
+                                    onChange={(e) => {
+                                      setTaskStateColors(prev => ({
+                                        ...prev,
+                                        [state]: e.target.value
+                                      }));
+                                    }}
+                                    className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                                  />
+                                </label>
+                              ) : (
+                                <span className="h-3 w-3 rounded-full border border-slate-250 inline-block" style={{ backgroundColor: color }} />
+                              )}
+                              <span className="text-[9px] font-black uppercase text-slate-400">{color}</span>
+                            </div>
+                          </td>
+
+                          {/* STATE NAME */}
+                          <td className="py-3 px-4 align-middle font-bold text-slate-800 uppercase tracking-wider text-xs">
+                            {state}
+                          </td>
+
+                          {/* ACTIONS */}
+                          <td className="py-3 px-4 text-center align-middle">
+                            {getPermission("traffic_sources") === "edit" ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (taskStates.length <= 1) {
+                                    (window as any).showToast(
+                                      userLanguage === "sk" 
+                                        ? "Pre správne fungovanie je potrebný aspoň jeden stav úlohy!" 
+                                        : "At least one task state is required!"
+                                    );
+                                    return;
+                                  }
+                                  if (confirm(
+                                    userLanguage === "sk" 
+                                      ? `Naozaj chcete odstrániť stav "${state}"?` 
+                                      : `Are you sure you want to remove the state "${state}"?`
+                                  )) {
+                                    setTaskStates(taskStates.filter(s => s !== state));
+                                    setTaskStateColors(prev => {
+                                      const next = { ...prev };
+                                      delete next[state];
+                                      return next;
+                                    });
+                                  }
+                                }}
+                                className="text-slate-400 hover:text-rose-600 transition-colors p-1"
+                              >
+                                <Trash2 className="h-4.5 w-4.5" />
+                              </button>
+                            ) : (
+                              <Lock className="h-4 w-4 text-slate-350 inline-block" />
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Add New Task State Form */}
+              {getPermission("traffic_sources") === "edit" && (
+                <div className="pt-4 border-t border-slate-200/80">
+                  <div className="flex items-end gap-3 max-w-md">
+                    <div className="flex-1 space-y-1">
+                      <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider block">
+                        {userLanguage === "sk" ? "Nový stav úlohy" : "New Task State"}
+                      </label>
+                      <input 
+                        type="text"
+                        value={newTaskState}
+                        onChange={(e) => setNewTaskState(e.target.value)}
+                        placeholder="e.g. Pending review"
+                        className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:outline-none font-bold text-xs"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const val = newTaskState.trim();
+                        if (!val) return;
+                        if (taskStates.map(s => s.toLowerCase()).includes(val.toLowerCase())) {
+                          (window as any).showToast(
+                            userLanguage === "sk" ? "Tento stav už existuje!" : "This state already exists!"
+                          );
+                          return;
+                        }
+                        setTaskStates([...taskStates, val]);
+                        setTaskStateColors(prev => ({
+                          ...prev,
+                          [val]: "#3b82f6" // Default blue
+                        }));
+                        setNewTaskState("");
+                      }}
+                      className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black uppercase tracking-wider shadow-md transition-all active:scale-95 flex items-center justify-center gap-1 shrink-0"
+                    >
+                      <Plus className="h-4 w-4 stroke-[2.5]" /> {userLanguage === "sk" ? "Pridať" : "Add"}
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
 

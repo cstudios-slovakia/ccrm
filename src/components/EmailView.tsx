@@ -2,9 +2,9 @@ import React, { useState, useEffect, useMemo } from "react";
 import { 
   Send, Trash2, Search, Mail, Plus, X, Loader2, 
   Reply, CheckCircle2, CircleAlert, Clock, Phone, FileText, Calendar, TrendingUp,
-  CornerDownLeft, CornerLeftDown, ChevronDown, ChevronUp
+  CornerDownLeft, CornerLeftDown, ChevronDown, ChevronUp, Brain
 } from "lucide-react";
-import type { Lead } from "../types";
+import type { Lead, Task, UserProfile } from "../types";
 
 interface EmailViewProps {
   currentUser: any;
@@ -12,6 +12,11 @@ interface EmailViewProps {
   setLeads: any;
   systemLanguage: "en" | "sk" | "hu";
   projectManagerColors?: Record<string, string>;
+  integrationsConfig?: any;
+  tasks: Task[];
+  setTasks: (newTasks: Task[] | ((prev: Task[]) => Task[])) => void;
+  users: UserProfile[];
+  taskStates?: string[];
 }
 
 // Geometric Icon component from AuroraMail
@@ -42,8 +47,14 @@ const GeometricIcon: React.FC<{ emailString?: string }> = ({ emailString }) => {
 export const EmailView: React.FC<EmailViewProps> = ({
   currentUser,
   leads,
+  setLeads,
   systemLanguage: _systemLanguage,
-  projectManagerColors = {}
+  projectManagerColors = {},
+  integrationsConfig,
+  tasks,
+  setTasks,
+  users,
+  taskStates = ["New", "In progress", "Blocked", "Done"]
 }) => {
   // Folder & Email States
   const activeFolder = "INBOX";
@@ -91,6 +102,121 @@ export const EmailView: React.FC<EmailViewProps> = ({
   // Composers and notifications
   const [composers, setComposers] = useState<any[]>([]);
   const [notification, setNotification] = useState<any | null>(null);
+
+  // AI Email & Flow Summary States
+  const [summaries, setSummaries] = useState<Record<string, string>>({});
+  const [loadingSummaries, setLoadingSummaries] = useState<Record<string, boolean>>({});
+  const [actionItemsMap, setActionItemsMap] = useState<Record<string, string[]>>({});
+  const [assigningActionItem, setAssigningActionItem] = useState<{ item: string; emailUid: string } | null>(null);
+
+  const [isClientSlideoutOpen, setIsClientSlideoutOpen] = useState(false);
+  const [isClosingClient, setIsClosingClient] = useState(false);
+
+  const closeClientSlideout = () => {
+    setIsClosingClient(true);
+    setTimeout(() => {
+      setIsClientSlideoutOpen(false);
+      setIsClosingClient(false);
+    }, 350);
+  };
+  const [clientFormEmail, setClientFormEmail] = useState("");
+  const [clientFormName, setClientFormName] = useState("");
+  const [clientFormCity, setClientFormCity] = useState("");
+  const [clientFormPhone, setClientFormPhone] = useState("");
+  const [clientFormType, setClientFormType] = useState<"person" | "business" | "partner">("person");
+
+  const isOpenAiKeySet = useMemo(() => {
+    return !!(integrationsConfig?.openAiKey && integrationsConfig.openAiKey.trim() !== "");
+  }, [integrationsConfig]);
+
+  const stripHtml = (html: string) => {
+    const tmp = document.createElement("DIV");
+    tmp.innerHTML = html;
+    return tmp.textContent || tmp.innerText || "";
+  };
+
+  const fetchSummary = async (emailUid: string, folder: string, subject: string, body: string, isThread: boolean = false) => {
+    if (summaries[emailUid] || loadingSummaries[emailUid]) return;
+    setLoadingSummaries(prev => ({ ...prev, [emailUid]: true }));
+    try {
+      const res = await fetch("/api/summarize_email.php", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-User-Email": currentUser.email
+        },
+        body: JSON.stringify({
+          email_uid: emailUid,
+          folder,
+          subject,
+          body,
+          is_thread: isThread
+        })
+      });
+      const data = await res.json();
+      if (data.success && data.summary) {
+        setSummaries(prev => ({ ...prev, [emailUid]: data.summary }));
+        if (data.actionItems) {
+          setActionItemsMap(prev => ({ ...prev, [emailUid]: data.actionItems }));
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch email summary", err);
+    } finally {
+      setLoadingSummaries(prev => ({ ...prev, [emailUid]: false }));
+    }
+  };
+
+  const handleAddEmailActionItemAsTask = (actionItem: string, emailUid: string, matchedLead: Lead | null, assignedUser: string) => {
+    const newCrmTask: Task = {
+      id: `task-ai-${Date.now()}`,
+      title: actionItem,
+      description: `AI suggested task from email (UID: ${emailUid}): "${actionItem}"`,
+      status: taskStates[0] || "New",
+      priority: "medium",
+      startDate: new Date().toISOString().split("T")[0],
+      deadline: new Date(Date.now() + 86400000 * 3).toISOString().split("T")[0],
+      deadlineTime: "23:59",
+      owner: "AI Assistant",
+      assignedUsers: [assignedUser],
+      relatedLeadId: matchedLead ? String(matchedLead.id) : undefined
+    };
+    
+    setTasks(prev => [newCrmTask, ...prev]);
+    
+    if (typeof (window as any).showToast === "function") {
+      (window as any).showToast(`Task assigned to ${assignedUser}!`);
+    }
+  };
+
+  const handleCreateClientSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!clientFormName.trim() || !clientFormEmail.trim() || !clientFormCity.trim()) return;
+    
+    const newLead: Lead = {
+      id: `lead-${Date.now()}`,
+      name: clientFormName,
+      email: clientFormEmail,
+      phone: clientFormPhone,
+      city: clientFormCity,
+      clientType: clientFormType,
+      status: "accepted",
+      source: "email",
+      owner: currentUser?.name || "Erik",
+      value: 0,
+      createdAt: new Date().toISOString().split("T")[0],
+      timeline: []
+    };
+    
+    setLeads((prev: any) => [...prev, newLead]);
+    closeClientSlideout();
+    
+    if (typeof (window as any).showToast === "function") {
+      (window as any).showToast(`Client ${clientFormName} created and matched successfully!`);
+    }
+  };
+
+
 
   const closeComposer = (composerId: number) => {
     setComposers(prev => prev.map(c => c.id === composerId ? { ...c, isClosing: true } : c));
@@ -262,9 +388,15 @@ export const EmailView: React.FC<EmailViewProps> = ({
 
   // Initial loads
   useEffect(() => {
-    if (userEmailSettings) {
+    if (!userEmailSettings) return;
+
+    loadEmails(1, filter);
+
+    const interval = setInterval(() => {
       loadEmails(1, filter);
-    }
+    }, 60000); // UI updates every 60 seconds
+
+    return () => clearInterval(interval);
   }, [userEmailSettings, filter]);
 
   // Compose a new email
@@ -430,6 +562,89 @@ export const EmailView: React.FC<EmailViewProps> = ({
     });
   }, [emails, searchQuery]);
 
+  // Fetch thread flow summary when active thread changes or thread bodies load
+  useEffect(() => {
+    if (isOpenAiKeySet && activeThread) {
+      const combinedText = activeThread.emails.map(e => {
+        const sender = e.isSent ? "Me" : (e.from.name || e.from.address);
+        const bodyText = threadBodies[e.uid] ? stripHtml(threadBodies[e.uid].html || threadBodies[e.uid].text || "") : "";
+        return `From: ${sender}\nDate: ${e.date}\nSubject: ${e.subject}\nContent: ${bodyText}`;
+      }).join("\n\n---\n\n");
+      
+      fetchSummary(`thread-${activeThread.id}`, "thread", activeThread.subject, combinedText, true);
+    }
+  }, [activeThread, threadBodies, isOpenAiKeySet]);
+
+  // Fetch individual expanded emails' summaries in thread mode
+  useEffect(() => {
+    if (!isOpenAiKeySet || !activeThread) return;
+    activeThread.emails.forEach(email => {
+      const isExpanded = expandedEmailUids[email.uid];
+      const bodyObj = threadBodies[email.uid];
+      if (isExpanded && bodyObj) {
+        fetchSummary(email.uid, email.isSent ? "Sent" : activeFolder, email.subject, bodyObj.html || bodyObj.text, false);
+      }
+    });
+  }, [activeThread, expandedEmailUids, threadBodies, isOpenAiKeySet]);
+
+  // Fetch individual email summary in traditional unthreaded mode
+  useEffect(() => {
+    if (!isOpenAiKeySet || isThreadedMode) return;
+    if (selectedEmail) {
+      const bodyObj = threadBodies[selectedEmail.uid];
+      if (bodyObj) {
+        fetchSummary(selectedEmail.uid, selectedEmail.isSent ? "Sent" : activeFolder, selectedEmail.subject, bodyObj.html || bodyObj.text, false);
+      }
+    }
+  }, [selectedEmail, threadBodies, isOpenAiKeySet, isThreadedMode]);
+
+  // Sync initial summaries from fetched emails list payload
+  useEffect(() => {
+    const initialSummaries: Record<string, string> = {};
+    const initialActionItems: Record<string, string[]> = {};
+    emails.forEach(e => {
+      if (e.summary) {
+        try {
+          if (e.summary.trim().startsWith('{')) {
+            const parsed = JSON.parse(e.summary);
+            initialSummaries[e.uid] = parsed.summary || '';
+            initialActionItems[e.uid] = parsed.actionItems || [];
+          } else {
+            initialSummaries[e.uid] = e.summary;
+          }
+        } catch (err) {
+          initialSummaries[e.uid] = e.summary;
+        }
+      }
+    });
+    setSummaries(prev => ({ ...initialSummaries, ...prev }));
+    setActionItemsMap(prev => ({ ...initialActionItems, ...prev }));
+  }, [emails]);
+
+  // Background pre-fetch summaries for visible items in the lists
+  useEffect(() => {
+    if (!isOpenAiKeySet) return;
+    
+    if (isThreadedMode) {
+      threadedEmails.forEach(thread => {
+        const threadId = `thread-${thread.id}`;
+        if (!summaries[threadId] && !loadingSummaries[threadId]) {
+          const combinedText = thread.emails.map(e => {
+            const sender = e.isSent ? "Me" : (e.from.name || e.from.address);
+            return `From: ${sender}\nDate: ${e.date}\nSubject: ${e.subject}`;
+          }).join("\n");
+          fetchSummary(threadId, "thread", thread.subject, combinedText, true);
+        }
+      });
+    } else {
+      filteredIndividualEmails.forEach(email => {
+        if (!summaries[email.uid] && !loadingSummaries[email.uid]) {
+          fetchSummary(email.uid, email.isSent ? "Sent" : activeFolder, email.subject, "", false);
+        }
+      });
+    }
+  }, [emails, isThreadedMode, isOpenAiKeySet, threadedEmails, filteredIndividualEmails]);
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 select-none h-[calc(100vh-140px)] items-start overflow-hidden animate-slide-up">
       {/* Notifications banner */}
@@ -569,6 +784,21 @@ export const EmailView: React.FC<EmailViewProps> = ({
                         🤝 CRM Match: {matchedClient.name}
                       </span>
                     )}
+
+                    {isOpenAiKeySet && (
+                      <div className="mt-1.5 p-2 bg-purple-50/50 border border-purple-150 rounded-xl flex items-start gap-1.5 text-left animate-fade-in">
+                        <Brain className="h-3.5 w-3.5 text-purple-650 shrink-0 mt-0.5" />
+                        <div className="space-y-0.5">
+                          {loadingSummaries[`thread-${thread.id}`] ? (
+                            <span className="text-[8.5px] text-purple-600 font-bold uppercase tracking-wider animate-pulse block">Analyzing flow...</span>
+                          ) : summaries[`thread-${thread.id}`] ? (
+                            <p className="text-[9.5px] text-purple-850 font-semibold leading-normal">{summaries[`thread-${thread.id}`]}</p>
+                          ) : (
+                            <span className="text-[8.5px] text-purple-400 italic">No summary available.</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })
@@ -621,6 +851,21 @@ export const EmailView: React.FC<EmailViewProps> = ({
                         🤝 CRM Match: {matchedClient.name}
                       </span>
                     )}
+
+                    {isOpenAiKeySet && (
+                      <div className="mt-1.5 p-2 bg-purple-50/50 border border-purple-150 rounded-xl flex items-start gap-1.5 text-left animate-fade-in">
+                        <Brain className="h-3.5 w-3.5 text-purple-650 shrink-0 mt-0.5" />
+                        <div className="space-y-0.5">
+                          {loadingSummaries[email.uid] ? (
+                            <span className="text-[8.5px] text-purple-600 font-bold uppercase tracking-wider animate-pulse block">Analyzing email...</span>
+                          ) : summaries[email.uid] ? (
+                            <p className="text-[9.5px] text-purple-850 font-semibold leading-normal">{summaries[email.uid]}</p>
+                          ) : (
+                            <span className="text-[8.5px] text-purple-400 italic">No summary available.</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })
@@ -657,7 +902,38 @@ export const EmailView: React.FC<EmailViewProps> = ({
               {/* CRM Match Info card */}
               {(() => {
                 const client = leads.find(l => l.email && l.email.toLowerCase() === activeThread.latestEmail.from.address.toLowerCase());
-                if (!client) return null;
+                if (!client) {
+                  const latest = activeThread.latestEmail;
+                  const senderEmail = latest.from.address;
+                  const senderName = latest.from.name || "";
+                  return (
+                    <div className="bg-slate-50 border border-slate-205 p-3 rounded-2xl flex items-center justify-between gap-3 text-left mt-3 shrink-0 animate-fade-in shadow-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">👤</span>
+                        <div>
+                          <h4 className="text-[9px] font-black text-slate-505 uppercase tracking-tight">Unmatched Sender</h4>
+                          <p className="text-[10.5px] text-slate-655 font-bold mt-0.5">
+                            Email <span className="text-slate-900 font-extrabold">{senderEmail}</span> is not registered.
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setClientFormEmail(senderEmail);
+                          setClientFormName(senderName);
+                          setClientFormCity("");
+                          setClientFormPhone("");
+                          setClientFormType("person");
+                          setIsClientSlideoutOpen(true);
+                        }}
+                        style={{ backgroundColor: "#6366f1", color: "#ffffff" }}
+                        className="px-2.5 py-1.5 hover:bg-indigo-700 rounded-xl text-[9px] font-black uppercase tracking-wider cursor-pointer transition-all shadow-sm"
+                      >
+                        Create Client
+                      </button>
+                    </div>
+                  );
+                }
                 return (
                   <div className="bg-emerald-50 border border-emerald-250 p-3 rounded-2xl flex items-center justify-between gap-3 text-left mt-3 shrink-0 animate-fade-in shadow-sm">
                     <div className="flex items-center gap-2">
@@ -692,6 +968,88 @@ export const EmailView: React.FC<EmailViewProps> = ({
 
               {/* Message cards chronological flow */}
               <div className="flex-1 overflow-y-auto space-y-3 py-4 pr-1 scrollbar-thin">
+                {isOpenAiKeySet && activeThread && (
+                  <div className="p-3.5 bg-purple-50/60 border border-purple-250 rounded-2xl flex flex-col gap-2.5 text-left animate-fade-in shadow-xs mb-1">
+                    <div className="flex items-start gap-2.5">
+                      <Brain className="h-4.5 w-4.5 text-purple-650 shrink-0 mt-0.5" />
+                      <div className="space-y-0.5">
+                        <h4 className="text-[10px] font-black text-purple-950 uppercase tracking-tight">AI Flow Summary</h4>
+                        {loadingSummaries[`thread-${activeThread.id}`] ? (
+                          <div className="flex items-center gap-1.5 py-1">
+                            <Loader2 className="h-3 w-3 animate-spin text-purple-600" />
+                            <span className="text-[10px] text-purple-700 font-bold uppercase tracking-wider">Analyzing conversation flow...</span>
+                          </div>
+                        ) : summaries[`thread-${activeThread.id}`] ? (
+                          <p className="text-[11.5px] text-purple-850 font-bold leading-relaxed">{summaries[`thread-${activeThread.id}`]}</p>
+                        ) : (
+                          <p className="text-[10.5px] text-purple-500 italic">No summary generated yet.</p>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {actionItemsMap[`thread-${activeThread.id}`] && actionItemsMap[`thread-${activeThread.id}`].length > 0 && (
+                      <div className="mt-2 pt-2.5 border-t border-purple-200/50 space-y-2">
+                        <h5 className="text-[9px] font-black uppercase text-purple-955 tracking-wider flex items-center gap-1">
+                          <CheckCircle2 className="h-3 w-3 text-purple-600" />
+                          Suggested Tasks
+                        </h5>
+                        <div className="flex flex-wrap gap-1.5">
+                          {actionItemsMap[`thread-${activeThread.id}`].map((item, idx) => {
+                            const matchingTask = tasks.find(t => t.title === item);
+                            const isCreated = !!matchingTask;
+                            const assignedUser = matchingTask && matchingTask.assignedUsers && matchingTask.assignedUsers.length > 0
+                              ? matchingTask.assignedUsers[0]
+                              : null;
+                            const threadLead = leads.find(l => l.email && l.email.toLowerCase() === activeThread.latestEmail.from.address.toLowerCase()) || null;
+                            return (
+                              <div key={idx} className="relative flex items-center gap-1.5 px-2.5 py-1 bg-white/70 border border-purple-150/40 rounded-full text-[10px] text-purple-900 font-bold hover:bg-white transition-all select-none">
+                                <span>{item}</span>
+                                {isCreated ? (
+                                  <span className="shrink-0 flex items-center gap-1 text-[8px] font-black uppercase text-emerald-600 bg-emerald-100 border border-emerald-200 px-1.5 py-0.5 rounded-md">
+                                    {assignedUser ? `✓ ${assignedUser.substring(0, 2).toUpperCase()}` : "✓"}
+                                  </span>
+                                ) : (
+                                  <>
+                                    <button
+                                      onClick={() => setAssigningActionItem(assigningActionItem?.item === item ? null : { item, emailUid: `thread-${activeThread.id}` })}
+                                      className="shrink-0 text-[8.5px] font-black text-purple-700 hover:text-purple-900 bg-purple-100/80 hover:bg-purple-200/80 px-1.5 py-0.5 rounded-md border border-purple-250/30 cursor-pointer"
+                                    >
+                                      + Assign
+                                    </button>
+                                    
+                                    {assigningActionItem?.item === item && assigningActionItem?.emailUid === `thread-${activeThread.id}` && (
+                                      <>
+                                        <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setAssigningActionItem(null)} />
+                                        <div className="absolute left-0 bottom-full mb-1.5 z-50 bg-white border border-slate-250 rounded-xl shadow-2xl p-1 w-[140px] max-h-[150px] overflow-y-auto">
+                                          {users.map(u => (
+                                            <button
+                                              key={u.name}
+                                              type="button"
+                                              onClick={() => {
+                                                handleAddEmailActionItemAsTask(item, `thread-${activeThread.id}`, threadLead, u.name);
+                                                setAssigningActionItem(null);
+                                              }}
+                                              className="w-full text-left px-2 py-1 hover:bg-slate-50 rounded-lg text-[9px] font-black text-slate-700 uppercase tracking-wider cursor-pointer flex items-center gap-1.5"
+                                            >
+                                              <div className="h-4.5 w-4.5 rounded-full bg-indigo-50 border border-indigo-200/40 text-indigo-600 flex items-center justify-center text-[7.5px] font-black shrink-0">
+                                                {u.name.substring(0, 2).toUpperCase()}
+                                              </div>
+                                              <span className="truncate">{u.name}</span>
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {activeThread.emails.map((email) => {
                   const isExpanded = !!expandedEmailUids[email.uid];
                   const bodyObj = threadBodies[email.uid];
@@ -742,6 +1100,88 @@ export const EmailView: React.FC<EmailViewProps> = ({
                       {/* Email Card Body content */}
                       {isExpanded && (
                         <div className="p-4 bg-white min-h-[150px]">
+                          {isOpenAiKeySet && bodyObj && (
+                            <div className="mb-3.5 p-3 bg-purple-50/60 border border-purple-200 rounded-xl flex flex-col gap-2.5 text-left animate-fade-in shadow-2xs">
+                              <div className="flex items-start gap-2">
+                                <Brain className="h-4.5 w-4.5 text-purple-600 shrink-0 mt-0.5" />
+                                <div className="space-y-0.5">
+                                  <h4 className="text-[9px] font-black text-purple-950 uppercase tracking-tight">AI Mail Summary</h4>
+                                  {loadingSummaries[email.uid] ? (
+                                    <div className="flex items-center gap-1.5 py-0.5">
+                                      <Loader2 className="h-3 w-3 animate-spin text-purple-500" />
+                                      <span className="text-[9px] text-purple-600 font-bold uppercase tracking-wider">Analyzing email content...</span>
+                                    </div>
+                                  ) : summaries[email.uid] ? (
+                                    <p className="text-[10px] text-purple-850 font-bold leading-normal">{summaries[email.uid]}</p>
+                                  ) : (
+                                    <p className="text-[9.5px] text-purple-400 italic">No summary available.</p>
+                                  )}
+                                </div>
+                              </div>
+
+                              {actionItemsMap[email.uid] && actionItemsMap[email.uid].length > 0 && (
+                                <div className="mt-1.5 pt-2 border-t border-purple-200/50 space-y-2">
+                                  <h5 className="text-[8px] font-black uppercase text-purple-955 tracking-wider flex items-center gap-1">
+                                    <CheckCircle2 className="h-2.5 w-2.5 text-purple-600" />
+                                    Suggested Tasks
+                                  </h5>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {actionItemsMap[email.uid].map((item, idx) => {
+                                      const matchingTask = tasks.find(t => t.title === item);
+                                      const isCreated = !!matchingTask;
+                                      const assignedUser = matchingTask && matchingTask.assignedUsers && matchingTask.assignedUsers.length > 0
+                                        ? matchingTask.assignedUsers[0]
+                                        : null;
+                                      const msgLead = leads.find(l => l.email && l.email.toLowerCase() === email.from.address.toLowerCase()) || null;
+                                      return (
+                                        <div key={idx} className="relative flex items-center gap-1.5 px-2 py-0.5 bg-white/70 border border-purple-150/40 rounded-full text-[9px] text-purple-900 font-bold hover:bg-white transition-all select-none">
+                                          <span>{item}</span>
+                                          {isCreated ? (
+                                            <span className="shrink-0 text-[7.5px] font-black uppercase text-emerald-600 bg-emerald-100 border border-emerald-200 px-1.5 py-0.5 rounded">
+                                              {assignedUser ? `✓ ${assignedUser.substring(0, 2).toUpperCase()}` : "✓"}
+                                            </span>
+                                          ) : (
+                                            <>
+                                              <button
+                                                onClick={() => setAssigningActionItem(assigningActionItem?.item === item ? null : { item, emailUid: email.uid })}
+                                                className="shrink-0 text-[8px] font-black text-purple-700 hover:text-white bg-purple-100/80 hover:bg-purple-600 px-1.5 py-0.5 rounded-md border border-purple-200 transition-all cursor-pointer"
+                                              >
+                                                + Add
+                                              </button>
+                                              
+                                              {assigningActionItem?.item === item && assigningActionItem?.emailUid === email.uid && (
+                                                <>
+                                                  <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setAssigningActionItem(null)} />
+                                                  <div className="absolute left-0 bottom-full mb-1 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl p-1 w-[130px] max-h-[140px] overflow-y-auto">
+                                                    {users.map(u => (
+                                                      <button
+                                                        key={u.name}
+                                                        type="button"
+                                                        onClick={() => {
+                                                          handleAddEmailActionItemAsTask(item, email.uid, msgLead, u.name);
+                                                          setAssigningActionItem(null);
+                                                        }}
+                                                        className="w-full text-left px-2 py-1 hover:bg-slate-50 rounded-lg text-[8px] font-black text-slate-700 uppercase tracking-wider cursor-pointer flex items-center gap-1"
+                                                      >
+                                                        <div className="h-4.5 w-4.5 rounded-full bg-indigo-50 border border-indigo-200/40 text-indigo-600 flex items-center justify-center text-[7.5px] font-black shrink-0">
+                                                          {u.name.substring(0, 2).toUpperCase()}
+                                                        </div>
+                                                        <span className="truncate">{u.name}</span>
+                                                      </button>
+                                                    ))}
+                                                  </div>
+                                                </>
+                                              )}
+                                            </>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
                           {isLoadingDetail && !bodyObj ? (
                             <div className="flex items-center justify-center py-6 gap-2 text-slate-400">
                               <Loader2 className="animate-spin text-pink-500" size={16} />
@@ -846,7 +1286,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                 </div>
 
                 {/* CRM Match Card */}
-                {matchedClient && (
+                {matchedClient ? (
                   <div className="bg-emerald-50 border border-emerald-250 p-3.5 rounded-2xl flex items-center justify-between gap-3 text-left mt-3 shrink-0 animate-fade-in shadow-sm">
                     <div className="flex items-center gap-2">
                       <span className="text-xl">🤝</span>
@@ -876,6 +1316,114 @@ export const EmailView: React.FC<EmailViewProps> = ({
                         Open Client
                       </button>
                     </div>
+                  </div>
+                ) : (
+                  <div className="bg-slate-50 border border-slate-205 p-3.5 rounded-2xl flex items-center justify-between gap-3 text-left mt-3 shrink-0 animate-fade-in shadow-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl">👤</span>
+                      <div>
+                        <h4 className="text-[10px] font-black text-slate-505 uppercase tracking-tight">Unmatched Sender</h4>
+                        <p className="text-[11px] text-slate-655 font-bold mt-0.5">
+                          Email <span className="text-slate-900 font-extrabold">{selectedEmail.from.address}</span> is not registered in CRM.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setClientFormEmail(selectedEmail.from.address);
+                        setClientFormName(selectedEmail.from.name || "");
+                        setClientFormCity("");
+                        setClientFormPhone("");
+                        setClientFormType("person");
+                        setIsClientSlideoutOpen(true);
+                      }}
+                      style={{ backgroundColor: "#6366f1", color: "#ffffff" }}
+                      className="px-3 py-1.5 hover:bg-indigo-700 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-sm cursor-pointer"
+                    >
+                      Create Client
+                    </button>
+                  </div>
+                )}
+
+                {isOpenAiKeySet && bodyObj && (
+                  <div className="mt-3 p-3.5 bg-purple-50/60 border border-purple-250 rounded-2xl flex flex-col gap-2.5 text-left animate-fade-in shadow-xs">
+                    <div className="flex items-start gap-2.5">
+                      <Brain className="h-4.5 w-4.5 text-purple-650 shrink-0 mt-0.5" />
+                      <div className="space-y-0.5">
+                        <h4 className="text-[10px] font-black text-purple-950 uppercase tracking-tight">AI Mail Summary</h4>
+                        {loadingSummaries[selectedEmail.uid] ? (
+                          <div className="flex items-center gap-1.5 py-1">
+                            <Loader2 className="h-3 w-3 animate-spin text-purple-600" />
+                            <span className="text-[10px] text-purple-700 font-bold uppercase tracking-wider">Analyzing email content...</span>
+                          </div>
+                        ) : summaries[selectedEmail.uid] ? (
+                          <p className="text-[11px] text-purple-850 font-bold leading-relaxed">{summaries[selectedEmail.uid]}</p>
+                        ) : (
+                          <p className="text-[10.5px] text-purple-500 italic">No summary available.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {actionItemsMap[selectedEmail.uid] && actionItemsMap[selectedEmail.uid].length > 0 && (
+                      <div className="mt-2 pt-2.5 border-t border-purple-200/50 space-y-2">
+                        <h5 className="text-[9px] font-black uppercase text-purple-955 tracking-wider flex items-center gap-1">
+                          <CheckCircle2 className="h-3 w-3 text-purple-600" />
+                          Suggested Tasks
+                        </h5>
+                        <div className="flex flex-wrap gap-1.5">
+                          {actionItemsMap[selectedEmail.uid].map((item, idx) => {
+                            const matchingTask = tasks.find(t => t.title === item);
+                            const isCreated = !!matchingTask;
+                            const assignedUser = matchingTask && matchingTask.assignedUsers && matchingTask.assignedUsers.length > 0
+                              ? matchingTask.assignedUsers[0]
+                              : null;
+                            return (
+                              <div key={idx} className="relative flex items-center gap-1.5 px-2.5 py-1 bg-white/70 border border-purple-150/40 rounded-full text-[10px] text-purple-900 font-bold hover:bg-white transition-all select-none">
+                                <span>{item}</span>
+                                {isCreated ? (
+                                  <span className="shrink-0 flex items-center gap-1 text-[8px] font-black uppercase text-emerald-600 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-md">
+                                    {assignedUser ? `✓ ${assignedUser.substring(0, 2).toUpperCase()}` : "✓"}
+                                  </span>
+                                ) : (
+                                  <>
+                                    <button
+                                      onClick={() => setAssigningActionItem(assigningActionItem?.item === item ? null : { item, emailUid: selectedEmail.uid })}
+                                      className="shrink-0 text-[8.5px] font-black text-purple-700 hover:text-purple-900 bg-purple-100/80 hover:bg-purple-200/80 px-1.5 py-0.5 rounded-md border border-purple-250/30 cursor-pointer"
+                                    >
+                                      + Assign
+                                    </button>
+                                    
+                                    {assigningActionItem?.item === item && assigningActionItem?.emailUid === selectedEmail.uid && (
+                                      <>
+                                        <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setAssigningActionItem(null)} />
+                                        <div className="absolute left-0 bottom-full mb-1.5 z-50 bg-white border border-slate-250 rounded-xl shadow-2xl p-1 w-[140px] max-h-[150px] overflow-y-auto">
+                                          {users.map(u => (
+                                            <button
+                                              key={u.name}
+                                              type="button"
+                                              onClick={() => {
+                                                handleAddEmailActionItemAsTask(item, selectedEmail.uid, matchedClient, u.name);
+                                                setAssigningActionItem(null);
+                                              }}
+                                              className="w-full text-left px-2 py-1 hover:bg-slate-50 rounded-lg text-[9px] font-black text-slate-700 uppercase tracking-wider cursor-pointer flex items-center gap-1.5"
+                                            >
+                                              <div className="h-4.5 w-4.5 rounded-full bg-indigo-50 border border-indigo-200/40 text-indigo-600 flex items-center justify-center text-[7.5px] font-black shrink-0">
+                                                {u.name.substring(0, 2).toUpperCase()}
+                                              </div>
+                                              <span className="truncate">{u.name}</span>
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1101,6 +1649,106 @@ export const EmailView: React.FC<EmailViewProps> = ({
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* CLIENT CREATION SLIDEOUT DRAWER (slides up from bottom) */}
+      {(isClientSlideoutOpen || isClosingClient) && (
+        <div className={`fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-end justify-center ${isClosingClient ? "animate-fade-out" : "animate-fade-in"}`}>
+          {/* Backdrop click close */}
+          <div className="fixed inset-0 -z-10" onClick={closeClientSlideout} />
+          
+          <div className={`w-full max-w-5xl h-[70vh] bg-white rounded-t-[32px] border-t border-slate-200/80 shadow-2xl p-8 flex flex-col justify-between text-left ${isClosingClient ? "animate-slide-out-bottom" : "animate-slide-in-bottom"}`}>
+            <div className="flex items-center justify-between border-b border-slate-150 pb-3 shrink-0">
+              <div>
+                <span className="text-[10px] font-black uppercase text-pink-500 tracking-wider">CRM Client Registration</span>
+                <h3 className="text-sm font-heading font-black uppercase tracking-tight">Create New Client from Email</h3>
+              </div>
+              <button
+                onClick={closeClientSlideout}
+                className="text-slate-400 hover:text-slate-600 p-1 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleCreateClientSubmit} className="flex-1 flex flex-col justify-between text-xs font-bold text-slate-755 mt-6">
+              <div className="space-y-6">
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Client Name / Business Name</label>
+                    <input
+                      type="text"
+                      required
+                      value={clientFormName}
+                      onChange={(e) => setClientFormName(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:bg-white font-semibold"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Email Address</label>
+                    <input
+                      type="email"
+                      required
+                      value={clientFormEmail}
+                      onChange={(e) => setClientFormEmail(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:bg-white font-semibold"
+                    />
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-3 gap-6">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Phone Number</label>
+                    <input
+                      type="tel"
+                      value={clientFormPhone}
+                      onChange={(e) => setClientFormPhone(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:bg-white font-semibold"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">City</label>
+                    <input
+                      type="text"
+                      required
+                      value={clientFormCity}
+                      onChange={(e) => setClientFormCity(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:bg-white font-semibold"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Client Type</label>
+                    <select
+                      value={clientFormType}
+                      onChange={(e) => setClientFormType(e.target.value as any)}
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:bg-white font-semibold cursor-pointer"
+                    >
+                      <option value="person">Person</option>
+                      <option value="business">Business</option>
+                      <option value="partner">Partner</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-105 shrink-0">
+                <button
+                  type="button"
+                  onClick={closeClientSlideout}
+                  className="px-5 py-2.5 border border-slate-250 hover:bg-slate-50 text-slate-600 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow cursor-pointer"
+                >
+                  Save & Match Client
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

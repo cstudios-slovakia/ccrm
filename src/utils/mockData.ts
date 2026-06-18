@@ -677,9 +677,10 @@ export const INITIAL_TASKS: Task[] = [
     id: "task-1",
     title: "Draft SLA contract for Bavaria Logistics",
     description: "Prepare standard wholesale SLA layout including slab delivery timelines.",
-    status: "in_progress",
+    status: "In progress",
     priority: "high",
     deadline: "2026-05-30",
+    deadlineTime: "12:00",
     owner: "Erik",
     assignedUsers: ["Erik", "Roli"],
     relatedLeadId: "lead-3",
@@ -689,9 +690,10 @@ export const INITIAL_TASKS: Task[] = [
     id: "task-2",
     title: "Onsite laser measurement for kitchen countertop",
     description: "Visit Martina's property in Trnava to take precise Proliner measurements for Calacatta Quartz.",
-    status: "todo",
+    status: "New",
     priority: "high",
     deadline: "2026-05-31",
+    deadlineTime: "10:00",
     owner: "Tomi",
     assignedUsers: ["Tomi"],
     relatedLeadId: "lead-2",
@@ -701,9 +703,10 @@ export const INITIAL_TASKS: Task[] = [
     id: "task-3",
     title: "Slab delivery coordination from Italy",
     description: "Coordinate with logistics for the Laminam 12mm thickness slabs arriving from Fiorano Modenese.",
-    status: "todo",
+    status: "New",
     priority: "medium",
     deadline: "2026-06-02",
+    deadlineTime: "16:00",
     owner: "Roli",
     assignedUsers: ["Roli"],
     relatedLeadId: "lead-1",
@@ -713,21 +716,24 @@ export const INITIAL_TASKS: Task[] = [
     id: "task-4",
     title: "Showroom Presentation & Sample Review",
     description: "Prepare physical samples of Bookmatched Calacatta Gold for Elena's bathroom project.",
-    status: "todo",
+    status: "New",
     priority: "high",
     deadline: "2026-05-29",
+    deadlineTime: "19:00",
     owner: "Erik",
     assignedUsers: ["Erik"],
     relatedLeadId: "lead-5",
-    isLocking: false
+    isLocking: false,
+    isAiGenerated: true
   },
   {
     id: "task-5",
     title: "Submit Commercial Proposal for Villa Zobor",
     description: "Compile fabrication and installation pricing for Marek's outdoor paving project.",
-    status: "done",
+    status: "Done",
     priority: "medium",
     deadline: "2026-05-28",
+    deadlineTime: "23:59",
     owner: "Roli",
     assignedUsers: ["Roli"],
     relatedLeadId: "lead-4",
@@ -737,9 +743,10 @@ export const INITIAL_TASKS: Task[] = [
     id: "task-6",
     title: "CNC Milling Programming",
     description: "Prepare the waterjet and CNC toolpaths for the kitchen sink cutouts.",
-    status: "blocked",
+    status: "Blocked",
     priority: "low",
     deadline: "2026-06-05",
+    deadlineTime: "12:00",
     owner: "Tomi",
     assignedUsers: ["Tomi"],
     relatedLeadId: "lead-2",
@@ -749,9 +756,10 @@ export const INITIAL_TASKS: Task[] = [
     id: "task-7",
     title: "Finalize edge profiling parameters for Laminam",
     description: "Establish default mitred apron parameters for the fabrication department.",
-    status: "todo",
+    status: "New",
     priority: "medium",
     deadline: "2026-05-30",
+    deadlineTime: "23:59",
     owner: "Erik",
     assignedUsers: ["Erik"],
     relatedLeadId: "lead-1",
@@ -761,9 +769,10 @@ export const INITIAL_TASKS: Task[] = [
     id: "task-8",
     title: "Site safety clearance for Villa Zobor claddings",
     description: "Approve scaffolding and hoisting setup before slab installations.",
-    status: "todo",
+    status: "New",
     priority: "high",
     deadline: "2026-05-30",
+    deadlineTime: "10:00",
     owner: "Tomi",
     assignedUsers: ["Tomi"],
     relatedLeadId: "lead-4",
@@ -773,9 +782,10 @@ export const INITIAL_TASKS: Task[] = [
     id: "task-9",
     title: "Review sample shipping logs from Italy",
     description: "Confirm tracked numbers for 6mm ceramic panels coming next week.",
-    status: "todo",
+    status: "New",
     priority: "medium",
     deadline: "2026-05-27",
+    deadlineTime: "16:00",
     owner: "Roli",
     assignedUsers: ["Roli"],
     relatedLeadId: "lead-3",
@@ -785,9 +795,10 @@ export const INITIAL_TASKS: Task[] = [
     id: "task-10",
     title: "Prepare cutting layouts for showroom slabs",
     description: "Create optimal nest layouts in CAD/CAM to minimize slab offcut waste.",
-    status: "todo",
+    status: "New",
     priority: "medium",
     deadline: "2026-05-31",
+    deadlineTime: "23:59",
     owner: "Tomi",
     assignedUsers: ["Tomi"],
     relatedLeadId: "lead-3",
@@ -797,9 +808,10 @@ export const INITIAL_TASKS: Task[] = [
     id: "task-11",
     title: "Review wholesale pricing strategy",
     description: "Examine material markup for large-scale architectural projects.",
-    status: "todo",
+    status: "New",
     priority: "low",
     deadline: "2026-06-10",
+    deadlineTime: "23:59",
     owner: "Erik",
     assignedUsers: ["Erik"],
     isLocking: false
@@ -938,7 +950,7 @@ export const DUMMY_TEMPLATES = [
 
 // Helper to seed localStorage
 export const seedStorageIfEmpty = () => {
-  if (!localStorage.getItem("crm_seeded_v7")) {
+  if (!localStorage.getItem("crm_seeded_v8")) {
     localStorage.setItem("crm_leads", JSON.stringify(INITIAL_LEADS));
     localStorage.setItem("crm_appointments", JSON.stringify(INITIAL_APPOINTMENTS));
     localStorage.setItem("crm_documents", JSON.stringify(INITIAL_DOCUMENTS));
@@ -950,7 +962,7 @@ export const seedStorageIfEmpty = () => {
     localStorage.setItem("crm_forms", JSON.stringify(INITIAL_FORMS));
     localStorage.setItem("crm_submissions", JSON.stringify(INITIAL_SUBMISSIONS));
     
-    localStorage.setItem("crm_seeded_v7", "true");
+    localStorage.setItem("crm_seeded_v8", "true");
   }
 };
 
@@ -991,7 +1003,7 @@ export const saveCRMData = (data: Partial<CRMStore>) => {
 };
 
 export const resetCRMData = () => {
-  localStorage.removeItem("crm_seeded_v7");
+  localStorage.removeItem("crm_seeded_v8");
   // Also remove the task key to trigger re-seeding
   localStorage.removeItem("crm_tasks");
   seedStorageIfEmpty();

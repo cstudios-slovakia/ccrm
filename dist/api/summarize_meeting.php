@@ -16,6 +16,14 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 // SECURITY: Authenticated users only
 ccrm_require_auth();
 
+$configFile = dirname(__DIR__) . '/config.php';
+if (!file_exists($configFile)) {
+    http_response_code(503);
+    echo json_encode(['success' => false, 'installed' => false, 'message' => 'CRM is not installed yet.']);
+    exit;
+}
+require_once $configFile;
+
 $input = file_get_contents('php://input');
 $data = json_decode($input, true);
 
@@ -55,12 +63,17 @@ if (empty($openAiKey)) {
 $ch = curl_init('https://api.openai.com/v1/chat/completions');
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 curl_setopt($ch, CURLOPT_POST, true);
+curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
 curl_setopt($ch, CURLOPT_HTTPHEADER, [
     'Content-Type: application/json',
     'Authorization: Bearer ' . $openAiKey
 ]);
 
 $prompt = "You are an expert CRM assistant. Analyze the following meeting notes and output a JSON response containing a concise summary, sentiment classification, major topics, and action items.
+
+You MUST detect the language in which the provided meeting notes are written. You MUST write the \"summary\" and all \"actionItems\" in that same language (for example: if notes are in Slovak, output summary/action items in Slovak; if in Hungarian, output in Hungarian; if in English, output in English).
 
 You MUST respond ONLY with a valid JSON object. Do not wrap it in markdown code blocks or add extra explanation.
 Output structure:
@@ -88,11 +101,12 @@ $payload = [
 curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
 $response = curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+$curlErr = curl_error($ch);
 curl_close($ch);
 
 if ($httpCode !== 200 || !$response) {
     $errData = json_decode($response, true);
-    $errMsg = $errData['error']['message'] ?? 'OpenAI API request failed';
+    $errMsg = $errData['error']['message'] ?? (!empty($curlErr) ? $curlErr : 'OpenAI API request failed');
     http_response_code(500);
     echo json_encode(['success' => false, 'message' => 'OpenAI Error: ' . $errMsg]);
     exit;

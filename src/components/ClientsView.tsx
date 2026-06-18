@@ -1,12 +1,16 @@
 import React, { useState, useMemo, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { 
   Users, MapPin, Search, Clock, User, Briefcase, Handshake, 
   Euro, UserCheck, Check, Layers, Phone, Mail, Globe, 
   Calendar, ArrowLeft, Plus, TrendingUp, PencilLine, FileText,
   X, FolderOpen, Download, Trash2, SlidersHorizontal,
-  CornerDownLeft, CornerLeftDown, Loader2
+  CornerDownLeft, CornerLeftDown, Loader2, Brain, Mic, Play, Pause, Square, Sparkles
 } from "lucide-react";
 import type { Lead, TimelineEvent, Task } from "../types";
+import { cn } from "../utils/cn";
+import { BlockEditor } from "./BlockEditor";
+import type { EditorBlock } from "./BlockEditor";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 
@@ -21,6 +25,8 @@ interface ClientsViewProps {
   tasks: Task[];
   setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
   leadCategories: string[];
+  integrationsConfig?: any;
+  taskStates: string[];
 }
 
 export const ClientsView: React.FC<ClientsViewProps> = ({
@@ -33,7 +39,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   systemLanguage,
   tasks: _tasks,
   setTasks,
-  leadCategories
+  leadCategories,
+  integrationsConfig,
+  taskStates
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState("all");
@@ -176,6 +184,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       website: string;
       timeline: TimelineEvent[];
       categories: string[];
+      aiSummary?: string;
+      aiSummaryFingerprint?: string;
     }> = {};
 
     leads.forEach(lead => {
@@ -202,8 +212,15 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           contactPerson: lead.contactPerson || "",
           website: lead.website || "",
           timeline: lead.timeline || [],
-          categories: []
+          categories: [],
+          aiSummary: lead.aiSummary || "",
+          aiSummaryFingerprint: lead.aiSummaryFingerprint || ""
         };
+      } else {
+        if (lead.aiSummary && !profilesMap[clientKey].aiSummary) {
+          profilesMap[clientKey].aiSummary = lead.aiSummary;
+          profilesMap[clientKey].aiSummaryFingerprint = lead.aiSummaryFingerprint;
+        }
       }
       profilesMap[clientKey].totalValue += lead.value;
       profilesMap[clientKey].leadsCount += 1;
@@ -405,6 +422,480 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [uploadFileType, setUploadFileType] = useState<"offer" | "contract" | "invoice">("offer");
   const [uploadDescription, setUploadDescription] = useState("");
 
+  // Recording & transcription states for note logger
+  const [recordingState, setRecordingState] = useState<"idle" | "recording" | "paused" | "stopped" | "none">("none");
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+  const [recordDuration, setRecordDuration] = useState(0);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isUploadingAudio, setIsUploadingAudio] = useState(false);
+  const [uploadedAudioFile, setUploadedAudioFile] = useState<string | null>(null);
+  const [microphoneStream, setMicrophoneStream] = useState<MediaStream | null>(null);
+  const [recordingMeetingId, setRecordingMeetingId] = useState<string | null>(null);
+  const [editorKey, setEditorKey] = useState(0);
+  
+  // Audio Context and Visualizer states for note logger
+  const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
+  const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
+  const [dataArray, setDataArray] = useState<Uint8Array | null>(null);
+  
+  // Custom Audio Player states for note logger
+  const audioRef = React.useRef<HTMLAudioElement | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [audioDuration, setAudioDuration] = useState(0);
+  
+  // Blocks state for note logger
+  const [noteBlocks, setNoteBlocks] = useState<EditorBlock[]>([
+    { id: "b-1", type: "paragraph", content: "" }
+  ]);
+
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [localSummary, setLocalSummary] = useState<string | undefined>(undefined);
+
+  // Filter tasks belonging to the active client
+  const activeClientTasks = useMemo(() => {
+    if (!activeClient) return [];
+    const clientLeadIds = (activeClient.associatedLeads || []).map((l: any) => l.id);
+    return _tasks.filter(t => t.relatedLeadId && clientLeadIds.includes(t.relatedLeadId));
+  }, [_tasks, activeClient]);
+
+  // Compute active client data fingerprint to monitor changes
+  const activeClientFingerprint = useMemo(() => {
+    if (!activeClient) return "";
+    const tasksStr = activeClientTasks.map(t => `${t.id}-${t.status}-${t.title}-${t.deadline}`).join('|');
+    const timelineStr = (activeClient.timeline || []).map(e => `${e.id}-${e.type}-${e.timestamp}-${e.content || ''}-${e.amount || 0}`).join('|');
+    const detailsStr = `${activeClient.name}-${activeClient.city || ''}-${activeClient.clientType}-${activeClient.totalValue}-${activeClient.owner}-${activeClient.email || ''}-${activeClient.phone || ''}-${(activeClient.categories || []).join(',')}`;
+    return `${detailsStr}#${timelineStr}#${activeClient.leadsCount}#${tasksStr}`;
+  }, [activeClient, activeClientTasks]);
+
+  const isOpenAiConfigured = !!(integrationsConfig?.openAiKey && integrationsConfig.openAiKey.trim() !== "");
+
+  // Recording timer
+  useEffect(() => {
+    if (recordingState !== "recording") return;
+    const interval = setInterval(() => {
+      setRecordDuration(prev => prev + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [recordingState]);
+
+  // Visualizer height updater
+  useEffect(() => {
+    if (recordingState !== "recording" || !analyser || !dataArray) {
+      return;
+    }
+
+    let animationFrameId: number;
+    const update = () => {
+      analyser.getByteFrequencyData(dataArray as any);
+      animationFrameId = requestAnimationFrame(update);
+    };
+
+    update();
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [recordingState, analyser, dataArray]);
+
+  const startVisualizer = (stream: MediaStream) => {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+
+    try {
+      const ctx = new AudioCtx();
+      const src = ctx.createMediaStreamSource(stream);
+      const ana = ctx.createAnalyser();
+      ana.fftSize = 64;
+      src.connect(ana);
+      const bufferLength = ana.frequencyBinCount;
+      const data = new Uint8Array(bufferLength);
+      setAudioContext(ctx);
+      setAnalyser(ana);
+      setDataArray(data);
+    } catch (e) {
+      console.warn("Visualizer init failed", e);
+    }
+  };
+
+  const startRecording = async () => {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("Microphone access is not supported by this browser.");
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setMicrophoneStream(stream);
+
+      let mimeType = "audio/webm";
+      if (typeof MediaRecorder !== "undefined") {
+        if (MediaRecorder.isTypeSupported("audio/webm")) {
+          mimeType = "audio/webm";
+        } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
+          mimeType = "audio/mp4";
+        }
+      }
+
+      const chunks: Blob[] = [];
+      const recorder = new MediaRecorder(stream, { mimeType });
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          chunks.push(e.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        setIsUploadingAudio(true);
+        const ext = mimeType.split("/")[1] || "webm";
+        const blob = new Blob(chunks, { type: mimeType });
+        const localUrl = URL.createObjectURL(blob);
+        setAudioUrl(localUrl);
+
+        const tempId = `note_event_${Date.now()}`;
+        setRecordingMeetingId(tempId);
+        const formData = new FormData();
+        formData.append("audio", blob, `meeting_${tempId}.${ext}`);
+        formData.append("meetingId", tempId);
+
+        try {
+          const res = await fetch("/api/upload_audio.php", {
+            method: "POST",
+            body: formData
+          });
+          const data = await res.json();
+          if (res.ok && data.success) {
+            setUploadedAudioFile(data.filePath);
+            if (typeof (window as any).showToast === "function") {
+              (window as any).showToast("Audio recording saved successfully!");
+            }
+          } else {
+            throw new Error(data.message || "Upload failed");
+          }
+        } catch (err: any) {
+          if (typeof (window as any).showToast === "function") {
+            (window as any).showToast("Failed to upload audio to server: " + err.message, "error");
+          }
+        } finally {
+          setIsUploadingAudio(false);
+        }
+      };
+
+      setMediaRecorder(recorder);
+      setRecordDuration(0);
+      recorder.start();
+      setRecordingState("recording");
+      startVisualizer(stream);
+    } catch (err: any) {
+      if (typeof (window as any).showToast === "function") {
+        (window as any).showToast("Microphone access denied: " + err.message, "error");
+      }
+    }
+  };
+
+  const pauseRecording = () => {
+    if (mediaRecorder && mediaRecorder.state === "recording") {
+      mediaRecorder.pause();
+      setRecordingState("paused");
+    }
+  };
+
+  const resumeRecording = () => {
+    if (mediaRecorder && mediaRecorder.state === "paused") {
+      mediaRecorder.resume();
+      setRecordingState("recording");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorder && mediaRecorder.state !== "inactive") {
+      mediaRecorder.stop();
+    }
+    if (microphoneStream) {
+      microphoneStream.getTracks().forEach(track => track.stop());
+      setMicrophoneStream(null);
+    }
+    if (audioContext) {
+      audioContext.close().catch(() => {});
+      setAudioContext(null);
+    }
+    setRecordingState("stopped");
+  };
+
+  const removeAudioFile = () => {
+    if (confirm(systemLanguage === "sk" ? "Naozaj chcete odstrániť túto nahrávku?" : "Are you sure you want to remove this recording?")) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      setAudioUrl(null);
+      setUploadedAudioFile(null);
+      setRecordingState("none");
+    }
+  };
+
+  const formatDuration = (sec: number): string => {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  };
+
+  const handleTranscribeMeeting = async () => {
+    setIsTranscribing(true);
+    const serializeBlocksToPlainText = (blocks: EditorBlock[]): string => {
+      return blocks.map(b => b.content.replace(/<[^>]*>/g, "")).join("\n");
+    };
+    const manualNotesText = serializeBlocksToPlainText(noteBlocks);
+
+    const activeMeetingId = recordingMeetingId || `note_event_${Date.now()}`;
+
+    try {
+      const res = await fetch("/api/transcribe_meeting.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          meetingId: activeMeetingId,
+          manualNotes: manualNotesText
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (data.transcription) {
+          // Append transcription to block editor
+          setNoteBlocks(prev => [
+            ...prev,
+            { id: `b-trans-${Date.now()}`, type: "paragraph", content: `<strong>Transcription:</strong> ${data.transcription}` }
+          ]);
+          setEditorKey(prev => prev + 1);
+        }
+        if (typeof (window as any).showToast === "function") {
+          (window as any).showToast("AI Transcription completed successfully!");
+        }
+      } else {
+        throw new Error(data.message || "Transcription failed");
+      }
+    } catch (err: any) {
+      if (typeof (window as any).showToast === "function") {
+        (window as any).showToast("Transcription failed: " + err.message, "error");
+      }
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
+  // Sync local summary state with activeClient's stored summary
+  useEffect(() => {
+    setLocalSummary(activeClient?.aiSummary);
+  }, [activeClient?.name, activeClient?.aiSummary]);
+
+  // Auto-regenerate summary if fingerprint changes
+  useEffect(() => {
+    if (!activeClient || !activeClientFingerprint || !isOpenAiConfigured) return;
+    if (activeClient.aiSummaryFingerprint === activeClientFingerprint) return;
+    if (isGeneratingSummary) return;
+
+    const generateSummary = async () => {
+      setIsGeneratingSummary(true);
+      try {
+        const clientTimeline = activeClient.timeline || [];
+        const priceOffers = clientTimeline.filter(e => e.type === "offer");
+        const otherData = {
+          city: activeClient.city || "",
+          clientType: activeClient.clientType,
+          owner: activeClient.owner,
+          categories: activeClient.categories || [],
+          totalValue: activeClient.totalValue,
+          email: activeClient.email || "",
+          phone: activeClient.phone || "",
+        };
+
+        const response = await fetch("/api/summarize_client_lead.php", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: activeClient.name,
+            type: "client",
+            tasks: activeClientTasks,
+            events: clientTimeline,
+            priceOffers: priceOffers,
+            otherData: otherData,
+            systemLanguage: systemLanguage
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to generate AI summary");
+        }
+
+        const data = await response.json();
+        if (data.success && data.summary) {
+          setLocalSummary(data.summary);
+          setLeads(prev => prev.map(l => {
+            if (l.name.trim().toLowerCase() === activeClient.name.trim().toLowerCase()) {
+              return {
+                ...l,
+                aiSummary: data.summary,
+                aiSummaryFingerprint: activeClientFingerprint
+              };
+            }
+            return l;
+          }));
+        }
+      } catch (err) {
+        console.error("AI summary generation error:", err);
+      } finally {
+        setIsGeneratingSummary(false);
+      }
+    };
+
+    const timer = setTimeout(() => {
+      generateSummary();
+    }, 1200);
+
+    return () => clearTimeout(timer);
+  }, [activeClientFingerprint, activeClient, isOpenAiConfigured, setLeads, systemLanguage]);
+
+  const renderCompactAudioRecorder = () => {
+    return (
+      <div className="flex items-center justify-between gap-3 bg-white p-2 rounded-lg border border-slate-200 shadow-sm text-xs select-none">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <div className="relative flex h-2.5 w-2.5 shrink-0">
+            {recordingState === "recording" && (
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+            )}
+            <span className={cn(
+              "relative inline-flex rounded-full h-2.5 w-2.5",
+              recordingState === "recording" ? "bg-rose-600" :
+              recordingState === "paused" ? "bg-amber-500" :
+              recordingState === "stopped" ? "bg-emerald-500" : "bg-slate-350"
+            )}></span>
+          </div>
+          
+          <div className="text-left truncate">
+            <span className="font-extrabold uppercase text-[9px] text-slate-700">
+              {recordingState === "none" && (systemLanguage === "sk" ? "Hlasový záznam" : systemLanguage === "hu" ? "Hangrögzítés" : "Voice Recording")}
+              {recordingState === "recording" && `${formatDuration(recordDuration)}`}
+              {recordingState === "paused" && (systemLanguage === "sk" ? "Pozastavené" : systemLanguage === "hu" ? "Megállítva" : "Paused")}
+              {recordingState === "stopped" && (systemLanguage === "sk" ? "Nahrávka" : systemLanguage === "hu" ? "Felvétel" : "Recording")}
+            </span>
+          </div>
+        </div>
+
+        {/* Small Audio Player */}
+        {recordingState === "stopped" && audioUrl && (
+          <div className="flex items-center gap-2 flex-1 max-w-[150px]">
+            <audio
+              ref={audioRef}
+              src={audioUrl}
+              onTimeUpdate={() => {
+                if (audioRef.current) setCurrentTime(audioRef.current.currentTime);
+              }}
+              onDurationChange={() => {
+                if (audioRef.current) setAudioDuration(audioRef.current.duration);
+              }}
+              onPlay={() => setIsPlaying(true)}
+              onPause={() => setIsPlaying(false)}
+              onEnded={() => setIsPlaying(false)}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                if (!audioRef.current) return;
+                if (isPlaying) {
+                  audioRef.current.pause();
+                } else {
+                  audioRef.current.play();
+                }
+              }}
+              className="p-1 rounded-full bg-slate-800 text-white flex items-center justify-center shrink-0 cursor-pointer"
+            >
+              {isPlaying ? <Pause className="h-3 w-3 fill-white" /> : <Play className="h-3 w-3 fill-white" />}
+            </button>
+            <span className="text-[8px] font-black text-slate-400">
+              {formatDuration(Math.floor(currentTime))} / {formatDuration(Math.floor(audioDuration))}
+            </span>
+            <button
+              type="button"
+              onClick={removeAudioFile}
+              className="text-slate-400 hover:text-rose-600 transition-colors p-1 cursor-pointer"
+              title="Delete audio"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+
+        {/* Controls */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {recordingState === "none" && (
+            <button
+              type="button"
+              onClick={startRecording}
+              className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white text-[9px] font-black uppercase tracking-wider rounded-lg cursor-pointer flex items-center gap-1 shadow-sm"
+            >
+              <Mic className="h-3 w-3 fill-white" />
+              <span>{systemLanguage === "sk" ? "Nahrať" : systemLanguage === "hu" ? "Felvétel" : "Record"}</span>
+            </button>
+          )}
+
+          {recordingState === "recording" && (
+            <>
+              <button
+                type="button"
+                onClick={pauseRecording}
+                className="p-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg cursor-pointer"
+                title="Pause"
+              >
+                <Pause className="h-3 w-3 fill-white" />
+              </button>
+              <button
+                type="button"
+                onClick={stopRecording}
+                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-900 text-white text-[9px] font-black uppercase tracking-wider rounded-lg cursor-pointer flex items-center gap-1"
+              >
+                <Square className="h-3 w-3 fill-white" />
+                <span>Stop</span>
+              </button>
+            </>
+          )}
+
+          {recordingState === "paused" && (
+            <>
+              <button
+                type="button"
+                onClick={resumeRecording}
+                className="p-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg cursor-pointer"
+                title="Resume"
+              >
+                <Play className="h-3 w-3 fill-white" />
+              </button>
+              <button
+                type="button"
+                onClick={stopRecording}
+                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-900 text-white text-[9px] font-black uppercase tracking-wider rounded-lg cursor-pointer flex items-center gap-1"
+              >
+                <Square className="h-3 w-3 fill-white" />
+                <span>Stop</span>
+              </button>
+            </>
+          )}
+
+          {recordingState === "stopped" && isOpenAiConfigured && (
+            <button
+              type="button"
+              disabled={isTranscribing || isUploadingAudio || !uploadedAudioFile}
+              onClick={handleTranscribeMeeting}
+              className="px-2.5 py-1 bg-indigo-650 hover:bg-indigo-600 disabled:bg-slate-200 text-white text-[9px] font-black uppercase tracking-wider rounded-lg cursor-pointer flex items-center gap-1.5"
+            >
+              {isTranscribing ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Sparkles className="h-3 w-3" />
+              )}
+              <span>{systemLanguage === "sk" ? "Prepísať" : systemLanguage === "hu" ? "Átír" : "Transcribe"}</span>
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   // --- TIMELINE EMAIL VIEW DRAWER STATE ---
   const [selectedTimelineEmail, setSelectedTimelineEmail] = useState<any | null>(null);
   const [isClosingEmailDetail, setIsClosingEmailDetail] = useState(false);
@@ -531,22 +1022,44 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const handleAddTimelineEvent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeClient || !logType) return;
-    if (!logContent.trim()) {
-      (window as any).showToast("Please specify a description log note!");
-      return;
-    }
 
-    // Auto-generate title based on event type
-    const getEventDefaultTitle = (type: string) => {
-      switch (type) {
-        case "phone": return "Phone Call Logged";
-        case "email": return "Email Logged";
-        case "note": return "Internal Note Added";
-        case "offer": return "Formal Offer Submitted";
-        case "appointment": return "Meeting Scheduled";
-        default: return "Activity Logged";
+    let contentString = logContent.trim();
+    let titleString = "";
+
+    const timestampStr = `${logDate} ${logTimeOfEvent}`;
+
+    if (logType === "phone") {
+      titleString = "Phone Call Logged";
+      if (!contentString) contentString = "Completed voice call with customer regarding updates.";
+    } else if (logType === "email") {
+      titleString = "Email Logged";
+      if (!contentString) contentString = "Outbound email correspondence successfully transmitted.";
+    } else if (logType === "note") {
+      titleString = "Internal Note Added";
+      // Note type is rich: saved as JSON stringified blocks
+      const hasContent = noteBlocks.some(b => b.content.trim().length > 0);
+      if (!hasContent && !uploadedAudioFile) {
+        (window as any).showToast("Please write down some details or record audio for the note!");
+        return;
       }
-    };
+      contentString = JSON.stringify(noteBlocks);
+    } else if (logType === "appointment") {
+      titleString = "Meeting Scheduled";
+      if (!logTime.trim()) {
+        (window as any).showToast("Please select appointment time!");
+        return;
+      }
+      if (!contentString) contentString = `Client appointment set for ${logTime.trim()}`;
+    } else if (logType === "offer") {
+      titleString = "Formal Offer Submitted";
+      const amt = parseFloat(logAmount);
+      if (isNaN(amt) || amt <= 0) {
+        (window as any).showToast("Offer amount must be a positive number!");
+        return;
+      }
+      titleString = `Commercial Proposal Sent (€ ${amt.toLocaleString()})`;
+      if (!contentString) contentString = `Submitted commercial proposal of € ${amt.toLocaleString()} to client.`;
+    }
 
     const eventId = `ev-${Date.now()}`;
 
@@ -576,9 +1089,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     const newEvent: TimelineEvent = {
       id: eventId,
       type: logType,
-      timestamp: `${logDate} ${logTimeOfEvent}`,
-      title: getEventDefaultTitle(logType),
-      content: logContent.trim()
+      timestamp: timestampStr,
+      title: titleString,
+      content: contentString
     };
 
     if (logType === "offer") {
@@ -591,6 +1104,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       }
     } else if (logType === "appointment") {
       newEvent.extraTime = logTime;
+    } else if (logType === "note") {
+      if (uploadedAudioFile) newEvent.audioFile = uploadedAudioFile;
+      if ((window as any)._latestTranscription) {
+        newEvent.transcription = (window as any)._latestTranscription;
+      }
     }
 
     setLeads(prev => prev.map(lead => {
@@ -615,16 +1133,16 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       const leadId = matchedLead?.id;
 
       const taskTitle = systemLanguage === "sk" 
-        ? `Budúca udalosť: ${activeClient.name} (${getEventDefaultTitle(logType)})`
+        ? `Budúca udalosť: ${activeClient.name} (${titleString})`
         : systemLanguage === "hu"
-          ? `Jövőbeli esemény: ${activeClient.name} (${getEventDefaultTitle(logType)})`
-          : `Future Event: ${activeClient.name} (${getEventDefaultTitle(logType)})`;
+          ? `Jövőbeli esemény: ${activeClient.name} (${titleString})`
+          : `Future Event: ${activeClient.name} (${titleString})`;
 
       const autoPMTask: Task = {
         id: `task-${Date.now()}`,
         title: taskTitle,
-        description: logContent.trim() || `Scheduled for ${logDate} ${logTimeOfEvent}`,
-        status: "todo",
+        description: logType === "note" ? "Meeting Note Added" : (contentString || `Scheduled for ${logDate} ${logTimeOfEvent}`),
+        status: taskStates[0] || "todo",
         priority: "medium",
         deadline: deadlineVal,
         owner: leadOwner,
@@ -644,6 +1162,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     setLogFileType("offer");
     setSelectedLogFile(null);
     setLogType(null); // Reset selector so fields close smoothly
+
+    // Reset audio and note editor states
+    setNoteBlocks([{ id: "b-1", type: "paragraph", content: "" }]);
+    setAudioUrl(null);
+    setUploadedAudioFile(null);
+    setRecordingState("none");
+    setRecordingMeetingId(null);
+    if ((window as any)._latestTranscription) delete (window as any)._latestTranscription;
     
     // Reset date/time to now
     const tzOffset = (new Date()).getTimezoneOffset() * 60000;
@@ -840,6 +1366,37 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           </button>
 
           <div className="flex items-center gap-3">
+            {/* AI Summary Purple Card */}
+            {(!isOpenAiConfigured && !localSummary) ? (
+              <div className="flex items-center gap-2.5 bg-purple-50/50 border border-purple-250 p-2.5 px-3.5 rounded-2xl max-w-md text-xs font-bold text-purple-800 shadow-sm">
+                <Brain className="h-5 w-5 text-purple-400 shrink-0" />
+                <span className="text-[10px] text-purple-650 italic">
+                  {systemLanguage === "sk" ? "AI zhrnutie nie je k dispozícii. Nastavte OpenAI kľúč v nastaveniach." : systemLanguage === "hu" ? "Az AI összefoglaló nem érhető el. Állítsa be az OpenAI kulcsot a beállításokban." : "AI summary unavailable. Configure OpenAI Key in settings."}
+                </span>
+              </div>
+            ) : (localSummary || isGeneratingSummary) ? (
+              <div className="flex items-center gap-2.5 bg-purple-50 border-2 border-purple-200 p-2.5 px-3.5 rounded-2xl max-w-xl text-xs font-bold text-purple-900 shadow-sm hover:shadow-md transition-all animate-fade-in">
+                <Brain className={`h-5 w-5 text-purple-600 shrink-0 ${isGeneratingSummary ? 'animate-pulse' : ''}`} />
+                <div>
+                  {isGeneratingSummary && !localSummary ? (
+                    <span className="text-[10px] text-purple-650 italic animate-pulse flex items-center gap-1.5">
+                      <Loader2 className="h-3 w-3 animate-spin text-purple-600" />
+                      {systemLanguage === "sk" ? "Generuje sa AI zhrnutie..." : systemLanguage === "hu" ? "AI összefoglaló generálása..." : "Generating AI summary..."}
+                    </span>
+                  ) : (
+                    <p className="leading-relaxed text-[11px] font-semibold text-left">
+                      {localSummary}
+                      {isGeneratingSummary && (
+                        <span className="ml-1 text-[9px] text-purple-500 animate-pulse">
+                          ({systemLanguage === "sk" ? "Aktualizuje sa..." : systemLanguage === "hu" ? "Frissítés..." : "Updating..."})
+                        </span>
+                      )}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : null}
+
             <span className="text-xs font-black uppercase tracking-widest text-emerald-800 bg-emerald-100 border-2 border-emerald-300 px-4 py-2 rounded-2xl shadow-inner">
               {getTranslation(systemLanguage, "common.client_value")}: &euro; {activeClient.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </span>
@@ -1430,14 +1987,34 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           {/* Description details */}
                           <div className="space-y-1">
                             <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">{getTranslation(systemLanguage, "logger.event_details")}</label>
-                            <textarea
-                              required={!!logType}
-                              rows={3}
-                              placeholder={logType ? getTranslation(systemLanguage, "logger.details_placeholder_log") : getTranslation(systemLanguage, "logger.details_placeholder_generic")}
-                              value={logContent}
-                              onChange={(e) => setLogContent(e.target.value)}
-                              className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:outline-none resize-none"
-                            />
+                            {logType === "note" ? (
+                              <div className="space-y-2 border-2 border-slate-200 rounded-xl p-3 bg-slate-50/50 text-left">
+                                {renderCompactAudioRecorder()}
+                                <div className="border border-slate-200 rounded-xl bg-white p-2 min-h-[140px] max-h-[260px] overflow-y-auto outline-none text-xs">
+                                  <BlockEditor
+                                    key={editorKey}
+                                    initialBlocks={noteBlocks}
+                                    onChange={(blocks) => {
+                                      setNoteBlocks(blocks);
+                                      const serializeBlocksToPlainText = (blks: EditorBlock[]): string => {
+                                        return blks.map(b => b.content.replace(/<[^>]*>/g, "")).join("\n");
+                                      };
+                                      setLogContent(serializeBlocksToPlainText(blocks));
+                                    }}
+                                    systemLanguage={systemLanguage}
+                                  />
+                                </div>
+                              </div>
+                            ) : (
+                              <textarea
+                                required={!!logType}
+                                rows={3}
+                                placeholder={logType ? getTranslation(systemLanguage, "logger.details_placeholder_log") : getTranslation(systemLanguage, "logger.details_placeholder_generic")}
+                                value={logContent}
+                                onChange={(e) => setLogContent(e.target.value)}
+                                className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:outline-none resize-none"
+                              />
+                            )}
                           </div>
  
                           {/* Submit log */}
@@ -1520,6 +2097,59 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                   </div>
 
                                   {(() => {
+                                    if (event.type === "note" && event.content.trim().startsWith("[")) {
+                                      try {
+                                        const blocks: EditorBlock[] = JSON.parse(event.content);
+                                        return (
+                                          <div className="space-y-2 text-[11px] text-slate-700 font-bold select-text text-left mt-2">
+                                            {/* Audio file section */}
+                                            {event.audioFile && (
+                                              <div className="flex items-center gap-2 p-1.5 rounded-lg bg-slate-100/80 border border-slate-200 w-fit mb-2">
+                                                <audio src={event.audioFile} controls className="h-6 max-w-[180px] text-[8px]" />
+                                                {event.transcription && (
+                                                  <details className="cursor-pointer">
+                                                    <summary className="text-[9px] uppercase tracking-wider text-indigo-600 hover:text-indigo-800 font-extrabold select-none">
+                                                      {systemLanguage === "sk" ? "Prepis" : "Transcript"}
+                                                    </summary>
+                                                    <div className="mt-1 p-2 bg-white rounded border border-slate-100 text-[9.5px] font-medium leading-relaxed max-w-[240px] whitespace-pre-wrap">
+                                                      {event.transcription}
+                                                    </div>
+                                                  </details>
+                                                )}
+                                              </div>
+                                            )}
+                                            
+                                            {/* Parse blocks */}
+                                            <div className="space-y-1.5">
+                                              {blocks.map((b) => {
+                                                if (b.type === "todo") {
+                                                  return (
+                                                    <div key={b.id} className="flex items-center gap-1.5">
+                                                      <input type="checkbox" checked={!!b.checked} readOnly className="rounded border-slate-300" />
+                                                      <span className={b.checked ? "line-through text-slate-400" : ""}>{b.content.replace(/<[^>]*>/g, "")}</span>
+                                                    </div>
+                                                  );
+                                                }
+                                                if (b.type === "bullet") {
+                                                  return (
+                                                    <ul key={b.id} className="list-disc pl-4 space-y-0.5 text-left">
+                                                      <li>{b.content.replace(/<[^>]*>/g, "")}</li>
+                                                    </ul>
+                                                  );
+                                                }
+                                                if (b.type.startsWith("h")) {
+                                                  return <div key={b.id} className="font-black uppercase tracking-tight text-[11px] mt-1 text-slate-900 text-left">{b.content.replace(/<[^>]*>/g, "")}</div>;
+                                                }
+                                                return <p key={b.id} className="leading-normal text-left">{b.content.replace(/<[^>]*>/g, "")}</p>;
+                                              })}
+                                            </div>
+                                          </div>
+                                        );
+                                      } catch (e) {
+                                        console.error("Failed to parse JSON note blocks in future event", e);
+                                      }
+                                    }
+
                                     const lines = event.content.split("\n");
                                     const showGradient = lines.length > 5 || event.content.length > 250;
                                     return (
@@ -1660,6 +2290,59 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                   </div>
 
                                   {(() => {
+                                    if (event.type === "note" && event.content.trim().startsWith("[")) {
+                                      try {
+                                        const blocks: EditorBlock[] = JSON.parse(event.content);
+                                        return (
+                                          <div className="space-y-2 text-[11px] text-slate-700 font-bold select-text text-left">
+                                            {/* Audio file section */}
+                                            {event.audioFile && (
+                                              <div className="flex items-center gap-2 p-1.5 rounded-lg bg-slate-100/80 border border-slate-200 w-fit mb-2">
+                                                <audio src={event.audioFile} controls className="h-6 max-w-[180px] text-[8px]" />
+                                                {event.transcription && (
+                                                  <details className="cursor-pointer">
+                                                    <summary className="text-[9px] uppercase tracking-wider text-indigo-600 hover:text-indigo-800 font-extrabold select-none">
+                                                      {systemLanguage === "sk" ? "Prepis" : "Transcript"}
+                                                    </summary>
+                                                    <div className="mt-1 p-2 bg-white rounded border border-slate-100 text-[9.5px] font-medium leading-relaxed max-w-[240px] whitespace-pre-wrap">
+                                                      {event.transcription}
+                                                    </div>
+                                                  </details>
+                                                )}
+                                              </div>
+                                            )}
+                                            
+                                            {/* Parse blocks */}
+                                            <div className="space-y-1.5">
+                                              {blocks.map((b) => {
+                                                if (b.type === "todo") {
+                                                  return (
+                                                    <div key={b.id} className="flex items-center gap-1.5">
+                                                      <input type="checkbox" checked={!!b.checked} readOnly className="rounded border-slate-300" />
+                                                      <span className={b.checked ? "line-through text-slate-400" : ""}>{b.content.replace(/<[^>]*>/g, "")}</span>
+                                                    </div>
+                                                  );
+                                                }
+                                                if (b.type === "bullet") {
+                                                  return (
+                                                    <ul key={b.id} className="list-disc pl-4 space-y-0.5 text-left">
+                                                      <li>{b.content.replace(/<[^>]*>/g, "")}</li>
+                                                    </ul>
+                                                  );
+                                                }
+                                                if (b.type.startsWith("h")) {
+                                                  return <div key={b.id} className="font-black uppercase tracking-tight text-[11px] mt-1 text-slate-900 text-left">{b.content.replace(/<[^>]*>/g, "")}</div>;
+                                                }
+                                                return <p key={b.id} className="leading-normal text-left">{b.content.replace(/<[^>]*>/g, "")}</p>;
+                                              })}
+                                            </div>
+                                          </div>
+                                        );
+                                      } catch (e) {
+                                        console.error("Failed to parse JSON note blocks in past event", e);
+                                      }
+                                    }
+
                                     const lines = event.content.split("\n");
                                     const showGradient = lines.length > 5 || event.content.length > 250;
                                     return (
@@ -2246,12 +2929,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       </div>
 
       {/* TIMELINE EMAIL DETAIL SLIDEOUT OVERLAY */}
-      {(selectedTimelineEmail || isClosingEmailDetail) && (
-        <div className={`fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex justify-end ${isClosingEmailDetail ? "animate-fade-out" : "animate-fade-in"}`}>
-          {/* Backdrop click close */}
-          <div className="flex-1" onClick={closeEmailDetailSlideout} />
+      {(selectedTimelineEmail || isClosingEmailDetail) && typeof document !== "undefined" && createPortal(
+        <div className={`fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-[9999] flex flex-col justify-start ${isClosingEmailDetail ? "animate-fade-out" : "animate-fade-in"}`}>
           
-          <div className={`w-[550px] max-w-full bg-white h-full shadow-2xl flex flex-col relative ${isClosingEmailDetail ? "animate-slide-out-right" : "animate-slide-in-right"}`}>
+          <div className={`w-full max-w-4xl mx-auto bg-white rounded-b-[28px] border-b-2 border-slate-200 shadow-2xl flex flex-col relative overflow-hidden h-[75vh] max-h-[80vh] ${isClosingEmailDetail ? "animate-slide-out-top" : "animate-slide-in-top"}`}>
             {/* Header */}
             <div className="bg-slate-900 text-white p-4 flex items-center justify-between shrink-0">
               <div className="text-left min-w-0 flex-1 pr-4">
@@ -2276,10 +2957,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               ) : timelineEmailDetailBody ? (
                 <div className="flex-1 flex flex-col justify-between">
                   <div className="border-b border-slate-150 pb-3 mb-4 text-left">
-                    <p className="text-[10px] text-slate-500 font-bold">
+                    <p className="text-[10px] text-slate-550 font-bold">
                       Subject: <strong className="text-slate-800">{selectedTimelineEmail.title}</strong>
                     </p>
-                    <p className="text-[10px] text-slate-500 font-bold mt-1">
+                    <p className="text-[10px] text-slate-550 font-bold mt-1">
                       Date: <span className="text-slate-700">{selectedTimelineEmail.timestamp}</span>
                     </p>
                   </div>
@@ -2324,7 +3005,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               )}
             </div>
           </div>
-        </div>
+
+          {/* Backdrop click close target */}
+          <div className="flex-1 w-full" onClick={closeEmailDetailSlideout} />
+        </div>,
+        document.body
       )}
 
       {/* REGISTER NEW CLIENT SLIDEOUT OVERLAY */}

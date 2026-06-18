@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { Dashboard } from "./components/Dashboard";
@@ -20,6 +20,9 @@ import { InstallerWizard } from "./components/InstallerWizard";
 import { RefreshCw } from "lucide-react";
 
 function App() {
+  const activePushesRef = useRef(0);
+  const lastPushTimeRef = useRef(0);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [isInstalled, setIsInstalled] = useState(true);
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [dbInfo, setDbInfo] = useState<{ host: string; port: string; name: string; user: string } | null>(null);
@@ -41,8 +44,13 @@ function App() {
     message: string;
     action?: { label: string; onClick: () => void };
   } | null>(null);
+  const [previewFile, setPreviewFile] = useState<{ url: string; name: string } | null>(null);
 
   useEffect(() => {
+    (window as any).previewFile = (url: string, name: string) => {
+      setPreviewFile({ url, name });
+    };
+
     (window as any).showToast = (message: string, action?: { label: string; onClick: () => void }) => {
       setToast({ message, action });
       // Auto close after 5 seconds if no action is provided
@@ -59,6 +67,7 @@ function App() {
 
   // Meeting Room state
   const [meetingsAction, setMeetingsAction] = useState<"list" | "new">("list");
+  const [autoOpenAddTask, setAutoOpenAddTask] = useState(false);
   const [meetingNotes, setMeetingNotes] = useState<MeetingNote[]>(() => {
     const stored = localStorage.getItem("crm_meeting_notes");
     if (stored) {
@@ -132,6 +141,17 @@ function App() {
   const [leadStates, setLeadStates] = useState<string[]>([
     "new", "contacted", "offer sent", "accepted", "rejected"
   ]);
+
+  const [taskStates, setTaskStates] = useState<string[]>([
+    "New", "In progress", "Blocked", "Done"
+  ]);
+
+  const [taskStateColors, setTaskStateColors] = useState<Record<string, string>>({
+    "New": "#3b82f6",
+    "In progress": "#f59e0b",
+    "Blocked": "#ef4444",
+    "Done": "#10b981"
+  });
 
   const [leadSources, setLeadSources] = useState<string[]>([
     "showroom", "facebook", "instagram", "website"
@@ -320,6 +340,9 @@ function App() {
     nextMeetingNotes?: MeetingNote[]
   ) => {
     if (!isInstalled) return;
+    setIsSyncing(true);
+    activePushesRef.current++;
+    lastPushTimeRef.current = Date.now();
     const payload = {
       leads: nextLeads || leads,
       tasks: nextTasks || tasks,
@@ -337,17 +360,30 @@ function App() {
         leadCategoryColors,
         leadStageGroups,
         leadStateParents,
+        taskStates,
+        taskStateColors,
         integrationsConfig: nextIntegrationsConfig || integrationsConfig
       }
     };
     try {
-      await fetch("/sync.php", {
+      const res = await fetch("/sync.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
+      if (res.status === 401) {
+        setCurrentUser(null);
+        if (typeof (window as any).showToast === "function") {
+          (window as any).showToast("Session expired. Please log in again.");
+        }
+      }
     } catch (err) {
       console.warn("Failed immediate push to sync.php", err);
+    } finally {
+      activePushesRef.current = Math.max(0, activePushesRef.current - 1);
+      if (activePushesRef.current === 0) {
+        setIsSyncing(false);
+      }
     }
   };
 
@@ -420,7 +456,7 @@ function App() {
       pushStateToServer(leads, tasks);
     };
     syncSettingsToServer();
-  }, [leadStates, leadSources, leadCategories, systemName, systemLanguage, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, isInitialSyncResolved]);
+  }, [leadStates, leadSources, leadCategories, systemName, systemLanguage, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, taskStates, taskStateColors, isInitialSyncResolved]);
 
   // Layout Hash change listener
   useEffect(() => {
@@ -439,10 +475,14 @@ function App() {
   // Server data poller
   useEffect(() => {
     const syncFromServer = async () => {
+      const pollStartTime = Date.now();
       try {
         const res = await fetch(`/sync.php?t=${Date.now()}`);
         if (res.ok) {
           const data = await res.json();
+          if (activePushesRef.current > 0 || pollStartTime < lastPushTimeRef.current) {
+            return;
+          }
           if (data && data.installed === false) {
             setIsInstalled(false);
             return;
@@ -452,7 +492,10 @@ function App() {
             setIsInstalled(true);
             setIsDemoMode(data.demoMode === true);
             if (data.leads && Array.isArray(data.leads)) {
-              setLeads(data.leads);
+              setLeads(prev => {
+                if (JSON.stringify(prev) === JSON.stringify(data.leads)) return prev;
+                return data.leads;
+              });
             }
             if (data.tasks && Array.isArray(data.tasks)) {
               setTasks(data.tasks);
@@ -487,6 +530,8 @@ function App() {
               if (s.leadCategoryColors) setLeadCategoryColors(s.leadCategoryColors);
               if (s.leadStageGroups) setLeadStageGroups(s.leadStageGroups);
               if (s.leadStateParents) setLeadStateParents(s.leadStateParents);
+              if (s.taskStates) setTaskStates(s.taskStates);
+              if (s.taskStateColors) setTaskStateColors(s.taskStateColors);
               if (s.integrationsConfig) syncIntegrationsConfig(s.integrationsConfig);
             }
             setIsInitialSyncResolved(true);
@@ -501,10 +546,14 @@ function App() {
     syncFromServer();
 
     const poller = setInterval(async () => {
+      const pollStartTime = Date.now();
       try {
         const res = await fetch(`/sync.php?t=${Date.now()}`);
         if (res.ok) {
           const data = await res.json();
+          if (activePushesRef.current > 0 || pollStartTime < lastPushTimeRef.current) {
+            return;
+          }
           if (data && data.installed === false) {
             setIsInstalled(false);
             return;
@@ -574,6 +623,8 @@ function App() {
               if (s.leadCategoryColors) setLeadCategoryColors(s.leadCategoryColors);
               if (s.leadStageGroups) setLeadStageGroups(s.leadStageGroups);
               if (s.leadStateParents) setLeadStateParents(s.leadStateParents);
+              if (s.taskStates) setTaskStates(s.taskStates);
+              if (s.taskStateColors) setTaskStateColors(s.taskStateColors);
               if (s.integrationsConfig) syncIntegrationsConfig(s.integrationsConfig);
             }
           }
@@ -586,8 +637,57 @@ function App() {
     return () => clearInterval(poller);
   }, [isInstalled]);
 
+  // Background email fetching poller when the user is logged in
+  useEffect(() => {
+    if (!currentUser) return;
+
+    let emailSettings: any = null;
+    try {
+      if (currentUser.metadata_json) {
+        const metadata = typeof currentUser.metadata_json === 'string'
+          ? JSON.parse(currentUser.metadata_json)
+          : currentUser.metadata_json;
+        emailSettings = metadata.emailSettings || null;
+      }
+    } catch (e) {
+      console.warn("Error parsing emailSettings for background fetching", e);
+    }
+
+    if (!emailSettings || !emailSettings.isValidated) {
+      return;
+    }
+
+    const fetchEmailsInBackground = async () => {
+      try {
+        await fetch(`/api/mail_broker.php?action=get_emails&folder=INBOX&page=1`, {
+          headers: { "X-User-Email": currentUser.email }
+        });
+      } catch (err) {
+        console.warn("Background email fetching failed", err);
+      }
+    };
+
+    // Run once on load/login
+    fetchEmailsInBackground();
+
+    // Poll every 2 minutes
+    const interval = setInterval(fetchEmailsInBackground, 120000);
+    return () => clearInterval(interval);
+  }, [currentUser]);
+
   // View router
   const renderWorkspaceView = () => {
+    const activeUser = currentUser || users[0] || {
+      id: "guest",
+      name: "Guest User",
+      email: "guest@example.com",
+      role: "Viewer",
+      color: "#6366f1",
+      avatar: null,
+      activityLog: [],
+      metadata_json: "{}"
+    };
+
     if (activeTab.startsWith("user-")) {
       const username = decodeURIComponent(activeTab.replace("user-", ""));
       return (
@@ -603,7 +703,7 @@ function App() {
           roles={roles}
           setRoles={updateRolesAndSync}
           getPermission={getPermission}
-          currentUser={currentUser!}
+          currentUser={activeUser}
           leadStateColors={leadStateColors}
           setLeadStateColors={setLeadStateColors}
           leadCategories={leadCategories}
@@ -620,6 +720,10 @@ function App() {
           initialSelectedUserName={username}
           leadStateParents={leadStateParents}
           setLeadStateParents={setLeadStateParents}
+          taskStates={taskStates}
+          setTaskStates={setTaskStates}
+          taskStateColors={taskStateColors}
+          setTaskStateColors={setTaskStateColors}
           isDemoMode={isDemoMode}
           dbInfo={dbInfo || undefined}
         />
@@ -639,6 +743,8 @@ function App() {
           tasks={tasks}
           setTasks={updateTasksAndSync}
           leadCategories={leadCategories}
+          integrationsConfig={integrationsConfig}
+          taskStates={taskStates}
         />
       );
     }
@@ -664,6 +770,9 @@ function App() {
           tasks={tasks}
           setTasks={updateTasksAndSync}
           users={users}
+          taskStates={taskStates}
+          taskStateColors={taskStateColors}
+          integrationsConfig={integrationsConfig}
         />
       );
     }
@@ -688,6 +797,9 @@ function App() {
             tasks={tasks}
             setTasks={updateTasksAndSync}
             users={users}
+            taskStates={taskStates}
+            taskStateColors={taskStateColors}
+            integrationsConfig={integrationsConfig}
           />
         );
       case "clients":
@@ -702,16 +814,18 @@ function App() {
             tasks={tasks}
             setTasks={updateTasksAndSync}
             leadCategories={leadCategories}
+            taskStates={taskStates}
+            integrationsConfig={integrationsConfig}
           />
         );
       case "files":
         return (
-          <FilesView leads={leads} systemLanguage={userLanguage} />
+          <FilesView leads={leads} setLeads={updateLeadsAndSync} systemLanguage={userLanguage} />
         );
       case "personal-settings":
         return (
           <PersonalSettingsView
-            currentUser={currentUser!}
+            currentUser={activeUser}
             users={users}
             setUsers={updateUsersAndSync}
             systemLanguage={systemLanguage}
@@ -723,11 +837,16 @@ function App() {
       case "email":
         return (
           <EmailView
-            currentUser={currentUser!}
+            currentUser={activeUser}
             leads={leads}
             setLeads={updateLeadsAndSync}
             systemLanguage={userLanguage}
             projectManagerColors={projectManagerColors}
+            integrationsConfig={integrationsConfig}
+            tasks={tasks}
+            setTasks={updateTasksAndSync}
+            users={users}
+            taskStates={taskStates}
           />
         );
       case "settings":
@@ -744,7 +863,7 @@ function App() {
             roles={roles}
             setRoles={updateRolesAndSync}
             getPermission={getPermission}
-            currentUser={currentUser!}
+            currentUser={activeUser}
             leadStateColors={leadStateColors}
             setLeadStateColors={setLeadStateColors}
             leadCategories={leadCategories}
@@ -764,6 +883,10 @@ function App() {
             integrationsConfig={integrationsConfig}
             updateIntegrationsConfig={updateIntegrationsConfigAndSync}
             dbInfo={dbInfo || undefined}
+            taskStates={taskStates}
+            setTaskStates={setTaskStates}
+            taskStateColors={taskStateColors}
+            setTaskStateColors={setTaskStateColors}
           />
         );
       case "overview":
@@ -783,7 +906,7 @@ function App() {
         );
       case "rag_ai":
         return (
-          <RagAiView systemLanguage={userLanguage} currentUser={currentUser || undefined} />
+          <RagAiView systemLanguage={userLanguage} currentUser={activeUser} />
         );
       case "meetings":
         return (
@@ -796,6 +919,10 @@ function App() {
             initialView={meetingsAction}
             onClearInitialView={() => setMeetingsAction("list")}
             integrationsConfig={integrationsConfig}
+            tasks={tasks}
+            setTasks={updateTasksAndSync}
+            isSyncing={isSyncing}
+            taskStates={taskStates}
           />
         );
       default:
@@ -806,6 +933,11 @@ function App() {
             leads={leads}
             users={users}
             systemLanguage={userLanguage}
+            currentUser={activeUser}
+            taskStates={taskStates}
+            taskStateColors={taskStateColors}
+            autoOpenAddTask={autoOpenAddTask}
+            setAutoOpenAddTask={setAutoOpenAddTask}
           />
         );
     }
@@ -852,25 +984,23 @@ function App() {
     );
   }
 
-  // Lock workspace if user is logged out (render credentials gate page)
-  if (!currentUser) {
-    return (
-      <LoginView 
-        users={users}
-        systemName={systemName}
-        onLoginSuccess={(user) => setCurrentUser(user)}
-        systemLanguage={userLanguage}
-        isDemoMode={isDemoMode}
-      />
-    );
-  }
+  const displayUser = currentUser || users[0] || {
+    id: "guest",
+    name: "Guest User",
+    email: "guest@example.com",
+    role: "Viewer",
+    color: "#6366f1",
+    avatar: null,
+    activityLog: [],
+    metadata_json: "{}"
+  };
 
   const showMailIcon = (() => {
     try {
-      if (currentUser && currentUser.metadata_json) {
-        const metadata = typeof currentUser.metadata_json === 'string' 
-          ? JSON.parse(currentUser.metadata_json) 
-          : currentUser.metadata_json;
+      if (displayUser && displayUser.metadata_json) {
+        const metadata = typeof displayUser.metadata_json === 'string' 
+          ? JSON.parse(displayUser.metadata_json) 
+          : displayUser.metadata_json;
         return metadata?.emailSettings?.isValidated === true;
       }
     } catch (e) {}
@@ -879,70 +1009,95 @@ function App() {
 
   return (
     <div className="flex h-screen overflow-hidden relative font-sans antialiased text-slate-800 bg-slate-50/50">
-      {/* Sidebar navigation with role-gated settings visibility */}
-      <Sidebar 
-        activeTab={activeTab} 
-        setActiveTab={(tab) => { 
-          if (tab === "settings" && !hasSettingsAccess) return;
-          window.location.hash = tab; 
-        }} 
-        systemName={systemName}
-        showSettings={hasSettingsAccess}
-        onLogout={() => {
-          fetch("/api/logout.php", { method: "POST" }).catch(() => {});
-          setCurrentUser(null);
-          window.location.hash = "dashboard";
-        }}
-        systemLanguage={userLanguage}
-        showMailIcon={showMailIcon}
-        integrationsConfig={integrationsConfig}
-        showRagAi={getPermission("rag_view") !== "nothing"}
-      />
       
-      {/* Workspace Area - Add pb-20 on mobile viewports so that the bottom navigation bar never overlaps content */}
-      <div className="flex-1 flex flex-col min-w-0 pb-20 lg:pb-0">
-        <Header 
+      {/* Blurred application background layout if not logged in */}
+      <div className={`flex flex-1 overflow-hidden transition-all duration-500 ${!currentUser ? "filter blur-md pointer-events-none select-none" : ""}`}>
+        {/* Sidebar navigation with role-gated settings visibility */}
+        <Sidebar 
           activeTab={activeTab} 
-          systemName={systemName} 
-          currentUser={currentUser}
-          users={users}
-          onSwitchUser={(user) => {
-            setCurrentUser(user);
-            if (user.role.toLowerCase() === "project manager" && activeTab === "settings") {
-              setActiveTab("dashboard");
-              window.location.hash = "dashboard";
-            }
-          }}
+          setActiveTab={(tab) => { 
+            if (tab === "settings" && !hasSettingsAccess) return;
+            window.location.hash = tab; 
+          }} 
+          systemName={systemName}
+          showSettings={hasSettingsAccess}
           onLogout={() => {
             fetch("/api/logout.php", { method: "POST" }).catch(() => {});
             setCurrentUser(null);
             window.location.hash = "dashboard";
           }}
           systemLanguage={userLanguage}
-          setSystemLanguage={setUserLanguage}
-          isDemoMode={isDemoMode}
-          onOpenPersonalSettings={() => {
-            setActiveTab("personal-settings");
-            window.location.hash = "personal-settings";
-          }}
-          onNavigateMeetings={(action) => {
-            setMeetingsAction(action);
-            setActiveTab("meetings");
-            window.location.hash = "meetings";
-          }}
+          showMailIcon={showMailIcon}
+          integrationsConfig={integrationsConfig}
+          showRagAi={getPermission("rag_view") !== "nothing"}
         />
         
-        <main className="flex-1 p-4 md:p-6 overflow-y-auto max-w-[1600px] mx-auto w-full relative z-40 flex flex-col justify-between">
-          <div>
-            {renderWorkspaceView()}
-          </div>
-          <footer className="mt-12 pt-4 border-t border-slate-200/50 flex justify-between items-center text-[10px] text-slate-400 select-none font-semibold uppercase tracking-wider">
-            <span>{systemName} CRM &bull; Active Node</span>
-            <span>v{VERSION} "Elderberry"</span>
-          </footer>
-        </main>
+        {/* Workspace Area - Add pb-20 on mobile viewports so that the bottom navigation bar never overlaps content */}
+        <div className="flex-1 flex flex-col min-w-0 pb-20 lg:pb-0">
+          <Header 
+            activeTab={activeTab} 
+            systemName={systemName} 
+            currentUser={displayUser}
+            users={users}
+            onSwitchUser={(user) => {
+              setCurrentUser(user);
+              if (user.role.toLowerCase() === "project manager" && activeTab === "settings") {
+                setActiveTab("dashboard");
+                window.location.hash = "dashboard";
+              }
+            }}
+            onLogout={() => {
+              fetch("/api/logout.php", { method: "POST" }).catch(() => {});
+              setCurrentUser(null);
+              window.location.hash = "dashboard";
+            }}
+            systemLanguage={userLanguage}
+            setSystemLanguage={setUserLanguage}
+            isDemoMode={isDemoMode}
+            onOpenPersonalSettings={() => {
+              setActiveTab("personal-settings");
+              window.location.hash = "personal-settings";
+            }}
+            onNavigateMeetings={(action) => {
+              setMeetingsAction(action);
+              setActiveTab("meetings");
+              window.location.hash = "meetings";
+            }}
+            onAddTask={() => {
+              setActiveTab("tasks");
+              window.location.hash = "tasks";
+              setAutoOpenAddTask(true);
+            }}
+          />
+          
+          <main className="flex-1 p-4 md:p-6 overflow-y-auto max-w-[1600px] mx-auto w-full relative flex flex-col justify-between">
+            <div className="shrink-0 w-full">
+              {renderWorkspaceView()}
+            </div>
+            <footer className="mt-12 pt-4 border-t border-slate-200/50 flex justify-between items-center text-[10px] text-slate-400 select-none font-semibold uppercase tracking-wider">
+              <span>{systemName} CRM &bull; Active Node</span>
+              <span>v{VERSION} "Elderberry"</span>
+            </footer>
+          </main>
+        </div>
       </div>
       
+      {/* Login Popup Overlay if logged out */}
+      {!currentUser && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/45 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+          <div className="w-full max-w-[480px] max-h-[90vh] overflow-y-auto bg-transparent rounded-[32px] shadow-2xl relative animate-in zoom-in-95 duration-300">
+            <LoginView 
+              users={users}
+              systemName={systemName}
+              onLoginSuccess={(user) => setCurrentUser(user)}
+              systemLanguage={userLanguage}
+              isDemoMode={isDemoMode}
+              isModal={true}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Toast Notification Container */}
       {toast && (
         <div className="fixed bottom-6 left-6 z-[100] animate-in slide-in-from-bottom duration-300">
@@ -965,6 +1120,77 @@ function App() {
             >
               ✕
             </button>
+          </div>
+        </div>
+      )}
+      {/* Global File Preview Modal overlay */}
+      {previewFile && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-300">
+          <div 
+            className="fixed inset-0" 
+            onClick={() => setPreviewFile(null)} 
+          />
+          <div className="w-full max-w-5xl h-[85vh] bg-white rounded-t-[32px] rounded-b-[32px] border border-slate-200/80 shadow-2xl p-6 flex flex-col justify-between text-left relative z-10 animate-in zoom-in-95 duration-300">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-150 pb-3 shrink-0">
+              <div className="min-w-0 pr-4">
+                <span className="text-[10px] font-black uppercase text-amber-700 tracking-wider">File Preview</span>
+                <h3 className="text-sm font-heading font-black uppercase tracking-tight truncate">{previewFile.name}</h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <a 
+                  href={previewFile.url}
+                  download={previewFile.name}
+                  className="px-3 py-1.5 rounded-xl bg-amber-700 hover:bg-amber-600 border border-amber-800 text-white text-[10px] font-black uppercase flex items-center gap-1 transition-all"
+                >
+                  Download
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreviewFile(null)}
+                  className="text-slate-400 hover:text-slate-600 p-1 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* Content preview pane */}
+            <div className="flex-1 mt-4 border border-slate-200 rounded-2xl overflow-hidden bg-slate-50 flex items-center justify-center">
+              {(() => {
+                const ext = previewFile.name.split('.').pop()?.toLowerCase() || '';
+                const isImage = ['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp'].includes(ext);
+                const isPdf = ext === 'pdf';
+
+                if (isImage) {
+                  return (
+                    <img 
+                      src={previewFile.url} 
+                      alt={previewFile.name} 
+                      className="max-w-full max-h-full object-contain p-2"
+                    />
+                  );
+                }
+
+                if (isPdf) {
+                  return (
+                    <iframe 
+                      src={previewFile.url} 
+                      title={previewFile.name} 
+                      className="w-full h-full border-none"
+                    />
+                  );
+                }
+
+                return (
+                  <div className="text-center p-8 text-slate-500">
+                    <p className="text-3xl mb-2">📄</p>
+                    <p className="text-xs font-bold uppercase tracking-wider">Preview not supported for this file format.</p>
+                    <p className="text-[10px] text-slate-400 mt-1">Please use the Download button above to view it offline.</p>
+                  </div>
+                );
+              })()}
+            </div>
           </div>
         </div>
       )}
