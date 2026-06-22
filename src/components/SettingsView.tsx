@@ -124,6 +124,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [ueColor, setUeColor] = React.useState("#3b82f6");
   const [ueFoldersEnabled, setUeFoldersEnabled] = React.useState(false);
   const [ueModules, setUeModules] = React.useState<string[]>(["title"]);
+  const [ueFolderModules, setUeFolderModules] = React.useState<string[]>(["title"]);
 
   const uploadingRoleRef = React.useRef<string | null>(null);
   const roleFileInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -1305,6 +1306,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       icon: ueIcon,
       color: ueColor,
       modules: ueModules,
+      folderModules: ueFoldersEnabled ? ueFolderModules : [],
       foldersEnabled: ueFoldersEnabled,
       archived: false
     };
@@ -1319,6 +1321,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setUeColor("#3b82f6");
     setUeFoldersEnabled(false);
     setUeModules(["title"]);
+    setUeFolderModules(["title"]);
     setIsCreatingUE(false);
   };
 
@@ -1597,6 +1600,40 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           className="h-5 w-5 text-indigo-650 focus:ring-indigo-500 rounded border-slate-350 cursor-pointer"
                         />
                       </div>
+
+                      {ueFoldersEnabled && (
+                        <div className="flex flex-col gap-1.5 p-3.5 rounded-xl border border-slate-200 bg-white animate-in slide-in-from-top-2 duration-200">
+                          <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
+                            {userLanguage === "sk" ? "Aktívne moduly pre priečinky" : "Active Modules for Folders"}
+                          </label>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                            {[
+                              { id: "title", label: userLanguage === "sk" ? "Titulok / Názov" : "Title / Name" },
+                              { id: "due_date", label: userLanguage === "sk" ? "Termín (Due Date)" : "Due Date" },
+                              { id: "file", label: userLanguage === "sk" ? "Súbor (File)" : "File" }
+                            ].map((mod) => {
+                              const isChecked = ueFolderModules.includes(mod.id);
+                              return (
+                                <label key={mod.id} className="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all text-xs font-semibold cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setUeFolderModules([...ueFolderModules, mod.id]);
+                                      } else {
+                                        setUeFolderModules(ueFolderModules.filter(m => m !== mod.id));
+                                      }
+                                    }}
+                                    className="h-4 w-4 text-indigo-650 focus:ring-indigo-500 rounded border-slate-350 cursor-pointer"
+                                  />
+                                  <span className="text-slate-700">{mod.label}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex justify-end gap-2.5 pt-2">

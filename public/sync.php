@@ -287,12 +287,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             while ($row = $ueStmt->fetch()) {
                 $ueId = $row['id'];
                 $modules = json_decode($row['modules_json'] ?? '[]', true);
+                $folderModules = json_decode($row['folder_modules_json'] ?? '[]', true);
                 $unifiedEntries[] = [
                     'id' => $ueId,
                     'name' => $row['name'],
                     'icon' => $row['icon'],
                     'color' => $row['color'],
                     'modules' => $modules,
+                    'folderModules' => $folderModules,
                     'foldersEnabled' => (int)$row['folders_enabled'] === 1,
                     'archived' => (int)$row['archived'] === 1
                 ];
@@ -673,17 +675,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingRegistryIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedRegistryIds = [];
 
-            $insRegistry = $pdo->prepare("INSERT INTO `unified_entries` (`id`, `name`, `icon`, `color`, `modules_json`, `folders_enabled`, `archived`) VALUES (?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `icon` = VALUES(`icon`), `color` = VALUES(`color`), `modules_json` = VALUES(`modules_json`), `folders_enabled` = VALUES(`folders_enabled`), `archived` = VALUES(`archived`)");
+            $insRegistry = $pdo->prepare("INSERT INTO `unified_entries` (`id`, `name`, `icon`, `color`, `modules_json`, `folder_modules_json`, `folders_enabled`, `archived`) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `icon` = VALUES(`icon`), `color` = VALUES(`color`), `modules_json` = VALUES(`modules_json`), `folder_modules_json` = VALUES(`folder_modules_json`), `folders_enabled` = VALUES(`folders_enabled`), `archived` = VALUES(`archived`)");
 
             foreach ($payload['unifiedEntries'] as $ue) {
                 $ueId = $ue['id'];
                 $modules = $ue['modules'] ?? [];
+                $folderModules = $ue['folderModules'] ?? [];
                 $insRegistry->execute([
                     $ueId,
                     $ue['name'],
                     $ue['icon'],
                     $ue['color'],
                     json_encode($modules),
+                    json_encode($folderModules),
                     ($ue['foldersEnabled'] ?? false) ? 1 : 0,
                     ($ue['archived'] ?? false) ? 1 : 0
                 ]);
@@ -704,17 +708,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
 
                 // Dynamically add columns for active modules if they are missing
-                if (in_array('title', $modules)) {
+                $allActiveModules = array_unique(array_merge($modules, $folderModules));
+                if (in_array('title', $allActiveModules)) {
                     if (!ccrm_column_exists($pdo, $tableName, 'title')) {
                         $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `title` VARCHAR(255) NULL");
                     }
                 }
-                if (in_array('due_date', $modules) || in_array('due date', $modules)) {
+                if (in_array('due_date', $allActiveModules) || in_array('due date', $allActiveModules)) {
                     if (!ccrm_column_exists($pdo, $tableName, 'due_date')) {
                         $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `due_date` DATE NULL");
                     }
                 }
-                if (in_array('file', $modules)) {
+                if (in_array('file', $allActiveModules)) {
                     if (!ccrm_column_exists($pdo, $tableName, 'file_name')) {
                         $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `file_name` VARCHAR(255) NULL, ADD COLUMN `file_size` VARCHAR(50) NULL, ADD COLUMN `file_type` VARCHAR(100) NULL, ADD COLUMN `file_path` VARCHAR(255) NULL");
                     }
@@ -737,6 +742,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $checkStmt->execute([$rowId]);
                         $rowExists = (int)$checkStmt->fetchColumn() > 0;
 
+                        // Determine which modules are active for this row type
+                        $rowModules = ($row['isFolder'] ?? false) ? $folderModules : $modules;
+
                         if ($rowExists) {
                             // UPDATE query
                             $updates = [
@@ -747,15 +755,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 (isset($row['parentId']) && $row['parentId'] !== '') ? $row['parentId'] : null,
                                 ($row['isFolder'] ?? false) ? 1 : 0
                             ];
-                            if (in_array('title', $modules) && ccrm_column_exists($pdo, $tableName, 'title')) {
+                            if (in_array('title', $rowModules) && ccrm_column_exists($pdo, $tableName, 'title')) {
                                 $updates[] = "`title` = ?";
                                 $params[] = $row['title'] ?? null;
                             }
-                            if ((in_array('due_date', $modules) || in_array('due date', $modules)) && ccrm_column_exists($pdo, $tableName, 'due_date')) {
+                            if ((in_array('due_date', $rowModules) || in_array('due date', $rowModules)) && ccrm_column_exists($pdo, $tableName, 'due_date')) {
                                 $updates[] = "`due_date` = ?";
                                 $params[] = (isset($row['dueDate']) && $row['dueDate'] !== '') ? $row['dueDate'] : null;
                             }
-                            if (in_array('file', $modules) && ccrm_column_exists($pdo, $tableName, 'file_name')) {
+                            if (in_array('file', $rowModules) && ccrm_column_exists($pdo, $tableName, 'file_name')) {
                                 $updates[] = "`file_name` = ?";
                                 $updates[] = "`file_size` = ?";
                                 $updates[] = "`file_type` = ?";
@@ -777,17 +785,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 (isset($row['parentId']) && $row['parentId'] !== '') ? $row['parentId'] : null,
                                 ($row['isFolder'] ?? false) ? 1 : 0
                             ];
-                            if (in_array('title', $modules) && ccrm_column_exists($pdo, $tableName, 'title')) {
+                            if (in_array('title', $rowModules) && ccrm_column_exists($pdo, $tableName, 'title')) {
                                 $fields[] = "`title`";
                                 $placeholders[] = "?";
                                 $params[] = $row['title'] ?? null;
                             }
-                            if ((in_array('due_date', $modules) || in_array('due date', $modules)) && ccrm_column_exists($pdo, $tableName, 'due_date')) {
+                            if ((in_array('due_date', $rowModules) || in_array('due date', $rowModules)) && ccrm_column_exists($pdo, $tableName, 'due_date')) {
                                 $fields[] = "`due_date`";
                                 $placeholders[] = "?";
                                 $params[] = (isset($row['dueDate']) && $row['dueDate'] !== '') ? $row['dueDate'] : null;
                             }
-                            if (in_array('file', $modules) && ccrm_column_exists($pdo, $tableName, 'file_name')) {
+                            if (in_array('file', $rowModules) && ccrm_column_exists($pdo, $tableName, 'file_name')) {
                                 $fields[] = "`file_name`";
                                 $fields[] = "`file_size`";
                                 $fields[] = "`file_type`";

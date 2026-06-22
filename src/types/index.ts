@@ -209,6 +209,7 @@ export interface UnifiedEntryRegistry {
   icon: string;
   color: string;
   modules: string[]; // e.g. ["title", "due_date", "file"]
+  folderModules: string[]; // e.g. ["title", "due_date", "file"]
   foldersEnabled: boolean;
   archived: boolean;
 }

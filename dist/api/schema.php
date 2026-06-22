@@ -223,6 +223,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `icon` VARCHAR(50) NOT NULL,
               `color` VARCHAR(20) NOT NULL,
               `modules_json` TEXT NOT NULL,
+              `folder_modules_json` TEXT NULL,
               `folders_enabled` TINYINT(1) NOT NULL DEFAULT 0,
               `archived` TINYINT(1) NOT NULL DEFAULT 0,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -272,6 +273,9 @@ if (!function_exists('ccrm_schema_statements')) {
         }
         if (!ccrm_column_exists($pdo, 'leads', 'ai_summary_fingerprint')) {
             $pdo->exec("ALTER TABLE `leads` ADD COLUMN `ai_summary_fingerprint` TEXT NULL AFTER `ai_summary`");
+        }
+        if (!ccrm_column_exists($pdo, 'unified_entries', 'folder_modules_json')) {
+            $pdo->exec("ALTER TABLE `unified_entries` ADD COLUMN `folder_modules_json` TEXT NULL AFTER `modules_json`");
         }
     }
 
