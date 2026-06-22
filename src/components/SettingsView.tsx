@@ -119,6 +119,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   // Unified Entries states
   const [isCreatingUE, setIsCreatingUE] = React.useState(false);
+  const [editingUEId, setEditingUEId] = React.useState<string | null>(null);
   const [ueName, setUeName] = React.useState("");
   const [ueIcon, setUeIcon] = React.useState("Folder");
   const [ueColor, setUeColor] = React.useState("#3b82f6");
@@ -1290,29 +1291,50 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       alert("Name is required");
       return;
     }
-    const safeId = ueName.toLowerCase().replace(/[^a-z0-9]/g, "_").replace(/^[^a-z]+/, "") || "ue_" + Date.now();
-    if (unifiedEntries.some(ue => ue.id === safeId)) {
-      alert("A unified entry with this name/id already exists.");
-      return;
-    }
     if (ueModules.length === 0) {
       alert("Please select at least one module (Title, Due Date, or File)");
       return;
     }
 
-    const newEntry: UnifiedEntryRegistry = {
-      id: safeId,
-      name: ueName.trim(),
-      icon: ueIcon,
-      color: ueColor,
-      modules: ueModules,
-      folderModules: ueFoldersEnabled ? ueFolderModules : [],
-      foldersEnabled: ueFoldersEnabled,
-      archived: false
-    };
-
-    if (setUnifiedEntries) {
-      setUnifiedEntries([...unifiedEntries, newEntry], { ...unifiedEntriesData, [safeId]: [] });
+    if (editingUEId) {
+      // Editing
+      if (setUnifiedEntries) {
+        const updated = unifiedEntries.map(ue => {
+          if (ue.id === editingUEId) {
+            return {
+              ...ue,
+              name: ueName.trim(),
+              icon: ueIcon,
+              color: ueColor,
+              modules: ueModules,
+              folderModules: ueFoldersEnabled ? ueFolderModules : [],
+              foldersEnabled: ueFoldersEnabled
+            };
+          }
+          return ue;
+        });
+        setUnifiedEntries(updated, unifiedEntriesData);
+      }
+    } else {
+      // Creating
+      const safeId = ueName.toLowerCase().replace(/[^a-z0-9]/g, "_").replace(/^[^a-z]+/, "") || "ue_" + Date.now();
+      if (unifiedEntries.some(ue => ue.id === safeId)) {
+        alert("A unified entry with this name/id already exists.");
+        return;
+      }
+      const newEntry: UnifiedEntryRegistry = {
+        id: safeId,
+        name: ueName.trim(),
+        icon: ueIcon,
+        color: ueColor,
+        modules: ueModules,
+        folderModules: ueFoldersEnabled ? ueFolderModules : [],
+        foldersEnabled: ueFoldersEnabled,
+        archived: false
+      };
+      if (setUnifiedEntries) {
+        setUnifiedEntries([...unifiedEntries, newEntry], { ...unifiedEntriesData, [safeId]: [] });
+      }
     }
 
     // Reset fields
@@ -1323,6 +1345,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setUeModules(["title"]);
     setUeFolderModules(["title"]);
     setIsCreatingUE(false);
+    setEditingUEId(null);
+  };
+
+  const handleOpenEditUE = (ue: UnifiedEntryRegistry) => {
+    setEditingUEId(ue.id);
+    setUeName(ue.name);
+    setUeIcon(ue.icon);
+    setUeColor(ue.color);
+    setUeFoldersEnabled(ue.foldersEnabled);
+    setUeModules(ue.modules);
+    setUeFolderModules(ue.folderModules || ["title"]);
+    setIsCreatingUE(true);
   };
 
   const handleArchiveUnifiedEntry = (ueId: string) => {
@@ -1471,11 +1505,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <form onSubmit={handleCreateUnifiedEntry} className="p-5 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-5 animate-in fade-in duration-200 text-left">
                     <div className="flex items-center justify-between">
                       <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                        {userLanguage === "sk" ? "Vytvoriť nový záznam" : "Create New Entry Type"}
+                        {editingUEId
+                          ? (userLanguage === "sk" ? "Upraviť typ záznamu" : "Edit Entry Type")
+                          : (userLanguage === "sk" ? "Vytvoriť nový záznam" : "Create New Entry Type")}
                       </h4>
                       <button
                         type="button"
-                        onClick={() => setIsCreatingUE(false)}
+                        onClick={() => {
+                          setIsCreatingUE(false);
+                          setEditingUEId(null);
+                          setUeName("");
+                          setUeIcon("FolderOpen");
+                          setUeColor("#3b82f6");
+                          setUeFoldersEnabled(false);
+                          setUeModules(["title"]);
+                          setUeFolderModules(["title"]);
+                        }}
                         className="text-slate-450 hover:text-slate-650 transition-colors"
                       >
                         <X className="h-4.5 w-4.5" />
@@ -1639,7 +1684,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <div className="flex justify-end gap-2.5 pt-2">
                       <button
                         type="button"
-                        onClick={() => setIsCreatingUE(false)}
+                        onClick={() => {
+                          setIsCreatingUE(false);
+                          setEditingUEId(null);
+                          setUeName("");
+                          setUeIcon("FolderOpen");
+                          setUeColor("#3b82f6");
+                          setUeFoldersEnabled(false);
+                          setUeModules(["title"]);
+                          setUeFolderModules(["title"]);
+                        }}
                         className="px-4 py-2 rounded-xl hover:bg-slate-100 text-slate-650 text-xs font-bold uppercase transition-all"
                       >
                         {userLanguage === "sk" ? "Zrušiť" : "Cancel"}
@@ -1697,6 +1751,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </div>
 
                           <div className="flex justify-end gap-2 border-t border-slate-100 pt-3 mt-4">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditUE(ue)}
+                              className="px-2.5 py-1.5 text-[9px] font-black uppercase tracking-wider text-indigo-650 hover:bg-indigo-50 rounded-lg transition-all flex items-center gap-1 cursor-pointer"
+                              title="Edit entry schema"
+                            >
+                              <Pencil className="h-3 w-3" />
+                              {userLanguage === "sk" ? "Upraviť" : "Edit"}
+                            </button>
                             <button
                               type="button"
                               onClick={() => handleArchiveUnifiedEntry(ue.id)}
