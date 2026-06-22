@@ -414,7 +414,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {canEditNav && (
             <button
               onClick={() => {
-                setIsEditingNav(!isEditingNav);
+                const nextEditing = !isEditingNav;
+                setIsEditingNav(nextEditing);
+                if (nextEditing) {
+                  setIsCollapsed(false);
+                }
               }}
               className={cn(
                 "w-full flex items-center gap-3.5 px-3 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer",
