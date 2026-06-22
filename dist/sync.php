@@ -188,7 +188,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'pipeline_stages' => 'edit',
                     'traffic_sources' => 'edit',
                     'system_reset' => 'edit',
-                    'ai_config' => 'edit'
+                    'ai_config' => 'edit',
+                    'nav_edit' => 'edit'
                 ]
             ],
             [
@@ -199,7 +200,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'pipeline_stages' => 'nothing',
                     'traffic_sources' => 'nothing',
                     'system_reset' => 'nothing',
-                    'ai_config' => 'nothing'
+                    'ai_config' => 'nothing',
+                    'nav_edit' => 'nothing'
                 ]
             ]
         ];

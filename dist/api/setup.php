@@ -155,6 +155,7 @@ try {
         ['traffic_sources', 'Manage lead marketing sources and color badges'],
         ['ai_config', 'Configure OpenAI API credentials and settings'],
         ['system_reset', 'Truncate database or restore mock seeders'],
+        ['nav_edit', 'Configure navigation sidebar layouts and visibility'],
     ];
 
     $checkPerm = $pdo->query("SELECT COUNT(*) FROM `permissions`")->fetchColumn();

@@ -2,7 +2,8 @@ import React from "react";
 import { 
   Settings, Save, Database, Trash2, ShieldAlert, Sliders, 
   Globe, Plus, X, Tag, Share2, Users, ShieldCheck, Lock,
-  Eye, Pencil, Minus, GripVertical, ArrowLeft, Activity, Clock, CheckSquare
+  Eye, Pencil, Minus, GripVertical, ArrowLeft, Activity, Clock, CheckSquare,
+  Menu, ArrowUp
 } from "lucide-react";
 import type { UserProfile, RolePermission } from "../types";
 import { getTranslation } from "../utils/translations";
@@ -105,6 +106,52 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [newCategory, setNewCategory] = React.useState("");
 
   const [newStateParent, setNewStateParent] = React.useState("");
+
+  const uploadingRoleRef = React.useRef<string | null>(null);
+  const roleFileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const triggerRoleLayoutUpload = (roleName: string) => {
+    uploadingRoleRef.current = roleName;
+    roleFileInputRef.current?.click();
+  };
+
+  const handleRoleLayoutFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !uploadingRoleRef.current) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target?.result as string);
+        if (data && Array.isArray(data.layout)) {
+          const roleToUpdate = uploadingRoleRef.current;
+          const defaultSystemLayout = ["dashboard", "overview", "rag_ai", "leads", "clients", "meetings", "files", "email"];
+          const newLayout = data.layout.filter((id: string) => defaultSystemLayout.includes(id));
+          
+          setRoles(prev => prev.map(r => {
+            if (r.name === roleToUpdate) {
+              return { ...r, defaultNavLayout: newLayout };
+            }
+            return r;
+          }));
+          
+          (window as any).showToast(
+            userLanguage === "sk" 
+              ? `Predvolená štruktúra pre rolu ${roleToUpdate} bola úspešne nahraná!` 
+              : userLanguage === "hu"
+                ? `A(z) ${roleToUpdate} szerepkör alapértelmezett elrendezése sikeresen feltöltve!`
+                : `Default layout for role ${roleToUpdate} uploaded successfully!`
+          );
+        } else {
+          alert(userLanguage === "sk" ? "Neplatný formát súboru rozloženia." : "Invalid layout file format.");
+        }
+      } catch (err) {
+        alert(userLanguage === "sk" ? "Chyba pri spracovaní JSON súboru." : "Failed to parse JSON file.");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
 
   const handleToggleIndent = (stateName: string, indent: boolean) => {
     if (getPermission("pipeline_stages") !== "edit") return;
@@ -1149,7 +1196,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         pm_managers: "nothing",
         pipeline_stages: "nothing",
         traffic_sources: "nothing",
-        system_reset: "nothing"
+        system_reset: "nothing",
+        nav_edit: "nothing"
       }
     };
 
@@ -1931,6 +1979,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               {(isAdmin || role.name === "Project Manager") && (
                                 <span className="text-[9px] text-slate-450 font-bold block select-none uppercase tracking-wider">{getTranslation(userLanguage, "settings.rbac.protected")}</span>
                               )}
+
+                              {/* Navigation layout upload button */}
+                              {getPermission("pm_managers") === "edit" && (
+                                <div className="mt-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => triggerRoleLayoutUpload(role.name)}
+                                    className="text-indigo-600 hover:text-indigo-850 hover:bg-indigo-50 border border-indigo-200/80 py-1 px-2.5 rounded-xl text-[9px] uppercase font-black tracking-wider flex items-center gap-1 shadow-sm transition-all cursor-pointer"
+                                    title={userLanguage === "sk" ? "Nahrať predvolenú štruktúru menu" : "Upload default navigation structure"}
+                                  >
+                                    <Menu className="h-3 w-3" />
+                                    <ArrowUp className="h-3 w-3 animate-pulse" />
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           </th>
                         );
@@ -2011,7 +2074,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             { key: "pm_managers", label: userLanguage === "sk" ? "Správa používateľov & PM" : "Manage Managers Directory", desc: userLanguage === "sk" ? "Možnosť spravovať heslá, priraďovať roly a mazať PM účty" : "Create new workspace managers, upgrade roles, or reset login profiles" },
                             { key: "pipeline_stages", label: userLanguage === "sk" ? "Fázy pipeline" : "Kanban Pipeline Config", desc: userLanguage === "sk" ? "Preusporiadanie, premenovanie a priradenie farieb fázam Kanbanu" : "Reorder, rename, append, or configure status color lanes in pipeline" },
                             { key: "traffic_sources", label: userLanguage === "sk" ? "Zdroje a kategórie" : "Marketing Sources & Slabs", desc: userLanguage === "sk" ? "Správa marketingových kanálov, kategórií materiálu a farieb tagov" : "Edit marketing channels, custom categories of slabs, and tag colors" },
-                            { key: "system_reset", label: userLanguage === "sk" ? "Reset celého systému" : "Danger Zone System Reset", desc: userLanguage === "sk" ? "Trvalé stiahnutie mock seedrov, čistenie databáz, mazanie" : "Erase CRM database completely, reload clean seeders, or delete logs" }
+                            { key: "system_reset", label: userLanguage === "sk" ? "Reset celého systému" : "Danger Zone System Reset", desc: userLanguage === "sk" ? "Trvalé stiahnutie mock seedrov, čistenie databáz, mazanie" : "Erase CRM database completely, reload clean seeders, or delete logs" },
+                            { key: "nav_edit", label: userLanguage === "sk" ? "Editor štruktúry menu" : userLanguage === "hu" ? "Menüszerkezet Szerkesztő" : "Sidebar Navigation Editor", desc: userLanguage === "sk" ? "Umožňuje používateľom meniť poradie a viditeľnosť položiek v menu" : userLanguage === "hu" ? "Lehetővé teszi a menüelemek sorrendjének és láthatóságának módosítását" : "Allows users to customize the ordering and visibility of sidebar menu items" }
                           ]
                         }
                       ];
@@ -2092,6 +2156,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </button>
                 </form>
               )}
+
+              {/* Hidden role default layout file selector */}
+              <input
+                type="file"
+                ref={roleFileInputRef}
+                accept=".json"
+                onChange={handleRoleLayoutFileChange}
+                className="hidden"
+              />
             </div>
           </div>
         )}

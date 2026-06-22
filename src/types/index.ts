@@ -200,4 +200,5 @@ export interface RolePermission {
     system_reset: "edit" | "view" | "nothing";
     [key: string]: "edit" | "view" | "nothing"; // Allow granular & custom permission slugs dynamically
   };
+  defaultNavLayout?: string[]; // Array of active module item IDs in order
 }

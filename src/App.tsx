@@ -449,6 +449,20 @@ function App() {
     });
   };
 
+  const handleSaveUserLayout = (layout: string[]) => {
+    if (!currentUser) return;
+    const currentMeta = typeof currentUser.metadata_json === "string"
+      ? JSON.parse(currentUser.metadata_json || "{}")
+      : (currentUser.metadata_json || {});
+    const nextMeta = { ...currentMeta, navLayout: layout };
+    updateUsersAndSync(prevUsers => prevUsers.map(u => {
+      if (u.email === currentUser.email) {
+        return { ...u, metadata_json: nextMeta };
+      }
+      return u;
+    }));
+  };
+
   // Expose leads state globally for markdown file name reference lookup
   useEffect(() => {
     (window as any).leads = leads;
@@ -1035,6 +1049,10 @@ function App() {
           showMailIcon={showMailIcon}
           integrationsConfig={integrationsConfig}
           showRagAi={getPermission("rag_view") !== "nothing"}
+          currentUser={currentUser}
+          roles={roles}
+          canEditNav={getPermission("nav_edit") === "edit"}
+          onSaveUserLayout={handleSaveUserLayout}
         />
         
         {/* Workspace Area - Add pb-20 on mobile viewports so that the bottom navigation bar never overlaps content */}
