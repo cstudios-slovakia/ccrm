@@ -215,6 +215,18 @@ if (!function_exists('ccrm_schema_statements')) {
               PRIMARY KEY (`user_email`, `folder`, `email_uid`),
               INDEX idx_rag_email_received (`received_at`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Unified Universal Entries Config Registry
+            "CREATE TABLE IF NOT EXISTS `unified_entries` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `name` VARCHAR(100) NOT NULL,
+              `icon` VARCHAR(50) NOT NULL,
+              `color` VARCHAR(20) NOT NULL,
+              `modules_json` TEXT NOT NULL,
+              `folders_enabled` TINYINT(1) NOT NULL DEFAULT 0,
+              `archived` TINYINT(1) NOT NULL DEFAULT 0,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
         ];
     }
 

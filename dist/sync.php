@@ -276,6 +276,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         // Fallback
     }
 
+    // 3.5. Fetch Unified Universal Entries configurations & rows
+    $unifiedEntries = [];
+    $unifiedEntriesData = [];
+    try {
+        // Check if unified_entries table exists first (if database has not been initialized/migrated yet)
+        $chkRegistry = $pdo->query("SHOW TABLES LIKE 'unified_entries'")->rowCount() > 0;
+        if ($chkRegistry) {
+            $ueStmt = $pdo->query("SELECT * FROM `unified_entries` ORDER BY `created_at` ASC");
+            while ($row = $ueStmt->fetch()) {
+                $ueId = $row['id'];
+                $modules = json_decode($row['modules_json'] ?? '[]', true);
+                $unifiedEntries[] = [
+                    'id' => $ueId,
+                    'name' => $row['name'],
+                    'icon' => $row['icon'],
+                    'color' => $row['color'],
+                    'modules' => $modules,
+                    'foldersEnabled' => (int)$row['folders_enabled'] === 1,
+                    'archived' => (int)$row['archived'] === 1
+                ];
+
+                $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($ueId));
+                $tableName = "ue_" . $safeId;
+                
+                $chkTable = $pdo->query("SHOW TABLES LIKE '{$tableName}'")->rowCount() > 0;
+                if ($chkTable) {
+                    $rowsStmt = $pdo->query("SELECT * FROM `{$tableName}` ORDER BY `created_at` ASC");
+                    $ueRows = [];
+                    while ($r = $rowsStmt->fetch()) {
+                        $rowItem = [
+                            'id' => $r['id'],
+                            'parentId' => $r['parent_id'],
+                            'isFolder' => (int)$r['is_folder'] === 1
+                        ];
+                        if (isset($r['title'])) {
+                            $rowItem['title'] = $r['title'];
+                        }
+                        if (isset($r['due_date'])) {
+                            $rowItem['dueDate'] = $r['due_date'];
+                        }
+                        if (isset($r['file_name'])) {
+                            $rowItem['fileName'] = $r['file_name'];
+                            $rowItem['fileSize'] = $r['file_size'];
+                            $rowItem['fileType'] = $r['file_type'];
+                            $rowItem['filePath'] = $r['file_path'];
+                        }
+                        $ueRows[] = $rowItem;
+                    }
+                    $unifiedEntriesData[$ueId] = $ueRows;
+                } else {
+                    $unifiedEntriesData[$ueId] = [];
+                }
+            }
+        }
+    } catch (\Exception $e) {
+        // Fallback
+    }
+
     echo json_encode([
         'installed' => true,
         'demoMode' => $isDemoMode,
@@ -284,6 +342,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'users' => $users,
         'roles' => $roles,
         'meetingNotes' => $meetingNotes,
+        'unifiedEntries' => $unifiedEntries,
+        'unifiedEntriesData' => $unifiedEntriesData,
         'settings' => [
             'systemName' => $settings['SYSTEM_NAME'] ?? 'CCRM',
             'systemLanguage' => $settings['SYSTEM_LANGUAGE'] ?? 'sk',
@@ -603,6 +663,157 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $delMeeting = $pdo->prepare("DELETE FROM `meeting_notes` WHERE `id` = ?");
                 foreach ($meetingsToDelete as $mid) {
                     $delMeeting->execute([$mid]);
+                }
+            }
+        }
+
+        // 4.6. Synchronize Unified Universal Entries (Registry & Dynamic Tables)
+        if (isset($payload['unifiedEntries']) && is_array($payload['unifiedEntries'])) {
+            $stmt = $pdo->query("SELECT `id` FROM `unified_entries`");
+            $existingRegistryIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $processedRegistryIds = [];
+
+            $insRegistry = $pdo->prepare("INSERT INTO `unified_entries` (`id`, `name`, `icon`, `color`, `modules_json`, `folders_enabled`, `archived`) VALUES (?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `icon` = VALUES(`icon`), `color` = VALUES(`color`), `modules_json` = VALUES(`modules_json`), `folders_enabled` = VALUES(`folders_enabled`), `archived` = VALUES(`archived`)");
+
+            foreach ($payload['unifiedEntries'] as $ue) {
+                $ueId = $ue['id'];
+                $modules = $ue['modules'] ?? [];
+                $insRegistry->execute([
+                    $ueId,
+                    $ue['name'],
+                    $ue['icon'],
+                    $ue['color'],
+                    json_encode($modules),
+                    ($ue['foldersEnabled'] ?? false) ? 1 : 0,
+                    ($ue['archived'] ?? false) ? 1 : 0
+                ]);
+                $processedRegistryIds[] = $ueId;
+
+                // Dynamically spawn or migrate table for this entry
+                $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($ueId));
+                $tableName = "ue_" . $safeId;
+                
+                // Let's create the table if it does not exist with default minimal columns
+                $pdo->exec("CREATE TABLE IF NOT EXISTS `{$tableName}` (
+                    `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+                    `parent_id` VARCHAR(50) NULL,
+                    `is_folder` TINYINT(1) NOT NULL DEFAULT 0,
+                    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    FOREIGN KEY (`parent_id`) REFERENCES `{$tableName}` (`id`) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+
+                // Dynamically add columns for active modules if they are missing
+                if (in_array('title', $modules)) {
+                    if (!ccrm_column_exists($pdo, $tableName, 'title')) {
+                        $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `title` VARCHAR(255) NULL");
+                    }
+                }
+                if (in_array('due_date', $modules) || in_array('due date', $modules)) {
+                    if (!ccrm_column_exists($pdo, $tableName, 'due_date')) {
+                        $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `due_date` DATE NULL");
+                    }
+                }
+                if (in_array('file', $modules)) {
+                    if (!ccrm_column_exists($pdo, $tableName, 'file_name')) {
+                        $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `file_name` VARCHAR(255) NULL, ADD COLUMN `file_size` VARCHAR(50) NULL, ADD COLUMN `file_type` VARCHAR(100) NULL, ADD COLUMN `file_path` VARCHAR(255) NULL");
+                    }
+                }
+
+                // If rows data is supplied, synchronize it to this dynamic table
+                if (isset($payload['unifiedEntriesData'][$ueId]) && is_array($payload['unifiedEntriesData'][$ueId])) {
+                    $rows = $payload['unifiedEntriesData'][$ueId];
+                    $stmtRows = $pdo->query("SELECT `id` FROM `{$tableName}`");
+                    $existingRowIds = $stmtRows->fetchAll(PDO::FETCH_COLUMN);
+                    $processedRowIds = [];
+
+                    // Build dynamic INSERT query based on existing columns in the table
+                    foreach ($rows as $row) {
+                        $rowId = $row['id'];
+                        $processedRowIds[] = $rowId;
+
+                        // Check if row already exists
+                        $checkStmt = $pdo->prepare("SELECT COUNT(*) FROM `{$tableName}` WHERE `id` = ?");
+                        $checkStmt->execute([$rowId]);
+                        $rowExists = (int)$checkStmt->fetchColumn() > 0;
+
+                        if ($rowExists) {
+                            // UPDATE query
+                            $updates = [
+                                "`parent_id` = ?",
+                                "`is_folder` = ?"
+                            ];
+                            $params = [
+                                (isset($row['parentId']) && $row['parentId'] !== '') ? $row['parentId'] : null,
+                                ($row['isFolder'] ?? false) ? 1 : 0
+                            ];
+                            if (in_array('title', $modules) && ccrm_column_exists($pdo, $tableName, 'title')) {
+                                $updates[] = "`title` = ?";
+                                $params[] = $row['title'] ?? null;
+                            }
+                            if ((in_array('due_date', $modules) || in_array('due date', $modules)) && ccrm_column_exists($pdo, $tableName, 'due_date')) {
+                                $updates[] = "`due_date` = ?";
+                                $params[] = (isset($row['dueDate']) && $row['dueDate'] !== '') ? $row['dueDate'] : null;
+                            }
+                            if (in_array('file', $modules) && ccrm_column_exists($pdo, $tableName, 'file_name')) {
+                                $updates[] = "`file_name` = ?";
+                                $updates[] = "`file_size` = ?";
+                                $updates[] = "`file_type` = ?";
+                                $updates[] = "`file_path` = ?";
+                                $params[] = $row['fileName'] ?? null;
+                                $params[] = $row['fileSize'] ?? null;
+                                $params[] = $row['fileType'] ?? null;
+                                $params[] = $row['filePath'] ?? null;
+                            }
+                            $params[] = $rowId; // for WHERE id = ?
+                            $updateSql = "UPDATE `{$tableName}` SET " . implode(", ", $updates) . " WHERE `id` = ?";
+                            $pdo->prepare($updateSql)->execute($params);
+                        } else {
+                            // INSERT query
+                            $fields = ["`id`", "`parent_id`", "`is_folder`"];
+                            $placeholders = ["?", "?", "?"];
+                            $params = [
+                                $rowId,
+                                (isset($row['parentId']) && $row['parentId'] !== '') ? $row['parentId'] : null,
+                                ($row['isFolder'] ?? false) ? 1 : 0
+                            ];
+                            if (in_array('title', $modules) && ccrm_column_exists($pdo, $tableName, 'title')) {
+                                $fields[] = "`title`";
+                                $placeholders[] = "?";
+                                $params[] = $row['title'] ?? null;
+                            }
+                            if ((in_array('due_date', $modules) || in_array('due date', $modules)) && ccrm_column_exists($pdo, $tableName, 'due_date')) {
+                                $fields[] = "`due_date`";
+                                $placeholders[] = "?";
+                                $params[] = (isset($row['dueDate']) && $row['dueDate'] !== '') ? $row['dueDate'] : null;
+                            }
+                            if (in_array('file', $modules) && ccrm_column_exists($pdo, $tableName, 'file_name')) {
+                                $fields[] = "`file_name`";
+                                $fields[] = "`file_size`";
+                                $fields[] = "`file_type`";
+                                $fields[] = "`file_path`";
+                                $placeholders[] = "?";
+                                $placeholders[] = "?";
+                                $placeholders[] = "?";
+                                $placeholders[] = "?";
+                                $params[] = $row['fileName'] ?? null;
+                                $params[] = $row['fileSize'] ?? null;
+                                $params[] = $row['fileType'] ?? null;
+                                $params[] = $row['filePath'] ?? null;
+                            }
+                            $insertSql = "INSERT INTO `{$tableName}` (" . implode(", ", $fields) . ") VALUES (" . implode(", ", $placeholders) . ")";
+                            $pdo->prepare($insertSql)->execute($params);
+                        }
+                    }
+
+                    // Delete rows that are not in the payload
+                    $rowsToDelete = array_diff($existingRowIds, $processedRowIds);
+                    if (!empty($rowsToDelete)) {
+                        $delRow = $pdo->prepare("DELETE FROM `{$tableName}` WHERE `id` = ?");
+                        foreach ($rowsToDelete as $rid) {
+                            $delRow->execute([$rid]);
+                        }
+                    }
                 }
             }
         }

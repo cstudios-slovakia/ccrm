@@ -202,3 +202,26 @@ export interface RolePermission {
   };
   defaultNavLayout?: string[]; // Array of active module item IDs in order
 }
+
+export interface UnifiedEntryRegistry {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  modules: string[]; // e.g. ["title", "due_date", "file"]
+  foldersEnabled: boolean;
+  archived: boolean;
+}
+
+export interface UnifiedEntryRow {
+  id: string;
+  parentId: string | null;
+  isFolder: boolean;
+  title?: string;
+  dueDate?: string;
+  fileName?: string;
+  fileSize?: string;
+  fileType?: string;
+  filePath?: string;
+}
+

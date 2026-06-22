@@ -46,6 +46,7 @@ export const translations: Record<Language, Record<string, string>> = {
     // Settings Subtabs
     "settings.category_title": "Preferences Categories",
     "settings.tab.branding": "⚙️ General Config",
+    "settings.tab.unified": "🗂️ Unified Entries",
     "settings.tab.sources": "🚀 Traffic & Categories",
     "settings.tab.states": "🏷️ Pipeline Stages",
     "settings.tab.task_states": "📋 Task States",
@@ -462,6 +463,7 @@ export const translations: Record<Language, Record<string, string>> = {
     // Settings Subtabs
     "settings.category_title": "Kategórie nastavení",
     "settings.tab.branding": "⚙️ Všeobecná konfigurácia",
+    "settings.tab.unified": "🗂️ Unifikované záznamy",
     "settings.tab.sources": "🚀 Zdroje a kategórie",
     "settings.tab.states": "🏷️ Fázy pipeline",
     "settings.tab.task_states": "📋 Stavy úloh",
@@ -876,6 +878,7 @@ export const translations: Record<Language, Record<string, string>> = {
     // Settings Subtabs
     "settings.category_title": "Beállítási kategóriák",
     "settings.tab.branding": "⚙️ Általános beállítások",
+    "settings.tab.unified": "🗂️ Egységes bejegyzések",
     "settings.tab.sources": "🚀 Források és kategóriák",
     "settings.tab.states": "🏷️ Pipeline fázisok",
     "settings.tab.task_states": "📋 Feladat állapotok",

@@ -1,9 +1,9 @@
 import React, { useState } from "react";
-import { LayoutDashboard, ChevronLeft, ChevronRight, Settings, LogOut, TableProperties, Users, FolderOpen, BarChart3, Mail, Brain, PencilLine, Pencil, X, GripVertical, Download, Upload } from "lucide-react";
+import { LayoutDashboard, ChevronLeft, ChevronRight, Settings, LogOut, TableProperties, Users, FolderOpen, BarChart3, Mail, Brain, PencilLine, Pencil, X, GripVertical, Download, Upload, Save, Briefcase, Calendar, ClipboardList, Database, Trophy, Link, MapPin, Tag } from "lucide-react";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { cn } from "../utils/cn";
-import type { UserProfile, RolePermission } from "../types";
+import type { UserProfile, RolePermission, UnifiedEntryRegistry } from "../types";
 
 interface SidebarProps {
   activeTab: string;
@@ -19,6 +19,7 @@ interface SidebarProps {
   roles: RolePermission[];
   canEditNav: boolean;
   onSaveUserLayout: (layout: string[]) => void;
+  unifiedEntries?: UnifiedEntryRegistry[];
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -34,7 +35,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentUser,
   roles,
   canEditNav,
-  onSaveUserLayout
+  onSaveUserLayout,
+  unifiedEntries = []
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(true); // Default collapsed for the minimalist aesthetic
   const sidebarRef = React.useRef<HTMLElement>(null);
@@ -85,8 +87,48 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
+  // Dynamic Unified Entries Items mapping
+  const dynamicUeItems = React.useMemo(() => {
+    return unifiedEntries
+      .filter(ue => !ue.archived)
+      .map(ue => {
+        let IconComponent = FolderOpen;
+        switch (ue.icon) {
+          case "Briefcase": IconComponent = Briefcase; break;
+          case "Calendar": IconComponent = Calendar; break;
+          case "ClipboardList": IconComponent = ClipboardList; break;
+          case "Database": IconComponent = Database; break;
+          case "FolderOpen": IconComponent = FolderOpen; break;
+          case "Trophy": IconComponent = Trophy; break;
+          case "Link": IconComponent = Link; break;
+          case "MapPin": IconComponent = MapPin; break;
+          case "Users": IconComponent = Users; break;
+          case "Tag": IconComponent = Tag; break;
+        }
+        return {
+          id: `ue_${ue.id}`,
+          label: ue.name,
+          icon: IconComponent,
+          isCustomUE: true,
+          customColor: ue.color
+        };
+      });
+  }, [unifiedEntries]);
+
   // Layout resolution logic
-  const defaultSystemLayout = ["dashboard", "overview", "rag_ai", "leads", "clients", "meetings", "files", "email"];
+  const defaultSystemLayout = React.useMemo(() => {
+    return [
+      "dashboard", 
+      "overview", 
+      "rag_ai", 
+      "leads", 
+      "clients", 
+      "meetings", 
+      ...dynamicUeItems.map(item => item.id),
+      "files", 
+      "email"
+    ];
+  }, [dynamicUeItems]);
 
   const userMetadata = React.useMemo(() => {
     if (!currentUser?.metadata_json) return null;
@@ -111,7 +153,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       return userRole.defaultNavLayout;
     }
     return defaultSystemLayout;
-  }, [canEditNav, userMetadata, userRole]);
+  }, [canEditNav, userMetadata, userRole, defaultSystemLayout]);
 
   // Initialize active/hidden items when edit mode starts
   React.useEffect(() => {
@@ -122,7 +164,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       setHiddenItems(hidden);
       setIsCollapsed(false); // Force expand when editing
     }
-  }, [isEditingNav, resolvedLayout]);
+  }, [isEditingNav, resolvedLayout, defaultSystemLayout]);
 
   // Close editing layout if sidebar collapses
   React.useEffect(() => {
@@ -240,16 +282,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
     e.target.value = "";
   };
 
-  const allPossibleItems = [
-    { id: "dashboard", label: systemLanguage === "sk" ? "Panel úloh" : systemLanguage === "hu" ? "Feladat Irányítópult" : "Task Dashboard", icon: LayoutDashboard },
-    { id: "overview", label: getTranslation(systemLanguage, "sidebar.dashboard"), icon: BarChart3 },
-    { id: "rag_ai", label: systemLanguage === "sk" ? "RAG AI Asistent" : systemLanguage === "hu" ? "RAG AI Asszisztens" : "RAG AI Assistant", icon: Brain, isPurple: true },
-    { id: "leads", label: getTranslation(systemLanguage, "sidebar.leads"), icon: TableProperties },
-    { id: "clients", label: getTranslation(systemLanguage, "sidebar.clients"), icon: Users },
-    { id: "meetings", label: getTranslation(systemLanguage, "sidebar.meetings"), icon: PencilLine, isNightBlue: true },
-    { id: "files", label: getTranslation(systemLanguage, "sidebar.files"), icon: FolderOpen },
-    { id: "email", label: systemLanguage === "sk" ? "Pošta" : systemLanguage === "hu" ? "Levelezés" : "Mail Client", icon: Mail }
-  ];
+  const allPossibleItems = React.useMemo(() => {
+    return [
+      { id: "dashboard", label: systemLanguage === "sk" ? "Panel úloh" : systemLanguage === "hu" ? "Feladat Irányítópult" : "Task Dashboard", icon: LayoutDashboard },
+      { id: "overview", label: getTranslation(systemLanguage, "sidebar.dashboard"), icon: BarChart3 },
+      { id: "rag_ai", label: systemLanguage === "sk" ? "RAG AI Asistent" : systemLanguage === "hu" ? "RAG AI Asszisztens" : "RAG AI Assistant", icon: Brain, isPurple: true },
+      { id: "leads", label: getTranslation(systemLanguage, "sidebar.leads"), icon: TableProperties },
+      { id: "clients", label: getTranslation(systemLanguage, "sidebar.clients"), icon: Users },
+      { id: "meetings", label: getTranslation(systemLanguage, "sidebar.meetings"), icon: PencilLine, isNightBlue: true },
+      ...dynamicUeItems,
+      { id: "files", label: getTranslation(systemLanguage, "sidebar.files"), icon: FolderOpen },
+      { id: "email", label: systemLanguage === "sk" ? "Pošta" : systemLanguage === "hu" ? "Levelezés" : "Mail Client", icon: Mail }
+    ];
+  }, [systemLanguage, dynamicUeItems]);
 
   const isItemVisibleInSystem = (id: string) => {
     if (id === "rag_ai") {
@@ -313,11 +358,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
             const isActive = activeTab === item.id || (item.id === "clients" && activeTab.startsWith("client-"));
             const isOver = dragOverIndex === idx;
             return (
-              <button
-                key={item.id}
-                draggable={isEditingNav}
-                onDragStart={(e) => handleDragStart(e, item.id, "active")}
-                onDragEnter={(e) => handleDragEnter(e, idx)}
+              <React.Fragment key={item.id}>
+                {isOver && isEditingNav && (
+                  <div className="w-full h-1 bg-indigo-500 rounded-full my-1 animate-pulse" />
+                )}
+                <button
+                  draggable={isEditingNav}
+                  onDragStart={(e) => handleDragStart(e, item.id, "active")}
+                  onDragEnter={(e) => handleDragEnter(e, idx)}
                 onDragEnd={handleDragEnd}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => handleDrop(e, "active")}
@@ -333,30 +381,38 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   "w-full flex items-center gap-3.5 px-3 py-3 rounded-2xl transition-all duration-200 group text-left relative",
                   isEditingNav
                     ? "bg-slate-50/50 border border-slate-200/80 hover:bg-slate-100/50 cursor-grab active:cursor-grabbing"
-                    : item.isPurple
+                    : item.isCustomUE
                       ? (isActive
-                          ? "bg-purple-600 text-white font-bold shadow-lg shadow-purple-600/30 border border-purple-500/20"
-                          : "text-purple-600 hover:text-purple-700 hover:bg-purple-50/50")
-                      : item.isNightBlue
+                          ? "text-white font-bold"
+                          : "text-slate-450 hover:text-slate-700 hover:bg-slate-100/50")
+                      : item.isPurple
                         ? (isActive
-                            ? "bg-slate-900 text-white font-bold shadow-lg shadow-slate-900/30 border border-slate-800/20"
-                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/50")
-                        : isActive 
-                          ? (item.id === "leads"
-                              ? "bg-blue-600 text-white font-bold shadow-lg shadow-blue-600/30 border border-blue-500/20"
-                              : item.id === "clients"
-                                ? "bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-600/30 border border-emerald-500/20"
-                                : item.id === "files"
-                                  ? "bg-amber-700 text-white font-bold shadow-lg shadow-amber-700/30 border border-amber-600/20"
-                                  : item.id === "overview"
-                                    ? "bg-cyan-600 text-white font-bold shadow-lg shadow-cyan-600/30 border border-cyan-500/20"
-                                    : item.id === "email"
-                                      ? "bg-pink-600 text-white font-bold shadow-lg shadow-pink-600/30 border border-pink-500/20"
-                                      : "bg-orange-500 text-white font-bold shadow-lg shadow-orange-500/30 border border-orange-400/20"
-                              )
-                          : "text-slate-400 hover:text-slate-700 hover:bg-slate-100/50",
+                            ? "bg-purple-600 text-white font-bold shadow-lg shadow-purple-600/30 border border-purple-500/20"
+                            : "text-purple-600 hover:text-purple-700 hover:bg-purple-50/50")
+                        : item.isNightBlue
+                          ? (isActive
+                              ? "bg-slate-900 text-white font-bold shadow-lg shadow-slate-900/30 border border-slate-800/20"
+                              : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/50")
+                          : isActive 
+                            ? (item.id === "leads"
+                                ? "bg-blue-600 text-white font-bold shadow-lg shadow-blue-600/30 border border-blue-500/20"
+                                : item.id === "clients"
+                                  ? "bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-600/30 border border-emerald-500/20"
+                                  : item.id === "files"
+                                    ? "bg-amber-700 text-white font-bold shadow-lg shadow-amber-700/30 border border-amber-600/20"
+                                    : item.id === "overview"
+                                      ? "bg-cyan-600 text-white font-bold shadow-lg shadow-cyan-600/30 border border-cyan-500/20"
+                                      : item.id === "email"
+                                        ? "bg-pink-600 text-white font-bold shadow-lg shadow-pink-600/30 border border-pink-500/20"
+                                        : "bg-orange-500 text-white font-bold shadow-lg shadow-orange-500/30 border border-orange-400/20"
+                                )
+                            : "text-slate-400 hover:text-slate-700 hover:bg-slate-100/50",
                   isOver && "border-2 border-dashed border-indigo-400 bg-indigo-50/40 scale-[0.98]"
                 )}
+                style={(!isEditingNav && isActive && item.isCustomUE) ? { 
+                  backgroundColor: item.customColor,
+                  boxShadow: `0 10px 15px -3px ${item.customColor}4D, 0 4px 6px -4px ${item.customColor}4D`
+                } : undefined}
               >
                 {isEditingNav && (
                   <GripVertical className="h-4 w-4 text-slate-400 shrink-0" />
@@ -366,12 +422,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     "h-5 w-5 shrink-0 transition-transform duration-200",
                     isEditingNav
                       ? "text-slate-550"
-                      : item.isPurple
-                        ? (isActive ? "text-white" : "text-purple-600 group-hover:scale-110")
-                        : item.isNightBlue
-                          ? (isActive ? "text-white" : "text-slate-700 group-hover:scale-110")
-                          : isActive ? "text-white" : "text-slate-400 group-hover:scale-105"
-                  )} 
+                      : item.isCustomUE
+                        ? (isActive ? "text-white" : "group-hover:scale-115")
+                        : item.isPurple
+                          ? (isActive ? "text-white" : "text-purple-600 group-hover:scale-110")
+                          : item.isNightBlue
+                            ? (isActive ? "text-white" : "text-slate-700 group-hover:scale-110")
+                            : isActive ? "text-white" : "text-slate-400 group-hover:scale-105"
+                  )}
+                  style={(!isEditingNav && !isActive && item.isCustomUE) ? { color: item.customColor } : undefined}
                 />
                 
                 {!isCollapsed && (
@@ -379,36 +438,41 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     "text-sm font-heading font-medium tracking-wide",
                     isEditingNav
                       ? "text-slate-700 font-semibold"
-                      : item.isPurple 
-                        ? (isActive ? "text-white font-bold" : "text-purple-600 font-bold")
-                        : item.isNightBlue
-                          ? (isActive ? "text-white font-bold" : "text-slate-800 font-semibold")
-                          : isActive ? "text-white font-bold" : "text-slate-500 font-semibold"
+                      : item.isCustomUE
+                        ? (isActive ? "text-white font-bold" : "text-slate-500 font-semibold group-hover:text-slate-700")
+                        : item.isPurple 
+                          ? (isActive ? "text-white font-bold" : "text-purple-600 font-bold")
+                          : item.isNightBlue
+                            ? (isActive ? "text-white font-bold" : "text-slate-800 font-semibold")
+                            : isActive ? "text-white font-bold" : "text-slate-500 font-semibold"
                   )}>
                     {item.label}
                   </span>
                 )}
               </button>
+            </React.Fragment>
             );
           })}
 
           {/* Collapse/Expand Toggle Button */}
-          <button
-            onClick={() => setIsCollapsed(!isCollapsed)}
-            className="w-full flex items-center gap-3.5 px-3 py-3 rounded-2xl transition-all duration-200 text-slate-400 hover:text-slate-700 hover:bg-slate-100/50 text-left cursor-pointer"
-            aria-label="Toggle Navigation Sidebar"
-          >
-            {isCollapsed ? (
-              <ChevronRight className="h-5 w-5 shrink-0 text-slate-400 animate-pulse" />
-            ) : (
-              <ChevronLeft className="h-5 w-5 shrink-0 text-slate-400" />
-            )}
-            {!isCollapsed && (
-              <span className="text-sm font-heading font-medium tracking-wide">
-                {getTranslation(systemLanguage, "sidebar.collapse")}
-              </span>
-            )}
-          </button>
+          {!isEditingNav && (
+            <button
+              onClick={() => setIsCollapsed(!isCollapsed)}
+              className="w-full flex items-center gap-3.5 px-3 py-3 rounded-2xl transition-all duration-200 text-slate-400 hover:text-slate-700 hover:bg-slate-100/50 text-left cursor-pointer"
+              aria-label="Toggle Navigation Sidebar"
+            >
+              {isCollapsed ? (
+                <ChevronRight className="h-5 w-5 shrink-0 text-slate-400 animate-pulse" />
+              ) : (
+                <ChevronLeft className="h-5 w-5 shrink-0 text-slate-400" />
+              )}
+              {!isCollapsed && (
+                <span className="text-sm font-heading font-medium tracking-wide">
+                  {getTranslation(systemLanguage, "sidebar.collapse")}
+                </span>
+              )}
+            </button>
+          )}
         </nav>
 
         {/* Bottom Pinned Actions Footer */}
@@ -417,22 +481,43 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {canEditNav && (
             <button
               onClick={() => {
-                const nextEditing = !isEditingNav;
-                setIsEditingNav(nextEditing);
-                if (nextEditing) {
+                if (isEditingNav) {
+                  try {
+                    onSaveUserLayout(activeItems);
+                  } catch (err) {
+                    console.error("Failed to save navigation layout", err);
+                  }
+                  setIsEditingNav(false);
+                  setIsCollapsed(true);
+                } else {
+                  setIsEditingNav(true);
                   setIsCollapsed(false);
                 }
               }}
               className={cn(
                 "w-full flex items-center gap-3.5 px-3 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer",
                 isEditingNav
-                  ? "bg-indigo-600 text-white font-bold shadow-md shadow-indigo-600/20"
+                  ? "bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-md shadow-emerald-600/20"
                   : "text-slate-400 hover:text-slate-700 hover:bg-slate-100/50"
               )}
-              title={systemLanguage === "sk" ? "Upraviť štruktúru menu" : "Edit navigation layout"}
+              title={
+                isEditingNav
+                  ? (systemLanguage === "sk" ? "Uložiť rozloženie menu" : systemLanguage === "hu" ? "Elrendezés mentése" : "Save navigation layout")
+                  : (systemLanguage === "sk" ? "Upraviť štruktúru menu" : "Edit navigation layout")
+              }
             >
-              <Pencil className="h-5 w-5 shrink-0 transition-transform group-hover:scale-110" />
-              {!isCollapsed && <span className="text-xs font-semibold tracking-wide">{systemLanguage === "sk" ? "Upraviť menu" : "Edit Navigation"}</span>}
+              {isEditingNav ? (
+                <Save className="h-5 w-5 shrink-0 transition-transform group-hover:scale-110" />
+              ) : (
+                <Pencil className="h-5 w-5 shrink-0 transition-transform group-hover:scale-110" />
+              )}
+              {!isCollapsed && (
+                <span className="text-xs font-semibold tracking-wide">
+                  {isEditingNav
+                    ? (systemLanguage === "sk" ? "Uložiť rozloženie" : systemLanguage === "hu" ? "Elrendezés mentése" : "Save Layout")
+                    : (systemLanguage === "sk" ? "Upraviť menu" : "Edit Navigation")}
+                </span>
+              )}
             </button>
           )}
 

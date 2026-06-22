@@ -3,9 +3,9 @@ import {
   Settings, Save, Database, Trash2, ShieldAlert, Sliders, 
   Globe, Plus, X, Tag, Share2, Users, ShieldCheck, Lock,
   Eye, Pencil, Minus, GripVertical, ArrowLeft, Activity, Clock, CheckSquare,
-  Menu, ArrowUp
+  Menu, ArrowUp, Briefcase, Calendar, ClipboardList, FolderOpen, Trophy, Link, MapPin
 } from "lucide-react";
-import type { UserProfile, RolePermission } from "../types";
+import type { UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow } from "../types";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 
@@ -56,6 +56,13 @@ interface SettingsViewProps {
   setTaskStates: React.Dispatch<React.SetStateAction<string[]>>;
   taskStateColors: Record<string, string>;
   setTaskStateColors: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+
+  unifiedEntries?: UnifiedEntryRegistry[];
+  setUnifiedEntries?: (
+    entries: UnifiedEntryRegistry[] | ((prev: UnifiedEntryRegistry[]) => UnifiedEntryRegistry[]),
+    data?: Record<string, UnifiedEntryRow[]> | ((prev: Record<string, UnifiedEntryRow[]>) => Record<string, UnifiedEntryRow[]>)
+  ) => void;
+  unifiedEntriesData?: Record<string, UnifiedEntryRow[]>;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
@@ -94,7 +101,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   taskStates,
   setTaskStates,
   taskStateColors,
-  setTaskStateColors
+  setTaskStateColors,
+  unifiedEntries = [],
+  setUnifiedEntries,
+  unifiedEntriesData = {}
 }) => {
   const [tempName, setTempName] = React.useState(systemName);
   const [newState, setNewState] = React.useState("");
@@ -106,6 +116,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [newCategory, setNewCategory] = React.useState("");
 
   const [newStateParent, setNewStateParent] = React.useState("");
+
+  // Unified Entries states
+  const [isCreatingUE, setIsCreatingUE] = React.useState(false);
+  const [ueName, setUeName] = React.useState("");
+  const [ueIcon, setUeIcon] = React.useState("Folder");
+  const [ueColor, setUeColor] = React.useState("#3b82f6");
+  const [ueFoldersEnabled, setUeFoldersEnabled] = React.useState(false);
+  const [ueModules, setUeModules] = React.useState<string[]>(["title"]);
 
   const uploadingRoleRef = React.useRef<string | null>(null);
   const roleFileInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -291,7 +309,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // Role creation states
   const [newRoleName, setNewRoleName] = React.useState("");
 
-  const [activeSubTab, setActiveSubTab] = React.useState<"branding" | "managers" | "rbac" | "states" | "sources" | "danger" | "ads" | "api" | "email" | "ai">("branding");
+  const [activeSubTab, setActiveSubTab] = React.useState<"branding" | "managers" | "rbac" | "states" | "sources" | "danger" | "ads" | "api" | "email" | "ai" | "unified">("branding");
 
   React.useEffect(() => {
     if (initialSelectedUserName) {
@@ -1265,9 +1283,86 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }));
   };
 
+  const handleCreateUnifiedEntry = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ueName.trim()) {
+      alert("Name is required");
+      return;
+    }
+    const safeId = ueName.toLowerCase().replace(/[^a-z0-9]/g, "_").replace(/^[^a-z]+/, "") || "ue_" + Date.now();
+    if (unifiedEntries.some(ue => ue.id === safeId)) {
+      alert("A unified entry with this name/id already exists.");
+      return;
+    }
+    if (ueModules.length === 0) {
+      alert("Please select at least one module (Title, Due Date, or File)");
+      return;
+    }
+
+    const newEntry: UnifiedEntryRegistry = {
+      id: safeId,
+      name: ueName.trim(),
+      icon: ueIcon,
+      color: ueColor,
+      modules: ueModules,
+      foldersEnabled: ueFoldersEnabled,
+      archived: false
+    };
+
+    if (setUnifiedEntries) {
+      setUnifiedEntries([...unifiedEntries, newEntry], { ...unifiedEntriesData, [safeId]: [] });
+    }
+
+    // Reset fields
+    setUeName("");
+    setUeIcon("FolderOpen");
+    setUeColor("#3b82f6");
+    setUeFoldersEnabled(false);
+    setUeModules(["title"]);
+    setIsCreatingUE(false);
+  };
+
+  const handleArchiveUnifiedEntry = (ueId: string) => {
+    if (getPermission("general_config") !== "edit") return;
+    if (confirm(
+      userLanguage === "sk"
+        ? "Naozaj chcete archivovať tento unifikovaný záznam? Všetky údaje v tabuľke zostanú zachované."
+        : userLanguage === "hu"
+          ? "Biztosan archiválni szeretné ezt az egységes bejegyzést? Az adatok megmaradnak."
+          : "Are you sure you want to archive this unified entry? The database table and all its data will remain intact."
+    )) {
+      if (setUnifiedEntries) {
+        const updated = unifiedEntries.map(ue => {
+          if (ue.id === ueId) {
+            return { ...ue, archived: true };
+          }
+          return ue;
+        });
+        setUnifiedEntries(updated);
+      }
+    }
+  };
+
+  const getIconComponent = (iconName: string, className?: string) => {
+    switch (iconName) {
+      case "Briefcase": return <Briefcase className={className} />;
+      case "Calendar": return <Calendar className={className} />;
+      case "ClipboardList": return <ClipboardList className={className} />;
+      case "Database": return <Database className={className} />;
+      case "FolderOpen": return <FolderOpen className={className} />;
+      case "Trophy": return <Trophy className={className} />;
+      case "Link": return <Link className={className} />;
+      case "MapPin": return <MapPin className={className} />;
+      case "Users": return <Users className={className} />;
+      case "Tag": return <Tag className={className} />;
+      default: return <FolderOpen className={className} />;
+    }
+  };
+
   // Filter allowed tabs based on permissions
   const allowedTabs = ([
     { id: "branding", label: "⚙️ General Config", permKey: "general_config" as const },
+    { id: "unified", label: "🗂️ Unified Entries", permKey: "general_config" as const },
     { id: "sources", label: "🚀 Traffic & Categories", permKey: "traffic_sources" as const },
     { id: "states", label: "🏷️ Pipeline Stages", permKey: "pipeline_stages" as const },
     { id: "managers", label: "👥 Users & PMs", permKey: "pm_managers" as const },
@@ -1340,6 +1435,272 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <div className="lg:col-span-9">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         
+        {/* TAB: Unified Universal Entries Configuration */}
+        {activeSubTab === "unified" && getPermission("general_config") !== "nothing" && (
+          <>
+            <div className="lg:col-span-8 space-y-6">
+              {renderReadOnlyBanner("general_config")}
+              
+              <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+                  <div className="flex flex-col text-left">
+                    <h3 className="text-sm font-heading font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                      <FolderOpen className="h-4.5 w-4.5 text-indigo-500" />
+                      {userLanguage === "sk" ? "Unifikované univerzálne záznamy" : userLanguage === "hu" ? "Egységes univerzális bejegyzések" : "Unified Universal Entries"}
+                    </h3>
+                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mt-0.5">
+                      {userLanguage === "sk" ? "Definujte a konfigurujte vlastné dátové štruktúry" : userLanguage === "hu" ? "Egyéni adatstruktúrák definiálása és konfigurálása" : "Define and configure custom data structures"}
+                    </p>
+                  </div>
+                  {getPermission("general_config") === "edit" && !isCreatingUE && (
+                    <button
+                      type="button"
+                      onClick={() => setIsCreatingUE(true)}
+                      className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md shadow-indigo-600/20 cursor-pointer"
+                    >
+                      <Plus className="h-4 w-4" />
+                      {userLanguage === "sk" ? "Nový záznam" : "New Entry"}
+                    </button>
+                  )}
+                </div>
+
+                {isCreatingUE && (
+                  <form onSubmit={handleCreateUnifiedEntry} className="p-5 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-5 animate-in fade-in duration-200 text-left">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                        {userLanguage === "sk" ? "Vytvoriť nový záznam" : "Create New Entry Type"}
+                      </h4>
+                      <button
+                        type="button"
+                        onClick={() => setIsCreatingUE(false)}
+                        className="text-slate-450 hover:text-slate-650 transition-colors"
+                      >
+                        <X className="h-4.5 w-4.5" />
+                      </button>
+                    </div>
+
+                    <div className="space-y-4">
+                      {/* Name */}
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
+                          {userLanguage === "sk" ? "Názov záznamu (napr. Projekty)" : "Entry Name (e.g. Projects)"} *
+                        </label>
+                        <input
+                          type="text"
+                          value={ueName}
+                          onChange={(e) => setUeName(e.target.value)}
+                          className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-xs font-semibold focus:outline-none focus:border-indigo-500 transition-all shadow-sm"
+                          placeholder={userLanguage === "sk" ? "Zadajte názov..." : "Enter name..."}
+                          required
+                        />
+                      </div>
+
+                      {/* Icon */}
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
+                          {userLanguage === "sk" ? "Ikona" : "Icon"}
+                        </label>
+                        <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
+                          {["FolderOpen", "Briefcase", "Calendar", "ClipboardList", "Database", "Trophy", "Link", "MapPin", "Users", "Tag"].map((iconName) => {
+                            const isSelected = ueIcon === iconName;
+                            return (
+                              <button
+                                key={iconName}
+                                type="button"
+                                onClick={() => setUeIcon(iconName)}
+                                className={`p-2.5 rounded-xl flex items-center justify-center border transition-all ${
+                                  isSelected 
+                                    ? "bg-indigo-650 text-white border-indigo-650 shadow-sm" 
+                                    : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
+                                }`}
+                                title={iconName}
+                              >
+                                {getIconComponent(iconName, "h-4.5 w-4.5")}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Color */}
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
+                          {userLanguage === "sk" ? "Farba" : "Color"}
+                        </label>
+                        <div className="flex flex-wrap gap-2">
+                          {["#3b82f6", "#ef4444", "#f97316", "#f59e0b", "#10b981", "#14b8a6", "#0ea5e9", "#6366f1", "#8b5cf6", "#ec4899"].map((colorHex) => {
+                            const isSelected = ueColor === colorHex;
+                            return (
+                              <button
+                                key={colorHex}
+                                type="button"
+                                onClick={() => setUeColor(colorHex)}
+                                className="w-8 h-8 rounded-full border border-slate-250 transition-transform relative flex items-center justify-center shrink-0 hover:scale-105"
+                                style={{ backgroundColor: colorHex }}
+                              >
+                                {isSelected && (
+                                  <span className="w-2.5 h-2.5 rounded-full bg-white shadow-sm border border-slate-300" />
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Modules */}
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
+                          {userLanguage === "sk" ? "Aktívne moduly (polia)" : "Active Modules (fields)"}
+                        </label>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                          {[
+                            { id: "title", label: userLanguage === "sk" ? "Titulok / Názov" : "Title / Name" },
+                            { id: "due_date", label: userLanguage === "sk" ? "Termín (Due Date)" : "Due Date" },
+                            { id: "file", label: userLanguage === "sk" ? "Súbor (File)" : "File" }
+                          ].map((mod) => {
+                            const isChecked = ueModules.includes(mod.id);
+                            return (
+                              <label key={mod.id} className="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all text-xs font-semibold cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setUeModules([...ueModules, mod.id]);
+                                    } else {
+                                      setUeModules(ueModules.filter(m => m !== mod.id));
+                                    }
+                                  }}
+                                  className="h-4 w-4 text-indigo-650 focus:ring-indigo-500 rounded border-slate-350 cursor-pointer"
+                                />
+                                <span className="text-slate-700">{mod.label}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Folders */}
+                      <div className="flex items-center justify-between p-3.5 rounded-xl border border-slate-200 bg-white">
+                        <div className="flex flex-col">
+                          <span className="text-xs font-bold text-slate-700">
+                            {userLanguage === "sk" ? "Povoliť priečinky (Folders)" : "Enable Folders"}
+                          </span>
+                          <span className="text-[9px] font-semibold text-slate-400">
+                            {userLanguage === "sk" ? "Umožňuje zoskupovať záznamy do vnorených zložiek" : "Allows nesting entries within grouping folders"}
+                          </span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={ueFoldersEnabled}
+                          onChange={(e) => setUeFoldersEnabled(e.target.checked)}
+                          className="h-5 w-5 text-indigo-650 focus:ring-indigo-500 rounded border-slate-350 cursor-pointer"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end gap-2.5 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsCreatingUE(false)}
+                        className="px-4 py-2 rounded-xl hover:bg-slate-100 text-slate-650 text-xs font-bold uppercase transition-all"
+                      >
+                        {userLanguage === "sk" ? "Zrušiť" : "Cancel"}
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black uppercase transition-all shadow-md shadow-indigo-600/10"
+                      >
+                        {userLanguage === "sk" ? "Uložiť" : "Save"}
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {/* List of existing UUE types */}
+                <div className="space-y-3.5">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-left block">
+                    {userLanguage === "sk" ? "Aktívne databázové typy" : "Active Database Types"}
+                  </span>
+                  
+                  {unifiedEntries.filter(ue => !ue.archived).length === 0 ? (
+                    <div className="border border-slate-200 border-dashed rounded-2xl p-8 text-center text-slate-400">
+                      <span className="text-3xl">🗂️</span>
+                      <p className="text-xs font-bold text-slate-500 mt-2 uppercase tracking-wide">
+                        {userLanguage === "sk" ? "Žiadne aktívne unifikované záznamy" : "No active unified entries"}
+                      </p>
+                      <p className="text-[10px] font-medium text-slate-400 mt-1">
+                        {userLanguage === "sk" ? "Vytvorte nový záznam kliknutím na tlačidlo vyššie." : "Create your first entry schema by clicking the button above."}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {unifiedEntries.filter(ue => !ue.archived).map((ue) => (
+                        <div key={ue.id} className="p-4 rounded-2xl border border-slate-200/80 bg-white flex flex-col justify-between shadow-sm hover:shadow-md transition-all text-left relative group">
+                          <div className="flex items-start gap-3">
+                            <div 
+                              className="p-3.5 rounded-xl text-white flex items-center justify-center shrink-0 shadow-sm"
+                              style={{ backgroundColor: ue.color }}
+                            >
+                              {getIconComponent(ue.icon, "h-5 w-5")}
+                            </div>
+                            <div className="flex flex-col min-w-0">
+                              <span className="text-xs font-black text-slate-800 uppercase tracking-wider truncate">
+                                {ue.name}
+                              </span>
+                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">
+                                {userLanguage === "sk" ? "Moduly: " : "Modules: "}
+                                <span className="text-slate-650 font-semibold">{ue.modules.join(", ")}</span>
+                              </span>
+                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                                {userLanguage === "sk" ? "Zložky: " : "Folders: "}
+                                <span className="text-slate-650 font-semibold">{ue.foldersEnabled ? "Áno" : "Nie"}</span>
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex justify-end gap-2 border-t border-slate-100 pt-3 mt-4">
+                            <button
+                              type="button"
+                              onClick={() => handleArchiveUnifiedEntry(ue.id)}
+                              className="px-2.5 py-1.5 text-[9px] font-black uppercase tracking-wider text-rose-600 hover:bg-rose-50 rounded-lg transition-all flex items-center gap-1 cursor-pointer"
+                              title="Archive entry schema"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                              {userLanguage === "sk" ? "Archivovať" : "Archive"}
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            
+            <div className="lg:col-span-4 space-y-6 text-left">
+              <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass">
+                <h4 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5 pb-3 border-b border-slate-200 mb-3.5">
+                  <ShieldAlert className="h-4.5 w-4.5 text-indigo-500" />
+                  {userLanguage === "sk" ? "Dôležité upozornenie" : "System Information"}
+                </h4>
+                <div className="space-y-3.5 text-[11px] font-medium text-slate-500 leading-relaxed">
+                  <p>
+                    {userLanguage === "sk" 
+                      ? "Vytvorenie unifikovaného záznamu automaticky vytvorí novú tabuľku v relačnej databáze."
+                      : "Creating a unified entry schema automatically instantiates a new table in the database."}
+                  </p>
+                  <p>
+                    {userLanguage === "sk" 
+                      ? "Pokiaľ záznam vymažete/archivujete, samotná tabuľka ani v nej uložené údaje sa neodstránia. Iba sa prestane zobrazovať v hlavnom paneli a menu."
+                      : "Archiving an entry hides it from navigation. The underlying SQL table and data remain untouched."}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
         {/* TAB 1: General Branding Config */}
         {activeSubTab === "branding" && getPermission("general_config") !== "nothing" && (
           <>

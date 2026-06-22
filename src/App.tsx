@@ -11,13 +11,14 @@ import { TaskDashboardView } from "./components/TaskDashboardView";
 import { PersonalSettingsView } from "./components/PersonalSettingsView";
 import { EmailView } from "./components/EmailView";
 import { RagAiView } from "./components/RagAiView";
-import type { Lead, UserProfile, RolePermission, Task } from "./types";
+import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow } from "./types";
 import { VERSION } from "./utils/version";
 import { MeetingRoomView } from "./components/MeetingRoomView";
 import type { MeetingNote } from "./components/MeetingRoomView";
 import { getTranslation } from "./utils/translations";
 import { InstallerWizard } from "./components/InstallerWizard";
 import { RefreshCw } from "lucide-react";
+import { UnifiedEntryView } from "./components/UnifiedEntryView";
 
 function App() {
   const activePushesRef = useRef(0);
@@ -137,6 +138,8 @@ function App() {
   // Initial states set to empty / defaults without localStorage or mockData loaders
   const [leads, setLeads] = useState<Lead[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [unifiedEntries, setUnifiedEntries] = useState<UnifiedEntryRegistry[]>([]);
+  const [unifiedEntriesData, setUnifiedEntriesData] = useState<Record<string, UnifiedEntryRow[]>>({});
 
   const [leadStates, setLeadStates] = useState<string[]>([
     "new", "contacted", "offer sent", "accepted", "rejected"
@@ -337,7 +340,9 @@ function App() {
     nextRoles?: RolePermission[],
     nextIntegrationsConfig?: any,
     nextUsers?: UserProfile[],
-    nextMeetingNotes?: MeetingNote[]
+    nextMeetingNotes?: MeetingNote[],
+    nextUnifiedEntries?: UnifiedEntryRegistry[],
+    nextUnifiedEntriesData?: Record<string, UnifiedEntryRow[]>
   ) => {
     if (!isInstalled) return;
     setIsSyncing(true);
@@ -349,6 +354,8 @@ function App() {
       users: nextUsers || users,
       roles: nextRoles || roles,
       meetingNotes: nextMeetingNotes || meetingNotes,
+      unifiedEntries: nextUnifiedEntries || unifiedEntries,
+      unifiedEntriesData: nextUnifiedEntriesData || unifiedEntriesData,
       settings: {
         systemName,
         systemLanguage,
@@ -385,6 +392,35 @@ function App() {
         setIsSyncing(false);
       }
     }
+  };
+
+  const updateUnifiedEntriesAndSync = (
+    newEntries: UnifiedEntryRegistry[] | ((prev: UnifiedEntryRegistry[]) => UnifiedEntryRegistry[]),
+    newData?: Record<string, UnifiedEntryRow[]> | ((prev: Record<string, UnifiedEntryRow[]>) => Record<string, UnifiedEntryRow[]>)
+  ) => {
+    let resolvedData = unifiedEntriesData;
+    if (newData) {
+      resolvedData = typeof newData === "function" ? newData(unifiedEntriesData) : newData;
+      setUnifiedEntriesData(resolvedData);
+    }
+    setUnifiedEntries(prev => {
+      const nextEntries = typeof newEntries === "function" ? newEntries(prev) : newEntries;
+      pushStateToServer(leads, tasks, roles, integrationsConfig, users, meetingNotes, nextEntries, resolvedData);
+      return nextEntries;
+    });
+  };
+
+  const updateUnifiedEntriesDataAndSync = (
+    ueId: string,
+    updater: UnifiedEntryRow[] | ((prev: UnifiedEntryRow[]) => UnifiedEntryRow[])
+  ) => {
+    setUnifiedEntriesData(prev => {
+      const currentRows = prev[ueId] || [];
+      const nextRows = typeof updater === "function" ? updater(currentRows) : updater;
+      const nextData = { ...prev, [ueId]: nextRows };
+      pushStateToServer(leads, tasks, roles, integrationsConfig, users, meetingNotes, unifiedEntries, nextData);
+      return nextData;
+    });
   };
 
   const updateRolesAndSync = (newRoles: RolePermission[] | ((prev: RolePermission[]) => RolePermission[])) => {
@@ -451,9 +487,14 @@ function App() {
 
   const handleSaveUserLayout = (layout: string[]) => {
     if (!currentUser) return;
-    const currentMeta = typeof currentUser.metadata_json === "string"
-      ? JSON.parse(currentUser.metadata_json || "{}")
-      : (currentUser.metadata_json || {});
+    let currentMeta: any = {};
+    try {
+      currentMeta = typeof currentUser.metadata_json === "string"
+        ? JSON.parse(currentUser.metadata_json || "{}")
+        : (currentUser.metadata_json || {});
+    } catch (e) {
+      console.error("Error parsing user metadata_json", e);
+    }
     const nextMeta = { ...currentMeta, navLayout: layout };
     updateUsersAndSync(prevUsers => prevUsers.map(u => {
       if (u.email === currentUser.email) {
@@ -536,6 +577,12 @@ function App() {
             }
             if (data.meetingNotes && Array.isArray(data.meetingNotes)) {
               setMeetingNotes(data.meetingNotes);
+            }
+            if (data.unifiedEntries && Array.isArray(data.unifiedEntries)) {
+              setUnifiedEntries(data.unifiedEntries);
+            }
+            if (data.unifiedEntriesData) {
+              setUnifiedEntriesData(data.unifiedEntriesData);
             }
             if (data.settings) {
               const s = data.settings;
@@ -623,6 +670,22 @@ function App() {
               setMeetingNotes((prev) => {
                 if (JSON.stringify(data.meetingNotes) !== JSON.stringify(prev)) {
                   return data.meetingNotes;
+                }
+                return prev;
+              });
+            }
+            if (data.unifiedEntries && Array.isArray(data.unifiedEntries)) {
+              setUnifiedEntries((prev) => {
+                if (JSON.stringify(data.unifiedEntries) !== JSON.stringify(prev)) {
+                  return data.unifiedEntries;
+                }
+                return prev;
+              });
+            }
+            if (data.unifiedEntriesData) {
+              setUnifiedEntriesData((prev) => {
+                if (JSON.stringify(data.unifiedEntriesData) !== JSON.stringify(prev)) {
+                  return data.unifiedEntriesData;
                 }
                 return prev;
               });
@@ -747,6 +810,21 @@ function App() {
           dbInfo={dbInfo || undefined}
         />
       );
+    }
+
+    if (activeTab.startsWith("ue_")) {
+      const ueId = activeTab.replace("ue_", "");
+      const ueRegistry = unifiedEntries.find(ue => ue.id === ueId);
+      if (ueRegistry) {
+        return (
+          <UnifiedEntryView
+            registry={ueRegistry}
+            rows={unifiedEntriesData[ueId] || []}
+            setRows={(updater) => updateUnifiedEntriesDataAndSync(ueId, updater)}
+            systemLanguage={userLanguage}
+          />
+        );
+      }
     }
 
     if (activeTab.startsWith("client-")) {
@@ -906,6 +984,9 @@ function App() {
             setTaskStates={setTaskStates}
             taskStateColors={taskStateColors}
             setTaskStateColors={setTaskStateColors}
+            unifiedEntries={unifiedEntries}
+            setUnifiedEntries={updateUnifiedEntriesAndSync}
+            unifiedEntriesData={unifiedEntriesData}
           />
         );
       case "overview":
@@ -1053,6 +1134,7 @@ function App() {
           roles={roles}
           canEditNav={getPermission("nav_edit") === "edit"}
           onSaveUserLayout={handleSaveUserLayout}
+          unifiedEntries={unifiedEntries}
         />
         
         {/* Workspace Area - Add pb-20 on mobile viewports so that the bottom navigation bar never overlaps content */}
