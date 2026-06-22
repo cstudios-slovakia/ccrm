@@ -1081,7 +1081,7 @@ function App() {
             </div>
             <footer className="mt-12 pt-4 border-t border-slate-200/50 flex justify-between items-center text-[10px] text-slate-400 select-none font-semibold uppercase tracking-wider">
               <span>{systemName} CRM &bull; Active Node</span>
-              <span>v{VERSION} "Elderberry"</span>
+              <span>v{VERSION} "Fig Tree"</span>
             </footer>
           </main>
         </div>
