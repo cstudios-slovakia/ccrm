@@ -364,7 +364,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $userId = 'u-' . md5(strtolower(trim($u['email'])));
                 $role = ccrm_normalize_role($u['role'] ?? 'viewer');
 
-                $metaJson = isset($u['metadata_json']) ? $u['metadata_json'] : (isset($u['metadata']) ? json_encode($u['metadata']) : null);
+                $metaJson = isset($u['metadata_json']) ? (is_array($u['metadata_json']) ? json_encode($u['metadata_json']) : $u['metadata_json']) : (isset($u['metadata']) ? json_encode($u['metadata']) : null);
 
                 // Password handling:
                 //  - a new, non-empty, non-hashed password is bcrypt-hashed;

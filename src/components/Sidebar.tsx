@@ -379,8 +379,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     "text-sm font-heading font-medium tracking-wide",
                     isEditingNav
                       ? "text-slate-700 font-semibold"
-                      : item.isPurple ? (isActive ? "text-white font-bold" : "text-purple-600 font-bold") : "",
-                    item.isNightBlue ? (isActive ? "text-white font-bold" : "text-slate-800 font-semibold") : ""
+                      : item.isPurple 
+                        ? (isActive ? "text-white font-bold" : "text-purple-600 font-bold")
+                        : item.isNightBlue
+                          ? (isActive ? "text-white font-bold" : "text-slate-800 font-semibold")
+                          : isActive ? "text-white font-bold" : "text-slate-500 font-semibold"
                   )}>
                     {item.label}
                   </span>
