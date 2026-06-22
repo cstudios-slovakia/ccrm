@@ -1750,6 +1750,35 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                       <div className="w-24 flex justify-end">
                         {getSentimentBadge(m.aiSummary.sentiment)}
                       </div>
+                      
+                      {/* Archive/Unarchive Action Button */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const updated = { ...m, archived: !m.archived };
+                          setMeetingNotes(prev => prev.map(item => item.id === m.id ? updated : item));
+                          if (typeof (window as any).showToast === "function") {
+                            (window as any).showToast(
+                              updated.archived
+                                ? (systemLanguage === "sk" ? "Zápis bol archivovaný" : systemLanguage === "hu" ? "Jegyzet archiválva" : "Note archived")
+                                : (systemLanguage === "sk" ? "Zápis bol obnovený" : systemLanguage === "hu" ? "Jegyzet visszaállítva" : "Note unarchived")
+                            );
+                          }
+                        }}
+                        className={cn(
+                          "shrink-0 w-8 h-8 rounded-xl border flex items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95",
+                          m.archived 
+                            ? "bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100" 
+                            : "bg-slate-50 border-slate-200 text-slate-550 hover:text-slate-800 hover:bg-slate-100"
+                        )}
+                        title={m.archived 
+                          ? (systemLanguage === "sk" ? "Obnoviť z archívu" : systemLanguage === "hu" ? "Visszaállítás" : "Restore from Archive") 
+                          : (systemLanguage === "sk" ? "Archivovať" : systemLanguage === "hu" ? "Archiválás" : "Archive")
+                        }
+                      >
+                        <Archive className="h-4 w-4" />
+                      </button>
                     </div>
                   </div>
                 ))}

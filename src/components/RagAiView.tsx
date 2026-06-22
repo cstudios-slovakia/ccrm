@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { Brain, Send, Bot, User, Sparkles, Database, Check, RotateCcw, Plus, X, FileText, Play, Clock } from "lucide-react";
 import type { Language } from "../utils/translations";
 import { Markdown } from "../utils/markdown";
+import type { Lead } from "../types";
 
 interface Message {
   id: string;
@@ -22,6 +23,7 @@ interface Agent {
 interface RagAiViewProps {
   systemLanguage: Language;
   currentUser?: any;
+  leads?: Lead[];
 }
 
 const DEFAULT_AGENT: Agent = {
@@ -71,7 +73,7 @@ const COLOR_MAP: Record<string, { bg: string; text: string; fill: string; border
   }
 };
 
-export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUser }) => {
+export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUser, leads: _leads }) => {
   const [customAgents, setCustomAgents] = useState<Agent[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<Agent>(DEFAULT_AGENT);
   const [messages, setMessages] = useState<Message[]>([]);

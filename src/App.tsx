@@ -449,6 +449,11 @@ function App() {
     });
   };
 
+  // Expose leads state globally for markdown file name reference lookup
+  useEffect(() => {
+    (window as any).leads = leads;
+  }, [leads]);
+
   // Sync settings when modified (only AFTER the initial database sync is resolved to prevent overwriting with defaults)
   useEffect(() => {
     const syncSettingsToServer = async () => {
@@ -906,7 +911,7 @@ function App() {
         );
       case "rag_ai":
         return (
-          <RagAiView systemLanguage={userLanguage} currentUser={activeUser} />
+          <RagAiView systemLanguage={userLanguage} currentUser={activeUser} leads={leads} />
         );
       case "meetings":
         return (
@@ -1100,7 +1105,7 @@ function App() {
 
       {/* Toast Notification Container */}
       {toast && (
-        <div className="fixed bottom-6 left-6 z-[100] animate-in slide-in-from-bottom duration-300">
+        <div className="fixed bottom-6 right-6 z-[100] animate-in slide-in-from-bottom duration-300">
           <div className="bg-slate-900 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-4 text-xs font-black uppercase tracking-wider border border-slate-800">
             <span>{toast.message}</span>
             {toast.action && (

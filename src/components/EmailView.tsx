@@ -108,6 +108,15 @@ export const EmailView: React.FC<EmailViewProps> = ({
   const [loadingSummaries, setLoadingSummaries] = useState<Record<string, boolean>>({});
   const [actionItemsMap, setActionItemsMap] = useState<Record<string, string[]>>({});
   const [assigningActionItem, setAssigningActionItem] = useState<{ item: string; emailUid: string } | null>(null);
+  const [collapsedSummaries, setCollapsedSummaries] = useState<Record<string, boolean>>({});
+  const [isLargeFont, setIsLargeFont] = useState(false);
+
+  const toggleSummaryCollapse = (uid: string) => {
+    setCollapsedSummaries(prev => ({
+      ...prev,
+      [uid]: !prev[uid]
+    }));
+  };
 
   const [isClientSlideoutOpen, setIsClientSlideoutOpen] = useState(false);
   const [isClosingClient, setIsClosingClient] = useState(false);
@@ -124,6 +133,107 @@ export const EmailView: React.FC<EmailViewProps> = ({
   const [clientFormCity, setClientFormCity] = useState("");
   const [clientFormPhone, setClientFormPhone] = useState("");
   const [clientFormType, setClientFormType] = useState<"person" | "business" | "partner">("person");
+
+  const formatBytes = (bytes: number, decimals = 2) => {
+    if (bytes === 0) return "0 Bytes";
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ["Bytes", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i];
+  };
+
+  const handleDownloadAttachment = async (uid: string, folder: string, att: any) => {
+    try {
+      const res = await fetch(`/api/mail_broker.php?action=get_attachment&folder=${encodeURIComponent(folder)}&uid=${uid}&part=${att.part_num}&name=${encodeURIComponent(att.name)}`, {
+        headers: {
+          "X-User-Email": currentUser.email
+        }
+      });
+      if (!res.ok) throw new Error("Failed to download attachment.");
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = att.name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      if (typeof (window as any).showToast === "function") {
+        (window as any).showToast(err.message || "Failed to download attachment.");
+      }
+    }
+  };
+
+  const handleAddAttachmentToDocs = async (uid: string, folder: string, att: any, matchedClientObj: any) => {
+    try {
+      const eventId = `ev-doc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      if (typeof (window as any).showToast === "function") {
+        (window as any).showToast("Adding attachment to documents database...");
+      }
+      const res = await fetch(`/api/mail_broker.php?action=save_attachment&folder=${encodeURIComponent(folder)}&uid=${uid}&part=${att.part_num}&name=${encodeURIComponent(att.name)}&eventId=${eventId}`, {
+        method: "POST",
+        headers: {
+          "X-User-Email": currentUser.email
+        }
+      });
+      const data = await res.json();
+      if (!data.success) {
+        throw new Error(data.error || "Failed to save attachment.");
+      }
+
+      setLeads((prevLeads: Lead[]) => {
+        const targetLeadId = matchedClientObj ? String(matchedClientObj.id) : "unassigned-docs";
+        const hasUnassigned = prevLeads.some(l => l.id === "unassigned-docs");
+        let baseLeads = prevLeads;
+        if (!hasUnassigned && targetLeadId === "unassigned-docs") {
+          baseLeads = [...prevLeads, {
+            id: "unassigned-docs",
+            name: "Unassigned Documents",
+            city: "",
+            clientType: "person",
+            status: "unassigned-docs",
+            source: "system",
+            owner: "System",
+            value: 0,
+            createdAt: new Date().toISOString().split("T")[0],
+            timeline: []
+          }];
+        }
+
+        return baseLeads.map(lead => {
+          if (lead.id !== targetLeadId) return lead;
+
+          const newEvent = {
+            id: eventId,
+            type: "offer" as const,
+            timestamp: new Date().toISOString().replace("T", " ").substring(0, 16),
+            title: "Email Attachment Saved",
+            content: data.extractedText ? `Saved email attachment: ${data.fileName}\n\n--- Document Content ---\n${data.extractedText}` : `Saved email attachment: ${data.fileName}`,
+            amount: undefined,
+            fileName: data.fileName,
+            fileSize: formatBytes(att.size || 0),
+            fileType: "offer" as const
+          };
+
+          return {
+            ...lead,
+            timeline: [newEvent, ...(lead.timeline || [])]
+          };
+        });
+      });
+
+      if (typeof (window as any).showToast === "function") {
+        (window as any).showToast(`Attachment "${att.name}" successfully added to documents!`);
+      }
+    } catch (err: any) {
+      if (typeof (window as any).showToast === "function") {
+        (window as any).showToast(err.message || "Failed to add attachment to documents.");
+      }
+    }
+  };
 
   const isOpenAiKeySet = useMemo(() => {
     return !!(integrationsConfig?.openAiKey && integrationsConfig.openAiKey.trim() !== "");
@@ -646,7 +756,27 @@ export const EmailView: React.FC<EmailViewProps> = ({
   }, [emails, isThreadedMode, isOpenAiKeySet, threadedEmails, filteredIndividualEmails]);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 select-none h-[calc(100vh-140px)] items-start overflow-hidden animate-slide-up">
+    <div className={`grid grid-cols-1 lg:grid-cols-12 gap-5 select-none h-[calc(100vh-220px)] items-stretch overflow-hidden animate-slide-up email-view-root ${isLargeFont ? 'email-view-large' : ''}`}>
+      <style>{`
+        .email-view-large .text-\\[9px\\] { font-size: 12px !important; }
+        .email-view-large .text-\\[8px\\] { font-size: 11px !important; }
+        .email-view-large .text-\\[7\\.5px\\] { font-size: 10.5px !important; }
+        .email-view-large .text-\\[10px\\] { font-size: 13px !important; }
+        .email-view-large .text-\\[11px\\] { font-size: 14px !important; }
+        .email-view-large .text-xs { font-size: 15px !important; }
+        .email-view-large .text-sm { font-size: 17px !important; }
+        .email-view-large .text-base { font-size: 19px !important; }
+        .email-view-large .text-lg { font-size: 21px !important; }
+        .email-view-large .text-xl { font-size: 23px !important; }
+        .email-view-large .text-2xl { font-size: 27px !important; }
+        .email-view-large h3 { font-size: 17px !important; }
+        .email-view-large h4 { font-size: 13px !important; }
+        .email-view-large h5 { font-size: 12px !important; }
+        .email-view-large p { font-size: 14px !important; }
+        .email-view-large button { font-size: 13px !important; }
+        .email-view-large input { font-size: 14px !important; }
+        .email-view-large select { font-size: 14px !important; }
+      `}</style>
       {/* Notifications banner */}
       {notification && (
         <div className={`fixed bottom-4 right-4 z-50 px-5 py-3.5 rounded-2xl flex items-center gap-3 border shadow-2xl ${
@@ -658,7 +788,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       )}
 
       {/* COLUMN 1: Headers List */}
-      <div className="lg:col-span-5 glass-panel p-4 rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-full">
+      <div className="lg:col-span-5 glass-panel p-4 rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-full max-h-full overflow-hidden">
         {/* Search & Filter Header */}
         <div className="space-y-3 pb-3 border-b border-slate-150">
           <div className="flex gap-2">
@@ -697,6 +827,18 @@ export const EmailView: React.FC<EmailViewProps> = ({
               </button>
             </div>
             
+            {/* Font Size Toggle Switch */}
+            <div className="flex items-center gap-2 select-none border-l border-slate-200 pl-3.5 mr-1">
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Font size</span>
+              <button
+                type="button"
+                onClick={() => setIsLargeFont(prev => !prev)}
+                className="px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-[9px] font-black text-slate-700 uppercase tracking-wider transition-all shadow-2xs flex items-center gap-1 cursor-pointer select-none"
+              >
+                <span>{isLargeFont ? "A++ (Big)" : "A- (Small)"}</span>
+              </button>
+            </div>
+
             {/* Threaded Toggle Switch */}
             <div className="flex items-center gap-2 select-none border-l border-slate-200 pl-3.5">
               <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Flow Mode</span>
@@ -875,7 +1017,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       </div>
 
       {/* COLUMN 2: Mail Detail / Conversation flow Detail Pane */}
-      <div className="lg:col-span-7 glass-panel p-4 rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-full overflow-hidden">
+      <div className="lg:col-span-7 glass-panel p-4 rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-full max-h-full overflow-hidden">
         {isThreadedMode ? (
           /* Render Thread Flow */
           activeThread ? (
@@ -972,22 +1114,31 @@ export const EmailView: React.FC<EmailViewProps> = ({
                   <div className="p-3.5 bg-purple-50/60 border border-purple-250 rounded-2xl flex flex-col gap-2.5 text-left animate-fade-in shadow-xs mb-1">
                     <div className="flex items-start gap-2.5">
                       <Brain className="h-4.5 w-4.5 text-purple-650 shrink-0 mt-0.5" />
-                      <div className="space-y-0.5">
-                        <h4 className="text-[10px] font-black text-purple-950 uppercase tracking-tight">AI Flow Summary</h4>
-                        {loadingSummaries[`thread-${activeThread.id}`] ? (
-                          <div className="flex items-center gap-1.5 py-1">
-                            <Loader2 className="h-3 w-3 animate-spin text-purple-600" />
-                            <span className="text-[10px] text-purple-700 font-bold uppercase tracking-wider">Analyzing conversation flow...</span>
-                          </div>
-                        ) : summaries[`thread-${activeThread.id}`] ? (
-                          <p className="text-[11.5px] text-purple-850 font-bold leading-relaxed">{summaries[`thread-${activeThread.id}`]}</p>
-                        ) : (
-                          <p className="text-[10.5px] text-purple-500 italic">No summary generated yet.</p>
+                      <div className="space-y-0.5 flex-1">
+                        <div className="flex justify-between items-center cursor-pointer select-none" onClick={() => toggleSummaryCollapse(`thread-${activeThread.id}`)}>
+                          <h4 className="text-[10px] font-black text-purple-950 uppercase tracking-tight">AI Flow Summary</h4>
+                          <span className="text-purple-600 hover:text-purple-800 transition-colors">
+                            {collapsedSummaries[`thread-${activeThread.id}`] ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                          </span>
+                        </div>
+                        {!collapsedSummaries[`thread-${activeThread.id}`] && (
+                          <>
+                            {loadingSummaries[`thread-${activeThread.id}`] ? (
+                              <div className="flex items-center gap-1.5 py-1">
+                                <Loader2 className="h-3 w-3 animate-spin text-purple-600" />
+                                <span className="text-[10px] text-purple-700 font-bold uppercase tracking-wider">Analyzing conversation flow...</span>
+                              </div>
+                            ) : summaries[`thread-${activeThread.id}`] ? (
+                              <p className="text-[11.5px] text-purple-850 font-bold leading-relaxed">{summaries[`thread-${activeThread.id}`]}</p>
+                            ) : (
+                              <p className="text-[10.5px] text-purple-500 italic">No summary generated yet.</p>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>
                     
-                    {actionItemsMap[`thread-${activeThread.id}`] && actionItemsMap[`thread-${activeThread.id}`].length > 0 && (
+                    {!collapsedSummaries[`thread-${activeThread.id}`] && actionItemsMap[`thread-${activeThread.id}`] && actionItemsMap[`thread-${activeThread.id}`].length > 0 && (
                       <div className="mt-2 pt-2.5 border-t border-purple-200/50 space-y-2">
                         <h5 className="text-[9px] font-black uppercase text-purple-955 tracking-wider flex items-center gap-1">
                           <CheckCircle2 className="h-3 w-3 text-purple-600" />
@@ -1103,23 +1254,32 @@ export const EmailView: React.FC<EmailViewProps> = ({
                           {isOpenAiKeySet && bodyObj && (
                             <div className="mb-3.5 p-3 bg-purple-50/60 border border-purple-200 rounded-xl flex flex-col gap-2.5 text-left animate-fade-in shadow-2xs">
                               <div className="flex items-start gap-2">
-                                <Brain className="h-4.5 w-4.5 text-purple-600 shrink-0 mt-0.5" />
-                                <div className="space-y-0.5">
-                                  <h4 className="text-[9px] font-black text-purple-950 uppercase tracking-tight">AI Mail Summary</h4>
-                                  {loadingSummaries[email.uid] ? (
-                                    <div className="flex items-center gap-1.5 py-0.5">
-                                      <Loader2 className="h-3 w-3 animate-spin text-purple-500" />
-                                      <span className="text-[9px] text-purple-600 font-bold uppercase tracking-wider">Analyzing email content...</span>
-                                    </div>
-                                  ) : summaries[email.uid] ? (
-                                    <p className="text-[10px] text-purple-850 font-bold leading-normal">{summaries[email.uid]}</p>
-                                  ) : (
-                                    <p className="text-[9.5px] text-purple-400 italic">No summary available.</p>
+                                <Brain className="h-4.5 w-4.5 text-purple-650 shrink-0 mt-0.5" />
+                                <div className="space-y-0.5 flex-1">
+                                  <div className="flex justify-between items-center cursor-pointer select-none" onClick={() => toggleSummaryCollapse(email.uid)}>
+                                    <h4 className="text-[9px] font-black text-purple-950 uppercase tracking-tight">AI Mail Summary</h4>
+                                    <span className="text-purple-600 hover:text-purple-800 transition-colors">
+                                      {collapsedSummaries[email.uid] ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
+                                    </span>
+                                  </div>
+                                  {!collapsedSummaries[email.uid] && (
+                                    <>
+                                      {loadingSummaries[email.uid] ? (
+                                        <div className="flex items-center gap-1.5 py-0.5">
+                                          <Loader2 className="animate-spin text-purple-500" size={16} />
+                                          <span className="text-[9px] text-purple-600 font-bold uppercase tracking-wider">Analyzing email content...</span>
+                                        </div>
+                                      ) : summaries[email.uid] ? (
+                                        <p className="text-[10px] text-purple-850 font-bold leading-normal">{summaries[email.uid]}</p>
+                                      ) : (
+                                        <p className="text-[9.5px] text-purple-400 italic">No summary available.</p>
+                                      )}
+                                    </>
                                   )}
                                 </div>
                               </div>
 
-                              {actionItemsMap[email.uid] && actionItemsMap[email.uid].length > 0 && (
+                              {!collapsedSummaries[email.uid] && actionItemsMap[email.uid] && actionItemsMap[email.uid].length > 0 && (
                                 <div className="mt-1.5 pt-2 border-t border-purple-200/50 space-y-2">
                                   <h5 className="text-[8px] font-black uppercase text-purple-955 tracking-wider flex items-center gap-1">
                                     <CheckCircle2 className="h-2.5 w-2.5 text-purple-600" />
@@ -1182,6 +1342,37 @@ export const EmailView: React.FC<EmailViewProps> = ({
                               )}
                             </div>
                           )}
+                          {bodyObj && bodyObj.attachments && bodyObj.attachments.length > 0 && (
+                            <div className="mb-3.5 p-3 bg-amber-50/40 border border-amber-250 rounded-xl flex flex-col gap-2 text-left animate-fade-in shadow-2xs">
+                              <h5 className="text-[9px] font-black uppercase text-amber-900 tracking-wider flex items-center gap-1">
+                                <FileText className="h-3 w-3 text-amber-700" />
+                                Attachments ({bodyObj.attachments.length})
+                              </h5>
+                              <div className="flex flex-wrap gap-2">
+                                {bodyObj.attachments.map((att: any, attIdx: number) => {
+                                  const msgLead = leads.find(l => l.email && l.email.toLowerCase() === email.from.address.toLowerCase()) || null;
+                                  return (
+                                    <div key={attIdx} className="flex items-center gap-2 px-3 py-1.5 bg-white border border-amber-200 rounded-xl text-[10px] font-bold text-slate-800 shadow-3xs">
+                                      <span className="truncate max-w-[150px]">{att.name} ({formatBytes(att.size)})</span>
+                                      <button
+                                        onClick={() => handleDownloadAttachment(email.uid, email.isSent ? 'Sent' : activeFolder, att)}
+                                        className="text-amber-700 hover:text-amber-900 font-extrabold uppercase text-[8px] cursor-pointer"
+                                      >
+                                        Download
+                                      </button>
+                                      <span className="text-slate-350">|</span>
+                                      <button
+                                        onClick={() => handleAddAttachmentToDocs(email.uid, email.isSent ? 'Sent' : activeFolder, att, msgLead)}
+                                        className="text-emerald-700 hover:text-emerald-900 font-extrabold uppercase text-[8px] cursor-pointer"
+                                      >
+                                        Add to Docs
+                                      </button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
                           {isLoadingDetail && !bodyObj ? (
                             <div className="flex items-center justify-center py-6 gap-2 text-slate-400">
                               <Loader2 className="animate-spin text-pink-500" size={16} />
@@ -1199,7 +1390,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                         font-family: system-ui, -apple-system, sans-serif;
                                         color: #1e293b;
                                         line-height: 1.5;
-                                        font-size: 12.5px;
+                                        font-size: ${isLargeFont ? '15.5px' : '12.5px'};
                                         margin: 0;
                                         padding: 4px;
                                       }
@@ -1258,7 +1449,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
             const bodyObj = threadBodies[selectedEmail.uid];
             
             return (
-              <div className="h-full flex flex-col justify-between">
+              <div className="h-full flex flex-col justify-between overflow-hidden">
                 {/* Header */}
                 <div className="border-b border-slate-150 pb-3 flex items-center justify-between gap-3 shrink-0">
                   <div className="text-left">
@@ -1311,7 +1502,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                         onClick={() => {
                           window.location.hash = `client-${encodeURIComponent(matchedClient.name)}`;
                         }}
-                        className="px-3 py-1.5 bg-emerald-650 hover:bg-emerald-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-sm cursor-pointer"
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-sm cursor-pointer"
                       >
                         Open Client
                       </button>
@@ -1349,22 +1540,31 @@ export const EmailView: React.FC<EmailViewProps> = ({
                   <div className="mt-3 p-3.5 bg-purple-50/60 border border-purple-250 rounded-2xl flex flex-col gap-2.5 text-left animate-fade-in shadow-xs">
                     <div className="flex items-start gap-2.5">
                       <Brain className="h-4.5 w-4.5 text-purple-650 shrink-0 mt-0.5" />
-                      <div className="space-y-0.5">
-                        <h4 className="text-[10px] font-black text-purple-950 uppercase tracking-tight">AI Mail Summary</h4>
-                        {loadingSummaries[selectedEmail.uid] ? (
-                          <div className="flex items-center gap-1.5 py-1">
-                            <Loader2 className="h-3 w-3 animate-spin text-purple-600" />
-                            <span className="text-[10px] text-purple-700 font-bold uppercase tracking-wider">Analyzing email content...</span>
-                          </div>
-                        ) : summaries[selectedEmail.uid] ? (
-                          <p className="text-[11px] text-purple-850 font-bold leading-relaxed">{summaries[selectedEmail.uid]}</p>
-                        ) : (
-                          <p className="text-[10.5px] text-purple-500 italic">No summary available.</p>
+                      <div className="space-y-0.5 flex-1">
+                        <div className="flex justify-between items-center cursor-pointer select-none" onClick={() => toggleSummaryCollapse(selectedEmail.uid)}>
+                          <h4 className="text-[10px] font-black text-purple-955 uppercase tracking-tight">AI Mail Summary</h4>
+                          <span className="text-purple-650 hover:text-purple-855 transition-colors">
+                            {collapsedSummaries[selectedEmail.uid] ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                          </span>
+                        </div>
+                        {!collapsedSummaries[selectedEmail.uid] && (
+                          <>
+                            {loadingSummaries[selectedEmail.uid] ? (
+                              <div className="flex items-center gap-1.5 py-1">
+                                <Loader2 className="h-3 w-3 animate-spin text-purple-600" />
+                                <span className="text-[10px] text-purple-700 font-bold uppercase tracking-wider">Analyzing email content...</span>
+                              </div>
+                            ) : summaries[selectedEmail.uid] ? (
+                              <p className="text-[11px] text-purple-850 font-bold leading-relaxed">{summaries[selectedEmail.uid]}</p>
+                            ) : (
+                              <p className="text-[10.5px] text-purple-500 italic">No summary available.</p>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>
 
-                    {actionItemsMap[selectedEmail.uid] && actionItemsMap[selectedEmail.uid].length > 0 && (
+                    {!collapsedSummaries[selectedEmail.uid] && actionItemsMap[selectedEmail.uid] && actionItemsMap[selectedEmail.uid].length > 0 && (
                       <div className="mt-2 pt-2.5 border-t border-purple-200/50 space-y-2">
                         <h5 className="text-[9px] font-black uppercase text-purple-955 tracking-wider flex items-center gap-1">
                           <CheckCircle2 className="h-3 w-3 text-purple-600" />
@@ -1427,6 +1627,37 @@ export const EmailView: React.FC<EmailViewProps> = ({
                   </div>
                 )}
 
+                {bodyObj && bodyObj.attachments && bodyObj.attachments.length > 0 && (
+                  <div className="mt-3 p-3.5 bg-amber-50/40 border border-amber-250 rounded-2xl flex flex-col gap-2 text-left animate-fade-in shadow-xs">
+                    <h5 className="text-[9px] font-black uppercase text-amber-900 tracking-wider flex items-center gap-1">
+                      <FileText className="h-3.5 w-3.5 text-amber-700" />
+                      Attachments ({bodyObj.attachments.length})
+                    </h5>
+                    <div className="flex flex-wrap gap-2">
+                      {bodyObj.attachments.map((att: any, attIdx: number) => {
+                        return (
+                          <div key={attIdx} className="flex items-center gap-2 px-3 py-1.5 bg-white border border-amber-200 rounded-xl text-[10px] font-bold text-slate-800 shadow-2xs">
+                            <span className="truncate max-w-[200px]">{att.name} ({formatBytes(att.size)})</span>
+                            <button
+                              onClick={() => handleDownloadAttachment(selectedEmail.uid, selectedEmail.isSent ? 'Sent' : activeFolder, att)}
+                              className="text-amber-700 hover:text-amber-900 font-extrabold uppercase text-[8px] cursor-pointer"
+                            >
+                              Download
+                            </button>
+                            <span className="text-slate-355">|</span>
+                            <button
+                              onClick={() => handleAddAttachmentToDocs(selectedEmail.uid, selectedEmail.isSent ? 'Sent' : activeFolder, att, matchedClient)}
+                              className="text-emerald-700 hover:text-emerald-900 font-extrabold uppercase text-[8px] cursor-pointer"
+                            >
+                              Add to Docs
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* parsed email iframe preview */}
                 <div className="flex-1 overflow-y-auto py-4">
                   {bodyObj ? (
@@ -1442,7 +1673,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                 color: #0f172a;
                                 background-color: transparent;
                                 line-height: 1.6;
-                                font-size: 13px;
+                                font-size: ${isLargeFont ? '16px' : '13px'};
                               }
                               a { color: #db2777; text-decoration: none; }
                               a:hover { text-decoration: underline; }

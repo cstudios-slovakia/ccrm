@@ -257,7 +257,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // RAG from meeting notes
     try {
-        $notes_stmt = $pdo->query("SELECT `id`, `title`, `notes`, `lead_name`, `ai_summary_json` FROM `meeting_notes` LIMIT 100");
+        $notes_stmt = $pdo->query("SELECT `id`, `title`, `notes`, `lead_name`, `ai_summary_json` FROM `meeting_notes` WHERE (`archived` = 0 OR `archived` IS NULL) LIMIT 100");
         $meeting_notes_all = $notes_stmt->fetchAll(PDO::FETCH_ASSOC);
         foreach ($meeting_notes_all as $mn) {
             $matches = false;
@@ -301,6 +301,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!empty($summaryText)) {
                 $block .= "- AI Summary: " . $summaryText . "\n";
             }
+            
+            $context_blocks[] = [
+                'text' => $block,
+                'is_match' => $matches
+            ];
+        }
+    } catch (\Exception $ex) {
+        // Fallback
+    }
+
+    // RAG from received emails
+    try {
+        $email_db = $ragPdo ?: $pdo;
+        $emails_stmt = $email_db->query("SELECT `subject`, `sender`, `recipient`, `body`, `received_at` FROM `rag_emails` LIMIT 100");
+        $rag_emails_all = $emails_stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rag_emails_all as $re) {
+            $matches = false;
+            
+            if (mb_strpos(mb_strtolower($re['subject']), $normalized_query) !== false ||
+                mb_strpos(mb_strtolower($re['sender']), $normalized_query) !== false ||
+                mb_strpos(mb_strtolower($re['body']), $normalized_query) !== false) {
+                $matches = true;
+            }
+            
+            $block = "Received Email Profile:\n";
+            $block .= "- Subject: " . $re['subject'] . "\n";
+            $block .= "- From: " . $re['sender'] . "\n";
+            $block .= "- To: " . $re['recipient'] . "\n";
+            $block .= "- Received At: " . $re['received_at'] . "\n";
+            $block .= "- Content:\n" . $re['body'] . "\n";
             
             $context_blocks[] = [
                 'text' => $block,

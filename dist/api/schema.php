@@ -200,6 +200,21 @@ if (!function_exists('ccrm_schema_statements')) {
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               PRIMARY KEY (`user_email`, `folder`, `email_uid`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // RAG Emails Cache
+            "CREATE TABLE IF NOT EXISTS `rag_emails` (
+              `user_email` VARCHAR(150) NOT NULL,
+              `folder` VARCHAR(100) NOT NULL,
+              `email_uid` VARCHAR(150) NOT NULL,
+              `subject` VARCHAR(255) NOT NULL,
+              `sender` VARCHAR(255) NOT NULL,
+              `recipient` VARCHAR(255) NOT NULL,
+              `body` LONGTEXT NOT NULL,
+              `received_at` DATETIME NOT NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (`user_email`, `folder`, `email_uid`),
+              INDEX idx_rag_email_received (`received_at`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
         ];
     }
 

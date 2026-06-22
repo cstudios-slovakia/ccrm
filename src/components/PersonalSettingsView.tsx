@@ -112,6 +112,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
 
     setTimeout(() => {
       onSync();
+      setPassword("");
       (window as any).showToast(userLanguage === "sk" ? "Profil bol úspešne aktualizovaný!" : "Profile updated successfully!");
     }, 100);
   };

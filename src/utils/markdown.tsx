@@ -1,4 +1,85 @@
 import React from "react";
+import { FileText } from "lucide-react";
+
+export const FilePill: React.FC<{ fileName: string }> = ({ fileName }) => {
+  const handlePillClick = () => {
+    const leads = (window as any).leads;
+    let foundEvent = null;
+    if (leads && Array.isArray(leads)) {
+      for (const lead of leads) {
+        if (lead.timeline) {
+          const ev = lead.timeline.find(
+            (e: any) => e.fileName === fileName || (e.fileName && e.fileName.toLowerCase() === fileName.toLowerCase())
+          );
+          if (ev) {
+            foundEvent = ev;
+            break;
+          }
+        }
+      }
+    }
+
+    if (foundEvent) {
+      const url = `/uploads/${foundEvent.id}_${foundEvent.fileName}`;
+      const ext = foundEvent.fileName.split('.').pop()?.toLowerCase() || '';
+      const isShowable = ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'svg', 'webp', 'txt'].includes(ext);
+
+      if (isShowable && (window as any).previewFile) {
+        (window as any).previewFile(url, foundEvent.fileName);
+      } else {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = foundEvent.fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+    } else {
+      if (typeof (window as any).showToast === "function") {
+        (window as any).showToast(`File "${fileName}" not registered in database`);
+      }
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handlePillClick}
+      className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 hover:border-indigo-300 text-indigo-700 hover:text-indigo-800 text-[10.5px] font-black uppercase tracking-wide transition-all cursor-pointer hover:scale-[1.02] active:scale-95 mx-1 my-0.5 select-none"
+    >
+      <FileText className="h-3 w-3 text-indigo-500" />
+      <span>{fileName}</span>
+    </button>
+  );
+};
+
+export const renderTextWithFilePills = (text: string): React.ReactNode => {
+  const parts: React.ReactNode[] = [];
+  let index = 0;
+  
+  // Match standard filenames like Receipt-2723-3177-3915.pdf
+  const fileRegex = /\b([\w\-_\.]+\.(?:pdf|png|jpe?g|gif|svg|webp|docx?|xlsx?|pptx?|txt|csv|zip))\b/gi;
+  let match;
+  
+  while ((match = fileRegex.exec(text)) !== null) {
+    if (match.index > index) {
+      parts.push(text.substring(index, match.index));
+    }
+    
+    const fileName = match[1];
+    parts.push(
+      <FilePill key={`file-pill-${match.index}`} fileName={fileName} />
+    );
+    
+    index = fileRegex.lastIndex;
+  }
+  
+  if (index < text.length) {
+    parts.push(text.substring(index));
+  }
+  
+  return parts.length > 0 ? parts : text;
+};
 
 // Safe, lightweight utility to convert basic markdown string into React elements
 export const parseMarkdown = (text: string): React.ReactNode[] => {
@@ -222,7 +303,7 @@ const parseInlineStyles = (text: string): React.ReactNode => {
   while ((match = inlineRegex.exec(text)) !== null) {
     // Add preceding plain text
     if (match.index > index) {
-      parts.push(text.substring(index, match.index));
+      parts.push(renderTextWithFilePills(text.substring(index, match.index)));
     }
 
     if (match[1]) {
@@ -241,10 +322,10 @@ const parseInlineStyles = (text: string): React.ReactNode => {
 
   // Add remaining plain text
   if (index < text.length) {
-    parts.push(text.substring(index));
+    parts.push(renderTextWithFilePills(text.substring(index)));
   }
 
-  return parts.length > 0 ? parts : text;
+  return parts.length > 0 ? parts : renderTextWithFilePills(text);
 };
 
 interface MarkdownProps {

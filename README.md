@@ -3,42 +3,78 @@
 CCRM is a React + TypeScript + Vite single-page CRM with a small PHP/MySQL
 backend, distributed as an updatable Composer package.
 
-## Installation (as a Composer package)
+## Installation & Git Integration Tutorial
 
+This guide walks you through setting up a host PHP application, integrating CCRM via Composer, and configuring your Git repository to ensure smooth updates without exposing secrets.
+
+### Step 1: Initialize Git in your Host Project
+If you are starting a new project, initialize Git in your project root:
+```bash
+git init
+```
+
+### Step 2: Configure Composer for the Repository
+To tell Composer where to find the `cstudios-slovakia/ccrm` package, add the Git VCS repository configuration to your host project's `composer.json` (create one with `composer init` if it does not exist yet):
+
+```json
+{
+    "name": "your-company/your-project",
+    "repositories": [
+        {
+            "type": "vcs",
+            "url": "https://github.com/cstudios-slovakia/ccrm.git"
+        }
+    ],
+    "require": {}
+}
+```
+
+### Step 3: Install the CCRM Package
+Run the following command to download the package and run the auto-installation hook:
 ```bash
 composer require cstudios-slovakia/ccrm
 ```
 
-On `composer install` / `composer update` the bundled Composer plugin
-(`CCRM\ComposerPlugin`) publishes the compiled app + PHP API from the package's
-`dist/` into your project's **web document root**, then applies idempotent
-database migrations.
+On `composer install` or `composer update`, the bundled plugin (`CCRM\ComposerPlugin`) automatically:
+1. Copies the pre-compiled React frontend and PHP API files from the package's `dist/` directory into your project's **web document root**.
+2. Applies idempotent database migrations.
 
-### Where it publishes
+### Step 4: Configure the Installation Destination (Optional)
+By default, CCRM auto-detects standard web directories like `public`, `web`, `public_html`, etc. If you want to specify a custom target directory (for instance, a subfolder), configure it in your `composer.json` under `extra`:
 
-The web root is resolved in this order:
+```json
+{
+    "extra": {
+        "ccrm-install-dir": "public/crm"
+    }
+}
+```
+*Alternatively, you can specify the absolute target path by setting the `CCRM_INSTALL_DIR` environment variable.*
 
-1. `CCRM_INSTALL_DIR` environment variable (absolute path).
-2. `extra.ccrm-install-dir` in your project's `composer.json` (path relative to
-   the project root — e.g. `"web"` for Craft/Symfony or `"web/crm"` for a
-   subfolder install). The directory is created if missing.
-3. Auto-detection of a conventional docroot: `web`, `public`, `public_html`,
-   `httpdocs`, `htdocs`, `www`.
-4. The project root (last resort).
+### Step 5: Configure Git Ignored Files
+Because CCRM generates dynamic local configuration files and stores uploaded media on the host server, you must add them to your host project's `.gitignore` file to avoid committing credentials:
 
-Your real `config.php` is **never overwritten** by updates, so database
-credentials survive `composer update`.
+```gitignore
+# Ignore CCRM environment & database configuration
+public/config.php
+public/api_key.txt
 
-### First run
+# Ignore user media uploads
+public/uploads/
 
-Open the published app in a browser. If `config.php` does not yet exist you get
-the installation wizard (`api/setup.php`), which tests the DB connection, writes
-`config.php`, creates the schema, and creates your administrator account
-(passwords are stored as bcrypt hashes). The wizard is disabled once installed.
+# Standard composer and node directories
+vendor/
+node_modules/
+```
 
-A shipped `.htaccess` sets `DirectoryIndex index.html` so Apache serves the app
-instead of any default `index.php` (e.g. a shared-host parking page), and denies
-web access to `config.php` / secrets.
+### Step 6: Run the Web Setup Wizard
+1. Open your host application URL in a web browser (e.g. `http://localhost/` or the configured subfolder path).
+2. The CCRM setup wizard will automatically display.
+3. Enter your MySQL database credentials (host, port, username, password, database name).
+4. Follow the prompt to either **Seed with Demo Data** (recommended for testing/demos) or **Start Fresh**.
+5. Create your system administrator account.
+
+Once completed, the wizard writes `config.php` locally and disables itself. Future updates via `composer update` will preserve this configuration file automatically!
 
 ## Security notes
 

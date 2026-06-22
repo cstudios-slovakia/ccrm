@@ -1,4 +1,5 @@
 <?php
+ini_set('display_errors', '0');
 require_once __DIR__ . '/auth.php';
 
 header('Content-Type: application/json');
@@ -129,17 +130,37 @@ try {
             echo json_encode(['success' => true]);
             break;
 
+        case 'get_attachment':
+            $uid = isset($_GET['uid']) ? $_GET['uid'] : '';
+            $folder = isset($_GET['folder']) ? $_GET['folder'] : 'INBOX';
+            $partNum = isset($_GET['part']) ? $_GET['part'] : '';
+            $name = isset($_GET['name']) ? $_GET['name'] : 'attachment';
+            if (empty($uid) || empty($partNum)) {
+                throw new Exception('Missing parameters.');
+            }
+            serve_imap_attachment($emailSettings, $folder, $uid, $partNum, $name);
+            exit;
+
+        case 'save_attachment':
+            $uid = isset($_GET['uid']) ? $_GET['uid'] : '';
+            $folder = isset($_GET['folder']) ? $_GET['folder'] : 'INBOX';
+            $partNum = isset($_GET['part']) ? $_GET['part'] : '';
+            $name = isset($_GET['name']) ? $_GET['name'] : 'attachment';
+            $eventId = isset($_GET['eventId']) ? preg_replace('/[^a-zA-Z0-9_]/', '', $_GET['eventId']) : '';
+            if (empty($uid) || empty($partNum) || empty($eventId)) {
+                throw new Exception('Missing parameters.');
+            }
+            $result = save_imap_attachment_to_uploads($emailSettings, $folder, $uid, $partNum, $name, $eventId);
+            echo json_encode($result);
+            break;
+
         default:
             throw new Exception('Unsupported action: ' . $action);
     }
-} catch (Exception $ex) {
+} catch (Throwable $ex) {
     http_response_code(500);
     echo json_encode(['success' => false, 'error' => $ex->getMessage()]);
 }
-
-exit;
-
-// --- DEDICATED MAIL BROKER HELPER FUNCTIONS ---
 
 function safe_utf8($str) {
     if (!is_string($str)) {
@@ -147,6 +168,8 @@ function safe_utf8($str) {
     }
     return mb_convert_encoding($str, 'UTF-8', 'UTF-8, ASCII, ISO-8859-1, ISO-8859-2, Windows-1252');
 }
+
+exit;
 
 function get_imap_credentials($settings) {
     $user = !empty($settings['imapUsername']) ? $settings['imapUsername'] : (isset($settings['username']) ? $settings['username'] : '');
@@ -382,6 +405,45 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                         }
                     }
                 }
+
+                // RAG Ingestion: Cache fetched email in RAG database tables (main DB and vector DB)
+                if (isset($GLOBALS['pdo']) && isset($GLOBALS['userEmail'])) {
+                    $mPdo = $GLOBALS['pdo'];
+                    $uEmail = $GLOBALS['userEmail'];
+                    
+                    // Check if already in main DB's rag_emails
+                    $checkRag = $mPdo->prepare("SELECT 1 FROM `rag_emails` WHERE `user_email` = ? AND `folder` = ? AND `email_uid` = ?");
+                    $checkRag->execute([$uEmail, $folder, $o->uid]);
+                    if (!$checkRag->fetchColumn()) {
+                        // Fetch the body
+                        $msgNo = @imap_msgno($imapStream, $o->uid) ?: $o->uid;
+                        $bodyText = safe_utf8(fetch_email_body_text($imapStream, $msgNo));
+                        
+                        $subject = isset($o->subject) ? safe_utf8(imap_utf8($o->subject)) : '(No Subject)';
+                        $sender = safe_utf8($fromHeader);
+                        $recipient = safe_utf8($toHeader);
+                        $receivedAt = isset($o->date) ? date('Y-m-d H:i:s', strtotime($o->date)) : date('Y-m-d H:i:s');
+                        
+                        // Insert into main DB
+                        $insRag = $mPdo->prepare("INSERT INTO `rag_emails` (`user_email`, `folder`, `email_uid`, `subject`, `sender`, `recipient`, `body`, `received_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+                        $insRag->execute([$uEmail, $folder, $o->uid, $subject, $sender, $recipient, $bodyText, $receivedAt]);
+                        
+                        // Also insert into RAG DB if active
+                        require_once __DIR__ . '/agent_utils.php';
+                        // Retrieve integrations config
+                        $stmtConfig = $mPdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'INTEGRATIONS_CONFIG'");
+                        $stmtConfig->execute();
+                        $configJsonStr = $stmtConfig->fetchColumn();
+                        $integrationsConfigObj = $configJsonStr ? json_decode($configJsonStr, true) : [];
+                        
+                        $rPdo = get_rag_db_connection($integrationsConfigObj);
+                        if ($rPdo) {
+                            init_rag_db_schemas($rPdo);
+                            $insRagVec = $rPdo->prepare("INSERT INTO `rag_emails` (`user_email`, `folder`, `email_uid`, `subject`, `sender`, `recipient`, `body`, `received_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `subject` = VALUES(`subject`), `body` = VALUES(`body`)");
+                            $insRagVec->execute([$uEmail, $folder, $o->uid, $subject, $sender, $recipient, $bodyText, $receivedAt]);
+                        }
+                    }
+                }
             }
             
             // Retain sorting
@@ -426,7 +488,9 @@ function fetch_imap_email_detail($settings, $folder, $uid) {
     
     // Helper to get structured body parts
     $structure = imap_fetchstructure($imapStream, $msgNo);
+    $attachments = [];
     if ($structure) {
+        $attachments = get_attachments_from_structure($structure);
         if (isset($structure->parts) && count($structure->parts)) {
             foreach ($structure->parts as $partNo => $part) {
                 // If nested parts
@@ -471,7 +535,8 @@ function fetch_imap_email_detail($settings, $folder, $uid) {
     return [
         'uid' => $uid,
         'html' => safe_utf8($html),
-        'text' => safe_utf8($text)
+        'text' => safe_utf8($text),
+        'attachments' => $attachments
     ];
 }
 
@@ -574,4 +639,270 @@ function send_smtp_email($settings, $to, $subject, $html) {
     
     fwrite($socket, "QUIT\r\n");
     fclose($socket);
+}
+
+function get_attachments_from_structure($structure) {
+    $attachments = [];
+    if (!isset($structure->parts) || !count($structure->parts)) {
+        return $attachments;
+    }
+    foreach ($structure->parts as $partNo => $part) {
+        $attachment = get_part_attachment($part, $partNo + 1);
+        if ($attachment) {
+            $attachments[] = $attachment;
+        }
+        // Check nested parts
+        if (isset($part->parts) && count($part->parts)) {
+            foreach ($part->parts as $nestedPartNo => $nestedPart) {
+                $nestedAttachment = get_part_attachment($nestedPart, ($partNo + 1) . '.' . ($nestedPartNo + 1));
+                if ($nestedAttachment) {
+                    $attachments[] = $nestedAttachment;
+                }
+            }
+        }
+    }
+    return $attachments;
+}
+
+function get_part_attachment($part, $partNum) {
+    $filename = '';
+    $name = '';
+    
+    if ($part->ifdparameters) {
+        foreach ($part->dparameters as $object) {
+            if (strtolower($object->attribute) == 'filename') {
+                $filename = $object->value;
+            }
+        }
+    }
+    
+    if ($part->ifparameters) {
+        foreach ($part->parameters as $object) {
+            if (strtolower($object->attribute) == 'name') {
+                $name = $object->value;
+            }
+        }
+    }
+    
+    $finalName = $filename ?: $name;
+    if (empty($finalName)) {
+        return null;
+    }
+    
+    // Check if it's an attachment
+    $isAttachment = false;
+    if ($part->ifdisposition && (strtolower($part->disposition) == 'attachment' || strtolower($part->disposition) == 'inline')) {
+        $isAttachment = true;
+    }
+    // Also fallback check for common types or size
+    if (!$isAttachment && $part->type > 1) { // 0 = TEXT, 1 = MULTIPART
+        $isAttachment = true;
+    }
+    
+    if ($isAttachment) {
+        return [
+            'part_num' => $partNum,
+            'name' => safe_utf8(imap_utf8($finalName)),
+            'size' => isset($part->bytes) ? $part->bytes : 0,
+            'type' => isset($part->subtype) ? strtolower($part->subtype) : ''
+        ];
+    }
+    return null;
+}
+
+function serve_imap_attachment($settings, $folder, $uid, $partNum, $name) {
+    $mailbox = get_imap_mailbox_string($settings, $folder);
+    list($imapUser, $imapPass) = get_imap_credentials($settings);
+    $imapStream = @imap_open($mailbox, $imapUser, $imapPass, 0, 1, ['DISABLE_AUTHENTICATOR' => 'GSSAPI']);
+    if (!$imapStream) {
+        throw new Exception('IMAP connection failed.');
+    }
+    
+    $msgNo = @imap_msgno($imapStream, $uid);
+    if (!$msgNo) {
+        $msgNo = $uid;
+    }
+    
+    $structure = imap_fetchstructure($imapStream, $msgNo);
+    // Find the part encoding
+    $encoding = 0;
+    
+    // Helper to find encoding
+    $part = find_structure_part($structure, $partNum);
+    if ($part) {
+        $encoding = $part->encoding;
+    }
+    
+    $data = imap_fetchbody($imapStream, $msgNo, $partNum);
+    $data = decode_imap_body($data, $encoding);
+    
+    @imap_close($imapStream);
+    
+    header('Content-Description: File Transfer');
+    header('Content-Type: application/octet-stream');
+    header('Content-Disposition: attachment; filename="' . basename($name) . '"');
+    header('Content-Transfer-Encoding: binary');
+    header('Expires: 0');
+    header('Cache-Control: must-revalidate');
+    header('Pragma: public');
+    header('Content-Length: ' . strlen($data));
+    echo $data;
+    exit;
+}
+
+function find_structure_part($structure, $partNum) {
+    if (empty($partNum)) {
+        return $structure;
+    }
+    if (!$structure || !is_object($structure)) {
+        return null;
+    }
+    $parts = explode('.', $partNum);
+    $current = $structure;
+    foreach ($parts as $p) {
+        $idx = intval($p) - 1;
+        if (is_object($current) && isset($current->parts) && is_array($current->parts) && isset($current->parts[$idx])) {
+            $current = $current->parts[$idx];
+        } else {
+            return null;
+        }
+    }
+    return $current;
+}
+
+function fetch_email_body_text($imapStream, $msgNo) {
+    $structure = @imap_fetchstructure($imapStream, $msgNo);
+    $html = '';
+    $text = '';
+    if ($structure) {
+        if (isset($structure->parts) && count($structure->parts)) {
+            foreach ($structure->parts as $partNo => $part) {
+                if (isset($part->parts)) {
+                    foreach ($part->parts as $nestedPartNo => $nestedPart) {
+                        $partStr = ($partNo + 1) . '.' . ($nestedPartNo + 1);
+                        $body = @imap_fetchbody($imapStream, $msgNo, $partStr);
+                        $body = decode_imap_body($body, $nestedPart->encoding);
+                        if (isset($nestedPart->subtype) && $nestedPart->subtype === 'HTML') {
+                            $html = $body;
+                        } elseif (isset($nestedPart->subtype) && $nestedPart->subtype === 'PLAIN') {
+                            $text = $body;
+                        }
+                    }
+                } else {
+                    $body = @imap_fetchbody($imapStream, $msgNo, (string)($partNo + 1));
+                    $body = decode_imap_body($body, $part->encoding);
+                    if (isset($part->subtype) && $part->subtype === 'HTML') {
+                        $html = $body;
+                    } elseif (isset($part->subtype) && $part->subtype === 'PLAIN') {
+                        $text = $body;
+                    }
+                }
+            }
+        } else {
+            $body = @imap_body($imapStream, $msgNo);
+            $body = decode_imap_body($body, $structure->encoding);
+            if (isset($structure->subtype) && $structure->subtype === 'HTML') {
+                $html = $body;
+            } else {
+                $text = $body;
+            }
+        }
+    }
+    
+    if (!empty($text)) {
+        return trim($text);
+    }
+    if (!empty($html)) {
+        return trim(strip_tags($html));
+    }
+    return '';
+}
+
+function save_imap_attachment_to_uploads($settings, $folder, $uid, $partNum, $name, $eventId) {
+    $mailbox = get_imap_mailbox_string($settings, $folder);
+    list($imapUser, $imapPass) = get_imap_credentials($settings);
+    $imapStream = @imap_open($mailbox, $imapUser, $imapPass, 0, 1, ['DISABLE_AUTHENTICATOR' => 'GSSAPI']);
+    if (!$imapStream) {
+        return ['success' => false, 'error' => 'IMAP connection failed.'];
+    }
+    
+    $msgNo = @imap_msgno($imapStream, $uid);
+    if (!$msgNo) {
+        $msgNo = $uid;
+    }
+    
+    $structure = @imap_fetchstructure($imapStream, $msgNo);
+    $encoding = 0;
+    
+    $part = $structure ? find_structure_part($structure, $partNum) : null;
+    if ($part && is_object($part)) {
+        $encoding = isset($part->encoding) ? $part->encoding : 0;
+    }
+    
+    $data = @imap_fetchbody($imapStream, $msgNo, $partNum);
+    $data = decode_imap_body($data, $encoding);
+    
+    @imap_close($imapStream);
+    
+    $uploadDir = dirname(__DIR__) . '/uploads/';
+    if (!is_dir($uploadDir)) {
+        mkdir($uploadDir, 0775, true);
+    }
+    
+    $targetPath = $uploadDir . $eventId . '_' . basename($name);
+    if (@file_put_contents($targetPath, $data) !== false) {
+        $extractedText = '';
+        $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+        if ($ext === 'txt') {
+            $extractedText = $data;
+        } elseif ($ext === 'docx') {
+            if (class_exists('ZipArchive')) {
+                $zip = new ZipArchive();
+                if ($zip->open($targetPath) === true) {
+                    $xmlContent = $zip->getFromName('word/document.xml');
+                    $zip->close();
+                    if ($xmlContent) {
+                        $extractedText = html_entity_decode(strip_tags($xmlContent), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                    }
+                }
+            }
+        } elseif ($ext === 'pdf') {
+            $texts = [];
+            $objs = explode('endobj', $data);
+            foreach ($objs as $obj) {
+                if (preg_match('/stream[\r\n]+(.*?)[\r\n]+endstream/is', $obj, $streamMatch)) {
+                    $stream = $streamMatch[1];
+                    if (strpos($obj, '/FlateDecode') !== false) {
+                        $decomp = @gzuncompress($stream);
+                        if ($decomp === false) $decomp = @gzuncompress(substr($stream, 1));
+                        if ($decomp === false) $decomp = @gzuncompress(substr($stream, 2));
+                        if ($decomp !== false) $stream = $decomp;
+                    }
+                    preg_match_all('/(?<=\()([^\)]*)(?=\))/s', $stream, $textMatches);
+                    if (!empty($textMatches[0])) {
+                        foreach ($textMatches[0] as $txt) {
+                            $txt = trim($txt);
+                            if ($txt === '' || strpos($txt, '/') === 0 || strpos($txt, 'Identity-H') !== false) continue;
+                            $txt = preg_replace_callback('/\\\\([0-7]{3})/', function($m) { return chr(octdec($m[1])); }, $txt);
+                            $txt = str_replace(['\\(', '\\)', '\\\\'], ['(', ')', '\\'], $txt);
+                            $texts[] = $txt;
+                        }
+                    }
+                }
+            }
+            $extractedText = implode(' ', $texts);
+        }
+        
+        if (mb_strlen($extractedText) > 60000) {
+            $extractedText = mb_substr($extractedText, 0, 60000) . '... [TRUNCATED]';
+        }
+        
+        return [
+            'success' => true,
+            'fileName' => basename($name),
+            'extractedText' => $extractedText
+        ];
+    }
+    
+    return ['success' => false, 'error' => 'Failed to save file on server.'];
 }

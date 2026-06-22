@@ -52,7 +52,7 @@ if ($action === 'stats') {
         // Count meeting notes
         $meetingsCount = 0;
         try {
-            $stmt = $pdo->query("SELECT COUNT(*) FROM `meeting_notes`");
+            $stmt = $pdo->query("SELECT COUNT(*) FROM `meeting_notes` WHERE (`archived` = 0 OR `archived` IS NULL)");
             $meetingsCount = (int)$stmt->fetchColumn();
         } catch (\Exception $e) {}
         
@@ -96,7 +96,7 @@ if ($action === 'train') {
         
         $meetings = [];
         try {
-            $meetings = $pdo->query("SELECT `id`, `title`, `notes`, `lead_name`, `ai_summary_json` FROM `meeting_notes` LIMIT 20")->fetchAll();
+            $meetings = $pdo->query("SELECT `id`, `title`, `notes`, `lead_name`, `ai_summary_json` FROM `meeting_notes` WHERE (`archived` = 0 OR `archived` IS NULL) LIMIT 20")->fetchAll();
         } catch (\Exception $e) {}
 
         $allSourceItems = [];

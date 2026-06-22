@@ -68,6 +68,24 @@ function init_rag_db_schemas($ragPdo) {
     } catch (\Exception $e) {
         // Already altered or failed
     }
+
+    try {
+        $ragPdo->exec("CREATE TABLE IF NOT EXISTS `rag_emails` (
+          `user_email` VARCHAR(150) NOT NULL,
+          `folder` VARCHAR(100) NOT NULL,
+          `email_uid` VARCHAR(150) NOT NULL,
+          `subject` VARCHAR(255) NOT NULL,
+          `sender` VARCHAR(255) NOT NULL,
+          `recipient` VARCHAR(255) NOT NULL,
+          `body` LONGTEXT NOT NULL,
+          `received_at` DATETIME NOT NULL,
+          `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (`user_email`, `folder`, `email_uid`),
+          INDEX idx_rag_email_received (`received_at`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+    } catch (\Exception $e) {
+        // rag_emails creation failed
+    }
 }
 
 // Anonymization / Sanitization dictionaries
@@ -193,6 +211,36 @@ function execute_autonomous_run($pdo, $ragPdo, $agent, $openAiKey) {
             'text' => $block,
             'is_match' => $matches
         ];
+    }
+
+    // RAG from received emails for autonomous agents
+    try {
+        $email_db = $ragPdo ?: $pdo;
+        $emails_stmt = $email_db->query("SELECT `subject`, `sender`, `recipient`, `body`, `received_at` FROM `rag_emails` LIMIT 100");
+        $rag_emails_all = $emails_stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rag_emails_all as $re) {
+            $matches = false;
+            
+            if (mb_strpos(mb_strtolower($re['subject']), $normalized_query) !== false ||
+                mb_strpos(mb_strtolower($re['sender']), $normalized_query) !== false ||
+                mb_strpos(mb_strtolower($re['body']), $normalized_query) !== false) {
+                $matches = true;
+            }
+            
+            $block = "Received Email Profile:\n";
+            $block .= "- Subject: " . $re['subject'] . "\n";
+            $block .= "- From: " . $re['sender'] . "\n";
+            $block .= "- To: " . $re['recipient'] . "\n";
+            $block .= "- Received At: " . $re['received_at'] . "\n";
+            $block .= "- Content:\n" . $re['body'] . "\n";
+            
+            $context_blocks[] = [
+                'text' => $block,
+                'is_match' => $matches
+            ];
+        }
+    } catch (\Exception $ex) {
+        // Fallback
     }
 
     // Sort by match relevance
