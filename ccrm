@@ -116,7 +116,10 @@ function ccrm_migrate() {
         return;
     }
 
+    // Force connection variables to be loaded into global scope
+    global $pdo, $db_connection_error;
     require_once $configFile;
+    
     if (!function_exists('get_db_connection')) {
         echo "Error: get_db_connection() function not found in config.php.\n";
         exit(1);
