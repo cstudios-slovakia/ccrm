@@ -3,7 +3,7 @@
         'name' => 'cstudios-slovakia/ccrm',
         'pretty_version' => 'dev-main',
         'version' => 'dev-main',
-        'reference' => '6932d21ef8629aa4db7d33c2f20d5ebe20675a7a',
+        'reference' => 'b9508e4bc368da2b7783e1d9fe6a7742acee544a',
         'type' => 'composer-plugin',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
@@ -13,7 +13,7 @@
         'cstudios-slovakia/ccrm' => array(
             'pretty_version' => 'dev-main',
             'version' => 'dev-main',
-            'reference' => '6932d21ef8629aa4db7d33c2f20d5ebe20675a7a',
+            'reference' => 'b9508e4bc368da2b7783e1d9fe6a7742acee544a',
             'type' => 'composer-plugin',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),
