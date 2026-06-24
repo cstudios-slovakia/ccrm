@@ -376,7 +376,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   // RegisterUZ autocomplete state
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
-  const [activeSuggestionInput, setActiveSuggestionInput] = useState<"name" | "companyId" | null>(null);
+  const [activeSuggestionInput, setActiveSuggestionInput] = useState<"name" | "companyId" | "profileName" | "profileCompanyId" | null>(null);
   const suggestionTimeoutRef = useRef<any>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -540,7 +540,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     };
   }, []);
 
-  const fetchSuggestions = async (val: string, inputType: "name" | "companyId") => {
+  const fetchSuggestions = async (val: string, inputType: "name" | "companyId" | "profileName" | "profileCompanyId", country: string = newClientCountry) => {
     if (val.trim().length < 3) {
       setSuggestions([]);
       setIsLoadingSuggestions(false);
@@ -548,8 +548,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       return;
     }
 
-    const isSlovakia = newClientCountry === "Slovakia";
-    const isCzechia = newClientCountry === "Czechia" || newClientCountry === "Czech Republic";
+    const isSlovakia = country === "Slovakia";
+    const isCzechia = country === "Czechia" || country === "Czech Republic";
 
     if (!isSlovakia && !isCzechia) {
       setSuggestions([]);
@@ -605,7 +605,37 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     }
     
     suggestionTimeoutRef.current = setTimeout(() => {
-      fetchSuggestions(val, "companyId");
+      fetchSuggestions(val, "companyId", newClientCountry);
+    }, 350);
+  };
+
+  const handleProfileNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setProfileName(val);
+    
+    if (profileType === "person") return;
+    
+    if (suggestionTimeoutRef.current) {
+      clearTimeout(suggestionTimeoutRef.current);
+    }
+    
+    suggestionTimeoutRef.current = setTimeout(() => {
+      fetchSuggestions(val, "profileName", profileCountry);
+    }, 350);
+  };
+
+  const handleProfileCompanyIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setProfileCompanyId(val);
+    
+    if (profileType === "person") return;
+    
+    if (suggestionTimeoutRef.current) {
+      clearTimeout(suggestionTimeoutRef.current);
+    }
+    
+    suggestionTimeoutRef.current = setTimeout(() => {
+      fetchSuggestions(val, "profileCompanyId", profileCountry);
     }, 350);
   };
 
@@ -614,6 +644,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   };
 
   const handleSelectSuggestion = async (item: any) => {
+    const isProfile = activeSuggestionInput === "profileName" || activeSuggestionInput === "profileCompanyId";
+    
     setSuggestions([]);
     setActiveSuggestionInput(null);
     
@@ -625,8 +657,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       (window as any).showToast(loadingMsg);
     }
     
-    const isSlovakia = newClientCountry === "Slovakia";
-    const isCzechia = newClientCountry === "Czechia" || newClientCountry === "Czech Republic";
+    const country = isProfile ? profileCountry : newClientCountry;
+    const isSlovakia = country === "Slovakia";
+    const isCzechia = country === "Czechia" || country === "Czech Republic";
 
     try {
       const endpoint = isSlovakia
@@ -639,9 +672,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       
       if (isSlovakia) {
         if (detail && detail.id) {
-          setNewClientName(detail.nazovUJ || stripHtml(item.entityName) || "");
-          setNewClientCompanyId(detail.ico || item.entNumber || "");
-          setNewClientTaxId(detail.dic || item.taxNumber || "");
+          const nameVal = detail.nazovUJ || stripHtml(item.entityName) || "";
+          const companyIdVal = detail.ico || item.entNumber || "";
+          const taxIdVal = detail.dic || item.taxNumber || "";
           
           let vatVal = "";
           if (detail.dic) {
@@ -649,27 +682,50 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           } else if (item.taxNumber) {
             vatVal = `SK${item.taxNumber}`;
           }
-          setNewClientVatId(vatVal);
-          if (vatVal) {
-            validateVatCode(vatVal, false);
+          
+          if (isProfile) {
+            setProfileName(nameVal);
+            setProfileCompanyId(companyIdVal);
+            setProfileTaxId(taxIdVal);
+            setProfileVatId(vatVal);
+            setProfileCity(detail.mesto || "");
+            setProfileStreet(detail.ulica || "");
+            setProfilePostalCode(detail.psc || "");
+            setProfileCountry("Slovakia");
+            setProfileEstablishmentDate(detail.datumZalozenia || "");
+            setProfileLegalForm(detail.pravnaForma || "");
+            setProfileSkNace(detail.skNace || "");
+            setProfileOrganizationSize(detail.velkostOrganizacie || "");
+            setProfileOwnershipType(detail.druhVlastnictva || "");
+            setProfileDataSource(detail.zdrojDat || "");
+            setProfileDissolutionDate(detail.datumZrusenia || "");
+            setProfileRegion(detail.kraj || "");
+            setProfileDistrict(detail.okres || "");
           } else {
-            setNewClientVatStatus("idle");
-            setNewClientVatResult(null);
+            setNewClientName(nameVal);
+            setNewClientCompanyId(companyIdVal);
+            setNewClientTaxId(taxIdVal);
+            setNewClientVatId(vatVal);
+            if (vatVal) {
+              validateVatCode(vatVal, false);
+            } else {
+              setNewClientVatStatus("idle");
+              setNewClientVatResult(null);
+            }
+            setNewClientCity(detail.mesto || "");
+            setNewClientStreet(detail.ulica || "");
+            setNewClientPostalCode(detail.psc || "");
+            setNewClientCountry("Slovakia");
+            setNewClientEstablishmentDate(detail.datumZalozenia || "");
+            setNewClientLegalForm(detail.pravnaForma || "");
+            setNewClientSkNace(detail.skNace || "");
+            setNewClientOrganizationSize(detail.velkostOrganizacie || "");
+            setNewClientOwnershipType(detail.druhVlastnictva || "");
+            setNewClientDataSource(detail.zdrojDat || "");
+            setNewClientDissolutionDate(detail.datumZrusenia || "");
+            setNewClientRegion(detail.kraj || "");
+            setNewClientDistrict(detail.okres || "");
           }
-
-          setNewClientCity(detail.mesto || "");
-          setNewClientStreet(detail.ulica || "");
-          setNewClientPostalCode(detail.psc || "");
-          setNewClientCountry("Slovakia");
-          setNewClientEstablishmentDate(detail.datumZalozenia || "");
-          setNewClientLegalForm(detail.pravnaForma || "");
-          setNewClientSkNace(detail.skNace || "");
-          setNewClientOrganizationSize(detail.velkostOrganizacie || "");
-          setNewClientOwnershipType(detail.druhVlastnictva || "");
-          setNewClientDataSource(detail.zdrojDat || "");
-          setNewClientDissolutionDate(detail.datumZrusenia || "");
-          setNewClientRegion(detail.kraj || "");
-          setNewClientDistrict(detail.okres || "");
           
           if (typeof (window as any).showToast === "function") {
             (window as any).showToast(successMsg);
@@ -679,45 +735,63 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         }
       } else if (isCzechia) {
         if (detail && (detail.ico || detail.icoId)) {
-          setNewClientName(detail.obchodniJmeno || stripHtml(item.entityName) || "");
-          setNewClientCompanyId(detail.ico || item.entNumber || "");
+          const nameVal = detail.obchodniJmeno || stripHtml(item.entityName) || "";
+          const companyIdVal = detail.ico || item.entNumber || "";
           
           let rawDic = detail.dic || item.taxNumber || "";
           let cleanedTaxId = rawDic;
           if (rawDic.toUpperCase().startsWith("CZ")) {
             cleanedTaxId = rawDic.substring(2);
           }
-          setNewClientTaxId(cleanedTaxId);
           
           let vatVal = rawDic;
           if (!vatVal && detail.ico) {
             vatVal = `CZ${detail.ico}`;
           }
-          setNewClientVatId(vatVal);
-          if (vatVal) {
-            validateVatCode(vatVal, false);
-          } else {
-            setNewClientVatStatus("idle");
-            setNewClientVatResult(null);
-          }
           
           const sidlo = detail.sidlo || {};
-          const city = sidlo.nazevObce || "";
+          const cityVal = sidlo.nazevObce || "";
           const streetPart = sidlo.nazevUlice || sidlo.nazevCastiObce || sidlo.nazevObce || "";
           const houseNo = sidlo.cisloDomovni || "";
           const orientNo = sidlo.cisloOrientacni || "";
-          let street = streetPart;
+          let streetVal = streetPart;
           if (houseNo || orientNo) {
-            street += " " + houseNo + (orientNo ? "/" + orientNo : "");
+            streetVal += " " + houseNo + (orientNo ? "/" + orientNo : "");
           }
-          setNewClientStreet(street.trim());
-          setNewClientCity(city);
-          setNewClientPostalCode(sidlo.psc ? String(sidlo.psc) : "");
-          setNewClientCountry(newClientCountry);
-          setNewClientEstablishmentDate(detail.datumVzniku || "");
-          setNewClientLegalForm(detail.pravniForma || "");
-          setNewClientRegion(sidlo.nazevKraje || "");
-          setNewClientDistrict(sidlo.nazevOkresu || "");
+          
+          if (isProfile) {
+            setProfileName(nameVal);
+            setProfileCompanyId(companyIdVal);
+            setProfileTaxId(cleanedTaxId);
+            setProfileVatId(vatVal);
+            setProfileStreet(streetVal.trim());
+            setProfileCity(cityVal);
+            setProfilePostalCode(sidlo.psc ? String(sidlo.psc) : "");
+            setProfileCountry(profileCountry);
+            setProfileEstablishmentDate(detail.datumVzniku || "");
+            setProfileLegalForm(detail.pravniForma || "");
+            setProfileRegion(sidlo.nazevKraje || "");
+            setProfileDistrict(sidlo.nazevOkresu || "");
+          } else {
+            setNewClientName(nameVal);
+            setNewClientCompanyId(companyIdVal);
+            setNewClientTaxId(cleanedTaxId);
+            setNewClientVatId(vatVal);
+            if (vatVal) {
+              validateVatCode(vatVal, false);
+            } else {
+              setNewClientVatStatus("idle");
+              setNewClientVatResult(null);
+            }
+            setNewClientStreet(streetVal.trim());
+            setNewClientCity(cityVal);
+            setNewClientPostalCode(sidlo.psc ? String(sidlo.psc) : "");
+            setNewClientCountry(newClientCountry);
+            setNewClientEstablishmentDate(detail.datumVzniku || "");
+            setNewClientLegalForm(detail.pravniForma || "");
+            setNewClientRegion(sidlo.nazevKraje || "");
+            setNewClientDistrict(sidlo.nazevOkresu || "");
+          }
           
           if (typeof (window as any).showToast === "function") {
             (window as any).showToast(successMsg);
@@ -728,31 +802,40 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       }
     } catch (err) {
       console.error("Error fetching detail", err);
-      const isCzechia = newClientCountry === "Czechia" || newClientCountry === "Czech Republic";
+      const isCzech = country === "Czechia" || country === "Czech Republic";
       
-      setNewClientName(stripHtml(item.entityName) || "");
-      setNewClientCompanyId(item.entNumber || "");
+      const nameVal = stripHtml(item.entityName) || "";
+      const companyIdVal = item.entNumber || "";
       
       let rawTax = item.taxNumber || "";
       let cleanedTax = rawTax;
-      if (isCzechia && rawTax.toUpperCase().startsWith("CZ")) {
+      if (isCzech && rawTax.toUpperCase().startsWith("CZ")) {
         cleanedTax = rawTax.substring(2);
       }
-      setNewClientTaxId(cleanedTax);
       
       let vatVal = rawTax;
       if (!vatVal && item.entNumber) {
-        vatVal = isCzechia ? `CZ${item.entNumber}` : `SK${item.entNumber}`;
-      } else if (vatVal && !isCzechia && !vatVal.toUpperCase().startsWith("SK")) {
+        vatVal = isCzech ? `CZ${item.entNumber}` : `SK${item.entNumber}`;
+      } else if (vatVal && !isCzech && !vatVal.toUpperCase().startsWith("SK")) {
         vatVal = `SK${vatVal}`;
       }
       
-      setNewClientVatId(vatVal);
-      if (vatVal) {
-        validateVatCode(vatVal, false);
+      if (isProfile) {
+        setProfileName(nameVal);
+        setProfileCompanyId(companyIdVal);
+        setProfileTaxId(cleanedTax);
+        setProfileVatId(vatVal);
       } else {
-        setNewClientVatStatus("idle");
-        setNewClientVatResult(null);
+        setNewClientName(nameVal);
+        setNewClientCompanyId(companyIdVal);
+        setNewClientTaxId(cleanedTax);
+        setNewClientVatId(vatVal);
+        if (vatVal) {
+          validateVatCode(vatVal, false);
+        } else {
+          setNewClientVatStatus("idle");
+          setNewClientVatResult(null);
+        }
       }
 
       if (typeof (window as any).showToast === "function") {
@@ -2426,20 +2509,46 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               
               {/* Name & Type */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1">
+                <div className="space-y-1 relative">
                   <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">{getTranslation(systemLanguage, "profile.client_name")}</label>
-                  <input
-                    type="text"
-                    required
-                    readOnly={!isEditingProfile}
-                    value={profileName}
-                    onChange={(e) => setProfileName(e.target.value)}
-                    className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all ${
-                      isEditingProfile 
-                        ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-emerald-500 text-slate-800" 
-                        : "bg-transparent border-0 pl-0 text-slate-900 text-sm font-black cursor-default select-all"
-                    }`}
-                  />
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      readOnly={!isEditingProfile}
+                      value={profileName}
+                      onChange={handleProfileNameChange}
+                      className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all pr-9 ${
+                        isEditingProfile 
+                          ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-emerald-500 text-slate-800" 
+                          : "bg-transparent border-0 pl-0 text-slate-900 text-sm font-black cursor-default select-all"
+                      }`}
+                    />
+                    {isEditingProfile && isLoadingSuggestions && activeSuggestionInput === "profileName" && (
+                      <div className="absolute right-3 top-2.5">
+                        <Loader2 className="h-4 w-4 animate-spin text-emerald-500" />
+                      </div>
+                    )}
+                  </div>
+                  {isEditingProfile && activeSuggestionInput === "profileName" && suggestions.length > 0 && (
+                    <div 
+                      ref={dropdownRef}
+                      className="absolute left-0 right-0 top-full mt-1 bg-white rounded-2xl border border-slate-200 shadow-xl max-h-60 overflow-y-auto z-[999]"
+                    >
+                      {suggestions.map((item, idx) => (
+                        <div
+                          key={item.id || idx}
+                          onClick={() => handleSelectSuggestion(item)}
+                          className="px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer border-b border-slate-100 last:border-0 text-left cursor-pointer"
+                        >
+                          <div className="font-bold text-slate-800 text-[11px]" dangerouslySetInnerHTML={{ __html: item.entityName }} />
+                          <div className="text-[10px] text-slate-400 mt-0.5">
+                            {item.entNumber && `IČO: ${item.entNumber}`}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-1">
                   <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">{getTranslation(systemLanguage, "profile.client_type")}</label>
@@ -2579,19 +2688,45 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   
                   <div className="space-y-3 bg-slate-50/50 p-3 rounded-xl border-2 border-slate-200">
                     <div className="grid grid-cols-3 gap-2">
-                      <div className="space-y-1">
+                      <div className="space-y-1 relative">
                         <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">{getTranslation(systemLanguage, "profile.company_id")}</label>
-                        <input
-                          type="text"
-                          readOnly={!isEditingProfile}
-                          value={profileCompanyId}
-                          onChange={(e) => setProfileCompanyId(e.target.value)}
-                          className={`w-full px-2 py-1.5 rounded-lg focus:outline-none ${
-                            isEditingProfile 
-                              ? "bg-white border-2 border-slate-200 text-slate-800" 
-                              : "bg-transparent border-0 pl-0 text-slate-900 font-black cursor-default select-all"
-                          }`}
-                        />
+                        <div className="relative">
+                          <input
+                            type="text"
+                            readOnly={!isEditingProfile}
+                            value={profileCompanyId}
+                            onChange={handleProfileCompanyIdChange}
+                            className={`w-full px-2 py-1.5 rounded-lg focus:outline-none pr-7 ${
+                              isEditingProfile 
+                                ? "bg-white border-2 border-slate-200 text-slate-800" 
+                                : "bg-transparent border-0 pl-0 text-slate-900 font-black cursor-default select-all"
+                            }`}
+                          />
+                          {isEditingProfile && isLoadingSuggestions && activeSuggestionInput === "profileCompanyId" && (
+                            <div className="absolute right-2 top-2">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-500" />
+                            </div>
+                          )}
+                        </div>
+                        {isEditingProfile && activeSuggestionInput === "profileCompanyId" && suggestions.length > 0 && (
+                          <div 
+                            ref={dropdownRef}
+                            className="absolute left-0 right-0 top-full mt-1 bg-white rounded-2xl border border-slate-200 shadow-xl max-h-60 overflow-y-auto z-[999]"
+                          >
+                            {suggestions.map((item, idx) => (
+                              <div
+                                key={item.id || idx}
+                                onClick={() => handleSelectSuggestion(item)}
+                                className="px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer border-b border-slate-100 last:border-0 text-left cursor-pointer"
+                              >
+                                <div className="font-bold text-slate-800 text-[11px]" dangerouslySetInnerHTML={{ __html: item.entityName }} />
+                                <div className="text-[10px] text-slate-400 mt-0.5">
+                                  {item.entNumber && `IČO: ${item.entNumber}`}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <div className="space-y-1">
                         <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">{getTranslation(systemLanguage, "profile.tax_id")}</label>
