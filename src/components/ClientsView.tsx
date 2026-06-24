@@ -5,7 +5,8 @@ import {
   Euro, UserCheck, Check, Layers, Phone, Mail, Globe, 
   Calendar, ArrowLeft, Plus, TrendingUp, PencilLine, FileText,
   X, FolderOpen, Download, Trash2, SlidersHorizontal,
-  CornerDownLeft, CornerLeftDown, Loader2, Brain, Mic, Play, Pause, Square, Sparkles
+  CornerDownLeft, CornerLeftDown, Loader2, Brain, Mic, Play, Pause, Square, Sparkles,
+  ChevronLeft, ChevronRight
 } from "lucide-react";
 import type { Lead, TimelineEvent, Task } from "../types";
 import { cn } from "../utils/cn";
@@ -332,6 +333,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [showFilterDrawer, setShowFilterDrawer] = useState(false);
   const [filterCity, setFilterCity] = useState("");
   const [filterPM, setFilterPM] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Reset pagination to page 1 on filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedType, filterCity, filterPM]);
   
   // State hook to toggle detail card edit mode
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -2194,6 +2201,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       });
   }, [clientProfiles, searchQuery, selectedType, filterCity, filterPM]);
 
+  // Paginated subset of clients
+  const paginatedClients = useMemo(() => {
+    const startIndex = (currentPage - 1) * 50;
+    return processedClients.slice(startIndex, startIndex + 50);
+  }, [processedClients, currentPage]);
+
 
 
   const getInitials = (name: string) => {
@@ -4031,7 +4044,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </td>
                 </tr>
               ) : (
-                processedClients.map((client) => (
+                paginatedClients.map((client) => (
                   <tr 
                     key={client.name}
                     onClick={() => { window.location.hash = `client-${encodeURIComponent(client.name)}`; }}
@@ -4142,13 +4155,92 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           </table>
         </div>
 
+        {/* Pagination controls */}
+        {processedClients.length > 50 && (
+          <div className="bg-white border-t border-slate-100 px-4 py-3 flex items-center justify-between sm:px-6">
+            <div className="flex-1 flex justify-between sm:hidden">
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+                className="relative inline-flex items-center px-4 py-2 border border-slate-200 text-xs font-bold rounded-xl text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+              >
+                Previous
+              </button>
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(processedClients.length / 50)))}
+                disabled={currentPage === Math.ceil(processedClients.length / 50)}
+                className="ml-3 relative inline-flex items-center px-4 py-2 border border-slate-200 text-xs font-bold rounded-xl text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+              >
+                Next
+              </button>
+            </div>
+            <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+              <div>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                  Showing <span className="text-emerald-700 font-extrabold">{(currentPage - 1) * 50 + 1}</span> to <span className="text-emerald-700 font-extrabold">{Math.min(currentPage * 50, processedClients.length)}</span> of <span className="text-emerald-700 font-extrabold">{processedClients.length}</span> results
+                </p>
+              </div>
+              <div>
+                <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    disabled={currentPage === 1}
+                    className="relative inline-flex items-center px-2 py-2 rounded-l-xl border border-slate-200 bg-white text-xs font-bold text-slate-500 hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                  >
+                    <span className="sr-only">Previous</span>
+                    <ChevronLeft className="h-4 w-4 text-emerald-600 stroke-[2.5]" aria-hidden="true" />
+                  </button>
+                  {/* Page numbers */}
+                  {Array.from({ length: Math.ceil(processedClients.length / 50) }, (_, i) => i + 1).map((pageNum) => {
+                    const isFirstOrLast = pageNum === 1 || pageNum === Math.ceil(processedClients.length / 50);
+                    const isClose = Math.abs(pageNum - currentPage) <= 1;
+                    if (!isFirstOrLast && !isClose) {
+                      if (pageNum === 2 || pageNum === Math.ceil(processedClients.length / 50) - 1) {
+                        return (
+                          <span key={`ellipse-${pageNum}`} className="relative inline-flex items-center px-3 py-2 border border-slate-200 bg-white text-xs font-bold text-slate-500">
+                            ...
+                          </span>
+                        );
+                      }
+                      return null;
+                    }
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => setCurrentPage(pageNum)}
+                        aria-current={currentPage === pageNum ? "page" : undefined}
+                        className={cn(
+                          "relative inline-flex items-center px-3 py-2 border text-xs font-bold transition-colors",
+                          currentPage === pageNum
+                            ? "z-10 bg-emerald-600 border-emerald-600 text-white shadow-sm"
+                            : "bg-white border-slate-200 text-slate-700 hover:bg-emerald-50/50 hover:text-emerald-700"
+                        )}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(processedClients.length / 50)))}
+                    disabled={currentPage === Math.ceil(processedClients.length / 50)}
+                    className="relative inline-flex items-center px-2 py-2 rounded-r-xl border border-slate-200 bg-white text-xs font-bold text-slate-500 hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                  >
+                    <span className="sr-only">Next</span>
+                    <ChevronRight className="h-4 w-4 text-emerald-600 stroke-[2.5]" aria-hidden="true" />
+                  </button>
+                </nav>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="bg-emerald-50/20 border-t-2 border-emerald-100 p-4 flex items-center justify-between text-[10px] text-slate-500 font-black uppercase tracking-wider">
           <div className="flex items-center gap-1.5">
             <Clock className="h-3.5 w-3.5 text-emerald-600 stroke-[2.5]" />
             <span>Click any client row to inspect profile details & timeline logs</span>
           </div>
           <div>
-            Showing <strong className="text-emerald-700">{processedClients.length}</strong> unique clients
+            Total <strong className="text-emerald-700">{processedClients.length}</strong> unique clients
           </div>
         </div>
       </div>

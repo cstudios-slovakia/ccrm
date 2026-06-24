@@ -19,7 +19,7 @@ ccrm_send_cors('GET, POST, OPTIONS');
 $configFile = __DIR__ . '/config.php';
 
 // 1. Check if installation config exists
-if (!file_exists($configFile)) {
+if (!file_exists($configFile) || @filesize($configFile) < 100) {
     echo json_encode([
         'installed' => false,
         'message' => 'CCRM is not installed yet.'
