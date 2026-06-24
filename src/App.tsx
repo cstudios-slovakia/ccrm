@@ -875,6 +875,7 @@ function App() {
           taskStates={taskStates}
           taskStateColors={taskStateColors}
           integrationsConfig={integrationsConfig}
+          leadStageGroups={leadStageGroups}
         />
       );
     }
@@ -953,6 +954,7 @@ function App() {
             taskStates={taskStates}
             taskStateColors={taskStateColors}
             integrationsConfig={integrationsConfig}
+            leadStageGroups={leadStageGroups}
           />
         );
       case "clients":

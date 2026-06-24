@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { 
   Users, MapPin, Plus, Search, Trash2, 
@@ -335,6 +335,7 @@ interface LeadsDatagridProps {
   taskStates?: string[];
   taskStateColors?: Record<string, string>;
   integrationsConfig?: any;
+  leadStageGroups?: Record<string, "new" | "in_progress" | "closed">;
 }
 
 export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
@@ -362,7 +363,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     "Blocked": "#ef4444",
     "Done": "#10b981"
   },
-  integrationsConfig
+  integrationsConfig,
+  leadStageGroups = {}
 }) => {
   const getSafeStateColor = (stateName: string) => {
     if (!leadStateColors) return "#64748b";
@@ -974,6 +976,58 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
   const [showFilters, setShowFilters] = useState(false);
   const [selectedOwner, setSelectedOwner] = useState("all");
   const [selectedCity, setSelectedCity] = useState("all");
+
+  // Category visibility toggle (local storage support)
+  const majorStates = useMemo(() => {
+    return leadStates.filter(s => !leadStateParents[s.toLowerCase()]).map(s => s.toLowerCase());
+  }, [leadStates, leadStateParents]);
+
+  const isStateClosedLocal = useCallback((stateName: string) => {
+    const sLower = (stateName || "").toLowerCase();
+    const parent = leadStateParents[sLower];
+    const isClosed = sLower === "accepted" || sLower === "rejected" || sLower === "objednané" || 
+                     parent === "accepted" || parent === "rejected" || parent === "objednané" ||
+                     (leadStageGroups && leadStageGroups[sLower] === "closed") ||
+                     (leadStageGroups && parent && leadStageGroups[parent.toLowerCase()] === "closed");
+    return !!isClosed;
+  }, [leadStateParents, leadStageGroups]);
+
+  const [visibleStates, setVisibleStates] = useState<string[]>(() => {
+    const stored = localStorage.getItem("crm_leads_visible_states");
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (e) {}
+    }
+    return [];
+  });
+
+  const resolvedVisibleStates = useMemo(() => {
+    const stored = localStorage.getItem("crm_leads_visible_states");
+    if (stored === null) {
+      // By default, only non-closed states are visible (on)
+      return majorStates.filter(s => !isStateClosedLocal(s));
+    }
+    return visibleStates.filter(s => majorStates.includes(s));
+  }, [visibleStates, majorStates, isStateClosedLocal]);
+
+  const toggleStateVisibility = (state: string) => {
+    const stateLower = state.toLowerCase();
+    const stored = localStorage.getItem("crm_leads_visible_states");
+    const currentList = stored === null
+      ? majorStates.filter(s => !isStateClosedLocal(s))
+      : visibleStates;
+
+    let next: string[];
+    if (currentList.includes(stateLower)) {
+      next = currentList.filter(s => s !== stateLower);
+    } else {
+      next = [...currentList, stateLower];
+    }
+    setVisibleStates(next);
+    localStorage.setItem("crm_leads_visible_states", JSON.stringify(next));
+  };
 
   // Extract unique cities dynamically from database
   const uniqueCities = useMemo(() => {
@@ -1932,11 +1986,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
   // Group and sort leads by selected orderingMode (specifically for Datagrid list view)
   const groupedLeads = useMemo(() => {
-    if (orderingMode === "state") {
-      return stateGroupedLeads;
-    }
+    let rawGrouped: { state: string, colorOverride?: string, leads: Lead[] }[] = [];
 
-    if (orderingMode === "pm") {
+    if (orderingMode === "state") {
+      rawGrouped = stateGroupedLeads;
+    } else if (orderingMode === "pm") {
       const groups: Record<string, Lead[]> = {};
       processedLeads.forEach(lead => {
         const pm = lead.owner || "Unassigned";
@@ -1945,35 +1999,52 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         }
         groups[pm].push(lead);
       });
-      return Object.keys(groups)
+      rawGrouped = Object.keys(groups)
         .sort((a, b) => a.localeCompare(b))
         .map(pm => ({
           state: pm,
           colorOverride: getPMColor(pm),
           leads: groups[pm]
         }));
-    }
-
-    // Plain sorted modes (Single group without state partitions)
-    let sorted = [...processedLeads];
-    if (orderingMode === "created_newest") {
-      sorted.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    } else if (orderingMode === "created_oldest") {
-      sorted.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-    } else if (orderingMode === "size") {
-      sorted.sort((a, b) => (b.value || 0) - (a.value || 0));
-    } else if (orderingMode === "rating") {
-      sorted.sort((a, b) => (b.rating || 0) - (a.rating || 0));
-    }
-
-    return [
-      {
-        state: "All Leads",
-        colorOverride: "#6366f1",
-        leads: sorted
+    } else {
+      // Plain sorted modes (Single group without state partitions)
+      let sorted = [...processedLeads];
+      if (orderingMode === "created_newest") {
+        sorted.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      } else if (orderingMode === "created_oldest") {
+        sorted.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      } else if (orderingMode === "size") {
+        sorted.sort((a, b) => (b.value || 0) - (a.value || 0));
+      } else if (orderingMode === "rating") {
+        sorted.sort((a, b) => (b.rating || 0) - (a.rating || 0));
       }
-    ];
-  }, [processedLeads, stateGroupedLeads, orderingMode]);
+
+      rawGrouped = [
+        {
+          state: "All Leads",
+          colorOverride: "#6366f1",
+          leads: sorted
+        }
+      ];
+    }
+
+    // Now filter by visibility settings
+    if (orderingMode === "state") {
+      // For state-grouped mode, we filter the groups/columns themselves
+      return rawGrouped.filter(group => resolvedVisibleStates.includes(group.state.toLowerCase()));
+    } else {
+      // For other sorting modes, we filter individual leads in each group, and hide empty groups
+      return rawGrouped.map(group => ({
+        ...group,
+        leads: group.leads.filter(lead => {
+          const statusKey = (lead.status || "").toLowerCase();
+          const parent = leadStateParents[statusKey];
+          const target = parent ? parent.toLowerCase() : statusKey;
+          return resolvedVisibleStates.includes(target);
+        })
+      })).filter(group => group.leads.length > 0);
+    }
+  }, [processedLeads, stateGroupedLeads, orderingMode, resolvedVisibleStates, leadStateParents]);
 
   // Order all major states and their associated substates sequentially for the progress bar
   const orderedAllStates = useMemo(() => {
@@ -3506,27 +3577,40 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         <div className="flex flex-wrap items-center gap-2">
           {stateGroupedLeads.map((group) => {
             const stateColor = getSafeStateColor(group.state);
+            const stateLower = group.state.toLowerCase();
+            const isActive = resolvedVisibleStates.includes(stateLower);
+            
             return (
-              <div 
+              <button 
+                type="button"
                 key={group.state}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-2xl border text-[10px] font-black uppercase tracking-wider shadow-sm transition-all hover:scale-[1.02]"
-                style={{
+                onClick={() => toggleStateVisibility(group.state)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-2xl border text-[10px] font-black uppercase tracking-wider shadow-sm transition-all hover:scale-[1.02] cursor-pointer"
+                style={isActive ? {
                   backgroundColor: `${stateColor}08`,
                   borderColor: `${stateColor}18`,
                   color: stateColor
+                } : {
+                  backgroundColor: "#f8fafc",
+                  borderColor: "#e2e8f0",
+                  color: "#94a3b8",
+                  opacity: 0.7
                 }}
               >
                 <span>{group.state}</span>
                 <span 
                   className="px-1.5 py-0.5 rounded-lg text-[9px] font-black leading-none"
-                  style={{
+                  style={isActive ? {
                     backgroundColor: `${stateColor}12`,
                     color: stateColor
+                  } : {
+                    backgroundColor: "#e2e8f0",
+                    color: "#94a3b8"
                   }}
                 >
                   {group.leads.length}
                 </span>
-              </div>
+              </button>
             );
           })}
         </div>
@@ -4569,7 +4653,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
           </div>
         ) : (
           <div className="flex flex-row gap-5 overflow-x-auto p-5 pb-6 items-stretch min-h-[580px] scrollbar-thin select-none bg-slate-50/20">
-            {stateGroupedLeads.map((group, index) => {
+            {stateGroupedLeads
+              .filter(group => resolvedVisibleStates.includes(group.state.toLowerCase()))
+              .map((group, index) => {
               const stateColor = getSafeStateColor(group.state);
               const totalVal = group.leads.reduce((sum, l) => sum + l.value, 0);
               const columnState = group.state.toLowerCase();
