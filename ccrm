@@ -1,0 +1,103 @@
+#!/usr/bin/env php
+<?php
+/**
+ * CCRM CLI Update & Management Tool
+ */
+
+if (php_sapi_name() !== 'cli') {
+    die("This script can only be run from the command line.\n");
+}
+
+$args = $argv;
+$command = isset($args[1]) ? $args[1] : 'help';
+
+switch ($command) {
+    case 'update':
+        ccrm_update();
+        break;
+    case 'migrate':
+        ccrm_migrate();
+        break;
+    case 'help':
+    default:
+        ccrm_help();
+        break;
+}
+
+function ccrm_help() {
+    echo "CCRM CLI Tool\n";
+    echo "Usage:\n";
+    echo "  php ccrm update   - Pulls latest code, runs composer install, publishes assets, and migrates DB\n";
+    echo "  php ccrm migrate  - Runs database migrations manually\n";
+    echo "  php ccrm help     - Shows this help message\n";
+}
+
+function ccrm_update() {
+    echo "Starting CCRM Update Process...\n";
+
+    // 1. Check for local modifications blocking git pull
+    echo "Checking git status...\n";
+    exec("git diff --name-only", $dirtyFiles);
+    exec("git diff --cached --name-only", $stagedFiles);
+    $dirty = array_unique(array_merge($dirtyFiles, $stagedFiles));
+    
+    $hasChanges = false;
+    foreach ($dirty as $file) {
+        if ($file === 'index.html') {
+            echo "Restoring index.html to avoid conflict...\n";
+            passthru("git checkout -- index.html");
+        } else if (!empty($file)) {
+            $hasChanges = true;
+        }
+    }
+
+    if ($hasChanges) {
+        echo "Warning: You have uncommitted changes. Stashing them...\n";
+        passthru("git stash");
+    }
+
+    // 2. Pull latest code
+    echo "Pulling latest code from origin/main...\n";
+    passthru("git pull origin main", $pullResult);
+    if ($pullResult !== 0) {
+        echo "Error: git pull failed.\n";
+        if ($hasChanges) {
+            passthru("git stash pop");
+        }
+        exit(1);
+    }
+
+    // 3. Run composer install
+    echo "Running composer install to update dependencies, assets, and migrations...\n";
+    passthru("composer install", $composerResult);
+    if ($composerResult !== 0) {
+        echo "Error: composer install failed.\n";
+        exit(1);
+    }
+
+    if ($hasChanges) {
+        echo "Restoring stashed changes...\n";
+        passthru("git stash pop");
+    }
+
+    echo "\nSuccess! CCRM updated successfully to the latest version.\n";
+}
+
+function ccrm_migrate() {
+    echo "Running database migrations...\n";
+    
+    // Require autoloader
+    $autoloader = __DIR__ . '/vendor/autoload.php';
+    if (!file_exists($autoloader)) {
+        echo "Error: vendor/autoload.php not found. Please run composer install first.\n";
+        exit(1);
+    }
+    require_once $autoloader;
+    
+    if (\CCRM\Installer::migrateDatabase()) {
+        echo "Database schema migrated successfully.\n";
+    } else {
+        echo "Error: Database migration failed. Check your config.php file and database connection.\n";
+        exit(1);
+    }
+}
