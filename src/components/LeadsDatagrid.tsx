@@ -1003,6 +1003,15 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     return [];
   });
 
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+
+  const toggleGroupCollapse = (groupName: string) => {
+    setCollapsedGroups(prev => ({
+      ...prev,
+      [groupName]: !prev[groupName]
+    }));
+  };
+
   const resolvedVisibleStates = useMemo(() => {
     const stored = localStorage.getItem("crm_leads_visible_states");
     if (stored === null) {
@@ -4105,12 +4114,16 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 {groupedLeads.map((group) => {
                     const stateColor = group.colorOverride || getSafeStateColor(group.state);
                     const stageTotalValue = group.leads.reduce((acc, curr) => acc + curr.value, 0);
+                    const isCollapsed = !!collapsedGroups[group.state];
 
                     return (
                       <React.Fragment key={group.state}>
                         {/* State/PM Group Header Row */}
                         {(orderingMode === "state" || orderingMode === "pm") && (
-                          <tr className="block lg:table-row bg-transparent">
+                          <tr 
+                            onClick={() => toggleGroupCollapse(group.state)}
+                            className="block lg:table-row bg-transparent cursor-pointer hover:opacity-80 transition-all select-none"
+                          >
                             <td 
                               colSpan={9} 
                               className={`px-4 lg:px-6 font-bold align-middle select-none block lg:table-cell w-full lg:w-auto ${compactMode ? "py-1" : "py-1.5"}`}
@@ -4120,6 +4133,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             >
                               <div className="flex items-center justify-between w-full gap-2">
                                 <div className="flex items-center gap-2 shrink-0">
+                                  <span className="text-[10px] select-none opacity-60" style={{ color: stateColor, marginRight: "2px" }}>
+                                    {isCollapsed ? "▶" : "▼"}
+                                  </span>
                                   <span 
                                     className="text-[11px] font-black uppercase tracking-wider font-heading"
                                     style={{ color: stateColor }}
@@ -4155,7 +4171,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         )}
 
                         {/* Lead Rows inside this group */}
-                        {group.leads.length === 0 ? (
+                        {!isCollapsed && (
+                          group.leads.length === 0 ? (
                           <tr className="block lg:table-row">
                             <td 
                               colSpan={9} 
@@ -4644,6 +4661,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                           </>
                         );
                       })
+                      )
                       )}
                       </React.Fragment>
                     );
