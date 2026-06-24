@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { LayoutDashboard, ChevronLeft, ChevronRight, Settings, LogOut, TableProperties, Users, FolderOpen, BarChart3, Mail, Brain, PencilLine, Pencil, X, GripVertical, Download, Upload, Save, Briefcase, Calendar, ClipboardList, Database, Trophy, Link, MapPin, Tag } from "lucide-react";
+import * as Icons from "lucide-react";
+import { LayoutDashboard, ChevronLeft, ChevronRight, Settings, LogOut, TableProperties, Users, FolderOpen, BarChart3, Mail, Brain, PencilLine, Pencil, X, GripVertical, Download, Upload, Save } from "lucide-react";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { cn } from "../utils/cn";
@@ -92,19 +93,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return unifiedEntries
       .filter(ue => !ue.archived)
       .map(ue => {
-        let IconComponent = FolderOpen;
-        switch (ue.icon) {
-          case "Briefcase": IconComponent = Briefcase; break;
-          case "Calendar": IconComponent = Calendar; break;
-          case "ClipboardList": IconComponent = ClipboardList; break;
-          case "Database": IconComponent = Database; break;
-          case "FolderOpen": IconComponent = FolderOpen; break;
-          case "Trophy": IconComponent = Trophy; break;
-          case "Link": IconComponent = Link; break;
-          case "MapPin": IconComponent = MapPin; break;
-          case "Users": IconComponent = Users; break;
-          case "Tag": IconComponent = Tag; break;
-        }
+        const IconComponent = (Icons as any)[ue.icon] || Icons.FolderOpen;
         return {
           id: `ue_${ue.id}`,
           label: ue.name,
@@ -284,15 +273,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const allPossibleItems = React.useMemo(() => {
     return [
-      { id: "dashboard", label: systemLanguage === "sk" ? "Panel úloh" : systemLanguage === "hu" ? "Feladat Irányítópult" : "Task Dashboard", icon: LayoutDashboard },
-      { id: "overview", label: getTranslation(systemLanguage, "sidebar.dashboard"), icon: BarChart3 },
-      { id: "rag_ai", label: systemLanguage === "sk" ? "RAG AI Asistent" : systemLanguage === "hu" ? "RAG AI Asszisztens" : "RAG AI Assistant", icon: Brain, isPurple: true },
-      { id: "leads", label: getTranslation(systemLanguage, "sidebar.leads"), icon: TableProperties },
-      { id: "clients", label: getTranslation(systemLanguage, "sidebar.clients"), icon: Users },
-      { id: "meetings", label: getTranslation(systemLanguage, "sidebar.meetings"), icon: PencilLine, isNightBlue: true },
+      { id: "dashboard", label: systemLanguage === "sk" ? "Panel úloh" : systemLanguage === "hu" ? "Feladat Irányítópult" : "Task Dashboard", icon: LayoutDashboard, color: "#ff5d00" },
+      { id: "overview", label: getTranslation(systemLanguage, "sidebar.dashboard"), icon: BarChart3, color: "#0891b2" },
+      { id: "rag_ai", label: systemLanguage === "sk" ? "RAG AI Asistent" : systemLanguage === "hu" ? "RAG AI Asszisztens" : "RAG AI Assistant", icon: Brain, color: "#8b5cf6", isPurple: true },
+      { id: "leads", label: getTranslation(systemLanguage, "sidebar.leads"), icon: TableProperties, color: "#2563eb" },
+      { id: "clients", label: getTranslation(systemLanguage, "sidebar.clients"), icon: Users, color: "#059669" },
+      { id: "meetings", label: getTranslation(systemLanguage, "sidebar.meetings"), icon: PencilLine, color: "#4f46e5", isNightBlue: true },
       ...dynamicUeItems,
-      { id: "files", label: getTranslation(systemLanguage, "sidebar.files"), icon: FolderOpen },
-      { id: "email", label: systemLanguage === "sk" ? "Pošta" : systemLanguage === "hu" ? "Levelezés" : "Mail Client", icon: Mail }
+      { id: "files", label: getTranslation(systemLanguage, "sidebar.files"), icon: FolderOpen, color: "#b45309" },
+      { id: "email", label: systemLanguage === "sk" ? "Pošta" : systemLanguage === "hu" ? "Levelezés" : "Mail Client", icon: Mail, color: "#db2777" }
     ];
   }, [systemLanguage, dynamicUeItems]);
 
@@ -422,15 +411,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     "h-5 w-5 shrink-0 transition-transform duration-200",
                     isEditingNav
                       ? "text-slate-550"
-                      : item.isCustomUE
-                        ? (isActive ? "text-white" : "group-hover:scale-115")
-                        : item.isPurple
-                          ? (isActive ? "text-white" : "text-purple-600 group-hover:scale-110")
-                          : item.isNightBlue
-                            ? (isActive ? "text-white" : "text-slate-700 group-hover:scale-110")
-                            : isActive ? "text-white" : "text-slate-400 group-hover:scale-105"
+                      : isActive 
+                        ? "text-white" 
+                        : "group-hover:scale-110"
                   )}
-                  style={(!isEditingNav && !isActive && item.isCustomUE) ? { color: item.customColor } : undefined}
+                  style={(!isEditingNav && !isActive) ? { color: item.color || item.customColor } : undefined}
                 />
                 
                 {!isCollapsed && (
@@ -561,12 +546,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
               }}
               className={cn(
                 "w-full flex items-center gap-3.5 px-3 py-2.5 rounded-xl transition-all duration-200 group text-left",
-                (activeTab === "settings" || activeTab.startsWith("user-"))
+                (activeTab.startsWith("settings") || activeTab.startsWith("user-"))
                   ? "bg-indigo-600 text-white font-bold shadow-md shadow-indigo-600/20"
                   : "text-slate-400 hover:text-slate-700 hover:bg-slate-100/50"
               )}
             >
-              <Settings className={cn("h-5 w-5 shrink-0 transition-transform", activeTab === "settings" ? "text-white" : "text-slate-400 group-hover:rotate-45")} />
+              <Settings className={cn("h-5 w-5 shrink-0 transition-transform", activeTab.startsWith("settings") ? "text-white" : "text-slate-400 group-hover:rotate-45")} />
               {!isCollapsed && <span className="text-xs font-semibold tracking-wide">{getTranslation(systemLanguage, "sidebar.settings")}</span>}
             </button>
           )}
@@ -624,7 +609,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </p>
               </div>
             ) : (
-              hiddenItems.map((id) => {
+              hiddenItems.map((id: string) => {
                 const item = allPossibleItems.find((i) => i.id === id);
                 if (!item) return null;
                 const Icon = item.icon;
@@ -780,7 +765,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   isMobileMenuOpen 
                     ? "w-full px-5 py-3.5 rounded-2xl gap-3 text-left font-black" 
                     : "h-11 w-11 rounded-xl justify-center",
-                  (activeTab === "settings" || activeTab.startsWith("user-"))
+                  (activeTab.startsWith("settings") || activeTab.startsWith("user-"))
                     ? "bg-indigo-600 border-indigo-700 text-white"
                     : (isMobileMenuOpen 
                         ? "bg-transparent border-transparent text-slate-500 hover:text-slate-800" 

@@ -44,9 +44,27 @@ export interface Lead {
   vatId?: string;
   contactPerson?: string;
   website?: string;
+  establishmentDate?: string;
+  legalForm?: string;
+  skNace?: string;
+  organizationSize?: string;
+  ownershipType?: string;
+  dataSource?: string;
+  dissolutionDate?: string;
+  region?: string;
+  district?: string;
   
   // Interactive Timeline Logs
   timeline?: TimelineEvent[];
+  
+  // VAT Validation Results Cache
+  vatValidationResult?: {
+    valid: boolean;
+    name?: string;
+    address?: string;
+    checkedAt?: string;
+    error?: string;
+  } | null;
   
   // Lead Interested Categories
   categories?: string[];
@@ -57,6 +75,7 @@ export interface Lead {
   // AI Summary & Verification Fingerprint
   aiSummary?: string;
   aiSummaryFingerprint?: string;
+  financialSummary?: string;
 }
 
 export interface Appointment {
@@ -206,11 +225,15 @@ export interface RolePermission {
 export interface UnifiedEntryRegistry {
   id: string;
   name: string;
+  entryName?: string;
+  folderName?: string;
   icon: string;
   color: string;
   modules: string[]; // e.g. ["title", "due_date", "file"]
   folderModules: string[]; // e.g. ["title", "due_date", "file"]
   foldersEnabled: boolean;
+  showFolderSummary?: boolean;
+  warningDays?: number;
   archived: boolean;
 }
 
@@ -224,5 +247,9 @@ export interface UnifiedEntryRow {
   fileSize?: string;
   fileType?: string;
   filePath?: string;
+  clientId?: string; // Links entry/folder to a Client/Lead ID
+  leadId?: string; // Links entry/folder to a Lead ID
+  warningDays?: number;
+  icon?: string;
 }
 

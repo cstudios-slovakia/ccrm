@@ -1,9 +1,10 @@
 import React from "react";
+import * as Icons from "lucide-react";
 import { 
   Settings, Save, Database, Trash2, ShieldAlert, Sliders, 
   Globe, Plus, X, Tag, Share2, Users, ShieldCheck, Lock,
   Eye, Pencil, Minus, GripVertical, ArrowLeft, Activity, Clock, CheckSquare,
-  Menu, ArrowUp, Briefcase, Calendar, ClipboardList, FolderOpen, Trophy, Link, MapPin
+  Menu, ArrowUp, FolderOpen, Search
 } from "lucide-react";
 import type { UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow } from "../types";
 import { getTranslation } from "../utils/translations";
@@ -63,7 +64,17 @@ interface SettingsViewProps {
     data?: Record<string, UnifiedEntryRow[]> | ((prev: Record<string, UnifiedEntryRow[]>) => Record<string, UnifiedEntryRow[]>)
   ) => void;
   unifiedEntriesData?: Record<string, UnifiedEntryRow[]>;
+  initialSubTab?: string;
+  settingsAction?: string | null;
+  settingsActionId?: string | null;
 }
+
+// Extract all valid Lucide icon names dynamically for search
+const ALL_LUCIDE_ICONS = Object.keys(Icons).filter(key => {
+  return /^[A-Z][a-zA-Z0-9]*$/.test(key) && 
+         key !== 'createReactComponent' &&
+         key !== 'Icon';
+});
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
   systemName,
@@ -104,7 +115,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setTaskStateColors,
   unifiedEntries = [],
   setUnifiedEntries,
-  unifiedEntriesData = {}
+  unifiedEntriesData = {},
+  initialSubTab = "branding",
+  settingsAction = null,
+  settingsActionId = null
 }) => {
   const [tempName, setTempName] = React.useState(systemName);
   const [newState, setNewState] = React.useState("");
@@ -121,11 +135,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [isCreatingUE, setIsCreatingUE] = React.useState(false);
   const [editingUEId, setEditingUEId] = React.useState<string | null>(null);
   const [ueName, setUeName] = React.useState("");
+  const [ueEntryName, setUeEntryName] = React.useState("Entry");
+  const [ueFolderName, setUeFolderName] = React.useState("Folder");
   const [ueIcon, setUeIcon] = React.useState("Folder");
   const [ueColor, setUeColor] = React.useState("#3b82f6");
   const [ueFoldersEnabled, setUeFoldersEnabled] = React.useState(false);
+  const [ueShowFolderSummary, setUeShowFolderSummary] = React.useState(false);
   const [ueModules, setUeModules] = React.useState<string[]>(["title"]);
   const [ueFolderModules, setUeFolderModules] = React.useState<string[]>(["title"]);
+  const [isIconPickerOpen, setIsIconPickerOpen] = React.useState(false);
+  const [iconSearchQuery, setIconSearchQuery] = React.useState("");
 
   const uploadingRoleRef = React.useRef<string | null>(null);
   const roleFileInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -311,7 +330,50 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // Role creation states
   const [newRoleName, setNewRoleName] = React.useState("");
 
-  const [activeSubTab, setActiveSubTab] = React.useState<"branding" | "managers" | "rbac" | "states" | "sources" | "danger" | "ads" | "api" | "email" | "ai" | "unified">("branding");
+  const [activeSubTab, setActiveSubTab] = React.useState<"branding" | "managers" | "rbac" | "states" | "sources" | "danger" | "ads" | "api" | "email" | "ai" | "unified">((initialSubTab as any) || "branding");
+
+  React.useEffect(() => {
+    if (initialSubTab) {
+      setActiveSubTab(initialSubTab as any);
+    }
+  }, [initialSubTab]);
+
+  React.useEffect(() => {
+    if (activeSubTab === "unified") {
+      if (settingsAction === "new") {
+        setEditingUEId(null);
+        setUeName("");
+        setUeEntryName("Entry");
+        setUeFolderName("Folder");
+        setUeIcon("FolderOpen");
+        setUeColor("#3b82f6");
+        setUeFoldersEnabled(false);
+        setUeModules(["title"]);
+        setUeFolderModules(["title"]);
+        setUeShowFolderSummary(false);
+        setIsCreatingUE(true);
+      } else if (settingsAction === "edit" && settingsActionId) {
+        const ue = unifiedEntries.find(u => u.id === settingsActionId);
+        if (ue) {
+          setEditingUEId(ue.id);
+          setUeName(ue.name);
+          setUeEntryName(ue.entryName || "Entry");
+          setUeFolderName(ue.folderName || "Folder");
+          setUeIcon(ue.icon);
+          setUeColor(ue.color);
+          setUeFoldersEnabled(ue.foldersEnabled);
+          setUeShowFolderSummary(ue.showFolderSummary || false);
+          setUeModules(ue.modules);
+          setUeFolderModules(ue.folderModules || ["title"]);
+          setIsCreatingUE(true);
+        } else {
+          setIsCreatingUE(false);
+        }
+      } else {
+        setIsCreatingUE(false);
+      }
+    }
+  }, [activeSubTab, settingsAction, settingsActionId, unifiedEntries]);
 
   React.useEffect(() => {
     if (initialSelectedUserName) {
@@ -319,6 +381,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       if (match) {
         setSelectedUser(match);
         setActiveSubTab("managers");
+        window.location.hash = "settings/managers";
       }
     } else {
       setSelectedUser(null);
@@ -841,6 +904,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     const allowed = tabs.find(t => getPermission(t.key) !== "nothing");
     if (allowed && !tabs.find(t => t.id === activeSubTab && getPermission(t.key) !== "nothing")) {
       setActiveSubTab(allowed.id as any);
+      window.location.hash = "settings/" + allowed.id;
     }
   }, [currentUser, roles]);
 
@@ -1304,11 +1368,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             return {
               ...ue,
               name: ueName.trim(),
+              entryName: ueEntryName.trim() || "Entry",
+              folderName: ueFolderName.trim() || "Folder",
               icon: ueIcon,
               color: ueColor,
               modules: ueModules,
               folderModules: ueFoldersEnabled ? ueFolderModules : [],
-              foldersEnabled: ueFoldersEnabled
+              foldersEnabled: ueFoldersEnabled,
+              showFolderSummary: ueFoldersEnabled ? ueShowFolderSummary : false
             };
           }
           return ue;
@@ -1325,11 +1392,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       const newEntry: UnifiedEntryRegistry = {
         id: safeId,
         name: ueName.trim(),
+        entryName: ueEntryName.trim() || "Entry",
+        folderName: ueFolderName.trim() || "Folder",
         icon: ueIcon,
         color: ueColor,
         modules: ueModules,
         folderModules: ueFoldersEnabled ? ueFolderModules : [],
         foldersEnabled: ueFoldersEnabled,
+        showFolderSummary: ueFoldersEnabled ? ueShowFolderSummary : false,
         archived: false
       };
       if (setUnifiedEntries) {
@@ -1337,7 +1407,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       }
     }
 
-    // Reset fields
+    // Reset fields and redirect hash
     setUeName("");
     setUeIcon("FolderOpen");
     setUeColor("#3b82f6");
@@ -1346,18 +1416,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setUeFolderModules(["title"]);
     setIsCreatingUE(false);
     setEditingUEId(null);
+    window.location.hash = "settings/unified";
   };
 
-  const handleOpenEditUE = (ue: UnifiedEntryRegistry) => {
-    setEditingUEId(ue.id);
-    setUeName(ue.name);
-    setUeIcon(ue.icon);
-    setUeColor(ue.color);
-    setUeFoldersEnabled(ue.foldersEnabled);
-    setUeModules(ue.modules);
-    setUeFolderModules(ue.folderModules || ["title"]);
-    setIsCreatingUE(true);
-  };
+
 
   const handleArchiveUnifiedEntry = (ueId: string) => {
     if (getPermission("general_config") !== "edit") return;
@@ -1381,19 +1443,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const getIconComponent = (iconName: string, className?: string) => {
-    switch (iconName) {
-      case "Briefcase": return <Briefcase className={className} />;
-      case "Calendar": return <Calendar className={className} />;
-      case "ClipboardList": return <ClipboardList className={className} />;
-      case "Database": return <Database className={className} />;
-      case "FolderOpen": return <FolderOpen className={className} />;
-      case "Trophy": return <Trophy className={className} />;
-      case "Link": return <Link className={className} />;
-      case "MapPin": return <MapPin className={className} />;
-      case "Users": return <Users className={className} />;
-      case "Tag": return <Tag className={className} />;
-      default: return <FolderOpen className={className} />;
-    }
+    const IconComponent = (Icons as any)[iconName];
+    if (IconComponent) return <IconComponent className={className} />;
+    return <Icons.FolderOpen className={className} />;
   };
 
   // Filter allowed tabs based on permissions
@@ -1443,136 +1495,145 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         
         {/* Left Side Navigation Sidebar */}
-        <div className="lg:col-span-3 space-y-2 lg:sticky lg:top-24 select-none shrink-0">
-          <div className="glass-panel p-4 rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col gap-1.5">
-            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-3 pb-2.5 border-b border-slate-150 mb-1.5 block">
-              {getTranslation(userLanguage, "settings.category_title")}
-            </span>
-            {allowedTabs.map(tab => {
-              const isActive = activeSubTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveSubTab(tab.id as any)}
-                  className={`w-full text-left px-4 py-3 rounded-2xl font-black text-[10.5px] uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
-                    isActive 
-                      ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 font-black border border-indigo-700" 
-                      : "text-slate-650 hover:text-slate-900 hover:bg-slate-50 border border-transparent"
-                  }`}
-                >
-                  {getTranslation(userLanguage, `settings.tab.${tab.id}`)}
-                </button>
-              );
-            })}
+        {!(activeSubTab === "unified" && isCreatingUE) && (
+          <div className="lg:col-span-3 space-y-2 lg:sticky lg:top-24 select-none shrink-0">
+            <div className="glass-panel p-4 rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col gap-1.5">
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-3 pb-2.5 border-b border-slate-150 mb-1.5 block">
+                {getTranslation(userLanguage, "settings.category_title")}
+              </span>
+              {allowedTabs.map(tab => {
+                const isActive = activeSubTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => {
+                      window.location.hash = "settings/" + tab.id;
+                    }}
+                    className={`w-full text-left px-4 py-3 rounded-2xl font-black text-[10.5px] uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+                      isActive 
+                        ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 font-black border border-indigo-700" 
+                        : "text-slate-650 hover:text-slate-900 hover:bg-slate-50 border border-transparent"
+                    }`}
+                  >
+                    {getTranslation(userLanguage, `settings.tab.${tab.id}`)}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Right Side Workspace Panels */}
-        <div className="lg:col-span-9">
+        <div className={activeSubTab === "unified" && isCreatingUE ? "lg:col-span-12" : "lg:col-span-9"}>
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         
         {/* TAB: Unified Universal Entries Configuration */}
         {activeSubTab === "unified" && getPermission("general_config") !== "nothing" && (
           <>
-            <div className="lg:col-span-8 space-y-6">
-              {renderReadOnlyBanner("general_config")}
-              
-              <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
-                <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-                  <div className="flex flex-col text-left">
-                    <h3 className="text-sm font-heading font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                      <FolderOpen className="h-4.5 w-4.5 text-indigo-500" />
-                      {userLanguage === "sk" ? "Unifikované univerzálne záznamy" : userLanguage === "hu" ? "Egységes univerzális bejegyzések" : "Unified Universal Entries"}
-                    </h3>
-                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mt-0.5">
-                      {userLanguage === "sk" ? "Definujte a konfigurujte vlastné dátové štruktúry" : userLanguage === "hu" ? "Egyéni adatstruktúrák definiálása és konfigurálása" : "Define and configure custom data structures"}
-                    </p>
-                  </div>
-                  {getPermission("general_config") === "edit" && !isCreatingUE && (
-                    <button
-                      type="button"
-                      onClick={() => setIsCreatingUE(true)}
-                      className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md shadow-indigo-600/20 cursor-pointer"
-                    >
-                      <Plus className="h-4 w-4" />
-                      {userLanguage === "sk" ? "Nový záznam" : "New Entry"}
-                    </button>
-                  )}
-                </div>
-
-                {isCreatingUE && (
-                  <form onSubmit={handleCreateUnifiedEntry} className="p-5 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-5 animate-in fade-in duration-200 text-left">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                        {editingUEId
-                          ? (userLanguage === "sk" ? "Upraviť typ záznamu" : "Edit Entry Type")
-                          : (userLanguage === "sk" ? "Vytvoriť nový záznam" : "Create New Entry Type")}
-                      </h4>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsCreatingUE(false);
-                          setEditingUEId(null);
-                          setUeName("");
-                          setUeIcon("FolderOpen");
-                          setUeColor("#3b82f6");
-                          setUeFoldersEnabled(false);
-                          setUeModules(["title"]);
-                          setUeFolderModules(["title"]);
-                        }}
-                        className="text-slate-450 hover:text-slate-650 transition-colors"
-                      >
-                        <X className="h-4.5 w-4.5" />
-                      </button>
+            {isCreatingUE ? (
+              <div className="lg:col-span-12 space-y-6">
+                {renderReadOnlyBanner("general_config")}
+                
+                <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
+                  <form onSubmit={handleCreateUnifiedEntry} className="space-y-6 text-left animate-in fade-in duration-200">
+                    <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            window.location.hash = "settings/unified";
+                          }}
+                          className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-700 transition-all cursor-pointer flex items-center justify-center h-9 w-9"
+                          title="Back"
+                        >
+                          <ArrowLeft className="h-4 w-4" />
+                        </button>
+                        <div className="flex flex-col">
+                          <h3 className="text-sm font-heading font-bold text-slate-900 uppercase tracking-wider">
+                            {editingUEId
+                              ? (userLanguage === "sk" ? "Upraviť typ unifikovaného záznamu" : "Edit Unified Entry Type")
+                              : (userLanguage === "sk" ? "Vytvoriť nový typ unifikovaného záznamu" : "Create New Unified Entry Type")}
+                          </h3>
+                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mt-0.5">
+                            {editingUEId ? (userLanguage === "sk" ? "Upravte konfiguráciu unifikovanej schémy" : "Modify the unified entry schema configuration") : (userLanguage === "sk" ? "Pridajte novú databázovú schému pre unifikované záznamy" : "Add a new database schema for unified entries")}
+                          </p>
+                        </div>
+                      </div>
                     </div>
 
-                    <div className="space-y-4">
-                      {/* Name */}
-                      <div className="flex flex-col gap-1.5">
-                        <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
-                          {userLanguage === "sk" ? "Názov záznamu (napr. Projekty)" : "Entry Name (e.g. Projects)"} *
-                        </label>
-                        <input
-                          type="text"
-                          value={ueName}
-                          onChange={(e) => setUeName(e.target.value)}
-                          className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-xs font-semibold focus:outline-none focus:border-indigo-500 transition-all shadow-sm"
-                          placeholder={userLanguage === "sk" ? "Zadajte názov..." : "Enter name..."}
-                          required
-                        />
+                    <div className="space-y-5">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {/* Section Name */}
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-[10px] font-bold text-slate-455 uppercase tracking-wider">
+                            {userLanguage === "sk" ? "Názov sekcie (napr. Licencie)" : "Section Name (e.g. Licenses)"} *
+                          </label>
+                          <input
+                            type="text"
+                            value={ueName}
+                            onChange={(e) => setUeName(e.target.value)}
+                            className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-xs font-semibold focus:outline-none focus:border-indigo-500 transition-all shadow-sm"
+                            placeholder={userLanguage === "sk" ? "Zadajte názov..." : "Enter section name..."}
+                            required
+                          />
+                        </div>
+
+                        {/* Entry Name */}
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-[10px] font-bold text-slate-455 uppercase tracking-wider">
+                            {userLanguage === "sk" ? "Názov pre záznamy (jedn. č., napr. Licencia)" : "Entry Name (singular, e.g. License)"} *
+                          </label>
+                          <input
+                            type="text"
+                            value={ueEntryName}
+                            onChange={(e) => setUeEntryName(e.target.value)}
+                            className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-xs font-semibold focus:outline-none focus:border-indigo-500 transition-all shadow-sm"
+                            placeholder={userLanguage === "sk" ? "Záznam" : "Entry"}
+                            required
+                          />
+                        </div>
+
+                        {/* Folder Name */}
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-[10px] font-bold text-slate-455 uppercase tracking-wider">
+                            {userLanguage === "sk" ? "Názov pre priečinky (jedn. č., napr. Priečinok)" : "Folder Name (singular, e.g. Folder)"} *
+                          </label>
+                          <input
+                            type="text"
+                            value={ueFolderName}
+                            onChange={(e) => setUeFolderName(e.target.value)}
+                            className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-xs font-semibold focus:outline-none focus:border-indigo-500 transition-all shadow-sm"
+                            placeholder={userLanguage === "sk" ? "Priečinok" : "Folder"}
+                            required
+                          />
+                        </div>
                       </div>
 
-                      {/* Icon */}
                       <div className="flex flex-col gap-1.5">
-                        <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
+                        <label className="text-[10px] font-bold text-slate-455 uppercase tracking-wider">
                           {userLanguage === "sk" ? "Ikona" : "Icon"}
                         </label>
-                        <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
-                          {["FolderOpen", "Briefcase", "Calendar", "ClipboardList", "Database", "Trophy", "Link", "MapPin", "Users", "Tag"].map((iconName) => {
-                            const isSelected = ueIcon === iconName;
-                            return (
-                              <button
-                                key={iconName}
-                                type="button"
-                                onClick={() => setUeIcon(iconName)}
-                                className={`p-2.5 rounded-xl flex items-center justify-center border transition-all ${
-                                  isSelected 
-                                    ? "bg-indigo-650 text-white border-indigo-650 shadow-sm" 
-                                    : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
-                                }`}
-                                title={iconName}
-                              >
-                                {getIconComponent(iconName, "h-4.5 w-4.5")}
-                              </button>
-                            );
-                          })}
+                        <div className="flex items-center gap-3">
+                          <div className="h-12 w-12 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-700 shadow-sm shrink-0">
+                            {getIconComponent(ueIcon, "h-6 w-6")}
+                          </div>
+                          <div className="flex flex-col gap-1 text-left">
+                            <span className="text-xs font-bold text-slate-800">{ueIcon}</span>
+                            <button
+                              type="button"
+                              onClick={() => setIsIconPickerOpen(true)}
+                              className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl text-[10px] font-black text-indigo-700 uppercase tracking-wider transition-all cursor-pointer shadow-sm active:scale-95"
+                            >
+                              {userLanguage === "sk" ? "Vybrať z 1000+ ikon..." : "Choose from 1000+ icons..."}
+                            </button>
+                          </div>
                         </div>
                       </div>
 
                       {/* Color */}
                       <div className="flex flex-col gap-1.5">
-                        <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
+                        <label className="text-[10px] font-bold text-slate-455 uppercase tracking-wider">
                           {userLanguage === "sk" ? "Farba" : "Color"}
                         </label>
                         <div className="flex flex-wrap gap-2">
@@ -1597,32 +1658,55 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                       {/* Modules */}
                       <div className="flex flex-col gap-1.5">
-                        <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
-                          {userLanguage === "sk" ? "Aktívne moduly (polia)" : "Active Modules (fields)"}
+                        <label className="text-[10px] font-bold text-slate-455 uppercase tracking-wider text-left">
+                          {userLanguage === "sk" ? "Aktívne moduly (polia) pre záznamy" : "Active Modules (fields) for Entries"}
                         </label>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
                           {[
                             { id: "title", label: userLanguage === "sk" ? "Titulok / Názov" : "Title / Name" },
                             { id: "due_date", label: userLanguage === "sk" ? "Termín (Due Date)" : "Due Date" },
-                            { id: "file", label: userLanguage === "sk" ? "Súbor (File)" : "File" }
+                            { id: "file", label: userLanguage === "sk" ? "Súbor (File)" : "File" },
+                            { id: "client", label: userLanguage === "sk" ? "Klient (Client)" : "Client" },
+                            { id: "lead", label: userLanguage === "sk" ? "Lead" : "Lead" }
                           ].map((mod) => {
                             const isChecked = ueModules.includes(mod.id);
                             return (
-                              <label key={mod.id} className="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all text-xs font-semibold cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  checked={isChecked}
-                                  onChange={(e) => {
-                                    if (e.target.checked) {
-                                      setUeModules([...ueModules, mod.id]);
-                                    } else {
-                                      setUeModules(ueModules.filter(m => m !== mod.id));
-                                    }
-                                  }}
-                                  className="h-4 w-4 text-indigo-650 focus:ring-indigo-500 rounded border-slate-350 cursor-pointer"
-                                />
-                                <span className="text-slate-700">{mod.label}</span>
-                              </label>
+                              <div key={mod.id} className="flex flex-col p-4 rounded-2xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md">
+                                <label className="flex items-center justify-between cursor-pointer w-full">
+                                  <span className="text-xs font-bold text-slate-700">{mod.label}</span>
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setUeModules([...ueModules, mod.id]);
+                                      } else {
+                                        setUeModules(ueModules.filter(m => m !== mod.id));
+                                      }
+                                    }}
+                                    className="h-4.5 w-4.5 text-indigo-650 focus:ring-indigo-500 rounded border-slate-350 cursor-pointer"
+                                  />
+                                </label>
+
+                                {mod.id === "due_date" && isChecked && ueFoldersEnabled && (
+                                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between animate-in slide-in-from-top-1 duration-150 text-left">
+                                    <div className="flex flex-col">
+                                      <span className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                                        {userLanguage === "sk" ? "Zobraziť prehľad" : "Show summary"}
+                                      </span>
+                                      <span className="text-[9px] font-semibold text-slate-455 mt-0.5">
+                                        {userLanguage === "sk" ? "Zobrazí počet záznamov" : "Shows entry count"}
+                                      </span>
+                                    </div>
+                                    <input
+                                      type="checkbox"
+                                      checked={ueShowFolderSummary}
+                                      onChange={(e) => setUeShowFolderSummary(e.target.checked)}
+                                      className="h-4.5 w-4.5 text-indigo-650 focus:ring-indigo-500 rounded border-slate-350 cursor-pointer"
+                                    />
+                                  </div>
+                                )}
+                              </div>
                             );
                           })}
                         </div>
@@ -1630,7 +1714,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                       {/* Folders */}
                       <div className="flex items-center justify-between p-3.5 rounded-xl border border-slate-200 bg-white">
-                        <div className="flex flex-col">
+                        <div className="flex flex-col text-left">
                           <span className="text-xs font-bold text-slate-700">
                             {userLanguage === "sk" ? "Povoliť priečinky (Folders)" : "Enable Folders"}
                           </span>
@@ -1647,33 +1731,37 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       </div>
 
                       {ueFoldersEnabled && (
-                        <div className="flex flex-col gap-1.5 p-3.5 rounded-xl border border-slate-200 bg-white animate-in slide-in-from-top-2 duration-200">
-                          <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
+                        <div className="flex flex-col gap-3 p-4 rounded-2xl border border-slate-200 bg-white shadow-sm">
+                          <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider text-left">
                             {userLanguage === "sk" ? "Aktívne moduly pre priečinky" : "Active Modules for Folders"}
                           </label>
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                          <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
                             {[
                               { id: "title", label: userLanguage === "sk" ? "Titulok / Názov" : "Title / Name" },
                               { id: "due_date", label: userLanguage === "sk" ? "Termín (Due Date)" : "Due Date" },
-                              { id: "file", label: userLanguage === "sk" ? "Súbor (File)" : "File" }
+                              { id: "file", label: userLanguage === "sk" ? "Súbor (File)" : "File" },
+                              { id: "client", label: userLanguage === "sk" ? "Klient (Client)" : "Client" },
+                              { id: "lead", label: userLanguage === "sk" ? "Lead" : "Lead" }
                             ].map((mod) => {
                               const isChecked = ueFolderModules.includes(mod.id);
                               return (
-                                <label key={mod.id} className="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all text-xs font-semibold cursor-pointer">
-                                  <input
-                                    type="checkbox"
-                                    checked={isChecked}
-                                    onChange={(e) => {
-                                      if (e.target.checked) {
-                                        setUeFolderModules([...ueFolderModules, mod.id]);
-                                      } else {
-                                        setUeFolderModules(ueFolderModules.filter(m => m !== mod.id));
-                                      }
-                                    }}
-                                    className="h-4 w-4 text-indigo-650 focus:ring-indigo-500 rounded border-slate-350 cursor-pointer"
-                                  />
-                                  <span className="text-slate-700">{mod.label}</span>
-                                </label>
+                                <div key={mod.id} className="flex flex-col p-4 rounded-2xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md">
+                                  <label className="flex items-center justify-between cursor-pointer w-full">
+                                    <span className="text-xs font-bold text-slate-700">{mod.label}</span>
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          setUeFolderModules([...ueFolderModules, mod.id]);
+                                        } else {
+                                          setUeFolderModules(ueFolderModules.filter(m => m !== mod.id));
+                                        }
+                                      }}
+                                      className="h-4.5 w-4.5 text-indigo-650 focus:ring-indigo-500 rounded border-slate-350 cursor-pointer"
+                                    />
+                                  </label>
+                                </div>
                               );
                             })}
                           </div>
@@ -1681,123 +1769,150 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       )}
                     </div>
 
-                    <div className="flex justify-end gap-2.5 pt-2">
+                    <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-100">
                       <button
                         type="button"
                         onClick={() => {
-                          setIsCreatingUE(false);
-                          setEditingUEId(null);
-                          setUeName("");
-                          setUeIcon("FolderOpen");
-                          setUeColor("#3b82f6");
-                          setUeFoldersEnabled(false);
-                          setUeModules(["title"]);
-                          setUeFolderModules(["title"]);
+                          window.location.hash = "settings/unified";
                         }}
-                        className="px-4 py-2 rounded-xl hover:bg-slate-100 text-slate-650 text-xs font-bold uppercase transition-all"
+                        className="px-4 py-2 rounded-xl hover:bg-slate-100 text-slate-650 text-xs font-bold uppercase transition-all cursor-pointer"
                       >
                         {userLanguage === "sk" ? "Zrušiť" : "Cancel"}
                       </button>
                       <button
                         type="submit"
-                        className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black uppercase transition-all shadow-md shadow-indigo-600/10"
+                        className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black uppercase transition-all shadow-md shadow-indigo-600/10 cursor-pointer"
                       >
                         {userLanguage === "sk" ? "Uložiť" : "Save"}
                       </button>
                     </div>
                   </form>
-                )}
-
-                {/* List of existing UUE types */}
-                <div className="space-y-3.5">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-left block">
-                    {userLanguage === "sk" ? "Aktívne databázové typy" : "Active Database Types"}
-                  </span>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="lg:col-span-8 space-y-6">
+                  {renderReadOnlyBanner("general_config")}
                   
-                  {unifiedEntries.filter(ue => !ue.archived).length === 0 ? (
-                    <div className="border border-slate-200 border-dashed rounded-2xl p-8 text-center text-slate-400">
-                      <span className="text-3xl">🗂️</span>
-                      <p className="text-xs font-bold text-slate-500 mt-2 uppercase tracking-wide">
-                        {userLanguage === "sk" ? "Žiadne aktívne unifikované záznamy" : "No active unified entries"}
-                      </p>
-                      <p className="text-[10px] font-medium text-slate-400 mt-1">
-                        {userLanguage === "sk" ? "Vytvorte nový záznam kliknutím na tlačidlo vyššie." : "Create your first entry schema by clicking the button above."}
-                      </p>
+                  <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
+                    <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+                      <div className="flex flex-col text-left">
+                        <h3 className="text-sm font-heading font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                          <FolderOpen className="h-4.5 w-4.5 text-indigo-500" />
+                          {userLanguage === "sk" ? "Unifikované univerzálne záznamy" : userLanguage === "hu" ? "Egységes univerzális bejegyzések" : "Unified Universal Entries"}
+                        </h3>
+                        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mt-0.5">
+                          {userLanguage === "sk" ? "Definujte a konfigurujte vlastné dátové štruktúry" : userLanguage === "hu" ? "Egyéni adatstruktúrák definiálása és konfigurálása" : "Define and configure custom data structures"}
+                        </p>
+                      </div>
+                      {getPermission("general_config") === "edit" && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            window.location.hash = "settings/unified/new";
+                          }}
+                          className="px-3.5 py-2 rounded-xl bg-indigo-650 hover:bg-indigo-700 text-white text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md shadow-indigo-600/20 cursor-pointer"
+                        >
+                          <Plus className="h-4 w-4" />
+                          {userLanguage === "sk" ? "Nový záznam" : "New Entry"}
+                        </button>
+                      )}
                     </div>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {unifiedEntries.filter(ue => !ue.archived).map((ue) => (
-                        <div key={ue.id} className="p-4 rounded-2xl border border-slate-200/80 bg-white flex flex-col justify-between shadow-sm hover:shadow-md transition-all text-left relative group">
-                          <div className="flex items-start gap-3">
-                            <div 
-                              className="p-3.5 rounded-xl text-white flex items-center justify-center shrink-0 shadow-sm"
-                              style={{ backgroundColor: ue.color }}
-                            >
-                              {getIconComponent(ue.icon, "h-5 w-5")}
-                            </div>
-                            <div className="flex flex-col min-w-0">
-                              <span className="text-xs font-black text-slate-800 uppercase tracking-wider truncate">
-                                {ue.name}
-                              </span>
-                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">
-                                {userLanguage === "sk" ? "Moduly: " : "Modules: "}
-                                <span className="text-slate-650 font-semibold">{ue.modules.join(", ")}</span>
-                              </span>
-                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                                {userLanguage === "sk" ? "Zložky: " : "Folders: "}
-                                <span className="text-slate-650 font-semibold">{ue.foldersEnabled ? "Áno" : "Nie"}</span>
-                              </span>
-                            </div>
-                          </div>
 
-                          <div className="flex justify-end gap-2 border-t border-slate-100 pt-3 mt-4">
-                            <button
-                              type="button"
-                              onClick={() => handleOpenEditUE(ue)}
-                              className="px-2.5 py-1.5 text-[9px] font-black uppercase tracking-wider text-indigo-650 hover:bg-indigo-50 rounded-lg transition-all flex items-center gap-1 cursor-pointer"
-                              title="Edit entry schema"
-                            >
-                              <Pencil className="h-3 w-3" />
-                              {userLanguage === "sk" ? "Upraviť" : "Edit"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleArchiveUnifiedEntry(ue.id)}
-                              className="px-2.5 py-1.5 text-[9px] font-black uppercase tracking-wider text-rose-600 hover:bg-rose-50 rounded-lg transition-all flex items-center gap-1 cursor-pointer"
-                              title="Archive entry schema"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                              {userLanguage === "sk" ? "Archivovať" : "Archive"}
-                            </button>
-                          </div>
+                    {/* List of existing UUE types */}
+                    <div className="space-y-3.5">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-left block">
+                        {userLanguage === "sk" ? "Aktívne databázové typy" : "Active Database Types"}
+                      </span>
+                      
+                      {unifiedEntries.filter(ue => !ue.archived).length === 0 ? (
+                        <div className="border border-slate-200 border-dashed rounded-2xl p-8 text-center text-slate-400">
+                          <span className="text-3xl">🗂️</span>
+                          <p className="text-xs font-bold text-slate-500 mt-2 uppercase tracking-wide">
+                            {userLanguage === "sk" ? "Žiadne aktívne unifikované záznamy" : "No active unified entries"}
+                          </p>
+                          <p className="text-[10px] font-medium text-slate-400 mt-1">
+                            {userLanguage === "sk" ? "Vytvorte nový záznam kliknutím na tlačidlo vyššie." : "Create your first entry schema by clicking the button above."}
+                          </p>
                         </div>
-                      ))}
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {unifiedEntries.filter(ue => !ue.archived).map((ue) => (
+                            <div key={ue.id} className="p-4 rounded-2xl border border-slate-200/80 bg-white flex flex-col justify-between shadow-sm hover:shadow-md transition-all text-left relative group">
+                              <div className="flex items-start gap-3">
+                                <div 
+                                  className="p-3.5 rounded-xl text-white flex items-center justify-center shrink-0 shadow-sm"
+                                  style={{ backgroundColor: ue.color }}
+                                >
+                                  {getIconComponent(ue.icon, "h-5 w-5")}
+                                </div>
+                                <div className="flex flex-col min-w-0">
+                                  <span className="text-xs font-black text-slate-800 uppercase tracking-wider truncate">
+                                    {ue.name}
+                                  </span>
+                                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">
+                                    {userLanguage === "sk" ? "Moduly: " : "Modules: "}
+                                    <span className="text-slate-650 font-semibold">{ue.modules.join(", ")}</span>
+                                  </span>
+                                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                                    {userLanguage === "sk" ? "Zložky: " : "Folders: "}
+                                    <span className="text-slate-650 font-semibold">{ue.foldersEnabled ? "Áno" : "Nie"}</span>
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="flex justify-end gap-2 border-t border-slate-100 pt-3 mt-4">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    window.location.hash = `settings/unified/edit/${ue.id}`;
+                                  }}
+                                  className="px-2.5 py-1.5 text-[9px] font-black uppercase tracking-wider text-indigo-650 hover:bg-indigo-50 rounded-lg transition-all flex items-center gap-1 cursor-pointer"
+                                  title="Edit entry schema"
+                                >
+                                  <Pencil className="h-3 w-3" />
+                                  {userLanguage === "sk" ? "Upraviť" : "Edit"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleArchiveUnifiedEntry(ue.id)}
+                                  className="px-2.5 py-1.5 text-[9px] font-black uppercase tracking-wider text-rose-600 hover:bg-rose-50 rounded-lg transition-all flex items-center gap-1 cursor-pointer"
+                                  title="Archive entry schema"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                  {userLanguage === "sk" ? "Archivovať" : "Archive"}
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  )}
+                  </div>
                 </div>
-              </div>
-            </div>
-            
-            <div className="lg:col-span-4 space-y-6 text-left">
-              <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass">
-                <h4 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5 pb-3 border-b border-slate-200 mb-3.5">
-                  <ShieldAlert className="h-4.5 w-4.5 text-indigo-500" />
-                  {userLanguage === "sk" ? "Dôležité upozornenie" : "System Information"}
-                </h4>
-                <div className="space-y-3.5 text-[11px] font-medium text-slate-500 leading-relaxed">
-                  <p>
-                    {userLanguage === "sk" 
-                      ? "Vytvorenie unifikovaného záznamu automaticky vytvorí novú tabuľku v relačnej databáze."
-                      : "Creating a unified entry schema automatically instantiates a new table in the database."}
-                  </p>
-                  <p>
-                    {userLanguage === "sk" 
-                      ? "Pokiaľ záznam vymažete/archivujete, samotná tabuľka ani v nej uložené údaje sa neodstránia. Iba sa prestane zobrazovať v hlavnom paneli a menu."
-                      : "Archiving an entry hides it from navigation. The underlying SQL table and data remain untouched."}
-                  </p>
+
+                <div className="lg:col-span-4 space-y-6 text-left">
+                  <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass">
+                    <h4 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5 pb-3 border-b border-slate-200 mb-3.5">
+                      <ShieldAlert className="h-4.5 w-4.5 text-indigo-500" />
+                      {userLanguage === "sk" ? "Dôležité upozornenie" : "System Information"}
+                    </h4>
+                    <div className="space-y-3.5 text-[11px] font-medium text-slate-500 leading-relaxed">
+                      <p>
+                        {userLanguage === "sk" 
+                          ? "Vytvorenie unifikovaného záznamu automaticky vytvorí novú tabuľku v relačnej databáze."
+                          : "Creating a unified entry schema automatically instantiates a new table in the database."}
+                      </p>
+                      <p>
+                        {userLanguage === "sk" 
+                          ? "Pokiaľ záznam vymažete/archivujete, samotná tabuľka ani v nej uložené údaje sa neodstránia. Iba sa prestane zobrazovať v hlavnom paneli a menu."
+                          : "Archiving an entry hides it from navigation. The underlying SQL table and data remain untouched."}
+                      </p>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
+              </>
+            )}
           </>
         )}
 
@@ -4689,6 +4804,122 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
 
       </div>
+      {/* Icon Picker Modal */}
+      {isIconPickerOpen && (
+        <div className="fixed inset-0 z-[5000] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col text-left overflow-hidden m-4 animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-heading font-extrabold text-slate-800 uppercase tracking-wider">
+                  {userLanguage === "sk" ? "Výber ikony" : "Select Icon"}
+                </h3>
+                <p className="text-xs font-bold text-slate-400 mt-0.5">
+                  {userLanguage === "sk" ? "Prehliadajte a hľadajte z viac ako 1000+ ikon" : "Browse and search from over 1000+ icons"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsIconPickerOpen(false);
+                  setIconSearchQuery("");
+                }}
+                className="p-2 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-100 text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Search Bar */}
+            <div className="p-6 bg-slate-50/50 border-b border-slate-100 flex gap-3">
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  value={iconSearchQuery}
+                  onChange={(e) => setIconSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-800 text-xs font-semibold focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all shadow-sm"
+                  placeholder={userLanguage === "sk" ? "Vyhľadajte ikonu (napr. settings, user, card)..." : "Search icons (e.g. settings, user, card)..."}
+                  autoFocus
+                />
+                <Search className="h-5 w-5 text-slate-400 absolute left-3.5 top-3.5" />
+                {iconSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setIconSearchQuery("")}
+                    className="absolute right-3.5 top-3.5 text-slate-400 hover:text-slate-655"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Icons Grid Content */}
+            <div className="p-6 overflow-y-auto flex-1 bg-white">
+              {(() => {
+                const query = iconSearchQuery.toLowerCase().trim();
+                const filtered = ALL_LUCIDE_ICONS.filter(name => name.toLowerCase().includes(query));
+                const displayed = filtered.slice(0, 150); // limit to 150 results for super fast rendering
+
+                if (displayed.length === 0) {
+                  return (
+                    <div className="py-12 text-center text-slate-400">
+                      <Search className="h-8 w-8 mx-auto mb-2 text-slate-300" />
+                      <p className="text-xs font-semibold">
+                        {userLanguage === "sk" ? "Nenašli sa žiadne ikony" : "No icons found"}
+                      </p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-3">
+                      {displayed.map((name) => {
+                        const IconComponent = (Icons as any)[name];
+                        const isSelected = ueIcon === name;
+                        return (
+                          <button
+                            key={name}
+                            type="button"
+                            onClick={() => {
+                              setUeIcon(name);
+                              setIsIconPickerOpen(false);
+                              setIconSearchQuery("");
+                            }}
+                            className={`p-3 rounded-2xl flex flex-col items-center justify-center gap-2 border transition-all cursor-pointer group ${
+                              isSelected
+                                ? "bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-100"
+                                : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 hover:border-slate-300 hover:scale-[1.03]"
+                            }`}
+                            title={name}
+                          >
+                            <div className="h-8 w-8 flex items-center justify-center shrink-0">
+                              {IconComponent ? <IconComponent className="h-6 w-6" /> : null}
+                            </div>
+                            <span className={`text-[9px] font-bold text-center truncate w-full ${
+                              isSelected ? "text-indigo-100" : "text-slate-400 group-hover:text-slate-600"
+                            }`}>
+                              {name}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {filtered.length > 150 && (
+                      <p className="text-[10px] text-center text-slate-400 font-semibold pt-4">
+                        {userLanguage === "sk" 
+                          ? `Zobrazuje sa prvých 150 výsledkov z ${filtered.length}. Upresnite vyhľadávanie.` 
+                          : `Showing first 150 results out of ${filtered.length}. Refine your search to see more.`}
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

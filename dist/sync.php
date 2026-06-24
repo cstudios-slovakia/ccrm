@@ -115,6 +115,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'companyId' => $row['company_id'] ?? '',
             'taxId' => $row['tax_id'] ?? '',
             'vatId' => $row['vat_id'] ?? '',
+            'vatValidationResult' => isset($row['vat_validation_result']) && !empty($row['vat_validation_result']) ? json_decode($row['vat_validation_result'], true) : null,
             'contactPerson' => $row['contact_person'] ?? '',
             'website' => $row['website'] ?? '',
             'address' => [
@@ -127,7 +128,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'categories' => $categories,
             'timeline' => $timeline,
             'aiSummary' => $row['ai_summary'] ?? '',
-            'aiSummaryFingerprint' => $row['ai_summary_fingerprint'] ?? ''
+            'aiSummaryFingerprint' => $row['ai_summary_fingerprint'] ?? '',
+            'establishmentDate' => $row['establishment_date'] ?? '',
+            'legalForm' => $row['legal_form'] ?? '',
+            'skNace' => $row['sk_nace'] ?? '',
+            'organizationSize' => $row['organization_size'] ?? '',
+            'ownershipType' => $row['ownership_type'] ?? '',
+            'dataSource' => $row['data_source'] ?? '',
+            'dissolutionDate' => $row['dissolution_date'] ?? '',
+            'region' => $row['region'] ?? '',
+            'district' => $row['district'] ?? '',
+            'financialSummary' => $row['financial_summary'] ?? ''
         ];
     }
 
@@ -291,11 +302,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 $unifiedEntries[] = [
                     'id' => $ueId,
                     'name' => $row['name'],
+                    'entryName' => $row['entry_name'] ?? 'Entry',
+                    'folderName' => $row['folder_name'] ?? 'Folder',
                     'icon' => $row['icon'],
                     'color' => $row['color'],
                     'modules' => $modules,
                     'folderModules' => $folderModules,
                     'foldersEnabled' => (int)$row['folders_enabled'] === 1,
+                    'showFolderSummary' => isset($row['show_folder_summary']) ? ((int)$row['show_folder_summary'] === 1) : false,
+                    'warningDays' => isset($row['warning_days']) ? (int)$row['warning_days'] : 0,
                     'archived' => (int)$row['archived'] === 1
                 ];
 
@@ -323,6 +338,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                             $rowItem['fileSize'] = $r['file_size'];
                             $rowItem['fileType'] = $r['file_type'];
                             $rowItem['filePath'] = $r['file_path'];
+                        }
+                        if (isset($r['client_id'])) {
+                            $rowItem['clientId'] = $r['client_id'];
+                        }
+                        if (isset($r['lead_id'])) {
+                            $rowItem['leadId'] = $r['lead_id'];
+                        }
+                        if (isset($r['warning_days'])) {
+                            $rowItem['warningDays'] = (int)$r['warning_days'];
+                        }
+                        if (isset($r['icon'])) {
+                            $rowItem['icon'] = $r['icon'];
                         }
                         $ueRows[] = $rowItem;
                     }
@@ -475,7 +502,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingLeadIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedLeadIds = [];
 
-            $insLead = $pdo->prepare("INSERT INTO `leads` (`id`, `name`, `city`, `client_type`, `status`, `source`, `owner`, `value`, `rating`, `phone`, `email`, `company_id`, `tax_id`, `vat_id`, `contact_person`, `website`, `street`, `postal_code`, `country`, `ai_summary`, `ai_summary_fingerprint`, `created_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `city` = VALUES(`city`), `client_type` = VALUES(`client_type`), `status` = VALUES(`status`), `source` = VALUES(`source`), `owner` = VALUES(`owner`), `value` = VALUES(`value`), `rating` = VALUES(`rating`), `phone` = VALUES(`phone`), `email` = VALUES(`email`), `company_id` = VALUES(`company_id`), `tax_id` = VALUES(`tax_id`), `vat_id` = VALUES(`vat_id`), `contact_person` = VALUES(`contact_person`), `website` = VALUES(`website`), `street` = VALUES(`street`), `postal_code` = VALUES(`postal_code`), `country` = VALUES(`country`), `ai_summary` = VALUES(`ai_summary`), `ai_summary_fingerprint` = VALUES(`ai_summary_fingerprint`)");
+            $insLead = $pdo->prepare("INSERT INTO `leads` (
+              `id`, `name`, `city`, `client_type`, `status`, `source`, `owner`, `value`, `rating`, `phone`, `email`, 
+              `company_id`, `tax_id`, `vat_id`, `contact_person`, `website`, `street`, `postal_code`, `country`, 
+              `ai_summary`, `ai_summary_fingerprint`, 
+              `establishment_date`, `legal_form`, `sk_nace`, `organization_size`, `ownership_type`, `data_source`, `dissolution_date`, `region`, `district`, `financial_summary`,
+              `vat_validation_result`,
+              `created_at`
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) 
+            ON DUPLICATE KEY UPDATE 
+              `name` = VALUES(`name`), `city` = VALUES(`city`), `client_type` = VALUES(`client_type`), `status` = VALUES(`status`), `source` = VALUES(`source`), `owner` = VALUES(`owner`), `value` = VALUES(`value`), `rating` = VALUES(`rating`), `phone` = VALUES(`phone`), `email` = VALUES(`email`), `company_id` = VALUES(`company_id`), `tax_id` = VALUES(`tax_id`), `vat_id` = VALUES(`vat_id`), `contact_person` = VALUES(`contact_person`), `website` = VALUES(`website`), `street` = VALUES(`street`), `postal_code` = VALUES(`postal_code`), `country` = VALUES(`country`), `ai_summary` = VALUES(`ai_summary`), `ai_summary_fingerprint` = VALUES(`ai_summary_fingerprint`),
+              `establishment_date` = VALUES(`establishment_date`), `legal_form` = VALUES(`legal_form`), `sk_nace` = VALUES(`sk_nace`), `organization_size` = VALUES(`organization_size`), `ownership_type` = VALUES(`ownership_type`), `data_source` = VALUES(`data_source`), `dissolution_date` = VALUES(`dissolution_date`), `region` = VALUES(`region`), `district` = VALUES(`district`), `financial_summary` = VALUES(`financial_summary`),
+              `vat_validation_result` = VALUES(`vat_validation_result`)");
 
             foreach ($payload['leads'] as $l) {
                 $leadId = $l['id'];
@@ -504,8 +542,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $address['country'] ?? 'Slovakia',
                     $l['aiSummary'] ?? null,
                     $l['aiSummaryFingerprint'] ?? null,
+                    $l['establishmentDate'] ?? null,
+                    $l['legalForm'] ?? null,
+                    $l['skNace'] ?? null,
+                    $l['organizationSize'] ?? null,
+                    $l['ownershipType'] ?? null,
+                    $l['dataSource'] ?? null,
+                    $l['dissolutionDate'] ?? null,
+                    $l['region'] ?? null,
+                    $l['district'] ?? null,
+                    $l['financialSummary'] ?? null,
+                    isset($l['vatValidationResult']) ? json_encode($l['vatValidationResult']) : null,
                     $l['createdAt'] ?? date('Y-m-d')
                 ]);
+
+                // Check if we need to generate financial report in the background
+                $companyId = $l['companyId'] ?? null;
+                $clientType = $l['clientType'] ?? 'person';
+                
+                if (!empty($companyId) && $clientType !== 'person') {
+                    $checkStmt = $pdo->prepare("SELECT `company_id`, `financial_summary` FROM `leads` WHERE `id` = ?");
+                    $checkStmt->execute([$leadId]);
+                    $existingLead = $checkStmt->fetch(PDO::FETCH_ASSOC);
+                    
+                    $oldCompanyId = $existingLead['company_id'] ?? '';
+                    $oldSummary = $existingLead['financial_summary'] ?? '';
+                    
+                    if ($oldCompanyId !== $companyId || empty($oldSummary)) {
+                        $sysLang = $payload['systemLanguage'] ?? 'sk';
+                        $cmd = "php " . escapeshellarg(__DIR__ . "/api/generate_report.php") . " " . escapeshellarg($companyId) . " " . escapeshellarg($sysLang) . " > /dev/null 2>&1 &";
+                        exec($cmd);
+                    }
+                }
+
                 $processedLeadIds[] = $leadId;
 
                 // Sync interested stone categories (Delete & Insert list)
@@ -675,7 +744,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingRegistryIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedRegistryIds = [];
 
-            $insRegistry = $pdo->prepare("INSERT INTO `unified_entries` (`id`, `name`, `icon`, `color`, `modules_json`, `folder_modules_json`, `folders_enabled`, `archived`) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `icon` = VALUES(`icon`), `color` = VALUES(`color`), `modules_json` = VALUES(`modules_json`), `folder_modules_json` = VALUES(`folder_modules_json`), `folders_enabled` = VALUES(`folders_enabled`), `archived` = VALUES(`archived`)");
+            $insRegistry = $pdo->prepare("INSERT INTO `unified_entries` (`id`, `name`, `entry_name`, `folder_name`, `icon`, `color`, `modules_json`, `folder_modules_json`, `folders_enabled`, `show_folder_summary`, `warning_days`, `archived`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `entry_name` = VALUES(`entry_name`), `folder_name` = VALUES(`folder_name`), `icon` = VALUES(`icon`), `color` = VALUES(`color`), `modules_json` = VALUES(`modules_json`), `folder_modules_json` = VALUES(`folder_modules_json`), `folders_enabled` = VALUES(`folders_enabled`), `show_folder_summary` = VALUES(`show_folder_summary`), `warning_days` = VALUES(`warning_days`), `archived` = VALUES(`archived`)");
 
             foreach ($payload['unifiedEntries'] as $ue) {
                 $ueId = $ue['id'];
@@ -684,11 +753,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $insRegistry->execute([
                     $ueId,
                     $ue['name'],
+                    $ue['entryName'] ?? 'Entry',
+                    $ue['folderName'] ?? 'Folder',
                     $ue['icon'],
                     $ue['color'],
                     json_encode($modules),
                     json_encode($folderModules),
                     ($ue['foldersEnabled'] ?? false) ? 1 : 0,
+                    ($ue['showFolderSummary'] ?? false) ? 1 : 0,
+                    (int)($ue['warningDays'] ?? 0),
                     ($ue['archived'] ?? false) ? 1 : 0
                 ]);
                 $processedRegistryIds[] = $ueId;
@@ -707,6 +780,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     FOREIGN KEY (`parent_id`) REFERENCES `{$tableName}` (`id`) ON DELETE CASCADE
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
 
+                if (!ccrm_column_exists($pdo, $tableName, 'icon')) {
+                    $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `icon` VARCHAR(50) NULL");
+                }
+
                 // Dynamically add columns for active modules if they are missing
                 $allActiveModules = array_unique(array_merge($modules, $folderModules));
                 if (in_array('title', $allActiveModules)) {
@@ -718,10 +795,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (!ccrm_column_exists($pdo, $tableName, 'due_date')) {
                         $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `due_date` DATE NULL");
                     }
+                    if (!ccrm_column_exists($pdo, $tableName, 'warning_days')) {
+                        $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `warning_days` INT NOT NULL DEFAULT 0");
+                    }
                 }
                 if (in_array('file', $allActiveModules)) {
                     if (!ccrm_column_exists($pdo, $tableName, 'file_name')) {
                         $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `file_name` VARCHAR(255) NULL, ADD COLUMN `file_size` VARCHAR(50) NULL, ADD COLUMN `file_type` VARCHAR(100) NULL, ADD COLUMN `file_path` VARCHAR(255) NULL");
+                    }
+                }
+                if (in_array('client', $allActiveModules)) {
+                    if (!ccrm_column_exists($pdo, $tableName, 'client_id')) {
+                        $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `client_id` VARCHAR(50) NULL");
+                    }
+                }
+                if (in_array('lead', $allActiveModules)) {
+                    if (!ccrm_column_exists($pdo, $tableName, 'lead_id')) {
+                        $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `lead_id` VARCHAR(50) NULL");
                     }
                 }
 
@@ -755,13 +845,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 (isset($row['parentId']) && $row['parentId'] !== '') ? $row['parentId'] : null,
                                 ($row['isFolder'] ?? false) ? 1 : 0
                             ];
-                            if (in_array('title', $rowModules) && ccrm_column_exists($pdo, $tableName, 'title')) {
+                            if (ccrm_column_exists($pdo, $tableName, 'icon')) {
+                                $updates[] = "`icon` = ?";
+                                $params[] = $row['icon'] ?? null;
+                            }
+                            if ((in_array('title', $rowModules) || ($row['isFolder'] ?? false)) && ccrm_column_exists($pdo, $tableName, 'title')) {
                                 $updates[] = "`title` = ?";
                                 $params[] = $row['title'] ?? null;
                             }
                             if ((in_array('due_date', $rowModules) || in_array('due date', $rowModules)) && ccrm_column_exists($pdo, $tableName, 'due_date')) {
                                 $updates[] = "`due_date` = ?";
                                 $params[] = (isset($row['dueDate']) && $row['dueDate'] !== '') ? $row['dueDate'] : null;
+                                if (ccrm_column_exists($pdo, $tableName, 'warning_days')) {
+                                    $updates[] = "`warning_days` = ?";
+                                    $params[] = isset($row['warningDays']) ? (int)$row['warningDays'] : 0;
+                                }
                             }
                             if (in_array('file', $rowModules) && ccrm_column_exists($pdo, $tableName, 'file_name')) {
                                 $updates[] = "`file_name` = ?";
@@ -772,6 +870,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 $params[] = $row['fileSize'] ?? null;
                                 $params[] = $row['fileType'] ?? null;
                                 $params[] = $row['filePath'] ?? null;
+                            }
+                            if (in_array('client', $rowModules) && ccrm_column_exists($pdo, $tableName, 'client_id')) {
+                                $updates[] = "`client_id` = ?";
+                                $params[] = $row['clientId'] ?? null;
+                            }
+                            if (in_array('lead', $rowModules) && ccrm_column_exists($pdo, $tableName, 'lead_id')) {
+                                $updates[] = "`lead_id` = ?";
+                                $params[] = $row['leadId'] ?? null;
                             }
                             $params[] = $rowId; // for WHERE id = ?
                             $updateSql = "UPDATE `{$tableName}` SET " . implode(", ", $updates) . " WHERE `id` = ?";
@@ -785,7 +891,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 (isset($row['parentId']) && $row['parentId'] !== '') ? $row['parentId'] : null,
                                 ($row['isFolder'] ?? false) ? 1 : 0
                             ];
-                            if (in_array('title', $rowModules) && ccrm_column_exists($pdo, $tableName, 'title')) {
+                            if (ccrm_column_exists($pdo, $tableName, 'icon')) {
+                                $fields[] = "`icon`";
+                                $placeholders[] = "?";
+                                $params[] = $row['icon'] ?? null;
+                            }
+                            if ((in_array('title', $rowModules) || ($row['isFolder'] ?? false)) && ccrm_column_exists($pdo, $tableName, 'title')) {
                                 $fields[] = "`title`";
                                 $placeholders[] = "?";
                                 $params[] = $row['title'] ?? null;
@@ -794,6 +905,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 $fields[] = "`due_date`";
                                 $placeholders[] = "?";
                                 $params[] = (isset($row['dueDate']) && $row['dueDate'] !== '') ? $row['dueDate'] : null;
+                                if (ccrm_column_exists($pdo, $tableName, 'warning_days')) {
+                                    $fields[] = "`warning_days`";
+                                    $placeholders[] = "?";
+                                    $params[] = isset($row['warningDays']) ? (int)$row['warningDays'] : 0;
+                                }
                             }
                             if (in_array('file', $rowModules) && ccrm_column_exists($pdo, $tableName, 'file_name')) {
                                 $fields[] = "`file_name`";
@@ -808,6 +924,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 $params[] = $row['fileSize'] ?? null;
                                 $params[] = $row['fileType'] ?? null;
                                 $params[] = $row['filePath'] ?? null;
+                            }
+                            if (in_array('client', $rowModules) && ccrm_column_exists($pdo, $tableName, 'client_id')) {
+                                $fields[] = "`client_id`";
+                                $placeholders[] = "?";
+                                $params[] = $row['clientId'] ?? null;
+                            }
+                            if (in_array('lead', $rowModules) && ccrm_column_exists($pdo, $tableName, 'lead_id')) {
+                                $fields[] = "`lead_id`";
+                                $placeholders[] = "?";
+                                $params[] = $row['leadId'] ?? null;
                             }
                             $insertSql = "INSERT INTO `{$tableName}` (" . implode(", ", $fields) . ") VALUES (" . implode(", ", $placeholders) . ")";
                             $pdo->prepare($insertSql)->execute($params);

@@ -44,6 +44,27 @@ export default {
         sidebar: {
           DEFAULT: "rgb(var(--sidebar) / <alpha-value>)",
           foreground: "rgb(var(--sidebar-foreground) / <alpha-value>)",
+        },
+        indigo: {
+          650: "#4f46e5",
+        },
+        purple: {
+          650: "#8b5cf6",
+        },
+        slate: {
+          650: "#475569",
+        },
+        violet: {
+          650: "#7c3aed",
+        },
+        blue: {
+          650: "#2563eb",
+        },
+        emerald: {
+          650: "#059669",
+        },
+        rose: {
+          650: "#e11d48",
         }
       },
       borderRadius: {

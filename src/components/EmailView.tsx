@@ -304,7 +304,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
     if (!clientFormName.trim() || !clientFormEmail.trim() || !clientFormCity.trim()) return;
     
     const newLead: Lead = {
-      id: `lead-${Date.now()}`,
+      id: `client-${Date.now()}`,
       name: clientFormName,
       email: clientFormEmail,
       phone: clientFormPhone,

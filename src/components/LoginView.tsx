@@ -3,6 +3,7 @@ import { LogIn, Key, Mail, Terminal, AlertCircle, CheckCircle } from "lucide-rea
 import type { UserProfile } from "../types";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
+import { ShaderGradient, ShaderGradientCanvas } from "shadergradient";
 
 interface LoginViewProps {
   users: UserProfile[];
@@ -14,13 +15,94 @@ interface LoginViewProps {
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, systemName, systemLanguage, isDemoMode, isModal }) => {
+  const ShaderGradientAny = ShaderGradient as any;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showResetInfo, setShowResetInfo] = useState(false);
-
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
+
+  // --- Cryptographic Lights-Out Grid (4x4) ---
+  const generateSolvableGrid = (): boolean[] => {
+    for (let attempt = 0; attempt < 2000; attempt++) {
+      const initial = Array(16).fill(true);
+      const scrambles = 6 + Math.floor(Math.random() * 10);
+      for (let i = 0; i < scrambles; i++) {
+        const index = Math.floor(Math.random() * 16);
+        const row = Math.floor(index / 4);
+        const col = index % 4;
+        
+        const toggle = (r: number, c: number) => {
+          if (r >= 0 && r < 4 && c >= 0 && c < 4) {
+            const idx = r * 4 + c;
+            initial[idx] = !initial[idx];
+          }
+        };
+
+        toggle(row, col);
+        toggle(row - 1, col);
+        toggle(row + 1, col);
+        toggle(row, col - 1);
+        toggle(row, col + 1);
+      }
+
+      const activeCount = initial.filter(cell => cell === true).length;
+      if (activeCount === 8) {
+        return initial;
+      }
+    }
+
+    return [
+      true, false, true, false,
+      false, true, false, true,
+      true, false, true, false,
+      false, true, false, true
+    ];
+  };
+
+  const [grid, setGrid] = useState<boolean[]>(() => generateSolvableGrid());
+  const [flipIndex, setFlipIndex] = useState<number | null>(null);
+  const [movesCount, setMovesCount] = useState(0);
+
+  const handleCellClick = (index: number) => {
+    const row = Math.floor(index / 4);
+    const col = index % 4;
+
+    setFlipIndex(index);
+    setTimeout(() => setFlipIndex(null), 400);
+    setMovesCount(prev => prev + 1);
+
+    setGrid((prev) => {
+      const next = [...prev];
+      const toggle = (r: number, c: number) => {
+        if (r >= 0 && r < 4 && c >= 0 && c < 4) {
+          const idx = r * 4 + c;
+          next[idx] = !next[idx];
+        }
+      };
+
+      toggle(row, col);
+      toggle(row - 1, col);
+      toggle(row + 1, col);
+      toggle(row, col - 1);
+      toggle(row, col + 1);
+
+      const allSolved = next.every(cell => cell === true);
+      if (allSolved) {
+        setTimeout(() => {
+          setShowSuccessOverlay(true);
+          const adminUser = users.find(u => u.role.toLowerCase() === "admin") || users[0];
+          if (adminUser) {
+            setEmail(adminUser.email);
+            if (isDemoMode) setPassword("password");
+          }
+        }, 400);
+      }
+
+      return next;
+    });
+  };
 
   // Verify credentials server-side. Passwords are never sent to or compared in
   // the browser; api/login.php checks the bcrypt hash and opens a session.
@@ -53,13 +135,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
 
   const handleQuickLogin = (user: UserProfile) => {
     setEmail(user.email);
-    // Demo preset accounts share the password "password".
     setPassword("password");
     authenticate(user.email, "password");
   };
 
   return (
-    <div className={isModal ? "w-full flex items-center justify-center bg-white border border-slate-200/50 rounded-[32px] shadow-2xl p-6 md:p-12 relative overflow-hidden select-none font-sans" : "min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-50 via-slate-100 to-indigo-50/50 p-6 md:p-12 relative overflow-hidden select-none font-sans"}>
+    <div className={isModal ? "w-full flex items-center justify-center bg-white border border-slate-200/50 rounded-[32px] shadow-2xl p-6 md:p-12 relative overflow-hidden select-none font-sans" : "min-h-screen w-full flex items-center justify-center lg:justify-end bg-gradient-to-br from-slate-50 via-slate-100 to-indigo-50/50 p-6 md:p-12 lg:pr-32 relative overflow-hidden select-none font-sans"}>
       
       {/* Custom Embedded Keyframes for 3D Node Flip & Aurora Success Flash */}
       <style dangerouslySetInnerHTML={{__html: `
@@ -103,21 +184,63 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
         }
       `}} />
 
-      {/* Floating Colorful Blurred Blobs - BARELY VISIBLE (0.05-0.08 opacity) */}
-      <div className={`absolute inset-0 z-0 pointer-events-none transition-all duration-1000 ${showSuccessOverlay ? "scale-110" : ""}`}>
-        {/* Blob 1: Pink/Rose */}
-        <div className={`absolute top-1/4 left-1/10 w-[550px] h-[550px] rounded-full filter blur-[100px] aurora-blob-1 transition-colors duration-1000 ${
-          showSuccessOverlay ? "bg-emerald-400/25 aurora-solved-glow" : "bg-rose-400/7"
-        }`} />
-        {/* Blob 2: Indigo/Blue */}
-        <div className={`absolute bottom-1/4 left-1/4 w-[600px] h-[600px] rounded-full filter blur-[110px] aurora-blob-2 transition-colors duration-1000 ${
-          showSuccessOverlay ? "bg-teal-400/20 aurora-solved-glow" : "bg-indigo-450/7"
-        }`} />
-        {/* Blob 3: Emerald/Teal */}
-        <div className={`absolute top-1/3 left-1/3 w-[450px] h-[450px] rounded-full filter blur-[95px] aurora-blob-3 transition-colors duration-1000 ${
-          showSuccessOverlay ? "bg-emerald-500/25 aurora-solved-glow" : "bg-emerald-450/6"
-        }`} />
-      </div>
+      {/* Animated 3D Shader Background */}
+      {!isModal && (
+        <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+          <ShaderGradientCanvas
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              pointerEvents: 'none'
+            }}
+          >
+            <ShaderGradientAny
+              animate="on"
+              axesHelper="off"
+              brightness={1.2}
+              cAzimuthAngle={170}
+              cDistance={4.4}
+              cPolarAngle={70}
+              cameraZoom={1}
+              color1="#94ffd1"
+              color2="#6bf5ff"
+              color3="#ffffff"
+              destination="onCanvas"
+              embedMode="off"
+              envPreset="city"
+              format="gif"
+              fov={45}
+              frameRate={10}
+              gizmoHelper="hide"
+              grain="off"
+              lightType="3d"
+              pixelDensity={1}
+              positionX={0}
+              positionY={0.9}
+              positionZ={-0.3}
+              range="disabled"
+              rangeEnd={40}
+              rangeStart={0}
+              reflection={0.1}
+              rotationX={45}
+              rotationY={0}
+              rotationZ={0}
+              shader="defaults"
+              type="waterPlane"
+              uAmplitude={0}
+              uDensity={1.2}
+              uFrequency={0}
+              uSpeed={0.1}
+              uStrength={3.4}
+              uTime={0}
+              wireframe={false}
+            />
+          </ShaderGradientCanvas>
+        </div>
+      )}
 
       {/* FULLSCREEN PUZZLE DECIPHERED SUCCESS OVERLAY */}
       {showSuccessOverlay && (
@@ -145,8 +268,56 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
         </div>
       )}
 
+      {/* LEFT AREA: Skeuomorphic minimalist matching grid (Lights Out) */}
+      {!isModal && (
+        <div className="flex-1 hidden lg:flex flex-col justify-center items-center relative z-10 pr-16 space-y-5 animate-fade-in duration-500">
+          {/* Dynamic Skeuomorphic 4x4 Grid */}
+          <div className="grid grid-cols-4 gap-3 w-full max-w-[280px]">
+            {grid.map((isActive, index) => {
+              const isFlippedTarget = flipIndex === index;
+              return (
+                <button
+                  key={index}
+                  type="button"
+                  onClick={() => handleCellClick(index)}
+                  className={`aspect-square w-full rounded-2xl node-spring-transition outline-none flex items-center justify-center border relative overflow-hidden ${
+                    isFlippedTarget ? "node-3d-flip" : ""
+                  } ${
+                    isActive
+                      ? "border-purple-700 scale-[1.03]"
+                      : "border-slate-400 hover:border-slate-500 hover:scale-[1.01]"
+                  }`}
+                  style={{
+                    boxShadow: isActive 
+                      ? "0 4px 10px rgba(147, 51, 234, 0.45), 0 2px 4px rgba(147, 51, 234, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.3)" 
+                      : "inset 0 3px 6px rgba(0, 0, 0, 0.15), inset 0 1px 2px rgba(0, 0, 0, 0.1), 0 1px 0 rgba(255, 255, 255, 0.6)"
+                  }}
+                  title={`Decrypt node node-${index}`}
+                  aria-label={`Toggle cryptographic node ${index}`}
+                >
+                  {/* OFF Background Gradient Layer */}
+                  <div className="absolute inset-0 bg-gradient-to-br from-slate-200 via-slate-250 to-slate-300 z-0 transition-all duration-500" />
+                  
+                  {/* ON Background Gradient Layer */}
+                  <div 
+                    className={`absolute inset-0 bg-gradient-to-br from-purple-500 to-indigo-600 z-10 transition-opacity duration-500 ease-in-out ${
+                      isActive ? "opacity-100" : "opacity-0"
+                    }`} 
+                  />
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Floating Instruction Footer */}
+          <div className="text-[10px] font-extrabold text-slate-450 uppercase tracking-widest text-center h-4">
+            {grid.every(cell => cell === true) ? "nice" : `${getTranslation(systemLanguage, "login.moves")} ${movesCount}`}
+          </div>
+        </div>
+      )}
+
       {/* RIGHT COLUMN: Light-themed glass login card panel */}
-      <div className="max-w-[430px] w-full relative z-10 mx-auto">
+      <div className={isModal ? "w-full relative z-10" : "flex-1 max-w-[430px] h-full flex items-center justify-center lg:justify-end relative z-10 w-full ml-auto"}>
         <div className="w-full bg-white/80 border border-slate-200/80 rounded-[32px] shadow-2xl backdrop-blur-xl p-8 transition-all duration-300">
           
           {/* Core System Brand */}

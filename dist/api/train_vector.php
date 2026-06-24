@@ -55,6 +55,21 @@ if ($action === 'stats') {
             $stmt = $pdo->query("SELECT COUNT(*) FROM `meeting_notes` WHERE (`archived` = 0 OR `archived` IS NULL)");
             $meetingsCount = (int)$stmt->fetchColumn();
         } catch (\Exception $e) {}
+
+        // Count unified entries
+        $unifiedEntriesCount = 0;
+        try {
+            $registries = $pdo->query("SELECT `id` FROM `unified_entries` WHERE `archived` = 0")->fetchAll();
+            foreach ($registries as $reg) {
+                $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($reg['id']));
+                $tableName = "ue_" . $safeId;
+                $chkTable = $pdo->query("SHOW TABLES LIKE '{$tableName}'")->rowCount() > 0;
+                if ($chkTable) {
+                    $stmt = $pdo->query("SELECT COUNT(*) FROM `{$tableName}`");
+                    $unifiedEntriesCount += (int)$stmt->fetchColumn();
+                }
+            }
+        } catch (\Exception $e) {}
         
         echo json_encode([
             'success' => true,
@@ -65,7 +80,8 @@ if ($action === 'stats') {
                 'chats' => $chatsCount,
                 'meeting_notes' => $meetingsCount,
                 'documents' => $documentsCount,
-                'total_items' => $leadsCount + $clientsCount + $emailsCount + $chatsCount + $meetingsCount + $documentsCount
+                'unified_entries' => $unifiedEntriesCount,
+                'total_items' => $leadsCount + $clientsCount + $emailsCount + $chatsCount + $meetingsCount + $documentsCount + $unifiedEntriesCount
             ]
         ]);
     } catch (\Exception $e) {
@@ -82,7 +98,7 @@ if ($action === 'train') {
     // We will simulate batches. Let's load the data from database.
     try {
         // Fetch data
-        $leads = $pdo->query("SELECT `id`, `name`, `email` FROM `leads` LIMIT 20")->fetchAll();
+        $leads = $pdo->query("SELECT `id`, `name`, `email`, `financial_summary` FROM `leads` LIMIT 20")->fetchAll();
         $clients = $pdo->query("SELECT DISTINCT `name`, `city`, `client_type` FROM `leads` WHERE `name` IS NOT NULL AND TRIM(`name`) != '' LIMIT 20")->fetchAll();
         $emails = $pdo->query("SELECT `id`, `title`, `content` FROM `timeline_events` WHERE `type` = 'email' LIMIT 20")->fetchAll();
         $notes = $pdo->query("SELECT `id`, `title`, `content` FROM `timeline_events` WHERE `type` = 'note' LIMIT 20")->fetchAll();
@@ -99,13 +115,44 @@ if ($action === 'train') {
             $meetings = $pdo->query("SELECT `id`, `title`, `notes`, `lead_name`, `ai_summary_json` FROM `meeting_notes` WHERE (`archived` = 0 OR `archived` IS NULL) LIMIT 20")->fetchAll();
         } catch (\Exception $e) {}
 
+        $unifiedEntries = [];
+        try {
+            $registries = $pdo->query("SELECT `id`, `name`, `entry_name`, `folder_name` FROM `unified_entries` WHERE `archived` = 0")->fetchAll();
+            foreach ($registries as $reg) {
+                $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($reg['id']));
+                $tableName = "ue_" . $safeId;
+                $chkTable = $pdo->query("SHOW TABLES LIKE '{$tableName}'")->rowCount() > 0;
+                if ($chkTable) {
+                    $query = "
+                        SELECT ue.*, l.`name` as `client_name`
+                        FROM `{$tableName}` ue
+                        LEFT JOIN `leads` l ON ue.`client_id` = l.`id`
+                        LIMIT 40
+                    ";
+                    $rows = $pdo->query($query)->fetchAll();
+                    foreach ($rows as $r) {
+                        $unifiedEntries[] = array_merge($r, [
+                            'registry_id' => $reg['id'],
+                            'registry_name' => $reg['name'],
+                            'entry_name_label' => $reg['entry_name'] ?: 'Entry',
+                            'folder_name_label' => $reg['folder_name'] ?: 'Folder'
+                        ]);
+                    }
+                }
+            }
+        } catch (\Exception $e) {}
+
         $allSourceItems = [];
         foreach ($leads as $l) {
+            $text = "Lead: " . $l['name'] . " (Email: " . ($l['email'] ?? 'N/A') . ")";
+            if (!empty($l['financial_summary'])) {
+                $text .= "\nFinancial Report & Analysis:\n" . $l['financial_summary'];
+            }
             $allSourceItems[] = [
                 'type' => 'lead',
                 'id' => $l['id'],
                 'label' => $l['name'],
-                'text' => "Lead: " . $l['name'] . " (Email: " . ($l['email'] ?? 'N/A') . ")"
+                'text' => $text
             ];
         }
         foreach ($clients as $c) {
@@ -185,6 +232,26 @@ if ($action === 'train') {
                 'text' => "Meeting Note: " . $m['title'] . "\nContact/Client: " . ($m['lead_name'] ?? 'General') . "\nNotes:\n" . strip_tags($plainNotes) . "\nAI Summary: " . $aiSummaryText
             ];
         }
+
+        foreach ($unifiedEntries as $ue) {
+            $isFolder = (int)($ue['is_folder'] ?? 0) === 1;
+            $typeLabel = $isFolder ? $ue['folder_name_label'] : $ue['entry_name_label'];
+            $clientText = !empty($ue['client_name']) ? "\nAssociated Client/Lead: " . $ue['client_name'] : "";
+            $dueDateText = !empty($ue['due_date']) ? "\nDue Date: " . $ue['due_date'] : "";
+            $fileText = !empty($ue['file_name']) ? "\nAttachment: " . $ue['file_name'] . " (" . ($ue['file_size'] ?? '') . ")" : "";
+            
+            $text = "Unified Entry (" . $ue['registry_name'] . " - " . $typeLabel . "): " . ($ue['title'] ?: 'Untitled') .
+                    $clientText .
+                    $dueDateText .
+                    $fileText;
+                    
+            $allSourceItems[] = [
+                'type' => 'unified_entry',
+                'id' => $ue['registry_id'] . '-' . $ue['id'],
+                'label' => ($ue['title'] ?: 'Untitled'),
+                'text' => $text
+            ];
+        }
         
         $totalItems = count($allSourceItems);
         if ($totalItems === 0) {
@@ -227,14 +294,18 @@ if ($action === 'train') {
         foreach ($slice as $item) {
             $logs[] = "[CHUNK] Parsing " . strtoupper($item['type']) . " #" . substr($item['id'], 0, 8) . " (" . $item['label'] . ")...";
             
-            // Text chunking simulation: 500-1000 chars
+            // Text chunking simulation: 500-1000 chars, multibyte-safe
             $text = $item['text'];
-            $len = strlen($text);
-            $chunks = str_split($text, 300); // chunk size 300 for demo indexing speed
+            $chunkSize = 300;
+            $chunks = [];
+            $textLen = mb_strlen($text, 'UTF-8');
+            for ($i = 0; $i < $textLen; $i += $chunkSize) {
+                $chunks[] = mb_substr($text, $i, $chunkSize, 'UTF-8');
+            }
             
             foreach ($chunks as $idx => $chunk) {
                 $chunksCreated++;
-                $logs[] = "  -> Generated Chunk " . ($idx + 1) . " (" . strlen($chunk) . " chars): '" . substr(trim($chunk), 0, 45) . "...'";
+                $logs[] = "  -> Generated Chunk " . ($idx + 1) . " (" . mb_strlen($chunk, 'UTF-8') . " chars): '" . mb_substr(trim($chunk), 0, 45, 'UTF-8') . "...'";
             }
             
             // Simulate API calls for embedding
@@ -251,7 +322,7 @@ if ($action === 'train') {
             'progress' => $progress,
             'step' => $nextStep,
             'logs' => $logs
-        ]);
+        ], JSON_UNESCAPED_UNICODE | JSON_PARTIAL_OUTPUT_ON_ERROR);
         
     } catch (\Exception $e) {
         http_response_code(500);

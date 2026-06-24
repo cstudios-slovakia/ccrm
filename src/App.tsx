@@ -32,10 +32,10 @@ function App() {
     const rawHash = window.location.hash.replace("#", "");
     const baseHash = rawHash.split(/[/?]/)[0];
     const hashLower = baseHash.toLowerCase();
-    if (hashLower.startsWith("client-") || hashLower.startsWith("lead-") || hashLower.startsWith("user-")) {
-      return rawHash; // Keep case sensitivity
+    if (hashLower.startsWith("client-") || hashLower.startsWith("lead-") || hashLower.startsWith("user-") || hashLower.startsWith("ue_") || hashLower.startsWith("settings")) {
+      return rawHash; // Keep case sensitivity and allow sub-tabs for settings
     }
-    const validTabs = ["dashboard", "overview", "leads", "clients", "tasks", "files", "settings", "personal-settings", "email", "rag_ai", "meetings"];
+    const validTabs = ["dashboard", "overview", "leads", "clients", "tasks", "files", "personal-settings", "email", "rag_ai", "meetings"];
     return validTabs.includes(hashLower) ? hashLower : "dashboard";
   };
 
@@ -586,18 +586,18 @@ function App() {
             }
             if (data.settings) {
               const s = data.settings;
-              if (s.systemName) setSystemName(s.systemName);
-              if (s.systemLanguage) setSystemLanguage(s.systemLanguage);
-              if (s.leadStates) setLeadStates(s.leadStates);
-              if (s.leadSources) setLeadSources(s.leadSources);
-              if (s.leadCategories) setLeadCategories(s.leadCategories);
-              if (s.leadStateColors) setLeadStateColors(s.leadStateColors);
-              if (s.leadSourceColors) setLeadSourceColors(s.leadSourceColors);
-              if (s.leadCategoryColors) setLeadCategoryColors(s.leadCategoryColors);
-              if (s.leadStageGroups) setLeadStageGroups(s.leadStageGroups);
-              if (s.leadStateParents) setLeadStateParents(s.leadStateParents);
-              if (s.taskStates) setTaskStates(s.taskStates);
-              if (s.taskStateColors) setTaskStateColors(s.taskStateColors);
+              if (s.systemName && s.systemName !== systemName) setSystemName(s.systemName);
+              if (s.systemLanguage && s.systemLanguage !== systemLanguage) setSystemLanguage(s.systemLanguage);
+              setLeadStates((prev) => s.leadStates && JSON.stringify(s.leadStates) !== JSON.stringify(prev) ? s.leadStates : prev);
+              setLeadSources((prev) => s.leadSources && JSON.stringify(s.leadSources) !== JSON.stringify(prev) ? s.leadSources : prev);
+              setLeadCategories((prev) => s.leadCategories && JSON.stringify(s.leadCategories) !== JSON.stringify(prev) ? s.leadCategories : prev);
+              setLeadStateColors((prev) => s.leadStateColors && JSON.stringify(s.leadStateColors) !== JSON.stringify(prev) ? s.leadStateColors : prev);
+              setLeadSourceColors((prev) => s.leadSourceColors && JSON.stringify(s.leadSourceColors) !== JSON.stringify(prev) ? s.leadSourceColors : prev);
+              setLeadCategoryColors((prev) => s.leadCategoryColors && JSON.stringify(s.leadCategoryColors) !== JSON.stringify(prev) ? s.leadCategoryColors : prev);
+              setLeadStageGroups((prev) => s.leadStageGroups && JSON.stringify(s.leadStageGroups) !== JSON.stringify(prev) ? s.leadStageGroups : prev);
+              setLeadStateParents((prev) => s.leadStateParents && JSON.stringify(s.leadStateParents) !== JSON.stringify(prev) ? s.leadStateParents : prev);
+              setTaskStates((prev) => s.taskStates && JSON.stringify(s.taskStates) !== JSON.stringify(prev) ? s.taskStates : prev);
+              setTaskStateColors((prev) => s.taskStateColors && JSON.stringify(s.taskStateColors) !== JSON.stringify(prev) ? s.taskStateColors : prev);
               if (s.integrationsConfig) syncIntegrationsConfig(s.integrationsConfig);
             }
             setIsInitialSyncResolved(true);
@@ -695,18 +695,18 @@ function App() {
             }
             if (data.settings) {
               const s = data.settings;
-              if (s.systemName) setSystemName(s.systemName);
-              if (s.systemLanguage) setSystemLanguage(s.systemLanguage);
-              if (s.leadStates) setLeadStates(s.leadStates);
-              if (s.leadSources) setLeadSources(s.leadSources);
-              if (s.leadCategories) setLeadCategories(s.leadCategories);
-              if (s.leadStateColors) setLeadStateColors(s.leadStateColors);
-              if (s.leadSourceColors) setLeadSourceColors(s.leadSourceColors);
-              if (s.leadCategoryColors) setLeadCategoryColors(s.leadCategoryColors);
-              if (s.leadStageGroups) setLeadStageGroups(s.leadStageGroups);
-              if (s.leadStateParents) setLeadStateParents(s.leadStateParents);
-              if (s.taskStates) setTaskStates(s.taskStates);
-              if (s.taskStateColors) setTaskStateColors(s.taskStateColors);
+              if (s.systemName && s.systemName !== systemName) setSystemName(s.systemName);
+              if (s.systemLanguage && s.systemLanguage !== systemLanguage) setSystemLanguage(s.systemLanguage);
+              setLeadStates((prev) => s.leadStates && JSON.stringify(s.leadStates) !== JSON.stringify(prev) ? s.leadStates : prev);
+              setLeadSources((prev) => s.leadSources && JSON.stringify(s.leadSources) !== JSON.stringify(prev) ? s.leadSources : prev);
+              setLeadCategories((prev) => s.leadCategories && JSON.stringify(s.leadCategories) !== JSON.stringify(prev) ? s.leadCategories : prev);
+              setLeadStateColors((prev) => s.leadStateColors && JSON.stringify(s.leadStateColors) !== JSON.stringify(prev) ? s.leadStateColors : prev);
+              setLeadSourceColors((prev) => s.leadSourceColors && JSON.stringify(s.leadSourceColors) !== JSON.stringify(prev) ? s.leadSourceColors : prev);
+              setLeadCategoryColors((prev) => s.leadCategoryColors && JSON.stringify(s.leadCategoryColors) !== JSON.stringify(prev) ? s.leadCategoryColors : prev);
+              setLeadStageGroups((prev) => s.leadStageGroups && JSON.stringify(s.leadStageGroups) !== JSON.stringify(prev) ? s.leadStageGroups : prev);
+              setLeadStateParents((prev) => s.leadStateParents && JSON.stringify(s.leadStateParents) !== JSON.stringify(prev) ? s.leadStateParents : prev);
+              setTaskStates((prev) => s.taskStates && JSON.stringify(s.taskStates) !== JSON.stringify(prev) ? s.taskStates : prev);
+              setTaskStateColors((prev) => s.taskStateColors && JSON.stringify(s.taskStateColors) !== JSON.stringify(prev) ? s.taskStateColors : prev);
               if (s.integrationsConfig) syncIntegrationsConfig(s.integrationsConfig);
             }
           }
@@ -813,7 +813,9 @@ function App() {
     }
 
     if (activeTab.startsWith("ue_")) {
-      const ueId = activeTab.replace("ue_", "");
+      const parts = activeTab.split("/");
+      const ueId = parts[0].replace("ue_", "");
+      const subPath = parts[1] || null;
       const ueRegistry = unifiedEntries.find(ue => ue.id === ueId);
       if (ueRegistry) {
         return (
@@ -822,6 +824,8 @@ function App() {
             rows={unifiedEntriesData[ueId] || []}
             setRows={(updater) => updateUnifiedEntriesDataAndSync(ueId, updater)}
             systemLanguage={userLanguage}
+            leads={leads}
+            subPath={subPath}
           />
         );
       }
@@ -842,6 +846,7 @@ function App() {
           leadCategories={leadCategories}
           integrationsConfig={integrationsConfig}
           taskStates={taskStates}
+          systemName={systemName}
         />
       );
     }
@@ -870,6 +875,57 @@ function App() {
           taskStates={taskStates}
           taskStateColors={taskStateColors}
           integrationsConfig={integrationsConfig}
+        />
+      );
+    }
+    if (activeTab.startsWith("settings")) {
+      const parts = activeTab.split("/");
+      const subTab = parts[1] || "branding";
+      const settingsAction = parts[2] || null;
+      const settingsActionId = parts[3] || null;
+      return (
+        <SettingsView 
+          systemName={systemName} 
+          setSystemName={setSystemName} 
+          leadStates={leadStates}
+          setLeadStates={setLeadStates}
+          leadSources={leadSources}
+          setLeadSources={setLeadSources}
+          users={users}
+          setUsers={updateUsersAndSync}
+          roles={roles}
+          setRoles={updateRolesAndSync}
+          getPermission={getPermission}
+          currentUser={activeUser}
+          leadStateColors={leadStateColors}
+          setLeadStateColors={setLeadStateColors}
+          leadCategories={leadCategories}
+          setLeadCategories={setLeadCategories}
+          leadSourceColors={leadSourceColors}
+          setLeadSourceColors={setLeadSourceColors}
+          leadCategoryColors={leadCategoryColors}
+          setLeadCategoryColors={setLeadCategoryColors}
+          leadStageGroups={leadStageGroups}
+          setLeadStageGroups={setLeadStageGroups}
+          systemLanguage={systemLanguage}
+          setSystemLanguage={setSystemLanguage}
+          userLanguage={userLanguage}
+          leadStateParents={leadStateParents}
+          setLeadStateParents={setLeadStateParents}
+          isDemoMode={isDemoMode}
+          integrationsConfig={integrationsConfig}
+          updateIntegrationsConfig={updateIntegrationsConfigAndSync}
+          dbInfo={dbInfo || undefined}
+          taskStates={taskStates}
+          setTaskStates={setTaskStates}
+          taskStateColors={taskStateColors}
+          setTaskStateColors={setTaskStateColors}
+          unifiedEntries={unifiedEntries}
+          setUnifiedEntries={updateUnifiedEntriesAndSync}
+          unifiedEntriesData={unifiedEntriesData}
+          initialSubTab={subTab}
+          settingsAction={settingsAction}
+          settingsActionId={settingsActionId}
         />
       );
     }
@@ -913,6 +969,7 @@ function App() {
             leadCategories={leadCategories}
             taskStates={taskStates}
             integrationsConfig={integrationsConfig}
+            systemName={systemName}
           />
         );
       case "files":
@@ -946,49 +1003,7 @@ function App() {
             taskStates={taskStates}
           />
         );
-      case "settings":
-        return (
-          <SettingsView 
-            systemName={systemName} 
-            setSystemName={setSystemName} 
-            leadStates={leadStates}
-            setLeadStates={setLeadStates}
-            leadSources={leadSources}
-            setLeadSources={setLeadSources}
-            users={users}
-            setUsers={updateUsersAndSync}
-            roles={roles}
-            setRoles={updateRolesAndSync}
-            getPermission={getPermission}
-            currentUser={activeUser}
-            leadStateColors={leadStateColors}
-            setLeadStateColors={setLeadStateColors}
-            leadCategories={leadCategories}
-            setLeadCategories={setLeadCategories}
-            leadSourceColors={leadSourceColors}
-            setLeadSourceColors={setLeadSourceColors}
-            leadCategoryColors={leadCategoryColors}
-            setLeadCategoryColors={setLeadCategoryColors}
-            leadStageGroups={leadStageGroups}
-            setLeadStageGroups={setLeadStageGroups}
-            systemLanguage={systemLanguage}
-            setSystemLanguage={setSystemLanguage}
-            userLanguage={userLanguage}
-            leadStateParents={leadStateParents}
-            setLeadStateParents={setLeadStateParents}
-            isDemoMode={isDemoMode}
-            integrationsConfig={integrationsConfig}
-            updateIntegrationsConfig={updateIntegrationsConfigAndSync}
-            dbInfo={dbInfo || undefined}
-            taskStates={taskStates}
-            setTaskStates={setTaskStates}
-            taskStateColors={taskStateColors}
-            setTaskStateColors={setTaskStateColors}
-            unifiedEntries={unifiedEntries}
-            setUnifiedEntries={updateUnifiedEntriesAndSync}
-            unifiedEntriesData={unifiedEntriesData}
-          />
-        );
+
       case "overview":
         return (
           <Dashboard 
@@ -1107,6 +1122,19 @@ function App() {
     return false;
   })();
 
+  if (!currentUser) {
+    return (
+      <LoginView 
+        users={users}
+        systemName={systemName}
+        onLoginSuccess={(user) => setCurrentUser(user)}
+        systemLanguage={userLanguage}
+        isDemoMode={isDemoMode}
+        isModal={false}
+      />
+    );
+  }
+
   return (
     <div className="flex h-screen overflow-hidden relative font-sans antialiased text-slate-800 bg-slate-50/50">
       
@@ -1122,9 +1150,11 @@ function App() {
           systemName={systemName}
           showSettings={hasSettingsAccess}
           onLogout={() => {
-            fetch("/api/logout.php", { method: "POST" }).catch(() => {});
-            setCurrentUser(null);
-            window.location.hash = "dashboard";
+            fetch("/api/logout.php", { method: "POST" })
+              .finally(() => {
+                setCurrentUser(null);
+                window.location.href = "/";
+              });
           }}
           systemLanguage={userLanguage}
           showMailIcon={showMailIcon}
@@ -1152,9 +1182,11 @@ function App() {
               }
             }}
             onLogout={() => {
-              fetch("/api/logout.php", { method: "POST" }).catch(() => {});
-              setCurrentUser(null);
-              window.location.hash = "dashboard";
+              fetch("/api/logout.php", { method: "POST" })
+                .finally(() => {
+                  setCurrentUser(null);
+                  window.location.href = "/";
+                });
             }}
             systemLanguage={userLanguage}
             setSystemLanguage={setUserLanguage}
@@ -1187,21 +1219,7 @@ function App() {
         </div>
       </div>
       
-      {/* Login Popup Overlay if logged out */}
-      {!currentUser && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/45 backdrop-blur-sm p-4 animate-in fade-in duration-300">
-          <div className="w-full max-w-[480px] max-h-[90vh] overflow-y-auto bg-transparent rounded-[32px] shadow-2xl relative animate-in zoom-in-95 duration-300">
-            <LoginView 
-              users={users}
-              systemName={systemName}
-              onLoginSuccess={(user) => setCurrentUser(user)}
-              systemLanguage={userLanguage}
-              isDemoMode={isDemoMode}
-              isModal={true}
-            />
-          </div>
-        </div>
-      )}
+
 
       {/* Toast Notification Container */}
       {toast && (

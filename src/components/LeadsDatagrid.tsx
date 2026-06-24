@@ -436,7 +436,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         <select
           value={activeMain}
           onChange={(e) => handleMainChange(e.target.value)}
-          className="text-[9px] font-black uppercase tracking-wider border rounded-xl px-2.5 py-1 focus:outline-none focus:ring-1 transition-all cursor-pointer shadow-sm animate-fade-in"
+          className="text-[9px] font-black uppercase tracking-wider border rounded-xl px-2.5 py-1 focus:outline-none focus:ring-1 transition-all cursor-pointer shadow-sm"
           style={{
             backgroundColor: `${mainColor}18`,
             color: mainColor,
@@ -455,7 +455,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
           <select
             value={currentSub}
             onChange={(e) => handleSubChange(e.target.value)}
-            className="text-[9px] font-black uppercase tracking-wider border rounded-xl px-2.5 py-1 focus:outline-none focus:ring-1 transition-all cursor-pointer shadow-sm animate-fade-in"
+            className="text-[9px] font-black uppercase tracking-wider border rounded-xl px-2.5 py-1 focus:outline-none focus:ring-1 transition-all cursor-pointer shadow-sm"
             style={{
               background: currentSub ? `linear-gradient(to right, ${mainColor}18, ${subColor}18)` : `${mainColor}10`,
               color: subColor,
@@ -1566,10 +1566,17 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     setLeads(prev => prev.map(l => {
       if (l.id === activeLead.id) {
         const currentTimeline = l.timeline || [];
-        return {
+        const updatedLead = {
           ...l,
           timeline: [newEvent, ...currentTimeline]
         };
+        if (logType === "offer") {
+          const amt = parseFloat(logAmount);
+          if (!isNaN(amt)) {
+            updatedLead.value = amt;
+          }
+        }
+        return updatedLead;
       }
       return l;
     }));
@@ -1846,6 +1853,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     return leads
       .filter(lead => {
         if (lead.id === "unassigned-docs") return false;
+        if (lead.id && lead.id.startsWith("client-")) return false;
         const matchesSearch = 
           (lead.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
           (lead.city || "").toLowerCase().includes(searchQuery.toLowerCase()) ||

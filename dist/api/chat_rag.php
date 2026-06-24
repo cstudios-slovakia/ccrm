@@ -127,6 +127,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    // 3.5. EDIT AGENT Action
+    if ($action === 'edit_agent') {
+        $id = $payload['id'] ?? '';
+        $name = $payload['name'] ?? '';
+        $position = $payload['position'] ?? '';
+        $color = $payload['color'] ?? 'purple';
+        $skillContent = $payload['skill_content'] ?? '';
+        $isAutonomous = isset($payload['is_autonomous']) ? (int)$payload['is_autonomous'] : 0;
+        
+        if (empty($id) || empty($name) || empty($position)) {
+            echo json_encode(['success' => false, 'message' => 'Agent ID, Name and Position are required.']);
+            exit;
+        }
+        
+        if (!$ragPdo) {
+            echo json_encode(['success' => false, 'message' => 'Vector DB is not connected or configured.']);
+            exit;
+        }
+        
+        try {
+            $updStmt = $ragPdo->prepare("UPDATE `rag_agents` SET `name` = ?, `position` = ?, `color` = ?, `skill_content` = ?, `is_autonomous` = ? WHERE `id` = ?");
+            $updStmt->execute([$name, $position, $color, $skillContent, $isAutonomous, $id]);
+            echo json_encode(['success' => true, 'message' => 'Agent updated successfully']);
+        } catch (\Exception $e) {
+            echo json_encode(['success' => false, 'message' => 'Failed to update agent: ' . $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // 3.6. DELETE AGENT Action
+    if ($action === 'delete_agent') {
+        $id = $payload['id'] ?? '';
+        
+        if (empty($id)) {
+            echo json_encode(['success' => false, 'message' => 'Agent ID is required.']);
+            exit;
+        }
+        
+        if (!$ragPdo) {
+            echo json_encode(['success' => false, 'message' => 'Vector DB is not connected or configured.']);
+            exit;
+        }
+        
+        try {
+            $delStmt = $ragPdo->prepare("DELETE FROM `rag_agents` WHERE `id` = ?");
+            $delStmt->execute([$id]);
+            // Also delete chat history for this agent
+            $delHistory = $ragPdo->prepare("DELETE FROM `chat_history` WHERE `agent_id` = ?");
+            $delHistory->execute([$id]);
+            
+            echo json_encode(['success' => true, 'message' => 'Agent deleted successfully']);
+        } catch (\Exception $e) {
+            echo json_encode(['success' => false, 'message' => 'Failed to delete agent: ' . $e->getMessage()]);
+        }
+        exit;
+    }
+
     // 3.3. RUN AGENT Action (Manual autonomous execute)
     if ($action === 'run_agent') {
         if (!$ragPdo) {
@@ -179,7 +236,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     list($to_placeholder, $to_real) = get_sanitization_maps($pdo);
 
     // Local database context retrieval (RAG)
-    $leads_stmt = $pdo->query("SELECT `id`, `name`, `city`, `client_type`, `status`, `source`, `owner`, `value` FROM `leads` LIMIT 100");
+    $leads_stmt = $pdo->query("SELECT `id`, `name`, `city`, `client_type`, `status`, `source`, `owner`, `value`, `financial_summary` FROM `leads` LIMIT 100");
     $leads_all = $leads_stmt->fetchAll(PDO::FETCH_ASSOC);
 
     $context_blocks = [];
@@ -197,6 +254,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         if (!empty($l['owner']) && mb_strpos($normalized_query, mb_strtolower($l['owner'])) !== false) {
             $matches = true;
+        }
+        if (!empty($l['financial_summary'])) {
+            if (mb_strpos($normalized_query, 'finan') !== false || 
+                mb_strpos($normalized_query, 'report') !== false || 
+                mb_strpos($normalized_query, 'revenue') !== false || 
+                mb_strpos($normalized_query, 'turnover') !== false || 
+                mb_strpos($normalized_query, 'profit') !== false || 
+                mb_strpos($normalized_query, 'zisk') !== false || 
+                mb_strpos($normalized_query, 'výnos') !== false || 
+                mb_strpos($normalized_query, 'obrat') !== false ||
+                mb_strpos($normalized_query, 'largest') !== false ||
+                mb_strpos($normalized_query, 'najväč') !== false ||
+                mb_strpos($normalized_query, 'highest') !== false ||
+                mb_strpos(mb_strtolower($l['financial_summary']), $normalized_query) !== false) {
+                $matches = true;
+            }
         }
         
         $cat_stmt = $pdo->prepare("SELECT `category_name` FROM `lead_categories` WHERE `lead_id` = ?");
@@ -228,6 +301,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $block .= "- Categories: " . implode(", ", $categories) . "\n";
         if (!empty($l['value'])) {
             $block .= "- Opportunity Value: " . $l['value'] . " EUR\n";
+        }
+        if (!empty($l['financial_summary'])) {
+            $block .= "- Financial Report & Analysis:\n" . $l['financial_summary'] . "\n";
         }
         if (!empty($events)) {
             $block .= "- Chronological History & Communications:\n";
@@ -336,6 +412,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'text' => $block,
                 'is_match' => $matches
             ];
+        }
+    } catch (\Exception $ex) {
+        // Fallback
+    }
+
+    // RAG from unified entries
+    try {
+        $registries = $pdo->query("SELECT `id`, `name`, `entry_name`, `folder_name` FROM `unified_entries` WHERE `archived` = 0")->fetchAll();
+        foreach ($registries as $reg) {
+            $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($reg['id']));
+            $tableName = "ue_" . $safeId;
+            $chkTable = $pdo->query("SHOW TABLES LIKE '{$tableName}'")->rowCount() > 0;
+            if ($chkTable) {
+                $query = "
+                    SELECT ue.*, l.`name` as `client_name`
+                    FROM `{$tableName}` ue
+                    LEFT JOIN `leads` l ON ue.`client_id` = l.`id`
+                    LIMIT 100
+                ";
+                $rows = $pdo->query($query)->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($rows as $r) {
+                    $isFolder = (int)($r['is_folder'] ?? 0) === 1;
+                    $typeLabel = $isFolder ? ($reg['folder_name'] ?: 'Folder') : ($reg['entry_name'] ?: 'Entry');
+                    
+                    $block = "Unified Entry (" . $reg['name'] . " - " . $typeLabel . "):\n";
+                    $block .= "- Title: " . ($r['title'] ?: 'Untitled') . "\n";
+                    if (!empty($r['client_name'])) {
+                        $block .= "- Client: " . $r['client_name'] . "\n";
+                    }
+                    if (!empty($r['due_date'])) {
+                        $block .= "- Due Date: " . $r['due_date'] . "\n";
+                    }
+                    if (!empty($r['file_name'])) {
+                        $block .= "- File Attachment: " . $r['file_name'] . " (" . ($r['file_size'] ?? '') . ")\n";
+                    }
+                    
+                    $matches = false;
+                    if (mb_strpos($normalized_query, mb_strtolower($r['title'])) !== false ||
+                        (!empty($r['client_name']) && mb_strpos($normalized_query, mb_strtolower($r['client_name'])) !== false) ||
+                        (!empty($r['file_name']) && mb_strpos($normalized_query, mb_strtolower($r['file_name'])) !== false)) {
+                        $matches = true;
+                    }
+                    
+                    $context_blocks[] = [
+                        'text' => $block,
+                        'is_match' => $matches
+                    ];
+                }
+            }
         }
     } catch (\Exception $ex) {
         // Fallback

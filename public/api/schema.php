@@ -71,6 +71,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `ai_summary` TEXT NULL,
               `ai_summary_fingerprint` TEXT NULL,
               `metadata_json` TEXT NULL COMMENT 'Plugin support',
+              `vat_validation_result` TEXT NULL,
               `created_at` DATE NOT NULL,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               PRIMARY KEY (`id`),
@@ -220,11 +221,15 @@ if (!function_exists('ccrm_schema_statements')) {
             "CREATE TABLE IF NOT EXISTS `unified_entries` (
               `id` VARCHAR(50) NOT NULL PRIMARY KEY,
               `name` VARCHAR(100) NOT NULL,
+              `entry_name` VARCHAR(100) NULL,
+              `folder_name` VARCHAR(100) NULL,
               `icon` VARCHAR(50) NOT NULL,
               `color` VARCHAR(20) NOT NULL,
               `modules_json` TEXT NOT NULL,
               `folder_modules_json` TEXT NULL,
               `folders_enabled` TINYINT(1) NOT NULL DEFAULT 0,
+              `show_folder_summary` TINYINT(1) NOT NULL DEFAULT 0,
+              `warning_days` INT NOT NULL DEFAULT 0,
               `archived` TINYINT(1) NOT NULL DEFAULT 0,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
@@ -274,8 +279,53 @@ if (!function_exists('ccrm_schema_statements')) {
         if (!ccrm_column_exists($pdo, 'leads', 'ai_summary_fingerprint')) {
             $pdo->exec("ALTER TABLE `leads` ADD COLUMN `ai_summary_fingerprint` TEXT NULL AFTER `ai_summary`");
         }
+        if (!ccrm_column_exists($pdo, 'unified_entries', 'entry_name')) {
+            $pdo->exec("ALTER TABLE `unified_entries` ADD COLUMN `entry_name` VARCHAR(100) NULL AFTER `name`");
+        }
+        if (!ccrm_column_exists($pdo, 'unified_entries', 'folder_name')) {
+            $pdo->exec("ALTER TABLE `unified_entries` ADD COLUMN `folder_name` VARCHAR(100) NULL AFTER `entry_name`");
+        }
         if (!ccrm_column_exists($pdo, 'unified_entries', 'folder_modules_json')) {
             $pdo->exec("ALTER TABLE `unified_entries` ADD COLUMN `folder_modules_json` TEXT NULL AFTER `modules_json`");
+        }
+        if (!ccrm_column_exists($pdo, 'unified_entries', 'show_folder_summary')) {
+            $pdo->exec("ALTER TABLE `unified_entries` ADD COLUMN `show_folder_summary` TINYINT(1) NOT NULL DEFAULT 0");
+        }
+        if (!ccrm_column_exists($pdo, 'unified_entries', 'warning_days')) {
+            $pdo->exec("ALTER TABLE `unified_entries` ADD COLUMN `warning_days` INT NOT NULL DEFAULT 0");
+        }
+        if (!ccrm_column_exists($pdo, 'leads', 'establishment_date')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `establishment_date` VARCHAR(50) NULL");
+        }
+        if (!ccrm_column_exists($pdo, 'leads', 'legal_form')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `legal_form` VARCHAR(100) NULL");
+        }
+        if (!ccrm_column_exists($pdo, 'leads', 'sk_nace')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `sk_nace` VARCHAR(50) NULL");
+        }
+        if (!ccrm_column_exists($pdo, 'leads', 'organization_size')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `organization_size` VARCHAR(50) NULL");
+        }
+        if (!ccrm_column_exists($pdo, 'leads', 'ownership_type')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `ownership_type` VARCHAR(50) NULL");
+        }
+        if (!ccrm_column_exists($pdo, 'leads', 'data_source')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `data_source` VARCHAR(50) NULL");
+        }
+        if (!ccrm_column_exists($pdo, 'leads', 'dissolution_date')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `dissolution_date` VARCHAR(50) NULL");
+        }
+        if (!ccrm_column_exists($pdo, 'leads', 'region')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `region` VARCHAR(100) NULL");
+        }
+        if (!ccrm_column_exists($pdo, 'leads', 'district')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `district` VARCHAR(100) NULL");
+        }
+        if (!ccrm_column_exists($pdo, 'leads', 'financial_summary')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `financial_summary` LONGTEXT NULL");
+        }
+        if (!ccrm_column_exists($pdo, 'leads', 'vat_validation_result')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `vat_validation_result` TEXT NULL");
         }
     }
 

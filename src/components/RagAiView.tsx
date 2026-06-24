@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Brain, Send, Bot, User, Sparkles, Database, Check, RotateCcw, Plus, X, FileText, Play, Clock } from "lucide-react";
+import { Brain, Send, Bot, User, Sparkles, Database, Check, RotateCcw, Plus, X, FileText, Play, Clock, Trash2, Edit } from "lucide-react";
 import type { Language } from "../utils/translations";
 import { Markdown } from "../utils/markdown";
 import type { Lead } from "../types";
@@ -26,14 +26,6 @@ interface RagAiViewProps {
   leads?: Lead[];
 }
 
-const DEFAULT_AGENT: Agent = {
-  id: "durian",
-  name: "Durian",
-  position: "CRM Assistant & Consultant",
-  color: "purple",
-  skill_content: "You are Durian, the active CRM RAG AI assistant. Answer user queries based on context.",
-  is_autonomous: false
-};
 
 const COLOR_MAP: Record<string, { bg: string; text: string; fill: string; border: string; activeRing: string }> = {
   purple: {
@@ -75,7 +67,24 @@ const COLOR_MAP: Record<string, { bg: string; text: string; fill: string; border
 
 export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUser, leads: _leads }) => {
   const [customAgents, setCustomAgents] = useState<Agent[]>([]);
-  const [selectedAgent, setSelectedAgent] = useState<Agent>(DEFAULT_AGENT);
+  const [defaultAgent, setDefaultAgent] = useState<Agent>(() => {
+    const saved = localStorage.getItem("ccrm_custom_default_agent");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return {
+      id: "durian",
+      name: "Fig Tree",
+      position: "CRM Assistant & Consultant",
+      color: "purple",
+      skill_content: "You are Fig Tree, the active CRM RAG AI assistant. Answer user queries based on context.",
+      is_autonomous: false
+    };
+  });
+
+  const [selectedAgent, setSelectedAgent] = useState<Agent>(defaultAgent);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -92,7 +101,31 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const allAgents = [DEFAULT_AGENT, ...customAgents];
+  // Edit Agent Form States
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editPosition, setEditPosition] = useState("");
+  const [editColor, setEditColor] = useState("purple");
+  const [editSkillContent, setEditSkillContent] = useState("");
+  const [editIsAutonomous, setEditIsAutonomous] = useState(false);
+  const [editUploadedFileName, setEditUploadedFileName] = useState("");
+  const [isEditDragging, setIsEditDragging] = useState(false);
+  const editFileInputRef = useRef<HTMLInputElement>(null);
+
+  const openEditModal = (e: React.MouseEvent, agent: Agent) => {
+    e.stopPropagation();
+    setEditingAgent(agent);
+    setEditName(agent.name);
+    setEditPosition(agent.position);
+    setEditColor(agent.color);
+    setEditSkillContent(agent.skill_content);
+    setEditIsAutonomous(agent.is_autonomous);
+    setEditUploadedFileName("");
+    setIsEditModalOpen(true);
+  };
+
+  const allAgents = [defaultAgent, ...customAgents];
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -123,6 +156,8 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
           const stillExists = parsedAgents.find((pa: any) => pa.id === selectedAgent.id);
           if (stillExists) {
             setSelectedAgent(stillExists);
+          } else if (selectedAgent.id === "durian") {
+            setSelectedAgent(defaultAgent);
           }
         }
       }
@@ -176,10 +211,10 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
   const getGreetingMessage = (agent: Agent) => {
     if (agent.id === "durian") {
       return systemLanguage === "sk" 
-        ? "Ahoj! Ja som RAG AI Asistent (Durian). Mám prístup k celej tvojej databáze leadov, klientov a poznámok. Ako ti dnes môžem pomôcť?" 
+        ? `Ahoj! Ja som RAG AI Asistent (${agent.name}). Mám prístup k celej tvojej databáze leadov, klientov a poznámok. Ako ti dnes môžem pomôcť?` 
         : systemLanguage === "hu"
-          ? "Szia! Én vagyok a RAG AI Asszisztens (Durian). Hozzáférésem van az összes leadhez, ügyfélhez és feljegyzéshez. Miben segíthetek ma?"
-          : "Hello! I am the RAG AI Assistant (Durian). I have access to your database of leads, clients, and notes. How can I assist you today?";
+          ? `Szia! Én vagyok a RAG AI Asszisztens (${agent.name}). Hozzáférésem van az összes leadhez, ügyfélhez és feljegyzéshez. Miben segíthetek ma?`
+          : `Hello! I am the RAG AI Assistant (${agent.name}). I have access to your database of leads, clients, and notes. How can I assist you today?`;
     } else {
       return systemLanguage === "sk"
         ? `Ahoj! Ja som tvoj AI asistent ${agent.name} (${agent.position}). Môj systém bol vycvičený podľa tvojho skill.md súboru. Ako ti dnes môžem pomôcť?`
@@ -381,6 +416,48 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
     }
   };
 
+  // Handle skill.md file selection and text reading for Edit
+  const handleEditFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setEditUploadedFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      setEditSkillContent(content);
+    };
+    reader.readAsText(file);
+  };
+
+  const handleEditDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsEditDragging(true);
+  };
+
+  const handleEditDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsEditDragging(false);
+  };
+
+  const handleEditDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsEditDragging(false);
+    
+    const file = e.dataTransfer.files?.[0];
+    if (file && (file.name.endsWith(".md") || file.type === "text/markdown")) {
+      setEditUploadedFileName(file.name);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const content = event.target?.result as string;
+        setEditSkillContent(content);
+      };
+      reader.readAsText(file);
+    } else {
+      alert("Please upload a valid markdown (.md) file.");
+    }
+  };
+
   // Create new Agent submit handler
   const handleCreateAgent = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -427,6 +504,154 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
       console.warn("Error creating agent", err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Edit Agent submit handler
+  const handleEditAgent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingAgent) return;
+    
+    if (!editName.trim() || !editPosition.trim() || !editSkillContent.trim()) {
+      alert("Name, Position and skill.md file content are required.");
+      return;
+    }
+
+    setIsLoading(true);
+    
+    // Check if we are editing the default agent
+    if (editingAgent.id === "durian") {
+      const updatedDefault: Agent = {
+        id: "durian",
+        name: editName,
+        position: editPosition,
+        color: editColor,
+        skill_content: editSkillContent,
+        is_autonomous: editIsAutonomous
+      };
+      setDefaultAgent(updatedDefault);
+      localStorage.setItem("ccrm_custom_default_agent", JSON.stringify(updatedDefault));
+      if (selectedAgent.id === "durian") {
+        setSelectedAgent(updatedDefault);
+      }
+      setIsEditModalOpen(false);
+      setEditingAgent(null);
+      setIsLoading(false);
+      if (typeof (window as any).showToast === "function") {
+        (window as any).showToast(systemLanguage === "sk" ? "Predvolený agent upravený!" : "Default agent updated successfully!");
+      }
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/chat_rag.php", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          action: "edit_agent",
+          id: editingAgent.id,
+          name: editName,
+          position: editPosition,
+          color: editColor,
+          skill_content: editSkillContent,
+          is_autonomous: editIsAutonomous
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setIsEditModalOpen(false);
+          setEditingAgent(null);
+          // Refresh list
+          await fetchAgents();
+          if (typeof (window as any).showToast === "function") {
+            (window as any).showToast(systemLanguage === "sk" ? "Agent bol upravený!" : "Agent updated successfully!");
+          }
+        } else {
+          alert(data.message || "Failed to update agent.");
+        }
+      }
+    } catch (err) {
+      console.warn("Error updating agent", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Delete Agent handler
+  const handleDeleteAgent = async (id: string) => {
+    if (id === "durian") return;
+    
+    const confirmMsg = systemLanguage === "sk"
+      ? "Naozaj chcete vymazať tohto agenta a celú jeho históriu rozhovorov?"
+      : systemLanguage === "hu"
+        ? "Biztosan törölni szeretné ezt az üzenetet és a hozzá tartozó chat előzményeket?"
+        : "Are you sure you want to delete this agent and all its chat history?";
+        
+    if (!confirm(confirmMsg)) return;
+
+    setIsLoading(true);
+    try {
+      const res = await fetch("/api/chat_rag.php", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          action: "delete_agent",
+          id: id
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          if (selectedAgent.id === id) {
+            setSelectedAgent(defaultAgent);
+          }
+          await fetchAgents();
+          if (typeof (window as any).showToast === "function") {
+            (window as any).showToast(systemLanguage === "sk" ? "Agent bol odstránený!" : "Agent deleted successfully!");
+          }
+        } else {
+          alert(data.message || "Failed to delete agent.");
+        }
+      }
+    } catch (err) {
+      console.warn("Error deleting agent", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Reset default agent handler
+  const handleResetDefaultAgent = () => {
+    const confirmMsg = systemLanguage === "sk"
+      ? "Naozaj chcete resetovať predvoleného agenta na pôvodné nastavenia?"
+      : systemLanguage === "hu"
+        ? "Biztosan vissza szeretné állítani az alapértelmezett ügynököt?"
+        : "Are you sure you want to reset the default agent to system settings?";
+        
+    if (!confirm(confirmMsg)) return;
+    
+    localStorage.removeItem("ccrm_custom_default_agent");
+    const restoredDefault: Agent = {
+      id: "durian",
+      name: "Fig Tree",
+      position: "CRM Assistant & Consultant",
+      color: "purple",
+      skill_content: "You are Fig Tree, the active CRM RAG AI assistant. Answer user queries based on context.",
+      is_autonomous: false
+    };
+    setDefaultAgent(restoredDefault);
+    if (selectedAgent.id === "durian") {
+      setSelectedAgent(restoredDefault);
+    }
+    if (typeof (window as any).showToast === "function") {
+      (window as any).showToast(systemLanguage === "sk" ? "Predvolený agent resetovaný!" : "Default agent reset successfully!");
     }
   };
 
@@ -490,9 +715,34 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                       )
                     )}
                   </div>
-                  <p className={`text-[10px] ${theme.text} font-medium truncate mt-0.5`}>
+                  <p className={`text-[10px] ${theme.text} font-medium truncate mt-0.5 pr-14`}>
                     {agent.position}
                   </p>
+                </div>
+
+                {/* Hover Action Buttons */}
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-1 bg-white/90 backdrop-blur-sm p-1 rounded-xl shadow-sm border border-slate-100 z-10">
+                  <button
+                    type="button"
+                    onClick={(e) => openEditModal(e, agent)}
+                    className="p-1.5 rounded-lg text-slate-500 hover:text-purple-600 hover:bg-purple-50 transition-colors"
+                    title={systemLanguage === "sk" ? "Upraviť" : "Edit"}
+                  >
+                    <Edit className="h-3.5 w-3.5" />
+                  </button>
+                  {agent.id !== "durian" && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteAgent(agent.id);
+                      }}
+                      className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                      title={systemLanguage === "sk" ? "Vymazať" : "Delete"}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -753,6 +1003,146 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                   className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
                   Create Agent
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* POPUP MODAL - EDIT AGENT FORM */}
+      {isEditModalOpen && editingAgent && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+          <div className="absolute inset-0" onClick={() => { setIsEditModalOpen(false); setEditingAgent(null); }} />
+          <div className="w-full max-w-md rounded-3xl border border-slate-150 bg-white p-6 shadow-2xl relative z-10 space-y-5 animate-scale-in">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-sm font-heading font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                <Edit className="h-4.5 w-4.5 text-purple-600" />
+                {systemLanguage === "sk" ? "Upraviť agenta" : systemLanguage === "hu" ? "Ügynök szerkesztése" : "Edit Agent"}
+              </h3>
+              <button
+                onClick={() => { setIsEditModalOpen(false); setEditingAgent(null); }}
+                className="h-7 w-7 rounded-lg hover:bg-slate-50 border border-slate-200 text-slate-400 hover:text-slate-800 flex items-center justify-center transition-colors shadow-sm cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditAgent} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Agent Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="e.g. Lead Qualification Expert"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-550 focus:ring-1 focus:ring-purple-550"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Position / Role *</label>
+                <input
+                  type="text"
+                  required
+                  value={editPosition}
+                  onChange={(e) => setEditPosition(e.target.value)}
+                  placeholder="e.g. Analyzes and qualifications inbound pipeline"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-550 focus:ring-1 focus:ring-purple-550"
+                />
+              </div>
+
+              {/* Fixed Color Selection Circle Sections */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Theme Color *</label>
+                <div className="flex items-center gap-3 bg-slate-50/50 p-2.5 rounded-2xl border border-slate-150 w-fit">
+                  {Object.keys(COLOR_MAP).map((colorKey) => {
+                    const colDetails = COLOR_MAP[colorKey];
+                    const isSelected = editColor === colorKey;
+                    return (
+                      <button
+                        key={colorKey}
+                        type="button"
+                        onClick={() => setEditColor(colorKey)}
+                        className={`h-6.5 w-6.5 rounded-full ${colDetails.fill} cursor-pointer transition-all ${
+                          isSelected ? colDetails.activeRing : "opacity-85 hover:opacity-100 hover:scale-105"
+                        }`}
+                        title={colorKey}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Skill file upload */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Skill Configuration (skill.md) *</label>
+                <input
+                  type="file"
+                  ref={editFileInputRef}
+                  accept=".md"
+                  onChange={handleEditFileChange}
+                  className="hidden"
+                />
+                <div 
+                  onClick={() => editFileInputRef.current?.click()}
+                  onDragOver={handleEditDragOver}
+                  onDragLeave={handleEditDragLeave}
+                  onDrop={handleEditDrop}
+                  className={`w-full border-2 border-dashed rounded-2xl p-4 flex flex-col items-center justify-center gap-1.5 cursor-pointer transition-all duration-200 ${
+                    isEditDragging 
+                      ? "border-purple-600 bg-purple-50/20 scale-[1.02]" 
+                      : "border-slate-205 hover:border-purple-300 bg-slate-50/20 hover:bg-purple-50/10"
+                  }`}
+                >
+                  <FileText className={`h-8 w-8 transition-colors ${isEditDragging ? "text-purple-600" : "text-slate-400 animate-pulse"}`} />
+                  <span className={`text-[10px] font-black uppercase tracking-wider transition-colors ${isEditDragging ? "text-purple-700" : "text-slate-500"}`}>
+                    {editUploadedFileName ? editUploadedFileName : "Drag & Drop or Click to Update skill.md"}
+                  </span>
+                  <span className="text-[9px] text-slate-400">Accepts .md instruction logs</span>
+                </div>
+              </div>
+
+              {/* Autonomous Checkbox */}
+              <label className="flex items-center gap-2.5 px-3 py-2 border border-slate-200/80 hover:border-purple-200 bg-slate-50/30 rounded-xl cursor-pointer select-none transition-all">
+                <input
+                  type="checkbox"
+                  checked={editIsAutonomous}
+                  onChange={(e) => setEditIsAutonomous(e.target.checked)}
+                  className="rounded border-slate-300 text-purple-650 focus:ring-purple-500 h-4.5 w-4.5"
+                />
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                    <Clock className="h-3 w-3" /> Set as Autonomous Agent
+                  </span>
+                  <span className="text-[8.5px] text-slate-450 mt-0.5">Executes automatically via cron scheduler and adds Run triggers</span>
+                </div>
+              </label>
+
+              <div className="pt-2 border-t border-slate-100 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => { setIsEditModalOpen(false); setEditingAgent(null); }}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                {editingAgent.id === "durian" && (
+                  <button
+                    type="button"
+                    onClick={handleResetDefaultAgent}
+                    className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl text-xs font-bold transition-all cursor-pointer mr-auto"
+                  >
+                    Reset
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  disabled={isLoading || !editName.trim() || !editPosition.trim() || !editSkillContent.trim()}
+                  className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  Save Changes
                 </button>
               </div>
             </form>
