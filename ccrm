@@ -68,7 +68,7 @@ function ccrm_update() {
     }
 
     // 3. Run composer install
-    echo "Running composer install to update dependencies, assets, and migrations...\n";
+    echo "Running composer install to update dependencies...\n";
     passthru("composer install", $composerResult);
     if ($composerResult !== 0) {
         echo "Error: composer install failed.\n";
@@ -79,6 +79,17 @@ function ccrm_update() {
         echo "Restoring stashed changes...\n";
         passthru("git stash pop");
     }
+
+    // 4. Publish assets (copy dist/* to root) if we are in a direct git clone deployment
+    $isVendor = file_exists(__DIR__ . '/../../composer.json') && strpos(__DIR__, 'vendor/cstudios-slovakia') !== false;
+    if (!$isVendor) {
+        echo "Publishing built assets from dist/ to root directory...\n";
+        require_once __DIR__ . '/src-php/Installer.php';
+        \CCRM\Installer::copyDir(__DIR__ . '/dist', __DIR__, ['config.php']);
+    }
+
+    // 5. Run database migrations
+    ccrm_migrate();
 
     echo "\nSuccess! CCRM updated successfully to the latest version.\n";
 }
@@ -93,11 +104,36 @@ function ccrm_migrate() {
         exit(1);
     }
     require_once $autoloader;
+
+    // Load config
+    $configFile = __DIR__ . '/config.php';
+    if (!file_exists($configFile)) {
+        $configFile = __DIR__ . '/public/config.php';
+    }
     
-    if (\CCRM\Installer::migrateDatabase()) {
+    if (!file_exists($configFile)) {
+        echo "Warning: config.php not found. Skipping database migrations (setup wizard will handle this on first run).\n";
+        return;
+    }
+
+    require_once $configFile;
+    if (!function_exists('get_db_connection')) {
+        echo "Error: get_db_connection() function not found in config.php.\n";
+        exit(1);
+    }
+
+    $schemaFile = __DIR__ . '/dist/api/schema.php';
+    if (!file_exists($schemaFile)) {
+        $schemaFile = __DIR__ . '/public/api/schema.php';
+    }
+    require_once $schemaFile;
+
+    try {
+        $pdo = get_db_connection();
+        ccrm_apply_schema($pdo);
         echo "Database schema migrated successfully.\n";
-    } else {
-        echo "Error: Database migration failed. Check your config.php file and database connection.\n";
+    } catch (\Exception $e) {
+        echo "Error running database migration: " . $e->getMessage() . "\n";
         exit(1);
     }
 }
