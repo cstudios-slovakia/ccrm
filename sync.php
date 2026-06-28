@@ -601,19 +601,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                         $timestamp = isset($te['timestamp']) ? date('Y-m-d H:i:s', strtotime($te['timestamp'])) : date('Y-m-d H:i:s');
 
-                        $insTimeline->execute([
-                            $teId,
-                            $leadId,
-                            $te['type'] ?? 'note',
-                            $timestamp,
-                            $te['title'],
-                            $te['content'] ?? null,
-                            $te['amount'] ?? null,
-                            $te['fileName'] ?? null,
-                            $te['fileSize'] ?? null,
-                            $te['fileType'] ?? null,
-                            $te['extraTime'] ?? null
-                        ]);
+                        try {
+                            $insTimeline->execute([
+                                $teId,
+                                $leadId,
+                                $te['type'] ?? 'note',
+                                $timestamp,
+                                $te['title'],
+                                $te['content'] ?? null,
+                                $te['amount'] ?? null,
+                                $te['fileName'] ?? null,
+                                $te['fileSize'] ?? null,
+                                $te['fileType'] ?? null,
+                                $te['extraTime'] ?? $te['extra_time'] ?? null
+                            ]);
+                        } catch (\PDOException $pdoEx) {
+                            // If duplicate key (SQLSTATE 23000 / error 1062), regenerate ID and retry
+                            if ($pdoEx->getCode() == 23000 || strpos($pdoEx->getMessage(), '1062') !== false) {
+                                $teId = 'ev-' . uniqid() . '-' . rand(1000, 9999);
+                                $insTimeline->execute([
+                                    $teId,
+                                    $leadId,
+                                    $te['type'] ?? 'note',
+                                    $timestamp,
+                                    $te['title'],
+                                    $te['content'] ?? null,
+                                    $te['amount'] ?? null,
+                                    $te['fileName'] ?? null,
+                                    $te['fileSize'] ?? null,
+                                    $te['fileType'] ?? null,
+                                    $te['extraTime'] ?? $te['extra_time'] ?? null
+                                ]);
+                            } else {
+                                throw $pdoEx;
+                            }
+                        }
                     }
                 }
             }
