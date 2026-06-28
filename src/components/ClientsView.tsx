@@ -2132,9 +2132,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     setLeads(prev => prev.map(lead => {
       if (lead.name.trim().toLowerCase() === activeClient.name.trim().toLowerCase()) {
         const currentTimeline = lead.timeline || [];
+        const uniqueEventId = `${eventId}-${lead.id}`;
         const updatedLead = {
           ...lead,
-          timeline: [newEvent, ...currentTimeline]
+          timeline: [{ ...newEvent, id: uniqueEventId }, ...currentTimeline]
         };
         if (logType === "offer" && !isNaN(offerAmt)) {
           updatedLead.value = offerAmt;
@@ -2243,9 +2244,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     setLeads(prev => prev.map(lead => {
       if (lead.name.trim().toLowerCase() === activeClient.name.trim().toLowerCase()) {
         const currentTimeline = lead.timeline || [];
+        const uniqueEventId = `${eventId}-${lead.id}`;
         return {
           ...lead,
-          timeline: [newEvent, ...currentTimeline]
+          timeline: [{ ...newEvent, id: uniqueEventId }, ...currentTimeline]
         };
       }
       return lead;
