@@ -19,6 +19,9 @@ import { getTranslation } from "./utils/translations";
 import { InstallerWizard } from "./components/InstallerWizard";
 import { RefreshCw, AlertOctagon, Trash2, Copy } from "lucide-react";
 import { UnifiedEntryView } from "./components/UnifiedEntryView";
+import { ShaderGradient, ShaderGradientCanvas } from "shadergradient";
+
+const ShaderGradientAny = ShaderGradient as any;
 
 function App() {
   const activePushesRef = useRef(0);
@@ -1148,24 +1151,102 @@ ${log.payload || ''}
   // While loading initial sync data from the database, show a premium glassmorphic loader
   if (isInstalled && !isInitialSyncResolved) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-white relative font-sans overflow-hidden">
-        {/* Modern radial gradients for premium depth */}
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(99,102,241,0.12),transparent_40%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_left,rgba(16,185,129,0.08),transparent_40%)]" />
-        
+      <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-50 via-slate-100 to-indigo-50/50 p-6 relative overflow-hidden select-none font-sans">
+        <style dangerouslySetInnerHTML={{__html: `
+          .loader {
+            width: 65px;
+            aspect-ratio: 1;
+            position: relative;
+          }
+          .loader:before,
+          .loader:after {
+            content: "";
+            position: absolute;
+            border-radius: 50px;
+            box-shadow: 0 0 0 3px inset #6366f1;
+            animation: l4 2.5s infinite;
+          }
+          .loader:after {
+            animation-delay: -1.25s;
+          }
+          @keyframes l4 {
+            0% { inset: 0 35px 35px 0; }
+            12.5% { inset: 0 35px 0 0; }
+            25% { inset: 35px 35px 0 0; }
+            37.5% { inset: 35px 0 0 0; }
+            50% { inset: 35px 0 0 35px; }
+            62.5% { inset: 0 0 0 35px; }
+            75% { inset: 0 0 35px 35px; }
+            87.5% { inset: 0 0 35px 0; }
+            100% { inset: 0 35px 35px 0; }
+          }
+        `}} />
+
+        {/* Animated 3D Shader Background */}
+        <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+          <ShaderGradientCanvas
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              pointerEvents: 'none'
+            }}
+          >
+            <ShaderGradientAny
+              animate="on"
+              axesHelper="off"
+              brightness={1.2}
+              cAzimuthAngle={170}
+              cDistance={4.4}
+              cPolarAngle={70}
+              cameraZoom={1}
+              color1="#94ffd1"
+              color2="#6bf5ff"
+              color3="#ffffff"
+              destination="onCanvas"
+              embedMode="off"
+              envPreset="city"
+              format="gif"
+              fov={45}
+              frameRate={10}
+              gizmoHelper="hide"
+              grain="off"
+              lightType="3d"
+              pixelDensity={1}
+              positionX={0}
+              positionY={0.9}
+              positionZ={-0.3}
+              range="disabled"
+              rangeEnd={40}
+              rangeStart={0}
+              reflection={0.1}
+              rotationX={45}
+              rotationY={0}
+              rotationZ={0}
+              type="waterPlane"
+              uAmplitude={0}
+              uDensity={1.2}
+              uFrequency={0}
+              uSpeed={0.1}
+              uStrength={3.4}
+              uTime={0}
+              wireframe={false}
+            />
+          </ShaderGradientCanvas>
+        </div>
+
         <div className="relative z-10 flex flex-col items-center max-w-sm text-center">
-          {/* Pulsing CCRM logo icon */}
-          <div className="relative mb-8">
-            <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-indigo-500 to-emerald-500 opacity-75 blur-md animate-pulse" />
-            <div className="relative h-16 w-16 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-center text-indigo-400">
-              <RefreshCw className="h-8 w-8 animate-spin text-indigo-400" />
-            </div>
+          {/* Custom Loader Animation */}
+          <div className="mb-8 flex items-center justify-center h-16 w-16">
+            <div className="loader"></div>
           </div>
           
-          <h2 className="text-lg font-black uppercase tracking-widest text-slate-100">
+          <h2 className="text-xl font-heading font-black tracking-widest text-slate-800 uppercase">
             CCRM
           </h2>
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-2 animate-pulse">
+          <p className="text-[10px] font-black text-slate-450 uppercase tracking-widest mt-3.5 animate-pulse">
             Syncing database connection...
           </p>
         </div>

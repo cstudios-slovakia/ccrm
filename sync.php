@@ -705,7 +705,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($oldCompanyId !== $companyId || empty($oldSummary)) {
                         $sysLang = $payload['systemLanguage'] ?? 'sk';
                         $cmd = "php " . escapeshellarg(__DIR__ . "/api/generate_report.php") . " " . escapeshellarg($companyId) . " " . escapeshellarg($sysLang) . " > /dev/null 2>&1 &";
-                        // exec($cmd); // Disabled to prevent PHP-FPM crashes on shared hosting
+                        
+                        // Safely check if exec is available and suppress any errors during execution
+                        if (function_exists('exec') && !in_array('exec', array_map('trim', explode(',', ini_get('disable_functions'))))) {
+                            try {
+                                @exec($cmd);
+                            } catch (\Throwable $e) {
+                                // Suppressed when not available or fails
+                            }
+                        }
                     }
                 }
 
