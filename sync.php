@@ -955,8 +955,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pdo->commit();
         echo json_encode(['success' => true, 'message' => 'CCRM Database Synced Successfully!']);
     } catch (\Exception $e) {
-        if ($pdo->inTransaction()) {
+        if (isset($pdo) && $pdo->inTransaction()) {
             $pdo->rollBack();
+        }
+        if (function_exists('ccrm_log_exception')) {
+            ccrm_log_exception($e);
         }
         http_response_code(500);
         echo json_encode(['success' => false, 'message' => 'Failed database synchronization: ' . $e->getMessage()]);

@@ -330,7 +330,49 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // Role creation states
   const [newRoleName, setNewRoleName] = React.useState("");
 
-  const [activeSubTab, setActiveSubTab] = React.useState<"branding" | "managers" | "rbac" | "states" | "sources" | "danger" | "ads" | "api" | "email" | "ai" | "unified">((initialSubTab as any) || "branding");
+  const [activeSubTab, setActiveSubTab] = React.useState<"branding" | "managers" | "rbac" | "states" | "sources" | "danger" | "ads" | "api" | "email" | "ai" | "unified" | "errors">((initialSubTab as any) || "branding");
+
+  // Exception Tracking State
+  const [errorLogs, setErrorLogs] = React.useState<any[]>([]);
+  const [selectedLog, setSelectedLog] = React.useState<any | null>(null);
+  const [isLoadingLogs, setIsLoadingLogs] = React.useState(false);
+
+  const fetchErrorLogs = async () => {
+    setIsLoadingLogs(true);
+    try {
+      const response = await fetch("/api/error_logs.php");
+      const data = await response.json();
+      if (data.success) {
+        setErrorLogs(data.logs || []);
+      }
+    } catch (e) {
+      console.error("Failed to fetch error logs", e);
+    } finally {
+      setIsLoadingLogs(false);
+    }
+  };
+
+  const clearErrorLogs = async () => {
+    if (!confirm(userLanguage === "sk" ? "Naozaj chcete vymazať všetky chybové záznamy?" : "Are you sure you want to clear all error logs?")) {
+      return;
+    }
+    try {
+      const response = await fetch("/api/error_logs.php", { method: "DELETE" });
+      const data = await response.json();
+      if (data.success) {
+        setErrorLogs([]);
+        (window as any).showToast(userLanguage === "sk" ? "Chybové záznamy boli vymazané." : "Error logs cleared.");
+      }
+    } catch (e) {
+      console.error("Failed to clear error logs", e);
+    }
+  };
+
+  React.useEffect(() => {
+    if (activeSubTab === "errors") {
+      fetchErrorLogs();
+    }
+  }, [activeSubTab]);
 
   React.useEffect(() => {
     if (initialSubTab) {
@@ -1460,9 +1502,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     { id: "api", label: "🔌 Public API", permKey: "general_config" as const },
     { id: "ads", label: "📢 Ads APIs & Campaigns", permKey: "general_config" as const },
     { id: "ai", label: "🧠 AI Integrations", permKey: "ai_config" as const },
+    { id: "errors", label: "⚠️ Error Logs", permKey: "general_config" as const },
     { id: "danger", label: "⚠️ System Reset", permKey: "system_reset" as const }
   ] as const).filter(tab => getPermission(tab.permKey) !== "nothing");
-
   // Read-only alert component
   const renderReadOnlyBanner = (permKey: keyof RolePermission["permissions"]) => {
     const isReadOnly = getPermission(permKey) === "view";
@@ -4796,6 +4838,159 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </button>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 7: Error Logs Exception Tracking */}
+        {activeSubTab === "errors" && getPermission("general_config") !== "nothing" && (
+          <div className="lg:col-span-12 space-y-6">
+            <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                <h3 className="text-sm font-heading font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                  <Icons.AlertOctagon className="h-4.5 w-4.5 text-red-500 animate-pulse" /> {userLanguage === "sk" ? "Systémové chyby a výnimky" : "System Errors & Exceptions"}
+                </h3>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={fetchErrorLogs}
+                    className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1 cursor-pointer font-bold"
+                  >
+                    <Icons.RefreshCw className="h-3.5 w-3.5" /> {userLanguage === "sk" ? "Obnoviť" : "Refresh"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearErrorLogs}
+                    className="px-3.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-750 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1 cursor-pointer font-bold"
+                  >
+                    {userLanguage === "sk" ? "Vymazať záznamy" : "Clear Logs"}
+                  </button>
+                </div>
+              </div>
+
+              {isLoadingLogs ? (
+                <div className="flex justify-center py-12">
+                  <Icons.RefreshCw className="h-6 w-6 animate-spin text-slate-400" />
+                </div>
+              ) : errorLogs.length === 0 ? (
+                <div className="text-center py-12 text-slate-500 font-bold text-xs">
+                  {userLanguage === "sk" ? "Nenašli sa žiadne systémové chyby." : "No system errors found."}
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-slate-500 uppercase font-black text-[9px] tracking-wider">
+                        <th className="py-3 px-4">{userLanguage === "sk" ? "Čas" : "Timestamp"}</th>
+                        <th className="py-3 px-4">{userLanguage === "sk" ? "Metóda" : "Method"}</th>
+                        <th className="py-3 px-4">URI</th>
+                        <th className="py-3 px-4">{userLanguage === "sk" ? "Chyba" : "Message"}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {errorLogs.map((log: any) => (
+                        <tr
+                          key={log.id}
+                          onClick={() => setSelectedLog(log)}
+                          className="border-b border-slate-100 hover:bg-red-50/40 transition-all cursor-pointer font-medium text-slate-700"
+                        >
+                          <td className="py-3 px-4 font-mono text-[10px] whitespace-nowrap text-slate-500">
+                            {log.created_at}
+                          </td>
+                          <td className="py-3 px-4 whitespace-nowrap">
+                            <span className={`px-2 py-0.5 rounded-md font-black text-[9px] uppercase ${
+                              log.request_method === 'POST' 
+                                ? 'bg-blue-50 text-blue-700' 
+                                : 'bg-slate-50 text-slate-700'
+                            }`}>
+                              {log.request_method}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 font-mono text-[10px] text-slate-600 truncate max-w-xs">
+                            {log.request_uri}
+                          </td>
+                          <td className="py-3 px-4 font-bold text-red-650 truncate max-w-sm">
+                            {log.message}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Exception Detail Popup Modal */}
+        {selectedLog && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="glass-panel w-full max-w-3xl bg-white rounded-3xl shadow-2xl border border-slate-250 overflow-hidden flex flex-col max-h-[85vh] text-left">
+              <div className="p-6 border-b border-slate-150 flex items-center justify-between bg-slate-50">
+                <div className="flex items-center gap-2 text-red-650">
+                  <Icons.AlertOctagon className="h-5 w-5 shrink-0" />
+                  <h3 className="font-heading font-extrabold text-slate-900 uppercase tracking-wider text-xs">
+                    {userLanguage === "sk" ? "Detail výnimky / chyby" : "Exception / Error Details"}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedLog(null)}
+                  className="text-slate-450 hover:text-slate-800 p-1.5 hover:bg-slate-100 rounded-xl transition-all cursor-pointer font-bold text-sm"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="p-6 overflow-y-auto space-y-4 font-medium text-slate-750 text-xs">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-b border-slate-100 pb-4">
+                  <div>
+                    <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{userLanguage === "sk" ? "Dátum a čas" : "Date & Time"}</span>
+                    <span className="font-mono text-[10.5px] text-slate-700 font-bold">{selectedLog.created_at}</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{userLanguage === "sk" ? "Metóda & URI" : "Method & URI"}</span>
+                    <span className="font-mono text-[10.5px] text-slate-750 font-bold">{selectedLog.request_method} {selectedLog.request_uri}</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{userLanguage === "sk" ? "Súbor a riadok" : "File & Line"}</span>
+                    <span className="font-mono text-[10.5px] text-slate-700 font-bold">{selectedLog.file ? `${selectedLog.file.split('/').pop()}:${selectedLog.line}` : 'N/A'}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{userLanguage === "sk" ? "Chybová správa" : "Error Message"}</span>
+                  <div className="p-3 bg-red-50 text-red-800 rounded-xl font-mono text-[11px] font-bold border border-red-100 whitespace-pre-wrap leading-relaxed">
+                    {selectedLog.message}
+                  </div>
+                </div>
+
+                {selectedLog.file && (
+                  <div className="space-y-1">
+                    <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{userLanguage === "sk" ? "Úplná cesta k súboru" : "Full File Path"}</span>
+                    <div className="p-2.5 bg-slate-50 text-slate-600 rounded-xl font-mono text-[10.5px] border border-slate-150">
+                      {selectedLog.file} (Line {selectedLog.line})
+                    </div>
+                  </div>
+                )}
+
+                {selectedLog.trace && (
+                  <div className="space-y-1">
+                    <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">Stack Trace</span>
+                    <pre className="p-4 bg-slate-900 text-slate-100 rounded-2xl font-mono text-[10px] overflow-x-auto whitespace-pre leading-relaxed border border-slate-800 max-h-64">
+                      {selectedLog.trace}
+                    </pre>
+                  </div>
+                )}
+
+                {selectedLog.payload && (
+                  <div className="space-y-1">
+                    <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">Request Payload</span>
+                    <pre className="p-4 bg-slate-900 text-slate-100 rounded-2xl font-mono text-[10px] overflow-x-auto whitespace-pre leading-relaxed border border-slate-800 max-h-48">
+                      {selectedLog.payload}
+                    </pre>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}

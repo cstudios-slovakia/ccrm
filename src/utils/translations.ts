@@ -57,6 +57,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "settings.tab.ads": "📢 Ads APIs & Campaigns",
     "settings.tab.ai": "🧠 AI Integrations",
     "settings.tab.danger": "⚠️ System Reset",
+    "settings.tab.errors": "⚠️ Error Logs",
 
     // Settings Details
     "settings.general.title": "Branding & General Settings",
@@ -478,6 +479,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "settings.tab.ads": "📢 Reklamné API a kampane",
     "settings.tab.ai": "🧠 AI Integrácie",
     "settings.tab.danger": "⚠️ Reset systému",
+    "settings.tab.errors": "⚠️ Chybové záznamy",
 
     // Settings Details
     "settings.general.title": "Nastavenia brandingu a systému",
@@ -897,6 +899,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "settings.tab.ads": "📢 Hirdetési API-k és kampányok",
     "settings.tab.ai": "🧠 AI Integráció",
     "settings.tab.danger": "⚠️ Rendszer visszaállítása",
+    "settings.tab.errors": "⚠️ Hiba naplók",
 
     // Settings Details
     "settings.general.title": "Márkajelzés és általános beállítások",
