@@ -954,7 +954,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $pdo->commit();
         echo json_encode(['success' => true, 'message' => 'CCRM Database Synced Successfully!']);
-    } catch (\Exception $e) {
+    } catch (\Throwable $e) {
         if (isset($pdo) && $pdo->inTransaction()) {
             $pdo->rollBack();
         }
