@@ -705,7 +705,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($oldCompanyId !== $companyId || empty($oldSummary)) {
                         $sysLang = $payload['systemLanguage'] ?? 'sk';
                         $cmd = "php " . escapeshellarg(__DIR__ . "/api/generate_report.php") . " " . escapeshellarg($companyId) . " " . escapeshellarg($sysLang) . " > /dev/null 2>&1 &";
-                        exec($cmd);
+                        // exec($cmd); // Disabled to prevent PHP-FPM crashes on shared hosting
                     }
                 }
 
