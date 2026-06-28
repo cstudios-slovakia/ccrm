@@ -57,6 +57,30 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
     }
   };
 
+  const handleClearCacheAndReload = async () => {
+    if (confirm(userLanguage === "sk" ? "Naozaj chcete vymazať vyrovnávaciu pamäť prehliadača a znova načítať aplikáciu?" : "Are you sure you want to clear the browser cache and reload the application?")) {
+      if ('caches' in window) {
+        try {
+          const keys = await caches.keys();
+          await Promise.all(keys.map(key => caches.delete(key)));
+        } catch (e) {
+          console.warn("Failed to clear service worker caches:", e);
+        }
+      }
+      if ('serviceWorker' in navigator) {
+        try {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(registrations.map(r => r.unregister()));
+        } catch (e) {
+          console.warn("Failed to unregister service workers:", e);
+        }
+      }
+      localStorage.clear();
+      sessionStorage.clear();
+      window.location.href = window.location.origin + window.location.pathname + '?t=' + Date.now() + window.location.hash;
+    }
+  };
+
   React.useEffect(() => {
     if (activeSubTab === "errors") {
       fetchErrorLogs();
@@ -285,6 +309,16 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
             >
               <AlertOctagon className="h-4 w-4 text-red-500" /> {userLanguage === "sk" ? "Chyby a Výnimky" : "Error Logs"}
             </button>
+
+            <div className="border-t border-slate-150 my-1 pt-2.5">
+              <button
+                type="button"
+                onClick={handleClearCacheAndReload}
+                className="w-full text-left px-4 py-3 rounded-2xl font-black text-[10.5px] uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer text-amber-750 hover:text-amber-950 hover:bg-amber-50 border border-transparent"
+              >
+                <RefreshCw className="h-4 w-4 text-amber-500" /> {userLanguage === "sk" ? "Vymazať cache a načítať" : "Clear Cache & Reload"}
+              </button>
+            </div>
           </div>
         </div>
 
