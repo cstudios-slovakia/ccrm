@@ -17,7 +17,7 @@ import { MeetingRoomView } from "./components/MeetingRoomView";
 import type { MeetingNote } from "./components/MeetingRoomView";
 import { getTranslation } from "./utils/translations";
 import { InstallerWizard } from "./components/InstallerWizard";
-import { RefreshCw, AlertOctagon, Trash2 } from "lucide-react";
+import { RefreshCw, AlertOctagon, Trash2, Copy } from "lucide-react";
 import { UnifiedEntryView } from "./components/UnifiedEntryView";
 
 function App() {
@@ -285,6 +285,30 @@ function App() {
     } catch (e) {
       console.error("Failed to clear error logs", e);
     }
+  };
+
+  const handleCopyLogDetails = (log: any) => {
+    const text = `### CCRM Exception Report
+- **Timestamp**: ${log.created_at}
+- **Request**: ${log.request_method} ${log.request_uri}
+- **Error Message**: ${log.message}
+- **File**: ${log.file ? `${log.file}:${log.line}` : 'N/A'}
+
+#### Stack Trace
+\`\`\`
+${log.trace || ''}
+\`\`\`
+
+#### Request Payload
+\`\`\`json
+${log.payload || ''}
+\`\`\`
+`;
+    navigator.clipboard.writeText(text).then(() => {
+      if (typeof (window as any).showToast === "function") {
+        (window as any).showToast(userLanguage === "sk" ? "Detaily boli skopírované!" : "Error details copied!");
+      }
+    });
   };
 
   useEffect(() => {
@@ -1446,13 +1470,23 @@ function App() {
                   {userLanguage === "sk" ? "Detail výnimky / chyby" : "Exception / Error Details"}
                 </h3>
               </div>
-              <button
-                type="button"
-                onClick={() => setSelectedLog(null)}
-                className="text-slate-450 hover:text-slate-800 p-1.5 hover:bg-slate-100 rounded-xl transition-all cursor-pointer font-bold text-sm"
-              >
-                ✕
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleCopyLogDetails(selectedLog)}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 font-bold"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  {userLanguage === "sk" ? "Kopírovať" : "Copy"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedLog(null)}
+                  className="text-slate-450 hover:text-slate-800 p-1.5 hover:bg-slate-100 rounded-xl transition-all cursor-pointer font-bold text-sm"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
             <div className="p-6 overflow-y-auto space-y-4 font-medium text-slate-750 text-xs">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-b border-slate-100 pb-4">
