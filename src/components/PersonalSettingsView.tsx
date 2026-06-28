@@ -11,6 +11,8 @@ interface PersonalSettingsViewProps {
   userLanguage: Language;
   setUserLanguage: (lang: Language) => void;
   onSync: () => void;
+  errorSidebarEnabled: boolean;
+  setErrorSidebarEnabled: (enabled: boolean) => void;
 }
 
 export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
@@ -19,7 +21,9 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
   setUsers,
   userLanguage,
   setUserLanguage,
-  onSync
+  onSync,
+  errorSidebarEnabled,
+  setErrorSidebarEnabled
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<"profile" | "email" | "errors">("profile");
   const [errorLogs, setErrorLogs] = useState<any[]>([]);
@@ -778,6 +782,37 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
           {/* TAB 3: Error Logs Exception Tracking */}
           {activeSubTab === "errors" && (
             <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
+              
+              {/* Toggle Error Sidebar */}
+              <div className="flex items-center justify-between p-4.5 bg-slate-50 border border-slate-200/60 rounded-2xl">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs font-bold text-slate-900">{userLanguage === "sk" ? "Panel chýb na boku" : "Error Sidebar Panel"}</span>
+                  <span className="text-[10px] text-slate-500 font-medium">
+                    {userLanguage === "sk" 
+                      ? "Zobraziť rýchly prístup k chybám na hlavnom bočnom paneli" 
+                      : "Show quick access to background error logs in the main sidebar"}
+                  </span>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={errorSidebarEnabled}
+                    onChange={(e) => {
+                      setErrorSidebarEnabled(e.target.checked);
+                      localStorage.setItem("ccrm_error_sidebar_enabled", e.target.checked ? "true" : "false");
+                      if (typeof (window as any).showToast === "function") {
+                        (window as any).showToast(e.target.checked 
+                          ? (userLanguage === "sk" ? "Panel chýb zapnutý!" : "Error sidebar enabled!") 
+                          : (userLanguage === "sk" ? "Panel chýb vypnutý!" : "Error sidebar disabled!")
+                        );
+                      }
+                    }}
+                    className="sr-only peer"
+                  />
+                  <div className="w-10 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+                </label>
+              </div>
+
               <div className="flex items-center justify-between border-b border-slate-200 pb-3">
                 <h3 className="text-sm font-heading font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
                   <AlertOctagon className="h-4.5 w-4.5 text-red-500 animate-pulse" /> {userLanguage === "sk" ? "Systémové chyby a výnimky" : "System Errors & Exceptions"}

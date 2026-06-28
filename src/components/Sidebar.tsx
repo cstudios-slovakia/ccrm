@@ -21,6 +21,9 @@ interface SidebarProps {
   canEditNav: boolean;
   onSaveUserLayout: (layout: string[]) => void;
   unifiedEntries?: UnifiedEntryRegistry[];
+  errorSidebarEnabled?: boolean;
+  isErrorSlideoutOpen?: boolean;
+  setIsErrorSlideoutOpen?: (open: boolean) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -37,7 +40,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   roles,
   canEditNav,
   onSaveUserLayout,
-  unifiedEntries = []
+  unifiedEntries = [],
+  errorSidebarEnabled = false,
+  isErrorSlideoutOpen = false,
+  setIsErrorSlideoutOpen
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(true); // Default collapsed for the minimalist aesthetic
   const sidebarRef = React.useRef<HTMLElement>(null);
@@ -750,6 +756,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {/* Divider indicated only in horizontal bottom bar */}
             {!isMobileMenuOpen && showSettings && (
               <div className="h-6 w-[2px] bg-slate-200 shrink-0 mx-1" />
+            )}
+
+            {/* Error Logs Toggle Button */}
+            {errorSidebarEnabled && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (setIsErrorSlideoutOpen) {
+                    setIsErrorSlideoutOpen(!isErrorSlideoutOpen);
+                  }
+                }}
+                className={cn(
+                  "transition-all duration-300 flex items-center shrink-0 border select-none animate-bounce",
+                  isMobileMenuOpen 
+                    ? "w-full px-5 py-3.5 rounded-2xl gap-3 text-left font-black" 
+                    : "h-11 w-11 rounded-xl justify-center",
+                  isErrorSlideoutOpen
+                    ? "bg-red-600 border-red-700 text-white shadow-lg shadow-red-650/20"
+                    : (isMobileMenuOpen 
+                        ? "bg-transparent border-transparent text-red-500 hover:text-red-800" 
+                        : "bg-red-50/50 border-red-200 text-red-500 hover:bg-red-100 hover:text-red-700"
+                      )
+                )}
+                style={{ animationDuration: '3s' }}
+                title={systemLanguage === "sk" ? "Chyby na pozadí" : "Background Errors"}
+              >
+                <Icons.AlertOctagon className="h-4.5 w-4.5 shrink-0" />
+                {isMobileMenuOpen && (
+                  <span className="text-xs font-bold tracking-wide">{systemLanguage === "sk" ? "Chyby na pozadí" : "Background Errors"}</span>
+                )}
+              </button>
             )}
 
             {/* Settings Tab Button */}

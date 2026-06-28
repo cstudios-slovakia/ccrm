@@ -17,7 +17,7 @@ import { MeetingRoomView } from "./components/MeetingRoomView";
 import type { MeetingNote } from "./components/MeetingRoomView";
 import { getTranslation } from "./utils/translations";
 import { InstallerWizard } from "./components/InstallerWizard";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, AlertOctagon, Trash2 } from "lucide-react";
 import { UnifiedEntryView } from "./components/UnifiedEntryView";
 
 function App() {
@@ -248,6 +248,51 @@ function App() {
       sessionStorage.removeItem("crm_current_user_rbac");
     }
   }, [currentUser]);
+
+  const [errorSidebarEnabled, setErrorSidebarEnabled] = useState(() => localStorage.getItem("ccrm_error_sidebar_enabled") === "true");
+  const [isErrorSlideoutOpen, setIsErrorSlideoutOpen] = useState(false);
+  const [errorLogs, setErrorLogs] = useState<any[]>([]);
+  const [selectedLog, setSelectedLog] = useState<any | null>(null);
+  const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+
+  const fetchErrorLogs = async () => {
+    setIsLoadingLogs(true);
+    try {
+      const response = await fetch("/api/error_logs.php");
+      const data = await response.json();
+      if (data.success) {
+        setErrorLogs(data.logs || []);
+      }
+    } catch (e) {
+      console.error("Failed to fetch error logs", e);
+    } finally {
+      setIsLoadingLogs(false);
+    }
+  };
+
+  const clearErrorLogs = async () => {
+    if (!confirm(userLanguage === "sk" ? "Naozaj chcete vymazať všetky chybové záznamy?" : "Are you sure you want to clear all error logs?")) {
+      return;
+    }
+    try {
+      const response = await fetch("/api/error_logs.php", { method: "DELETE" });
+      const data = await response.json();
+      if (data.success) {
+        setErrorLogs([]);
+        if (typeof (window as any).showToast === "function") {
+          (window as any).showToast(userLanguage === "sk" ? "Chybové záznamy boli vymazané." : "Error logs cleared.");
+        }
+      }
+    } catch (e) {
+      console.error("Failed to clear error logs", e);
+    }
+  };
+
+  useEffect(() => {
+    if (isErrorSlideoutOpen) {
+      fetchErrorLogs();
+    }
+  }, [isErrorSlideoutOpen]);
 
   useEffect(() => {
     if (currentUser) {
@@ -988,6 +1033,8 @@ function App() {
             userLanguage={userLanguage}
             setUserLanguage={setUserLanguage}
             onSync={() => {}}
+            errorSidebarEnabled={errorSidebarEnabled}
+            setErrorSidebarEnabled={setErrorSidebarEnabled}
           />
         );
       case "email":
@@ -1167,6 +1214,9 @@ function App() {
           canEditNav={getPermission("nav_edit") === "edit"}
           onSaveUserLayout={handleSaveUserLayout}
           unifiedEntries={unifiedEntries}
+          errorSidebarEnabled={errorSidebarEnabled}
+          isErrorSlideoutOpen={isErrorSlideoutOpen}
+          setIsErrorSlideoutOpen={setIsErrorSlideoutOpen}
         />
         
         {/* Workspace Area - Add pb-20 on mobile viewports so that the bottom navigation bar never overlaps content */}
@@ -1315,6 +1365,156 @@ function App() {
                   </div>
                 );
               })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Background Error Slideout Drawer */}
+      {isErrorSlideoutOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-40 flex justify-start text-left animate-in fade-in duration-200">
+          <div className="absolute inset-0" onClick={() => setIsErrorSlideoutOpen(false)} />
+          <div className="relative w-full max-w-md bg-white h-full shadow-2xl border-r border-slate-200 flex flex-col z-50 animate-in slide-in-from-left duration-300">
+            <div className="p-5 border-b border-slate-150 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-2 text-red-650">
+                <AlertOctagon className="h-5 w-5 text-red-500 animate-pulse" />
+                <h3 className="font-heading font-extrabold text-slate-900 uppercase tracking-wider text-xs">
+                  {userLanguage === "sk" ? "Chyby na pozadí" : "Background Errors"}
+                </h3>
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={fetchErrorLogs}
+                  className="p-2 hover:bg-slate-200 text-slate-500 hover:text-slate-800 rounded-xl transition-all cursor-pointer"
+                  title="Refresh"
+                >
+                  <RefreshCw className={`h-4 w-4 ${isLoadingLogs ? 'animate-spin' : ''}`} />
+                </button>
+                <button
+                  type="button"
+                  onClick={clearErrorLogs}
+                  className="p-2 hover:bg-red-50 text-red-600 hover:text-red-800 rounded-xl transition-all cursor-pointer"
+                  title="Clear All"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsErrorSlideoutOpen(false)}
+                  className="text-slate-400 hover:text-slate-700 p-2 hover:bg-slate-200 rounded-xl transition-all cursor-pointer font-bold text-xs"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50">
+              {isLoadingLogs ? (
+                <div className="flex justify-center py-12">
+                  <RefreshCw className="h-6 w-6 animate-spin text-slate-400" />
+                </div>
+              ) : errorLogs.length === 0 ? (
+                <div className="text-center py-12 text-slate-400 font-bold text-xs">
+                  {userLanguage === "sk" ? "Žiadne chyby na pozadí" : "No background errors"}
+                </div>
+              ) : (
+                errorLogs.map((log: any) => (
+                  <div
+                    key={log.id}
+                    onClick={() => setSelectedLog(log)}
+                    className="p-3.5 bg-white hover:bg-red-50/10 rounded-2xl border border-slate-200 hover:border-red-200/60 transition-all cursor-pointer shadow-sm flex flex-col gap-1.5 text-xs"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-[9px] text-slate-400">{log.created_at}</span>
+                      <span className={`px-1.5 py-0.5 rounded-md font-black text-[8px] uppercase ${
+                        log.request_method === 'POST' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-700'
+                      }`}>
+                        {log.request_method}
+                      </span>
+                    </div>
+                    <div className="font-mono text-[9px] text-slate-500 truncate">
+                      {log.request_uri}
+                    </div>
+                    <div className="font-bold text-red-650 line-clamp-2 leading-relaxed">
+                      {log.message}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Exception Detail Popup Modal */}
+      {selectedLog && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="glass-panel w-full max-w-3xl bg-white rounded-3xl shadow-2xl border border-slate-250 overflow-hidden flex flex-col max-h-[85vh] text-left">
+            <div className="p-6 border-b border-slate-150 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-2 text-red-650">
+                <AlertOctagon className="h-5 w-5 shrink-0" />
+                <h3 className="font-heading font-extrabold text-slate-900 uppercase tracking-wider text-xs">
+                  {userLanguage === "sk" ? "Detail výnimky / chyby" : "Exception / Error Details"}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedLog(null)}
+                className="text-slate-450 hover:text-slate-800 p-1.5 hover:bg-slate-100 rounded-xl transition-all cursor-pointer font-bold text-sm"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto space-y-4 font-medium text-slate-750 text-xs">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-b border-slate-100 pb-4">
+                <div>
+                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{userLanguage === "sk" ? "Dátum a čas" : "Date & Time"}</span>
+                  <span className="font-mono text-[10.5px] text-slate-700 font-bold">{selectedLog.created_at}</span>
+                </div>
+                <div>
+                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{userLanguage === "sk" ? "Metóda & URI" : "Method & URI"}</span>
+                  <span className="font-mono text-[10.5px] text-slate-750 font-bold">{selectedLog.request_method} {selectedLog.request_uri}</span>
+                </div>
+                <div>
+                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{userLanguage === "sk" ? "Súbor a riadok" : "File & Line"}</span>
+                  <span className="font-mono text-[10.5px] text-slate-700 font-bold">{selectedLog.file ? `${selectedLog.file.split('/').pop()}:${selectedLog.line}` : 'N/A'}</span>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{userLanguage === "sk" ? "Chybová správa" : "Error Message"}</span>
+                <div className="p-3 bg-red-50 text-red-800 rounded-xl font-mono text-[11px] font-bold border border-red-100 whitespace-pre-wrap leading-relaxed">
+                  {selectedLog.message}
+                </div>
+              </div>
+
+              {selectedLog.file && (
+                <div className="space-y-1">
+                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{userLanguage === "sk" ? "Úplná cesta k súboru" : "Full File Path"}</span>
+                  <div className="p-2.5 bg-slate-50 text-slate-600 rounded-xl font-mono text-[10.5px] border border-slate-150">
+                    {selectedLog.file} (Line {selectedLog.line})
+                  </div>
+                </div>
+              )}
+
+              {selectedLog.trace && (
+                <div className="space-y-1">
+                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">Stack Trace</span>
+                  <pre className="p-4 bg-slate-900 text-slate-100 rounded-2xl font-mono text-[10px] overflow-x-auto whitespace-pre leading-relaxed border border-slate-800 max-h-64">
+                    {selectedLog.trace}
+                  </pre>
+                </div>
+              )}
+
+              {selectedLog.payload && (
+                <div className="space-y-1">
+                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">Request Payload</span>
+                  <pre className="p-4 bg-slate-900 text-slate-100 rounded-2xl font-mono text-[10px] overflow-x-auto whitespace-pre leading-relaxed border border-slate-800 max-h-48">
+                    {selectedLog.payload}
+                  </pre>
+                </div>
+              )}
             </div>
           </div>
         </div>
