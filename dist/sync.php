@@ -509,6 +509,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     try {
+        // Ensure dynamic unified-entry table schemas BEFORE opening the
+        // transaction. DDL (CREATE/ALTER TABLE) triggers an implicit commit in
+        // MySQL, so running it inside the transaction would silently end it and
+        // make the final commit() fail with "There is no active transaction".
+        // DDL cannot be rolled back anyway, so it belongs outside the transaction.
+        if (isset($payload['unifiedEntries']) && is_array($payload['unifiedEntries'])) {
+            foreach ($payload['unifiedEntries'] as $ue) {
+                if (!isset($ue['id'])) {
+                    continue;
+                }
+                $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($ue['id']));
+                $tableName = "ue_" . $safeId;
+
+                // Create the table if it does not exist with default minimal columns
+                $pdo->exec("CREATE TABLE IF NOT EXISTS `{$tableName}` (
+                    `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+                    `parent_id` VARCHAR(50) NULL,
+                    `is_folder` TINYINT(1) NOT NULL DEFAULT 0,
+                    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    FOREIGN KEY (`parent_id`) REFERENCES `{$tableName}` (`id`) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+
+                if (!ccrm_column_exists($pdo, $tableName, 'icon')) {
+                    $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `icon` VARCHAR(50) NULL");
+                }
+
+                // Dynamically add columns for active modules if they are missing
+                $allActiveModules = array_unique(array_merge($ue['modules'] ?? [], $ue['folderModules'] ?? []));
+                if (in_array('title', $allActiveModules)) {
+                    if (!ccrm_column_exists($pdo, $tableName, 'title')) {
+                        $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `title` VARCHAR(255) NULL");
+                    }
+                }
+                if (in_array('due_date', $allActiveModules) || in_array('due date', $allActiveModules)) {
+                    if (!ccrm_column_exists($pdo, $tableName, 'due_date')) {
+                        $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `due_date` DATE NULL");
+                    }
+                    if (!ccrm_column_exists($pdo, $tableName, 'warning_days')) {
+                        $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `warning_days` INT NOT NULL DEFAULT 0");
+                    }
+                }
+                if (in_array('file', $allActiveModules)) {
+                    if (!ccrm_column_exists($pdo, $tableName, 'file_name')) {
+                        $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `file_name` VARCHAR(255) NULL, ADD COLUMN `file_size` VARCHAR(50) NULL, ADD COLUMN `file_type` VARCHAR(100) NULL, ADD COLUMN `file_path` VARCHAR(255) NULL");
+                    }
+                }
+                if (in_array('client', $allActiveModules)) {
+                    if (!ccrm_column_exists($pdo, $tableName, 'client_id')) {
+                        $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `client_id` VARCHAR(50) NULL");
+                    }
+                }
+                if (in_array('lead', $allActiveModules)) {
+                    if (!ccrm_column_exists($pdo, $tableName, 'lead_id')) {
+                        $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `lead_id` VARCHAR(50) NULL");
+                    }
+                }
+            }
+        }
+
         $pdo->beginTransaction();
 
         // 4.1. Save system settings & configurations
@@ -951,50 +1011,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($ueId));
                 $tableName = "ue_" . $safeId;
                 
-                // Let's create the table if it does not exist with default minimal columns
-                $pdo->exec("CREATE TABLE IF NOT EXISTS `{$tableName}` (
-                    `id` VARCHAR(50) NOT NULL PRIMARY KEY,
-                    `parent_id` VARCHAR(50) NULL,
-                    `is_folder` TINYINT(1) NOT NULL DEFAULT 0,
-                    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    FOREIGN KEY (`parent_id`) REFERENCES `{$tableName}` (`id`) ON DELETE CASCADE
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
-
-                if (!ccrm_column_exists($pdo, $tableName, 'icon')) {
-                    $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `icon` VARCHAR(50) NULL");
-                }
-
-                // Dynamically add columns for active modules if they are missing
-                $allActiveModules = array_unique(array_merge($modules, $folderModules));
-                if (in_array('title', $allActiveModules)) {
-                    if (!ccrm_column_exists($pdo, $tableName, 'title')) {
-                        $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `title` VARCHAR(255) NULL");
-                    }
-                }
-                if (in_array('due_date', $allActiveModules) || in_array('due date', $allActiveModules)) {
-                    if (!ccrm_column_exists($pdo, $tableName, 'due_date')) {
-                        $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `due_date` DATE NULL");
-                    }
-                    if (!ccrm_column_exists($pdo, $tableName, 'warning_days')) {
-                        $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `warning_days` INT NOT NULL DEFAULT 0");
-                    }
-                }
-                if (in_array('file', $allActiveModules)) {
-                    if (!ccrm_column_exists($pdo, $tableName, 'file_name')) {
-                        $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `file_name` VARCHAR(255) NULL, ADD COLUMN `file_size` VARCHAR(50) NULL, ADD COLUMN `file_type` VARCHAR(100) NULL, ADD COLUMN `file_path` VARCHAR(255) NULL");
-                    }
-                }
-                if (in_array('client', $allActiveModules)) {
-                    if (!ccrm_column_exists($pdo, $tableName, 'client_id')) {
-                        $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `client_id` VARCHAR(50) NULL");
-                    }
-                }
-                if (in_array('lead', $allActiveModules)) {
-                    if (!ccrm_column_exists($pdo, $tableName, 'lead_id')) {
-                        $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `lead_id` VARCHAR(50) NULL");
-                    }
-                }
+                // Table schema (CREATE/ALTER) for this dynamic table is ensured by
+                // the schema pre-pass above, before the transaction was opened. DDL
+                // must stay out of the transaction because it triggers an implicit
+                // commit in MySQL.
 
                 // If rows data is supplied, synchronize it to this dynamic table
                 if (isset($payload['unifiedEntriesData'][$ueId]) && is_array($payload['unifiedEntriesData'][$ueId])) {
