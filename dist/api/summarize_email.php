@@ -211,16 +211,10 @@ if (strlen($plainTextBody) > 4000) {
     $plainTextBody = substr($plainTextBody, 0, 4000) . '... [TRUNCATED]';
 }
 
-$ch = curl_init('https://api.openai.com/v1/chat/completions');
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_TIMEOUT, 15);
-curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-curl_setopt($ch, CURLOPT_HTTPHEADER, [
+$openAiHeaders = [
     'Content-Type: application/json',
     'Authorization: Bearer ' . $openAiKey
-]);
+];
 
 $prompt = "You are an expert CRM assistant. Analyze the following email details or conversation flow and output a JSON response containing a concise summary (1-2 sentences) and a list of action items / suggested tasks (up to 4 items).
    
@@ -246,11 +240,39 @@ $payload = [
     'temperature' => 0.3
 ];
 
-curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-$response = curl_exec($ch);
-$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-$curlErr = curl_error($ch);
-curl_close($ch);
+$jsonPayload = json_encode($payload);
+
+// OpenAI occasionally rejects a request transiently (HTTP 429 rate limit, or a
+// sporadic 5xx / network blip). The email view fires several summaries at once,
+// so a single transient failure should not surface to the user as a hard 500.
+// Retry transient failures a few times with exponential backoff; fail fast on
+// deterministic errors (e.g. 400/401) so we don't waste time or quota.
+$response = false; $httpCode = 0; $curlErr = '';
+$maxAttempts = 3;
+for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+    $ch = curl_init('https://api.openai.com/v1/chat/completions');
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, $openAiHeaders);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $jsonPayload);
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlErr = curl_error($ch);
+    curl_close($ch);
+
+    if ($httpCode === 200 && $response) {
+        break;
+    }
+    $isTransient = ($httpCode === 429 || $httpCode >= 500 || $response === false || $response === '' || !empty($curlErr));
+    if (!$isTransient || $attempt === $maxAttempts) {
+        break;
+    }
+    // Exponential backoff with jitter: ~0.8s, then ~1.6s.
+    usleep((int)(pow(2, $attempt - 1) * 800000) + rand(0, 250000));
+}
 
 if ($httpCode !== 200 || !$response) {
     $errData = json_decode($response, true);
