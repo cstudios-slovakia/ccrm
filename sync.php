@@ -629,6 +629,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingLeadIds = array_keys($dbLeads);
             $processedLeadIds = [];
 
+            // Track every timeline event id written during this sync to prevent duplicates
+            // within the same payload from violating the primary key constraint.
+            $seenTimelineIds = [];
+
             $insLead = $pdo->prepare("INSERT INTO `leads` (
               `id`, `name`, `city`, `client_type`, `status`, `source`, `owner`, `value`, `rating`, `phone`, `email`, 
               `company_id`, `tax_id`, `vat_id`, `contact_person`, `website`, `street`, `postal_code`, `country`, 
@@ -741,6 +745,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         if (strpos($teId, 'email-') === 0) {
                             continue;
                         }
+                        // If this id was already used by another lead in this same payload,
+                        // mint a fresh unique one so the duplicate cannot break the sync.
+                        if (isset($seenTimelineIds[$teId])) {
+                            do {
+                                $teId = 'ev-' . bin2hex(random_bytes(8));
+                            } while (isset($seenTimelineIds[$teId]));
+                        }
+                        $seenTimelineIds[$teId] = true;
+
                         $timestamp = isset($te['timestamp']) ? date('Y-m-d H:i:s', strtotime($te['timestamp'])) : date('Y-m-d H:i:s');
 
                         try {

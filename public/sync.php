@@ -60,6 +60,110 @@ function fetch_system_settings($pdo) {
     return $settings;
 }
 
+// Helper to check if an incoming lead payload is identical to its database record
+function ccrm_leads_are_identical($inc, $db) {
+    if (!$db) return false;
+    
+    // Compare basic fields
+    $fields = [
+        'name' => $inc['name'] ?? '',
+        'city' => $inc['city'] ?? '',
+        'client_type' => $inc['clientType'] ?? 'person',
+        'status' => $inc['status'] ?? 'new',
+        'source' => $inc['source'] ?? 'website',
+        'owner' => $inc['owner'] ?? 'Tomi',
+        'value' => isset($inc['value']) ? floatval($inc['value']) : 0.00,
+        'rating' => isset($inc['rating']) ? intval($inc['rating']) : 3,
+        'phone' => $inc['phone'] ?? null,
+        'email' => $inc['email'] ?? null,
+        'company_id' => $inc['companyId'] ?? null,
+        'tax_id' => $inc['taxId'] ?? null,
+        'vat_id' => $inc['vatId'] ?? null,
+        'contact_person' => $inc['contactPerson'] ?? null,
+        'website' => $inc['website'] ?? null,
+        'street' => $inc['address']['street'] ?? null,
+        'postal_code' => $inc['address']['postalCode'] ?? null,
+        'country' => $inc['address']['country'] ?? 'Slovakia',
+        'ai_summary' => $inc['aiSummary'] ?? null,
+        'ai_summary_fingerprint' => $inc['aiSummaryFingerprint'] ?? null,
+        'establishment_date' => $inc['establishmentDate'] ?? null,
+        'legal_form' => $inc['legalForm'] ?? null,
+        'sk_nace' => $inc['skNace'] ?? null,
+        'organization_size' => $inc['organizationSize'] ?? null,
+        'ownership_type' => $inc['ownershipType'] ?? null,
+        'data_source' => $inc['dataSource'] ?? null,
+        'dissolution_date' => $inc['dissolutionDate'] ?? null,
+        'region' => $inc['region'] ?? null,
+        'district' => $inc['district'] ?? null,
+        'financial_summary' => $inc['financialSummary'] ?? null,
+        'created_at' => $inc['createdAt'] ?? null
+    ];
+    
+    foreach ($fields as $col => $val) {
+        $dbVal = $db[$col] ?? null;
+        if ($col === 'value') {
+            if (abs(floatval($val) - floatval($dbVal)) > 0.001) return false;
+        } elseif ($col === 'rating') {
+            if (intval($val) !== intval($dbVal)) return false;
+        } else {
+            $v1 = ($val === '') ? null : $val;
+            $v2 = ($dbVal === '') ? null : $dbVal;
+            if ($v1 !== $v2) return false;
+        }
+    }
+    
+    // Compare categories
+    $incCats = $inc['categories'] ?? [];
+    $dbCats = $db['categories'] ?? [];
+    sort($incCats);
+    sort($dbCats);
+    if ($incCats !== $dbCats) return false;
+    
+    // Compare timeline events
+    $incTimeline = $inc['timeline'] ?? [];
+    $dbTimeline = $db['timeline'] ?? [];
+    if (count($incTimeline) !== count($dbTimeline)) return false;
+    
+    $dbTeMap = [];
+    foreach ($dbTimeline as $te) {
+        $dbTeMap[$te['id']] = $te;
+    }
+    
+    foreach ($incTimeline as $te) {
+        $teId = $te['id'] ?? '';
+        if (!isset($dbTeMap[$teId])) return false;
+        $dbTe = $dbTeMap[$teId];
+        
+        $teFields = [
+            'type' => $te['type'] ?? 'note',
+            'title' => $te['title'] ?? '',
+            'content' => $te['content'] ?? null,
+            'amount' => isset($te['amount']) ? floatval($te['amount']) : null,
+            'file_name' => $te['fileName'] ?? null,
+            'file_size' => $te['fileSize'] ?? null,
+            'file_type' => $te['fileType'] ?? null,
+            'extra_time' => $te['extraTime'] ?? $te['extra_time'] ?? null
+        ];
+        
+        foreach ($teFields as $col => $val) {
+            $dbVal = $dbTe[$col] ?? null;
+            if ($col === 'amount') {
+                if ($val !== null && $dbVal !== null) {
+                    if (abs(floatval($val) - floatval($dbVal)) > 0.001) return false;
+                } elseif ($val !== $dbVal) {
+                    return false;
+                }
+            } else {
+                $v1 = ($val === '') ? null : $val;
+                $v2 = ($dbVal === '') ? null : $dbVal;
+                if ($v1 !== $v2) return false;
+            }
+        }
+    }
+    
+    return true;
+}
+
 // 3. Handle GET Request: Read from Database
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $settings = fetch_system_settings($pdo);
@@ -498,16 +602,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // 4.3. Synchronize Leads, Categories & Timelines
         if (isset($payload['leads']) && is_array($payload['leads'])) {
-            $stmt = $pdo->query("SELECT `id` FROM `leads`");
-            $existingLeadIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $stmt = $pdo->query("SELECT * FROM `leads`");
+            $dbLeads = [];
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $dbLeads[$row['id']] = $row;
+                $dbLeads[$row['id']]['categories'] = [];
+                $dbLeads[$row['id']]['timeline'] = [];
+            }
+
+            // Fetch all categories
+            $stmt = $pdo->query("SELECT * FROM `lead_categories`");
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                if (isset($dbLeads[$row['lead_id']])) {
+                    $dbLeads[$row['lead_id']]['categories'][] = $row['category_name'];
+                }
+            }
+
+            // Fetch all timeline events
+            $stmt = $pdo->query("SELECT * FROM `timeline_events`");
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                if (isset($dbLeads[$row['lead_id']])) {
+                    $dbLeads[$row['lead_id']]['timeline'][] = $row;
+                }
+            }
+
+            $existingLeadIds = array_keys($dbLeads);
             $processedLeadIds = [];
 
-            // Track every timeline event id written during this sync. `timeline_events.id`
-            // is a global PRIMARY KEY, but the client state can contain the same event id
-            // on two different leads (a known bug where copied events keep their id). Such
-            // a collision raises SQLSTATE[23000]/1062 and aborts the ENTIRE transaction, so
-            // nothing — including a brand-new client — ever persists. We de-duplicate here
-            // so one stale record can never block the whole save.
+            // Track every timeline event id written during this sync to prevent duplicates
+            // within the same payload from violating the primary key constraint.
             $seenTimelineIds = [];
 
             $insLead = $pdo->prepare("INSERT INTO `leads` (
@@ -525,6 +648,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             foreach ($payload['leads'] as $l) {
                 $leadId = $l['id'];
+                $processedLeadIds[] = $leadId;
+
+                // Optimization: Skip if the lead is identical to what we have in the DB
+                if (isset($dbLeads[$leadId]) && ccrm_leads_are_identical($l, $dbLeads[$leadId])) {
+                    continue;
+                }
+
                 $address = $l['address'] ?? [];
 
                 // Write standard Opportunity Lead parameters
@@ -579,7 +709,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($oldCompanyId !== $companyId || empty($oldSummary)) {
                         $sysLang = $payload['systemLanguage'] ?? 'sk';
                         $cmd = "php " . escapeshellarg(__DIR__ . "/api/generate_report.php") . " " . escapeshellarg($companyId) . " " . escapeshellarg($sysLang) . " > /dev/null 2>&1 &";
-                        exec($cmd);
+                        
+                        // Safely check if exec is available and suppress any errors during execution
+                        if (function_exists('exec') && !in_array('exec', array_map('trim', explode(',', ini_get('disable_functions'))))) {
+                            try {
+                                @exec($cmd);
+                            } catch (\Throwable $e) {
+                                // Suppressed when not available or fails
+                            }
+                        }
                     }
                 }
 
@@ -615,21 +753,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             } while (isset($seenTimelineIds[$teId]));
                         }
                         $seenTimelineIds[$teId] = true;
+
                         $timestamp = isset($te['timestamp']) ? date('Y-m-d H:i:s', strtotime($te['timestamp'])) : date('Y-m-d H:i:s');
 
-                        $insTimeline->execute([
-                            $teId,
-                            $leadId,
-                            $te['type'] ?? 'note',
-                            $timestamp,
-                            $te['title'],
-                            $te['content'] ?? null,
-                            $te['amount'] ?? null,
-                            $te['fileName'] ?? null,
-                            $te['fileSize'] ?? null,
-                            $te['fileType'] ?? null,
-                            $te['extraTime'] ?? null
-                        ]);
+                        try {
+                            $insTimeline->execute([
+                                $teId,
+                                $leadId,
+                                $te['type'] ?? 'note',
+                                $timestamp,
+                                $te['title'],
+                                $te['content'] ?? null,
+                                $te['amount'] ?? null,
+                                $te['fileName'] ?? null,
+                                $te['fileSize'] ?? null,
+                                $te['fileType'] ?? null,
+                                $te['extraTime'] ?? $te['extra_time'] ?? null
+                            ]);
+                        } catch (\PDOException $pdoEx) {
+                            // If duplicate key (SQLSTATE 23000 / error 1062), regenerate ID and retry
+                            if ($pdoEx->getCode() == 23000 || strpos($pdoEx->getMessage(), '1062') !== false) {
+                                $teId = 'ev-' . uniqid() . '-' . rand(1000, 9999);
+                                $insTimeline->execute([
+                                    $teId,
+                                    $leadId,
+                                    $te['type'] ?? 'note',
+                                    $timestamp,
+                                    $te['title'],
+                                    $te['content'] ?? null,
+                                    $te['amount'] ?? null,
+                                    $te['fileName'] ?? null,
+                                    $te['fileSize'] ?? null,
+                                    $te['fileType'] ?? null,
+                                    $te['extraTime'] ?? $te['extra_time'] ?? null
+                                ]);
+                            } else {
+                                throw $pdoEx;
+                            }
+                        }
                     }
                 }
             }
@@ -970,9 +1131,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $pdo->commit();
         echo json_encode(['success' => true, 'message' => 'CCRM Database Synced Successfully!']);
-    } catch (\Exception $e) {
-        if ($pdo->inTransaction()) {
+    } catch (\Throwable $e) {
+        if (isset($pdo) && $pdo->inTransaction()) {
             $pdo->rollBack();
+        }
+        if (function_exists('ccrm_log_exception')) {
+            ccrm_log_exception($e);
         }
         http_response_code(500);
         echo json_encode(['success' => false, 'message' => 'Failed database synchronization: ' . $e->getMessage()]);

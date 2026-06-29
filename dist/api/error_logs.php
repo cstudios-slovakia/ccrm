@@ -1,5 +1,5 @@
 <?php
-require_once dirname(__DIR__) . '/api/auth.php';
+require_once __DIR__ . '/auth.php';
 require_once dirname(__DIR__) . '/config.php';
 
 header('Content-Type: application/json');
