@@ -1232,7 +1232,6 @@ ${log.payload || ''}
               uFrequency={5.5}
               uSpeed={0.3}
               uStrength={0.4}
-              uTime={0}
               wireframe={false}
             />
           </ShaderGradientCanvas>
