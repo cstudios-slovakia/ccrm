@@ -60,6 +60,29 @@ function fetch_system_settings($pdo) {
     return $settings;
 }
 
+// Compute a cheap content-derived version of the whole dataset. CHECKSUM TABLE
+// ... EXTENDED live-scans each table's rows (~8ms total here) and changes only
+// when real content changes — inserts, updates and deletes across every column.
+// This lets the SPA's `?probe=1` poll detect "nothing changed" without building
+// the multi-MB snapshot, and it is immune to no-op re-saves (a sync POST that
+// writes identical rows leaves the checksum untouched).
+function ccrm_compute_data_version($pdo) {
+    $candidates = ['leads', 'timeline_events', 'lead_categories', 'tasks', 'task_assignees', 'users', 'roles', 'meeting_notes', 'meeting_tasks', 'unified_entries', 'system_settings'];
+    try {
+        $existing = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
+        $existingSet = array_flip($existing);
+        $tables = array_values(array_filter($candidates, function ($t) use ($existingSet) {
+            return isset($existingSet[$t]);
+        }));
+        if (empty($tables)) return '0';
+        $quoted = implode(',', array_map(function ($t) { return "`{$t}`"; }, $tables));
+        $rows = $pdo->query("CHECKSUM TABLE {$quoted} EXTENDED")->fetchAll(PDO::FETCH_KEY_PAIR);
+        return md5(json_encode($rows));
+    } catch (\Throwable $e) {
+        return '0';
+    }
+}
+
 // Helper to check if an incoming lead payload is identical to its database record
 function ccrm_leads_are_identical($inc, $db) {
     if (!$db) return false;
@@ -168,41 +191,60 @@ function ccrm_leads_are_identical($inc, $db) {
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $settings = fetch_system_settings($pdo);
     $isDemoMode = ($settings['DEMO_MODE'] ?? 'false') === 'true';
+    $dataVersion = ccrm_compute_data_version($pdo);
 
-    // 3.1. Fetch Leads
+    // Lightweight probe: the SPA polls this every few seconds to learn whether
+    // anything changed. It returns only the current data version (one cheap
+    // settings query — no leads/tasks/timeline reads, no multi-MB payload), so
+    // the expensive full read only runs when the version actually moved.
+    if (isset($_GET['probe'])) {
+        echo json_encode([
+            'installed' => true,
+            'demoMode' => $isDemoMode,
+            'dataVersion' => $dataVersion,
+        ]);
+        exit;
+    }
+
+    // 3.1. Fetch Leads.
+    // Categories and timeline events are pre-fetched in ONE query each and
+    // grouped by lead_id, instead of running two queries per lead. With ~1k
+    // leads the old per-lead approach issued ~2k round-trips per GET (~1.1s);
+    // this collapses it to 3 queries total.
+    $catsByLead = [];
+    $catBulk = $pdo->query("SELECT `lead_id`, `category_name` FROM `lead_categories`");
+    while ($c = $catBulk->fetch()) {
+        $catsByLead[$c['lead_id']][] = $c['category_name'];
+    }
+
+    $timelineByLead = [];
+    $teBulk = $pdo->query("SELECT * FROM `timeline_events` ORDER BY `timestamp` ASC");
+    while ($te = $teBulk->fetch()) {
+        $event = [
+            'id' => $te['id'],
+            'type' => $te['type'],
+            'timestamp' => date('Y-m-d H:i', strtotime($te['timestamp'])),
+            'title' => $te['title'],
+            'content' => $te['content']
+        ];
+        if ($te['type'] === 'offer') {
+            $event['amount'] = floatval($te['amount']);
+            $event['fileName'] = $te['file_name'];
+            $event['fileSize'] = $te['file_size'];
+            $event['fileType'] = $te['file_type'];
+        }
+        if ($te['type'] === 'appointment') {
+            $event['extraTime'] = $te['extra_time'];
+        }
+        $timelineByLead[$te['lead_id']][] = $event;
+    }
+
     $leadsStmt = $pdo->query("SELECT * FROM `leads` ORDER BY `created_at` DESC");
     $leads = [];
     while ($row = $leadsStmt->fetch()) {
         $leadId = $row['id'];
-
-        // Fetch Categories
-        $catStmt = $pdo->prepare("SELECT `category_name` FROM `lead_categories` WHERE `lead_id` = ?");
-        $catStmt->execute([$leadId]);
-        $categories = $catStmt->fetchAll(PDO::FETCH_COLUMN);
-
-        // Fetch Timeline Events
-        $timeStmt = $pdo->prepare("SELECT * FROM `timeline_events` WHERE `lead_id` = ? ORDER BY `timestamp` ASC");
-        $timeStmt->execute([$leadId]);
-        $timeline = [];
-        while ($te = $timeStmt->fetch()) {
-            $event = [
-                'id' => $te['id'],
-                'type' => $te['type'],
-                'timestamp' => date('Y-m-d H:i', strtotime($te['timestamp'])),
-                'title' => $te['title'],
-                'content' => $te['content']
-            ];
-            if ($te['type'] === 'offer') {
-                $event['amount'] = floatval($te['amount']);
-                $event['fileName'] = $te['file_name'];
-                $event['fileSize'] = $te['file_size'];
-                $event['fileType'] = $te['file_type'];
-            }
-            if ($te['type'] === 'appointment') {
-                $event['extraTime'] = $te['extra_time'];
-            }
-            $timeline[] = $event;
-        }
+        $categories = $catsByLead[$leadId] ?? [];
+        $timeline = $timelineByLead[$leadId] ?? [];
 
         $leads[] = [
             'id' => $row['id'],
@@ -246,16 +288,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         ];
     }
 
-    // 3.2. Fetch Tasks
+    // 3.2. Fetch Tasks (assignees pre-fetched in one query, grouped by task_id)
+    $assigneesByTask = [];
+    $assBulk = $pdo->query("SELECT `task_id`, `user_name` FROM `task_assignees`");
+    while ($a = $assBulk->fetch()) {
+        $assigneesByTask[$a['task_id']][] = $a['user_name'];
+    }
+
     $tasksStmt = $pdo->query("SELECT * FROM `tasks` ORDER BY `created_at` DESC");
     $tasks = [];
     while ($row = $tasksStmt->fetch()) {
         $taskId = $row['id'];
-
-        // Fetch Assignees
-        $assStmt = $pdo->prepare("SELECT `user_name` FROM `task_assignees` WHERE `task_id` = ?");
-        $assStmt->execute([$taskId]);
-        $assignedUsers = $assStmt->fetchAll(PDO::FETCH_COLUMN);
+        $assignedUsers = $assigneesByTask[$taskId] ?? [];
 
         $tasks[] = [
             'id' => $taskId,
@@ -333,29 +377,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $leadStateParents = isset($settings['LEAD_STATE_PARENTS']) ? json_decode($settings['LEAD_STATE_PARENTS'], true) : (object)[];
     $integrationsConfig = isset($settings['INTEGRATIONS_CONFIG']) ? json_decode($settings['INTEGRATIONS_CONFIG'], true) : (object)[];
 
-    // Fetch Meeting Notes
+    // Fetch Meeting Notes (meeting_tasks pre-fetched in one query, grouped by meeting_id)
     $meetingNotes = [];
     try {
+        $tasksByMeeting = [];
+        $mtBulk = $pdo->query("SELECT * FROM `meeting_tasks`");
+        while ($tr = $mtBulk->fetch()) {
+            $tasksByMeeting[$tr['meeting_id']][] = [
+                'id' => $tr['id'],
+                'title' => $tr['title'],
+                'description' => $tr['description'] ?? '',
+                'startDate' => $tr['start_date'] ?? null,
+                'assignedUser' => $tr['assigned_user'] ?? '',
+                'dueDate' => $tr['due_date'] ?? '',
+                'priority' => $tr['priority'],
+                'status' => $tr['status']
+            ];
+        }
+
         $meetingsStmt = $pdo->query("SELECT * FROM `meeting_notes` ORDER BY `date` DESC, `created_at` DESC");
         while ($row = $meetingsStmt->fetch()) {
             $meetingId = $row['id'];
-
-            // Fetch Tasks
-            $tStmt = $pdo->prepare("SELECT * FROM `meeting_tasks` WHERE `meeting_id` = ?");
-            $tStmt->execute([$meetingId]);
-            $automatedTasks = [];
-            while ($tr = $tStmt->fetch()) {
-                $automatedTasks[] = [
-                    'id' => $tr['id'],
-                    'title' => $tr['title'],
-                    'description' => $tr['description'] ?? '',
-                    'startDate' => $tr['start_date'] ?? null,
-                    'assignedUser' => $tr['assigned_user'] ?? '',
-                    'dueDate' => $tr['due_date'] ?? '',
-                    'priority' => $tr['priority'],
-                    'status' => $tr['status']
-                ];
-            }
+            $automatedTasks = $tasksByMeeting[$meetingId] ?? [];
 
             $aiSummary = json_decode($row['ai_summary_json'] ?? '{}', true);
             if (!isset($aiSummary['summary'])) {
@@ -470,6 +513,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     echo json_encode([
         'installed' => true,
         'demoMode' => $isDemoMode,
+        'dataVersion' => $dataVersion,
         'leads' => $leads,
         'tasks' => $tasks,
         'users' => $users,
@@ -1154,7 +1198,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $pdo->commit();
-        echo json_encode(['success' => true, 'message' => 'CCRM Database Synced Successfully!']);
+
+        // Report the post-commit content version so the client can immediately
+        // sync its local `dataVersion` and avoid an extra full pull on the next
+        // probe. Computed after commit so it reflects what we just wrote.
+        echo json_encode(['success' => true, 'message' => 'CCRM Database Synced Successfully!', 'dataVersion' => ccrm_compute_data_version($pdo)]);
     } catch (\Throwable $e) {
         if (isset($pdo) && $pdo->inTransaction()) {
             $pdo->rollBack();

@@ -953,6 +953,16 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     sessionStorage.setItem("crm_leads_ordering_mode", orderingMode);
   }, [orderingMode]);
 
+  // Incremental rendering ("pagination") for lead groups. With ~1k leads a
+  // single group used to mount ~1k rows/cards at once, which is the main cause
+  // of slow first paint and janky scrolling. We render the first page and let
+  // the user reveal more on demand, per group.
+  const LEADS_PAGE_SIZE = 60;
+  const [groupVisibleCount, setGroupVisibleCount] = useState<Record<string, number>>({});
+  const getGroupVisibleCount = (key: string) => groupVisibleCount[key] ?? LEADS_PAGE_SIZE;
+  const showMoreInGroup = (key: string) =>
+    setGroupVisibleCount(prev => ({ ...prev, [key]: (prev[key] ?? LEADS_PAGE_SIZE) + LEADS_PAGE_SIZE }));
+
   const cellPy = compactMode ? "py-0.5 lg:py-1" : "py-1.5 lg:py-3";
   const nameCellPy = compactMode ? "py-1 lg:py-1.5" : "py-1.5 lg:py-3";
 
@@ -4115,6 +4125,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     const stateColor = group.colorOverride || getSafeStateColor(group.state);
                     const stageTotalValue = group.leads.reduce((acc, curr) => acc + curr.value, 0);
                     const isCollapsed = !!collapsedGroups[group.state];
+                    const visibleCount = getGroupVisibleCount(group.state);
+                    const hasMore = group.leads.length > visibleCount;
 
                     return (
                       <React.Fragment key={group.state}>
@@ -4183,7 +4195,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             </td>
                           </tr>
                         ) : (
-                          group.leads.map((lead) => {
+                          <>
+                          {group.leads.slice(0, visibleCount).map((lead) => {
                             const isInlineEditing = editingRowId === lead.id;
                             const leadColor = getSafeStateColor(lead.status);
 
@@ -4660,7 +4673,25 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             )}
                           </>
                         );
-                      })
+                      })}
+                      {hasMore && (
+                        <tr className="block lg:table-row">
+                          <td colSpan={9} className="py-3 px-6 text-center block lg:table-cell">
+                            <button
+                              onClick={() => showMoreInGroup(group.state)}
+                              className="px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider border transition-all hover:scale-[1.02] active:scale-[0.98]"
+                              style={{ color: stateColor, borderColor: `${stateColor}40`, backgroundColor: `${stateColor}10` }}
+                            >
+                              {systemLanguage === "sk"
+                                ? `Zobraziť ďalšie (${visibleCount} z ${group.leads.length})`
+                                : systemLanguage === "hu"
+                                ? `Továbbiak (${visibleCount} / ${group.leads.length})`
+                                : `Show more (${visibleCount} of ${group.leads.length})`}
+                            </button>
+                          </td>
+                        </tr>
+                      )}
+                      </>
                       )
                       )}
                       </React.Fragment>
@@ -4678,6 +4709,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
               const totalVal = group.leads.reduce((sum, l) => sum + l.value, 0);
               const columnState = group.state.toLowerCase();
               const isOver = dragOverColumn === columnState;
+              const visibleCount = getGroupVisibleCount(group.state);
+              const hasMore = group.leads.length > visibleCount;
               
               return (
                 <React.Fragment key={group.state}>
@@ -4730,7 +4763,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         No Leads
                       </div>
                     ) : (
-                      group.leads.map((lead) => {
+                      <>
+                      {group.leads.slice(0, visibleCount).map((lead) => {
                         const leadSource = lead.source || "";
                         const pmName = lead.owner || "";
                         const initials = pmName
@@ -4901,7 +4935,21 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             })()}
                           </div>
                         );
-                      })
+                      })}
+                      {hasMore && (
+                        <button
+                          onClick={() => showMoreInGroup(group.state)}
+                          className="shrink-0 mt-1 px-3 py-2 rounded-[16px] text-[10px] font-black uppercase tracking-wider border border-dashed transition-all hover:scale-[1.01] active:scale-[0.99]"
+                          style={{ color: stateColor, borderColor: `${stateColor}50`, backgroundColor: `${stateColor}08` }}
+                        >
+                          {systemLanguage === "sk"
+                            ? `Zobraziť ďalšie (${visibleCount} z ${group.leads.length})`
+                            : systemLanguage === "hu"
+                            ? `Továbbiak (${visibleCount} / ${group.leads.length})`
+                            : `Show more (${visibleCount} of ${group.leads.length})`}
+                        </button>
+                      )}
+                      </>
                     )
                   }
                   </div>
