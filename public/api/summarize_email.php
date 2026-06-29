@@ -240,7 +240,24 @@ $payload = [
     'temperature' => 0.3
 ];
 
-$jsonPayload = json_encode($payload);
+// IMAP-fetched bodies frequently contain bytes that are not valid UTF-8 (e.g.
+// Slovak text in ISO-8859-2 / Windows-1250). json_encode() returns false on
+// invalid UTF-8, which would send an empty POST body and make OpenAI reject the
+// request with "could not parse the JSON body". Substitute invalid sequences so
+// encoding always succeeds.
+$jsonPayload = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+
+if ($jsonPayload === false) {
+    // Fallback for PHP builds where the flag is unavailable: scrub the prompt.
+    $payload['messages'][0]['content'] = mb_convert_encoding($prompt, 'UTF-8', 'UTF-8');
+    $jsonPayload = json_encode($payload, JSON_UNESCAPED_UNICODE);
+}
+
+if ($jsonPayload === false) {
+    http_response_code(500);
+    echo json_encode(['success' => false, 'message' => 'Failed to encode AI request payload.']);
+    exit;
+}
 
 // OpenAI occasionally rejects a request transiently (HTTP 429 rate limit, or a
 // sporadic 5xx / network blip). The email view fires several summaries at once,
