@@ -708,14 +708,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     
                     if ($oldCompanyId !== $companyId || empty($oldSummary)) {
                         $sysLang = $payload['systemLanguage'] ?? 'sk';
-                        $cmd = "php " . escapeshellarg(__DIR__ . "/api/generate_report.php") . " " . escapeshellarg($companyId) . " " . escapeshellarg($sysLang) . " > /dev/null 2>&1 &";
-                        
-                        // Safely check if exec is available and suppress any errors during execution
+                        // Fully detach the background report worker. Under PHP-FPM, fd 0/1/2 are
+                        // the FastCGI socket; if the spawned child inherits any of them, Apache keeps
+                        // the connection open and the worker dies with "Failed to read FastCGI header",
+                        // rolling back the entire sync transaction so no client is ever saved.
+                        // Redirecting stdin from /dev/null (in addition to stdout/stderr) plus setsid
+                        // detaches it so the parent returns immediately. Report generation is best-effort.
+                        $cmd = "setsid php " . escapeshellarg(__DIR__ . "/api/generate_report.php") . " " . escapeshellarg($companyId) . " " . escapeshellarg($sysLang) . " < /dev/null > /dev/null 2>&1 &";
                         if (function_exists('exec') && !in_array('exec', array_map('trim', explode(',', ini_get('disable_functions'))))) {
                             try {
                                 @exec($cmd);
                             } catch (\Throwable $e) {
-                                // Suppressed when not available or fails
+                                // Never let background report generation block the sync.
                             }
                         }
                     }
