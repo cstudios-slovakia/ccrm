@@ -23,85 +23,146 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
   const [showResetInfo, setShowResetInfo] = useState(false);
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
 
-  // --- Cryptographic Lights-Out Grid (4x4) ---
-  const generateSolvableGrid = (): boolean[] => {
-    for (let attempt = 0; attempt < 2000; attempt++) {
-      const initial = Array(16).fill(true);
-      const scrambles = 6 + Math.floor(Math.random() * 10);
-      for (let i = 0; i < scrambles; i++) {
-        const index = Math.floor(Math.random() * 16);
-        const row = Math.floor(index / 4);
-        const col = index % 4;
-        
-        const toggle = (r: number, c: number) => {
-          if (r >= 0 && r < 4 && c >= 0 && c < 4) {
-            const idx = r * 4 + c;
-            initial[idx] = !initial[idx];
-          }
-        };
+  // --- 11x11 Minesweeper Toy Game ---
+  const BOARD_SIZE = 11;
+  const MINE_COUNT = 15;
 
-        toggle(row, col);
-        toggle(row - 1, col);
-        toggle(row + 1, col);
-        toggle(row, col - 1);
-        toggle(row, col + 1);
-      }
+  interface MinesweeperCell {
+    isMine: boolean;
+    isRevealed: boolean;
+    isFlagged: boolean;
+    neighborMines: number;
+  }
 
-      const activeCount = initial.filter(cell => cell === true).length;
-      if (activeCount === 8) {
-        return initial;
+  const createEmptyBoard = (): MinesweeperCell[] => {
+    return Array(BOARD_SIZE * BOARD_SIZE).fill(null).map(() => ({
+      isMine: false,
+      isRevealed: false,
+      isFlagged: false,
+      neighborMines: 0,
+    }));
+  };
+
+  const [board, setBoard] = useState<MinesweeperCell[]>(() => createEmptyBoard());
+  const [gameState, setGameState] = useState<'playing' | 'won' | 'lost'>('playing');
+  const [firstClick, setFirstClick] = useState(true);
+  const [minesRemaining, setMinesRemaining] = useState(MINE_COUNT);
+
+  const initializeMines = (startIdx: number, currentBoard: MinesweeperCell[]): MinesweeperCell[] => {
+    const newBoard = currentBoard.map(c => ({ ...c }));
+    let placedMines = 0;
+    while (placedMines < MINE_COUNT) {
+      const randomIdx = Math.floor(Math.random() * (BOARD_SIZE * BOARD_SIZE));
+      if (randomIdx !== startIdx && !newBoard[randomIdx].isMine) {
+        newBoard[randomIdx].isMine = true;
+        placedMines++;
       }
     }
 
-    return [
-      true, false, true, false,
-      false, true, false, true,
-      true, false, true, false,
-      false, true, false, true
-    ];
+    for (let i = 0; i < BOARD_SIZE * BOARD_SIZE; i++) {
+      if (newBoard[i].isMine) continue;
+      let count = 0;
+      const row = Math.floor(i / BOARD_SIZE);
+      const col = i % BOARD_SIZE;
+
+      for (let r = -1; r <= 1; r++) {
+        for (let c = -1; c <= 1; c++) {
+          const nr = row + r;
+          const nc = col + c;
+          if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE) {
+            if (newBoard[nr * BOARD_SIZE + nc].isMine) {
+              count++;
+            }
+          }
+        }
+      }
+      newBoard[i].neighborMines = count;
+    }
+
+    return newBoard;
   };
 
-  const [grid, setGrid] = useState<boolean[]>(() => generateSolvableGrid());
-  const [flipIndex, setFlipIndex] = useState<number | null>(null);
-  const [movesCount, setMovesCount] = useState(0);
-
   const handleCellClick = (index: number) => {
-    const row = Math.floor(index / 4);
-    const col = index % 4;
+    if (gameState !== 'playing') {
+      resetGame();
+      return;
+    }
+    
+    let currentBoard = [...board];
+    if (currentBoard[index].isFlagged || currentBoard[index].isRevealed) return;
 
-    setFlipIndex(index);
-    setTimeout(() => setFlipIndex(null), 400);
-    setMovesCount(prev => prev + 1);
+    if (firstClick) {
+      currentBoard = initializeMines(index, currentBoard);
+      setFirstClick(false);
+    }
 
-    setGrid((prev) => {
-      const next = [...prev];
-      const toggle = (r: number, c: number) => {
-        if (r >= 0 && r < 4 && c >= 0 && c < 4) {
-          const idx = r * 4 + c;
-          next[idx] = !next[idx];
-        }
-      };
+    if (currentBoard[index].isMine) {
+      currentBoard = currentBoard.map(c => c.isMine ? { ...c, isRevealed: true } : c);
+      setBoard(currentBoard);
+      setGameState('lost');
+      return;
+    }
 
-      toggle(row, col);
-      toggle(row - 1, col);
-      toggle(row + 1, col);
-      toggle(row, col - 1);
-      toggle(row, col + 1);
+    const queue = [index];
+    const visited = new Set<number>();
+    
+    while (queue.length > 0) {
+      const curr = queue.shift()!;
+      if (visited.has(curr)) continue;
+      visited.add(curr);
 
-      const allSolved = next.every(cell => cell === true);
-      if (allSolved) {
-        setTimeout(() => {
-          setShowSuccessOverlay(true);
-          const adminUser = users.find(u => u.role.toLowerCase() === "admin") || users[0];
-          if (adminUser) {
-            setEmail(adminUser.email);
-            if (isDemoMode) setPassword("password");
+      currentBoard[curr].isRevealed = true;
+
+      if (currentBoard[curr].neighborMines === 0) {
+        const row = Math.floor(curr / BOARD_SIZE);
+        const col = curr % BOARD_SIZE;
+
+        for (let r = -1; r <= 1; r++) {
+          for (let c = -1; c <= 1; c++) {
+            const nr = row + r;
+            const nc = col + c;
+            if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE) {
+              const neighborIdx = nr * BOARD_SIZE + nc;
+              if (!currentBoard[neighborIdx].isRevealed && !currentBoard[neighborIdx].isFlagged) {
+                queue.push(neighborIdx);
+              }
+            }
           }
-        }, 400);
+        }
       }
+    }
 
-      return next;
-    });
+    const hasWon = currentBoard.every(c => c.isMine ? !c.isRevealed : c.isRevealed);
+    if (hasWon) {
+      setGameState('won');
+      setTimeout(() => {
+        setShowSuccessOverlay(true);
+        const adminUser = users.find(u => u.role.toLowerCase() === "admin") || users[0];
+        if (adminUser) {
+          setEmail(adminUser.email);
+          if (isDemoMode) setPassword("password");
+        }
+      }, 400);
+    }
+    setBoard(currentBoard);
+  };
+
+  const handleCellRightClick = (e: React.MouseEvent, index: number) => {
+    e.preventDefault();
+    if (gameState !== 'playing' || board[index].isRevealed) return;
+
+    const newBoard = [...board];
+    const isFlagged = !newBoard[index].isFlagged;
+    newBoard[index].isFlagged = isFlagged;
+    setBoard(newBoard);
+    setMinesRemaining(prev => prev + (isFlagged ? -1 : 1));
+  };
+
+  const resetGame = () => {
+    setBoard(createEmptyBoard());
+    setGameState('playing');
+    setFirstClick(true);
+    setMinesRemaining(MINE_COUNT);
   };
 
   // Verify credentials server-side. Passwords are never sent to or compared in
@@ -140,7 +201,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
   };
 
   return (
-    <div className={isModal ? "w-full flex items-center justify-center bg-white border border-slate-200/50 rounded-[32px] shadow-2xl p-6 md:p-12 relative overflow-hidden select-none font-sans" : "min-h-screen w-full flex items-center justify-center lg:justify-end bg-gradient-to-br from-slate-50 via-slate-100 to-indigo-50/50 p-6 md:p-12 lg:pr-32 relative overflow-hidden select-none font-sans"}>
+    <div className={isModal ? "w-full flex items-center justify-center bg-white border border-slate-200/50 rounded-[32px] shadow-2xl p-6 md:p-12 relative overflow-hidden select-none font-sans" : "min-h-screen w-full flex items-center justify-center lg:justify-end bg-[#0f111a] p-6 md:p-12 lg:pr-32 relative overflow-hidden select-none font-sans"}>
       
       {/* Custom Embedded Keyframes for 3D Node Flip & Aurora Success Flash */}
       <style dangerouslySetInnerHTML={{__html: `
@@ -200,14 +261,14 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
             <ShaderGradientAny
               animate="on"
               axesHelper="off"
-              brightness={1.2}
-              cAzimuthAngle={170}
-              cDistance={4.4}
-              cPolarAngle={70}
-              cameraZoom={1}
-              color1="#94ffd1"
-              color2="#6bf5ff"
-              color3="#ffffff"
+              brightness={1.5}
+              cAzimuthAngle={250}
+              cDistance={1.5}
+              cPolarAngle={140}
+              cameraZoom={12.5}
+              color1="#809bd6"
+              color2="#910aff"
+              color3="#af38ff"
               destination="onCanvas"
               embedMode="off"
               envPreset="city"
@@ -215,26 +276,26 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
               fov={45}
               frameRate={10}
               gizmoHelper="hide"
-              grain="off"
+              grain="on"
               lightType="3d"
               pixelDensity={1}
               positionX={0}
-              positionY={0.9}
-              positionZ={-0.3}
+              positionY={0}
+              positionZ={0}
               range="disabled"
               rangeEnd={40}
               rangeStart={0}
-              reflection={0.1}
-              rotationX={45}
+              reflection={0.5}
+              rotationX={0}
               rotationY={0}
-              rotationZ={0}
+              rotationZ={140}
               shader="defaults"
-              type="waterPlane"
-              uAmplitude={0}
-              uDensity={1.2}
-              uFrequency={0}
-              uSpeed={0.1}
-              uStrength={3.4}
+              type="sphere"
+              uAmplitude={7}
+              uDensity={0.8}
+              uFrequency={5.5}
+              uSpeed={0.3}
+              uStrength={0.4}
               uTime={0}
               wireframe={false}
             />
@@ -268,50 +329,66 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
         </div>
       )}
 
-      {/* LEFT AREA: Skeuomorphic minimalist matching grid (Lights Out) */}
+      {/* LEFT AREA: 11x11 Minesweeper */}
       {!isModal && (
-        <div className="flex-1 hidden lg:flex flex-col justify-center items-center relative z-10 pr-16 space-y-5 animate-fade-in duration-500">
-          {/* Dynamic Skeuomorphic 4x4 Grid */}
-          <div className="grid grid-cols-4 gap-3 w-full max-w-[280px]">
-            {grid.map((isActive, index) => {
-              const isFlippedTarget = flipIndex === index;
+        <div className="flex-1 hidden lg:flex flex-col justify-center items-center relative z-10 pr-16 space-y-4 animate-fade-in duration-500">
+          {/* 11x11 Grid Container */}
+          <div className="grid grid-cols-11 gap-0 w-full max-w-[340px] select-none">
+            {board.map((cell, index) => {
+              let cellContent = "";
+              let colorClass = "text-slate-700";
+              
+              if (cell.isRevealed) {
+                if (cell.isMine) {
+                  cellContent = "💣";
+                } else if (cell.neighborMines > 0) {
+                  cellContent = cell.neighborMines.toString();
+                  const colors = [
+                    "", // 0
+                    "text-blue-600 font-black", // 1
+                    "text-emerald-600 font-black", // 2
+                    "text-rose-600 font-black", // 3
+                    "text-purple-600 font-black", // 4
+                    "text-amber-600 font-black", // 5
+                    "text-cyan-605 font-black", // 6
+                    "text-red-705 font-black", // 7
+                    "text-slate-600 font-black", // 8
+                  ];
+                  colorClass = colors[cell.neighborMines] || "text-slate-750";
+                }
+              } else if (cell.isFlagged) {
+                cellContent = "🚩";
+              }
+
               return (
                 <button
                   key={index}
                   type="button"
                   onClick={() => handleCellClick(index)}
-                  className={`aspect-square w-full rounded-2xl node-spring-transition outline-none flex items-center justify-center border relative overflow-hidden ${
-                    isFlippedTarget ? "node-3d-flip" : ""
-                  } ${
-                    isActive
-                      ? "border-purple-700 scale-[1.03]"
-                      : "border-slate-400 hover:border-slate-500 hover:scale-[1.01]"
+                  onContextMenu={(e) => handleCellRightClick(e, index)}
+                  className={`aspect-square w-full rounded-none flex items-center justify-center text-[10.5px] font-black transition-all duration-150 outline-none border-[0.5px] border-white/10 cursor-pointer ${
+                    cell.isRevealed
+                      ? cell.isMine 
+                        ? "bg-rose-600 border-transparent text-white shadow-[inset_0_2.5px_4.5px_rgba(0,0,0,0.45)]"
+                        : "bg-white/95 border-transparent text-slate-800 shadow-[inset_0_2.5px_4.5px_rgba(0,0,0,0.35)]"
+                      : "bg-transparent hover:bg-white/5 active:scale-95 text-white"
                   }`}
                   style={{
-                    boxShadow: isActive 
-                      ? "0 4px 10px rgba(147, 51, 234, 0.45), 0 2px 4px rgba(147, 51, 234, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.3)" 
-                      : "inset 0 3px 6px rgba(0, 0, 0, 0.15), inset 0 1px 2px rgba(0, 0, 0, 0.1), 0 1px 0 rgba(255, 255, 255, 0.6)"
+                    borderRadius: '0px'
                   }}
-                  title={`Decrypt node node-${index}`}
-                  aria-label={`Toggle cryptographic node ${index}`}
                 >
-                  {/* OFF Background Gradient Layer */}
-                  <div className="absolute inset-0 bg-gradient-to-br from-slate-200 via-slate-250 to-slate-300 z-0 transition-all duration-500" />
-                  
-                  {/* ON Background Gradient Layer */}
-                  <div 
-                    className={`absolute inset-0 bg-gradient-to-br from-purple-500 to-indigo-600 z-10 transition-opacity duration-500 ease-in-out ${
-                      isActive ? "opacity-100" : "opacity-0"
-                    }`} 
-                  />
+                  <span className={colorClass}>{cellContent}</span>
                 </button>
               );
             })}
           </div>
 
-          {/* Floating Instruction Footer */}
-          <div className="text-[10px] font-extrabold text-slate-450 uppercase tracking-widest text-center h-4">
-            {grid.every(cell => cell === true) ? "nice" : `${getTranslation(systemLanguage, "login.moves")} ${movesCount}`}
+          <div className="text-[9px] font-extrabold text-white/60 uppercase tracking-widest text-center h-4 drop-shadow">
+            {gameState === 'won' 
+              ? "🎉 DECRYPTED! (CLICK ANY CELL TO RESTART)" 
+              : gameState === 'lost' 
+              ? "💥 BOOM! (CLICK ANY CELL TO RESTART)" 
+              : `💣 ${minesRemaining} MINES | RIGHT-CLICK TO FLAG`}
           </div>
         </div>
       )}
