@@ -502,6 +502,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingLeadIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedLeadIds = [];
 
+            // Track every timeline event id written during this sync. `timeline_events.id`
+            // is a global PRIMARY KEY, but the client state can contain the same event id
+            // on two different leads (a known bug where copied events keep their id). Such
+            // a collision raises SQLSTATE[23000]/1062 and aborts the ENTIRE transaction, so
+            // nothing — including a brand-new client — ever persists. We de-duplicate here
+            // so one stale record can never block the whole save.
+            $seenTimelineIds = [];
+
             $insLead = $pdo->prepare("INSERT INTO `leads` (
               `id`, `name`, `city`, `client_type`, `status`, `source`, `owner`, `value`, `rating`, `phone`, `email`, 
               `company_id`, `tax_id`, `vat_id`, `contact_person`, `website`, `street`, `postal_code`, `country`, 
@@ -599,6 +607,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         if (strpos($teId, 'email-') === 0) {
                             continue;
                         }
+                        // If this id was already used by another lead in this same payload,
+                        // mint a fresh unique one so the duplicate cannot break the sync.
+                        if (isset($seenTimelineIds[$teId])) {
+                            do {
+                                $teId = 'ev-' . bin2hex(random_bytes(8));
+                            } while (isset($seenTimelineIds[$teId]));
+                        }
+                        $seenTimelineIds[$teId] = true;
                         $timestamp = isset($te['timestamp']) ? date('Y-m-d H:i:s', strtotime($te['timestamp'])) : date('Y-m-d H:i:s');
 
                         $insTimeline->execute([
