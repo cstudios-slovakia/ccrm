@@ -76,10 +76,10 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
     }
     return {
       id: "durian",
-      name: "Fig Tree",
+      name: "Grapefruit",
       position: "CRM Assistant & Consultant",
       color: "purple",
-      skill_content: "You are Fig Tree, the active CRM RAG AI assistant. Answer user queries based on context.",
+      skill_content: "You are Grapefruit, the active CRM RAG AI assistant. Answer user queries based on context.",
       is_autonomous: false
     };
   });
@@ -640,10 +640,10 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
     localStorage.removeItem("ccrm_custom_default_agent");
     const restoredDefault: Agent = {
       id: "durian",
-      name: "Fig Tree",
+      name: "Grapefruit",
       position: "CRM Assistant & Consultant",
       color: "purple",
-      skill_content: "You are Fig Tree, the active CRM RAG AI assistant. Answer user queries based on context.",
+      skill_content: "You are Grapefruit, the active CRM RAG AI assistant. Answer user queries based on context.",
       is_autonomous: false
     };
     setDefaultAgent(restoredDefault);
