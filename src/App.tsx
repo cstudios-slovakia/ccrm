@@ -667,191 +667,123 @@ ${log.payload || ''}
     return () => window.removeEventListener("hashchange", handleHashChange);
   }, []);
 
-  // Server data poller
+  // Server data poller.
+  //
+  // The server exposes a cheap `?probe=1` endpoint that returns only the
+  // current data version. We poll that on every tick and only pull the full
+  // (multi-MB) snapshot when the version actually moves. This replaces the old
+  // behaviour of re-fetching, re-serialising and JSON.stringify-comparing the
+  // entire dataset every few seconds — the main source of UI jank with ~1k
+  // leads. Every ~12th tick we force a full pull regardless, so writes made
+  // outside the SPA (cron agents, AI summaries) that don't bump the version
+  // still surface within a minute.
   useEffect(() => {
-    const syncFromServer = async () => {
-      const pollStartTime = Date.now();
-      try {
-        const res = await fetch(`/sync.php?t=${Date.now()}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (activePushesRef.current > 0 || pollStartTime < lastPushTimeRef.current || Date.now() - lastPushTimeRef.current < 4000) {
-            // Settle window: ignore a server snapshot for a few seconds after any local push,
-            // so a poll that read the DB before our write committed cannot revert fresh changes.
-            return;
-          }
-          if (data && data.installed === false) {
-            setIsInstalled(false);
-            return;
-          }
-          
-          if (data && data.installed === true) {
-            setIsInstalled(true);
-            setIsDemoMode(data.demoMode === true);
-            if (data.leads && Array.isArray(data.leads)) {
-              setLeads(prev => {
-                if (JSON.stringify(prev) === JSON.stringify(data.leads)) return prev;
-                return data.leads;
-              });
-            }
-            if (data.tasks && Array.isArray(data.tasks)) {
-              setTasks(data.tasks);
-            }
-            if (data.users && Array.isArray(data.users)) {
-              setUsers(data.users);
-              if (currentUser) {
-                const updatedMe = data.users.find((u: UserProfile) => u.email === currentUser.email);
-                if (updatedMe && JSON.stringify(updatedMe) !== JSON.stringify(currentUser)) {
-                  setCurrentUser(updatedMe);
-                }
-              }
-            }
-            if (data.db_info) {
-              setDbInfo(data.db_info);
-            }
-            if (data.roles && Array.isArray(data.roles)) {
-              setRoles(data.roles);
-            }
-            if (data.meetingNotes && Array.isArray(data.meetingNotes)) {
-              setMeetingNotes(data.meetingNotes);
-            }
-            if (data.unifiedEntries && Array.isArray(data.unifiedEntries)) {
-              setUnifiedEntries(data.unifiedEntries);
-            }
-            if (data.unifiedEntriesData) {
-              setUnifiedEntriesData(data.unifiedEntriesData);
-            }
-            if (data.settings) {
-              const s = data.settings;
-              if (s.systemName && s.systemName !== systemName) setSystemName(s.systemName);
-              if (s.systemLanguage && s.systemLanguage !== systemLanguage) setSystemLanguage(s.systemLanguage);
-              setLeadStates((prev) => s.leadStates && JSON.stringify(s.leadStates) !== JSON.stringify(prev) ? s.leadStates : prev);
-              setLeadSources((prev) => s.leadSources && JSON.stringify(s.leadSources) !== JSON.stringify(prev) ? s.leadSources : prev);
-              setLeadCategories((prev) => s.leadCategories && JSON.stringify(s.leadCategories) !== JSON.stringify(prev) ? s.leadCategories : prev);
-              setLeadStateColors((prev) => s.leadStateColors && JSON.stringify(s.leadStateColors) !== JSON.stringify(prev) ? s.leadStateColors : prev);
-              setLeadSourceColors((prev) => s.leadSourceColors && JSON.stringify(s.leadSourceColors) !== JSON.stringify(prev) ? s.leadSourceColors : prev);
-              setLeadCategoryColors((prev) => s.leadCategoryColors && JSON.stringify(s.leadCategoryColors) !== JSON.stringify(prev) ? s.leadCategoryColors : prev);
-              setLeadStageGroups((prev) => s.leadStageGroups && JSON.stringify(s.leadStageGroups) !== JSON.stringify(prev) ? s.leadStageGroups : prev);
-              setLeadStateParents((prev) => s.leadStateParents && JSON.stringify(s.leadStateParents) !== JSON.stringify(prev) ? s.leadStateParents : prev);
-              setTaskStates((prev) => s.taskStates && JSON.stringify(s.taskStates) !== JSON.stringify(prev) ? s.taskStates : prev);
-              setTaskStateColors((prev) => s.taskStateColors && JSON.stringify(s.taskStateColors) !== JSON.stringify(prev) ? s.taskStateColors : prev);
-              setCustomLabels((prev) => s.customLabels && JSON.stringify(s.customLabels) !== JSON.stringify(prev) ? s.customLabels : prev);
-              if (s.integrationsConfig) syncIntegrationsConfig(s.integrationsConfig);
-            }
-            setIsInitialSyncResolved(true);
+    let lastDataVersion: string | null = null;
+    let tick = 0;
+
+    const applyServerData = (data: any) => {
+      setIsInstalled(true);
+      setIsDemoMode(data.demoMode === true);
+      if (data.leads && Array.isArray(data.leads)) {
+        setLeads(data.leads);
+      }
+      if (data.tasks && Array.isArray(data.tasks)) {
+        setTasks(data.tasks);
+      }
+      if (data.users && Array.isArray(data.users)) {
+        setUsers(data.users);
+        if (currentUser) {
+          const updatedMe = data.users.find((u: UserProfile) => u.email === currentUser.email);
+          if (updatedMe && JSON.stringify(updatedMe) !== JSON.stringify(currentUser)) {
+            setCurrentUser(updatedMe);
           }
         }
-      } catch (err) {
-        console.warn("Staging sync backend offline", err);
+      }
+      if (data.db_info) {
+        setDbInfo(data.db_info);
+      }
+      if (data.roles && Array.isArray(data.roles)) {
+        setRoles(data.roles);
+      }
+      if (data.meetingNotes && Array.isArray(data.meetingNotes)) {
+        setMeetingNotes(data.meetingNotes);
+      }
+      if (data.unifiedEntries && Array.isArray(data.unifiedEntries)) {
+        setUnifiedEntries(data.unifiedEntries);
+      }
+      if (data.unifiedEntriesData) {
+        setUnifiedEntriesData(data.unifiedEntriesData);
+      }
+      if (data.settings) {
+        const s = data.settings;
+        if (s.systemName && s.systemName !== systemName) setSystemName(s.systemName);
+        if (s.systemLanguage && s.systemLanguage !== systemLanguage) setSystemLanguage(s.systemLanguage);
+        setLeadStates((prev) => s.leadStates && JSON.stringify(s.leadStates) !== JSON.stringify(prev) ? s.leadStates : prev);
+        setLeadSources((prev) => s.leadSources && JSON.stringify(s.leadSources) !== JSON.stringify(prev) ? s.leadSources : prev);
+        setLeadCategories((prev) => s.leadCategories && JSON.stringify(s.leadCategories) !== JSON.stringify(prev) ? s.leadCategories : prev);
+        setLeadStateColors((prev) => s.leadStateColors && JSON.stringify(s.leadStateColors) !== JSON.stringify(prev) ? s.leadStateColors : prev);
+        setLeadSourceColors((prev) => s.leadSourceColors && JSON.stringify(s.leadSourceColors) !== JSON.stringify(prev) ? s.leadSourceColors : prev);
+        setLeadCategoryColors((prev) => s.leadCategoryColors && JSON.stringify(s.leadCategoryColors) !== JSON.stringify(prev) ? s.leadCategoryColors : prev);
+        setLeadStageGroups((prev) => s.leadStageGroups && JSON.stringify(s.leadStageGroups) !== JSON.stringify(prev) ? s.leadStageGroups : prev);
+        setLeadStateParents((prev) => s.leadStateParents && JSON.stringify(s.leadStateParents) !== JSON.stringify(prev) ? s.leadStateParents : prev);
+        setTaskStates((prev) => s.taskStates && JSON.stringify(s.taskStates) !== JSON.stringify(prev) ? s.taskStates : prev);
+        setTaskStateColors((prev) => s.taskStateColors && JSON.stringify(s.taskStateColors) !== JSON.stringify(prev) ? s.taskStateColors : prev);
+        setCustomLabels((prev) => s.customLabels && JSON.stringify(s.customLabels) !== JSON.stringify(prev) ? s.customLabels : prev);
+        if (s.integrationsConfig) syncIntegrationsConfig(s.integrationsConfig);
+      }
+    };
+
+    const fetchFull = async () => {
+      const pollStartTime = Date.now();
+      const res = await fetch(`/sync.php?t=${Date.now()}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (activePushesRef.current > 0 || pollStartTime < lastPushTimeRef.current || Date.now() - lastPushTimeRef.current < 4000) {
+        return;
+      }
+      if (data && data.installed === false) {
+        setIsInstalled(false);
+        return;
+      }
+      if (data && data.installed === true) {
+        applyServerData(data);
+        if (typeof data.dataVersion !== "undefined") lastDataVersion = data.dataVersion;
         setIsInitialSyncResolved(true);
       }
     };
 
-    syncFromServer();
+    // Initial bootstrap is always a full pull.
+    (async () => {
+      try {
+        await fetchFull();
+      } catch (err) {
+        console.warn("Staging sync backend offline", err);
+        setIsInitialSyncResolved(true);
+      }
+    })();
 
     const poller = setInterval(async () => {
       const pollStartTime = Date.now();
       try {
-        const res = await fetch(`/sync.php?t=${Date.now()}`);
-        if (res.ok) {
-          const data = await res.json();
+        tick++;
+        const forceFull = tick % 12 === 0;
+        if (!forceFull) {
+          const probeRes = await fetch(`/sync.php?probe=1&t=${Date.now()}`);
+          if (!probeRes.ok) return;
+          const probe = await probeRes.json();
           if (activePushesRef.current > 0 || pollStartTime < lastPushTimeRef.current || Date.now() - lastPushTimeRef.current < 4000) {
-            // Settle window: ignore a server snapshot for a few seconds after any local push,
-            // so a poll that read the DB before our write committed cannot revert fresh changes.
             return;
           }
-          if (data && data.installed === false) {
+          if (probe && probe.installed === false) {
             setIsInstalled(false);
             return;
           }
-          if (data && data.installed === true) {
-            setIsInstalled(true);
-            setIsDemoMode(data.demoMode === true);
-            
-            if (data.leads && Array.isArray(data.leads)) {
-              setLeads((prev) => {
-                if (JSON.stringify(data.leads) !== JSON.stringify(prev)) {
-                  return data.leads;
-                }
-                return prev;
-              });
-            }
-            if (data.tasks && Array.isArray(data.tasks)) {
-              setTasks((prev) => {
-                if (JSON.stringify(data.tasks) !== JSON.stringify(prev)) {
-                  return data.tasks;
-                }
-                return prev;
-              });
-            }
-            if (data.users && Array.isArray(data.users)) {
-              setUsers((prev) => {
-                if (JSON.stringify(data.users) !== JSON.stringify(prev)) {
-                  return data.users;
-                }
-                return prev;
-              });
-              if (currentUser) {
-                const updatedMe = data.users.find((u: UserProfile) => u.email === currentUser.email);
-                if (updatedMe && JSON.stringify(updatedMe) !== JSON.stringify(currentUser)) {
-                  setCurrentUser(updatedMe);
-                }
-              }
-            }
-            if (data.roles && Array.isArray(data.roles)) {
-              setRoles((prev) => {
-                if (JSON.stringify(data.roles) !== JSON.stringify(prev)) {
-                  return data.roles;
-                }
-                return prev;
-              });
-            }
-            if (data.meetingNotes && Array.isArray(data.meetingNotes)) {
-              setMeetingNotes((prev) => {
-                if (JSON.stringify(data.meetingNotes) !== JSON.stringify(prev)) {
-                  return data.meetingNotes;
-                }
-                return prev;
-              });
-            }
-            if (data.unifiedEntries && Array.isArray(data.unifiedEntries)) {
-              setUnifiedEntries((prev) => {
-                if (JSON.stringify(data.unifiedEntries) !== JSON.stringify(prev)) {
-                  return data.unifiedEntries;
-                }
-                return prev;
-              });
-            }
-            if (data.unifiedEntriesData) {
-              setUnifiedEntriesData((prev) => {
-                if (JSON.stringify(data.unifiedEntriesData) !== JSON.stringify(prev)) {
-                  return data.unifiedEntriesData;
-                }
-                return prev;
-              });
-            }
-            if (data.db_info) {
-              setDbInfo(data.db_info);
-            }
-            if (data.settings) {
-              const s = data.settings;
-              if (s.systemName && s.systemName !== systemName) setSystemName(s.systemName);
-              if (s.systemLanguage && s.systemLanguage !== systemLanguage) setSystemLanguage(s.systemLanguage);
-              setLeadStates((prev) => s.leadStates && JSON.stringify(s.leadStates) !== JSON.stringify(prev) ? s.leadStates : prev);
-              setLeadSources((prev) => s.leadSources && JSON.stringify(s.leadSources) !== JSON.stringify(prev) ? s.leadSources : prev);
-              setLeadCategories((prev) => s.leadCategories && JSON.stringify(s.leadCategories) !== JSON.stringify(prev) ? s.leadCategories : prev);
-              setLeadStateColors((prev) => s.leadStateColors && JSON.stringify(s.leadStateColors) !== JSON.stringify(prev) ? s.leadStateColors : prev);
-              setLeadSourceColors((prev) => s.leadSourceColors && JSON.stringify(s.leadSourceColors) !== JSON.stringify(prev) ? s.leadSourceColors : prev);
-              setLeadCategoryColors((prev) => s.leadCategoryColors && JSON.stringify(s.leadCategoryColors) !== JSON.stringify(prev) ? s.leadCategoryColors : prev);
-              setLeadStageGroups((prev) => s.leadStageGroups && JSON.stringify(s.leadStageGroups) !== JSON.stringify(prev) ? s.leadStageGroups : prev);
-              setLeadStateParents((prev) => s.leadStateParents && JSON.stringify(s.leadStateParents) !== JSON.stringify(prev) ? s.leadStateParents : prev);
-              setTaskStates((prev) => s.taskStates && JSON.stringify(s.taskStates) !== JSON.stringify(prev) ? s.taskStates : prev);
-              setTaskStateColors((prev) => s.taskStateColors && JSON.stringify(s.taskStateColors) !== JSON.stringify(prev) ? s.taskStateColors : prev);
-              setCustomLabels((prev) => s.customLabels && JSON.stringify(s.customLabels) !== JSON.stringify(prev) ? s.customLabels : prev);
-              if (s.integrationsConfig) syncIntegrationsConfig(s.integrationsConfig);
-            }
+          // Nothing changed since our last full pull — skip the heavy fetch.
+          if (lastDataVersion !== null && probe.dataVersion === lastDataVersion) {
+            return;
           }
         }
+        await fetchFull();
       } catch (err) {
         // quiet fail on background polling
       }
