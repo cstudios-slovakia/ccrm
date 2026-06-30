@@ -366,6 +366,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
   integrationsConfig,
   leadStageGroups = {}
 }) => {
+  const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
   const getSafeStateColor = (stateName: string) => {
     if (!leadStateColors) return "#64748b";
     const key = (stateName || "").toLowerCase();
@@ -657,14 +658,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
           if (res.ok && data.success) {
             setUploadedAudioFile(data.filePath);
             if (typeof (window as any).showToast === "function") {
-              (window as any).showToast("Audio recording saved successfully!");
+              (window as any).showToast(t("Audio recording saved successfully!", "Hlasový záznam bol úspešne uložený!", "A hangfelvétel sikeresen mentve!"));
             }
           } else {
             throw new Error(data.message || "Upload failed");
           }
         } catch (err: any) {
           if (typeof (window as any).showToast === "function") {
-            (window as any).showToast("Failed to upload audio to server: " + err.message, "error");
+            (window as any).showToast(t("Failed to upload audio to server: ", "Nahranie zvuku na server zlyhalo: ", "A hang feltöltése a szerverre sikertelen: ") + err.message, "error");
           }
         } finally {
           setIsUploadingAudio(false);
@@ -678,7 +679,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       startVisualizer(stream);
     } catch (err: any) {
       if (typeof (window as any).showToast === "function") {
-        (window as any).showToast("Microphone access denied: " + err.message, "error");
+        (window as any).showToast(t("Microphone access denied: ", "Prístup k mikrofónu zamietnutý: ", "A mikrofonhoz való hozzáférés megtagadva: ") + err.message, "error");
       }
     }
   };
@@ -713,7 +714,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
   };
 
   const removeAudioFile = () => {
-    if (confirm(systemLanguage === "sk" ? "Naozaj chcete odstrániť túto nahrávku?" : "Are you sure you want to remove this recording?")) {
+    if (confirm(t("Are you sure you want to remove this recording?", "Naozaj chcete odstrániť túto nahrávku?", "Biztosan eltávolítja ezt a felvételt?"))) {
       if (audioRef.current) {
         audioRef.current.pause();
       }
@@ -753,19 +754,19 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
           // Append transcription to block editor
           setNoteBlocks(prev => [
             ...prev,
-            { id: `b-trans-${Date.now()}`, type: "paragraph", content: `<strong>Transcription:</strong> ${data.transcription}` }
+            { id: `b-trans-${Date.now()}`, type: "paragraph", content: `<strong>${t("Transcription:", "Prepis:", "Átirat:")}</strong> ${data.transcription}` }
           ]);
           setEditorKey(prev => prev + 1);
         }
         if (typeof (window as any).showToast === "function") {
-          (window as any).showToast("AI Transcription completed successfully!");
+          (window as any).showToast(t("AI Transcription completed successfully!", "AI prepis bol úspešne dokončený!", "Az AI átírás sikeresen befejeződött!"));
         }
       } else {
         throw new Error(data.message || "Transcription failed");
       }
     } catch (err: any) {
       if (typeof (window as any).showToast === "function") {
-        (window as any).showToast("Transcription failed: " + err.message, "error");
+        (window as any).showToast(t("Transcription failed: ", "Prepis zlyhal: ", "Az átírás sikertelen: ") + err.message, "error");
       }
     } finally {
       setIsTranscribing(false);
@@ -839,7 +840,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
               type="button"
               onClick={removeAudioFile}
               className="text-slate-400 hover:text-rose-600 transition-colors p-1 cursor-pointer"
-              title="Delete audio"
+              title={t("Delete audio", "Odstrániť zvuk", "Hang törlése")}
             >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
@@ -865,7 +866,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 type="button"
                 onClick={pauseRecording}
                 className="p-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg cursor-pointer"
-                title="Pause"
+                title={t("Pause", "Pozastaviť", "Szünet")}
               >
                 <Pause className="h-3 w-3 fill-white" />
               </button>
@@ -875,7 +876,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 className="px-2.5 py-1 bg-slate-800 hover:bg-slate-900 text-white text-[9px] font-black uppercase tracking-wider rounded-lg cursor-pointer flex items-center gap-1"
               >
                 <Square className="h-3 w-3 fill-white" />
-                <span>Stop</span>
+                <span>{t("Stop", "Zastaviť", "Leállítás")}</span>
               </button>
             </>
           )}
@@ -886,7 +887,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 type="button"
                 onClick={resumeRecording}
                 className="p-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg cursor-pointer"
-                title="Resume"
+                title={t("Resume", "Pokračovať", "Folytatás")}
               >
                 <Play className="h-3 w-3 fill-white" />
               </button>
@@ -896,7 +897,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 className="px-2.5 py-1 bg-slate-800 hover:bg-slate-900 text-white text-[9px] font-black uppercase tracking-wider rounded-lg cursor-pointer flex items-center gap-1"
               >
                 <Square className="h-3 w-3 fill-white" />
-                <span>Stop</span>
+                <span>{t("Stop", "Zastaviť", "Leállítás")}</span>
               </button>
             </>
           )}
@@ -1372,7 +1373,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         setTimelineEmailDetailBody({
           uid,
           html: "",
-          text: event.content || "No message content."
+          text: event.content || t("No message content.", "Žiadny obsah správy.", "Nincs üzenettartalom.")
         });
       }
     } catch (e) {
@@ -1380,7 +1381,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       setTimelineEmailDetailBody({
         uid: event.id,
         html: "",
-        text: event.content || "No message content."
+        text: event.content || t("No message content.", "Žiadny obsah správy.", "Nincs üzenettartalom.")
       });
     } finally {
       setIsLoadingEmailDetail(false);
@@ -1504,12 +1505,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     e.preventDefault();
     if (!activeLead) return;
     if (!leadName.trim() || !leadValue.trim()) {
-      (window as any).showToast("Name and Value are strictly required!");
+      (window as any).showToast(t("Name and Value are strictly required!", "Názov a hodnota sú povinné!", "A név és az érték kötelező!"));
       return;
     }
     const valNum = parseFloat(leadValue);
     if (isNaN(valNum)) {
-      (window as any).showToast("Please enter a valid numeric value!");
+      (window as any).showToast(t("Please enter a valid numeric value!", "Zadajte platnú číselnú hodnotu!", "Adjon meg egy érvényes számértéket!"));
       return;
     }
 
@@ -1554,14 +1555,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       // Note type is rich: saved as JSON stringified blocks
       const hasContent = noteBlocks.some(b => b.content.trim().length > 0);
       if (!hasContent && !uploadedAudioFile) {
-        (window as any).showToast("Please write down some details or record audio for the note!");
+        (window as any).showToast(t("Please write down some details or record audio for the note!", "Napíšte nejaké podrobnosti alebo nahrajte zvuk pre poznámku!", "Írjon be néhány részletet, vagy rögzítsen hangot a jegyzethez!"));
         return;
       }
       contentString = JSON.stringify(noteBlocks);
     } else if (logType === "appointment") {
       titleString = "Meeting Pinned";
       if (!logTime.trim()) {
-        (window as any).showToast("Please select appointment time!");
+        (window as any).showToast(t("Please select appointment time!", "Vyberte čas stretnutia!", "Válassza ki a találkozó időpontját!"));
         return;
       }
       if (!contentString) contentString = `Client appointment set for ${logTime.trim()}`;
@@ -1569,7 +1570,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       titleString = "Commercial Proposal Submitted";
       const amt = parseFloat(logAmount);
       if (isNaN(amt) || amt <= 0) {
-        (window as any).showToast("Offer amount must be a positive number!");
+        (window as any).showToast(t("Offer amount must be a positive number!", "Suma ponuky musí byť kladné číslo!", "Az ajánlat összegének pozitív számnak kell lennie!"));
         return;
       }
       titleString = `Commercial Proposal Sent (€ ${amt.toLocaleString()})`;
@@ -1594,7 +1595,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
         if (!uploadRes.ok) {
           const errData = await uploadRes.json();
-          throw new Error(errData.error || "Failed to upload file");
+          throw new Error(errData.error || t("Failed to upload file", "Nahranie súboru zlyhalo", "A fájl feltöltése sikertelen"));
         }
 
         const uploadData = await uploadRes.json();
@@ -1606,7 +1607,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         }
       } catch (err: any) {
         console.error(err);
-        (window as any).showToast(err.message || "Failed to upload document file!");
+        (window as any).showToast(err.message || t("Failed to upload document file!", "Nahranie dokumentu zlyhalo!", "A dokumentum feltöltése sikertelen!"));
         return;
       }
     }
@@ -1663,8 +1664,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         priority: "medium",
         deadline: deadlineVal,
         deadlineTime: "23:59",
-        owner: activeLead.owner || "Erik",
-        assignedUsers: [activeLead.owner || "Erik"],
+        owner: activeLead.owner || currentUser?.name || projectManagers[0] || "",
+        assignedUsers: [activeLead.owner || currentUser?.name || projectManagers[0] || ""],
         relatedLeadId: activeLead.id,
         isLocking: false
       };
@@ -1711,8 +1712,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       priority: "high",
       deadline: inlineTaskDeadline,
       deadlineTime: inlineTaskDeadlineTime,
-      owner: activeLead.owner || "Erik",
-      assignedUsers: [activeLead.owner || "Erik"],
+      owner: activeLead.owner || currentUser?.name || projectManagers[0] || "",
+      assignedUsers: [activeLead.owner || currentUser?.name || projectManagers[0] || ""],
       relatedLeadId: activeLead.id,
       isLocking: inlineTaskIsLocking
     };
@@ -1750,7 +1751,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     e.preventDefault();
     if (!selectedClientName) return;
     if (!editClientName.trim()) {
-      (window as any).showToast("Name field is required!");
+      (window as any).showToast(t("Name field is required!", "Pole názvu je povinné!", "A név mező kötelező!"));
       return;
     }
 
@@ -1786,12 +1787,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
   // Save inline edit
   const saveInlineEdit = (id: string) => {
     if (!inlineName.trim() || !inlineValue.trim()) {
-      (window as any).showToast("Fields cannot be left blank!");
+      (window as any).showToast(t("Fields cannot be left blank!", "Polia nemôžu zostať prázdne!", "A mezők nem maradhatnak üresen!"));
       return;
     }
     const valNum = parseFloat(inlineValue);
     if (isNaN(valNum) || valNum < 0) {
-      (window as any).showToast("Invalid numeric value!");
+      (window as any).showToast(t("Invalid numeric value!", "Neplatná číselná hodnota!", "Érvénytelen számérték!"));
       return;
     }
 
@@ -1869,13 +1870,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
   const handleCreateLead = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newLeadName.trim() || !newLeadValue.trim()) {
-      (window as any).showToast("Please fill in all required fields!");
+      (window as any).showToast(t("Please fill in all required fields!", "Vyplňte všetky povinné polia!", "Töltse ki az összes kötelező mezőt!"));
       return;
     }
 
     const valNum = parseFloat(newLeadValue);
     if (isNaN(valNum) || valNum < 0) {
-      (window as any).showToast("Please enter a valid numeric lead value!");
+      (window as any).showToast(t("Please enter a valid numeric lead value!", "Zadajte platnú číselnú hodnotu leadu!", "Adjon meg egy érvényes számszerű lead értéket!"));
       return;
     }
 
@@ -2190,13 +2191,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       return (
         <div className="p-8 glass-panel rounded-[28px] border-2 border-red-400 bg-white shadow-glass text-center space-y-4">
           <div className="text-4xl text-rose-600 animate-bounce">⚠️</div>
-          <h2 className="text-xl font-heading font-black text-slate-900 uppercase tracking-wide">Lead Record Not Found</h2>
-          <p className="text-xs text-slate-650 font-semibold">The lead ID '{initialSelectedLeadId}' could not be resolved in the active database.</p>
+          <h2 className="text-xl font-heading font-black text-slate-900 uppercase tracking-wide">{t("Lead Record Not Found", "Záznam leadu sa nenašiel", "A lead rekord nem található")}</h2>
+          <p className="text-xs text-slate-650 font-semibold">{t("The lead ID '", "ID leadu '", "A lead azonosító '")}{initialSelectedLeadId}{t("' could not be resolved in the active database.", "' sa nepodarilo nájsť v aktívnej databáze.", "' nem található az aktív adatbázisban.")}</p>
           <button 
             onClick={() => { window.location.hash = "leads"; }}
             className="px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all active:scale-95 shadow-md"
           >
-            Back to Leads Registry
+            {t("Back to Leads Registry", "Späť na register leadov", "Vissza a leadek nyilvántartásába")}
           </button>
         </div>
       );
@@ -2278,7 +2279,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                       <h4 className="text-sm font-black text-slate-850 line-clamp-1">{clientCardData.name}</h4>
                       {isEditingLead ? (
                         <div className="mt-1 space-y-1">
-                          <label className="text-[8px] font-black text-emerald-700/80 uppercase tracking-wider block">Client Type</label>
+                          <label className="text-[8px] font-black text-emerald-700/80 uppercase tracking-wider block">{t("Client Type", "Typ klienta", "Ügyféltípus")}</label>
                           <select
                             value={leadClientType}
                             onChange={(e) => setLeadClientType(e.target.value as any)}
@@ -2507,7 +2508,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                       ? "bg-rose-50 border-rose-300 text-rose-600 hover:bg-rose-100" 
                       : "bg-blue-50 border-blue-300 text-blue-700 hover:bg-blue-100"
                   }`}
-                  title={isEditingLead ? "Cancel editing" : "Edit Lead details"}
+                  title={isEditingLead ? t("Cancel editing", "Zrušiť úpravy", "Szerkesztés megszakítása") : t("Edit Lead details", "Upraviť detaily leadu", "Lead részleteinek szerkesztése")}
                 >
                   {isEditingLead ? <X className="h-4.5 w-4.5 stroke-[2.5]" /> : <PencilLine className="h-4.5 w-4.5 stroke-[2.5]" />}
                 </button>
@@ -2817,7 +2818,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                   ? now.toISOString().split("T")[0] + " " + now.toTimeString().split(" ")[0].substring(0, 5)
                                   : undefined;
                                 const completedByName = isDoneState(newStatus)
-                                  ? currentUser?.name || "Erik"
+                                  ? currentUser?.name || projectManagers[0] || ""
                                   : undefined;
                                 
                                 setTasks(prev => prev.map(t => t.id === task.id ? {
@@ -3221,7 +3222,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                           {event.transcription && (
                                             <details className="cursor-pointer">
                                               <summary className="text-[9px] uppercase tracking-wider text-indigo-600 hover:text-indigo-800 font-extrabold select-none">
-                                                {systemLanguage === "sk" ? "Prepis" : "Transcript"}
+                                                {t("Transcript", "Prepis", "Átirat")}
                                               </summary>
                                               <div className="mt-1 p-2 bg-white rounded border border-slate-100 text-[9.5px] font-medium leading-relaxed max-w-[240px] whitespace-pre-wrap">
                                                 {event.transcription}
@@ -3292,8 +3293,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     {pastEvents.map((event) => {
                       const colors = getEventColors(event.type);
                       const pmName = event.type === "email"
-                        ? (event.isOutgoing ? (currentUser?.name || "Erik") : (activeLead.owner || "Erik"))
-                        : (activeLead.owner || "Erik");
+                        ? (event.isOutgoing ? (currentUser?.name || projectManagers[0] || "") : (activeLead.owner || currentUser?.name || projectManagers[0] || ""))
+                        : (activeLead.owner || currentUser?.name || projectManagers[0] || "");
                       const pmColor = projectManagerColors[pmName] || "#6366f1";
                       return (
                         <div key={event.id} className="relative flex flex-row items-start gap-4 md:gap-8 group animate-in fade-in slide-in-from-bottom duration-250">
@@ -3330,12 +3331,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     {event.isOutgoing ? (
                                       <>
                                         <CornerDownLeft className="h-3 w-3 stroke-[2.5]" />
-                                        <span>Outgoing</span>
+                                        <span>{t("Outgoing", "Odchádzajúce", "Kimenő")}</span>
                                       </>
                                     ) : (
                                       <>
                                         <CornerLeftDown className="h-3 w-3 stroke-[2.5]" />
-                                        <span>Incoming</span>
+                                        <span>{t("Incoming", "Prichádzajúce", "Bejövő")}</span>
                                       </>
                                     )}
                                   </span>
@@ -3369,7 +3370,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                           {event.transcription && (
                                             <details className="cursor-pointer">
                                               <summary className="text-[9px] uppercase tracking-wider text-indigo-600 hover:text-indigo-800 font-extrabold select-none">
-                                                {systemLanguage === "sk" ? "Prepis" : "Transcript"}
+                                                {t("Transcript", "Prepis", "Átirat")}
                                               </summary>
                                               <div className="mt-1 p-2 bg-white rounded border border-slate-100 text-[9.5px] font-medium leading-relaxed max-w-[240px] whitespace-pre-wrap">
                                                 {event.transcription}
@@ -3443,7 +3444,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                   </span>
                                   <div className="flex flex-col">
                                     <span className="text-[9px] font-black uppercase text-amber-800">
-                                      {event.fileType || "offer"} {getTranslation(systemLanguage, "timeline.doc_suffix")} (Click to View)
+                                      {event.fileType || "offer"} {getTranslation(systemLanguage, "timeline.doc_suffix")} {t("(Click to View)", "(Kliknite pre zobrazenie)", "(Kattintson a megtekintéshez)")}
                                     </span>
                                     <span className="text-[10px] font-extrabold text-slate-700 truncate max-w-[200px]">
                                       {event.fileName}
@@ -3480,7 +3481,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
               {/* Header */}
               <div className="bg-slate-900 text-white p-4 flex items-center justify-between shrink-0">
                 <div className="text-left min-w-0 flex-1 pr-4">
-                  <span className="text-[10px] font-black uppercase text-pink-500 tracking-wider">Email Correspondence</span>
+                  <span className="text-[10px] font-black uppercase text-pink-500 tracking-wider">{t("Email Correspondence", "E-mailová korešpondencia", "E-mail levelezés")}</span>
                   <h3 className="text-sm font-heading font-black uppercase tracking-tight truncate">{selectedTimelineEmail.title}</h3>
                 </div>
                 <button
@@ -3496,23 +3497,23 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 {isLoadingEmailDetail ? (
                   <div className="flex flex-col items-center justify-center py-12 gap-2 text-slate-400 my-auto">
                     <Loader2 className="animate-spin text-pink-500" size={24} />
-                    <span className="text-[9px] font-bold uppercase tracking-wider">Loading mail contents...</span>
+                    <span className="text-[9px] font-bold uppercase tracking-wider">{t("Loading mail contents...", "Načítava sa obsah e-mailu...", "E-mail tartalmának betöltése...")}</span>
                   </div>
                 ) : timelineEmailDetailBody ? (
                   <div className="flex-1 flex flex-col justify-between">
                     <div className="border-b border-slate-150 pb-3 mb-4 text-left">
                       <p className="text-[10px] text-slate-550 font-bold">
-                        Subject: <strong className="text-slate-800">{selectedTimelineEmail.title}</strong>
+                        {t("Subject:", "Predmet:", "Tárgy:")} <strong className="text-slate-800">{selectedTimelineEmail.title}</strong>
                       </p>
                       <p className="text-[10px] text-slate-550 font-bold mt-1">
-                        Date: <span className="text-slate-700">{selectedTimelineEmail.timestamp}</span>
+                        {t("Date:", "Dátum:", "Dátum:")} <span className="text-slate-700">{selectedTimelineEmail.timestamp}</span>
                       </p>
                     </div>
                     <div className="flex-1 min-h-[300px]">
                       {timelineEmailDetailBody.html ? (
                         <iframe 
                           className="w-full h-full min-h-[400px] border-0 rounded-2xl bg-transparent"
-                          title="Timeline parsed mail content"
+                          title={t("Timeline parsed mail content", "Spracovaný obsah e-mailu časovej osi", "Idővonal feldolgozott e-mail tartalma")}
                           srcDoc={`
                             <html>
                               <head>
@@ -3537,14 +3538,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         />
                       ) : (
                         <div className="text-left text-xs text-slate-700 font-semibold whitespace-pre-wrap leading-relaxed select-text p-4 bg-slate-50 rounded-2xl border border-slate-150">
-                          {timelineEmailDetailBody.text || "No message content."}
+                          {timelineEmailDetailBody.text || t("No message content.", "Žiadny obsah správy.", "Nincs üzenettartalom.")}
                         </div>
                       )}
                     </div>
                   </div>
                 ) : (
                   <div className="text-center text-slate-400 py-12 text-xs font-semibold my-auto">
-                    No message content.
+                    {t("No message content.", "Žiadny obsah správy.", "Nincs üzenettartalom.")}
                   </div>
                 )}
               </div>
@@ -3669,10 +3670,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                   setOfferPresetName("All Time");
                 }}
                 className="px-3 py-2.5 rounded-2xl text-xs font-extrabold bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-600 hover:text-rose-700 transition-all flex items-center gap-1 shadow-sm shrink-0 uppercase tracking-wider animate-fade-in"
-                title="Clear all active filters"
+                title={t("Clear all active filters", "Vymazať všetky aktívne filtre", "Az összes aktív szűrő törlése")}
               >
                 <X className="h-3.5 w-3.5" />
-                Clear
+                {t("Clear", "Vymazať", "Törlés")}
               </button>
             )}
           </div>
@@ -4303,9 +4304,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     onClick={(e) => e.stopPropagation()}
                                     className="w-full px-2 py-1 rounded bg-white border border-blue-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
                                   >
-                                    <option value="person">Person</option>
-                                    <option value="business">Business</option>
-                                    <option value="partner">Partner</option>
+                                    <option value="person">{t("Person", "Osoba", "Személy")}</option>
+                                    <option value="business">{t("Business", "Firma", "Cég")}</option>
+                                    <option value="partner">{t("Partner", "Partner", "Partner")}</option>
                                   </select>
                                 ) : (
                                   <div className="hover:opacity-85 transition-opacity">
@@ -4479,7 +4480,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         saveInlineEdit(lead.id);
                                       }}
                                       className="h-6 w-6 rounded bg-emerald-500 text-white flex items-center justify-center shadow hover:bg-emerald-600 transition-colors"
-                                      title="Save Changes"
+                                      title={t("Save Changes", "Uložiť zmeny", "Módosítások mentése")}
                                     >
                                       <Check className="h-3.5 w-3.5" />
                                     </button>
@@ -4489,7 +4490,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         setEditingRowId(null);
                                       }}
                                       className="h-6 w-6 rounded bg-slate-200 text-slate-650 flex items-center justify-center shadow hover:bg-slate-350 transition-colors"
-                                      title="Cancel Inline Edit"
+                                      title={t("Cancel Inline Edit", "Zrušiť priamu úpravu", "Soron belüli szerkesztés megszakítása")}
                                     >
                                       <X className="h-3.5 w-3.5" />
                                     </button>
@@ -4502,7 +4503,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         window.location.hash = `lead-${lead.id}`;
                                       }}
                                       className="h-7 w-7 rounded-lg hover:bg-blue-50 border border-transparent hover:border-blue-200 text-blue-500 flex items-center justify-center transition-all"
-                                      title="Open Edit Slideout"
+                                      title={t("Open Edit Slideout", "Otvoriť panel úprav", "Szerkesztő panel megnyitása")}
                                     >
                                       <Edit3 className="h-3.5 w-3.5" />
                                     </button>
@@ -4513,7 +4514,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         handleDeleteLead(lead.id, lead.name);
                                       }}
                                       className="h-7 w-7 rounded-lg hover:bg-rose-50 border border-transparent hover:border-rose-200 text-slate-400 hover:text-rose-600 flex items-center justify-center transition-all"
-                                      title="Delete Lead"
+                                      title={t("Delete Lead", "Odstrániť lead", "Lead törlése")}
                                     >
                                       <Trash2 className="h-3.5 w-3.5" />
                                     </button>
@@ -4727,7 +4728,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                   <div className={`flex-1 flex flex-col overflow-y-auto max-h-[490px] pr-1.5 scrollbar-thin ${compactMode ? "gap-2" : "gap-3"}`}>
                     {group.leads.length === 0 ? (
                       <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-[10px] font-black text-slate-350 uppercase tracking-widest border border-dashed border-slate-200 rounded-[20px] min-h-[250px] bg-slate-100/10">
-                        No Leads
+                        {t("No Leads", "Žiadne leady", "Nincsenek leadek")}
                       </div>
                     ) : (
                       group.leads.map((lead) => {
@@ -4764,7 +4765,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     window.location.hash = `lead-${lead.id}`;
                                   }}
                                   className="p-1 rounded bg-slate-50 hover:bg-blue-50 text-blue-500 border border-slate-200/50 cursor-pointer"
-                                  title="Edit Lead"
+                                  title={t("Edit Lead", "Upraviť lead", "Lead szerkesztése")}
                                 >
                                   <Edit3 className="h-3 w-3" />
                                 </button>
@@ -4774,7 +4775,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     handleDeleteLead(lead.id, lead.name);
                                   }}
                                   className="p-1 rounded bg-slate-50 hover:bg-rose-50 text-slate-400 hover:text-rose-600 border border-slate-200/50 cursor-pointer"
-                                  title="Delete Lead"
+                                  title={t("Delete Lead", "Odstrániť lead", "Lead törlése")}
                                 >
                                   <Trash2 className="h-3 w-3" />
                                 </button>
@@ -4838,7 +4839,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                      className={`rounded-full flex items-center justify-center font-black text-white shadow-sm border border-white bg-rose-500 animate-pulse ${
                                        compactMode ? "h-4.5 w-4.5 text-[6.5px]" : "h-5.5 w-5.5 text-[7.5px]"
                                      }`}
-                                     title="Unassigned"
+                                     title={t("Unassigned", "Nepriradený", "Nincs kijelölve")}
                                    >
                                      ?
                                    </div>
@@ -4934,10 +4935,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex flex-col">
                 <h3 className="text-md font-heading font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
-                  <TableProperties className="h-4.5 w-4.5 text-blue-600" /> Add Incoming Lead Record
+                  <TableProperties className="h-4.5 w-4.5 text-blue-600" /> {t("Add Incoming Lead Record", "Pridať nový záznam leadu", "Új lead rekord hozzáadása")}
                 </h3>
                 <p className="text-[10px] text-slate-400 uppercase font-semibold mt-0.5">
-                  Append new rows to the active {systemName} leads datagrid (Bottom Slideout)
+                  {t("Append new rows to the active", "Pridajte nové riadky do aktívnej tabuľky leadov", "Adjon új sorokat az aktív lead táblázathoz")} {systemName} {t("leads datagrid (Bottom Slideout)", "(spodné okno)", "(alsó panel)")}
                 </p>
               </div>
               <button
@@ -4952,7 +4953,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             <form onSubmit={handleCreateLead} className="space-y-4">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Client Selection *</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Client Selection *", "Výber klienta *", "Ügyfél kiválasztása *")}</label>
                   <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200">
                     <button
                       type="button"
@@ -4969,7 +4970,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                           : "text-slate-550 hover:text-slate-800 font-bold"
                       }`}
                     >
-                      New Client
+                      {t("New Client", "Nový klient", "Új ügyfél")}
                     </button>
                     <button
                       type="button"
@@ -4986,7 +4987,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                           : "text-slate-550 hover:text-slate-800 font-bold"
                       }`}
                     >
-                      Existing Client
+                      {t("Existing Client", "Existujúci klient", "Meglévő ügyfél")}
                     </button>
                   </div>
                 </div>
@@ -4998,10 +4999,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     onChange={(e) => handleSelectExistingClient(e.target.value)}
                     className="w-full px-4 py-2.5 rounded-xl bg-blue-50/10 border border-blue-100 text-xs text-slate-850 focus:outline-none focus:bg-white focus:border-blue-500"
                   >
-                    <option value="">-- Choose Existing Client --</option>
+                    <option value="">{t("-- Choose Existing Client --", "-- Vyberte existujúceho klienta --", "-- Válasszon meglévő ügyfelet --")}</option>
                     {existingClients.map(client => (
                       <option key={client.name} value={client.name}>
-                        {client.name} ({client.city || "No City"})
+                        {client.name} ({client.city || t("No City", "Bez mesta", "Nincs város")})
                       </option>
                     ))}
                   </select>
@@ -5019,7 +5020,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">City</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("City", "Mesto", "Város")}</label>
                   <input
                     type="text"
                     value={newLeadCity}
@@ -5029,22 +5030,22 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Client Type *</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Client Type *", "Typ klienta *", "Ügyféltípus *")}</label>
                   <select
                     value={newLeadType}
                     onChange={(e) => setNewLeadType(e.target.value as any)}
                     className="w-full px-4 py-2.5 rounded-xl bg-blue-50/10 border border-blue-100 text-xs text-slate-800 focus:outline-none"
                   >
-                    <option value="person">Person</option>
-                    <option value="business">Business</option>
-                    <option value="partner">Partner</option>
+                    <option value="person">{t("Person", "Osoba", "Személy")}</option>
+                    <option value="business">{t("Business", "Firma", "Cég")}</option>
+                    <option value="partner">{t("Partner", "Partner", "Partner")}</option>
                   </select>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Lead Value *</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Lead Value *", "Hodnota leadu *", "Lead értéke *")}</label>
                   <input
                     type="number"
                     required
@@ -5057,7 +5058,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Project Manager</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Project Manager", "Projektový manažér", "Projektmenedzser")}</label>
                   <select
                     value={newLeadOwner}
                     onChange={(e) => setNewLeadOwner(e.target.value)}
@@ -5072,7 +5073,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider">Lead State</label>
+                  <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider">{t("Lead State", "Stav leadu", "Lead állapota")}</label>
                   <div className="pt-1 select-none">
                     <StatusSelector 
                       status={newLeadStatus} 
@@ -5081,7 +5082,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                   </div>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Lead Source</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Lead Source", "Zdroj leadu", "Lead forrása")}</label>
                   <select
                     value={newLeadSource}
                     onChange={(e) => setNewLeadSource(e.target.value)}
@@ -5099,7 +5100,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
               {/* Category interest selection grid */}
               <div className="space-y-2 border-t border-slate-100 pt-3">
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                  <Tag className="h-4 w-4 text-blue-605" /> Interested Categories / Services
+                  <Tag className="h-4 w-4 text-blue-605" /> {t("Interested Categories / Services", "Kategórie záujmu / Služby", "Érdeklődési kategóriák / Szolgáltatások")}
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 bg-blue-50/5 border border-blue-100/30 p-3 rounded-2xl">
                   {leadCategories.map((cat) => {
@@ -5133,7 +5134,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Lead Referral (Referred by Client)</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Lead Referral (Referred by Client)", "Odporúčanie leadu (Odporúčané klientom)", "Lead ajánlás (Ügyfél által ajánlott)")}</label>
                 <select
                   value={newLeadReferralId}
                   onChange={(e) => setNewLeadReferralId(e.target.value)}
@@ -5147,7 +5148,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Lead Priority Rating</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Lead Priority Rating", "Hodnotenie priority leadu", "Lead prioritás értékelése")}</label>
                 <div className="flex items-center gap-1 bg-slate-50 p-2 rounded-xl border border-slate-150 w-fit">
                   {renderStars(newLeadRating, setNewLeadRating)}
                 </div>
@@ -5159,13 +5160,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                   onClick={closeLeadModal}
                   className="px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-800 text-xs font-bold transition-all"
                 >
-                  Cancel
+                  {t("Cancel", "Zrušiť", "Mégse")}
                 </button>
                 <button
                   type="submit"
                   className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-extrabold shadow-lg shadow-blue-600/25 transition-all flex items-center gap-1.5"
                 >
-                  <Plus className="h-3.5 w-3.5" /> Inject Row
+                  <Plus className="h-3.5 w-3.5" /> {t("Inject Row", "Pridať riadok", "Sor beszúrása")}
                 </button>
               </div>
             </form>
@@ -5191,7 +5192,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                   {getInitials(editClientName || selectedClientName || "")}
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-[9px] text-emerald-650 font-extrabold uppercase tracking-wider">Active Client Profile</span>
+                  <span className="text-[9px] text-emerald-650 font-extrabold uppercase tracking-wider">{t("Active Client Profile", "Aktívny profil klienta", "Aktív ügyfélprofil")}</span>
                   <h3 className="text-sm font-heading font-black text-slate-900 uppercase tracking-tight flex items-center gap-1 mt-0.5">
                     {selectedClientName}
                   </h3>
@@ -5210,7 +5211,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
               
               {/* Name */}
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Client Profile Name *</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Client Profile Name *", "Názov profilu klienta *", "Ügyfélprofil neve *")}</label>
                 <input
                   type="text"
                   required
@@ -5218,12 +5219,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                   onChange={(e) => setEditClientName(e.target.value)}
                   className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 font-semibold focus:outline-none focus:bg-white focus:border-emerald-500 focus:ring-1"
                 />
-                <p className="text-[9px] text-slate-400">Changing the client name will automatically re-associate all leads referencing this client.</p>
+                <p className="text-[9px] text-slate-400">{t("Changing the client name will automatically re-associate all leads referencing this client.", "Zmena názvu klienta automaticky znovu priradí všetky leady odkazujúce na tohto klienta.", "Az ügyfél nevének módosítása automatikusan újra hozzárendeli az összes erre az ügyfélre hivatkozó leadet.")}</p>
               </div>
 
               {/* City */}
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">City Location Name</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("City Location Name", "Názov mesta / lokality", "Város / helyszín neve")}</label>
                 <input
                   type="text"
                   value={editClientCity}
@@ -5234,21 +5235,21 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
               {/* Client Type */}
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Client Type *</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Client Type *", "Typ klienta *", "Ügyféltípus *")}</label>
                 <select
                   value={editClientType}
                   onChange={(e) => setEditClientType(e.target.value as any)}
                   className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none focus:bg-white focus:border-emerald-500"
                 >
-                  <option value="person">Person</option>
-                  <option value="business">Business</option>
-                  <option value="partner">Partner</option>
+                  <option value="person">{t("Person", "Osoba", "Személy")}</option>
+                  <option value="business">{t("Business", "Firma", "Cég")}</option>
+                  <option value="partner">{t("Partner", "Partner", "Partner")}</option>
                 </select>
               </div>
 
               {/* Lead Source */}
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Marketing Source Channel</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Marketing Source Channel", "Marketingový zdrojový kanál", "Marketing forráscsatorna")}</label>
                 <select
                   value={editClientSource}
                   onChange={(e) => setEditClientSource(e.target.value)}
@@ -5264,7 +5265,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
               {/* Project Manager */}
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Primary Project Manager</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Primary Project Manager", "Hlavný projektový manažér", "Elsődleges projektmenedzser")}</label>
                 <select
                   value={editClientOwner}
                   onChange={(e) => setEditClientOwner(e.target.value)}
@@ -5279,7 +5280,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
               {/* Nested Associated Leads checklist */}
               <div className="space-y-2 border-t border-slate-100 pt-4">
                 <label className="text-[10px] font-extrabold text-emerald-600 uppercase tracking-wider flex items-center gap-1">
-                  <Layers className="h-3.5 w-3.5" /> Associated active leads
+                  <Layers className="h-3.5 w-3.5" /> {t("Associated active leads", "Priradené aktívne leady", "Kapcsolódó aktív leadek")}
                 </label>
                 
                 <div className="space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-150">
@@ -5287,7 +5288,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     <div key={lead.id} className="flex justify-between items-center text-xs border-b border-white pb-2 last:border-b-0 last:pb-0">
                       <div className="flex flex-col">
                         <span className="font-bold text-slate-800">{lead.name} ({lead.city})</span>
-                        <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">Registered inflow: {lead.createdAt}</span>
+                        <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">{t("Registered inflow:", "Registrovaný prílev:", "Regisztrált beérkezés:")} {lead.createdAt}</span>
                       </div>
                       <div className="flex flex-col items-end">
                         <span className="font-black text-emerald-700">&euro; {lead.value.toLocaleString()}</span>
@@ -5313,14 +5314,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 onClick={closeClientDrawer}
                 className="flex-1 py-3 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-800 text-xs font-bold transition-all"
               >
-                Discard
+                {t("Discard", "Zahodiť", "Elvetés")}
               </button>
               <button
                 type="button"
                 onClick={handleSaveClientDetails}
                 className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold shadow-lg shadow-emerald-600/25 transition-all flex items-center justify-center gap-1.5"
               >
-                <Check className="h-4 w-4" /> Save Client Profile
+                <Check className="h-4 w-4" /> {t("Save Client Profile", "Uložiť profil klienta", "Ügyfélprofil mentése")}
               </button>
             </div>
 

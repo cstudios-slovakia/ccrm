@@ -15,6 +15,7 @@ interface LoginViewProps {
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, systemName, systemLanguage, isDemoMode, isModal }) => {
+  const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
   const ShaderGradientAny = ShaderGradient as any;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -292,8 +293,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
                       ? "0 4px 10px rgba(147, 51, 234, 0.45), 0 2px 4px rgba(147, 51, 234, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.3)" 
                       : "inset 0 3px 6px rgba(0, 0, 0, 0.15), inset 0 1px 2px rgba(0, 0, 0, 0.1), 0 1px 0 rgba(255, 255, 255, 0.6)"
                   }}
-                  title={`Decrypt node node-${index}`}
-                  aria-label={`Toggle cryptographic node ${index}`}
+                  title={`${t("Decrypt node", "Dešifrovať uzol", "Csomópont visszafejtése")} node-${index}`}
+                  aria-label={`${t("Toggle cryptographic node", "Prepnúť kryptografický uzol", "Kriptográfiai csomópont váltása")} ${index}`}
                 >
                   {/* OFF Background Gradient Layer */}
                   <div className="absolute inset-0 bg-gradient-to-br from-slate-200 via-slate-250 to-slate-300 z-0 transition-all duration-500" />
@@ -311,7 +312,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
 
           {/* Floating Instruction Footer */}
           <div className="text-[10px] font-extrabold text-slate-450 uppercase tracking-widest text-center h-4">
-            {grid.every(cell => cell === true) ? "nice" : `${getTranslation(systemLanguage, "login.moves")} ${movesCount}`}
+            {grid.every(cell => cell === true) ? t("nice", "super", "szuper") : `${getTranslation(systemLanguage, "login.moves")} ${movesCount}`}
           </div>
         </div>
       )}
@@ -348,7 +349,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="e.g. erik@crm.com"
+                  placeholder={`${t("e.g.", "napr.", "pl.")} erik@crm.com`}
                   className="w-full pl-11 pr-4 py-3 rounded-2xl bg-white border border-slate-250 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all font-semibold"
                 />
               </div>

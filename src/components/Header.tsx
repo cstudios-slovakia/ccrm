@@ -34,6 +34,7 @@ export const Header: React.FC<HeaderProps> = ({
   onNavigateMeetings,
   onAddTask
 }) => {
+  const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
   const [isProfileOpen, setIsProfileOpen] = React.useState(false);
   const [isClosing, setIsClosing] = React.useState(false);
   const [isMeetingsOpen, setIsMeetingsOpen] = React.useState(false);
@@ -189,7 +190,7 @@ export const Header: React.FC<HeaderProps> = ({
       case "unified_entry":
         return systemLanguage === "sk" ? "Záznam" : systemLanguage === "hu" ? "Bejegyzés" : "Registry";
       default:
-        return "Item";
+        return t("Item", "Položka", "Elem");
     }
   };
 
@@ -369,7 +370,7 @@ export const Header: React.FC<HeaderProps> = ({
                 ? "bg-[#0b1329] border-[#0b1329] text-white" 
                 : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-350 hover:bg-slate-50"
             }`}
-            aria-label="Meeting Room Menu"
+            aria-label={t("Meeting Room Menu", "Menu zasadačky", "Tárgyaló menü")}
             title={systemLanguage === "sk" ? "Zasadačka a stretnutia" : systemLanguage === "hu" ? "Tárgyaló és megbeszélések" : "Meetings & Notes"}
           >
             <PencilLine className="h-5 w-5" />
@@ -441,7 +442,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             onClick={() => setIsProfileOpen(true)}
             className="h-10 w-10 rounded-xl bg-white/80 border border-slate-200 flex items-center justify-center hover:border-slate-350 text-slate-700 transition-colors shadow-sm cursor-pointer"
-            aria-label="User Profile Menu"
+            aria-label={t("User Profile Menu", "Menu používateľského profilu", "Felhasználói profil menü")}
           >
             <User className="h-5 w-5 text-indigo-600" />
           </button>
@@ -479,7 +480,7 @@ export const Header: React.FC<HeaderProps> = ({
                           {currentUser ? currentUser.name.substring(0, 2).toUpperCase() : "US"}
                         </div>
                         <div className="flex flex-col">
-                          <span className="text-sm font-black text-slate-800">{currentUser ? currentUser.name : "Erik"}</span>
+                          <span className="text-sm font-black text-slate-800">{currentUser ? currentUser.name : "—"}</span>
                           <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
                             {currentUser ? currentUser.role : "Global Systems Admin"}
                           </span>
@@ -490,7 +491,7 @@ export const Header: React.FC<HeaderProps> = ({
                         type="button"
                         onClick={handleClose}
                         className="text-slate-400 hover:text-slate-700 transition-colors p-1.5 hover:bg-slate-100 rounded-lg cursor-pointer"
-                        title="Close Drawer"
+                        title={t("Close Drawer", "Zatvoriť panel", "Fiók bezárása")}
                       >
                         <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -502,7 +503,7 @@ export const Header: React.FC<HeaderProps> = ({
                     {users && users.length > 0 && onSwitchUser && (
                       <div className="p-5 border-b border-slate-100 space-y-2.5">
                         <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
-                          Simulated User Session
+                          {t("Simulated User Session", "Simulovaná relácia používateľa", "Szimulált felhasználói munkamenet")}
                         </div>
                         <select
                           value={currentUser?.name}

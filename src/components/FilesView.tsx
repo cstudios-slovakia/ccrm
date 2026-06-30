@@ -23,6 +23,7 @@ interface FilesViewProps {
 }
 
 export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLanguage }) => {
+  const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<"all" | "offer" | "contract" | "invoice">("all");
   const [selectedClientFilter, setSelectedClientFilter] = useState("all");
@@ -355,7 +356,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
               id: event.id,
               fileName: event.fileName,
               fileType: event.fileType || "offer",
-              fileSize: event.fileSize || "Unknown size",
+              fileSize: event.fileSize || t("Unknown size", "Neznáma veľkosť", "Ismeretlen méret"),
               clientName: lead.name,
               uploadedAt: event.timestamp,
               offerValue: event.amount || 0,
@@ -399,21 +400,21 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
           icon: <Euro className="h-3.5 w-3.5" />,
           badgeClass: "bg-emerald-50 text-emerald-800 border-emerald-200",
           iconContainer: "bg-emerald-600 border-emerald-700",
-          textLabel: "Offer Sheet"
+          textLabel: t("Offer Sheet", "Cenová ponuka", "Árajánlat")
         };
       case "contract":
         return {
           icon: <Handshake className="h-3.5 w-3.5" />,
           badgeClass: "bg-blue-50 text-blue-800 border-blue-200",
           iconContainer: "bg-blue-600 border-blue-700",
-          textLabel: "Contract"
+          textLabel: t("Contract", "Zmluva", "Szerződés")
         };
       case "invoice":
         return {
           icon: <Receipt className="h-3.5 w-3.5" />,
           badgeClass: "bg-rose-50 text-rose-800 border-rose-200",
           iconContainer: "bg-rose-600 border-rose-700",
-          textLabel: "Invoice"
+          textLabel: t("Invoice", "Faktúra", "Számla")
         };
     }
   };
@@ -598,7 +599,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
                         {file.offerValue > 0 ? (
                           <span>&euro; {file.offerValue.toLocaleString()}</span>
                         ) : (
-                          <span className="text-slate-350 italic">None</span>
+                          <span className="text-slate-350 italic">{t("None", "Žiadna", "Nincs")}</span>
                         )}
                       </td>
 
@@ -613,7 +614,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
                             <a 
                               href={`#client-${encodeURIComponent(file.clientName)}`}
                               className="px-2.5 py-1.5 rounded-xl border border-slate-300 hover:border-amber-700 hover:text-amber-800 transition-all text-[8px] font-black uppercase text-slate-600 flex items-center gap-1 bg-white shadow-sm"
-                              title="Open Client details sheet"
+                              title={t("Open Client details sheet", "Otvoriť kartu klienta", "Ügyfél adatlap megnyitása")}
                             >
                               <span>{getTranslation(systemLanguage, "files.btn_client")}</span>
                               <ArrowRight className="h-3 w-3 stroke-[2.5]" />
@@ -627,7 +628,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
                               }
                             }}
                             className="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100/80 border border-indigo-250 text-indigo-700 transition-all text-[8px] font-black uppercase flex items-center gap-1 shadow-sm cursor-pointer"
-                            title="Preview file"
+                            title={t("Preview file", "Náhľad súboru", "Fájl előnézete")}
                           >
                             <Eye className="h-3 w-3 stroke-[2.5]" />
                             <span>{getTranslation(systemLanguage, "files.btn_view")}</span>
@@ -638,7 +639,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
                             target="_blank"
                             rel="noopener noreferrer"
                             className="px-2.5 py-1.5 rounded-xl bg-amber-700 hover:bg-amber-600 border border-amber-800 text-white transition-all text-[8px] font-black uppercase flex items-center gap-1 shadow-sm inline-flex items-center cursor-pointer"
-                            title="Download offer document"
+                            title={t("Download offer document", "Stiahnuť dokument ponuky", "Ajánlati dokumentum letöltése")}
                           >
                             <Download className="h-3 w-3 stroke-[2.5]" />
                             <span>{systemLanguage === "sk" ? "Stiahnuť" : systemLanguage === "hu" ? "Letöltés" : "Download"}</span>
@@ -646,7 +647,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
                           <button 
                             onClick={() => handleDeleteFile(file.id, file.fileName)}
                             className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50/50 transition-all cursor-pointer"
-                            title="Delete file permanently"
+                            title={t("Delete file permanently", "Natrvalo vymazať súbor", "Fájl végleges törlése")}
                           >
                             <Trash className="h-4 w-4 stroke-[2.2]" />
                           </button>
