@@ -233,19 +233,6 @@ if (!function_exists('ccrm_schema_statements')) {
               `archived` TINYINT(1) NOT NULL DEFAULT 0,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
-
-            // Error Logs for Exception Tracking
-            "CREATE TABLE IF NOT EXISTS `error_logs` (
-              `id` INT AUTO_INCREMENT PRIMARY KEY,
-              `message` TEXT NOT NULL,
-              `file` VARCHAR(255) NULL,
-              `line` INT NULL,
-              `trace` LONGTEXT NULL,
-              `request_uri` VARCHAR(255) NULL,
-              `request_method` VARCHAR(10) NULL,
-              `payload` LONGTEXT NULL,
-              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
         ];
     }
 

@@ -1424,8 +1424,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             id: `email-${folderPrefix}-${mail.uid}`,
             type: "email" as const,
             timestamp: mail.date.substring(0, 16),
-            title: mail.subject || "(No Subject)",
-            content: `From: ${mail.from.name || mail.from.address} <${mail.from.address}>\nDate: ${mail.date}\n\nTo view this email or reply, please open the Mail Client.`,
+            title: mail.subject || t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)"),
+            content: `${t("From", "Od", "Feladó")}: ${mail.from.name || mail.from.address} <${mail.from.address}>\n${t("Date", "Dátum", "Dátum")}: ${mail.date}\n\n${t("To view this email or reply, please open the Mail Client.", "Pre zobrazenie alebo odpovedanie na tento e-mail otvorte poštového klienta.", "Az e-mail megtekintéséhez vagy megválaszolásához nyissa meg a levelezőklienst.")}`,
             seen: mail.seen,
             isOutgoing: isOutgoing
           };
@@ -1545,13 +1545,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const timestampStr = `${logDate} ${logTimeOfEvent}`;
 
     if (logType === "phone") {
-      titleString = "Outbound Call Completed";
-      if (!contentString) contentString = "Completed voice call with customer regarding updates.";
+      titleString = t("Outbound Call Completed", "Odchádzajúci hovor ukončený", "Kimenő hívás befejezve");
+      if (!contentString) contentString = t("Completed voice call with customer regarding updates.", "Ukončený telefonát so zákazníkom ohľadom aktualizácií.", "Befejezett telefonhívás az ügyféllel a frissítésekről.");
     } else if (logType === "email") {
-      titleString = "Direct Email Sent";
-      if (!contentString) contentString = "Outbound email correspondence successfully transmitted.";
+      titleString = t("Direct Email Sent", "Odoslaný priamy e-mail", "Közvetlen e-mail elküldve");
+      if (!contentString) contentString = t("Outbound email correspondence successfully transmitted.", "Odchádzajúca e-mailová korešpondencia bola úspešne odoslaná.", "A kimenő e-mail levelezés sikeresen elküldve.");
     } else if (logType === "note") {
-      titleString = "Internal Note Added";
+      titleString = t("Internal Note Added", "Pridaná interná poznámka", "Belső jegyzet hozzáadva");
       // Note type is rich: saved as JSON stringified blocks
       const hasContent = noteBlocks.some(b => b.content.trim().length > 0);
       if (!hasContent && !uploadedAudioFile) {
@@ -1560,21 +1560,21 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       }
       contentString = JSON.stringify(noteBlocks);
     } else if (logType === "appointment") {
-      titleString = "Meeting Pinned";
+      titleString = t("Meeting Pinned", "Stretnutie pripnuté", "Találkozó rögzítve");
       if (!logTime.trim()) {
         (window as any).showToast(t("Please select appointment time!", "Vyberte čas stretnutia!", "Válassza ki a találkozó időpontját!"));
         return;
       }
-      if (!contentString) contentString = `Client appointment set for ${logTime.trim()}`;
+      if (!contentString) contentString = `${t("Client appointment set for", "Stretnutie s klientom naplánované na", "Ügyféltalálkozó időpontja")} ${logTime.trim()}`;
     } else if (logType === "offer") {
-      titleString = "Commercial Proposal Submitted";
+      titleString = t("Commercial Proposal Submitted", "Cenová ponuka odoslaná", "Kereskedelmi ajánlat benyújtva");
       const amt = parseFloat(logAmount);
       if (isNaN(amt) || amt <= 0) {
         (window as any).showToast(t("Offer amount must be a positive number!", "Suma ponuky musí byť kladné číslo!", "Az ajánlat összegének pozitív számnak kell lennie!"));
         return;
       }
-      titleString = `Commercial Proposal Sent (€ ${amt.toLocaleString()})`;
-      if (!contentString) contentString = `Submitted commercial proposal of € ${amt.toLocaleString()} to client.`;
+      titleString = `${t("Commercial Proposal Sent", "Cenová ponuka odoslaná", "Kereskedelmi ajánlat elküldve")} (€ ${amt.toLocaleString()})`;
+      if (!contentString) contentString = `${t("Submitted commercial proposal of", "Odoslaná cenová ponuka vo výške", "Benyújtott kereskedelmi ajánlat összege")} € ${amt.toLocaleString()} ${t("to client.", "klientovi.", "az ügyfélnek.")}`;
     }
 
     const eventId = "evt_" + Math.random().toString(36).substr(2, 9);
@@ -1659,7 +1659,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       const autoPMTask: Task = {
         id: `task-${Date.now()}`,
         title: taskTitle,
-        description: logType === "note" ? "Meeting Note Added" : (contentString || `Scheduled for ${logDate} ${logTimeOfEvent}`),
+        description: logType === "note" ? t("Meeting Note Added", "Pridaná poznámka zo stretnutia", "Találkozó jegyzet hozzáadva") : (contentString || `${t("Scheduled for", "Naplánované na", "Ütemezve")} ${logDate} ${logTimeOfEvent}`),
         status: taskStates[0] || "New",
         priority: "medium",
         deadline: deadlineVal,
@@ -2121,7 +2121,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
               onClick={() => onChange && onChange(star)}
               disabled={!onChange}
               className={`focus:outline-none transition-all duration-150 p-0.5 ${onChange ? "cursor-pointer hover:scale-130 active:scale-90" : "cursor-default"}`}
-              aria-label={`Rate ${star} dots`}
+              aria-label={`${t("Rate", "Hodnotiť", "Értékelés")} ${star}`}
             >
               <div 
                 className={`h-2 w-2 rounded-full transition-colors duration-150 ${
@@ -2411,7 +2411,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                       title: state,
                       isPastOrCurrent,
                       color: bgStyle,
-                      tooltip: `${state} ${isPastOrCurrent ? "(Current/Past)" : "(Upcoming)"}`
+                      tooltip: `${state} ${isPastOrCurrent ? t("(Current/Past)", "(Aktuálne/Minulé)", "(Aktuális/Múlt)") : t("(Upcoming)", "(Nadchádzajúce)", "(Közelgő)")}`
                     });
                   });
 
@@ -2425,7 +2425,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                       title: combinedTitle,
                       isPastOrCurrent: isLeadClosed,
                       color: activeColor,
-                      tooltip: isLeadClosed ? `Closed (${currentStatus})` : `Closed (${combinedTitle})`
+                      tooltip: isLeadClosed ? `${t("Closed", "Uzavreté", "Lezárva")} (${currentStatus})` : `${t("Closed", "Uzavreté", "Lezárva")} (${combinedTitle})`
                     });
                   }
 
@@ -3023,7 +3023,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 type="number"
                                 required
                                 min="0"
-                                placeholder="e.g. 15000"
+                                placeholder={t("e.g. 15000", "napr. 15000", "pl. 15000")}
                                 value={logAmount}
                                 onChange={(e) => setLogAmount(e.target.value)}
                                 className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:outline-none font-bold text-xs"
@@ -3161,7 +3161,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
               <div className="border-t-2 border-slate-150 pt-6 space-y-4">
                 <h3 className="text-xs font-black text-slate-450 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
                   <Clock className="h-4.5 w-4.5 text-blue-650 animate-pulse stroke-[2.5]" /> {getTranslation(systemLanguage, "common.chronological_timeline")}
-                  {isLoadingMails && <span className="ml-2 text-[9px] text-blue-500 font-extrabold uppercase animate-pulse">Syncing Mail...</span>}
+                  {isLoadingMails && <span className="ml-2 text-[9px] text-blue-500 font-extrabold uppercase animate-pulse">{t("Syncing Mail...", "Synchronizácia pošty...", "Levelek szinkronizálása...")}</span>}
                 </h3>
 
                 {activeLeadTimeline.length === 0 ? (
@@ -4141,7 +4141,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     className="text-[11px] font-black uppercase tracking-wider font-heading"
                                     style={{ color: stateColor }}
                                   >
-                                    {orderingMode === "pm" ? `Project Manager: ${group.state}` : group.state}
+                                    {orderingMode === "pm" ? `${t("Project Manager", "Projektový manažér", "Projektmenedzser")}: ${group.state}` : group.state}
                                   </span>
                                   <span 
                                     className="px-2 py-0.5 rounded-full text-[9px] font-black border uppercase tracking-wider font-sans"
@@ -4151,7 +4151,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                       borderColor: `${stateColor}25`
                                     }}
                                   >
-                                    {group.leads.length} {group.leads.length === 1 ? "lead" : "leads"}
+                                    {group.leads.length} {group.leads.length === 1 ? t("lead", "lead", "lead") : t("leads", "leady", "lead")}
                                   </span>
                                 </div>
 
@@ -4164,7 +4164,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                   className="text-[10px] font-heading font-black tracking-wide shrink-0"
                                   style={{ color: stateColor }}
                                 >
-                                  {orderingMode === "pm" ? "MANAGER VALUE" : "STAGE VALUE"}: &euro; {stageTotalValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                  {orderingMode === "pm" ? t("MANAGER VALUE", "HODNOTA MANAŽÉRA", "MENEDZSER ÉRTÉK") : t("STAGE VALUE", "HODNOTA FÁZY", "FÁZIS ÉRTÉK")}: &euro; {stageTotalValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                 </span>
                               </div>
                             </td>
@@ -4180,7 +4180,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                               className="py-5 px-6 text-center text-slate-400 select-none uppercase font-black text-[9px] tracking-wider bg-slate-50/10 border-l-4 block lg:table-cell w-full lg:w-auto"
                               style={{ borderLeftColor: `${stateColor}15` }}
                             >
-                              No active leads in {group.state}
+                              {t("No active leads in", "Žiadne aktívne leady v", "Nincs aktív lead itt:")} {group.state}
                             </td>
                           </tr>
                         ) : (
@@ -4312,17 +4312,17 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                   <div className="hover:opacity-85 transition-opacity">
                                     {lead.clientType === "business" && (
                                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                        <Briefcase className="h-2.5 w-2.5" /> Business
+                                        <Briefcase className="h-2.5 w-2.5" /> {t("Business", "Firma", "Cég")}
                                       </span>
                                     )}
                                     {lead.clientType === "partner" && (
                                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-amber-50 text-amber-700 border border-amber-200">
-                                        <Handshake className="h-2.5 w-2.5" /> Partner
+                                        <Handshake className="h-2.5 w-2.5" /> {t("Partner", "Partner", "Partner")}
                                       </span>
                                     )}
                                     {lead.clientType === "person" && (
                                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-blue-50 text-blue-700 border border-blue-200">
-                                        <User className="h-2.5 w-2.5" /> Person
+                                        <User className="h-2.5 w-2.5" /> {t("Person", "Osoba", "Személy")}
                                       </span>
                                     )}
                                   </div>
@@ -4415,7 +4415,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                   />
                                 ) : (
                                   <div className="flex items-center gap-1">
-                                    <span className="text-[9px] font-black text-slate-400 lg:hidden uppercase tracking-wider">Val:</span>
+                                    <span className="text-[9px] font-black text-slate-400 lg:hidden uppercase tracking-wider">{t("Val:", "Hodn.:", "Érték:")}</span>
                                     <span className="border-b border-transparent hover:border-blue-400/50 transition-all font-black text-blue-700">
                                       &euro; {lead.value.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                     </span>
@@ -4427,7 +4427,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                               <td className={`inline-flex items-center lg:table-cell px-0 lg:px-4 mr-3.5 border-b border-slate-100 lg:border-b-0 ${cellPy}`}>
                                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 w-full">
                                   <div className="flex items-center gap-1 shrink-0">
-                                    <span className="text-[9px] font-black text-slate-400 lg:hidden uppercase tracking-wider mr-1">Stage:</span>
+                                    <span className="text-[9px] font-black text-slate-400 lg:hidden uppercase tracking-wider mr-1">{t("Stage:", "Fáza:", "Fázis:")}</span>
                                     <StatusSelector 
                                       status={lead.status} 
                                       onChange={(newStatus) => handleUpdateLeadState(lead.id, newStatus)} 
@@ -4574,7 +4574,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                           title: state,
                                           isPastOrCurrent,
                                           color: bgStyle,
-                                          tooltip: `${state} ${isPastOrCurrent ? "(Current/Past)" : "(Upcoming)"}`
+                                          tooltip: `${state} ${isPastOrCurrent ? t("(Current/Past)", "(Aktuálne/Minulé)", "(Aktuális/Múlt)") : t("(Upcoming)", "(Nadchádzajúce)", "(Közelgő)")}`
                                         });
                                       });
 
@@ -4588,7 +4588,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                           title: combinedTitle,
                                           isPastOrCurrent: isLeadClosed,
                                           color: activeColor,
-                                          tooltip: isLeadClosed ? `Closed (${lead.status})` : `Closed (${combinedTitle})`
+                                          tooltip: isLeadClosed ? `${t("Closed", "Uzavreté", "Lezárva")} (${lead.status})` : `${t("Closed", "Uzavreté", "Lezárva")} (${combinedTitle})`
                                         });
                                       }
 
@@ -4809,7 +4809,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                   lead.clientType === "partner" ? "bg-amber-50 text-amber-700 border-amber-100" :
                                   "bg-blue-50 text-blue-700 border-blue-100"
                                 }`}>
-                                  {lead.clientType}
+                                  {lead.clientType === "business" ? t("Business", "Firma", "Cég") : lead.clientType === "partner" ? t("Partner", "Partner", "Partner") : t("Person", "Osoba", "Személy")}
                                 </span>
                               )}
                             </div>
@@ -4871,7 +4871,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                               return (
                                 <div className="mt-2 pt-2 border-t border-slate-100/60 flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                                  <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider">↳ Substate:</span>
+                                  <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider">↳ {t("Substate:", "Podstav:", "Al-állapot:")}</span>
                                   <select
                                     value={currentSub}
                                     onChange={(e) => {
@@ -4915,10 +4915,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         <div className="bg-blue-50/20 border-t border-blue-50 p-4 flex items-center justify-between text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
           <div className="flex items-center gap-1.5">
             <Clock className="h-3.5 w-3.5 text-blue-500" />
-            <span>Click any cell to edit inline &bull; Slideout opens via Edit button</span>
+            <span>{t("Click any cell to edit inline", "Kliknite na ľubovoľnú bunku pre priamu úpravu", "Kattintson bármelyik cellára a soron belüli szerkesztéshez")} &bull; {t("Slideout opens via Edit button", "Panel sa otvorí tlačidlom Upraviť", "A panel a Szerkesztés gombbal nyílik meg")}</span>
           </div>
           <div>
-            Showing <strong className="text-blue-600">{processedLeads.length}</strong> of {leads.length} leads
+            {t("Showing", "Zobrazuje sa", "Megjelenítve")} <strong className="text-blue-600">{processedLeads.length}</strong> {t("of", "z", "/")} {leads.length} {t("leads", "leadov", "lead")}
           </div>
         </div>
       </div>
@@ -5012,7 +5012,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     required
                     value={newLeadName}
                     onChange={(e) => setNewLeadName(e.target.value)}
-                    placeholder="e.g. John Doe"
+                    placeholder={t("e.g. John Doe", "napr. Ján Novák", "pl. Kovács János")}
                     className="w-full px-4 py-2.5 rounded-xl bg-blue-50/10 border border-blue-100 text-xs text-slate-800 focus:outline-none focus:bg-white focus:border-blue-500 focus:ring-1"
                   />
                 )}
@@ -5025,7 +5025,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     type="text"
                     value={newLeadCity}
                     onChange={(e) => setNewLeadCity(e.target.value)}
-                    placeholder="e.g. Bratislava"
+                    placeholder={t("e.g. Bratislava", "napr. Bratislava", "pl. Pozsony")}
                     className="w-full px-4 py-2.5 rounded-xl bg-blue-50/10 border border-blue-100 text-xs text-slate-800 focus:outline-none"
                   />
                 </div>
@@ -5053,7 +5053,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     step="0.01"
                     value={newLeadValue}
                     onChange={(e) => setNewLeadValue(e.target.value)}
-                    placeholder="e.g. 15000"
+                    placeholder={t("e.g. 15000", "napr. 15000", "pl. 15000")}
                     className="w-full px-4 py-2.5 rounded-xl bg-blue-50/10 border border-blue-100 text-xs text-slate-800 focus:outline-none"
                   />
                 </div>
