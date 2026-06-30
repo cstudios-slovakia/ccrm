@@ -39,6 +39,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSaveUserLayout,
   unifiedEntries = []
 }) => {
+  const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
   const [isCollapsed, setIsCollapsed] = useState(true); // Default collapsed for the minimalist aesthetic
   const sidebarRef = React.useRef<HTMLElement>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -259,12 +260,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
           setActiveItems(newActive);
           setHiddenItems(newHidden);
           onSaveUserLayout(newActive);
-          (window as any).showToast("Layout imported successfully!");
+          (window as any).showToast(t("Layout imported successfully!", "Rozloženie bolo úspešne importované!", "Az elrendezés sikeresen importálva!"));
         } else {
-          alert("Invalid layout file format.");
+          alert(t("Invalid layout file format.", "Neplatný formát súboru rozloženia.", "Érvénytelen elrendezésfájl-formátum."));
         }
       } catch (err) {
-        alert("Failed to parse JSON file.");
+        alert(t("Failed to parse JSON file.", "Nepodarilo sa spracovať súbor JSON.", "A JSON-fájl feldolgozása sikertelen."));
       }
     };
     fileReader.readAsText(file);
@@ -444,7 +445,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               onClick={() => setIsCollapsed(!isCollapsed)}
               className="w-full flex items-center gap-3.5 px-3 py-3 rounded-2xl transition-all duration-200 text-slate-400 hover:text-slate-700 hover:bg-slate-100/50 text-left cursor-pointer"
-              aria-label="Toggle Navigation Sidebar"
+              aria-label={t("Toggle Navigation Sidebar", "Prepnúť navigačný panel", "Navigációs oldalsáv váltása")}
             >
               {isCollapsed ? (
                 <ChevronRight className="h-5 w-5 shrink-0 text-slate-400 animate-pulse" />
@@ -488,7 +489,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               title={
                 isEditingNav
                   ? (systemLanguage === "sk" ? "Uložiť rozloženie menu" : systemLanguage === "hu" ? "Elrendezés mentése" : "Save navigation layout")
-                  : (systemLanguage === "sk" ? "Upraviť štruktúru menu" : "Edit navigation layout")
+                  : t("Edit navigation layout", "Upraviť štruktúru menu", "Navigációs elrendezés szerkesztése")
               }
             >
               {isEditingNav ? (
@@ -500,7 +501,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span className="text-xs font-semibold tracking-wide">
                   {isEditingNav
                     ? (systemLanguage === "sk" ? "Uložiť rozloženie" : systemLanguage === "hu" ? "Elrendezés mentése" : "Save Layout")
-                    : (systemLanguage === "sk" ? "Upraviť menu" : "Edit Navigation")}
+                    : t("Edit Navigation", "Upraviť menu", "Navigáció szerkesztése")}
                 </span>
               )}
             </button>
@@ -513,7 +514,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 type="button"
                 onClick={handleDownloadLayout}
                 className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-xl bg-slate-105 hover:bg-slate-200 text-[10px] font-black text-slate-700 uppercase tracking-wider transition-all shadow-sm cursor-pointer"
-                title="Download Layout JSON"
+                title={t("Download Layout JSON", "Stiahnuť rozloženie JSON", "Elrendezés JSON letöltése")}
               >
                 <Download className="h-3.5 w-3.5 animate-bounce" />
                 <span>{systemLanguage === "sk" ? "Export" : "Export"}</span>
@@ -522,7 +523,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-[10px] font-black text-indigo-750 uppercase tracking-wider transition-all border border-indigo-200 shadow-sm cursor-pointer"
-                title="Upload Layout JSON"
+                title={t("Upload Layout JSON", "Nahrať rozloženie JSON", "Elrendezés JSON feltöltése")}
               >
                 <Upload className="h-3.5 w-3.5" />
                 <span>{systemLanguage === "sk" ? "Import" : "Import"}</span>
@@ -562,7 +563,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               if (onLogout) {
                 onLogout();
               } else {
-                (window as any).showToast("Sign out simulation active. Workspace locked.");
+                (window as any).showToast(t("Sign out simulation active. Workspace locked.", "Simulácia odhlásenia je aktívna. Pracovný priestor je uzamknutý.", "Kijelentkezési szimuláció aktív. A munkaterület zárolva."));
               }
             }}
             className="w-full flex items-center gap-3.5 px-3 py-2.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50/50 transition-all duration-200 text-left group"
@@ -586,7 +587,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 {systemLanguage === "sk" ? "Dostupné moduly" : systemLanguage === "hu" ? "Elérhető modulok" : "Available Modules"}
               </span>
               <span className="text-[9px] text-slate-450 font-bold uppercase tracking-wider mt-0.5">
-                {systemLanguage === "sk" ? "Skryté položky menu" : "Hidden sidebar items"}
+                {t("Hidden sidebar items", "Skryté položky menu", "Rejtett oldalsáv elemek")}
               </span>
             </div>
             <button 
@@ -602,10 +603,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <div className="h-full flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center text-slate-400 select-none">
                 <span className="text-2xl mb-1.5">✨</span>
                 <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
-                  {systemLanguage === "sk" ? "Všetky moduly sú aktívne" : "All modules are active"}
+                  {t("All modules are active", "Všetky moduly sú aktívne", "Minden modul aktív")}
                 </p>
                 <p className="text-[9px] font-semibold text-slate-400 mt-1">
-                  {systemLanguage === "sk" ? "Presuňte sem položku pre skrytie" : "Drag a module here to hide it"}
+                  {t("Drag a module here to hide it", "Presuňte sem položku pre skrytie", "Húzzon ide egy modult az elrejtéséhez")}
                 </p>
               </div>
             ) : (
@@ -650,7 +651,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           type="button"
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           className="w-12 h-1 bg-slate-200 hover:bg-slate-350 rounded-full mx-auto mb-2 outline-none cursor-pointer transition-colors shrink-0"
-          aria-label={isMobileMenuOpen ? "Collapse navigation drawer" : "Open fullscreen navigation drawer"}
+          aria-label={isMobileMenuOpen ? t("Collapse navigation drawer", "Zbaliť navigačnú zásuvku", "Navigációs fiók összecsukása") : t("Open fullscreen navigation drawer", "Otvoriť navigáciu na celú obrazovku", "Teljes képernyős navigáció megnyitása")}
         />
 
         {/* Brand Header: Only visible when fullscreen drawer is open */}
@@ -790,7 +791,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 if (onLogout) {
                   onLogout();
                 } else {
-                  (window as any).showToast("Sign out simulation active. Workspace locked.");
+                  (window as any).showToast(t("Sign out simulation active. Workspace locked.", "Simulácia odhlásenia je aktívna. Pracovný priestor je uzamknutý.", "Kijelentkezési szimuláció aktív. A munkaterület zárolva."));
                 }
                 setIsMobileMenuOpen(false);
               }}

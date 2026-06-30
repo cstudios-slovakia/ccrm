@@ -42,11 +42,56 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     return status.toLowerCase() === "done" || (taskStates.length > 0 && status === taskStates[taskStates.length - 1]);
   };
 
+  // Fallback owner/assignee name when none is selected — the logged-in user,
+  // else the first registered user. Never a hardcoded demo account.
+  const defaultUserName = currentUser?.name || users[0]?.name || "";
+
   // --- Translations Helper ---
   const t = (en: string, sk: string, hu: string) => {
     if (systemLanguage === "sk") return sk;
     if (systemLanguage === "hu") return hu;
     return en;
+  };
+
+  // Calendar weekday headers (Mon-first), localized.
+  const weekdayNames = systemLanguage === "sk"
+    ? ["Po", "Ut", "St", "Št", "Pi", "So", "Ne"]
+    : systemLanguage === "hu"
+      ? ["Hét", "Ked", "Sze", "Csü", "Pén", "Szo", "Vas"]
+      : ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+  // Priority label (low/medium/high) — matches the filter dropdown wording.
+  const priorityLabel = (prio: string) => {
+    switch ((prio || "").toLowerCase()) {
+      case "high": return t("High", "Vysoká", "Magas");
+      case "medium": return t("Medium", "Stredná", "Közepes");
+      case "low": return t("Low", "Nízka", "Alacsony");
+      default: return prio;
+    }
+  };
+
+  // Task-state label — translates the canonical default states; falls back to
+  // the raw value for any custom states configured in Settings.
+  const stateLabel = (st: string) => {
+    switch ((st || "").toLowerCase()) {
+      case "new": return t("New", "Nové", "Új");
+      case "in progress": return t("In progress", "Prebieha", "Folyamatban");
+      case "blocked": return t("Blocked", "Blokované", "Blokkolva");
+      case "done": return t("Done", "Hotovo", "Kész");
+      default: return st;
+    }
+  };
+
+  // Timeline event-type badge — matches the central timeline.badge.* dictionary.
+  const eventTypeLabel = (type: string) => {
+    switch ((type || "").toLowerCase()) {
+      case "phone": return t("Call Logs", "Záznam hovoru", "Hívásnapló");
+      case "email": return t("Email Sent", "E-mail odoslaný", "E-mail elküldve");
+      case "note": return t("Timeline Note", "Poznámka na časovej osi", "Idővonal jegyzet");
+      case "offer": return t("Proposal", "Cenová ponuka", "Ajánlat");
+      case "appointment": return t("Meeting Log", "Záznam stretnutia", "Találkozó napló");
+      default: return type;
+    }
   };
 
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -91,7 +136,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
       }
     });
     if (list.length === 0) {
-      list.push("Erik", "Tomi", "Roli");
+      if (defaultUserName) list.push(defaultUserName);
     }
     return Array.from(new Set(list));
   }, [users, tasks]);
@@ -241,7 +286,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
       }
       
       // Completed By
-      if (archiveUserFilter !== "all" && (task.completedBy || "Erik") !== archiveUserFilter) {
+      if (archiveUserFilter !== "all" && (task.completedBy || defaultUserName) !== archiveUserFilter) {
         return false;
       }
       
@@ -305,8 +350,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
       startDate: newStartDate || undefined,
       deadline: newDeadline,
       deadlineTime: newDeadlineTime,
-      owner: newAssignedUser || "Erik",
-      assignedUsers: newAssignedUser ? [newAssignedUser] : ["Erik"],
+      owner: newAssignedUser || defaultUserName,
+      assignedUsers: newAssignedUser ? [newAssignedUser] : (defaultUserName ? [defaultUserName] : []),
       relatedLeadId: newRelatedLeadId || undefined,
       isLocking: newRelatedLeadId ? newIsLocking : false
     };
@@ -334,7 +379,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
       <div className="flex flex-col h-full bg-white animate-in fade-in zoom-in-95 duration-200">
         {/* Days Header */}
         <div className="grid grid-cols-7 bg-slate-50 border-b border-slate-200 shrink-0">
-          {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(d => (
+          {weekdayNames.map(d => (
             <div key={d} className="py-2.5 text-center text-[10px] font-black text-slate-500 uppercase tracking-widest border-r border-slate-100 last:border-0">
               {d}
             </div>
@@ -479,7 +524,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             ? now.toISOString().split("T")[0] + " " + now.toTimeString().split(" ")[0].substring(0, 5)
                             : undefined;
                           const completedByName = isDoneState(newStatus)
-                            ? currentUser?.name || "Erik"
+                            ? currentUser?.name || defaultUserName
                             : undefined;
                           
                           setTasks(prev => prev.map(t => t.id === task.id ? {
@@ -497,7 +542,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         }}
                       >
                         {taskStates.map(st => (
-                          <option key={st} value={st} className="bg-white text-slate-800 font-bold uppercase">{st}</option>
+                          <option key={st} value={st} className="bg-white text-slate-800 font-bold uppercase">{stateLabel(st)}</option>
                         ))}
                       </select>
                     </div>
@@ -507,7 +552,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         <button
                           onClick={(e) => { e.stopPropagation(); setEditingTask(task); }}
                           className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-650 transition-colors cursor-pointer"
-                          title="Edit Task"
+                          title={t("Edit Task", "Upraviť úlohu", "Feladat szerkesztése")}
                         >
                           <Settings className="h-3.5 w-3.5" />
                         </button>
@@ -518,16 +563,16 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                           task.priority === "high" ? "bg-rose-50 text-rose-600 border-rose-200" :
                           task.priority === "medium" ? "bg-amber-50 text-amber-600 border-amber-200" :
                           "bg-slate-50 text-slate-600 border-slate-200"
-                        }`}>{task.priority}</span>
+                        }`}>{priorityLabel(task.priority)}</span>
                         
                         {task.startDate && (
                           <span className="text-[9px] font-bold text-slate-500 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md">
-                            <span>Start: {task.startDate}</span>
+                            <span>{t("Start", "Začiatok", "Kezdés")}: {task.startDate}</span>
                           </span>
                         )}
 
                         <span className="text-[9px] font-bold text-slate-500 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md bg-indigo-50/50 border border-indigo-100">
-                          <span>Time: {task.deadlineTime || "23:59"}</span>
+                          <span>{t("Time", "Čas", "Idő")}: {task.deadlineTime || "23:59"}</span>
                         </span>
 
                         {task.relatedLeadId && (
@@ -566,7 +611,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 {dayEvents.map((ev, idx) => (
                   <div key={idx} className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest bg-slate-100 px-1.5 py-0.5 rounded">{ev.type}</span>
+                      <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest bg-slate-100 px-1.5 py-0.5 rounded">{eventTypeLabel(ev.type)}</span>
                       <span className="text-[9px] font-bold text-slate-450 flex items-center gap-1">
                         <Briefcase className="h-2.5 w-2.5" /> {ev.leadName}
                       </span>
@@ -632,7 +677,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
               ? now.toISOString().split("T")[0] + " " + now.toTimeString().split(" ")[0].substring(0, 5)
               : undefined;
             const completedByName = isDoneState(newStatus)
-              ? currentUser?.name || "Erik"
+              ? currentUser?.name || defaultUserName
               : undefined;
             
             setTasks(prev => prev.map(t => t.id === task.id ? {
@@ -650,7 +695,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
           }}
         >
           {taskStates.map(st => (
-            <option key={st} value={st} className="bg-white text-slate-800 font-bold uppercase">{st}</option>
+            <option key={st} value={st} className="bg-white text-slate-800 font-bold uppercase">{stateLabel(st)}</option>
           ))}
         </select>
       </div>
@@ -661,7 +706,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
           <button
             onClick={(e) => { e.stopPropagation(); setEditingTask(task); }}
             className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-650 transition-colors cursor-pointer"
-            title="Edit Task"
+            title={t("Edit Task", "Upraviť úlohu", "Feladat szerkesztése")}
           >
             <Settings className="h-3.5 w-3.5" />
           </button>
@@ -672,16 +717,16 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             task.priority === "high" ? "bg-rose-50 text-rose-600 border-rose-200" :
             task.priority === "medium" ? "bg-amber-50 text-amber-600 border-amber-200" :
             "bg-slate-50 text-slate-600 border-slate-200"
-          }`}>{task.priority}</span>
+          }`}>{priorityLabel(task.priority)}</span>
           
           {task.startDate && (
             <span className="text-[9px] font-bold text-slate-500 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md">
-              <span>Start: {task.startDate}</span>
+              <span>{t("Start", "Začiatok", "Kezdés")}: {task.startDate}</span>
             </span>
           )}
 
           <span className="text-[9px] font-bold text-slate-500 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md bg-indigo-50/50 border border-indigo-100">
-            <span>Due: {task.deadline} @ {task.deadlineTime || "23:59"}</span>
+            <span>{t("Due", "Termín", "Határidő")}: {task.deadline} @ {task.deadlineTime || "23:59"}</span>
           </span>
 
           {task.relatedLeadId && (
@@ -741,7 +786,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
               >
                 <option value="all">{t("All Statuses", "Všetky stavy", "Minden státusz")}</option>
                 {taskStates.filter(st => !isDoneState(st)).map(st => (
-                  <option key={st} value={st}>{st}</option>
+                  <option key={st} value={st}>{stateLabel(st)}</option>
                 ))}
               </select>
             </div>
@@ -996,7 +1041,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 task.priority === "high" ? "bg-rose-500" :
                                 task.priority === "medium" ? "bg-amber-500" :
                                 "bg-slate-400"
-                              }`} title={`Priority: ${task.priority}`} />
+                              }`} title={`${t("Priority", "Priorita", "Prioritás")}: ${priorityLabel(task.priority)}`} />
                               
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-2 flex-wrap">
@@ -1018,7 +1063,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             <div className="flex items-center gap-4 shrink-0 justify-between sm:justify-end">
                               <div className="text-right space-y-0.5">
                                 <div className="text-[10px] font-bold text-slate-600">
-                                  <span className="font-extrabold text-slate-800">{task.completedBy || "Erik"}</span>
+                                  <span className="font-extrabold text-slate-800">{task.completedBy || defaultUserName}</span>
                                   <span className="text-slate-400 font-bold ml-1">@ {task.completedAt || `${task.deadline} @ ${task.deadlineTime || "23:59"}`}</span>
                                 </div>
                                 <div>
@@ -1039,7 +1084,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 className="px-2.5 py-1.5 border border-indigo-255 hover:bg-indigo-50 text-indigo-650 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
                               >
                                 <RotateCcw className="h-3 w-3 stroke-[2.5]" />
-                                {t("Restore", "Obnoviť", "Restore")}
+                                {t("Restore", "Obnoviť", "Visszaállítás")}
                               </button>
                             </div>
                           </div>
@@ -1216,7 +1261,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             </div>
 
             <div className="space-y-1">
-              <label className="text-[9px] font-black text-slate-500 uppercase">Start Date</label>
+              <label className="text-[9px] font-black text-slate-500 uppercase">{t("Start Date", "Dátum začiatku", "Kezdő dátum")}</label>
               <input type="date" value={newStartDate} onChange={e => setNewStartDate(e.target.value)} className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none" />
             </div>
 
@@ -1253,7 +1298,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         : "bg-white text-slate-500 hover:bg-slate-100"
                     }`}
                   >
-                    {prio}
+                    {priorityLabel(prio)}
                   </button>
                 ))}
               </div>
@@ -1266,7 +1311,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 onChange={e => setNewAssignedUser(e.target.value)} 
                 className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none bg-white"
               >
-                <option value="">{t("-- Unassigned (Default Erik) --", "-- Nepriradený (Predvolený Erik) --", "-- Kijelöletlen (Alapértelmezett Erik) --")}</option>
+                <option value="">{t("-- Unassigned --", "-- Nepriradený --", "-- Kijelöletlen --")}</option>
                 {users.map(u => (
                   <option key={u.name} value={u.name}>{u.name} ({u.role})</option>
                 ))}
@@ -1283,7 +1328,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
             {newRelatedLeadId && (
               <div className="p-3 rounded-xl bg-violet-50/50 border border-violet-100 flex items-center justify-between">
-                <span className="text-[10px] font-black text-violet-700 uppercase flex items-center gap-1"><Lock className="h-3 w-3" /> Block Pipeline Stage</span>
+                <span className="text-[10px] font-black text-violet-700 uppercase flex items-center gap-1"><Lock className="h-3 w-3" /> {t("Block Pipeline Stage", "Zablokovať fázu pipeline", "Folyamat szakasz zárolása")}</span>
                 <input type="checkbox" checked={newIsLocking} onChange={e => setNewIsLocking(e.target.checked)} className="h-4 w-4 cursor-pointer" />
               </div>
             )}
@@ -1351,7 +1396,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             </div>
 
             <div className="space-y-1">
-              <label className="text-[9px] font-black text-slate-500 uppercase">Start Date</label>
+              <label className="text-[9px] font-black text-slate-500 uppercase">{t("Start Date", "Dátum začiatku", "Kezdő dátum")}</label>
               <input type="date" value={currentTask.startDate || ""} onChange={e => setEditingTask(prev => prev ? { ...prev, startDate: e.target.value } : null)} className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none" />
             </div>
 
@@ -1387,7 +1432,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     ? now.toISOString().split("T")[0] + " " + now.toTimeString().split(" ")[0].substring(0, 5) 
                     : undefined;
                   const completedByName = isDoneState(val) 
-                    ? currentUser?.name || "Erik" 
+                    ? currentUser?.name || defaultUserName 
                     : undefined;
                   setEditingTask(prev => prev ? { 
                     ...prev, 
@@ -1399,7 +1444,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none bg-white font-bold"
               >
                 {taskStates.map(st => (
-                  <option key={st} value={st}>{st}</option>
+                  <option key={st} value={st}>{stateLabel(st)}</option>
                 ))}
               </select>
             </div>
@@ -1416,7 +1461,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         : "bg-white text-slate-500 hover:bg-slate-100"
                     }`}
                   >
-                    {prio}
+                    {priorityLabel(prio)}
                   </button>
                 ))}
               </div>
@@ -1433,7 +1478,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 })} 
                 className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none bg-white"
               >
-                <option value="">{t("-- Unassigned (Default Erik) --", "-- Nepriradený (Predvolený Erik) --", "-- Kijelöletlen (Alapértelmezett Erik) --")}</option>
+                <option value="">{t("-- Unassigned --", "-- Nepriradený --", "-- Kijelöletlen --")}</option>
                 {users.map(u => (
                   <option key={u.name} value={u.name}>{u.name} ({u.role})</option>
                 ))}
@@ -1453,7 +1498,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
             {currentTask.relatedLeadId && (
               <div className="p-3 rounded-xl bg-violet-50/50 border border-violet-100 flex items-center justify-between">
-                <span className="text-[10px] font-black text-violet-700 uppercase flex items-center gap-1"><Lock className="h-3 w-3" /> Block Pipeline Stage</span>
+                <span className="text-[10px] font-black text-violet-700 uppercase flex items-center gap-1"><Lock className="h-3 w-3" /> {t("Block Pipeline Stage", "Zablokovať fázu pipeline", "Folyamat szakasz zárolása")}</span>
                 <input type="checkbox" checked={currentTask.isLocking || false} onChange={e => setEditingTask(prev => prev ? { ...prev, isLocking: e.target.checked } : null)} className="h-4 w-4 cursor-pointer" />
               </div>
             )}

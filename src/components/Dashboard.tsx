@@ -245,6 +245,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
   leadStateParents = {},
   campaigns: propCampaigns
 }) => {
+  // Inline translation helper for short UI strings
+  const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
+
   // Sub-tabs active status inside Dashboard
   const [activeTab, setActiveTab] = useState<"overview" | "campaigns" | "crm" | "clients">("overview");
 
@@ -597,9 +600,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }
     
     const segments = [
-      { label: "Business Entities (B2B)", count: clientTypes.business, color: "#2563eb", strokeColor: "stroke-blue-600", fillColor: "fill-blue-600", textClass: "text-blue-650 font-bold", rawColor: "blue" },
-      { label: "Retail / Persons (B2C)", count: clientTypes.person, color: "#10b981", strokeColor: "stroke-emerald-600", fillColor: "fill-emerald-600", textClass: "text-emerald-650 font-bold", rawColor: "emerald" },
-      { label: "Partner Accounts", count: clientTypes.partner, color: "#d97706", strokeColor: "stroke-amber-600", fillColor: "fill-amber-600", textClass: "text-amber-650 font-bold", rawColor: "amber" }
+      { label: t("Business Entities (B2B)", "Firemní klienti (B2B)", "Céges ügyfelek (B2B)"), count: clientTypes.business, color: "#2563eb", strokeColor: "stroke-blue-600", fillColor: "fill-blue-600", textClass: "text-blue-650 font-bold", rawColor: "blue" },
+      { label: t("Retail / Persons (B2C)", "Drobní klienti (B2C)", "Lakossági ügyfelek (B2C)"), count: clientTypes.person, color: "#10b981", strokeColor: "stroke-emerald-600", fillColor: "fill-emerald-600", textClass: "text-emerald-650 font-bold", rawColor: "emerald" },
+      { label: t("Partner Accounts", "Partnerské účty", "Partnerfiókok"), count: clientTypes.partner, color: "#d97706", strokeColor: "stroke-amber-600", fillColor: "fill-amber-600", textClass: "text-amber-650 font-bold", rawColor: "amber" }
     ];
 
     let currentOffset = 0;
@@ -617,7 +620,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     });
 
     return { total, segments: segmentsWithMath };
-  }, [clientTypes]);
+  }, [clientTypes, systemLanguage]);
 
   const cityDistribution = useMemo(() => {
     const cities: Record<string, number> = {};
@@ -637,7 +640,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     let details: InspectableDataPoint[] = [];
 
     if (type === "revenue") {
-      title = "Total Revenue Chronological Trend";
+      title = t("Total Revenue Chronological Trend", "Chronologický vývoj celkových tržieb", "Teljes bevétel kronologikus trendje");
       color = "#10b981";
       valuePrefix = "$";
       let sum = 0;
@@ -656,7 +659,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           };
         });
     } else if (type === "pipeline") {
-      title = "Active Pipeline Chronological Trend";
+      title = t("Active Pipeline Chronological Trend", "Chronologický vývoj aktívneho pipeline", "Aktív pipeline kronologikus trendje");
       color = "#6366f1";
       valuePrefix = "$";
       let sum = 0;
@@ -677,9 +680,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
           };
         });
     } else if (type === "leads") {
-      title = "Lead Growth Chronological Trend";
+      title = t("Lead Growth Chronological Trend", "Chronologický vývoj rastu záujemcov", "Érdeklődők növekedésének kronologikus trendje");
       color = "#3b82f6";
-      valueSuffix = " leads";
+      valueSuffix = t(" leads", " záujemcov", " érdeklődő");
       let count = 0;
       details = sortedLeads.map(l => {
         count += 1;
@@ -691,7 +694,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         };
       });
     } else if (type === "conversion") {
-      title = "Lead-to-Client Conversion Rolling Rate";
+      title = t("Lead-to-Client Conversion Rolling Rate", "Priebežná miera konverzie záujemca → klient", "Érdeklődő–ügyfél konverziós ráta");
       color = "#f43f5e";
       valueSuffix = "%";
       let wonCount = 0;
@@ -704,14 +707,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
           wonCount += 1;
         }
         return {
-          label: `${l.name} (${isWon ? "Won" : "Registered"})`,
+          label: `${l.name} (${isWon ? t("Won", "Vyhraný", "Megnyert") : t("Registered", "Registrovaný", "Regisztrált")})`,
           value: isWon ? 100 : 0,
           cumulative: Number(((wonCount / totalCount) * 100).toFixed(1)),
           date: l.createdAt ? l.createdAt.substring(0, 16).replace("T", " ") : "N/A"
         };
       });
     } else if (type === "pm" && pmName) {
-      title = `${pmName} - Sales Performance Trend`;
+      title = `${pmName} - ${t("Sales Performance Trend", "Vývoj predajnej výkonnosti", "Értékesítési teljesítmény trendje")}`;
       color = "#f59e0b";
       valuePrefix = "$";
       let sum = 0;
@@ -789,11 +792,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
             className="flex items-center gap-2 px-4 py-2.5 bg-white border-2 border-slate-205 hover:border-purple-500 rounded-2xl text-[10px] font-heading font-black text-slate-800 uppercase tracking-wider transition-all shadow-sm cursor-pointer select-none"
           >
             <Compass className="h-4 w-4 text-purple-600 animate-spin-slow" />
-            {getTranslation(systemLanguage, "dashboard.analyze_interval")} <span className="text-purple-650 font-black">{getTranslation(systemLanguage, getPresetTranslationKey(filterPresetName) as any) || filterPresetName}</span>
+            {getTranslation(systemLanguage, "dashboard.analyze_interval")} <span className="text-purple-650 font-black">{getTranslation(systemLanguage, getPresetTranslationKey(filterPresetName) as any) || (filterPresetName === "Custom Range" ? t("Custom Range", "Vlastný rozsah", "Egyéni tartomány") : filterPresetName)}</span>
             {filterStartDate && (
               <span className="text-slate-400 font-bold ml-1">
                 ({filterStartDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                {filterEndDate ? ` - ${filterEndDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : " - Ongoing"}
+                {filterEndDate ? ` - ${filterEndDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : t(" - Ongoing", " - Prebieha", " - Folyamatban")}
               </span>
             )}
           </button>
@@ -1039,7 +1042,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <span className="text-[10px] text-emerald-700 font-extrabold uppercase tracking-wider">{getTranslation(systemLanguage, "dashboard.kpi.revenue")}</span>
                 <span className="text-2xl font-black tracking-tight text-slate-900">${totalRevenue.toLocaleString()}</span>
                 <span className="text-[9px] text-emerald-600 font-bold flex items-center gap-0.5 mt-0.5">
-                  Won Deals Only
+                  {t("Won Deals Only", "Iba uzavreté obchody", "Csak megnyert üzletek")}
                 </span>
               </div>
               <Sparkline points={revenuePoints} color="#10b981" />
@@ -1053,10 +1056,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <TrendingUp className="h-6 w-6" />
               </div>
               <div className="flex flex-col relative z-20">
-                <span className="text-[10px] text-indigo-700 font-extrabold uppercase tracking-wider">Active Pipeline</span>
+                <span className="text-[10px] text-indigo-700 font-extrabold uppercase tracking-wider">{t("Active Pipeline", "Aktívny pipeline", "Aktív pipeline")}</span>
                 <span className="text-2xl font-black tracking-tight text-slate-900">${activePipelineValue.toLocaleString()}</span>
                 <span className="text-[9px] text-indigo-600 font-bold flex items-center gap-0.5 mt-0.5">
-                  {activePipelineLeads.length} Ongoing Deals
+                  {activePipelineLeads.length} {t("Ongoing Deals", "Prebiehajúce obchody", "Folyamatban lévő üzletek")}
                 </span>
               </div>
               <Sparkline points={pipelinePoints} color="#6366f1" />
@@ -1073,7 +1076,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <span className="text-[10px] text-blue-700 font-extrabold uppercase tracking-wider">{getTranslation(systemLanguage, "dashboard.kpi.leads")}</span>
                 <span className="text-2xl font-black tracking-tight text-slate-900">{totalLeadsCount}</span>
                 <span className="text-[9px] text-blue-600 font-bold flex items-center gap-0.5 mt-0.5">
-                  CRM Registered Slabs
+                  {t("CRM Registered Slabs", "Záznamy v CRM", "CRM-ben regisztrált tételek")}
                 </span>
               </div>
               <Sparkline points={leadCountPoints} color="#3b82f6" />
@@ -1090,7 +1093,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <span className="text-[10px] text-rose-700 font-extrabold uppercase tracking-wider">{getTranslation(systemLanguage, "dashboard.kpi.conversion")}</span>
                 <span className="text-2xl font-black tracking-tight text-slate-900">{leadToClientConversion.toFixed(1)}%</span>
                 <span className="text-[9px] text-rose-600 font-bold flex items-center gap-0.5 mt-0.5">
-                  Leads &rarr; Won Clients
+                  {t("Leads", "Záujemcovia", "Érdeklődők")} &rarr; {t("Won Clients", "Získaní klienti", "Megnyert ügyfelek")}
                 </span>
               </div>
               <Sparkline points={conversionPoints} color="#f43f5e" />
@@ -1102,7 +1105,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="lg:col-span-7 glass-panel p-6 rounded-[32px] border-2 border-indigo-200 bg-gradient-to-br from-indigo-50/20 to-purple-50/20 shadow-xl space-y-6 flex flex-col justify-between hover:scale-[1.01] transition-transform duration-300">
               <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-indigo-100 pb-3">
                 <h3 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <Target className="h-4 w-4 text-indigo-650 animate-pulse" /> Pipeline Funnel Graph
+                  <Target className="h-4 w-4 text-indigo-650 animate-pulse" /> {t("Pipeline Funnel Graph", "Graf predajného lievika", "Értékesítési tölcsér grafikon")}
                 </h3>
                 
                 <div className="flex items-center gap-2">
@@ -1116,7 +1119,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           : "text-slate-500 hover:text-slate-800 hover:bg-slate-100/50"
                       }`}
                     >
-                      Count
+                      {t("Count", "Počet", "Darab")}
                     </button>
                     <button
                       type="button"
@@ -1127,11 +1130,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           : "text-slate-500 hover:text-slate-800 hover:bg-slate-100/50"
                       }`}
                     >
-                      Value ($)
+                      {t("Value ($)", "Hodnota ($)", "Érték ($)")}
                     </button>
                   </div>
                   <span className="text-[9px] font-black text-indigo-600 bg-indigo-100/60 px-2.5 py-1.5 rounded-xl border border-indigo-200 uppercase tracking-wider shrink-0">
-                    Flow Analytics
+                    {t("Flow Analytics", "Analýza toku", "Folyamatelemzés")}
                   </span>
                 </div>
               </div>
@@ -1149,7 +1152,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   if (openStates.length === 0) {
                     return (
                       <div className="h-44 flex items-center justify-center text-xs font-black text-slate-400 uppercase tracking-widest">
-                        No active pipeline stages defined
+                        {t("No active pipeline stages defined", "Nie sú definované žiadne aktívne fázy pipeline", "Nincsenek aktív pipeline szakaszok meghatározva")}
                       </div>
                     );
                   }
@@ -1229,7 +1232,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         key={stage.name} 
                         className="cursor-pointer transition-all duration-300 hover:opacity-90 active:scale-[0.99]"
                       >
-                        <title>{`${stage.name.toUpperCase()} - Count: ${stage.count} - Value: $${stage.value.toLocaleString()}`}</title>
+                        <title>{`${stage.name.toUpperCase()} - ${t("Count", "Počet", "Darab")}: ${stage.count} - ${t("Value", "Hodnota", "Érték")}: $${stage.value.toLocaleString()}`}</title>
                         <polygon 
                           points={pointsStr} 
                           fill={stage.color}
@@ -1290,7 +1293,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             <div key={stage.name} className="flex items-center gap-2">
                               <span className="h-3.5 w-3.5 rounded-full border border-white shadow-sm" style={{ backgroundColor: stage.color }} />
                               <span className="text-[10px] font-black uppercase text-slate-600 tracking-wider">
-                                {stage.name}: <strong className="text-slate-800">{funnelMetric === "count" ? `${stage.count} leads` : `$${stage.value.toLocaleString()}`}</strong> ({displayPercent.toFixed(1)}%)
+                                {stage.name}: <strong className="text-slate-800">{funnelMetric === "count" ? `${stage.count} ${t("leads", "záujemcov", "érdeklődő")}` : `$${stage.value.toLocaleString()}`}</strong> ({displayPercent.toFixed(1)}%)
                               </span>
                             </div>
                           );
@@ -1305,7 +1308,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             {/* Top performing channels */}
             <div className="lg:col-span-5 glass-panel p-6 rounded-3xl border border-white/60 bg-white shadow-sm space-y-4">
               <h3 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                <Compass className="h-4 w-4 text-emerald-600" /> Top Sales Channels ROI
+                <Compass className="h-4 w-4 text-emerald-600" /> {t("Top Sales Channels ROI", "ROI najlepších predajných kanálov", "Legjobb értékesítési csatornák ROI")}
               </h3>
 
               <div className="space-y-4 pt-2">
@@ -1321,8 +1324,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       </span>
                     </div>
                     <div className="grid grid-cols-2 gap-2 text-[11px] font-semibold text-slate-500">
-                      <div>Spent: <strong className="text-slate-800">${channel.spent.toLocaleString()}</strong></div>
-                      <div>Sales Value: <strong className="text-slate-800">${channel.won.toLocaleString()}</strong></div>
+                      <div>{t("Spent", "Minuté", "Elköltött")}: <strong className="text-slate-800">${channel.spent.toLocaleString()}</strong></div>
+                      <div>{t("Sales Value", "Hodnota predaja", "Értékesítési érték")}: <strong className="text-slate-800">${channel.won.toLocaleString()}</strong></div>
                     </div>
                   </div>
                 ))}
@@ -1335,15 +1338,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div className="flex flex-col">
                 <h3 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <Briefcase className="h-4 w-4 text-indigo-600 animate-pulse" /> Projects Valuation Leaderboard
+                  <Briefcase className="h-4 w-4 text-indigo-600 animate-pulse" /> {t("Projects Valuation Leaderboard", "Rebríček hodnoty projektov", "Projektek értékelési ranglistája")}
                 </h3>
                 <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">
-                  Active business ventures sorted by deal size & share of portfolio worth inside selected date window
+                  {t("Active business ventures sorted by deal size & share of portfolio worth inside selected date window", "Aktívne obchodné príležitosti zoradené podľa veľkosti obchodu a podielu na hodnote portfólia vo vybranom časovom období", "Aktív üzleti lehetőségek az üzlet mérete és a portfólió értékéből való részesedés szerint rendezve a kiválasztott időszakban")}
                 </p>
               </div>
               
               <div className="bg-indigo-50/50 border border-indigo-100/50 rounded-2xl px-4 py-2 flex items-center gap-2.5 shrink-0 select-none">
-                <span className="text-[9px] font-black uppercase text-indigo-700 tracking-wider">Total Portfolio Valuation:</span>
+                <span className="text-[9px] font-black uppercase text-indigo-700 tracking-wider">{t("Total Portfolio Valuation", "Celková hodnota portfólia", "Teljes portfólió értéke")}:</span>
                 <span className="text-sm font-black text-indigo-900">${totalProjectsSum.toLocaleString()}</span>
               </div>
             </div>
@@ -1352,20 +1355,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-white">
-                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 text-[9px] font-black uppercase tracking-wider text-indigo-700 border-b-2 border-slate-100">Rank</th>
-                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 text-[9px] font-black uppercase tracking-wider text-indigo-700 border-b-2 border-slate-100">Project / Client Name</th>
-                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 text-[9px] font-black uppercase tracking-wider text-indigo-700 border-b-2 border-slate-100">Location</th>
-                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 text-[9px] font-black uppercase tracking-wider text-indigo-700 border-b-2 border-slate-100">State</th>
-                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 text-[9px] font-black uppercase tracking-wider text-indigo-700 border-b-2 border-slate-100">Project Owner</th>
-                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 text-[9px] font-black uppercase tracking-wider text-indigo-700 border-b-2 border-slate-100 text-right">Value</th>
-                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 text-[9px] font-black uppercase tracking-wider text-indigo-700 border-b-2 border-slate-100 text-right">Share Of Total</th>
+                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 text-[9px] font-black uppercase tracking-wider text-indigo-700 border-b-2 border-slate-100">{t("Rank", "Poradie", "Helyezés")}</th>
+                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 text-[9px] font-black uppercase tracking-wider text-indigo-700 border-b-2 border-slate-100">{t("Project / Client Name", "Názov projektu / klienta", "Projekt / ügyfél neve")}</th>
+                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 text-[9px] font-black uppercase tracking-wider text-indigo-700 border-b-2 border-slate-100">{t("Location", "Lokalita", "Helyszín")}</th>
+                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 text-[9px] font-black uppercase tracking-wider text-indigo-700 border-b-2 border-slate-100">{t("State", "Stav", "Állapot")}</th>
+                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 text-[9px] font-black uppercase tracking-wider text-indigo-700 border-b-2 border-slate-100">{t("Project Owner", "Vlastník projektu", "Projekt felelőse")}</th>
+                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 text-[9px] font-black uppercase tracking-wider text-indigo-700 border-b-2 border-slate-100 text-right">{t("Value", "Hodnota", "Érték")}</th>
+                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 text-[9px] font-black uppercase tracking-wider text-indigo-700 border-b-2 border-slate-100 text-right">{t("Share Of Total", "Podiel z celku", "Részesedés az összesből")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {sortedProjects.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="px-4 py-8 text-center text-xs font-black text-slate-400 uppercase tracking-widest">
-                        No projects found within the active interval
+                        {t("No projects found within the active interval", "V aktívnom období neboli nájdené žiadne projekty", "Nincsenek projektek a kiválasztott időszakban")}
                       </td>
                     </tr>
                   ) : (
@@ -1387,7 +1390,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             <div className="flex flex-col">
                               <span className="text-xs font-black text-slate-800">{p.name}</span>
                               <div className="flex items-center gap-1 mt-0.5">
-                                <span className="text-[8px] text-slate-400 font-extrabold uppercase tracking-wider">source:</span>
+                                <span className="text-[8px] text-slate-400 font-extrabold uppercase tracking-wider">{t("source", "zdroj", "forrás")}:</span>
                                 <span 
                                   className="inline-block px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider border select-none leading-none"
                                   style={{
@@ -1456,19 +1459,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
           {/* Platform-Wide Totals */}
           <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white shadow-sm space-y-4">
             <h3 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-              <Compass className="h-4 w-4 text-indigo-600" /> Platform-Wide Campaign Summaries
+              <Compass className="h-4 w-4 text-indigo-600" /> {t("Platform-Wide Campaign Summaries", "Súhrn kampaní naprieč platformami", "Platformokon átívelő kampányösszesítés")}
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
               <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
-                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Total Campaign Spent</span>
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">{t("Total Campaign Spent", "Celkové výdavky na kampane", "Teljes kampányköltés")}</span>
                 <span className="text-lg font-black text-slate-800 block mt-1">${totalSpent.toLocaleString(undefined, { maximumFractionDigits: 1 })}</span>
               </div>
               <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
-                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Won Leads Value</span>
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">{t("Won Leads Value", "Hodnota získaných záujemcov", "Megnyert érdeklődők értéke")}</span>
                 <span className="text-lg font-black text-slate-800 block mt-1">${totalWonValue.toLocaleString()}</span>
               </div>
               <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
-                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Total Platform ROI</span>
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">{t("Total Platform ROI", "Celkové ROI platformy", "Teljes platform ROI")}</span>
                 <span className={`text-lg font-black block mt-1 ${totalRoi >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
                   {totalRoi.toFixed(0)}%
                 </span>
@@ -1484,8 +1487,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <div className="flex items-center gap-2">
                   <Globe className="h-5 w-5 text-blue-600" />
                   <div className="flex flex-col">
-                    <h3 className="text-xs font-heading font-black text-slate-800 uppercase tracking-wider">Meta Ads Platform</h3>
-                    <span className="text-[9px] text-slate-400 font-semibold uppercase">Facebook & Instagram Feeds</span>
+                    <h3 className="text-xs font-heading font-black text-slate-800 uppercase tracking-wider">{t("Meta Ads Platform", "Reklamná platforma Meta", "Meta hirdetési platform")}</h3>
+                    <span className="text-[9px] text-slate-400 font-semibold uppercase">{t("Facebook & Instagram Feeds", "Feedy Facebook & Instagram", "Facebook és Instagram hírfolyamok")}</span>
                   </div>
                 </div>
                 <span className="text-xs font-black text-blue-700 bg-blue-100/60 px-3 py-1 rounded-full uppercase tracking-wider border border-blue-200">
@@ -1495,15 +1498,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div className="p-3 bg-white rounded-2xl border border-slate-100">
-                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Total Spent</span>
+                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">{t("Total Spent", "Celkové výdavky", "Összes költés")}</span>
                   <span className="text-base font-black text-slate-800 block mt-1">${metaSpent.toFixed(2)}</span>
                 </div>
                 <div className="p-3 bg-white rounded-2xl border border-slate-100">
-                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">CRM Won Value</span>
+                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">{t("CRM Won Value", "Získaná hodnota v CRM", "CRM megnyert érték")}</span>
                   <span className="text-base font-black text-slate-800 block mt-1">${metaWonValue.toLocaleString()}</span>
                 </div>
                 <div className="p-3 bg-white rounded-2xl border border-slate-100">
-                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Cost per Lead</span>
+                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">{t("Cost per Lead", "Cena za záujemcu", "Költség érdeklődőnként")}</span>
                   <span className="text-base font-black text-emerald-600 block mt-1">
                     ${(metaSpent / (leads.filter(l => (l.source === "facebook" || l.source === "instagram")).length || 1)).toFixed(1)}
                   </span>
@@ -1517,8 +1520,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <div className="flex items-center gap-2">
                   <Globe className="h-5 w-5 text-amber-500 animate-pulse" />
                   <div className="flex flex-col">
-                    <h3 className="text-xs font-heading font-black text-slate-800 uppercase tracking-wider">Google Ads Platform</h3>
-                    <span className="text-[9px] text-slate-400 font-semibold uppercase">Search & Display Campaigns</span>
+                    <h3 className="text-xs font-heading font-black text-slate-800 uppercase tracking-wider">{t("Google Ads Platform", "Reklamná platforma Google", "Google hirdetési platform")}</h3>
+                    <span className="text-[9px] text-slate-400 font-semibold uppercase">{t("Search & Display Campaigns", "Kampane vo vyhľadávaní a obsahovej sieti", "Keresési és display kampányok")}</span>
                   </div>
                 </div>
                 <span className="text-xs font-black text-amber-700 bg-amber-100/60 px-3 py-1 rounded-full uppercase tracking-wider border border-amber-200">
@@ -1528,15 +1531,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div className="p-3 bg-white rounded-2xl border border-slate-100">
-                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Total Spent</span>
+                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">{t("Total Spent", "Celkové výdavky", "Összes költés")}</span>
                   <span className="text-base font-black text-slate-800 block mt-1">${googleSpent.toFixed(2)}</span>
                 </div>
                 <div className="p-3 bg-white rounded-2xl border border-slate-100">
-                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">CRM Won Value</span>
+                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">{t("CRM Won Value", "Získaná hodnota v CRM", "CRM megnyert érték")}</span>
                   <span className="text-base font-black text-slate-800 block mt-1">${googleWonValue.toLocaleString()}</span>
                 </div>
                 <div className="p-3 bg-white rounded-2xl border border-slate-100">
-                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Cost per Lead</span>
+                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">{t("Cost per Lead", "Cena za záujemcu", "Költség érdeklődőnként")}</span>
                   <span className="text-base font-black text-emerald-600 block mt-1">
                     ${(googleSpent / (leads.filter(l => l.source === "website").length || 1)).toFixed(1)}
                   </span>
@@ -1548,14 +1551,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
           {/* Breakdown to each Meta and Google campaign (Always Separate) */}
           <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white shadow-sm space-y-6">
             <h3 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-              <BarChart3 className="h-4 w-4 text-indigo-600" /> Separate Campaign performance Breakdown
+              <BarChart3 className="h-4 w-4 text-indigo-600" /> {t("Separate Campaign performance Breakdown", "Samostatný rozpis výkonnosti kampaní", "Külön kampányteljesítmény-bontás")}
             </h3>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Meta Columns */}
               <div className="space-y-4">
                 <h4 className="text-[10px] font-black uppercase text-blue-700 tracking-wider flex items-center gap-1.5">
-                  <Globe className="h-3.5 w-3.5 text-blue-600" /> Meta Ads Campaign Breakdown
+                  <Globe className="h-3.5 w-3.5 text-blue-600" /> {t("Meta Ads Campaign Breakdown", "Rozpis kampaní Meta Ads", "Meta Ads kampánybontás")}
                 </h4>
                 
                 <div className="space-y-3">
@@ -1572,10 +1575,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           </span>
                         </div>
                         <div className="grid grid-cols-4 gap-2 text-[10px] font-semibold text-slate-500 pt-2 border-t border-slate-100">
-                          <div>Spent: <strong className="text-slate-800 block mt-0.5">${c.spent}</strong></div>
-                          <div>Clicks: <strong className="text-slate-800 block mt-0.5">{c.clicks}</strong></div>
+                          <div>{t("Spent", "Minuté", "Elköltött")}: <strong className="text-slate-800 block mt-0.5">${c.spent}</strong></div>
+                          <div>{t("Clicks", "Kliknutia", "Kattintások")}: <strong className="text-slate-800 block mt-0.5">{c.clicks}</strong></div>
                           <div>CTR: <strong className="text-indigo-600 block mt-0.5">{ctr}%</strong></div>
-                          <div>Leads: <strong className="text-emerald-600 block mt-0.5">{c.leads}</strong></div>
+                          <div>{t("Leads", "Záujemcovia", "Érdeklődők")}: <strong className="text-emerald-600 block mt-0.5">{c.leads}</strong></div>
                         </div>
                       </div>
                     );
@@ -1586,7 +1589,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               {/* Google Columns */}
               <div className="space-y-4">
                 <h4 className="text-[10px] font-black uppercase text-amber-700 tracking-wider flex items-center gap-1.5">
-                  <Globe className="h-3.5 w-3.5 text-amber-500" /> Google Ads Campaign Breakdown
+                  <Globe className="h-3.5 w-3.5 text-amber-500" /> {t("Google Ads Campaign Breakdown", "Rozpis kampaní Google Ads", "Google Ads kampánybontás")}
                 </h4>
                 
                 <div className="space-y-3">
@@ -1603,10 +1606,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           </span>
                         </div>
                         <div className="grid grid-cols-4 gap-2 text-[10px] font-semibold text-slate-500 pt-2 border-t border-slate-100">
-                          <div>Spent: <strong className="text-slate-800 block mt-0.5">${c.spent}</strong></div>
-                          <div>Clicks: <strong className="text-slate-800 block mt-0.5">{c.clicks}</strong></div>
+                          <div>{t("Spent", "Minuté", "Elköltött")}: <strong className="text-slate-800 block mt-0.5">${c.spent}</strong></div>
+                          <div>{t("Clicks", "Kliknutia", "Kattintások")}: <strong className="text-slate-800 block mt-0.5">{c.clicks}</strong></div>
                           <div>CTR: <strong className="text-indigo-600 block mt-0.5">{ctr}%</strong></div>
-                          <div>Leads: <strong className="text-emerald-600 block mt-0.5">{c.leads}</strong></div>
+                          <div>{t("Leads", "Záujemcovia", "Érdeklődők")}: <strong className="text-emerald-600 block mt-0.5">{c.leads}</strong></div>
                         </div>
                       </div>
                     );
@@ -1624,15 +1627,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
           {/* Company Core KPI Summaries */}
           <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white shadow-sm space-y-4">
             <h3 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-              <Compass className="h-4 w-4 text-indigo-600" /> CRM Company Key Performance Indicators
+              <Compass className="h-4 w-4 text-indigo-600" /> {t("CRM Company Key Performance Indicators", "Kľúčové ukazovatele výkonnosti firmy v CRM", "A vállalat kulcsfontosságú teljesítménymutatói a CRM-ben")}
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-center">
               <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
-                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Average Deal Value</span>
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">{t("Average Deal Value", "Priemerná hodnota obchodu", "Átlagos üzletérték")}</span>
                 <span className="text-lg font-black text-slate-800 block mt-1">${averageDealValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
               </div>
               <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
-                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Active Deals in Funnel</span>
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">{t("Active Deals in Funnel", "Aktívne obchody v lieviku", "Aktív üzletek a tölcsérben")}</span>
                 <span className="text-lg font-black text-indigo-650 block mt-1">{activePipelineLeads.length}</span>
               </div>
             </div>
@@ -1643,7 +1646,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             {/* PM Leaderboard */}
             <div className="lg:col-span-5 glass-panel p-6 rounded-3xl border border-white/60 bg-white shadow-sm space-y-4">
               <h3 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                <Award className="h-4 w-4 text-amber-500" /> Project Managers Toplist
+                <Award className="h-4 w-4 text-amber-500" /> {t("Project Managers Toplist", "Rebríček projektových manažérov", "Projektmenedzserek ranglistája")}
               </h3>
 
               <div className="space-y-3 pt-2">
@@ -1654,26 +1657,26 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   // Rank styling configurations
                   let badgeBg = "bg-slate-100 text-slate-500 border-slate-200";
                   let cardHover = "hover:border-slate-355 hover:shadow-md hover:shadow-slate-100/50";
-                  let rankTitle = "Contender";
+                  let rankTitle = t("Contender", "Vyzývateľ", "Kihívó");
                   let icon = <Award className="h-3.5 w-3.5 text-slate-400" />;
                   let sparklineColor = "#6366f1"; // indigo
                   
                   if (idx === 0) {
                     badgeBg = "bg-gradient-to-br from-amber-400 via-yellow-400 to-amber-500 text-white border-amber-350 shadow-md shadow-amber-500/25";
                     cardHover = "hover:border-amber-300 hover:shadow-lg hover:shadow-amber-500/5";
-                    rankTitle = "Elite Champion";
+                    rankTitle = t("Elite Champion", "Elitný šampión", "Elit bajnok");
                     icon = <Crown className="h-3.5 w-3.5 text-white animate-bounce duration-1000" />;
                     sparklineColor = "#f59e0b"; // gold/amber
                   } else if (idx === 1) {
                     badgeBg = "bg-gradient-to-br from-slate-300 via-slate-400 to-slate-500 text-white border-slate-250 shadow-md shadow-slate-500/15";
                     cardHover = "hover:border-indigo-300 hover:shadow-lg hover:shadow-indigo-500/5";
-                    rankTitle = "Super Challenger";
+                    rankTitle = t("Super Challenger", "Super vyzývateľ", "Szuper kihívó");
                     icon = <Medal className="h-3.5 w-3.5 text-white" />;
                     sparklineColor = "#6366f1"; // indigo/silver
                   } else if (idx === 2) {
                     badgeBg = "bg-gradient-to-br from-orange-400 via-amber-600 to-orange-600 text-white border-orange-350 shadow-md shadow-orange-500/15";
                     cardHover = "hover:border-orange-300 hover:shadow-lg hover:shadow-orange-500/5";
-                    rankTitle = "Rising Star";
+                    rankTitle = t("Rising Star", "Vychádzajúca hviezda", "Feltörekvő csillag");
                     icon = <Trophy className="h-3.5 w-3.5 text-white" />;
                     sparklineColor = "#f97316"; // orange/bronze
                   }
@@ -1695,7 +1698,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             {icon}
                             {/* Level floating tag */}
                             <span className="absolute -bottom-1 -right-1.5 px-1 bg-slate-800 text-white text-[7px] font-black rounded-full uppercase tracking-wider scale-90 border border-white">
-                              Lvl {pm.wonCount + 1}
+                              {t("Lvl", "Úr.", "Szint")} {pm.wonCount + 1}
                             </span>
                           </div>
                           <div className="flex flex-col">
@@ -1709,7 +1712,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                 {rankTitle}
                               </span>
                             </div>
-                            <span className="text-[9px] text-slate-400 font-semibold">{pm.wonCount} won of {pm.leadsCount} deals</span>
+                            <span className="text-[9px] text-slate-400 font-semibold">{pm.wonCount} {t("won of", "vyhraných z", "megnyerve ebből")} {pm.leadsCount} {t("deals", "obchodov", "üzlet")}</span>
                           </div>
                         </div>
 
@@ -1725,7 +1728,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             <div className="flex items-center gap-1 text-[9px] font-bold">
                               {isHighConversion && <Flame className="h-3 w-3 text-orange-500 animate-pulse" />}
                               <span className={isHighConversion ? "text-orange-650" : "text-emerald-600"}>
-                                {pm.conversionRate.toFixed(0)}% conversion
+                                {pm.conversionRate.toFixed(0)}% {t("conversion", "konverzia", "konverzió")}
                               </span>
                             </div>
                           </div>
@@ -1736,7 +1739,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       <div className="mt-3 flex items-center justify-between gap-3 relative z-20">
                         {/* XP bar label */}
                         <span className="text-[7px] font-black uppercase tracking-widest text-slate-450 shrink-0">
-                          {idx === 0 ? "Champion Level Max" : `${Math.round(revenuePercentage)}% of Top Score`}
+                          {idx === 0 ? t("Champion Level Max", "Maximálna úroveň šampióna", "Bajnoki szint max") : `${Math.round(revenuePercentage)}% ${t("of Top Score", "z najlepšieho skóre", "a legjobb pontszámból")}`}
                         </span>
                         {/* Interactive progress bar */}
                         <div className="flex-1 bg-slate-100 h-1.5 rounded-full overflow-hidden relative border border-slate-200/30">
@@ -1760,7 +1763,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="lg:col-span-7 glass-panel p-6 rounded-3xl border border-white/60 bg-white shadow-sm space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <h3 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <TrendingUp className="h-4 w-4 text-purple-650" /> PM Comparison Race
+                  <TrendingUp className="h-4 w-4 text-purple-650" /> {t("PM Comparison Race", "Pretek porovnania PM", "PM összehasonlító verseny")}
                 </h3>
                 
                 {/* Selector Toggles */}
@@ -1770,21 +1773,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     onClick={() => setCompareAspect("revenue")}
                     className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${compareAspect === "revenue" ? "bg-purple-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-800 bg-white"}`}
                   >
-                    Revenue
+                    {t("Revenue", "Tržby", "Bevétel")}
                   </button>
                   <button 
                     type="button" 
                     onClick={() => setCompareAspect("won")}
                     className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${compareAspect === "won" ? "bg-purple-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-800 bg-white"}`}
                   >
-                    Won Deals
+                    {t("Won Deals", "Uzavreté obchody", "Megnyert üzletek")}
                   </button>
                   <button 
                     type="button" 
                     onClick={() => setCompareAspect("conversion")}
                     className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${compareAspect === "conversion" ? "bg-purple-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-800 bg-white"}`}
                   >
-                    Conversion
+                    {t("Conversion", "Konverzia", "Konverzió")}
                   </button>
                 </div>
               </div>
@@ -1886,7 +1889,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           const color = series ? series.color : "#cbd5e1";
                           let finalLabel = "";
                           if (compareAspect === "revenue") finalLabel = `$${pm.revenue.toLocaleString()}`;
-                          else if (compareAspect === "won") finalLabel = `${pm.wonCount} won`;
+                          else if (compareAspect === "won") finalLabel = `${pm.wonCount} ${t("won", "vyhraných", "megnyert")}`;
                           else finalLabel = `${pm.conversionRate.toFixed(0)}%`;
 
                           return (
@@ -1907,7 +1910,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           {/* Performance Trends (Full Width) */}
           <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white shadow-sm space-y-6 w-full">
             <h3 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-              <TrendingUp className="h-4 w-4 text-indigo-600" /> Month-over-Month Revenue & Client Trends
+              <TrendingUp className="h-4 w-4 text-indigo-600" /> {getTranslation(systemLanguage, "dashboard.charts.mom_trend")}
             </h3>
 
             {monthlyTrends.length > 0 ? (
@@ -1916,19 +1919,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <div key={trend.label} className="p-4 bg-slate-55/30 rounded-2xl border border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="flex flex-col">
                       <span className="text-xs font-black text-slate-800">{trend.label}</span>
-                      <span className="text-[9px] text-slate-400 font-semibold">CRM Activity Node Period</span>
+                      <span className="text-[9px] text-slate-400 font-semibold">{t("CRM Activity Node Period", "Obdobie aktivity v CRM", "CRM aktivitási időszak")}</span>
                     </div>
                     <div className="grid grid-cols-3 gap-4 text-center sm:text-right">
                       <div>
-                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">Revenue</span>
+                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">{t("Revenue", "Tržby", "Bevétel")}</span>
                         <strong className="text-xs font-black text-slate-800 block mt-0.5">${trend.revenue.toLocaleString()}</strong>
                       </div>
                       <div>
-                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">Clients</span>
+                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">{t("Clients", "Klienti", "Ügyfelek")}</span>
                         <strong className="text-xs font-black text-indigo-600 block mt-0.5">{trend.totalClients}</strong>
                       </div>
                       <div>
-                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">Rev/Client</span>
+                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">{t("Rev/Client", "Tržby/klient", "Bevétel/ügyfél")}</span>
                         <strong className="text-xs font-black text-emerald-600 block mt-0.5">${trend.revPerClient.toFixed(0)}</strong>
                       </div>
                     </div>
@@ -1937,7 +1940,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
             ) : (
               <div className="py-8 flex flex-col items-center justify-center text-center text-slate-400 text-xs">
-                <span>No monthly records found in CRM sandbox. Seeding cleanup records will regenerate trends.</span>
+                <span>{t("No monthly records found in CRM sandbox. Seeding cleanup records will regenerate trends.", "V CRM sandboxe sa nenašli žiadne mesačné záznamy. Vyčistenie a opätovné naplnenie záznamov obnoví trendy.", "Nem találhatók havi rekordok a CRM sandboxban. A rekordok feltöltése után újragenerálódnak a trendek.")}</span>
               </div>
             )}
           </div>
@@ -1952,7 +1955,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             {/* Client type ratio */}
             <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white shadow-sm space-y-4">
               <h3 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                <PieChart className="h-4 w-4 text-indigo-600" /> Client Type Distribution
+                <PieChart className="h-4 w-4 text-indigo-600" /> {t("Client Type Distribution", "Rozdelenie typov klientov", "Ügyféltípusok megoszlása")}
               </h3>
 
               <div className="flex flex-col sm:flex-row items-center gap-6 pt-2">
@@ -1979,7 +1982,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   </svg>
                   <div className="absolute flex flex-col items-center justify-center text-center">
                     <span className="text-xl font-black text-slate-800 leading-none">{clientTypeChartData.total}</span>
-                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest mt-0.5">Clients</span>
+                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest mt-0.5">{t("Clients", "Klienti", "Ügyfelek")}</span>
                   </div>
                 </div>
 
@@ -2005,7 +2008,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             {/* City Demographics */}
             <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white shadow-sm space-y-4">
               <h3 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                <MapPin className="h-4 w-4 text-emerald-600" /> Top Client Locations
+                <MapPin className="h-4 w-4 text-emerald-600" /> {t("Top Client Locations", "Najčastejšie lokality klientov", "Top ügyfélhelyszínek")}
               </h3>
 
               <div className="space-y-3 pt-2">
@@ -2051,7 +2054,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   {inspectingChart.title}
                 </h3>
                 <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mt-1">
-                  Chronological progression & value analysis log
+                  {t("Chronological progression & value analysis log", "Záznam chronologického vývoja a analýzy hodnoty", "Kronologikus folyamat és értékelemzési napló")}
                 </span>
               </div>
               <button 
@@ -2147,19 +2150,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       const pt = inspectingChart.details[hoveredPointIdx];
                       return (
                         <div className="flex flex-col animate-in fade-in slide-in-from-bottom duration-150">
-                          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">Selected Data Node</span>
+                          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">{t("Selected Data Node", "Vybraný dátový bod", "Kiválasztott adatpont")}</span>
                           <span className="text-xs font-black text-slate-800 mt-0.5">{pt.label}</span>
                           <div className="flex items-center justify-center gap-3 mt-1 text-[11px] font-bold">
-                            <span className="text-slate-500">Date: <strong className="text-slate-700">{pt.date}</strong></span>
-                            <span className="text-slate-500">Change: <strong className="text-slate-700">+{inspectingChart.valuePrefix}{pt.value.toLocaleString()}{inspectingChart.valueSuffix}</strong></span>
-                            <span className="text-slate-500">Value: <strong style={{ color: inspectingChart.color }}>{inspectingChart.valuePrefix}{pt.cumulative.toLocaleString()}{inspectingChart.valueSuffix}</strong></span>
+                            <span className="text-slate-500">{t("Date", "Dátum", "Dátum")}: <strong className="text-slate-700">{pt.date}</strong></span>
+                            <span className="text-slate-500">{t("Change", "Zmena", "Változás")}: <strong className="text-slate-700">+{inspectingChart.valuePrefix}{pt.value.toLocaleString()}{inspectingChart.valueSuffix}</strong></span>
+                            <span className="text-slate-500">{t("Value", "Hodnota", "Érték")}: <strong style={{ color: inspectingChart.color }}>{inspectingChart.valuePrefix}{pt.cumulative.toLocaleString()}{inspectingChart.valueSuffix}</strong></span>
                           </div>
                         </div>
                       );
                     })()
                   ) : (
                     <div className="text-[10px] text-slate-400 font-black uppercase tracking-wider animate-pulse">
-                      Hover over any node on the plotline above to inspect granular values
+                      {t("Hover over any node on the plotline above to inspect granular values", "Prejdite myšou na ktorýkoľvek bod krivky vyššie pre zobrazenie podrobných hodnôt", "Vigye az egeret a fenti görbe bármely pontjára a részletes értékek megtekintéséhez")}
                     </div>
                   )}
                 </div>
@@ -2168,7 +2171,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               {/* Chronological Values Log (lg:col-span-5) */}
               <div className="lg:col-span-5 flex flex-col space-y-3 overflow-hidden max-h-[350px]">
                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2">
-                  Chronological Progression Log
+                  {t("Chronological Progression Log", "Záznam chronologického vývoja", "Kronologikus folyamatnapló")}
                 </h4>
                 <div className="overflow-y-auto space-y-2 pr-1 flex-1">
                   {inspectingChart.details.map((pt, idx) => (
@@ -2230,8 +2233,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   {selectedLeadForDrawer.name.substring(0, 2).toUpperCase()}
                 </div>
                 <div className="flex flex-col">
-                  <h3 className="text-sm font-heading font-black text-slate-900 uppercase tracking-tight">Project Details</h3>
-                  <span className="text-[9px] text-slate-400 font-extrabold uppercase tracking-widest mt-0.5">ID: {selectedLeadForDrawer.id}</span>
+                  <h3 className="text-sm font-heading font-black text-slate-900 uppercase tracking-tight">{t("Project Details", "Detaily projektu", "Projekt részletei")}</h3>
+                  <span className="text-[9px] text-slate-400 font-extrabold uppercase tracking-widest mt-0.5">{t("ID", "ID", "Azonosító")}: {selectedLeadForDrawer.id}</span>
                 </div>
               </div>
               
@@ -2242,9 +2245,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     window.location.hash = "lead-" + selectedLeadForDrawer.id;
                   }}
                   className="h-8.5 px-3 rounded-xl border border-indigo-200 hover:border-indigo-400 bg-indigo-50/50 hover:bg-indigo-55 text-indigo-750 flex items-center justify-center gap-1.5 cursor-pointer transition-all active:scale-95 text-[9px] font-black uppercase tracking-wider"
-                  title="Open in Dedicated Full Screen View"
+                  title={t("Open in Dedicated Full Screen View", "Otvoriť v samostatnom zobrazení na celú obrazovku", "Megnyitás külön teljes képernyős nézetben")}
                 >
-                  <Maximize2 className="h-3.5 w-3.5" /> Full Screen
+                  <Maximize2 className="h-3.5 w-3.5" /> {t("Full Screen", "Celá obrazovka", "Teljes képernyő")}
                 </button>
                 
                 <button 
@@ -2262,12 +2265,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <div className="p-5 bg-gradient-to-br from-indigo-500 to-purple-650 rounded-3xl text-white shadow-lg space-y-2.5 relative overflow-hidden shrink-0">
                 {/* Background glow decoration */}
                 <div className="absolute -bottom-10 -right-10 w-32 h-32 rounded-full bg-white/10 blur-2xl pointer-events-none" />
-                <span className="text-[9px] font-black text-indigo-100 uppercase tracking-widest block">Estimated Deal Worth</span>
+                <span className="text-[9px] font-black text-indigo-100 uppercase tracking-widest block">{t("Estimated Deal Worth", "Odhadovaná hodnota obchodu", "Becsült üzletérték")}</span>
                 <span className="text-3xl font-black block leading-none">${selectedLeadForDrawer.value.toLocaleString()}</span>
                 
                 <div className="flex items-center gap-2 border-t border-white/20 pt-2.5 mt-1 text-[10px] font-bold text-indigo-150">
                   <Compass className="h-3.5 w-3.5" />
-                  <span>Channel: </span>
+                  <span>{t("Channel", "Kanál", "Csatorna")}: </span>
                   <span 
                     className="px-2 py-0.5 rounded text-[9px] font-black uppercase border tracking-wider select-none font-bold"
                     style={{
@@ -2283,12 +2286,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
               {/* Basic Lead Parameters */}
               <div className="space-y-4">
-                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2">Basic Lead Data</h4>
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2">{t("Basic Lead Data", "Základné údaje o záujemcovi", "Alapvető érdeklődői adatok")}</h4>
                 
                 <div className="grid grid-cols-2 gap-4">
                   {/* Status */}
                   <div className="bg-slate-50 border border-slate-100 p-3.5 rounded-2xl space-y-1">
-                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">Pipeline Stage</span>
+                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">{t("Pipeline Stage", "Fáza pipeline", "Pipeline szakasz")}</span>
                     {(() => {
                       const sName = selectedLeadForDrawer.status.toLowerCase();
                       const parentName = leadStateParents[sName];
@@ -2323,19 +2326,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
                   {/* Owner */}
                   <div className="bg-slate-50 border border-slate-100 p-3.5 rounded-2xl space-y-1">
-                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">Project Manager</span>
+                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">{t("Project Manager", "Projektový manažér", "Projektmenedzser")}</span>
                     <span className="text-xs font-black text-slate-800 block mt-1">{selectedLeadForDrawer.owner}</span>
                   </div>
 
                   {/* City */}
                   <div className="bg-slate-50 border border-slate-100 p-3.5 rounded-2xl space-y-1">
-                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">City Location</span>
+                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">{t("City Location", "Mesto", "Város")}</span>
                     <span className="text-xs font-black text-slate-800 block mt-1">{selectedLeadForDrawer.city}</span>
                   </div>
 
                   {/* Registered Date */}
                   <div className="bg-slate-50 border border-slate-100 p-3.5 rounded-2xl space-y-1">
-                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">System Inflow Date</span>
+                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">{t("System Inflow Date", "Dátum zaevidovania", "Rendszerbe kerülés dátuma")}</span>
                     <span className="text-xs font-black text-slate-800 block mt-1">{selectedLeadForDrawer.createdAt}</span>
                   </div>
                 </div>
@@ -2343,7 +2346,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
               {/* Interested Categories list */}
               <div className="space-y-4">
-                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2">Interested Categories / Services</h4>
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2">{getTranslation(systemLanguage, "profile.interested_categories")}</h4>
                 <div className="flex flex-wrap gap-1.5 pt-1">
                   {selectedLeadForDrawer.categories && selectedLeadForDrawer.categories.length > 0 ? (
                     selectedLeadForDrawer.categories.map((cat) => {
@@ -2364,7 +2367,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     })
                   ) : (
                     <span className="text-[10px] text-slate-400 font-bold italic uppercase tracking-wider">
-                      No interested categories selected
+                      {t("No interested categories selected", "Neboli vybrané žiadne kategórie záujmu", "Nincs kiválasztott érdeklődési kategória")}
                     </span>
                   )}
                 </div>
@@ -2372,28 +2375,28 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
               {/* Client Profile details */}
               <div className="space-y-4">
-                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2">Client Credentials</h4>
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2">{t("Client Credentials", "Údaje o klientovi", "Ügyfél adatai")}</h4>
                 
                 <div className="space-y-3 bg-slate-50/50 border border-slate-150/40 p-4.5 rounded-2xl text-[11px] font-semibold text-slate-550">
                   <div className="flex justify-between items-center py-1">
-                    <span>Legal Client Type:</span>
+                    <span>{t("Legal Client Type", "Právny typ klienta", "Jogi ügyféltípus")}:</span>
                     <span className="font-black text-slate-800 uppercase tracking-wider text-[9px]">{selectedLeadForDrawer.clientType}</span>
                   </div>
                   {selectedLeadForDrawer.phone && (
                     <div className="flex justify-between items-center py-1 border-t border-slate-100">
-                      <span>Phone Line:</span>
+                      <span>{t("Phone Line", "Telefón", "Telefonszám")}:</span>
                       <strong className="text-slate-800 font-black">{selectedLeadForDrawer.phone}</strong>
                     </div>
                   )}
                   {selectedLeadForDrawer.email && (
                     <div className="flex justify-between items-center py-1 border-t border-slate-100">
-                      <span>E-mail Inbox:</span>
+                      <span>{t("E-mail Inbox", "E-mailová schránka", "E-mail postafiók")}:</span>
                       <strong className="text-slate-800 font-black select-all">{selectedLeadForDrawer.email}</strong>
                     </div>
                   )}
                   {selectedLeadForDrawer.address && (
                     <div className="flex flex-col gap-1 py-1 border-t border-slate-100 text-left">
-                      <span>Mailing Address:</span>
+                      <span>{t("Mailing Address", "Korešpondenčná adresa", "Levelezési cím")}:</span>
                       <strong className="text-slate-800 font-bold leading-normal mt-0.5">
                         {selectedLeadForDrawer.address.street}, {selectedLeadForDrawer.address.postalCode} {selectedLeadForDrawer.address.city}, {selectedLeadForDrawer.address.country}
                       </strong>
@@ -2405,7 +2408,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               {/* Timeline Activity Logs */}
               {selectedLeadForDrawer.timeline && selectedLeadForDrawer.timeline.length > 0 && (
                 <div className="space-y-4">
-                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2">Timeline Activity</h4>
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2">{getTranslation(systemLanguage, "timeline.activity")}</h4>
                   
                   <div className="relative border-l-2 border-slate-100 pl-5.5 ml-2.5 space-y-5 text-[11px] font-semibold text-slate-500">
                     {selectedLeadForDrawer.timeline.map((event) => {
@@ -2423,7 +2426,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           <div className="flex justify-between items-center text-[9px] font-black text-slate-400">
                             <span className="uppercase tracking-widest">{event.timestamp}</span>
                             <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase border tracking-wider ${eventColor}`}>
-                              {event.type}
+                              {getTranslation(systemLanguage, `timeline.badge.${event.type}`)}
                             </span>
                           </div>
                           
@@ -2445,7 +2448,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 onClick={closeLeadDrawer}
                 className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 hover:text-slate-800 text-slate-600 rounded-xl text-xs font-black uppercase tracking-wider transition-colors cursor-pointer border border-slate-200 text-center"
               >
-                Close View
+                {t("Close View", "Zavrieť", "Bezárás")}
               </button>
             </div>
           </div>

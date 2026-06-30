@@ -26,8 +26,9 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
   leads = [],
   subPath = null
 }) => {
+  const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
   const [searchQuery, setSearchQuery] = useState("");
-  
+
   // Modals / Editors state
   const [isEditing, setIsEditing] = useState(false);
   const [editingRow, setEditingRow] = useState<UnifiedEntryRow | null>(null);
@@ -94,19 +95,21 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
 
   const folderSingularEn = registry.folderName || "Folder";
   const folderSingularSk = registry.folderName || "priečinok";
+  const folderSingularHu = registry.folderName || "mappa";
   const entrySingularEn = registry.entryName || "Entry";
   const entrySingularSk = registry.entryName || "záznam";
+  const entrySingularHu = registry.entryName || "bejegyzés";
 
   // Breadcrumbs path helper
   const getBreadcrumbs = () => {
-    const crumbs: { id: string | null; name: string }[] = [{ id: null, name: "Root" }];
+    const crumbs: { id: string | null; name: string }[] = [{ id: null, name: t("Root", "Koreň", "Gyökér") }];
     let currentId = currentFolderId;
     const path: typeof crumbs = [];
     
     while (currentId) {
       const folder = rows.find(r => r.id === currentId && r.isFolder);
       if (folder) {
-        path.unshift({ id: folder.id, name: folder.title || (systemLanguage === "sk" ? "Nepomenovaný " + folderSingularSk : "Unnamed " + folderSingularEn) });
+        path.unshift({ id: folder.id, name: folder.title || t("Unnamed " + folderSingularEn, "Nepomenovaný " + folderSingularSk, "Névtelen " + folderSingularHu) });
         currentId = folder.parentId;
       } else {
         break;
@@ -165,10 +168,10 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
           filePath: `/uploads/${rowId}_${data.fileName || file.name}`
         });
       } else {
-        alert("Upload failed: " + (data.error || "Unknown error"));
+        alert(t("Upload failed: ", "Nahrávanie zlyhalo: ", "A feltöltés sikertelen: ") + (data.error || t("Unknown error", "Neznáma chyba", "Ismeretlen hiba")));
       }
     } catch (err) {
-      alert("Failed to connect to upload service.");
+      alert(t("Failed to connect to upload service.", "Nepodarilo sa pripojiť k službe nahrávania.", "Nem sikerült csatlakozni a feltöltési szolgáltatáshoz."));
     } finally {
       setIsUploading(false);
     }
@@ -316,7 +319,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
     return (
       <div className="flex flex-col gap-1.5 relative">
         <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
-          {systemLanguage === "sk" ? "Priradený klient" : "Linked Client"}
+          {t("Linked Client", "Priradený klient", "Hozzárendelt ügyfél")}
         </label>
         
         <div className="relative">
@@ -330,7 +333,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
               }}
               onFocus={() => setIsClientDropdownOpen(true)}
               className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700"
-              placeholder={systemLanguage === "sk" ? "Vyhľadať klienta..." : "Search client..."}
+              placeholder={t("Search client...", "Vyhľadať klienta...", "Ügyfél keresése...")}
             />
             <Search className="h-4 w-4 text-slate-400 absolute left-3 top-3.5" />
             {clientSearchQuery && (
@@ -357,7 +360,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
               <div className="absolute z-[3000] w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto divide-y divide-slate-100">
                 {filteredLeads.length === 0 ? (
                   <div className="p-3 text-center text-slate-400 text-xs">
-                    {systemLanguage === "sk" ? "Žiadni klienti sa nenašli" : "No clients found"}
+                    {t("No clients found", "Žiadni klienti sa nenašli", "Nincs találat az ügyfelekre")}
                   </div>
                 ) : (
                   filteredLeads.map(lead => (
@@ -373,7 +376,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                     >
                       <span className="font-bold text-slate-800">{lead.name}</span>
                       <span className="text-[10px] text-slate-400 truncate">
-                        {lead.email || "No email"} • {lead.phone || "No phone"}
+                        {lead.email || t("No email", "Žiadny e-mail", "Nincs e-mail")} • {lead.phone || t("No phone", "Žiadny telefón", "Nincs telefonszám")}
                       </span>
                     </button>
                   ))
@@ -388,24 +391,24 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
             <div className="flex items-center justify-between border-b border-emerald-100 pb-1.5 mb-1.5">
               <div className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[10px] text-emerald-700">
                 <Users className="h-3.5 w-3.5" />
-                <span>{systemLanguage === "sk" ? "Základné info o klientovi" : "Client Information"}</span>
+                <span>{t("Client Information", "Základné info o klientovi", "Ügyfél adatai")}</span>
               </div>
               <a
                 href={`#client-${encodeURIComponent(linkedClient.name)}`}
                 className="text-[10px] text-emerald-600 hover:text-emerald-950 font-black underline flex items-center gap-0.5"
               >
-                {systemLanguage === "sk" ? "Profil klienta" : "View Profile"}
+                {t("View Profile", "Profil klienta", "Profil megtekintése")}
                 <ChevronRight className="h-3 w-3" />
               </a>
             </div>
 
             <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
               <div>
-                <span className="text-[10px] text-emerald-600 block">{systemLanguage === "sk" ? "Meno" : "Name"}</span>
+                <span className="text-[10px] text-emerald-600 block">{t("Name", "Meno", "Név")}</span>
                 <span className="font-extrabold text-[13px]">{linkedClient.name}</span>
               </div>
               <div>
-                <span className="text-[10px] text-emerald-600 block">{systemLanguage === "sk" ? "Mesto" : "City"}</span>
+                <span className="text-[10px] text-emerald-600 block">{t("City", "Mesto", "Város")}</span>
                 <span className="font-bold">{linkedClient.city || "-"}</span>
               </div>
               <div>
@@ -413,7 +416,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                 <span className="font-bold truncate block">{linkedClient.email || "-"}</span>
               </div>
               <div>
-                <span className="text-[10px] text-emerald-600 block">{systemLanguage === "sk" ? "Telefón" : "Phone"}</span>
+                <span className="text-[10px] text-emerald-600 block">{t("Phone", "Telefón", "Telefon")}</span>
                 <span className="font-bold">{linkedClient.phone || "-"}</span>
               </div>
             </div>
@@ -437,7 +440,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
     return (
       <div className="flex flex-col gap-1.5 relative">
         <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
-          {systemLanguage === "sk" ? "Priradený lead" : "Linked Lead"}
+          {t("Linked Lead", "Priradený lead", "Hozzárendelt lead")}
         </label>
         
         <div className="relative">
@@ -451,7 +454,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
               }}
               onFocus={() => setIsLeadDropdownOpen(true)}
               className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700"
-              placeholder={systemLanguage === "sk" ? "Vyhľadať lead..." : "Search lead..."}
+              placeholder={t("Search lead...", "Vyhľadať lead...", "Lead keresése...")}
             />
             <Search className="h-4 w-4 text-slate-400 absolute left-3 top-3.5" />
             {leadSearchQuery && (
@@ -478,7 +481,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
               <div className="absolute z-[3000] w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto divide-y divide-slate-100">
                 {filteredLeads.length === 0 ? (
                   <div className="p-3 text-center text-slate-400 text-xs">
-                    {systemLanguage === "sk" ? "Žiadne leady sa nenašli" : "No leads found"}
+                    {t("No leads found", "Žiadne leady sa nenašli", "Nincs találat a leadekre")}
                   </div>
                 ) : (
                   filteredLeads.map(lead => (
@@ -494,7 +497,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                     >
                       <span className="font-bold text-slate-800">{lead.name}</span>
                       <span className="text-[10px] text-slate-400 truncate">
-                        {lead.email || "No email"} • {lead.phone || "No phone"}
+                        {lead.email || t("No email", "Žiadny e-mail", "Nincs e-mail")} • {lead.phone || t("No phone", "Žiadny telefón", "Nincs telefonszám")}
                       </span>
                     </button>
                   ))
@@ -509,24 +512,24 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
             <div className="flex items-center justify-between border-b border-indigo-100 pb-1.5 mb-1.5">
               <div className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[10px] text-indigo-700">
                 <Briefcase className="h-3.5 w-3.5" />
-                <span>{systemLanguage === "sk" ? "Základné info o leade" : "Lead Information"}</span>
+                <span>{t("Lead Information", "Základné info o leade", "Lead adatai")}</span>
               </div>
               <a
                 href={`#lead-${encodeURIComponent(linkedLead.id)}`}
                 className="text-[10px] text-indigo-600 hover:text-indigo-955 font-black underline flex items-center gap-0.5"
               >
-                {systemLanguage === "sk" ? "Profil leadu" : "View Profile"}
+                {t("View Profile", "Profil leadu", "Profil megtekintése")}
                 <ChevronRight className="h-3 w-3" />
               </a>
             </div>
 
             <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
               <div>
-                <span className="text-[10px] text-indigo-600 block">{systemLanguage === "sk" ? "Meno" : "Name"}</span>
+                <span className="text-[10px] text-indigo-600 block">{t("Name", "Meno", "Név")}</span>
                 <span className="font-extrabold text-[13px]">{linkedLead.name}</span>
               </div>
               <div>
-                <span className="text-[10px] text-indigo-600 block">{systemLanguage === "sk" ? "Status" : "Status"}</span>
+                <span className="text-[10px] text-indigo-600 block">{t("Status", "Status", "Státusz")}</span>
                 <span className="font-bold uppercase tracking-wider text-[9px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 border border-indigo-200 inline-block">{linkedLead.status || "-"}</span>
               </div>
               <div>
@@ -534,7 +537,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                 <span className="font-bold truncate block">{linkedLead.email || "-"}</span>
               </div>
               <div>
-                <span className="text-[10px] text-indigo-600 block">{systemLanguage === "sk" ? "Telefón" : "Phone"}</span>
+                <span className="text-[10px] text-indigo-600 block">{t("Phone", "Telefón", "Telefon")}</span>
                 <span className="font-bold">{linkedLead.phone || "-"}</span>
               </div>
             </div>
@@ -546,12 +549,14 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
 
   const handleDeleteItem = (id: string, isFolder: boolean) => {
     const confirmMsg = isFolder
-      ? (systemLanguage === "sk" 
-          ? `Vymazaním ${folderSingularSk.toLowerCase()}a sa vymaže aj všetok jeho obsah. Pokračovať?` 
-          : `Deleting a ${folderSingularEn.toLowerCase()} will delete all its nested contents recursively. Proceed?`)
-      : (systemLanguage === "sk" 
-          ? `Naozaj vymazať tento ${entrySingularSk.toLowerCase()}?` 
-          : `Are you sure you want to delete this ${entrySingularEn.toLowerCase()}?`);
+      ? t(
+          `Deleting a ${folderSingularEn.toLowerCase()} will delete all its nested contents recursively. Proceed?`,
+          `Vymazaním ${folderSingularSk.toLowerCase()}a sa vymaže aj všetok jeho obsah. Pokračovať?`,
+          `A(z) ${folderSingularHu.toLowerCase()} törlésével az összes benne lévő tartalom rekurzívan törlődik. Folytatja?`)
+      : t(
+          `Are you sure you want to delete this ${entrySingularEn.toLowerCase()}?`,
+          `Naozaj vymazať tento ${entrySingularSk.toLowerCase()}?`,
+          `Biztosan törli ezt a(z) ${entrySingularHu.toLowerCase()} elemet?`);
 
     if (confirm(confirmMsg)) {
       const deleteRecursive = (idToDelete: string, currentRows: UnifiedEntryRow[]): UnifiedEntryRow[] => {
@@ -640,12 +645,12 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
     if (!editingEntryRow) {
       return (
         <div className="flex-1 overflow-y-auto px-6 py-6 text-center text-slate-500">
-          <p>{systemLanguage === "sk" ? `${entrySingularSk} sa nenašiel.` : `${entrySingularEn} not found.`}</p>
+          <p>{t(`${entrySingularEn} not found.`, `${entrySingularSk} sa nenašiel.`, `A(z) ${entrySingularHu} nem található.`)}</p>
           <button
             onClick={() => { window.location.hash = "ue_" + registry.id; }}
             className="mt-4 px-4 py-2 bg-indigo-650 hover:bg-indigo-750 text-white rounded-xl font-bold cursor-pointer"
           >
-            {systemLanguage === "sk" ? "Späť" : "Go Back"}
+            {t("Go Back", "Späť", "Vissza")}
           </button>
         </div>
       );
@@ -668,10 +673,10 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
           </button>
           <div>
             <h2 className="text-xl font-heading font-bold text-slate-900 uppercase tracking-wider">
-              {systemLanguage === "sk" ? `Detail a úprava: ${entrySingularSk.toLowerCase()}` : `Details & Editing: ${entrySingularEn.toLowerCase()}`}
+              {t(`Details & Editing: ${entrySingularEn.toLowerCase()}`, `Detail a úprava: ${entrySingularSk.toLowerCase()}`, `${entrySingularHu.toLowerCase()} részletei és szerkesztése`)}
             </h2>
             <p className="text-xs text-slate-550 uppercase font-bold tracking-wider mt-0.5">
-              {editingEntryRow.title || (systemLanguage === "sk" ? "Bez názvu" : "Untitled")}
+              {editingEntryRow.title || t("Untitled", "Bez názvu", "Névtelen")}
             </p>
           </div>
         </div>
@@ -683,14 +688,14 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
             {activeModules.includes("title") && (
               <div className="flex flex-col gap-1.5">
                 <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
-                  {systemLanguage === "sk" ? "Titulok / Názov" : "Title / Name"}
+                  {t("Title / Name", "Titulok / Názov", "Cím / Név")}
                 </label>
                 <input
                   type="text"
                   value={formTitle}
                   onChange={(e) => setFormTitle(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700"
-                  placeholder={systemLanguage === "sk" ? "Zadajte názov..." : "Enter name..."}
+                  placeholder={t("Enter name...", "Zadajte názov...", "Adjon meg egy nevet...")}
                   required
                 />
               </div>
@@ -701,7 +706,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1.5">
                   <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
-                    {systemLanguage === "sk" ? "Termín (Due Date)" : "Due Date"}
+                    {t("Due Date", "Termín (Due Date)", "Határidő")}
                   </label>
                   <input
                     type="date"
@@ -713,7 +718,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                 
                 <div className="flex flex-col gap-1.5">
                   <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
-                    {systemLanguage === "sk" ? "Počet dní pre varovanie pred termínom" : "Warning days before due date"}
+                    {t("Warning days before due date", "Počet dní pre varovanie pred termínom", "Figyelmeztetés napokban a határidő előtt")}
                   </label>
                   <input
                     type="number"
@@ -721,7 +726,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                     value={formWarningDays}
                     onChange={(e) => setFormWarningDays(parseInt(e.target.value) || 0)}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700"
-                    placeholder="e.g. 3"
+                    placeholder={t("e.g. 3", "napr. 3", "pl. 3")}
                   />
                 </div>
               </div>
@@ -731,7 +736,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
             {activeModules.includes("file") && (
               <div className="flex flex-col gap-1.5">
                 <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
-                  {systemLanguage === "sk" ? "Príloha (Súbor)" : "Attachment (File)"}
+                  {t("Attachment (File)", "Príloha (Súbor)", "Melléklet (Fájl)")}
                 </label>
                 {formFile ? (
                   <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between gap-3 text-xs">
@@ -747,7 +752,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                         href={formFile.filePath}
                         download
                         className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-500 hover:text-indigo-650 transition-colors"
-                        title="Download file"
+                        title={t("Download file", "Stiahnuť súbor", "Fájl letöltése")}
                       >
                         <Download className="h-4 w-4" />
                       </a>
@@ -755,7 +760,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                         type="button"
                         onClick={() => setFormFile(null)}
                         className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-500 hover:text-rose-600 transition-colors cursor-pointer"
-                        title="Remove file"
+                        title={t("Remove file", "Odstrániť súbor", "Fájl eltávolítása")}
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -772,11 +777,11 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                     <div className="flex flex-col items-center gap-2">
                       <UploadCloud className="h-8 w-8 text-slate-400 group-hover:text-indigo-500 transition-colors" />
                       <span className="text-xs font-bold text-slate-500 group-hover:text-indigo-650 transition-colors">
-                        {isUploading 
-                          ? (systemLanguage === "sk" ? "Nahráva sa..." : "Uploading...")
-                          : (systemLanguage === "sk" ? "Kliknite alebo pretiahnite súbor sem" : "Click or drag file here")}
+                        {isUploading
+                          ? t("Uploading...", "Nahráva sa...", "Feltöltés...")
+                          : t("Click or drag file here", "Kliknite alebo pretiahnite súbor sem", "Kattintson vagy húzza ide a fájlt")}
                       </span>
-                      <span className="text-[10px] text-slate-400">Max size: 50MB</span>
+                      <span className="text-[10px] text-slate-400">{t("Max size: 50MB", "Max. veľkosť: 50MB", "Max. méret: 50MB")}</span>
                     </div>
                   </div>
                 )}
@@ -798,14 +803,14 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                 }}
                 className="px-4 py-2.5 rounded-xl hover:bg-slate-50 text-slate-500 text-xs font-bold uppercase tracking-wider cursor-pointer"
               >
-                {systemLanguage === "sk" ? "Zrušiť" : "Cancel"}
+                {t("Cancel", "Zrušiť", "Mégse")}
               </button>
               <button
                 type="submit"
                 className="px-5 py-2.5 rounded-xl text-white text-xs font-black uppercase tracking-wider shadow-md hover:shadow-lg transition-all cursor-pointer"
                 style={{ backgroundColor: registry.color }}
               >
-                {systemLanguage === "sk" ? "Uložiť zmeny" : "Save Changes"}
+                {t("Save Changes", "Uložiť zmeny", "Módosítások mentése")}
               </button>
             </div>
           </form>
@@ -834,7 +839,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
               {registry.name}
             </h2>
             <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-0.5">
-              {systemLanguage === "sk" ? `Správa: ${registry.name.toLowerCase()}` : `Manage: ${registry.name.toLowerCase()}`}
+              {t(`Manage: ${registry.name.toLowerCase()}`, `Správa: ${registry.name.toLowerCase()}`, `Kezelés: ${registry.name.toLowerCase()}`)}
             </p>
           </div>
         </div>
@@ -847,7 +852,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
               className="px-3.5 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-650 text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
             >
               <FolderPlus className="h-4 w-4" />
-              {systemLanguage === "sk" ? "Nový " + folderSingularSk.toLowerCase() : "New " + folderSingularEn}
+              {t("New " + folderSingularEn, "Nový " + folderSingularSk.toLowerCase(), "Új " + folderSingularHu.toLowerCase())}
             </button>
           )}
           <button
@@ -857,7 +862,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
             style={{ backgroundColor: registry.color }}
           >
             <Plus className="h-4 w-4" />
-            {systemLanguage === "sk" ? "Nový " + entrySingularSk.toLowerCase() : "New " + entrySingularEn}
+            {t("New " + entrySingularEn, "Nový " + entrySingularSk.toLowerCase(), "Új " + entrySingularHu.toLowerCase())}
           </button>
         </div>
       </div>
@@ -912,7 +917,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-indigo-500 transition-all bg-white"
-            placeholder={systemLanguage === "sk" ? "Vyhľadať..." : "Search..."}
+            placeholder={t("Search...", "Vyhľadať...", "Keresés...")}
           />
           <Search className="h-4 w-4 text-slate-400 absolute left-3 top-2.5" />
           {searchQuery && (
@@ -932,12 +937,13 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
           <div className="p-12 text-center text-slate-400">
             <span className="text-3xl">🗂️</span>
             <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mt-2">
-              {systemLanguage === "sk" ? `${folderSingularSk} je prázdny` : `This ${folderSingularEn.toLowerCase()} is empty`}
+              {t(`This ${folderSingularEn.toLowerCase()} is empty`, `${folderSingularSk} je prázdny`, `Ez a(z) ${folderSingularHu.toLowerCase()} üres`)}
             </p>
             <p className="text-[10px] font-medium text-slate-400 mt-1">
-              {systemLanguage === "sk" 
-                ? `Vytvorte nový ${entrySingularSk.toLowerCase()} alebo ${folderSingularSk.toLowerCase()} pomocou tlačidiel vyššie.` 
-                : `Create a new ${entrySingularEn.toLowerCase()} or ${folderSingularEn.toLowerCase()} using the toolbar buttons.`}
+              {t(
+                `Create a new ${entrySingularEn.toLowerCase()} or ${folderSingularEn.toLowerCase()} using the toolbar buttons.`,
+                `Vytvorte nový ${entrySingularSk.toLowerCase()} alebo ${folderSingularSk.toLowerCase()} pomocou tlačidiel vyššie.`,
+                `Hozzon létre egy új ${entrySingularHu.toLowerCase()} vagy ${folderSingularHu.toLowerCase()} elemet a fenti gombokkal.`)}
             </p>
           </div>
         ) : (
@@ -945,12 +951,12 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/50 text-[10px] font-black uppercase tracking-wider text-slate-450 select-none">
-                  <th className="py-3.5 px-6">{systemLanguage === "sk" ? `Názov / ${folderSingularSk}` : `Title / ${folderSingularEn}`}</th>
-                  {isDueDateActive && <th className="py-3.5 px-4">{systemLanguage === "sk" ? "Termín" : "Due Date"}</th>}
-                  {isFileActive && <th className="py-3.5 px-4">{systemLanguage === "sk" ? "Súbor" : "Attachment"}</th>}
-                  {isClientActive && <th className="py-3.5 px-4">{systemLanguage === "sk" ? "Klient" : "Client"}</th>}
-                  {isLeadActive && <th className="py-3.5 px-4">{systemLanguage === "sk" ? "Lead" : "Lead"}</th>}
-                  <th className="py-3.5 px-6 text-right">{systemLanguage === "sk" ? "Akcie" : "Actions"}</th>
+                  <th className="py-3.5 px-6">{t(`Title / ${folderSingularEn}`, `Názov / ${folderSingularSk}`, `Cím / ${folderSingularHu}`)}</th>
+                  {isDueDateActive && <th className="py-3.5 px-4">{t("Due Date", "Termín", "Határidő")}</th>}
+                  {isFileActive && <th className="py-3.5 px-4">{t("Attachment", "Súbor", "Melléklet")}</th>}
+                  {isClientActive && <th className="py-3.5 px-4">{t("Client", "Klient", "Ügyfél")}</th>}
+                  {isLeadActive && <th className="py-3.5 px-4">{t("Lead", "Lead", "Lead")}</th>}
+                  <th className="py-3.5 px-6 text-right">{t("Actions", "Akcie", "Műveletek")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-700">
@@ -967,10 +973,10 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                           {stats.ok} OK
                         </span>
                         <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 border border-amber-200">
-                          {stats.warning} Warn
+                          {stats.warning} {t("Warn", "Pozor", "Figy.")}
                         </span>
                         <span className="px-2 py-0.5 rounded-full bg-rose-50 text-rose-600 border border-rose-200">
-                          {stats.due} Due
+                          {stats.due} {t("Due", "Termín", "Lejárt")}
                         </span>
                       </div>
                     );
@@ -1058,7 +1064,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                         })() : (
                           <div className="flex items-center gap-2 text-slate-800">
                             <FileText className="h-4.5 w-4.5 text-slate-400 shrink-0" />
-                            <span>{row.title || (systemLanguage === "sk" ? "Bez názvu" : "Untitled")}</span>
+                            <span>{row.title || t("Untitled", "Bez názvu", "Névtelen")}</span>
                           </div>
                         )}
                       </td>
@@ -1085,7 +1091,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                               href={row.filePath}
                               download
                               className="inline-flex items-center gap-1 text-indigo-650 hover:text-indigo-850 font-bold hover:underline"
-                              title="Download attachment"
+                              title={t("Download attachment", "Stiahnuť prílohu", "Melléklet letöltése")}
                             >
                               <Download className="h-3.5 w-3.5" />
                               <span className="max-w-[150px] truncate">{row.fileName}</span>
@@ -1145,7 +1151,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                                 setIsMoving(true);
                               }}
                               className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-slate-700 rounded-lg transition-colors cursor-pointer"
-                              title={systemLanguage === "sk" ? `Presunúť do iného ${folderSingularSk.toLowerCase()}a` : `Move item to another ${folderSingularEn.toLowerCase()}`}
+                              title={t(`Move item to another ${folderSingularEn.toLowerCase()}`, `Presunúť do iného ${folderSingularSk.toLowerCase()}a`, `Áthelyezés másik ${folderSingularHu.toLowerCase()} elembe`)}
                             >
                               <Move className="h-4 w-4" />
                             </button>
@@ -1160,9 +1166,9 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                               }
                             }}
                             className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-slate-700 rounded-lg transition-colors cursor-pointer"
-                            title={row.isFolder 
-                              ? (systemLanguage === "sk" ? `Upraviť ${folderSingularSk.toLowerCase()}` : `Edit ${folderSingularEn.toLowerCase()}`) 
-                              : (systemLanguage === "sk" ? `Upraviť ${entrySingularSk.toLowerCase()}` : `Edit ${entrySingularEn.toLowerCase()}`)}
+                            title={row.isFolder
+                              ? t(`Edit ${folderSingularEn.toLowerCase()}`, `Upraviť ${folderSingularSk.toLowerCase()}`, `${folderSingularHu.toLowerCase()} szerkesztése`)
+                              : t(`Edit ${entrySingularEn.toLowerCase()}`, `Upraviť ${entrySingularSk.toLowerCase()}`, `${entrySingularHu.toLowerCase()} szerkesztése`)}
                           >
                             <Edit3 className="h-4 w-4" />
                           </button>
@@ -1170,7 +1176,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                             type="button"
                             onClick={() => handleDeleteItem(row.id, row.isFolder)}
                             className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
-                            title="Delete item"
+                            title={t("Delete item", "Vymazať položku", "Elem törlése")}
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
@@ -1192,13 +1198,13 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
             <div className="bg-white rounded-3xl p-6 max-w-md w-full border border-slate-100 shadow-2xl animate-in zoom-in-95 duration-200">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4 text-left">
                 <h3 className="text-sm font-heading font-black text-slate-800 uppercase tracking-wider">
-                  {editingIsFolder 
-                    ? (editingRow 
-                        ? (systemLanguage === "sk" ? `Upraviť ${folderSingularSk.toLowerCase()}` : `Edit ${folderSingularEn}`)
-                        : (systemLanguage === "sk" ? `Nový ${folderSingularSk}` : `New ${folderSingularEn}`))
-                    : (editingRow 
-                        ? (systemLanguage === "sk" ? `Upraviť ${entrySingularSk.toLowerCase()}` : `Edit ${entrySingularEn}`)
-                        : (systemLanguage === "sk" ? `Nový ${entrySingularSk}` : `New ${entrySingularSk}`)) /* Keep Slovak naming correct */}
+                  {editingIsFolder
+                    ? (editingRow
+                        ? t(`Edit ${folderSingularEn}`, `Upraviť ${folderSingularSk.toLowerCase()}`, `${folderSingularHu} szerkesztése`)
+                        : t(`New ${folderSingularEn}`, `Nový ${folderSingularSk}`, `Új ${folderSingularHu}`))
+                    : (editingRow
+                        ? t(`Edit ${entrySingularEn}`, `Upraviť ${entrySingularSk.toLowerCase()}`, `${entrySingularHu} szerkesztése`)
+                        : t(`New ${entrySingularEn}`, `Nový ${entrySingularSk}`, `Új ${entrySingularHu}`))}
                 </h3>
                 <button onClick={() => setIsEditing(false)} className="text-slate-400 hover:text-slate-650">
                   <X className="h-5 w-5" />
@@ -1211,8 +1217,8 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                   <div className="flex flex-col gap-1.5">
                     <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
                       {editingIsFolder
-                        ? (systemLanguage === "sk" ? `Názov pre ${folderSingularSk.toLowerCase()}` : `${folderSingularEn} Name`)
-                        : (systemLanguage === "sk" ? `Názov pre ${entrySingularSk.toLowerCase()}` : `${entrySingularEn} Name`)} *
+                        ? t(`${folderSingularEn} Name`, `Názov pre ${folderSingularSk.toLowerCase()}`, `${folderSingularHu} neve`)
+                        : t(`${entrySingularEn} Name`, `Názov pre ${entrySingularSk.toLowerCase()}`, `${entrySingularHu} neve`)} *
                     </label>
                     <input
                       type="text"
@@ -1220,8 +1226,8 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                       onChange={(e) => setFormTitle(e.target.value)}
                       className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-indigo-500 bg-white"
                       placeholder={editingIsFolder
-                        ? (systemLanguage === "sk" ? `Zadajte názov pre ${folderSingularSk.toLowerCase()}...` : `Enter ${folderSingularEn.toLowerCase()} name...`)
-                        : (systemLanguage === "sk" ? `Zadajte názov pre ${entrySingularSk.toLowerCase()}...` : `Enter ${entrySingularEn.toLowerCase()} name...`)}
+                        ? t(`Enter ${folderSingularEn.toLowerCase()} name...`, `Zadajte názov pre ${folderSingularSk.toLowerCase()}...`, `Adja meg a(z) ${folderSingularHu.toLowerCase()} nevét...`)
+                        : t(`Enter ${entrySingularEn.toLowerCase()} name...`, `Zadajte názov pre ${entrySingularSk.toLowerCase()}...`, `Adja meg a(z) ${entrySingularHu.toLowerCase()} nevét...`)}
                       required
                       autoFocus
                     />
@@ -1233,7 +1239,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                   <div className="space-y-3">
                     <div className="flex flex-col gap-1.5">
                       <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
-                        {systemLanguage === "sk" ? "Termín (Due Date)" : "Due Date"}
+                        {t("Due Date", "Termín (Due Date)", "Határidő")}
                       </label>
                       <input
                         type="date"
@@ -1245,7 +1251,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                     
                     <div className="flex flex-col gap-1.5">
                       <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
-                        {systemLanguage === "sk" ? "Počet dní pre varovanie pred termínom" : "Warning days before due date"}
+                        {t("Warning days before due date", "Počet dní pre varovanie pred termínom", "Figyelmeztetés napokban a határidő előtt")}
                       </label>
                       <input
                         type="number"
@@ -1253,7 +1259,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                         value={formWarningDays}
                         onChange={(e) => setFormWarningDays(parseInt(e.target.value) || 0)}
                         className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700"
-                        placeholder="e.g. 3"
+                        placeholder={t("e.g. 3", "napr. 3", "pl. 3")}
                       />
                     </div>
                   </div>
@@ -1263,7 +1269,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                 {activeFormModules.includes("file") && (
                   <div className="flex flex-col gap-1.5">
                     <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
-                      {systemLanguage === "sk" ? "Príloha (Súbor)" : "Attachment (File)"}
+                      {t("Attachment (File)", "Príloha (Súbor)", "Melléklet (Fájl)")}
                     </label>
                     {formFile ? (
                       <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between gap-3 text-xs">
@@ -1286,7 +1292,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                           <div className="flex flex-col items-center justify-center pt-5 pb-6">
                             <UploadCloud className={`h-6 w-6 text-slate-400 ${isUploading ? "animate-pulse" : ""}`} />
                             <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wider mt-1.5">
-                              {isUploading ? "Uploading file..." : (systemLanguage === "sk" ? "Nahrať súbor" : "Upload file")}
+                              {isUploading ? t("Uploading file...", "Nahráva sa súbor...", "Fájl feltöltése folyamatban...") : t("Upload file", "Nahrať súbor", "Fájl feltöltése")}
                             </p>
                           </div>
                           <input
@@ -1313,7 +1319,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                     onClick={() => setIsEditing(false)}
                     className="px-4 py-2 rounded-xl hover:bg-slate-50 text-slate-500 text-xs font-bold uppercase tracking-wider"
                   >
-                    {systemLanguage === "sk" ? "Zrušiť" : "Cancel"}
+                    {t("Cancel", "Zrušiť", "Mégse")}
                   </button>
                   <button
                     type="submit"
@@ -1321,7 +1327,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                     className="px-4 py-2 rounded-xl text-white text-xs font-black uppercase tracking-wider shadow-md disabled:opacity-50"
                     style={{ backgroundColor: registry.color }}
                   >
-                    {systemLanguage === "sk" ? "Uložiť" : "Save"}
+                    {t("Save", "Uložiť", "Mentés")}
                   </button>
                 </div>
               </form>
@@ -1337,7 +1343,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full border border-slate-100 shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4 text-left">
               <h3 className="text-sm font-heading font-black text-slate-800 uppercase tracking-wider">
-                {systemLanguage === "sk" ? "Presunúť položku" : "Move Item"}
+                {t("Move Item", "Presunúť položku", "Elem áthelyezése")}
               </h3>
               <button onClick={() => { setIsMoving(false); setMovingItem(null); }} className="text-slate-400 hover:text-slate-600">
                 <X className="h-5 w-5" />
@@ -1346,7 +1352,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
 
             <div className="space-y-4 text-left">
               <span className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">
-                {systemLanguage === "sk" ? `Vyberte cieľový ${folderSingularSk.toLowerCase()}` : `Select target ${folderSingularEn.toLowerCase()}`}
+                {t(`Select target ${folderSingularEn.toLowerCase()}`, `Vyberte cieľový ${folderSingularSk.toLowerCase()}`, `Válassza ki a cél ${folderSingularHu.toLowerCase()} elemet`)}
               </span>
 
               <div className="max-h-60 overflow-y-auto space-y-1 pr-1 border border-slate-150 rounded-2xl p-2 bg-slate-50/50">
@@ -1357,7 +1363,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                   className="w-full flex items-center gap-2 p-2.5 rounded-xl hover:bg-white border border-transparent hover:border-slate-200 text-xs font-bold text-slate-650 hover:text-indigo-650 transition-all text-left cursor-pointer"
                 >
                   <Folder className="h-4 w-4 text-slate-400" />
-                  <span>/ (Root)</span>
+                  <span>/ ({t("Root", "Koreň", "Gyökér")})</span>
                 </button>
 
                 {getFoldersListExcept(movingItem.id).map(folder => (
@@ -1379,7 +1385,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                   onClick={() => { setIsMoving(false); setMovingItem(null); }}
                   className="px-4 py-2 rounded-xl hover:bg-slate-50 text-slate-500 text-xs font-bold uppercase tracking-wider"
                 >
-                  {systemLanguage === "sk" ? "Zrušiť" : "Cancel"}
+                  {t("Cancel", "Zrušiť", "Mégse")}
                 </button>
               </div>
             </div>

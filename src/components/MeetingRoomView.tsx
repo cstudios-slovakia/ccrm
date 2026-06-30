@@ -88,6 +88,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
   isSyncing = false,
   taskStates = ["New", "In progress", "Blocked", "Done"]
 }) => {
+  const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
   const [viewState, setViewState] = useState<"list" | "new" | "detail">(initialView);
   const [selectedMeeting, setSelectedMeeting] = useState<MeetingNote | null>(null);
   
@@ -234,20 +235,20 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
   const startRecording = async () => {
     // Automatically set title if empty or default
-    if (viewState === "new" && (!newTitle.trim() || newTitle === "Untitled Note" || newTitle === "Nepomenovaný zápis")) {
-      const todayStr = new Date().toLocaleDateString(systemLanguage === "sk" ? "sk-SK" : "en-US", {
+    if (viewState === "new" && (!newTitle.trim() || newTitle === "Untitled Note" || newTitle === "Nepomenovaný zápis" || newTitle === "Névtelen jegyzet")) {
+      const todayStr = new Date().toLocaleDateString(systemLanguage === "sk" ? "sk-SK" : systemLanguage === "hu" ? "hu-HU" : "en-US", {
         year: "numeric",
         month: "2-digit",
         day: "2-digit",
         hour: "2-digit",
         minute: "2-digit"
       });
-      setNewTitle(systemLanguage === "sk" ? `Nahrávané stretnutie - ${todayStr}` : `Recorded Meeting - ${todayStr}`);
+      setNewTitle(t(`Recorded Meeting - ${todayStr}`, `Nahrávané stretnutie - ${todayStr}`, `Rögzített megbeszélés - ${todayStr}`));
     }
 
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error("Microphone access is not supported by this browser.");
+        throw new Error(t("Microphone access is not supported by this browser.", "Tento prehliadač nepodporuje prístup k mikrofónu.", "Ez a böngésző nem támogatja a mikrofonhoz való hozzáférést."));
       }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       setMicrophoneStream(stream);
@@ -307,14 +308,14 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               saveNoteAction(true, data.filePath);
             }
             if (typeof (window as any).showToast === "function") {
-              (window as any).showToast("Audio recording saved successfully!");
+              (window as any).showToast(t("Audio recording saved successfully!", "Zvuková nahrávka bola úspešne uložená!", "A hangfelvétel sikeresen elmentve!"));
             }
           } else {
-            throw new Error(data.message || "Upload failed");
+            throw new Error(data.message || t("Upload failed", "Nahrávanie zlyhalo", "A feltöltés sikertelen"));
           }
         } catch (err: any) {
           if (typeof (window as any).showToast === "function") {
-            (window as any).showToast("Failed to upload audio to server: " + err.message, "error");
+            (window as any).showToast(t("Failed to upload audio to server: ", "Nepodarilo sa nahrať zvuk na server: ", "A hang szerverre való feltöltése sikertelen: ") + err.message, "error");
           }
         } finally {
           setIsUploadingAudio(false);
@@ -328,7 +329,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
       startVisualizer(stream);
     } catch (err: any) {
       if (typeof (window as any).showToast === "function") {
-        (window as any).showToast("Microphone access denied or error: " + err.message, "error");
+        (window as any).showToast(t("Microphone access denied or error: ", "Prístup k mikrofónu bol zamietnutý alebo nastala chyba: ", "A mikrofonhoz való hozzáférés megtagadva vagy hiba történt: ") + err.message, "error");
       }
     }
   };
@@ -386,7 +387,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
   };
 
   const removeAudioFile = () => {
-    if (confirm(systemLanguage === "sk" ? "Naozaj chcete odstrániť túto nahrávku?" : "Are you sure you want to remove this recording?")) {
+    if (confirm(t("Are you sure you want to remove this recording?", "Naozaj chcete odstrániť túto nahrávku?", "Biztosan eltávolítja ezt a felvételt?"))) {
       if (audioRef.current) {
         audioRef.current.pause();
       }
@@ -401,7 +402,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
       }
       
       if (typeof (window as any).showToast === "function") {
-        (window as any).showToast(systemLanguage === "sk" ? "Nahrávka bola odstránená" : "Recording removed");
+        (window as any).showToast(t("Recording removed", "Nahrávka bola odstránená", "A felvétel eltávolítva"));
       }
     }
   };
@@ -447,7 +448,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
           setNewAiSummary(aiSum);
           setNewAutomatedTasks(extractedTasks);
 
-          const finalTitle = newTitle.trim() || (systemLanguage === "sk" ? "Nepomenovaný zápis" : "Untitled Note");
+          const finalTitle = newTitle.trim() || t("Untitled Note", "Nepomenovaný zápis", "Névtelen jegyzet");
           let primaryLeadId = "";
           let primaryLeadName = "General Contact";
           if (attachedClients.length > 0) {
@@ -509,14 +510,14 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
         }
 
         if (typeof (window as any).showToast === "function") {
-          (window as any).showToast("Transcription and synthesis completed successfully!");
+          (window as any).showToast(t("Transcription and synthesis completed successfully!", "Prepis a syntéza boli úspešne dokončené!", "Az átírás és szintézis sikeresen befejeződött!"));
         }
       } else {
-        throw new Error(data.message || "Transcription failed");
+        throw new Error(data.message || t("Transcription failed", "Prepis zlyhal", "Az átírás sikertelen"));
       }
     } catch (err: any) {
       if (typeof (window as any).showToast === "function") {
-        (window as any).showToast("Transcription failed: " + err.message, "error");
+        (window as any).showToast(t("Transcription failed: ", "Prepis zlyhal: ", "Az átírás sikertelen: ") + err.message, "error");
       }
     } finally {
       setIsTranscribing(false);
@@ -544,10 +545,10 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
           <div className="text-left min-w-0">
             <div className="text-xs font-extrabold uppercase tracking-wider text-slate-800 truncate">
-              {recordingState === "idle" && (systemLanguage === "sk" ? "Pripravené na nahrávanie" : "Ready to Record")}
-              {recordingState === "recording" && (systemLanguage === "sk" ? "Nahrávanie..." : "Recording...")}
-              {recordingState === "paused" && (systemLanguage === "sk" ? "Nahrávanie pozastavené" : "Recording Paused")}
-              {recordingState === "stopped" && (systemLanguage === "sk" ? "Nahrávka pripravená" : "Recording Saved")}
+              {recordingState === "idle" && t("Ready to Record", "Pripravené na nahrávanie", "Felvételre kész")}
+              {recordingState === "recording" && t("Recording...", "Nahrávanie...", "Felvétel...")}
+              {recordingState === "paused" && t("Recording Paused", "Nahrávanie pozastavené", "Felvétel szüneteltetve")}
+              {recordingState === "stopped" && t("Recording Saved", "Nahrávka pripravená", "Felvétel elmentve")}
             </div>
             {(recordingState === "recording" || recordingState === "paused") && (
               <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-0.5">
@@ -629,7 +630,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               type="button"
               onClick={removeAudioFile}
               className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer shrink-0"
-              title={systemLanguage === "sk" ? "Odstrániť nahrávku" : "Remove recording"}
+              title={t("Remove recording", "Odstrániť nahrávku", "Felvétel eltávolítása")}
             >
               <Trash2 className="h-4 w-4" />
             </button>
@@ -646,14 +647,14 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                 className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-black uppercase tracking-wider rounded-xl cursor-pointer shadow-md shadow-rose-600/20 flex items-center gap-1.5 transition-all hover:scale-[1.02] active:scale-95"
               >
                 <Mic className="h-3.5 w-3.5 fill-white" />
-                {systemLanguage === "sk" ? "Nahrávať" : "Record"}
+                {t("Record", "Nahrávať", "Rögzítés")}
               </button>
               <button
                 type="button"
                 onClick={cancelRecording}
                 className="px-4 py-2 border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-800 text-[10px] font-black uppercase tracking-wider rounded-xl cursor-pointer shadow-sm flex items-center gap-1.5 transition-all"
               >
-                {systemLanguage === "sk" ? "Zrušiť" : "Cancel"}
+                {t("Cancel", "Zrušiť", "Mégse")}
               </button>
             </>
           )}
@@ -666,7 +667,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                 className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-black uppercase tracking-wider rounded-xl cursor-pointer shadow-sm flex items-center gap-1.5 transition-all"
               >
                 <Pause className="h-3.5 w-3.5 fill-white" />
-                {systemLanguage === "sk" ? "Pozastaviť" : "Pause"}
+                {t("Pause", "Pozastaviť", "Szünet")}
               </button>
               <button
                 type="button"
@@ -674,14 +675,14 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                 className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-[10px] font-black uppercase tracking-wider rounded-xl cursor-pointer shadow-sm flex items-center gap-1.5 transition-all"
               >
                 <Square className="h-3.5 w-3.5 fill-white" />
-                {systemLanguage === "sk" ? "Zastaviť" : "Stop"}
+                {t("Stop", "Zastaviť", "Leállítás")}
               </button>
               <button
                 type="button"
                 onClick={cancelRecording}
                 className="px-4 py-2 border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-805 text-[10px] font-black uppercase tracking-wider rounded-xl cursor-pointer shadow-sm flex items-center gap-1.5 transition-all"
               >
-                {systemLanguage === "sk" ? "Zrušiť" : "Cancel"}
+                {t("Cancel", "Zrušiť", "Mégse")}
               </button>
             </>
           )}
@@ -694,7 +695,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                 className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-black uppercase tracking-wider rounded-xl cursor-pointer shadow-sm flex items-center gap-1.5 transition-all"
               >
                 <Play className="h-3.5 w-3.5 fill-white" />
-                {systemLanguage === "sk" ? "Pokračovať" : "Resume"}
+                {t("Resume", "Pokračovať", "Folytatás")}
               </button>
               <button
                 type="button"
@@ -702,14 +703,14 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                 className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-[10px] font-black uppercase tracking-wider rounded-xl cursor-pointer shadow-sm flex items-center gap-1.5 transition-all"
               >
                 <Square className="h-3.5 w-3.5 fill-white" />
-                {systemLanguage === "sk" ? "Zastaviť" : "Stop"}
+                {t("Stop", "Zastaviť", "Leállítás")}
               </button>
               <button
                 type="button"
                 onClick={cancelRecording}
                 className="px-4 py-2 border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-805 text-[10px] font-black uppercase tracking-wider rounded-xl cursor-pointer shadow-sm flex items-center gap-1.5 transition-all"
               >
-                {systemLanguage === "sk" ? "Zrušiť" : "Cancel"}
+                {t("Cancel", "Zrušiť", "Mégse")}
               </button>
             </>
           )}
@@ -724,27 +725,27 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               {isTranscribing ? (
                 <>
                   <div className="h-3 w-3 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                  {systemLanguage === "sk" ? "Prepisuje sa..." : "Transcribing..."}
+                  {t("Transcribing...", "Prepisuje sa...", "Átírás...")}
                 </>
               ) : isUploadingAudio ? (
                 <>
                   <div className="h-3 w-3 rounded-full border-2 border-slate-400 border-t-transparent animate-spin" />
-                  {systemLanguage === "sk" ? "Ukladanie..." : "Uploading..."}
+                  {t("Uploading...", "Ukladanie...", "Feltöltés...")}
                 </>
               ) : isSyncing ? (
                 <>
                   <div className="h-3 w-3 rounded-full border-2 border-slate-400 border-t-transparent animate-spin" />
-                  {systemLanguage === "sk" ? "Ukladá sa na server..." : "Saving to server..."}
+                  {t("Saving to server...", "Ukladá sa na server...", "Mentés a szerverre...")}
                 </>
               ) : !uploadedAudioFile ? (
                 <>
                   <div className="h-3 w-3 rounded-full border-2 border-slate-400 border-t-transparent animate-spin" />
-                  {systemLanguage === "sk" ? "Chýba nahrávka" : "No recording"}
+                  {t("No recording", "Chýba nahrávka", "Nincs felvétel")}
                 </>
               ) : (
                 <>
                   <Sparkles className="h-3.5 w-3.5" />
-                  {systemLanguage === "sk" ? "Prepísať a zhrnúť" : "Transcribe"}
+                  {t("Transcribe", "Prepísať a zhrnúť", "Átírás és összegzés")}
                 </>
               )}
             </button>
@@ -899,7 +900,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
       setTasks(prev => [newCrmTask, ...prev]);
       
       if (typeof (window as any).showToast === "function") {
-        (window as any).showToast(`Task created and assigned to ${username}!`);
+        (window as any).showToast(t(`Task created and assigned to ${username}!`, `Úloha bola vytvorená a priradená používateľovi ${username}!`, `A feladat létrehozva és hozzárendelve ${username} felhasználóhoz!`));
       }
     }
 
@@ -953,7 +954,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
     
     if (plainText.trim() === "") {
       if (typeof (window as any).showToast === "function") {
-        (window as any).showToast("Cannot summarize empty notes.", "error");
+        (window as any).showToast(t("Cannot summarize empty notes.", "Prázdne poznámky nie je možné zhrnúť.", "Üres jegyzetek nem összegezhetők."), "error");
       }
       setIsGeneratingDetailSummary(false);
       return;
@@ -1011,14 +1012,14 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
           setSelectedMeeting(updated);
         }
         if (typeof (window as any).showToast === "function") {
-          (window as any).showToast("AI Summary generated successfully!");
+          (window as any).showToast(t("AI Summary generated successfully!", "AI zhrnutie bolo úspešne vygenerované!", "Az AI összefoglaló sikeresen elkészült!"));
         }
       } else {
-        throw new Error(data.message || "Unknown error occurred.");
+        throw new Error(data.message || t("Unknown error occurred.", "Vyskytla sa neznáma chyba.", "Ismeretlen hiba történt."));
       }
     } catch (err: any) {
       if (typeof (window as any).showToast === "function") {
-        (window as any).showToast(err.message || "Failed to generate AI Summary. Using fallback seeder.", "warning");
+        (window as any).showToast(err.message || t("Failed to generate AI Summary. Using fallback seeder.", "Nepodarilo sa vygenerovať AI zhrnutie. Použije sa záložný generátor.", "Az AI összefoglaló létrehozása sikertelen. Tartalék generátor használata."), "warning");
       }
       
       // Fallback local heuristic generation from actual note content if OpenAI fails or is not configured
@@ -1142,10 +1143,10 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
   const saveNoteAction = (silent = false, overrideAudioFile?: string) => {
     if (!currentNoteId) return;
 
-    const finalTitle = newTitle.trim() || (systemLanguage === "sk" ? "Nepomenovaný zápis" : "Untitled Note");
+    const finalTitle = newTitle.trim() || t("Untitled Note", "Nepomenovaný zápis", "Névtelen jegyzet");
     let primaryLeadId = "";
     let primaryLeadName = "General Contact";
-    
+
     if (attachedClients.length > 0) {
       const firstClient = leads.find((l) => String(l.id) === attachedClients[0]);
       if (firstClient) {
@@ -1227,7 +1228,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
     });
 
     if (!silent && typeof (window as any).showToast === "function") {
-      (window as any).showToast("Meeting saved and AI Summary successfully compiled!");
+      (window as any).showToast(t("Meeting saved and AI Summary successfully compiled!", "Stretnutie bolo uložené a AI zhrnutie úspešne zostavené!", "A megbeszélés elmentve és az AI összefoglaló sikeresen összeállítva!"));
     }
   };
 
@@ -1264,11 +1265,11 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
   const getSentimentBadge = (sentiment: "positive" | "neutral" | "negative") => {
     switch (sentiment) {
       case "positive":
-        return <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/50 text-[10px] font-black uppercase tracking-wider">🟢 Positive</span>;
+        return <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/50 text-[10px] font-black uppercase tracking-wider">{t("🟢 Positive", "🟢 Pozitívne", "🟢 Pozitív")}</span>;
       case "negative":
-        return <span className="px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200/50 text-[10px] font-black uppercase tracking-wider">🔴 Critical</span>;
+        return <span className="px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200/50 text-[10px] font-black uppercase tracking-wider">{t("🔴 Critical", "🔴 Kritické", "🔴 Kritikus")}</span>;
       default:
-        return <span className="px-2.5 py-1 rounded-full bg-slate-50 text-slate-700 border border-slate-200/50 text-[10px] font-black uppercase tracking-wider">⚪ Neutral</span>;
+        return <span className="px-2.5 py-1 rounded-full bg-slate-50 text-slate-700 border border-slate-200/50 text-[10px] font-black uppercase tracking-wider">{t("⚪ Neutral", "⚪ Neutrálne", "⚪ Semleges")}</span>;
     }
   };
 
@@ -1276,7 +1277,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
     if (viewState !== "new") return null;
     return {
       id: currentNoteId || "",
-      title: newTitle.trim() || (systemLanguage === "sk" ? "Nepomenovaný zápis" : "Untitled Note"),
+      title: newTitle.trim() || t("Untitled Note", "Nepomenovaný zápis", "Névtelen jegyzet"),
       date: newDate,
       leadId: attachedLeads[0] || "",
       leadName: leads.find(l => String(l.id) === attachedLeads[0])?.name || "General Contact",
@@ -1311,7 +1312,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
             className="w-full py-3 rounded-2xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-heading font-black text-[11px] uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-indigo-100"
           >
             <Sparkles className="h-4 w-4 text-indigo-655" />
-            {isGeneratingDetailSummary ? "Generating..." : "Resummarize Note"}
+            {isGeneratingDetailSummary ? t("Generating...", "Generuje sa...", "Generálás...") : t("Resummarize Note", "Znova zhrnúť poznámku", "Jegyzet újraösszegzése")}
           </button>
         ) : (
           <button
@@ -1321,7 +1322,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
             className="w-full py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-250 disabled:text-slate-400 text-white font-heading font-black text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/20"
           >
             <Sparkles className="h-4 w-4" />
-            {isGeneratingDetailSummary ? "Generating..." : "Make AI Summary"}
+            {isGeneratingDetailSummary ? t("Generating...", "Generuje sa...", "Generálás...") : t("Make AI Summary", "Vytvoriť AI zhrnutie", "AI összefoglaló készítése")}
           </button>
         )}
 
@@ -1329,8 +1330,8 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
         {isGeneratingDetailSummary && (
           <div className="p-8 flex flex-col items-center justify-center space-y-3 text-center bg-slate-50 border border-slate-150 rounded-2xl">
             <div className="h-8 w-8 rounded-full border-2 border-indigo-600 border-t-transparent animate-spin" />
-            <p className="text-xs font-extrabold text-slate-800 animate-pulse">Analyzing note content...</p>
-            <p className="text-[10px] text-slate-400 font-medium">Extracting actions & customer sentiment</p>
+            <p className="text-xs font-extrabold text-slate-800 animate-pulse">{t("Analyzing note content...", "Analyzuje sa obsah poznámky...", "Jegyzet tartalmának elemzése...")}</p>
+            <p className="text-[10px] text-slate-400 font-medium">{t("Extracting actions & customer sentiment", "Extrahujú sa akcie a sentiment zákazníka", "Műveletek és ügyfél-hangulat kinyerése")}</p>
           </div>
         )}
 
@@ -1338,10 +1339,10 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
         {!summaryGenerated && (!integrationsConfig?.openAiKey || integrationsConfig.openAiKey.trim() === "") && (
           <div className="p-4 bg-amber-50/50 border border-amber-200/50 rounded-2xl space-y-2 text-center">
             <p className="text-xs text-amber-900 font-extrabold leading-relaxed uppercase tracking-wider text-[10px]">
-              AI Assistant Inactive
+              {t("AI Assistant Inactive", "AI asistent neaktívny", "AI asszisztens inaktív")}
             </p>
             <p className="text-[10px] text-amber-700 leading-relaxed font-semibold">
-              Please configure your secret OpenAI API Key in settings to enable summary generation, topic tagging, and automated action plans.
+              {t("Please configure your secret OpenAI API Key in settings to enable summary generation, topic tagging, and automated action plans.", "Nastavte si svoj tajný OpenAI API kľúč v nastaveniach, aby ste umožnili generovanie zhrnutí, označovanie tém a automatizované akčné plány.", "Állítsa be a titkos OpenAI API-kulcsát a beállításokban az összefoglalók generálásának, a témacímkézésnek és az automatizált cselekvési terveknek az engedélyezéséhez.")}
             </p>
           </div>
         )}
@@ -1351,7 +1352,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
           <div className="space-y-4 border-t border-slate-100 pt-4">
             <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
               <Sparkles className="h-4 w-4 text-indigo-505" />
-              AI Summary
+              {t("AI Summary", "AI zhrnutie", "AI összefoglaló")}
             </h3>
             
             <div className="p-4 bg-indigo-50/40 border border-indigo-100/30 rounded-2xl space-y-2">
@@ -1362,14 +1363,14 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div className="p-3 bg-slate-50 border border-slate-150 rounded-xl space-y-1">
-                <div className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Sentiment</div>
+                <div className="text-[9px] font-black text-slate-400 uppercase tracking-wider">{t("Sentiment", "Sentiment", "Hangulat")}</div>
                 <div className="font-bold text-emerald-600 uppercase tracking-wide flex items-center gap-1 text-[10px]">
                   {getSentimentBadge(meeting.aiSummary.sentiment)}
                   {meeting.aiSummary.sentiment}
                 </div>
               </div>
               <div className="p-3 bg-slate-50 border border-slate-150 rounded-xl space-y-1">
-                <div className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Topics</div>
+                <div className="text-[9px] font-black text-slate-400 uppercase tracking-wider">{t("Topics", "Témy", "Témák")}</div>
                 <div className="font-bold text-indigo-600 truncate text-[9px] uppercase tracking-wide" title={meeting.aiSummary.topics.join(", ")}>
                   {meeting.aiSummary.topics.slice(0, 2).join(" • ")}
                 </div>
@@ -1383,12 +1384,12 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
           <div className="space-y-4 border-t border-slate-100 pt-4">
             <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
               <CheckSquare className="h-4 w-4 text-indigo-500" />
-              Task Suggestions
+              {t("Task Suggestions", "Návrhy úloh", "Feladatjavaslatok")}
             </h3>
 
             <div className="space-y-3">
               {automatedTasks.length === 0 ? (
-                <p className="text-[10px] text-slate-400 italic text-center py-2">No suggestions generated</p>
+                <p className="text-[10px] text-slate-400 italic text-center py-2">{t("No suggestions generated", "Neboli vygenerované žiadne návrhy", "Nincs generált javaslat")}</p>
               ) : (
                 automatedTasks.map(task => {
                   const isAssigningThis = assigningTaskId === task.id;
@@ -1410,14 +1411,14 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                           </h4>
                           {isCreated && (
                             <span className="shrink-0 flex items-center gap-0.5 text-[8px] font-black uppercase text-emerald-600 bg-emerald-100/40 border border-emerald-200/35 px-1.5 py-0.5 rounded-md">
-                              Created
+                              {t("Created", "Vytvorené", "Létrehozva")}
                             </span>
                           )}
                         </div>
                         <div className="flex flex-wrap items-center gap-1.5 text-[9px] text-slate-400 font-bold uppercase tracking-wider">
                           <span className="flex items-center gap-0.5">
                             <Calendar className="h-3 w-3" />
-                            {task.dueDate || "No deadline"}
+                            {task.dueDate || t("No deadline", "Bez termínu", "Nincs határidő")}
                           </span>
                           <span>•</span>
                           <span className={cn(
@@ -1451,7 +1452,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                               className="text-[9px] font-black text-indigo-655 hover:text-indigo-800 transition-colors uppercase tracking-wider flex items-center gap-0.5 cursor-pointer bg-indigo-50/50 hover:bg-indigo-50 px-2.5 py-1.5 rounded-xl border border-indigo-100/50"
                             >
                               <Plus className="h-3 w-3" />
-                              Assign to Create
+                              {t("Assign to Create", "Priradiť a vytvoriť", "Hozzárendelés és létrehozás")}
                             </button>
                           )}
 
@@ -1489,10 +1490,10 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                             className="text-[9px] font-black text-slate-500 hover:text-slate-700 transition-colors uppercase tracking-wider flex items-center gap-0.5 cursor-pointer bg-slate-100 hover:bg-slate-200 px-2.5 py-1.5 rounded-xl border border-slate-200"
                           >
                             <Settings className="h-3.5 w-3.5 text-slate-500" />
-                            Edit Details
+                            {t("Edit Details", "Upraviť detaily", "Részletek szerkesztése")}
                           </button>
                           {!isCreated && (
-                            <span className="text-[9px] text-slate-400 italic">Suggestion</span>
+                            <span className="text-[9px] text-slate-400 italic">{t("Suggestion", "Návrh", "Javaslat")}</span>
                           )}
                         </div>
                       </div>
@@ -1729,7 +1730,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                                 handleSelectMeeting(m);
                               }}
                               className="shrink-0 w-6 h-6 rounded-full bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white flex items-center justify-center shadow-md shadow-rose-600/30 transition-all cursor-pointer hover:scale-105 active:scale-95"
-                              title={systemLanguage === "sk" ? "Prehrať nahrávku" : "Play recording"}
+                              title={t("Play recording", "Prehrať nahrávku", "Felvétel lejátszása")}
                             >
                               <Mic className="h-3 w-3 fill-white" />
                             </button>
@@ -1799,7 +1800,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               <div className="w-full mb-6">
                 <input
                   type="text"
-                  placeholder={systemLanguage === "sk" ? "Názov dokumentu / stretnutia..." : "Untitled Document..."}
+                  placeholder={t("Untitled Document...", "Názov dokumentu / stretnutia...", "Névtelen dokumentum...")}
                   value={selectedMeeting.title}
                   onChange={(e) => {
                     const updated = { ...selectedMeeting, title: e.target.value };
@@ -1864,7 +1865,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
               {activeTab === "transcription" && (
                 <div className="text-slate-700 text-xs font-medium leading-relaxed bg-slate-50 border border-slate-200/60 p-6 rounded-2xl max-h-[500px] overflow-y-auto whitespace-pre-wrap select-text text-left">
-                  {selectedMeeting.transcription || (systemLanguage === "sk" ? "Žiadny prepis k dispozícii." : "No transcription available.")}
+                  {selectedMeeting.transcription || t("No transcription available.", "Žiadny prepis k dispozícii.", "Nincs elérhető átirat.")}
                 </div>
               )}
 
@@ -1896,7 +1897,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                   window.location.hash = "meetings";
                 }}
                 className="p-2.5 rounded-xl border border-slate-200 bg-white text-slate-550 hover:text-slate-800 hover:bg-slate-50 transition-all cursor-pointer shrink-0"
-                title="Back to list"
+                title={t("Back to list", "Späť na zoznam", "Vissza a listához")}
               >
                 <ArrowLeft className="h-4.5 w-4.5" />
               </button>
@@ -1921,7 +1922,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                       setAudioUrl(null);
                     }}
                     className="w-3.5 h-3.5 rounded-full bg-rose-600 border border-white hover:bg-rose-700 hover:scale-110 active:scale-95 transition-all cursor-pointer shadow-md shadow-rose-600/30 animate-pulse shrink-0"
-                    title={systemLanguage === "sk" ? "Zapnúť nahrávanie" : "Enable recording"}
+                    title={t("Enable recording", "Zapnúť nahrávanie", "Felvétel engedélyezése")}
                   />
                 )}
               </div>
@@ -1930,7 +1931,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
             {/* Middle controls: Attach dropdowns */}
             <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-655">
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider shrink-0 mr-1">
-                {systemLanguage === "sk" ? "Priradiť:" : "Attach:"}
+                {t("Attach:", "Priradiť:", "Csatolás:")}
               </span>
 
               {/* LEADS MULTI-SELECT */}
@@ -1941,21 +1942,21 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs text-slate-700 cursor-pointer font-bold transition-all"
                 >
                   <Filter className="h-3.5 w-3.5 text-indigo-505" />
-                  <span>Leady ({attachedLeads.length})</span>
+                  <span>{t("Leads", "Leady", "Leadek")} ({attachedLeads.length})</span>
                   <ChevronDown className="h-3 w-3 text-slate-405" />
                 </button>
                 {activeDropdown === "leads" && (
                   <div className="absolute left-0 mt-1.5 w-64 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 p-2.5 flex flex-col gap-2">
                     <input
                       type="text"
-                      placeholder="Search leads..."
+                      placeholder={t("Search leads...", "Hľadať leady...", "Leadek keresése...")}
                       value={leadSearch}
                       onChange={(e) => setLeadSearch(e.target.value)}
                       className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px] focus:outline-none focus:border-indigo-500"
                     />
                     <div className="max-h-40 overflow-y-auto flex flex-col gap-0.5">
                       {leadsList.filter(l => l.name.toLowerCase().includes(leadSearch.toLowerCase())).length === 0 ? (
-                        <div className="text-[11px] text-slate-400 p-2 text-center">No leads found</div>
+                        <div className="text-[11px] text-slate-400 p-2 text-center">{t("No leads found", "Nenašli sa žiadne leady", "Nincs találat")}</div>
                       ) : (
                         leadsList.filter(l => l.name.toLowerCase().includes(leadSearch.toLowerCase())).map(l => {
                           const isSelected = attachedLeads.includes(l.id);
@@ -1992,21 +1993,21 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs text-slate-700 cursor-pointer font-bold transition-all"
                 >
                   <User className="h-3.5 w-3.5 text-emerald-505" />
-                  <span>Klienti ({attachedClients.length})</span>
+                  <span>{t("Clients", "Klienti", "Ügyfelek")} ({attachedClients.length})</span>
                   <ChevronDown className="h-3 w-3 text-slate-405" />
                 </button>
                 {activeDropdown === "clients" && (
                   <div className="absolute left-0 mt-1.5 w-64 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 p-2.5 flex flex-col gap-2">
                     <input
                       type="text"
-                      placeholder="Search clients..."
+                      placeholder={t("Search clients...", "Hľadať klientov...", "Ügyfelek keresése...")}
                       value={clientSearch}
                       onChange={(e) => setClientSearch(e.target.value)}
                       className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px] focus:outline-none focus:border-indigo-500"
                     />
                     <div className="max-h-40 overflow-y-auto flex flex-col gap-0.5">
                       {clientsList.filter(c => c.name.toLowerCase().includes(clientSearch.toLowerCase())).length === 0 ? (
-                        <div className="text-[11px] text-slate-400 p-2 text-center">No clients found</div>
+                        <div className="text-[11px] text-slate-400 p-2 text-center">{t("No clients found", "Nenašli sa žiadni klienti", "Nincs találat")}</div>
                       ) : (
                         clientsList.filter(c => c.name.toLowerCase().includes(clientSearch.toLowerCase())).map(c => {
                           const isSelected = attachedClients.includes(c.id);
@@ -2043,21 +2044,21 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs text-slate-700 cursor-pointer font-bold transition-all"
                 >
                   <Users className="h-3.5 w-3.5 text-purple-505" />
-                  <span>Tím ({attachedUsers.length})</span>
+                  <span>{t("Team", "Tím", "Csapat")} ({attachedUsers.length})</span>
                   <ChevronDown className="h-3 w-3 text-slate-405" />
                 </button>
                 {activeDropdown === "users" && (
                   <div className="absolute left-0 mt-1.5 w-64 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 p-2.5 flex flex-col gap-2">
                     <input
                       type="text"
-                      placeholder="Search users..."
+                      placeholder={t("Search users...", "Hľadať používateľov...", "Felhasználók keresése...")}
                       value={userSearch}
                       onChange={(e) => setUserSearch(e.target.value)}
                       className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px] focus:outline-none focus:border-indigo-500"
                     />
                     <div className="max-h-40 overflow-y-auto flex flex-col gap-0.5">
                       {users.filter(u => u.name.toLowerCase().includes(userSearch.toLowerCase())).length === 0 ? (
-                        <div className="text-[11px] text-slate-400 p-2 text-center">No team members found</div>
+                        <div className="text-[11px] text-slate-400 p-2 text-center">{t("No team members found", "Nenašli sa žiadni členovia tímu", "Nincs találat")}</div>
                       ) : (
                         users.filter(u => u.name.toLowerCase().includes(userSearch.toLowerCase())).map(u => {
                           const isSelected = attachedUsers.includes(u.name);
@@ -2098,14 +2099,14 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
             {/* Right controls: Save button */}
             <div className="flex items-center gap-3">
               <span className="text-[10px] text-slate-400 font-bold animate-pulse">
-                {systemLanguage === "sk" ? "Automatické ukladanie..." : "Autosaving..."}
+                {t("Autosaving...", "Automatické ukladanie...", "Automatikus mentés...")}
               </span>
               <button
                 type="button"
                 onClick={() => handleSaveNewMeeting()}
                 className="px-5 py-1.5 rounded-xl bg-black text-white hover:bg-slate-800 font-heading font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 hover:scale-[1.01] active:scale-95 shadow-md shadow-black/10"
               >
-                {systemLanguage === "sk" ? "Uložiť" : "Save Document"}
+                {t("Save Document", "Uložiť", "Dokumentum mentése")}
               </button>
             </div>
 
@@ -2117,7 +2118,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                   if (!leadObj) return null;
                   return (
                     <span key={leadId} className="flex items-center gap-1 bg-indigo-50 text-indigo-700 text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-lg border border-indigo-200/40">
-                      <span>Lead: {leadObj.name}</span>
+                      <span>{t("Lead", "Lead", "Lead")}: {leadObj.name}</span>
                       <button
                         type="button"
                         onClick={() => setAttachedLeads(prev => prev.filter(x => x !== leadId))}
@@ -2134,7 +2135,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                   if (!clientObj) return null;
                   return (
                     <span key={clientId} className="flex items-center gap-1 bg-emerald-50 text-emerald-700 text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-lg border border-emerald-200/40">
-                      <span>Client: {clientObj.name}</span>
+                      <span>{t("Client", "Klient", "Ügyfél")}: {clientObj.name}</span>
                       <button
                         type="button"
                         onClick={() => setAttachedClients(prev => prev.filter(x => x !== clientId))}
@@ -2151,7 +2152,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                   const userRole = userObj ? userObj.role : "";
                   return (
                     <span key={userName} className="flex items-center gap-1 bg-purple-50 text-purple-700 text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-lg border border-purple-200/40">
-                      <span>Team: {userName} {userRole && `(${userRole})`}</span>
+                      <span>{t("Team", "Tím", "Csapat")}: {userName} {userRole && `(${userRole})`}</span>
                       <button
                         type="button"
                         onClick={() => setAttachedUsers(prev => prev.filter(x => x !== userName))}
@@ -2179,7 +2180,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                     <div className="w-full mb-6">
                       <input
                         type="text"
-                        placeholder={systemLanguage === "sk" ? "Názov dokumentu / stretnutia..." : "Untitled Document..."}
+                        placeholder={t("Untitled Document...", "Názov dokumentu / stretnutia...", "Névtelen dokumentum...")}
                         value={newTitle}
                         onChange={(e) => setNewTitle(e.target.value)}
                         className="w-full text-3xl font-heading font-black text-slate-800 placeholder:text-slate-300 bg-transparent border-none outline-none focus:outline-none focus:ring-0 focus:border-none p-0 m-0"
@@ -2235,7 +2236,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
                     {activeTab === "transcription" && (
                       <div className="text-slate-700 text-xs font-medium leading-relaxed bg-slate-50 border border-slate-200/60 p-6 rounded-2xl max-h-[500px] overflow-y-auto whitespace-pre-wrap select-text text-left">
-                        {newTranscription || (systemLanguage === "sk" ? "Žiadny prepis k dispozícii." : "No transcription available.")}
+                        {newTranscription || t("No transcription available.", "Žiadny prepis k dispozícii.", "Nincs elérhető átirat.")}
                       </div>
                     )}
 
@@ -2261,7 +2262,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                 <div className="w-full mb-6">
                   <input
                     type="text"
-                    placeholder={systemLanguage === "sk" ? "Názov dokumentu / stretnutia..." : "Untitled Document..."}
+                    placeholder={t("Untitled Document...", "Názov dokumentu / stretnutia...", "Névtelen dokumentum...")}
                     value={newTitle}
                     onChange={(e) => setNewTitle(e.target.value)}
                     className="w-full text-3xl font-heading font-black text-slate-800 placeholder:text-slate-300 bg-transparent border-none outline-none focus:outline-none focus:ring-0 focus:border-none p-0 m-0"
@@ -2317,7 +2318,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
                 {activeTab === "transcription" && (
                   <div className="text-slate-700 text-xs font-medium leading-relaxed bg-slate-50 border border-slate-200/60 p-6 rounded-2xl max-h-[500px] overflow-y-auto whitespace-pre-wrap select-text text-left">
-                    {newTranscription || (systemLanguage === "sk" ? "Žiadny prepis k dispozícii." : "No transcription available.")}
+                    {newTranscription || t("No transcription available.", "Žiadny prepis k dispozícii.", "Nincs elérhető átirat.")}
                   </div>
                 )}
 
@@ -2340,9 +2341,9 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
             <div className="p-6 border-b border-slate-150 flex items-center justify-between bg-slate-50">
               <div className="space-y-1 text-left">
                 <span className="text-[9px] font-black bg-indigo-50 border border-indigo-150/10 text-indigo-700 px-2 py-0.5 rounded uppercase tracking-widest">
-                  Task Specification
+                  {t("Task Specification", "Špecifikácia úlohy", "Feladat specifikáció")}
                 </span>
-                <h3 className="text-sm font-extrabold text-slate-800">Edit Automated Task</h3>
+                <h3 className="text-sm font-extrabold text-slate-800">{t("Edit Automated Task", "Upraviť automatickú úlohu", "Automatikus feladat szerkesztése")}</h3>
               </div>
               <button
                 type="button"
@@ -2357,7 +2358,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
             <div className="flex-1 p-6 overflow-y-auto space-y-5 text-left">
               {/* Title */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Task Title</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Task Title", "Názov úlohy", "Feladat címe")}</label>
                 <input
                   type="text"
                   value={activeTaskForEdit.title}
@@ -2368,7 +2369,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
               {/* Description */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Description</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Description", "Popis", "Leírás")}</label>
                 <textarea
                   rows={4}
                   value={activeTaskForEdit.description}
@@ -2379,13 +2380,13 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
               {/* Assigned User */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Assigned Team Member</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Assigned Team Member", "Priradený člen tímu", "Hozzárendelt csapattag")}</label>
                 <select
                   value={activeTaskForEdit.assignedUser}
                   onChange={(e) => setActiveTaskForEdit(prev => prev ? { ...prev, assignedUser: e.target.value } : null)}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all cursor-pointer"
                 >
-                  <option value="">Unassigned</option>
+                  <option value="">{t("Unassigned", "Nepriradené", "Nincs hozzárendelve")}</option>
                   {users.map(u => (
                     <option key={u.name} value={u.name}>{u.name}</option>
                   ))}
@@ -2394,7 +2395,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
               {/* Start Date */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Start Date</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Start Date", "Dátum začatia", "Kezdő dátum")}</label>
                 <input
                   type="date"
                   value={activeTaskForEdit.startDate || ""}
@@ -2405,7 +2406,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
               {/* Due Date */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Due Date</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Due Date", "Termín", "Határidő")}</label>
                 <input
                   type="date"
                   value={activeTaskForEdit.dueDate}
@@ -2417,28 +2418,28 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               {/* Priority & Status Row */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5 text-left">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Priority</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Priority", "Priorita", "Prioritás")}</label>
                   <select
                      value={activeTaskForEdit.priority}
                      onChange={(e) => setActiveTaskForEdit(prev => prev ? { ...prev, priority: e.target.value as any } : null)}
                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all cursor-pointer"
                   >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
+                    <option value="low">{t("Low", "Nízka", "Alacsony")}</option>
+                    <option value="medium">{t("Medium", "Stredná", "Közepes")}</option>
+                    <option value="high">{t("High", "Vysoká", "Magas")}</option>
                   </select>
                 </div>
 
                 <div className="space-y-1.5 text-left">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Status", "Stav", "Állapot")}</label>
                   <select
                     value={activeTaskForEdit.status}
                     onChange={(e) => setActiveTaskForEdit(prev => prev ? { ...prev, status: e.target.value as any } : null)}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all cursor-pointer"
                   >
-                    <option value="todo">To Do</option>
-                    <option value="in_progress">In Progress</option>
-                    <option value="done">Completed</option>
+                    <option value="todo">{t("To Do", "Na vykonanie", "Teendő")}</option>
+                    <option value="in_progress">{t("In Progress", "Prebieha", "Folyamatban")}</option>
+                    <option value="done">{t("Completed", "Dokončené", "Befejezve")}</option>
                   </select>
                 </div>
               </div>
@@ -2451,14 +2452,14 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                 onClick={closeTaskDrawer}
                 className="flex-1 py-2.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-650 hover:text-slate-800 rounded-xl text-xs font-heading font-black uppercase tracking-wider transition-colors cursor-pointer animate-none"
               >
-                Cancel
+                {t("Cancel", "Zrušiť", "Mégse")}
               </button>
               <button
                 type="button"
                 onClick={() => handleSaveTaskDetails(activeTaskForEdit)}
                 className="flex-1 py-2.5 bg-indigo-650 hover:bg-indigo-600 hover:text-white rounded-xl text-xs font-heading font-black uppercase tracking-wider transition-colors cursor-pointer animate-none"
               >
-                Save Changes
+                {t("Save Changes", "Uložiť zmeny", "Módosítások mentése")}
               </button>
             </div>
           </div>
