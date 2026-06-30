@@ -84,7 +84,7 @@ function ccrm_compute_data_version($pdo) {
 }
 
 // Helper to check if an incoming lead payload is identical to its database record
-function ccrm_leads_are_identical($inc, $db) {
+function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
     if (!$db) return false;
     
     // Compare basic fields
@@ -94,7 +94,7 @@ function ccrm_leads_are_identical($inc, $db) {
         'client_type' => $inc['clientType'] ?? 'person',
         'status' => $inc['status'] ?? 'new',
         'source' => $inc['source'] ?? 'website',
-        'owner' => $inc['owner'] ?? 'Tomi',
+        'owner' => $inc['owner'] ?? $defaultOwner,
         'value' => isset($inc['value']) ? floatval($inc['value']) : 0.00,
         'rating' => isset($inc['rating']) ? intval($inc['rating']) : 3,
         'phone' => $inc['phone'] ?? null,
@@ -735,6 +735,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingLeadIds = array_keys($dbLeads);
             $processedLeadIds = [];
 
+            // Fallback owner for leads synced without an explicit owner. Resolved
+            // from the real user table, never a hardcoded demo name.
+            $defaultOwner = ccrm_default_owner($pdo);
+
             // Track every timeline event id written during this sync to prevent duplicates
             // within the same payload from violating the primary key constraint.
             $seenTimelineIds = [];
@@ -757,7 +761,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $processedLeadIds[] = $leadId;
 
                 // Optimization: Skip if the lead is identical to what we have in the DB
-                if (isset($dbLeads[$leadId]) && ccrm_leads_are_identical($l, $dbLeads[$leadId])) {
+                if (isset($dbLeads[$leadId]) && ccrm_leads_are_identical($l, $dbLeads[$leadId], $defaultOwner)) {
                     continue;
                 }
 
@@ -771,7 +775,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $l['clientType'] ?? 'person',
                     $l['status'] ?? 'new',
                     $l['source'] ?? 'website',
-                    $l['owner'] ?? 'Tomi',
+                    $l['owner'] ?? $defaultOwner,
                     $l['value'] ?? 0.00,
                     $l['rating'] ?? 3,
                     $l['phone'] ?? null,

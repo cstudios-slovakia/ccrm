@@ -107,6 +107,31 @@ if (!function_exists('ccrm_send_cors')) {
         }
     }
 
+    /**
+     * Resolve the fallback owner / project-manager name for records that are
+     * created without an explicit owner (e.g. external webhook leads, or sync
+     * payloads that omit an owner). Returns the primary administrator's name,
+     * falling back to the first registered user, and finally to an empty
+     * string. This deliberately avoids hardcoding any demo account name (such
+     * as "Tomi"), which would otherwise be stamped onto real installations.
+     */
+    function ccrm_default_owner(\PDO $pdo): string {
+        static $cached = null;
+        if ($cached !== null) {
+            return $cached;
+        }
+        try {
+            $stmt = $pdo->query(
+                "SELECT `name` FROM `users` ORDER BY (`role` = 'admin') DESC, `name` ASC LIMIT 1"
+            );
+            $name = $stmt ? $stmt->fetchColumn() : false;
+            $cached = ($name !== false && $name !== null) ? (string)$name : '';
+        } catch (\Throwable $e) {
+            $cached = '';
+        }
+        return $cached;
+    }
+
     /** True if the given string already looks like a bcrypt/argon hash. */
     function ccrm_is_hash(string $value): bool {
         return (bool)preg_match('/^\$(2[aby]|argon2(id|i|d))\$/', $value);
