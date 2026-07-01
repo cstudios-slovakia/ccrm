@@ -14,9 +14,125 @@ import {
     ChevronUp,
     Settings,
     RotateCcw,
+    List,
 } from "lucide-react";
 import type { Task, UserProfile, Lead } from "../types";
 import type { Language } from "../utils/translations";
+import { CalendarPane } from "./Dashboard";
+
+// Reusable calendar date-range filter (item 9) — reuses the overview CalendarPane range picker
+// inside a compact popover with month navigation. Used by the Global Tasks and Archive views.
+const DateRangeCalendarFilter: React.FC<{
+    start: Date | null;
+    end: Date | null;
+    onChange: (start: Date | null, end: Date | null) => void;
+    systemLanguage: Language;
+    t: (en: string, sk: string, hu: string) => string;
+}> = ({ start, end, onChange, systemLanguage, t }) => {
+    const [open, setOpen] = useState(false);
+    const [viewDate, setViewDate] = useState<Date>(() => start || new Date());
+    const ref = React.useRef<HTMLDivElement>(null);
+
+    React.useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (ref.current && !ref.current.contains(e.target as Node)) {
+                setOpen(false);
+            }
+        };
+        if (open) document.addEventListener("mousedown", handler);
+        return () => document.removeEventListener("mousedown", handler);
+    }, [open]);
+
+    const year = viewDate.getFullYear();
+    const month = viewDate.getMonth();
+    const fmt = (d: Date | null) => (d ? d.toISOString().split("T")[0] : "");
+    const locale = systemLanguage === "sk" ? "sk-SK" : systemLanguage === "hu" ? "hu-HU" : "en-US";
+
+    const handleSelect = (date: Date) => {
+        if (!start || (start && end)) {
+            onChange(date, null);
+        } else if (date < start) {
+            onChange(date, null);
+        } else {
+            onChange(start, date);
+        }
+    };
+
+    const labelText = start
+        ? end && fmt(end) !== fmt(start)
+            ? `${fmt(start)} → ${fmt(end)}`
+            : fmt(start)
+        : t("Filter by date", "Filtrovať podľa dátumu", "Szűrés dátum szerint");
+
+    return (
+        <div className="relative" ref={ref}>
+            <button
+                type="button"
+                onClick={() => setOpen((o) => !o)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border-2 text-xs font-extrabold cursor-pointer transition-all ${
+                    start
+                        ? "bg-indigo-50 border-indigo-200 text-indigo-700"
+                        : "bg-slate-50 border-slate-200 text-slate-600 hover:border-indigo-400"
+                }`}
+            >
+                <CalendarIcon className="h-3.5 w-3.5 text-indigo-600" />
+                <span>{labelText}</span>
+                {start && (
+                    <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onChange(null, null);
+                        }}
+                        className="p-0.5 rounded hover:bg-slate-200 text-slate-400 hover:text-rose-500 flex items-center"
+                    >
+                        <X className="h-3 w-3" />
+                    </span>
+                )}
+            </button>
+            {open && (
+                <div className="absolute right-0 z-[999] mt-2 w-[300px] bg-white border border-slate-200 rounded-2xl shadow-xl p-3 animate-in fade-in zoom-in-95 duration-150">
+                    <div className="flex items-center justify-between mb-2">
+                        <button
+                            type="button"
+                            onClick={() => setViewDate(new Date(year, month - 1, 1))}
+                            className="p-1 hover:bg-slate-100 rounded-lg text-slate-600 cursor-pointer"
+                        >
+                            <ChevronLeft className="h-4 w-4" />
+                        </button>
+                        <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">
+                            {viewDate.toLocaleDateString(locale, { month: "long", year: "numeric" })}
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => setViewDate(new Date(year, month + 1, 1))}
+                            className="p-1 hover:bg-slate-100 rounded-lg text-slate-600 cursor-pointer"
+                        >
+                            <ChevronRight className="h-4 w-4" />
+                        </button>
+                    </div>
+                    <CalendarPane
+                        title=""
+                        year={year}
+                        month={month}
+                        selectedStart={start}
+                        selectedEnd={end}
+                        onSelect={handleSelect}
+                        systemLanguage={systemLanguage}
+                    />
+                    <button
+                        type="button"
+                        onClick={() => setOpen(false)}
+                        className="mt-2 w-full py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[10px] font-black uppercase tracking-wider cursor-pointer transition-colors"
+                    >
+                        {t("Done", "Hotovo", "Kész")}
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+};
 
 interface TaskDashboardViewProps {
     tasks: Task[];
@@ -59,6 +175,24 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // Fallback owner/assignee name when none is selected — the logged-in user,
     // else the first registered user. Never a hardcoded demo account.
     const defaultUserName = currentUser?.name || users[0]?.name || "";
+
+    // Item 11 — the personal dashboard (time buckets, calendar, archive) only surfaces tasks
+    // that belong to the logged-in user, so users never see each other's tasks. Admins keep a
+    // full cross-user view in the Global Tasks / Archive tabs (canSeeAllTasks).
+    const myName = currentUser?.name || defaultUserName;
+    const canSeeAllTasks = (currentUser?.role || "").toLowerCase() === "admin";
+    const isMyTask = (task: Task) =>
+        task.owner === myName ||
+        (Array.isArray(task.assignedUsers) && task.assignedUsers.includes(myName));
+    const myTasks = tasks.filter(isMyTask);
+
+    // Inclusive date-range check against a YYYY-MM-DD string (item 9 calendar filters)
+    const dateInRange = (dateStr: string, start: Date | null, end: Date | null) => {
+        if (!start) return true;
+        const startStr = start.toISOString().split("T")[0];
+        const endStr = (end || start).toISOString().split("T")[0];
+        return dateStr >= startStr && dateStr <= endStr;
+    };
 
     // --- Translations Helper ---
     const t = (en: string, sk: string, hu: string) => {
@@ -106,28 +240,6 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         }
     };
 
-    // Timeline event-type badge — matches the central timeline.badge.* dictionary.
-    const eventTypeLabel = (type: string) => {
-        switch ((type || "").toLowerCase()) {
-            case "phone":
-                return t("Call Logs", "Záznam hovoru", "Hívásnapló");
-            case "email":
-                return t("Email Sent", "E-mail odoslaný", "E-mail elküldve");
-            case "note":
-                return t(
-                    "Timeline Note",
-                    "Poznámka na časovej osi",
-                    "Idővonal jegyzet",
-                );
-            case "offer":
-                return t("Proposal", "Cenová ponuka", "Ajánlat");
-            case "appointment":
-                return t("Meeting Log", "Záznam stretnutia", "Találkozó napló");
-            default:
-                return type;
-        }
-    };
-
     const [currentDate, setCurrentDate] = useState(new Date());
     const [viewMode, setViewMode] = useState<"calendar" | "archive" | "global">(
         "calendar",
@@ -140,11 +252,20 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const [archiveUserFilter, setArchiveUserFilter] = useState("all");
     const [archiveTimingFilter, setArchiveTimingFilter] = useState("all");
 
-    // Expand/collapse states for task buckets
-    const [isOverdueExpanded, setIsOverdueExpanded] = useState(true);
-    const [isTodayExpanded, setIsTodayExpanded] = useState(true);
+    // Expand/collapse states for task buckets.
+    // Item 1: Missed (Overdue) and Today are always visible (no collapse) — only Tomorrow and
+    // Upcoming stay collapsible.
     const [isTomorrowExpanded, setIsTomorrowExpanded] = useState(false);
     const [isFutureExpanded, setIsFutureExpanded] = useState(false);
+
+    // Compact view toggle (item 10) — denser task cards for large lists
+    const [isCompact, setIsCompact] = useState(false);
+
+    // Calendar-based date-range filters for Global tasks & Archive (item 9)
+    const [globalDateStart, setGlobalDateStart] = useState<Date | null>(null);
+    const [globalDateEnd, setGlobalDateEnd] = useState<Date | null>(null);
+    const [archiveDateStart, setArchiveDateStart] = useState<Date | null>(null);
+    const [archiveDateEnd, setArchiveDateEnd] = useState<Date | null>(null);
 
     // Add Task Drawer State
     const [isAddDrawerOpen, setIsAddDrawerOpen] = useState(false);
@@ -260,39 +381,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         return (firstDay + 6) % 7;
     }, [currentYear, currentMonth]);
 
-    // Find all timeline events from leads to display on the calendar
-    const allEvents = useMemo(() => {
-        const events: {
-            date: string;
-            title: string;
-            leadName: string;
-            type: string;
-            isTask: boolean;
-        }[] = [];
-        leads.forEach((lead) => {
-            if (lead.timeline) {
-                lead.timeline.forEach((ev) => {
-                    const evDate = ev.timestamp.split(" ")[0]; // YYYY-MM-DD
-                    events.push({
-                        date: evDate,
-                        title: ev.title,
-                        leadName: lead.name,
-                        type: ev.type,
-                        isTask: false,
-                    });
-                });
-            }
-        });
-        return events;
-    }, [leads]);
-
-    // Combine tasks and events for rendering chips
+    // Item 12: the dashboard calendar shows ONLY tasks (no lead timeline events).
+    // Item 11: only the logged-in user's tasks.
     const getItemsForDate = (dateStr: string) => {
-        const dayTasks = tasks.filter(
+        const dayTasks = myTasks.filter(
             (t) => t.deadline === dateStr && !isDoneState(t.status),
         );
-        const dayEvents = allEvents.filter((e) => e.date === dateStr);
-        return { dayTasks, dayEvents };
+        return { dayTasks };
     };
 
     const calculateOverdueDays = (
@@ -331,6 +426,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const filteredArchivedTasks = useMemo(() => {
         return tasks.filter((task) => {
             if (!isDoneState(task.status)) return false;
+
+            // Item 11 — non-admins only see their own archived tasks
+            if (!canSeeAllTasks && !isMyTask(task)) return false;
+
+            // Item 9 — calendar date-range filter (by deadline/due date)
+            if (!dateInRange(task.deadline, archiveDateStart, archiveDateEnd))
+                return false;
 
             // Search Query
             if (archiveSearchQuery.trim()) {
@@ -379,6 +481,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         archivePriorityFilter,
         archiveUserFilter,
         archiveTimingFilter,
+        archiveDateStart,
+        archiveDateEnd,
+        myName,
+        canSeeAllTasks,
     ]);
 
     const archivedTasksGroupedByDate = useMemo(() => {
@@ -501,18 +607,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         const isPast = dateStr < todayStr;
                         const isTomorrow = dateStr === tomorrowStr;
 
-                        const { dayTasks, dayEvents } =
-                            getItemsForDate(dateStr);
+                        const { dayTasks } = getItemsForDate(dateStr);
 
-                        const totalItems = dayTasks.length + dayEvents.length;
                         const displayTasks = dayTasks.slice(0, 3);
-                        const displayEvents = dayEvents.slice(
-                            0,
-                            Math.max(0, 3 - displayTasks.length),
-                        );
-                        const hiddenCount =
-                            totalItems -
-                            (displayTasks.length + displayEvents.length);
+                        const hiddenCount = dayTasks.length - displayTasks.length;
 
                         // Determine cell background styling based on time bucket
                         let cellBgClass = "bg-white";
@@ -562,17 +660,6 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                         </div>
                                     ))}
 
-                                    {/* Render Events */}
-                                    {displayEvents.map((e, eIdx) => (
-                                        <div
-                                            key={`ev-${eIdx}`}
-                                            className="truncate text-[8px] font-bold px-1 py-0.5 rounded bg-white border border-slate-200 text-slate-500 shadow-[0_1px_2px_rgba(0,0,0,0.02)] flex items-center gap-1"
-                                        >
-                                            <div className="h-1 w-1 rounded-full bg-indigo-400 shrink-0" />
-                                            {e.title}
-                                        </div>
-                                    ))}
-
                                     {hiddenCount > 0 && (
                                         <div className="text-[8px] font-black text-slate-400 pl-1">
                                             +{hiddenCount}
@@ -591,8 +678,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         if (!selectedDay) return null;
 
         const selectedDateStr = selectedDay.toISOString().split("T")[0];
-        const { dayTasks, dayEvents } = getItemsForDate(selectedDateStr);
-        const isPast = selectedDateStr < todayStr;
+        const { dayTasks } = getItemsForDate(selectedDateStr);
 
         return (
             <div className="flex flex-col h-full animate-in fade-in zoom-in-95 duration-200">
@@ -638,250 +724,44 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     </button>
                 </div>
 
-                <div className="flex-1 lg:overflow-y-auto overflow-visible p-6 space-y-8 bg-slate-50/30">
-                    {/* TASKS LIST */}
-                    <div className="space-y-4">
-                        <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
-                            <CheckSquare className="h-4 w-4 text-violet-600" />
-                            {t(
-                                "Pending Tasks",
-                                "Čakajúce úlohy",
-                                "Függőben lévő feladatok",
-                            )}
-                        </h3>
-                        {dayTasks.length === 0 ? (
-                            <div className="p-6 border-2 border-dashed border-slate-200 rounded-2xl text-center bg-white">
-                                <span className="text-xs font-bold text-slate-400">
-                                    {t(
-                                        "No tasks scheduled.",
-                                        "Žiadne úlohy.",
-                                        "Nincsenek feladatok.",
-                                    )}
-                                </span>
-                            </div>
-                        ) : (
-                            <div className="space-y-3">
-                                {dayTasks.map((task) => (
-                                    <div
-                                        key={task.id}
-                                        className={`p-4 rounded-2xl bg-white border shadow-sm flex gap-3 transition-all relative overflow-hidden ${
-                                            isPast
-                                                ? "border-rose-200"
-                                                : "border-slate-200/80"
-                                        }`}
+                <div className="flex-1 lg:overflow-y-auto overflow-visible p-6 space-y-6 bg-slate-50/30">
+                    {/* Item 13: tasks for the selected day, grouped by status */}
+                    {dayTasks.length === 0 ? (
+                        <div className="p-6 border-2 border-dashed border-slate-200 rounded-2xl text-center bg-white">
+                            <span className="text-xs font-bold text-slate-400">
+                                {t(
+                                    "No tasks scheduled.",
+                                    "Žiadne úlohy.",
+                                    "Nincsenek feladatok.",
+                                )}
+                            </span>
+                        </div>
+                    ) : (
+                        taskStates.map((st) => {
+                            const groupTasks = dayTasks.filter(
+                                (tk) => tk.status === st,
+                            );
+                            if (groupTasks.length === 0) return null;
+                            const color = taskStateColors[st] || "#64748b";
+                            return (
+                                <div key={st} className="space-y-3">
+                                    <h3
+                                        className="text-xs font-black uppercase tracking-widest flex items-center gap-2"
+                                        style={{ color }}
                                     >
-                                        {task.isLocking && (
-                                            <div className="absolute top-0 right-0 w-1.5 h-full bg-rose-500" />
-                                        )}
-                                        <div className="relative shrink-0 select-none mt-0.5">
-                                            <select
-                                                value={task.status}
-                                                onChange={(e) => {
-                                                    const newStatus =
-                                                        e.target.value;
-                                                    const now = new Date();
-                                                    const completedAtStr =
-                                                        isDoneState(newStatus)
-                                                            ? now
-                                                                  .toISOString()
-                                                                  .split(
-                                                                      "T",
-                                                                  )[0] +
-                                                              " " +
-                                                              now
-                                                                  .toTimeString()
-                                                                  .split(" ")[0]
-                                                                  .substring(
-                                                                      0,
-                                                                      5,
-                                                                  )
-                                                            : undefined;
-                                                    const completedByName =
-                                                        isDoneState(newStatus)
-                                                            ? currentUser?.name ||
-                                                              defaultUserName
-                                                            : undefined;
-
-                                                    setTasks((prev) =>
-                                                        prev.map((t) =>
-                                                            t.id === task.id
-                                                                ? {
-                                                                      ...t,
-                                                                      status: newStatus,
-                                                                      completedBy:
-                                                                          completedByName,
-                                                                      completedAt:
-                                                                          completedAtStr,
-                                                                  }
-                                                                : t,
-                                                        ),
-                                                    );
-                                                }}
-                                                className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg border-2 cursor-pointer transition-all focus:outline-none max-w-[110px] truncate"
-                                                style={{
-                                                    backgroundColor: `${taskStateColors[task.status] || "#64748b"}15`,
-                                                    color:
-                                                        taskStateColors[
-                                                            task.status
-                                                        ] || "#64748b",
-                                                    borderColor: `${taskStateColors[task.status] || "#64748b"}35`,
-                                                }}
-                                            >
-                                                {taskStates.map((st) => (
-                                                    <option
-                                                        key={st}
-                                                        value={st}
-                                                        className="bg-white text-slate-800 font-bold uppercase"
-                                                    >
-                                                        {stateLabel(st)}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                        <div className="flex-1 space-y-1.5 min-w-0">
-                                            <div className="flex items-start justify-between gap-1.5">
-                                                <h4 className="text-sm font-black text-slate-800 truncate">
-                                                    {task.title}
-                                                </h4>
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setEditingTask(task);
-                                                    }}
-                                                    className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-650 transition-colors cursor-pointer"
-                                                    title={t(
-                                                        "Edit Task",
-                                                        "Upraviť úlohu",
-                                                        "Feladat szerkesztése",
-                                                    )}
-                                                >
-                                                    <Settings className="h-3.5 w-3.5" />
-                                                </button>
-                                            </div>
-                                            {task.description && (
-                                                <p className="text-xs font-semibold text-slate-500 line-clamp-2">
-                                                    {task.description}
-                                                </p>
-                                            )}
-                                            <div className="flex flex-wrap items-center gap-2 pt-1">
-                                                <span
-                                                    className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md border ${
-                                                        task.priority === "high"
-                                                            ? "bg-rose-50 text-rose-600 border-rose-200"
-                                                            : task.priority ===
-                                                                "medium"
-                                                              ? "bg-amber-50 text-amber-600 border-amber-200"
-                                                              : "bg-slate-50 text-slate-600 border-slate-200"
-                                                    }`}
-                                                >
-                                                    {priorityLabel(
-                                                        task.priority,
-                                                    )}
-                                                </span>
-
-                                                {task.startDate && (
-                                                    <span className="text-[9px] font-bold text-slate-500 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md">
-                                                        <span>
-                                                            {t(
-                                                                "Start",
-                                                                "Začiatok",
-                                                                "Kezdés",
-                                                            )}
-                                                            : {task.startDate}
-                                                        </span>
-                                                    </span>
-                                                )}
-
-                                                <span className="text-[9px] font-bold text-slate-500 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md bg-indigo-50/50 border border-indigo-100">
-                                                    <span>
-                                                        {t(
-                                                            "Time",
-                                                            "Čas",
-                                                            "Idő",
-                                                        )}
-                                                        :{" "}
-                                                        {task.deadlineTime ||
-                                                            "23:59"}
-                                                    </span>
-                                                </span>
-
-                                                {task.relatedLeadId && (
-                                                    <span className="text-[9px] font-bold text-slate-600 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md truncate max-w-[120px]">
-                                                        <Briefcase className="h-2.5 w-2.5 shrink-0" />
-                                                        <span className="truncate">
-                                                            {leads.find(
-                                                                (l) =>
-                                                                    l.id ===
-                                                                    task.relatedLeadId,
-                                                            )?.name || "Lead"}
-                                                        </span>
-                                                    </span>
-                                                )}
-
-                                                {task.assignedUsers &&
-                                                    task.assignedUsers.length >
-                                                        0 && (
-                                                        <span className="text-[9px] font-bold text-indigo-600 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded-md truncate max-w-[120px]">
-                                                            <span className="h-1 w-1 rounded-full bg-indigo-500 shrink-0" />
-                                                            <span className="truncate">
-                                                                {task.assignedUsers.join(
-                                                                    ", ",
-                                                                )}
-                                                            </span>
-                                                        </span>
-                                                    )}
-                                            </div>
-                                        </div>
+                                        <span
+                                            className="h-2.5 w-2.5 rounded-full"
+                                            style={{ backgroundColor: color }}
+                                        />
+                                        {stateLabel(st)} ({groupTasks.length})
+                                    </h3>
+                                    <div className="space-y-3">
+                                        {groupTasks.map(renderTaskCard)}
                                     </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* EVENTS LIST */}
-                    <div className="space-y-4">
-                        <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
-                            <CalendarIcon className="h-4 w-4 text-amber-600" />
-                            {t(
-                                "Timeline Events",
-                                "Udalosti na časovej osi",
-                                "Idővonal események",
-                            )}
-                        </h3>
-                        {dayEvents.length === 0 ? (
-                            <div className="p-6 border-2 border-dashed border-slate-200 rounded-2xl text-center bg-white">
-                                <span className="text-xs font-bold text-slate-400">
-                                    {t(
-                                        "No events logged.",
-                                        "Žiadne udalosti.",
-                                        "Nincsenek események.",
-                                    )}
-                                </span>
-                            </div>
-                        ) : (
-                            <div className="space-y-3">
-                                {dayEvents.map((ev, idx) => (
-                                    <div
-                                        key={idx}
-                                        className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-1.5"
-                                    >
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest bg-slate-100 px-1.5 py-0.5 rounded">
-                                                {eventTypeLabel(ev.type)}
-                                            </span>
-                                            <span className="text-[9px] font-bold text-slate-450 flex items-center gap-1">
-                                                <Briefcase className="h-2.5 w-2.5" />{" "}
-                                                {ev.leadName}
-                                            </span>
-                                        </div>
-                                        <h4 className="text-xs font-black text-slate-750">
-                                            {ev.title}
-                                        </h4>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
+                                </div>
+                            );
+                        })
+                    )}
                 </div>
             </div>
         );
@@ -912,7 +792,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const tomorrowStr = new Date(today.getTime() + 86400000)
         .toISOString()
         .split("T")[0];
-    const overdueTasks = tasks
+    const overdueTasks = myTasks
         .filter((t) => isTaskOverdue(t))
         .sort((a, b) => {
             const dateComp = a.deadline.localeCompare(b.deadline);
@@ -921,16 +801,16 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 b.deadlineTime || "23:59",
             );
         });
-    const todayTasks = tasks.filter(
+    const todayTasks = myTasks.filter(
         (t) =>
             t.deadline === todayStr &&
             !isTaskOverdue(t) &&
             !isDoneState(t.status),
     );
-    const tomorrowTasks = tasks.filter(
+    const tomorrowTasks = myTasks.filter(
         (t) => t.deadline === tomorrowStr && !isDoneState(t.status),
     );
-    const futureTasks = tasks
+    const futureTasks = myTasks
         .filter((t) => t.deadline > tomorrowStr && !isDoneState(t.status))
         .sort((a, b) => {
             const dateComp = a.deadline.localeCompare(b.deadline);
@@ -943,7 +823,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const renderTaskCard = (task: Task) => (
         <div
             key={task.id}
-            className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-sm flex gap-3 transition-all relative overflow-hidden hover:border-slate-300"
+            className={`${isCompact ? "p-2.5" : "p-4"} rounded-2xl bg-white border border-slate-200/80 shadow-sm flex gap-3 transition-all relative overflow-hidden hover:border-slate-300`}
         >
             {task.isLocking && (
                 <div className="absolute top-0 right-0 w-1.5 h-full bg-rose-500" />
@@ -1016,7 +896,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         <Settings className="h-3.5 w-3.5" />
                     </button>
                 </div>
-                {task.description && (
+                {!isCompact && task.description && (
                     <p className="text-xs font-semibold text-slate-500 line-clamp-1">
                         {task.description}
                     </p>
@@ -1034,7 +914,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         {priorityLabel(task.priority)}
                     </span>
 
-                    {task.startDate && (
+                    {!isCompact && task.startDate && (
                         <span className="text-[9px] font-bold text-slate-500 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md">
                             <span>
                                 {t("Start", "Začiatok", "Kezdés")}:{" "}
@@ -1074,7 +954,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     );
 
     const renderGlobalTasksView = () => {
-        const activeTasks = tasks.filter((t) => !isDoneState(t.status));
+        // Item 11: non-admins only see their own tasks/column here too
+        const activeTasks = (canSeeAllTasks ? tasks : myTasks).filter(
+            (t) => !isDoneState(t.status),
+        );
+        const columnUsers = canSeeAllTasks ? allUsersList : [myName];
 
         return (
             <div className="flex flex-col h-full bg-slate-50/30 rounded-3xl border border-slate-200 p-6 space-y-6 animate-in fade-in slide-in-from-top-4 duration-305">
@@ -1150,13 +1034,30 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     ))}
                             </select>
                         </div>
+
+                        {/* Date Filter (item 9) */}
+                        <div className="flex items-center gap-1.5 text-xs font-bold">
+                            <span className="text-slate-500">
+                                {t("Date:", "Dátum:", "Dátum:")}
+                            </span>
+                            <DateRangeCalendarFilter
+                                start={globalDateStart}
+                                end={globalDateEnd}
+                                onChange={(s, e) => {
+                                    setGlobalDateStart(s);
+                                    setGlobalDateEnd(e);
+                                }}
+                                systemLanguage={systemLanguage}
+                                t={t}
+                            />
+                        </div>
                     </div>
                 </div>
 
                 {/* COLUMNS GRID */}
                 <div className="flex-1 overflow-x-auto pb-4">
                     <div className="flex gap-6 min-w-max h-full items-start">
-                        {allUsersList.map((userName) => {
+                        {columnUsers.map((userName) => {
                             const userTasks = activeTasks.filter((t) => {
                                 const isAssigned =
                                     t.assignedUsers &&
@@ -1171,6 +1072,14 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 if (
                                     globalStateFilter !== "all" &&
                                     t.status !== globalStateFilter
+                                )
+                                    return false;
+                                if (
+                                    !dateInRange(
+                                        t.deadline,
+                                        globalDateStart,
+                                        globalDateEnd,
+                                    )
                                 )
                                     return false;
                                 return true;
@@ -1210,8 +1119,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             );
                         })}
 
-                        {/* Unassigned column */}
-                        {(() => {
+                        {/* Unassigned column — only shown to admins (item 11) */}
+                        {canSeeAllTasks && (() => {
                             const unassignedTasks = activeTasks.filter((t) => {
                                 const hasNoAssigned =
                                     !t.assignedUsers ||
@@ -1226,6 +1135,14 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 if (
                                     globalStateFilter !== "all" &&
                                     t.status !== globalStateFilter
+                                )
+                                    return false;
+                                if (
+                                    !dateInRange(
+                                        t.deadline,
+                                        globalDateStart,
+                                        globalDateEnd,
+                                    )
                                 )
                                     return false;
                                 return true;
@@ -1388,7 +1305,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     </div>
 
                     {/* FILTER ROW */}
-                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 pb-4 border-b border-slate-100 mb-4 shrink-0 text-[10px] font-bold">
+                    <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 pb-4 border-b border-slate-100 mb-4 shrink-0 text-[10px] font-bold">
                         {/* Search */}
                         <div className="space-y-1">
                             <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">
@@ -1493,6 +1410,23 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     {t("Overdue", "Omeškané", "Lejárt")}
                                 </option>
                             </select>
+                        </div>
+
+                        {/* Date filter (item 9) */}
+                        <div className="space-y-1">
+                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">
+                                {t("Date", "Dátum", "Dátum")}
+                            </label>
+                            <DateRangeCalendarFilter
+                                start={archiveDateStart}
+                                end={archiveDateEnd}
+                                onChange={(s, e) => {
+                                    setArchiveDateStart(s);
+                                    setArchiveDateEnd(e);
+                                }}
+                                systemLanguage={systemLanguage}
+                                t={t}
+                            />
                         </div>
                     </div>
 
@@ -1663,101 +1597,91 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-2 gap-8">
                     {/* LEFT COLUMN: TASK LISTS */}
                     <div className="flex flex-col lg:h-full lg:overflow-y-auto overflow-visible h-auto space-y-6 pr-2 pb-6 lg:pb-0">
-                        {/* Create New Task Button */}
-                        <button
-                            onClick={() => setIsAddDrawerOpen(true)}
-                            className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-3xl font-black text-xs uppercase tracking-widest shadow-lg shadow-indigo-600/20 transition-all active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer border-2 border-indigo-550"
-                        >
-                            <Plus className="h-4.5 w-4.5 stroke-[3]" />
-                            {t(
-                                "Create New Task",
-                                "Vytvoriť novú úlohu",
-                                "Új feladat",
-                            )}
-                        </button>
-
-                        {/* Overdue */}
-                        <div className="bg-rose-50/50 border border-rose-100 rounded-3xl p-5 shadow-sm transition-all">
+                        {/* Create New Task Button + Compact view toggle (item 10) */}
+                        <div className="flex items-center gap-2">
                             <button
-                                onClick={() =>
-                                    setIsOverdueExpanded(!isOverdueExpanded)
-                                }
-                                className="w-full flex items-center justify-between text-left focus:outline-none group/btn cursor-pointer"
+                                onClick={() => setIsAddDrawerOpen(true)}
+                                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-indigo-600/20 transition-all active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer border-2 border-indigo-550"
                             >
+                                <Plus className="h-4 w-4 stroke-[3]" />
+                                {t(
+                                    "Create New Task",
+                                    "Vytvoriť novú úlohu",
+                                    "Új feladat",
+                                )}
+                            </button>
+                            <button
+                                onClick={() => setIsCompact((c) => !c)}
+                                title={t(
+                                    "Toggle compact view",
+                                    "Prepnúť kompaktné zobrazenie",
+                                    "Kompakt nézet váltása",
+                                )}
+                                className={`shrink-0 py-2.5 px-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer border-2 ${
+                                    isCompact
+                                        ? "bg-indigo-600 text-white border-indigo-550 shadow-lg shadow-indigo-600/20"
+                                        : "bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600"
+                                }`}
+                            >
+                                <List className="h-4 w-4 stroke-[3]" />
+                                {t("Compact", "Kompaktné", "Kompakt")}
+                            </button>
+                        </div>
+
+                        {/* Overdue / Missed — always visible, not collapsible (item 1) */}
+                        <div className="bg-rose-50/50 border border-rose-100 rounded-3xl p-5 shadow-sm transition-all">
+                            <div className="w-full flex items-center justify-between text-left">
                                 <h3 className="text-xs font-black text-rose-600 uppercase tracking-widest flex items-center gap-2 select-none">
                                     <AlertCircle className="h-5 w-5" />{" "}
                                     {t("Overdue", "Zmeškané", "Lejárt")} (
                                     {overdueTasks.length})
                                 </h3>
-                                <span className="text-rose-500 group-hover/btn:text-rose-700 transition-colors">
-                                    {isOverdueExpanded ? (
-                                        <ChevronUp className="h-5 w-5" />
-                                    ) : (
-                                        <ChevronDown className="h-5 w-5" />
-                                    )}
-                                </span>
-                            </button>
-                            {isOverdueExpanded && (
-                                <div className="mt-4 animate-in fade-in slide-in-from-top-2 duration-200">
-                                    {overdueTasks.length === 0 ? (
-                                        <div className="p-4 border-2 border-dashed border-rose-200/50 bg-white/50 rounded-2xl text-center">
-                                            <span className="text-xs font-bold text-rose-500">
-                                                {t(
-                                                    "No overdue tasks!",
-                                                    "Žiadne zmeškané úlohy!",
-                                                    "Nincs lemaradás!",
-                                                )}
-                                            </span>
-                                        </div>
-                                    ) : (
-                                        <div className="space-y-3">
-                                            {overdueTasks.map(renderTaskCard)}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
+                            </div>
+                            <div className="mt-4">
+                                {overdueTasks.length === 0 ? (
+                                    <div className="p-4 border-2 border-dashed border-rose-200/50 bg-white/50 rounded-2xl text-center">
+                                        <span className="text-xs font-bold text-rose-500">
+                                            {t(
+                                                "No overdue tasks!",
+                                                "Žiadne zmeškané úlohy!",
+                                                "Nincs lemaradás!",
+                                            )}
+                                        </span>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {overdueTasks.map(renderTaskCard)}
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
-                        {/* Today */}
+                        {/* Today — always visible, not collapsible (item 1) */}
                         <div className="bg-indigo-50/30 border border-indigo-100 rounded-3xl p-5 shadow-sm transition-all">
-                            <button
-                                onClick={() =>
-                                    setIsTodayExpanded(!isTodayExpanded)
-                                }
-                                className="w-full flex items-center justify-between text-left focus:outline-none group/btn cursor-pointer"
-                            >
+                            <div className="w-full flex items-center justify-between text-left">
                                 <h3 className="text-xs font-black text-indigo-600 uppercase tracking-widest flex items-center gap-2 select-none">
                                     <CheckSquare className="h-5 w-5" />{" "}
                                     {t("Today", "Dnes", "Ma")} (
                                     {todayTasks.length})
                                 </h3>
-                                <span className="text-indigo-500 group-hover/btn:text-indigo-700 transition-colors">
-                                    {isTodayExpanded ? (
-                                        <ChevronUp className="h-5 w-5" />
-                                    ) : (
-                                        <ChevronDown className="h-5 w-5" />
-                                    )}
-                                </span>
-                            </button>
-                            {isTodayExpanded && (
-                                <div className="mt-4 animate-in fade-in slide-in-from-top-2 duration-200">
-                                    {todayTasks.length === 0 ? (
-                                        <div className="p-4 border-2 border-dashed border-indigo-200/50 bg-white/50 rounded-2xl text-center">
-                                            <span className="text-xs font-bold text-indigo-400">
-                                                {t(
-                                                    "All caught up!",
-                                                    "Všetko hotové!",
-                                                    "Minden kész!",
-                                                )}
-                                            </span>
-                                        </div>
-                                    ) : (
-                                        <div className="space-y-3">
-                                            {todayTasks.map(renderTaskCard)}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
+                            </div>
+                            <div className="mt-4">
+                                {todayTasks.length === 0 ? (
+                                    <div className="p-4 border-2 border-dashed border-indigo-200/50 bg-white/50 rounded-2xl text-center">
+                                        <span className="text-xs font-bold text-indigo-400">
+                                            {t(
+                                                "All caught up!",
+                                                "Všetko hotové!",
+                                                "Minden kész!",
+                                            )}
+                                        </span>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {todayTasks.map(renderTaskCard)}
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
                         {/* Tomorrow */}

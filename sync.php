@@ -488,7 +488,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'leadCategoryColors' => $leadCategoryColors,
             'leadStageGroups' => $leadStageGroups,
             'leadStateParents' => $leadStateParents,
-            'integrationsConfig' => $integrationsConfig
+            'integrationsConfig' => $integrationsConfig,
+            'customLabels' => isset($settings['CUSTOM_LABELS']) ? json_decode($settings['CUSTOM_LABELS'], true) : (object)[]
         ]
     ]);
     exit;
@@ -585,7 +586,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'LEAD_CATEGORY_COLORS' => json_encode($s['leadCategoryColors'] ?? []),
                 'LEAD_STAGE_GROUPS' => json_encode($s['leadStageGroups'] ?? []),
                 'LEAD_STATE_PARENTS' => json_encode($s['leadStateParents'] ?? (object)[]),
-                'INTEGRATIONS_CONFIG' => json_encode($s['integrationsConfig'] ?? (object)[])
+                'INTEGRATIONS_CONFIG' => json_encode($s['integrationsConfig'] ?? (object)[]),
+                'CUSTOM_LABELS' => json_encode($s['customLabels'] ?? (object)[])
             ];
 
             $insSet = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");

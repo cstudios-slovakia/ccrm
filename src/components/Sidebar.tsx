@@ -21,6 +21,8 @@ interface SidebarProps {
   canEditNav: boolean;
   onSaveUserLayout: (layout: string[]) => void;
   unifiedEntries?: UnifiedEntryRegistry[];
+  defaultPage?: string;
+  onSaveDefaultPage?: (pageId: string) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -37,7 +39,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   roles,
   canEditNav,
   onSaveUserLayout,
-  unifiedEntries = []
+  unifiedEntries = [],
+  defaultPage,
+  onSaveDefaultPage
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
   const [isCollapsed, setIsCollapsed] = useState(true); // Default collapsed for the minimalist aesthetic
@@ -433,6 +437,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             : isActive ? "text-white font-bold" : "text-slate-500 font-semibold"
                   )}>
                     {item.label}
+                  </span>
+                )}
+                {isEditingNav && !isCollapsed && onSaveDefaultPage && (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    title={t("Set as default landing page", "Nastaviť ako predvolenú úvodnú stránku", "Beállítás alapértelmezett kezdőoldalként")}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onSaveDefaultPage(item.id);
+                    }}
+                    className={cn(
+                      "ml-auto shrink-0 p-1.5 rounded-lg transition-all cursor-pointer flex items-center justify-center",
+                      defaultPage === item.id
+                        ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
+                        : "text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
+                    )}
+                  >
+                    <Icons.Home className="h-3.5 w-3.5" />
                   </span>
                 )}
               </button>

@@ -26,7 +26,18 @@ const ShaderGradientAny = ShaderGradient as any;
 function App() {
   const activePushesRef = useRef(0);
   const lastPushTimeRef = useRef(0);
-  const [isSyncing, setIsSyncing] = useState(false);
+  // Latest-value refs so a push that updates one entity never ships a stale copy of the
+  // others (sync.php destructively replaces each collection, so a stale array would delete
+  // freshly-created rows — the root cause of "assignment/recording resets" bugs).
+  const leadsRef = useRef<Lead[]>([]);
+  const tasksRef = useRef<Task[]>([]);
+  const rolesRef = useRef<RolePermission[]>([]);
+  const usersRef = useRef<UserProfile[]>([]);
+  const meetingNotesRef = useRef<MeetingNote[]>([]);
+  const integrationsConfigRef = useRef<any>(null);
+  const unifiedEntriesRef = useRef<UnifiedEntryRegistry[]>([]);
+  const unifiedEntriesDataRef = useRef<Record<string, UnifiedEntryRow[]>>({});
+  const [, setIsSyncing] = useState(false);
   const [isInstalled, setIsInstalled] = useState(true);
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [dbInfo, setDbInfo] = useState<{ host: string; port: string; name: string; user: string } | null>(null);
@@ -134,7 +145,7 @@ function App() {
   useEffect(() => {
     localStorage.setItem("crm_meeting_notes", JSON.stringify(meetingNotes));
     if (isInitialSyncResolved) {
-      pushStateToServer(leads, tasks, roles, integrationsConfig, users, meetingNotes);
+      pushStateToServer(undefined, undefined, undefined, undefined, undefined, meetingNotes);
     }
   }, [meetingNotes, isInitialSyncResolved]);
 
@@ -158,6 +169,9 @@ function App() {
     "Blocked": "#ef4444",
     "Done": "#10b981"
   });
+
+  // Custom, admin/PM-editable UI labels (e.g. settings column headers). Keyed by a stable slug.
+  const [customLabels, setCustomLabels] = useState<Record<string, string>>({});
 
   const [leadSources, setLeadSources] = useState<string[]>([
     "showroom", "facebook", "instagram", "website"
@@ -406,6 +420,17 @@ ${log.payload || ''}
     }
   }, [activeTab, currentUser, roles]);
 
+  // Keep latest-value refs current on every render so pushStateToServer can fall back to
+  // the freshest state for any entity the caller did not explicitly update.
+  leadsRef.current = leads;
+  tasksRef.current = tasks;
+  rolesRef.current = roles;
+  usersRef.current = users;
+  meetingNotesRef.current = meetingNotes;
+  integrationsConfigRef.current = integrationsConfig;
+  unifiedEntriesRef.current = unifiedEntries;
+  unifiedEntriesDataRef.current = unifiedEntriesData;
+
   // --- REAL-TIME SERVER SYNCHRONIZER ENGINE ---
   const pushStateToServer = async (
     nextLeads?: Lead[],
@@ -422,13 +447,13 @@ ${log.payload || ''}
     activePushesRef.current++;
     lastPushTimeRef.current = Date.now();
     const payload = {
-      leads: nextLeads || leads,
-      tasks: nextTasks || tasks,
-      users: nextUsers || users,
-      roles: nextRoles || roles,
-      meetingNotes: nextMeetingNotes || meetingNotes,
-      unifiedEntries: nextUnifiedEntries || unifiedEntries,
-      unifiedEntriesData: nextUnifiedEntriesData || unifiedEntriesData,
+      leads: nextLeads ?? leadsRef.current,
+      tasks: nextTasks ?? tasksRef.current,
+      users: nextUsers ?? usersRef.current,
+      roles: nextRoles ?? rolesRef.current,
+      meetingNotes: nextMeetingNotes ?? meetingNotesRef.current,
+      unifiedEntries: nextUnifiedEntries ?? unifiedEntriesRef.current,
+      unifiedEntriesData: nextUnifiedEntriesData ?? unifiedEntriesDataRef.current,
       settings: {
         systemName,
         systemLanguage,
@@ -442,7 +467,8 @@ ${log.payload || ''}
         leadStateParents,
         taskStates,
         taskStateColors,
-        integrationsConfig: nextIntegrationsConfig || integrationsConfig
+        customLabels,
+        integrationsConfig: nextIntegrationsConfig ?? integrationsConfigRef.current
       }
     };
     try {
@@ -478,7 +504,7 @@ ${log.payload || ''}
     }
     setUnifiedEntries(prev => {
       const nextEntries = typeof newEntries === "function" ? newEntries(prev) : newEntries;
-      pushStateToServer(leads, tasks, roles, integrationsConfig, users, meetingNotes, nextEntries, resolvedData);
+      pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, nextEntries, resolvedData);
       return nextEntries;
     });
   };
@@ -491,7 +517,7 @@ ${log.payload || ''}
       const currentRows = prev[ueId] || [];
       const nextRows = typeof updater === "function" ? updater(currentRows) : updater;
       const nextData = { ...prev, [ueId]: nextRows };
-      pushStateToServer(leads, tasks, roles, integrationsConfig, users, meetingNotes, unifiedEntries, nextData);
+      pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, nextData);
       return nextData;
     });
   };
@@ -499,7 +525,7 @@ ${log.payload || ''}
   const updateRolesAndSync = (newRoles: RolePermission[] | ((prev: RolePermission[]) => RolePermission[])) => {
     setRoles(prev => {
       const nextRoles = typeof newRoles === "function" ? newRoles(prev) : newRoles;
-      pushStateToServer(leads, tasks, nextRoles);
+      pushStateToServer(undefined, undefined, nextRoles);
       return nextRoles;
     });
   };
@@ -507,7 +533,7 @@ ${log.payload || ''}
   const updateIntegrationsConfigAndSync = (next: any) => {
     setIntegrationsConfig((prev: any) => {
       const updated = typeof next === "function" ? next(prev) : next;
-      pushStateToServer(leads, tasks, roles, updated);
+      pushStateToServer(undefined, undefined, undefined, updated);
       return updated;
     });
   };
@@ -523,7 +549,7 @@ ${log.payload || ''}
   const updateLeadsAndSync = async (updater: Lead[] | ((prev: Lead[]) => Lead[])) => {
     setLeads((prev) => {
       const nextLeads = typeof updater === "function" ? updater(prev) : updater;
-      pushStateToServer(nextLeads, tasks, roles);
+      pushStateToServer(nextLeads);
       return nextLeads;
     });
   };
@@ -531,7 +557,7 @@ ${log.payload || ''}
   const updateTasksAndSync = (newTasks: Task[] | ((prev: Task[]) => Task[])) => {
     setTasks(prev => {
       const nextTasks = typeof newTasks === "function" ? newTasks(prev) : newTasks;
-      pushStateToServer(leads, nextTasks, roles);
+      pushStateToServer(undefined, nextTasks);
       return nextTasks;
     });
   };
@@ -539,7 +565,7 @@ ${log.payload || ''}
   const updateMeetingNotesAndSync = (newNotes: MeetingNote[] | ((prev: MeetingNote[]) => MeetingNote[])) => {
     setMeetingNotes(prev => {
       const nextNotes = typeof newNotes === "function" ? newNotes(prev) : newNotes;
-      pushStateToServer(leads, tasks, roles, integrationsConfig, users, nextNotes);
+      pushStateToServer(undefined, undefined, undefined, undefined, undefined, nextNotes);
       return nextNotes;
     });
   };
@@ -547,7 +573,7 @@ ${log.payload || ''}
   const updateUsersAndSync = (newUsers: UserProfile[] | ((prev: UserProfile[]) => UserProfile[])) => {
     setUsers(prev => {
       const nextUsers = typeof newUsers === "function" ? newUsers(prev) : newUsers;
-      pushStateToServer(leads, tasks, roles, integrationsConfig, nextUsers);
+      pushStateToServer(undefined, undefined, undefined, undefined, nextUsers);
       if (currentUser) {
         const updatedMe = nextUsers.find(u => u.email === currentUser.email);
         if (updatedMe) {
@@ -577,6 +603,41 @@ ${log.payload || ''}
     }));
   };
 
+  // Resolve the default landing page stored in a user's metadata (falls back to caller default)
+  const getDefaultPageForUser = (user: UserProfile | null): string | null => {
+    if (!user?.metadata_json) return null;
+    try {
+      const meta = typeof user.metadata_json === "string"
+        ? JSON.parse(user.metadata_json || "{}")
+        : (user.metadata_json || {});
+      return meta?.defaultPage || null;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const handleSaveDefaultPage = (pageId: string) => {
+    if (!currentUser) return;
+    let currentMeta: any = {};
+    try {
+      currentMeta = typeof currentUser.metadata_json === "string"
+        ? JSON.parse(currentUser.metadata_json || "{}")
+        : (currentUser.metadata_json || {});
+    } catch (e) {
+      console.error("Error parsing user metadata_json", e);
+    }
+    const nextMeta = { ...currentMeta, defaultPage: pageId };
+    updateUsersAndSync(prevUsers => prevUsers.map(u => {
+      if (u.email === currentUser.email) {
+        return { ...u, metadata_json: nextMeta };
+      }
+      return u;
+    }));
+    if (typeof (window as any).showToast === "function") {
+      (window as any).showToast(userLanguage === "sk" ? "Predvolená úvodná stránka nastavená." : "Default landing page set.");
+    }
+  };
+
   // Expose leads state globally for markdown file name reference lookup
   useEffect(() => {
     (window as any).leads = leads;
@@ -586,10 +647,10 @@ ${log.payload || ''}
   useEffect(() => {
     const syncSettingsToServer = async () => {
       if (!isInstalled || !isInitialSyncResolved) return;
-      pushStateToServer(leads, tasks);
+      pushStateToServer();
     };
     syncSettingsToServer();
-  }, [leadStates, leadSources, leadCategories, systemName, systemLanguage, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, taskStates, taskStateColors, isInitialSyncResolved]);
+  }, [leadStates, leadSources, leadCategories, systemName, systemLanguage, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, taskStates, taskStateColors, customLabels, isInitialSyncResolved]);
 
   // Layout Hash change listener
   useEffect(() => {
@@ -597,9 +658,10 @@ ${log.payload || ''}
       setActiveTab(getTabFromHash());
     };
     window.addEventListener("hashchange", handleHashChange);
-    
+
     if (!window.location.hash) {
-      window.location.hash = "dashboard";
+      // On initial app load with no explicit route, open the user's chosen default landing page
+      window.location.hash = getDefaultPageForUser(currentUser) || "dashboard";
     }
 
     return () => window.removeEventListener("hashchange", handleHashChange);
@@ -613,7 +675,9 @@ ${log.payload || ''}
         const res = await fetch(`/sync.php?t=${Date.now()}`);
         if (res.ok) {
           const data = await res.json();
-          if (activePushesRef.current > 0 || pollStartTime < lastPushTimeRef.current) {
+          if (activePushesRef.current > 0 || pollStartTime < lastPushTimeRef.current || Date.now() - lastPushTimeRef.current < 4000) {
+            // Settle window: ignore a server snapshot for a few seconds after any local push,
+            // so a poll that read the DB before our write committed cannot revert fresh changes.
             return;
           }
           if (data && data.installed === false) {
@@ -671,6 +735,7 @@ ${log.payload || ''}
               setLeadStateParents((prev) => s.leadStateParents && JSON.stringify(s.leadStateParents) !== JSON.stringify(prev) ? s.leadStateParents : prev);
               setTaskStates((prev) => s.taskStates && JSON.stringify(s.taskStates) !== JSON.stringify(prev) ? s.taskStates : prev);
               setTaskStateColors((prev) => s.taskStateColors && JSON.stringify(s.taskStateColors) !== JSON.stringify(prev) ? s.taskStateColors : prev);
+              setCustomLabels((prev) => s.customLabels && JSON.stringify(s.customLabels) !== JSON.stringify(prev) ? s.customLabels : prev);
               if (s.integrationsConfig) syncIntegrationsConfig(s.integrationsConfig);
             }
             setIsInitialSyncResolved(true);
@@ -690,7 +755,9 @@ ${log.payload || ''}
         const res = await fetch(`/sync.php?t=${Date.now()}`);
         if (res.ok) {
           const data = await res.json();
-          if (activePushesRef.current > 0 || pollStartTime < lastPushTimeRef.current) {
+          if (activePushesRef.current > 0 || pollStartTime < lastPushTimeRef.current || Date.now() - lastPushTimeRef.current < 4000) {
+            // Settle window: ignore a server snapshot for a few seconds after any local push,
+            // so a poll that read the DB before our write committed cannot revert fresh changes.
             return;
           }
           if (data && data.installed === false) {
@@ -780,6 +847,7 @@ ${log.payload || ''}
               setLeadStateParents((prev) => s.leadStateParents && JSON.stringify(s.leadStateParents) !== JSON.stringify(prev) ? s.leadStateParents : prev);
               setTaskStates((prev) => s.taskStates && JSON.stringify(s.taskStates) !== JSON.stringify(prev) ? s.taskStates : prev);
               setTaskStateColors((prev) => s.taskStateColors && JSON.stringify(s.taskStateColors) !== JSON.stringify(prev) ? s.taskStateColors : prev);
+              setCustomLabels((prev) => s.customLabels && JSON.stringify(s.customLabels) !== JSON.stringify(prev) ? s.customLabels : prev);
               if (s.integrationsConfig) syncIntegrationsConfig(s.integrationsConfig);
             }
           }
@@ -994,6 +1062,8 @@ ${log.payload || ''}
           setTaskStates={setTaskStates}
           taskStateColors={taskStateColors}
           setTaskStateColors={setTaskStateColors}
+          customLabels={customLabels}
+          setCustomLabels={setCustomLabels}
           unifiedEntries={unifiedEntries}
           setUnifiedEntries={updateUnifiedEntriesAndSync}
           unifiedEntriesData={unifiedEntriesData}
@@ -1113,7 +1183,6 @@ ${log.payload || ''}
             integrationsConfig={integrationsConfig}
             tasks={tasks}
             setTasks={updateTasksAndSync}
-            isSyncing={isSyncing}
             taskStates={taskStates}
           />
         );
@@ -1282,7 +1351,13 @@ ${log.payload || ''}
       <LoginView 
         users={users}
         systemName={systemName}
-        onLoginSuccess={(user) => setCurrentUser(user)}
+        onLoginSuccess={(user) => {
+          setCurrentUser(user);
+          // Route the user to their chosen default landing page right after login
+          const dp = getDefaultPageForUser(user) || "dashboard";
+          setActiveTab(dp);
+          window.location.hash = dp;
+        }}
         systemLanguage={userLanguage}
         isDemoMode={isDemoMode}
         isModal={false}
@@ -1317,25 +1392,19 @@ ${log.payload || ''}
           showRagAi={getPermission("rag_view") !== "nothing"}
           currentUser={currentUser}
           roles={roles}
-          canEditNav={getPermission("nav_edit") === "edit"}
+          canEditNav={getPermission("nav_edit") === "edit" || currentUser?.role?.toLowerCase() === "project manager"}
           onSaveUserLayout={handleSaveUserLayout}
           unifiedEntries={unifiedEntries}
+          defaultPage={getDefaultPageForUser(currentUser) || "dashboard"}
+          onSaveDefaultPage={handleSaveDefaultPage}
         />
         
         {/* Workspace Area - Add pb-20 on mobile viewports so that the bottom navigation bar never overlaps content */}
         <div className="flex-1 flex flex-col min-w-0 pb-20 lg:pb-0">
-          <Header 
-            activeTab={activeTab} 
-            systemName={systemName} 
+          <Header
+            activeTab={activeTab}
+            systemName={systemName}
             currentUser={displayUser}
-            users={users}
-            onSwitchUser={(user) => {
-              setCurrentUser(user);
-              if (user.role.toLowerCase() === "project manager" && activeTab === "settings") {
-                setActiveTab("dashboard");
-                window.location.hash = "dashboard";
-              }
-            }}
             onLogout={() => {
               fetch("/api/logout.php", { method: "POST" })
                 .finally(() => {

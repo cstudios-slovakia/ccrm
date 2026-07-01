@@ -55,9 +55,11 @@ export interface MeetingNote {
   summaryGenerated?: boolean;
   automatedTasks?: MeetingTask[];
   archived?: boolean;
-  audioFile?: string;
-  transcription?: string;
-  automatedNotes?: string;
+  // null (not undefined) mirrors what sync.php returns, so the saved shape round-trips
+  // identically and the background poller stops seeing phantom changes.
+  audioFile?: string | null;
+  transcription?: string | null;
+  automatedNotes?: string | null;
 }
 
 interface MeetingRoomViewProps {
@@ -71,7 +73,6 @@ interface MeetingRoomViewProps {
   integrationsConfig?: any;
   tasks: Task[];
   setTasks: (newTasks: Task[] | ((prev: Task[]) => Task[])) => void;
-  isSyncing?: boolean;
   taskStates?: string[];
 }
 
@@ -85,7 +86,6 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
   onClearInitialView,
   integrationsConfig,
   setTasks,
-  isSyncing = false,
   taskStates = ["New", "In progress", "Blocked", "Done"]
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
@@ -718,7 +718,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
           {recordingState === "stopped" && isOpenAiConfigured && !transcriptionAvailable && (
             <button
               type="button"
-              disabled={isTranscribing || isUploadingAudio || isSyncing || !uploadedAudioFile}
+              disabled={isTranscribing || isUploadingAudio || !uploadedAudioFile}
               onClick={handleTranscribeMeeting}
               className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-200 disabled:text-slate-400 text-white text-[10px] font-black uppercase tracking-wider rounded-xl cursor-pointer shadow-md shadow-indigo-600/10 flex items-center gap-1.5 transition-all hover:scale-[1.02] active:scale-95"
             >
@@ -731,11 +731,6 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                 <>
                   <div className="h-3 w-3 rounded-full border-2 border-slate-400 border-t-transparent animate-spin" />
                   {t("Uploading...", "Ukladanie...", "Feltöltés...")}
-                </>
-              ) : isSyncing ? (
-                <>
-                  <div className="h-3 w-3 rounded-full border-2 border-slate-400 border-t-transparent animate-spin" />
-                  {t("Saving to server...", "Ukladá sa na server...", "Mentés a szerverre...")}
                 </>
               ) : !uploadedAudioFile ? (
                 <>
@@ -1199,23 +1194,31 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
       topics
     };
 
+    // Preserve the archived flag of an existing note (saving previously dropped it).
+    const existingNote = meetingNotes.find((n) => n.id === currentNoteId);
+
+    // NOTE: field order and null/boolean conventions below intentionally mirror sync.php's
+    // meeting-note serialization so the saved note round-trips byte-identically and the 5s
+    // background poller does not treat every save as a change (which caused the endless
+    // "Saving to server..." churn where recordings appeared unsaved).
     const createdNote: MeetingNote = {
       id: currentNoteId,
       title: finalTitle,
       date: newDate,
       leadId: primaryLeadId,
       leadName: primaryLeadName,
-      duration: 0,
+      duration: existingNote?.duration ?? 0,
       notes: JSON.stringify(newBlocks),
       aiSummary,
+      summaryGenerated: !!newSummaryGenerated,
       attachedLeads,
       attachedClients,
       attachedUsers,
-      audioFile: overrideAudioFile !== undefined ? overrideAudioFile : (uploadedAudioFile || undefined),
-      transcription: newTranscription || undefined,
-      automatedNotes: newAutomatedNotes || undefined,
-      summaryGenerated: newSummaryGenerated || undefined,
-      automatedTasks: newSummaryGenerated ? newAutomatedTasks : undefined
+      automatedTasks: newSummaryGenerated ? newAutomatedTasks : [],
+      archived: existingNote?.archived ?? false,
+      audioFile: overrideAudioFile !== undefined ? overrideAudioFile : (uploadedAudioFile || null),
+      transcription: newTranscription || null,
+      automatedNotes: newAutomatedNotes || null
     };
 
     setMeetingNotes((prev) => {
@@ -1877,9 +1880,112 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
             </div>
           </div>
 
-          {/* RIGHT COLUMN: AI MEETING ASSISTANT PANEL */}
-          <div className="lg:col-span-1">
+          {/* RIGHT COLUMN: AI MEETING ASSISTANT PANEL + ASSIGNMENT CARD */}
+          <div className="lg:col-span-1 space-y-6">
             {renderAiAssistantPanel(selectedMeeting)}
+
+            {/* Item 8: assign a client or a project manager to this meeting */}
+            {(() => {
+              const meeting = selectedMeeting;
+              const applyUpdate = (patch: Partial<MeetingNote>) => {
+                const updated = { ...meeting, ...patch };
+                setSelectedMeeting(updated);
+                setMeetingNotes((prev) => prev.map((m) => (m.id === meeting.id ? updated : m)));
+              };
+              const assignedClients = meeting.attachedClients || [];
+              const assignedUsers = meeting.attachedUsers || [];
+              return (
+                <div className="bg-white/60 backdrop-blur-md p-5 rounded-3xl border border-slate-200/50 shadow-sm space-y-4">
+                  <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
+                    <Users className="h-4 w-4 text-indigo-600" />
+                    {t("Assign", "Priradiť", "Hozzárendelés")}
+                  </h3>
+
+                  {/* Client assignment */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                      {t("Client", "Klient", "Ügyfél")}
+                    </label>
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        if (id && !assignedClients.includes(id)) {
+                          applyUpdate({ attachedClients: [...assignedClients, id] });
+                        }
+                      }}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 text-xs font-bold focus:outline-none cursor-pointer"
+                    >
+                      <option value="">{t("Add client...", "Pridať klienta...", "Ügyfél hozzáadása...")}</option>
+                      {leads
+                        .filter((l) => !assignedClients.includes(String(l.id)))
+                        .map((l) => (
+                          <option key={l.id} value={String(l.id)}>{l.name}</option>
+                        ))}
+                    </select>
+                    {assignedClients.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {assignedClients.map((id) => {
+                          const c = leads.find((l) => String(l.id) === id);
+                          return (
+                            <span key={id} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-[10px] font-bold text-emerald-700">
+                              {c?.name || id}
+                              <button
+                                type="button"
+                                onClick={() => applyUpdate({ attachedClients: assignedClients.filter((x) => x !== id) })}
+                                className="text-emerald-500 hover:text-rose-500 cursor-pointer"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Project manager assignment */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                      {t("Project Manager", "Projektový manažér", "Projektmenedzser")}
+                    </label>
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        const name = e.target.value;
+                        if (name && !assignedUsers.includes(name)) {
+                          applyUpdate({ attachedUsers: [...assignedUsers, name] });
+                        }
+                      }}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 text-xs font-bold focus:outline-none cursor-pointer"
+                    >
+                      <option value="">{t("Add manager...", "Pridať manažéra...", "Menedzser hozzáadása...")}</option>
+                      {users
+                        .filter((u) => !assignedUsers.includes(u.name))
+                        .map((u) => (
+                          <option key={u.name} value={u.name}>{u.name}</option>
+                        ))}
+                    </select>
+                    {assignedUsers.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {assignedUsers.map((name) => (
+                          <span key={name} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-indigo-50 border border-indigo-200 text-[10px] font-bold text-indigo-700">
+                            {name}
+                            <button
+                              type="button"
+                              onClick={() => applyUpdate({ attachedUsers: assignedUsers.filter((x) => x !== name) })}
+                              className="text-indigo-500 hover:text-rose-500 cursor-pointer"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}

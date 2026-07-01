@@ -2080,13 +2080,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     }
 
     const eventId = `ev-${Date.now()}`;
+    let uploadedFilePath: string | undefined;
 
     // Upload file if selected
     if (logType === "offer" && selectedLogFile) {
       const formData = new FormData();
       formData.append("file", selectedLogFile);
       formData.append("eventId", eventId);
-      
+
       try {
         const uploadRes = await fetch("/upload.php", {
           method: "POST",
@@ -2094,9 +2095,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         });
         const uploadData = await uploadRes.json();
         if (!uploadData.success) {
-          (window as any).showToast(t("File upload failed:", "Nahrávanie súboru zlyhalo:", "A fájl feltöltése sikertelen:") + " " + uploadData.error);
+          (window as any).showToast(t("File upload failed:", "Nahrávanie súboru zlyhalo:", "A fájl feltöltése sikertelen:") + " " + (uploadData.error || ""));
           return;
         }
+        // Store the actual server path so the timeline link never depends on the event id
+        uploadedFilePath = uploadData.filePath;
       } catch (err) {
         console.error("Error uploading file", err);
         (window as any).showToast(t("Error uploading file to server.", "Chyba pri nahrávaní súboru na server.", "Hiba a fájl szerverre való feltöltése közben."));
@@ -2120,6 +2123,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         newEvent.fileName = logFileName;
         newEvent.fileSize = logFileSize;
         newEvent.fileType = logFileType;
+        if (uploadedFilePath) newEvent.filePath = uploadedFilePath;
       }
     } else if (logType === "appointment") {
       newEvent.extraTime = logTime;
@@ -2207,13 +2211,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     if (!activeClient || !uploadFileName) return;
 
     const eventId = `ev-${Date.now()}`;
+    let uploadedFilePath: string | undefined;
 
     // Upload file if selected
     if (selectedUploadFile) {
       const formData = new FormData();
       formData.append("file", selectedUploadFile);
       formData.append("eventId", eventId);
-      
+
       try {
         const uploadRes = await fetch("/upload.php", {
           method: "POST",
@@ -2221,9 +2226,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         });
         const uploadData = await uploadRes.json();
         if (!uploadData.success) {
-          (window as any).showToast(t("File upload failed:", "Nahrávanie súboru zlyhalo:", "A fájl feltöltése sikertelen:") + " " + uploadData.error);
+          (window as any).showToast(t("File upload failed:", "Nahrávanie súboru zlyhalo:", "A fájl feltöltése sikertelen:") + " " + (uploadData.error || ""));
           return;
         }
+        uploadedFilePath = uploadData.filePath;
       } catch (err) {
         console.error("Error uploading file", err);
         (window as any).showToast(t("Error uploading file to server.", "Chyba pri nahrávaní súboru na server.", "Hiba a fájl szerverre való feltöltése közben."));
@@ -2240,6 +2246,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       fileName: uploadFileName,
       fileSize: uploadFileSize,
       fileType: uploadFileType,
+      filePath: uploadedFilePath,
     };
 
     setLeads(prev => prev.map(lead => {
@@ -3152,11 +3159,21 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                         onChange={(e) => {
                                           const file = e.target.files?.[0];
                                           if (file) {
+                                            const MAX_MB = 64;
+                                            if (file.size > MAX_MB * 1024 * 1024) {
+                                              (window as any).showToast?.(t(
+                                                `File is too large (max ${MAX_MB} MB).`,
+                                                `Súbor je príliš veľký (max ${MAX_MB} MB).`,
+                                                `A fájl túl nagy (max ${MAX_MB} MB).`,
+                                              ));
+                                              e.target.value = "";
+                                              return;
+                                            }
                                             setSelectedLogFile(file);
                                             setLogFileName(file.name);
                                             setLogFileSize((file.size / 1024 / 1024).toFixed(2) + " MB");
                                           }
-                                        }} 
+                                        }}
                                       />
                                     </label>
                                     <input
@@ -3427,7 +3444,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                         <span className="text-[9px] font-extrabold text-slate-400">({event.fileSize})</span>
                                       </div>
                                       <a 
-                                        href={`/uploads/${event.id}_${event.fileName}`}
+                                        href={event.filePath || `/uploads/${event.id}_${event.fileName}`}
                                         download={event.fileName}
                                         target="_blank"
                                         rel="noopener noreferrer"
@@ -3620,7 +3637,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                         <span className="text-[9px] font-extrabold text-slate-400">({event.fileSize})</span>
                                       </div>
                                       <a 
-                                        href={`/uploads/${event.id}_${event.fileName}`}
+                                        href={event.filePath || `/uploads/${event.id}_${event.fileName}`}
                                         download={event.fileName}
                                         target="_blank"
                                         rel="noopener noreferrer"
@@ -3665,11 +3682,21 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                 onChange={(e) => {
                                   const file = e.target.files?.[0];
                                   if (file) {
+                                    const MAX_MB = 64;
+                                    if (file.size > MAX_MB * 1024 * 1024) {
+                                      (window as any).showToast?.(t(
+                                        `File is too large (max ${MAX_MB} MB).`,
+                                        `Súbor je príliš veľký (max ${MAX_MB} MB).`,
+                                        `A fájl túl nagy (max ${MAX_MB} MB).`,
+                                      ));
+                                      e.target.value = "";
+                                      return;
+                                    }
                                     setSelectedUploadFile(file);
                                     setUploadFileName(file.name);
                                     setUploadFileSize((file.size / 1024 / 1024).toFixed(2) + " MB");
                                   }
-                                }} 
+                                }}
                               />
                             </label>
                             <input
@@ -3791,7 +3818,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
                               <div className="flex items-center gap-1.5 shrink-0">
                                 <a
-                                  href={`/uploads/${file.id}_${file.fileName}`}
+                                  href={(file as any).filePath || `/uploads/${file.id}_${file.fileName}`}
                                   download={file.fileName}
                                   target="_blank"
                                   rel="noopener noreferrer"

@@ -65,7 +65,7 @@ const Sparkline: React.FC<{ points: number[]; color: string }> = ({ points, colo
   );
 };
 
-const CalendarPane: React.FC<{
+export const CalendarPane: React.FC<{
   title: string;
   year: number;
   month: number;

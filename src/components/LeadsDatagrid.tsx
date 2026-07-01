@@ -7,10 +7,88 @@ import {
   Edit3, Check, Layers, SlidersHorizontal,
   ArrowLeft, PencilLine, Phone, Mail, Globe,
   Calendar, FolderOpen, FileText, Minimize2, CheckSquare, Lock,
-  CornerDownLeft, CornerLeftDown, Loader2, Brain, Mic, Play, Pause, Square, Sparkles
+  CornerDownLeft, CornerLeftDown, Loader2, Brain, Mic, Play, Pause, Square, Sparkles, ChevronDown
 } from "lucide-react";
 import type { Lead, TimelineEvent, Task, UserProfile } from "../types";
 import { cn } from "../utils/cn";
+
+// Searchable lead/referral picker (item 6): a select whose options are filtered by a fulltext
+// search box at the top of the dropdown. Reused by the new-lead popup and the lead detail panel.
+const SearchableLeadSelect: React.FC<{
+  leads: Lead[];
+  value: string;
+  onChange: (id: string) => void;
+  excludeId?: string;
+  systemLanguage: Language;
+}> = ({ leads, value, onChange, excludeId, systemLanguage }) => {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const ref = React.useRef<HTMLDivElement>(null);
+  const noneLabel = systemLanguage === "sk" ? "Žiadny referral" : systemLanguage === "hu" ? "Nincs ajánló" : "No referral source";
+  const searchLabel = systemLanguage === "sk" ? "Hľadať..." : systemLanguage === "hu" ? "Keresés..." : "Search...";
+  const emptyLabel = systemLanguage === "sk" ? "Žiadne výsledky" : systemLanguage === "hu" ? "Nincs találat" : "No matches";
+  const options = leads.filter((l) => l.id !== excludeId);
+  const filtered = query.trim()
+    ? options.filter((l) => `${l.name} ${l.city || ""}`.toLowerCase().includes(query.trim().toLowerCase()))
+    : options;
+  const selected = leads.find((l) => l.id === value);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    if (open) document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full px-4 py-2.5 rounded-xl bg-blue-50/10 border border-blue-100 text-xs text-slate-800 focus:outline-none flex items-center justify-between gap-2 cursor-pointer text-left hover:border-blue-200 transition-colors"
+      >
+        <span className={selected ? "truncate" : "truncate text-slate-400"}>
+          {selected ? `${selected.name} (${selected.city || "N/A"})` : noneLabel}
+        </span>
+        <ChevronDown className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+      </button>
+      {open && (
+        <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-2xl border border-slate-200 shadow-xl max-h-64 overflow-y-auto z-[999] animate-in fade-in zoom-in-95 duration-150">
+          <div className="p-2 sticky top-0 bg-white border-b border-slate-100 z-10">
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={searchLabel}
+              className="w-full px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs focus:outline-none focus:border-indigo-400"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => { onChange(""); setOpen(false); setQuery(""); }}
+            className="w-full text-left px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-50 cursor-pointer"
+          >
+            {noneLabel}
+          </button>
+          {filtered.map((l) => (
+            <button
+              type="button"
+              key={l.id}
+              onClick={() => { onChange(l.id); setOpen(false); setQuery(""); }}
+              className={`w-full text-left px-4 py-2 text-xs hover:bg-indigo-50 cursor-pointer ${l.id === value ? "bg-indigo-50 font-bold text-indigo-700" : "text-slate-700"}`}
+            >
+              {l.name} <span className="text-slate-400">({l.city || "N/A"})</span>
+            </button>
+          ))}
+          {filtered.length === 0 && (
+            <div className="px-4 py-3 text-xs text-slate-400 text-center">{emptyLabel}</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 import { BlockEditor } from "./BlockEditor";
 import type { EditorBlock } from "./BlockEditor";
 import { getTranslation } from "../utils/translations";
@@ -1580,6 +1658,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const eventId = "evt_" + Math.random().toString(36).substr(2, 9);
     let finalFileName = logType === "offer" && logFileName ? logFileName : undefined;
     let finalFileSize = logType === "offer" && logFileSize ? logFileSize : undefined;
+    let finalFilePath: string | undefined;
 
     // Handle physical file upload to backend if present
     if (logType === "offer" && logFileObject) {
@@ -1594,13 +1673,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         });
 
         if (!uploadRes.ok) {
-          const errData = await uploadRes.json();
+          const errData = await uploadRes.json().catch(() => ({}));
           throw new Error(errData.error || t("Failed to upload file", "Nahranie súboru zlyhalo", "A fájl feltöltése sikertelen"));
         }
 
         const uploadData = await uploadRes.json();
         if (uploadData.success) {
           finalFileName = uploadData.fileName || logFileObject.name;
+          finalFilePath = uploadData.filePath;
           if (uploadData.extractedText) {
             contentString = `${contentString}\n\n--- Document Content ---\n${uploadData.extractedText}`;
           }
@@ -1622,6 +1702,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       extraTime: logType === "appointment" ? logTime : undefined,
       fileName: finalFileName,
       fileSize: finalFileSize,
+      filePath: finalFilePath,
       fileType: logType === "offer" && finalFileName ? logFileType : undefined,
       audioFile: logType === "note" && uploadedAudioFile ? uploadedAudioFile : undefined,
       transcription: logType === "note" && (window as any)._latestTranscription ? (window as any)._latestTranscription : undefined
@@ -2717,19 +2798,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     <User className="h-3.5 w-3.5 text-blue-500" /> {systemLanguage === "sk" ? "Odporúčané klientom (Referral)" : systemLanguage === "hu" ? "Ajánló ügyfél (Referral)" : "Referred by client"}
                   </label>
                   {isEditingLead ? (
-                    <select
+                    <SearchableLeadSelect
+                      leads={leads}
                       value={leadReferralId}
-                      onChange={(e) => setLeadReferralId(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:outline-none text-slate-800"
-                    >
-                      <option value="">{systemLanguage === "sk" ? "Žiadny referral" : systemLanguage === "hu" ? "Nincs ajánló" : "No referral"}</option>
-                      {leads
-                        .filter(l => l.id !== activeLead.id)
-                        .map(l => (
-                          <option key={l.id} value={l.id}>{l.name} ({l.city || "N/A"})</option>
-                        ))
-                      }
-                    </select>
+                      onChange={setLeadReferralId}
+                      excludeId={activeLead.id}
+                      systemLanguage={systemLanguage}
+                    />
                   ) : (
                     <div className="pt-1">
                       {(() => {
@@ -3041,11 +3116,21 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     onChange={(e) => {
                                       const file = e.target.files?.[0];
                                       if (file) {
+                                        const MAX_MB = 64;
+                                        if (file.size > MAX_MB * 1024 * 1024) {
+                                          (window as any).showToast?.(t(
+                                            `File is too large (max ${MAX_MB} MB).`,
+                                            `Súbor je príliš veľký (max ${MAX_MB} MB).`,
+                                            `A fájl túl nagy (max ${MAX_MB} MB).`,
+                                          ));
+                                          e.target.value = "";
+                                          return;
+                                        }
                                         setLogFileName(file.name);
                                         setLogFileSize((file.size / 1024 / 1024).toFixed(2) + " MB");
                                         setLogFileObject(file);
                                       }
-                                    }} 
+                                    }}
                                   />
                                 </label>
                                 <input
@@ -3433,7 +3518,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   if ((window as any).previewFile) {
-                                    (window as any).previewFile(`/uploads/${event.id}_${event.fileName}`, event.fileName);
+                                    (window as any).previewFile(event.filePath || `/uploads/${event.id}_${event.fileName}`, event.fileName);
                                   }
                                 }}
                                 className="mt-3.5 pt-3 border-t border-slate-100 flex items-center justify-between gap-2 bg-slate-50/50 p-2.5 rounded-xl border border-slate-150 animate-in slide-in-from-top-1 hover:bg-slate-100/80 cursor-pointer transition-colors"
@@ -5135,16 +5220,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Lead Referral (Referred by Client)", "Odporúčanie leadu (Odporúčané klientom)", "Lead ajánlás (Ügyfél által ajánlott)")}</label>
-                <select
+                <SearchableLeadSelect
+                  leads={leads}
                   value={newLeadReferralId}
-                  onChange={(e) => setNewLeadReferralId(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl bg-blue-50/10 border border-blue-100 text-xs text-slate-800 focus:outline-none"
-                >
-                  <option value="">{systemLanguage === "sk" ? "Žiadny referral" : systemLanguage === "hu" ? "Nincs ajánló" : "No referral source"}</option>
-                  {leads.map(l => (
-                    <option key={l.id} value={l.id}>{l.name} ({l.city || "N/A"})</option>
-                  ))}
-                </select>
+                  onChange={setNewLeadReferralId}
+                  systemLanguage={systemLanguage}
+                />
               </div>
 
               <div className="space-y-1">

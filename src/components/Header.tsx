@@ -9,8 +9,6 @@ interface HeaderProps {
   activeTab: string;
   systemName: string;
   currentUser?: UserProfile;
-  users?: UserProfile[];
-  onSwitchUser?: (user: UserProfile) => void;
   onLogout?: () => void;
   systemLanguage: Language;
   setSystemLanguage: (lang: Language) => void;
@@ -24,8 +22,6 @@ export const Header: React.FC<HeaderProps> = ({
   activeTab, 
   systemName,
   currentUser,
-  users,
-  onSwitchUser,
   onLogout,
   systemLanguage,
   setSystemLanguage,
@@ -498,31 +494,6 @@ export const Header: React.FC<HeaderProps> = ({
                         </svg>
                       </button>
                     </div>
-
-                    {/* Active Simulated User Switcher Dropdown */}
-                    {users && users.length > 0 && onSwitchUser && (
-                      <div className="p-5 border-b border-slate-100 space-y-2.5">
-                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
-                          {t("Simulated User Session", "Simulovaná relácia používateľa", "Szimulált felhasználói munkamenet")}
-                        </div>
-                        <select
-                          value={currentUser?.name}
-                          onChange={(e) => {
-                            const found = users.find(u => u.name === e.target.value);
-                            if (found) {
-                              onSwitchUser(found);
-                            }
-                          }}
-                          className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-heading font-bold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 cursor-pointer"
-                        >
-                          {users.map(u => (
-                            <option key={u.name} value={u.name}>
-                              👤 {u.name} ({u.role})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
 
                     {/* Language Selector Section */}
                     <div className="p-5 space-y-3 border-b border-slate-105">

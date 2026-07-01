@@ -67,6 +67,10 @@ interface SettingsViewProps {
   initialSubTab?: string;
   settingsAction?: string | null;
   settingsActionId?: string | null;
+
+  // Admin/PM-editable custom UI labels (e.g. Sources column headers), keyed by a stable slug.
+  customLabels?: Record<string, string>;
+  setCustomLabels?: React.Dispatch<React.SetStateAction<Record<string, string>>>;
 }
 
 // Extract all valid Lucide icon names dynamically for search
@@ -118,9 +122,67 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   unifiedEntriesData = {},
   initialSubTab = "branding",
   settingsAction = null,
-  settingsActionId = null
+  settingsActionId = null,
+  customLabels = {},
+  setCustomLabels
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
+
+  // Item 4: admin & project managers may rename certain settings labels by clicking them.
+  const canEditLabels = (() => {
+    const role = (currentUser?.role || "").toLowerCase();
+    return role === "admin" || role === "project manager";
+  })();
+
+  // Inline click-to-edit label: shows the custom override (if any) else the default text.
+  const EditableLabel: React.FC<{ slug: string; defaultLabel: string; className?: string }> = ({ slug, defaultLabel, className = "" }) => {
+    const [editing, setEditing] = React.useState(false);
+    const [draft, setDraft] = React.useState("");
+    const current = customLabels[slug] ?? defaultLabel;
+    const commit = () => {
+      setEditing(false);
+      if (!setCustomLabels) return;
+      const trimmed = draft.trim();
+      setCustomLabels((prev) => {
+        const next = { ...prev };
+        if (!trimmed || trimmed === defaultLabel) {
+          delete next[slug];
+        } else {
+          next[slug] = trimmed;
+        }
+        return next;
+      });
+    };
+    if (editing && canEditLabels && setCustomLabels) {
+      return (
+        <input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); commit(); }
+            if (e.key === "Escape") { setEditing(false); }
+          }}
+          className="px-1.5 py-0.5 rounded-md border border-indigo-300 bg-white text-slate-800 text-[10px] font-black uppercase tracking-wider focus:outline-none focus:ring-1 focus:ring-indigo-400 min-w-[80px]"
+        />
+      );
+    }
+    return (
+      <span
+        className={className + (canEditLabels && setCustomLabels ? " cursor-pointer hover:text-indigo-600 hover:underline decoration-dotted underline-offset-2" : "")}
+        title={canEditLabels && setCustomLabels ? t("Click to rename", "Kliknutím premenujete", "Kattintson az átnevezéshez") : undefined}
+        onClick={() => {
+          if (canEditLabels && setCustomLabels) {
+            setDraft(current);
+            setEditing(true);
+          }
+        }}
+      >
+        {current}
+      </span>
+    );
+  };
   const [tempName, setTempName] = React.useState(systemName);
   const [newState, setNewState] = React.useState("");
   const [newSource, setNewSource] = React.useState("");
@@ -3099,7 +3161,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <tr className="bg-slate-50 border-b border-slate-200/60 select-none">
                       <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-12 text-center">{getTranslation(userLanguage, "settings.states.th_drag")}</th>
                       <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-44">{getTranslation(userLanguage, "settings.states.th_color")}</th>
-                      <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">{getTranslation(userLanguage, "settings.sources.th_name")}</th>
+                      <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest"><EditableLabel slug="sources.th_name" defaultLabel={getTranslation(userLanguage, "settings.sources.th_name")} /></th>
                       <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-16 text-center">{getTranslation(userLanguage, "settings.states.th_delete")}</th>
                     </tr>
                   </thead>
@@ -3250,7 +3312,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <tr className="bg-slate-50 border-b border-slate-200/60 select-none">
                       <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-12 text-center">{getTranslation(userLanguage, "settings.states.th_drag")}</th>
                       <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-44">{getTranslation(userLanguage, "settings.states.th_color")}</th>
-                      <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">{getTranslation(userLanguage, "settings.sources.th_category_name")}</th>
+                      <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest"><EditableLabel slug="sources.th_category_name" defaultLabel={getTranslation(userLanguage, "settings.sources.th_category_name")} /></th>
                       <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-16 text-center">{getTranslation(userLanguage, "settings.states.th_delete")}</th>
                     </tr>
                   </thead>
@@ -3400,7 +3462,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200/60 select-none">
                       <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-44">{userLanguage === "sk" ? "Farba" : userLanguage === "hu" ? "Szín" : "Color"}</th>
-                      <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">{userLanguage === "sk" ? "Názov" : userLanguage === "hu" ? "Név" : "Name"}</th>
+                      <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest"><EditableLabel slug="taskStates.th_name" defaultLabel={userLanguage === "sk" ? "Názov" : userLanguage === "hu" ? "Név" : "Name"} /></th>
                       <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-16 text-center">{userLanguage === "sk" ? "Odstrániť" : userLanguage === "hu" ? "Törlés" : "Delete"}</th>
                     </tr>
                   </thead>
