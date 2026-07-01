@@ -234,6 +234,19 @@ if (!function_exists('ccrm_schema_statements')) {
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
+            // Error Logs for Exception Tracking
+            "CREATE TABLE IF NOT EXISTS `error_logs` (
+              `id` INT AUTO_INCREMENT PRIMARY KEY,
+              `message` TEXT NOT NULL,
+              `file` VARCHAR(255) NULL,
+              `line` INT NULL,
+              `trace` LONGTEXT NULL,
+              `request_uri` VARCHAR(255) NULL,
+              `request_method` VARCHAR(10) NULL,
+              `payload` LONGTEXT NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
             "CREATE TABLE IF NOT EXISTS `password_resets` (
               `token` VARCHAR(64) NOT NULL,
               `user_id` VARCHAR(50) NOT NULL,
@@ -242,7 +255,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               PRIMARY KEY (`token`),
               INDEX `idx_pwreset_user` (`user_id`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
         ];
     }
 

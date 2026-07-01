@@ -163,4 +163,37 @@ if (!function_exists('ccrm_send_cors')) {
     function ccrm_hash_password(string $plain): string {
         return ccrm_is_hash($plain) ? $plain : password_hash($plain, PASSWORD_DEFAULT);
     }
+
+    /**
+     * Log a PHP exception/error to the error_logs database table.
+     */
+    function ccrm_log_exception(\Throwable $e): void {
+        try {
+            if (!function_exists('get_db_connection')) {
+                $configFile = dirname(__DIR__) . '/config.php';
+                if (!file_exists($configFile)) {
+                    $configFile = dirname(__DIR__) . '/public/config.php';
+                }
+                if (file_exists($configFile)) {
+                    require_once $configFile;
+                }
+            }
+            if (function_exists('get_db_connection')) {
+                $pdo = get_db_connection();
+                // Ensure table exists (runs ccrm_apply_schema if not already done, but usually it is)
+                $stmt = $pdo->prepare("INSERT INTO `error_logs` (`message`, `file`, `line`, `trace`, `request_uri`, `request_method`, `payload`) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                $stmt->execute([
+                    $e->getMessage(),
+                    $e->getFile(),
+                    $e->getLine(),
+                    $e->getTraceAsString(),
+                    $_SERVER['REQUEST_URI'] ?? null,
+                    $_SERVER['REQUEST_METHOD'] ?? null,
+                    file_get_contents('php://input') ?: null
+                ]);
+            }
+        } catch (\Throwable $ex) {
+            error_log("Failed to log exception to DB: " . $ex->getMessage() . " | Original: " . $e->getMessage());
+        }
+    }
 }
