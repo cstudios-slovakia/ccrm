@@ -233,6 +233,16 @@ if (!function_exists('ccrm_schema_statements')) {
               `archived` TINYINT(1) NOT NULL DEFAULT 0,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            "CREATE TABLE IF NOT EXISTS `password_resets` (
+              `token` VARCHAR(64) NOT NULL,
+              `user_id` VARCHAR(50) NOT NULL,
+              `expires_at` DATETIME NOT NULL,
+              `used` TINYINT(1) NOT NULL DEFAULT 0,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (`token`),
+              INDEX `idx_pwreset_user` (`user_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
         ];
     }
 
