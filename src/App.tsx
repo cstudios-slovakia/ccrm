@@ -170,9 +170,6 @@ function App() {
     "Done": "#10b981"
   });
 
-  // Custom, admin/PM-editable UI labels (e.g. settings column headers). Keyed by a stable slug.
-  const [customLabels, setCustomLabels] = useState<Record<string, string>>({});
-
   const [leadSources, setLeadSources] = useState<string[]>([
     "showroom", "facebook", "instagram", "website"
   ]);
@@ -336,23 +333,49 @@ ${log.payload || ''}
     }
   }, [errorSidebarEnabled]);
 
-  useEffect(() => {
-    if (currentUser) {
-      const stored = sessionStorage.getItem(`crm_user_language_${currentUser.name}`);
-      if (stored) {
-        setUserLanguage(stored as "en" | "sk" | "hu");
-      } else {
-        setUserLanguage(systemLanguage);
-      }
-    } else {
-      setUserLanguage(systemLanguage);
+  // Resolve a user's personal interface language from their DB-backed metadata.
+  // Per-user language lives in metadata_json.language — the same durable, server-synced
+  // place we keep their default landing page and nav layout — NOT sessionStorage, which
+  // is per-tab, wiped on browser close, and doesn't follow the user across devices.
+  // Returns null when the user hasn't chosen one, so we fall back to the system language.
+  const getUserLanguage = (user: UserProfile | null): "en" | "sk" | "hu" | null => {
+    if (!user?.metadata_json) return null;
+    try {
+      const meta = typeof user.metadata_json === "string"
+        ? JSON.parse(user.metadata_json || "{}")
+        : (user.metadata_json || {});
+      const lang = meta?.language;
+      return (lang === "en" || lang === "sk" || lang === "hu") ? lang : null;
+    } catch (e) {
+      return null;
     }
-  }, [currentUser, systemLanguage]);
+  };
 
   useEffect(() => {
-    const username = currentUser ? currentUser.name : "guest";
-    sessionStorage.setItem(`crm_user_language_${username}`, userLanguage);
-  }, [userLanguage, currentUser]);
+    setUserLanguage(getUserLanguage(currentUser) || systemLanguage);
+  }, [currentUser, systemLanguage]);
+
+  // Change the active UI language and persist it as the user's personal preference in
+  // their DB-backed metadata, so it survives refreshes, re-logins and other devices.
+  // Falls back to just updating local state when no user is logged in (e.g. login screen).
+  const changeUserLanguage = (lang: "en" | "sk" | "hu") => {
+    setUserLanguage(lang);
+    if (!currentUser) return;
+    let currentMeta: any = {};
+    try {
+      currentMeta = typeof currentUser.metadata_json === "string"
+        ? JSON.parse(currentUser.metadata_json || "{}")
+        : (currentUser.metadata_json || {});
+    } catch (e) {
+      console.error("Error parsing user metadata_json", e);
+    }
+    const nextMeta = { ...currentMeta, language: lang };
+    updateUsersAndSync(prevUsers => prevUsers.map(u =>
+      u.email === currentUser.email ? { ...u, metadata_json: nextMeta } : u
+    ));
+    // Keep the in-memory currentUser in step so the effect above doesn't briefly revert.
+    setCurrentUser(prev => prev ? { ...prev, metadata_json: nextMeta } : prev);
+  };
 
   // Dynamically update browser tab document title based on the active view and language preference
   useEffect(() => {
@@ -467,7 +490,6 @@ ${log.payload || ''}
         leadStateParents,
         taskStates,
         taskStateColors,
-        customLabels,
         integrationsConfig: nextIntegrationsConfig ?? integrationsConfigRef.current
       }
     };
@@ -650,7 +672,7 @@ ${log.payload || ''}
       pushStateToServer();
     };
     syncSettingsToServer();
-  }, [leadStates, leadSources, leadCategories, systemName, systemLanguage, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, taskStates, taskStateColors, customLabels, isInitialSyncResolved]);
+  }, [leadStates, leadSources, leadCategories, systemName, systemLanguage, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, taskStates, taskStateColors, isInitialSyncResolved]);
 
   // Layout Hash change listener
   useEffect(() => {
@@ -728,7 +750,6 @@ ${log.payload || ''}
         setLeadStateParents((prev) => s.leadStateParents && JSON.stringify(s.leadStateParents) !== JSON.stringify(prev) ? s.leadStateParents : prev);
         setTaskStates((prev) => s.taskStates && JSON.stringify(s.taskStates) !== JSON.stringify(prev) ? s.taskStates : prev);
         setTaskStateColors((prev) => s.taskStateColors && JSON.stringify(s.taskStateColors) !== JSON.stringify(prev) ? s.taskStateColors : prev);
-        setCustomLabels((prev) => s.customLabels && JSON.stringify(s.customLabels) !== JSON.stringify(prev) ? s.customLabels : prev);
         if (s.integrationsConfig) syncIntegrationsConfig(s.integrationsConfig);
       }
     };
@@ -994,8 +1015,8 @@ ${log.payload || ''}
           setTaskStates={setTaskStates}
           taskStateColors={taskStateColors}
           setTaskStateColors={setTaskStateColors}
-          customLabels={customLabels}
-          setCustomLabels={setCustomLabels}
+          setLeads={updateLeadsAndSync}
+          setTasks={updateTasksAndSync}
           unifiedEntries={unifiedEntries}
           setUnifiedEntries={updateUnifiedEntriesAndSync}
           unifiedEntriesData={unifiedEntriesData}
@@ -1061,7 +1082,7 @@ ${log.payload || ''}
             setUsers={updateUsersAndSync}
             systemLanguage={systemLanguage}
             userLanguage={userLanguage}
-            setUserLanguage={setUserLanguage}
+            setUserLanguage={changeUserLanguage}
             onSync={() => {}}
             errorSidebarEnabled={errorSidebarEnabled}
             setErrorSidebarEnabled={setErrorSidebarEnabled}
@@ -1345,7 +1366,7 @@ ${log.payload || ''}
                 });
             }}
             systemLanguage={userLanguage}
-            setSystemLanguage={setUserLanguage}
+            setSystemLanguage={changeUserLanguage}
             isDemoMode={isDemoMode}
             onOpenPersonalSettings={() => {
               setActiveTab("personal-settings");

@@ -6,7 +6,7 @@ import {
   Eye, Pencil, Minus, GripVertical, ArrowLeft, Activity, Clock, CheckSquare,
   Menu, ArrowUp, FolderOpen, Search
 } from "lucide-react";
-import type { UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow } from "../types";
+import type { UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task } from "../types";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 
@@ -68,9 +68,9 @@ interface SettingsViewProps {
   settingsAction?: string | null;
   settingsActionId?: string | null;
 
-  // Admin/PM-editable custom UI labels (e.g. Sources column headers), keyed by a stable slug.
-  customLabels?: Record<string, string>;
-  setCustomLabels?: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  // Record stores — used to cascade a rename onto existing leads/tasks so they are not orphaned.
+  setLeads?: React.Dispatch<React.SetStateAction<Lead[]>>;
+  setTasks?: React.Dispatch<React.SetStateAction<Task[]>>;
 }
 
 // Extract all valid Lucide icon names dynamically for search
@@ -123,37 +123,27 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   initialSubTab = "branding",
   settingsAction = null,
   settingsActionId = null,
-  customLabels = {},
-  setCustomLabels
+  setLeads,
+  setTasks
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
 
-  // Item 4: admin & project managers may rename certain settings labels by clicking them.
-  const canEditLabels = (() => {
-    const role = (currentUser?.role || "").toLowerCase();
-    return role === "admin" || role === "project manager";
-  })();
-
-  // Inline click-to-edit label: shows the custom override (if any) else the default text.
-  const EditableLabel: React.FC<{ slug: string; defaultLabel: string; className?: string }> = ({ slug, defaultLabel, className = "" }) => {
+  // Inline click-to-rename for an actual list entry (source / category / lead-state / task-state).
+  // Shows the existing display node; a pencil affordance (or double-click) swaps it for an input.
+  const InlineRenameName: React.FC<{
+    value: string;
+    canEdit: boolean;
+    onCommit: (next: string) => void;
+    children: React.ReactNode;
+  }> = ({ value, canEdit, onCommit, children }) => {
     const [editing, setEditing] = React.useState(false);
-    const [draft, setDraft] = React.useState("");
-    const current = customLabels[slug] ?? defaultLabel;
+    const [draft, setDraft] = React.useState(value);
     const commit = () => {
       setEditing(false);
-      if (!setCustomLabels) return;
       const trimmed = draft.trim();
-      setCustomLabels((prev) => {
-        const next = { ...prev };
-        if (!trimmed || trimmed === defaultLabel) {
-          delete next[slug];
-        } else {
-          next[slug] = trimmed;
-        }
-        return next;
-      });
+      if (trimmed && trimmed !== value) onCommit(trimmed);
     };
-    if (editing && canEditLabels && setCustomLabels) {
+    if (editing) {
       return (
         <input
           autoFocus
@@ -162,27 +152,100 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           onBlur={commit}
           onKeyDown={(e) => {
             if (e.key === "Enter") { e.preventDefault(); commit(); }
-            if (e.key === "Escape") { setEditing(false); }
+            if (e.key === "Escape") { setEditing(false); setDraft(value); }
           }}
-          className="px-1.5 py-0.5 rounded-md border border-indigo-300 bg-white text-slate-800 text-[10px] font-black uppercase tracking-wider focus:outline-none focus:ring-1 focus:ring-indigo-400 min-w-[80px]"
+          className="px-2.5 py-1 rounded-full border border-indigo-300 bg-white text-slate-800 text-xs font-black uppercase tracking-wider focus:outline-none focus:ring-1 focus:ring-indigo-400 min-w-[110px]"
         />
       );
     }
+    const startEdit = () => { if (canEdit) { setDraft(value); setEditing(true); } };
     return (
-      <span
-        className={className + (canEditLabels && setCustomLabels ? " cursor-pointer hover:text-indigo-600 hover:underline decoration-dotted underline-offset-2" : "")}
-        title={canEditLabels && setCustomLabels ? t("Click to rename", "Kliknutím premenujete", "Kattintson az átnevezéshez") : undefined}
-        onClick={() => {
-          if (canEditLabels && setCustomLabels) {
-            setDraft(current);
-            setEditing(true);
-          }
-        }}
-      >
-        {current}
+      <span className="inline-flex items-center gap-1.5">
+        <span onDoubleClick={startEdit} className={canEdit ? "cursor-text" : undefined}>{children}</span>
+        {canEdit && (
+          <button
+            type="button"
+            onClick={startEdit}
+            className="text-slate-300 hover:text-indigo-600 transition-colors p-1 rounded-md hover:bg-indigo-50 shrink-0"
+            title={t("Rename", "Premenovať", "Átnevezés")}
+          >
+            <Pencil className="h-3 w-3" />
+          </button>
+        )}
       </span>
     );
   };
+
+  // Migrate a name-keyed map entry (color / group / parent) from oldKey to newKey.
+  const migrateMapKey = <T,>(obj: Record<string, T>, oldKey: string, newKey: string): Record<string, T> => {
+    if (!(oldKey in obj)) return obj;
+    const next = { ...obj };
+    next[newKey] = next[oldKey];
+    delete next[oldKey];
+    return next;
+  };
+
+  const toastNameExists = () =>
+    (window as any).showToast(t("This name already exists!", "Tento názov už existuje!", "Ez a név már létezik!"));
+
+  // Rename a lead source: list + color map + cascade onto existing leads.
+  const handleRenameSource = (oldName: string, raw: string) => {
+    if (getPermission("traffic_sources") !== "edit") return;
+    const next = raw.trim().toLowerCase();
+    if (!next || next === oldName) return;
+    if (leadSources.some((s) => s.toLowerCase() === next)) { toastNameExists(); return; }
+    setLeadSources((prev) => prev.map((s) => (s === oldName ? next : s)));
+    setLeadSourceColors((prev) => migrateMapKey(prev, oldName, next));
+    setLeads?.((prev) => prev.map((l) => (l.source === oldName ? { ...l, source: next } : l)));
+  };
+
+  // Rename a lead state: list + color/group/parent maps (incl. child references) + cascade onto leads.
+  const handleRenameState = (oldName: string, raw: string) => {
+    if (getPermission("pipeline_stages") !== "edit") return;
+    const next = raw.trim().toLowerCase();
+    if (!next || next === oldName) return;
+    if (leadStates.some((s) => s.toLowerCase() === next)) { toastNameExists(); return; }
+    setLeadStates((prev) => prev.map((s) => (s === oldName ? next : s)));
+    setLeadStateColors((prev) => migrateMapKey(prev, oldName, next));
+    setLeadStageGroups((prev) => migrateMapKey(prev, oldName, next));
+    setLeadStateParents((prev) => {
+      const out: Record<string, string> = {};
+      Object.entries(prev).forEach(([child, parent]) => {
+        out[child === oldName ? next : child] = parent === oldName ? next : parent;
+      });
+      return out;
+    });
+    setLeads?.((prev) => prev.map((l) => (l.status === oldName ? { ...l, status: next } : l)));
+  };
+
+  // Rename an interested category: list + color map + cascade onto each lead's categories array.
+  const handleRenameCategory = (oldName: string, raw: string) => {
+    if (getPermission("traffic_sources") !== "edit") return;
+    const next = raw.trim();
+    if (!next || next === oldName) return;
+    if (leadCategories.some((c) => c.toLowerCase() === next.toLowerCase())) { toastNameExists(); return; }
+    setLeadCategories((prev) => prev.map((c) => (c === oldName ? next : c)));
+    setLeadCategoryColors((prev) => migrateMapKey(prev, oldName, next));
+    setLeads?.((prev) =>
+      prev.map((l) =>
+        l.categories?.includes(oldName)
+          ? { ...l, categories: l.categories.map((c) => (c === oldName ? next : c)) }
+          : l
+      )
+    );
+  };
+
+  // Rename a task state: list + color map + cascade onto existing tasks.
+  const handleRenameTaskState = (oldName: string, raw: string) => {
+    if (getPermission("traffic_sources") !== "edit") return;
+    const next = raw.trim();
+    if (!next || next === oldName) return;
+    if (taskStates.some((s) => s.toLowerCase() === next.toLowerCase())) { toastNameExists(); return; }
+    setTaskStates((prev) => prev.map((s) => (s === oldName ? next : s)));
+    setTaskStateColors((prev) => migrateMapKey(prev, oldName, next));
+    setTasks?.((prev) => prev.map((tk) => (tk.status === oldName ? { ...tk, status: next } : tk)));
+  };
+
   const [tempName, setTempName] = React.useState(systemName);
   const [newState, setNewState] = React.useState("");
   const [newSource, setNewSource] = React.useState("");
@@ -3056,16 +3119,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 {isSub && (
                                   <span className="text-slate-400 font-extrabold text-sm ml-2 mr-1 select-none">↳</span>
                                 )}
-                                <span 
-                                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase border"
-                                  style={{
-                                    backgroundColor: `${color}12`,
-                                    color: color,
-                                    borderColor: `${color}35`
-                                  }}
+                                <InlineRenameName
+                                  value={state}
+                                  canEdit={getPermission("pipeline_stages") === "edit"}
+                                  onCommit={(next) => handleRenameState(state, next)}
                                 >
-                                  {state}
-                                </span>
+                                  <span
+                                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase border"
+                                    style={{
+                                      backgroundColor: `${color}12`,
+                                      color: color,
+                                      borderColor: `${color}35`
+                                    }}
+                                  >
+                                    {state}
+                                  </span>
+                                </InlineRenameName>
                               </div>
                             </td>
 
@@ -3161,7 +3230,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <tr className="bg-slate-50 border-b border-slate-200/60 select-none">
                       <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-12 text-center">{getTranslation(userLanguage, "settings.states.th_drag")}</th>
                       <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-44">{getTranslation(userLanguage, "settings.states.th_color")}</th>
-                      <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest"><EditableLabel slug="sources.th_name" defaultLabel={getTranslation(userLanguage, "settings.sources.th_name")} /></th>
+                      <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">{getTranslation(userLanguage, "settings.sources.th_name")}</th>
                       <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-16 text-center">{getTranslation(userLanguage, "settings.states.th_delete")}</th>
                     </tr>
                   </thead>
@@ -3240,16 +3309,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           <td className="py-3 px-4 align-middle">
                             <div className="flex items-center gap-3">
                               <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-500 border border-slate-200/60 px-2 py-0.5 rounded-md">ID: {idx + 1}</span>
-                              <span 
-                                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase border"
-                                style={{
-                                  backgroundColor: `${color}12`,
-                                  color: color,
-                                  borderColor: `${color}35`
-                                }}
+                              <InlineRenameName
+                                value={source}
+                                canEdit={getPermission("traffic_sources") === "edit"}
+                                onCommit={(next) => handleRenameSource(source, next)}
                               >
-                                {source}
-                              </span>
+                                <span
+                                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase border"
+                                  style={{
+                                    backgroundColor: `${color}12`,
+                                    color: color,
+                                    borderColor: `${color}35`
+                                  }}
+                                >
+                                  {source}
+                                </span>
+                              </InlineRenameName>
                             </div>
                           </td>
 
@@ -3312,7 +3387,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <tr className="bg-slate-50 border-b border-slate-200/60 select-none">
                       <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-12 text-center">{getTranslation(userLanguage, "settings.states.th_drag")}</th>
                       <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-44">{getTranslation(userLanguage, "settings.states.th_color")}</th>
-                      <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest"><EditableLabel slug="sources.th_category_name" defaultLabel={getTranslation(userLanguage, "settings.sources.th_category_name")} /></th>
+                      <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">{getTranslation(userLanguage, "settings.sources.th_category_name")}</th>
                       <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-16 text-center">{getTranslation(userLanguage, "settings.states.th_delete")}</th>
                     </tr>
                   </thead>
@@ -3391,16 +3466,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           <td className="py-3 px-4 align-middle">
                             <div className="flex items-center gap-3">
                               <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-555 border border-slate-200/60 px-2 py-0.5 rounded-md">ID: {idx + 1}</span>
-                              <span 
-                                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase border"
-                                style={{
-                                  backgroundColor: `${color}12`,
-                                  color: color,
-                                  borderColor: `${color}35`
-                                }}
+                              <InlineRenameName
+                                value={cat}
+                                canEdit={getPermission("traffic_sources") === "edit"}
+                                onCommit={(next) => handleRenameCategory(cat, next)}
                               >
-                                {cat}
-                              </span>
+                                <span
+                                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase border"
+                                  style={{
+                                    backgroundColor: `${color}12`,
+                                    color: color,
+                                    borderColor: `${color}35`
+                                  }}
+                                >
+                                  {cat}
+                                </span>
+                              </InlineRenameName>
                             </div>
                           </td>
 
@@ -3462,7 +3543,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200/60 select-none">
                       <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-44">{userLanguage === "sk" ? "Farba" : userLanguage === "hu" ? "Szín" : "Color"}</th>
-                      <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest"><EditableLabel slug="taskStates.th_name" defaultLabel={userLanguage === "sk" ? "Názov" : userLanguage === "hu" ? "Név" : "Name"} /></th>
+                      <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">{userLanguage === "sk" ? "Názov" : userLanguage === "hu" ? "Név" : "Name"}</th>
                       <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-16 text-center">{userLanguage === "sk" ? "Odstrániť" : userLanguage === "hu" ? "Törlés" : "Delete"}</th>
                     </tr>
                   </thead>
@@ -3498,7 +3579,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                           {/* STATE NAME */}
                           <td className="py-3 px-4 align-middle font-bold text-slate-800 uppercase tracking-wider text-xs">
-                            {state}
+                            <InlineRenameName
+                              value={state}
+                              canEdit={getPermission("traffic_sources") === "edit"}
+                              onCommit={(next) => handleRenameTaskState(state, next)}
+                            >
+                              <span>{state}</span>
+                            </InlineRenameName>
                           </td>
 
                           {/* ACTIONS */}
