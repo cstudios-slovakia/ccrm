@@ -48,7 +48,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
   currentUser,
   leads,
   setLeads,
-  systemLanguage: _systemLanguage,
+  systemLanguage,
   projectManagerColors = {},
   integrationsConfig,
   tasks,
@@ -56,6 +56,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
   users,
   taskStates = ["New", "In progress", "Blocked", "Done"]
 }) => {
+  const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
   // Folder & Email States
   const activeFolder = "INBOX";
   const [emails, setEmails] = useState<any[]>([]);
@@ -150,7 +151,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
           "X-User-Email": currentUser.email
         }
       });
-      if (!res.ok) throw new Error("Failed to download attachment.");
+      if (!res.ok) throw new Error(t("Failed to download attachment.", "Nepodarilo sa stiahnuť prílohu.", "A melléklet letöltése nem sikerült."));
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -162,7 +163,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       window.URL.revokeObjectURL(url);
     } catch (err: any) {
       if (typeof (window as any).showToast === "function") {
-        (window as any).showToast(err.message || "Failed to download attachment.");
+        (window as any).showToast(err.message || t("Failed to download attachment.", "Nepodarilo sa stiahnuť prílohu.", "A melléklet letöltése nem sikerült."));
       }
     }
   };
@@ -171,7 +172,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
     try {
       const eventId = `ev-doc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       if (typeof (window as any).showToast === "function") {
-        (window as any).showToast("Adding attachment to documents database...");
+        (window as any).showToast(t("Adding attachment to documents database...", "Pridáva sa príloha do databázy dokumentov...", "Melléklet hozzáadása a dokumentum-adatbázishoz..."));
       }
       const res = await fetch(`/api/mail_broker.php?action=save_attachment&folder=${encodeURIComponent(folder)}&uid=${uid}&part=${att.part_num}&name=${encodeURIComponent(att.name)}&eventId=${eventId}`, {
         method: "POST",
@@ -181,7 +182,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       });
       const data = await res.json();
       if (!data.success) {
-        throw new Error(data.error || "Failed to save attachment.");
+        throw new Error(data.error || t("Failed to save attachment.", "Nepodarilo sa uložiť prílohu.", "A melléklet mentése nem sikerült."));
       }
 
       setLeads((prevLeads: Lead[]) => {
@@ -191,7 +192,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
         if (!hasUnassigned && targetLeadId === "unassigned-docs") {
           baseLeads = [...prevLeads, {
             id: "unassigned-docs",
-            name: "Unassigned Documents",
+            name: t("Unassigned Documents", "Nepriradené dokumenty", "Nem hozzárendelt dokumentumok"),
             city: "",
             clientType: "person",
             status: "unassigned-docs",
@@ -210,8 +211,8 @@ export const EmailView: React.FC<EmailViewProps> = ({
             id: eventId,
             type: "offer" as const,
             timestamp: new Date().toISOString().replace("T", " ").substring(0, 16),
-            title: "Email Attachment Saved",
-            content: data.extractedText ? `Saved email attachment: ${data.fileName}\n\n--- Document Content ---\n${data.extractedText}` : `Saved email attachment: ${data.fileName}`,
+            title: t("Email Attachment Saved", "Príloha e-mailu uložená", "E-mail melléklet mentve"),
+            content: data.extractedText ? `${t("Saved email attachment:", "Uložená príloha e-mailu:", "Mentett e-mail melléklet:")} ${data.fileName}\n\n--- ${t("Document Content", "Obsah dokumentu", "Dokumentum tartalma")} ---\n${data.extractedText}` : `${t("Saved email attachment:", "Uložená príloha e-mailu:", "Mentett e-mail melléklet:")} ${data.fileName}`,
             amount: undefined,
             fileName: data.fileName,
             fileSize: formatBytes(att.size || 0),
@@ -226,11 +227,11 @@ export const EmailView: React.FC<EmailViewProps> = ({
       });
 
       if (typeof (window as any).showToast === "function") {
-        (window as any).showToast(`Attachment "${att.name}" successfully added to documents!`);
+        (window as any).showToast(t(`Attachment "${att.name}" successfully added to documents!`, `Príloha "${att.name}" bola úspešne pridaná do dokumentov!`, `A(z) "${att.name}" melléklet sikeresen hozzáadva a dokumentumokhoz!`));
       }
     } catch (err: any) {
       if (typeof (window as any).showToast === "function") {
-        (window as any).showToast(err.message || "Failed to add attachment to documents.");
+        (window as any).showToast(err.message || t("Failed to add attachment to documents.", "Nepodarilo sa pridať prílohu do dokumentov.", "A melléklet hozzáadása a dokumentumokhoz nem sikerült."));
       }
     }
   };
@@ -281,7 +282,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
     const newCrmTask: Task = {
       id: `task-ai-${Date.now()}`,
       title: actionItem,
-      description: `AI suggested task from email (UID: ${emailUid}): "${actionItem}"`,
+      description: t(`AI suggested task from email (UID: ${emailUid}): "${actionItem}"`, `Úloha navrhnutá AI z e-mailu (UID: ${emailUid}): "${actionItem}"`, `AI által javasolt feladat e-mailből (UID: ${emailUid}): "${actionItem}"`),
       status: taskStates[0] || "New",
       priority: "medium",
       startDate: new Date().toISOString().split("T")[0],
@@ -295,7 +296,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
     setTasks(prev => [newCrmTask, ...prev]);
     
     if (typeof (window as any).showToast === "function") {
-      (window as any).showToast(`Task assigned to ${assignedUser}!`);
+      (window as any).showToast(t(`Task assigned to ${assignedUser}!`, `Úloha priradená používateľovi ${assignedUser}!`, `A feladat hozzárendelve: ${assignedUser}!`));
     }
   };
 
@@ -312,7 +313,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       clientType: clientFormType,
       status: "accepted",
       source: "email",
-      owner: currentUser?.name || "Erik",
+      owner: currentUser?.name || "",
       value: 0,
       createdAt: new Date().toISOString().split("T")[0],
       timeline: []
@@ -322,7 +323,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
     closeClientSlideout();
     
     if (typeof (window as any).showToast === "function") {
-      (window as any).showToast(`Client ${clientFormName} created and matched successfully!`);
+      (window as any).showToast(t(`Client ${clientFormName} created and matched successfully!`, `Klient ${clientFormName} bol úspešne vytvorený a priradený!`, `${clientFormName} ügyfél sikeresen létrehozva és párosítva!`));
     }
   };
 
@@ -386,8 +387,8 @@ export const EmailView: React.FC<EmailViewProps> = ({
             id: `email-${folderPrefix}-${mail.uid}`,
             type: "email",
             timestamp: mail.date.substring(0, 16),
-            title: mail.subject || "(No Subject)",
-            content: `From: ${mail.from.name || mail.from.address} <${mail.from.address}>\n\nTo view this email or reply, please open the Mail Client.`,
+            title: mail.subject || t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)"),
+            content: `${t("From:", "Od:", "Feladó:")} ${mail.from.name || mail.from.address} <${mail.from.address}>\n\n${t("To view this email or reply, please open the Mail Client.", "Ak chcete zobraziť tento e-mail alebo naň odpovedať, otvorte poštového klienta.", "Az e-mail megtekintéséhez vagy megválaszolásához nyissa meg a levelezőklienst.")}`,
             seen: mail.seen,
             isOutgoing
           };
@@ -461,7 +462,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
 
       setEmails(combined);
     } catch (err) {
-      notify("Mail server unreachable", "error");
+      notify(t("Mail server unreachable", "Poštový server je nedostupný", "A levelezőszerver nem elérhető"), "error");
     } finally {
       setIsLoadingEmails(false);
     }
@@ -487,10 +488,10 @@ export const EmailView: React.FC<EmailViewProps> = ({
         // Mark as seen locally
         setEmails(prev => prev.map(e => e.uid === email.uid ? { ...e, seen: true } : e));
       } else {
-        notify(data.error || "Could not retrieve email contents", "error");
+        notify(data.error || t("Could not retrieve email contents", "Nepodarilo sa načítať obsah e-mailu", "Az e-mail tartalmát nem sikerült lekérni"), "error");
       }
     } catch (err) {
-      notify("Connection to mail broker lost", "error");
+      notify(t("Connection to mail broker lost", "Spojenie s poštovým sprostredkovateľom bolo prerušené", "A kapcsolat a levelezőközvetítővel megszakadt"), "error");
     } finally {
       setIsLoadingDetail(false);
     }
@@ -538,21 +539,21 @@ export const EmailView: React.FC<EmailViewProps> = ({
       });
       const data = await res.json();
       if (data.success) {
-        notify("Email sent successfully!");
+        notify(t("Email sent successfully!", "E-mail bol úspešne odoslaný!", "Az e-mail sikeresen elküldve!"));
         closeComposer(composer.id);
         loadEmails(1, filter);
       } else {
-        notify(data.error || "Failed to transmit message via SMTP", "error");
+        notify(data.error || t("Failed to transmit message via SMTP", "Nepodarilo sa odoslať správu cez SMTP", "Az üzenet SMTP-n keresztüli küldése nem sikerült"), "error");
       }
     } catch (err) {
-      notify("Failed to connect to SMTP transmission agent", "error");
+      notify(t("Failed to connect to SMTP transmission agent", "Nepodarilo sa pripojiť k prenosovému agentovi SMTP", "Nem sikerült csatlakozni az SMTP továbbító ügynökhöz"), "error");
     } finally {
       setIsSending(false);
     }
   };
 
   const handleDeleteEmail = async (uid: any) => {
-    if (!confirm("Are you sure you want to delete this email?")) return;
+    if (!confirm(t("Are you sure you want to delete this email?", "Naozaj chcete odstrániť tento e-mail?", "Biztosan törölni szeretné ezt az e-mailt?"))) return;
     try {
       const res = await fetch(`/api/mail_broker.php?action=delete_email&uid=${uid}&folder=${encodeURIComponent(activeFolder)}`, {
         method: "DELETE",
@@ -560,14 +561,14 @@ export const EmailView: React.FC<EmailViewProps> = ({
       });
       const data = await res.json();
       if (data.success) {
-        notify("Email deleted successfully.");
+        notify(t("Email deleted successfully.", "E-mail bol úspešne odstránený.", "Az e-mail sikeresen törölve."));
         setSelectedEmail(null);
         loadEmails(1, filter);
       } else {
-        notify(data.error || "Failed to remove email", "error");
+        notify(data.error || t("Failed to remove email", "Nepodarilo sa odstrániť e-mail", "Az e-mail eltávolítása nem sikerült"), "error");
       }
     } catch (err) {
-      notify("Communication block error.", "error");
+      notify(t("Communication block error.", "Chyba komunikačného bloku.", "Kommunikációs blokk hiba."), "error");
     }
   };
 
@@ -595,7 +596,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
         .replace(/^(re|fwd|fw|odp|odpověď|rehg|ref|odpověd|odp):\s*/i, "")
         .trim();
       if (!normSubject) {
-        normSubject = "(No Subject)";
+        normSubject = t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)");
       }
       
       if (!threadsMap[normSubject]) {
@@ -796,7 +797,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search conversations..."
+                placeholder={t("Search conversations...", "Hľadať konverzácie...", "Beszélgetések keresése...")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 focus:outline-none"
@@ -807,7 +808,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
               onClick={() => openNewComposer()}
               className="py-2 px-3.5 bg-pink-600 hover:bg-pink-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow shrink-0 cursor-pointer"
             >
-              <Plus size={14} /> New
+              <Plus size={14} /> {t("New", "Nový", "Új")}
             </button>
           </div>
           
@@ -817,31 +818,31 @@ export const EmailView: React.FC<EmailViewProps> = ({
                 onClick={() => setFilter("all")}
                 className={`flex-1 py-1.5 rounded-lg transition-all ${filter === "all" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
               >
-                All Threads
+                {t("All Threads", "Všetky vlákna", "Összes szál")}
               </button>
               <button
                 onClick={() => setFilter("unread")}
                 className={`flex-1 py-1.5 rounded-lg transition-all ${filter === "unread" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
               >
-                Unread
+                {t("Unread", "Neprečítané", "Olvasatlan")}
               </button>
             </div>
             
             {/* Font Size Toggle Switch */}
             <div className="flex items-center gap-2 select-none border-l border-slate-200 pl-3.5 mr-1">
-              <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Font size</span>
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">{t("Font size", "Veľkosť písma", "Betűméret")}</span>
               <button
                 type="button"
                 onClick={() => setIsLargeFont(prev => !prev)}
                 className="px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-[9px] font-black text-slate-700 uppercase tracking-wider transition-all shadow-2xs flex items-center gap-1 cursor-pointer select-none"
               >
-                <span>{isLargeFont ? "A++ (Big)" : "A- (Small)"}</span>
+                <span>{isLargeFont ? t("A++ (Big)", "A++ (Veľké)", "A++ (Nagy)") : t("A- (Small)", "A- (Malé)", "A- (Kicsi)")}</span>
               </button>
             </div>
 
             {/* Threaded Toggle Switch */}
             <div className="flex items-center gap-2 select-none border-l border-slate-200 pl-3.5">
-              <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Flow Mode</span>
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">{t("Flow Mode", "Režim toku", "Folyam mód")}</span>
               <label className="relative inline-flex items-center cursor-pointer select-none">
                 <input 
                   type="checkbox" 
@@ -865,13 +866,13 @@ export const EmailView: React.FC<EmailViewProps> = ({
           {isLoadingEmails ? (
             <div className="flex flex-col items-center justify-center py-12 gap-2 text-slate-400">
               <Loader2 className="animate-spin text-pink-500" size={24} />
-              <span className="text-[10px] font-bold uppercase tracking-wider">Syncing Envelopes...</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider">{t("Syncing Envelopes...", "Synchronizácia obálok...", "Borítékok szinkronizálása...")}</span>
             </div>
           ) : isThreadedMode ? (
             /* Threaded List View */
             threadedEmails.length === 0 ? (
               <div className="text-center py-12 text-slate-400 text-xs font-semibold">
-                No threads found.
+                {t("No threads found.", "Nenašli sa žiadne vlákna.", "Nincs találat a szálakra.")}
               </div>
             ) : (
               threadedEmails.map(thread => {
@@ -899,9 +900,9 @@ export const EmailView: React.FC<EmailViewProps> = ({
                     <div className="flex justify-between items-start gap-1">
                       <span className={`text-[12px] truncate max-w-[170px] ${!thread.seen ? "text-slate-900 font-extrabold" : "text-slate-800"}`}>
                         {latest.isSent ? (
-                          <><span className="text-slate-400 font-bold">To:</span> {latest.to?.name || latest.to?.address || "Unknown"}</>
+                          <><span className="text-slate-400 font-bold">{t("To:", "Komu:", "Címzett:")}</span> {latest.to?.name || latest.to?.address || t("Unknown", "Neznámy", "Ismeretlen")}</>
                         ) : (
-                          <><span className="text-slate-400 font-bold">From:</span> {latest.from.name || latest.from.address}</>
+                          <><span className="text-slate-400 font-bold">{t("From:", "Od:", "Feladó:")}</span> {latest.from.name || latest.from.address}</>
                         )}
                       </span>
                       <div className="flex items-center gap-1.5 shrink-0">
@@ -923,7 +924,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
 
                     {matchedClient && (
                       <span className="w-fit text-[8px] font-black uppercase tracking-widest text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md border border-emerald-250">
-                        🤝 CRM Match: {matchedClient.name}
+                        🤝 {t("CRM Match:", "Zhoda CRM:", "CRM egyezés:")} {matchedClient.name}
                       </span>
                     )}
 
@@ -932,11 +933,11 @@ export const EmailView: React.FC<EmailViewProps> = ({
                         <Brain className="h-3.5 w-3.5 text-purple-650 shrink-0 mt-0.5" />
                         <div className="space-y-0.5">
                           {loadingSummaries[`thread-${thread.id}`] ? (
-                            <span className="text-[8.5px] text-purple-600 font-bold uppercase tracking-wider animate-pulse block">Analyzing flow...</span>
+                            <span className="text-[8.5px] text-purple-600 font-bold uppercase tracking-wider animate-pulse block">{t("Analyzing flow...", "Analyzuje sa tok...", "Folyam elemzése...")}</span>
                           ) : summaries[`thread-${thread.id}`] ? (
                             <p className="text-[9.5px] text-purple-850 font-semibold leading-normal">{summaries[`thread-${thread.id}`]}</p>
                           ) : (
-                            <span className="text-[8.5px] text-purple-400 italic">No summary available.</span>
+                            <span className="text-[8.5px] text-purple-400 italic">{t("No summary available.", "Súhrn nie je k dispozícii.", "Nincs elérhető összefoglaló.")}</span>
                           )}
                         </div>
                       </div>
@@ -949,7 +950,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
             /* Unthreaded List View */
             filteredIndividualEmails.length === 0 ? (
               <div className="text-center py-12 text-slate-400 text-xs font-semibold">
-                No conversations found.
+                {t("No conversations found.", "Nenašli sa žiadne konverzácie.", "Nincs találat a beszélgetésekre.")}
               </div>
             ) : (
               filteredIndividualEmails.map(email => {
@@ -971,9 +972,9 @@ export const EmailView: React.FC<EmailViewProps> = ({
                     <div className="flex justify-between items-start gap-1">
                       <span className={`text-[12px] truncate max-w-[200px] ${!email.seen ? "text-slate-900 font-extrabold" : "text-slate-800"}`}>
                         {email.isSent ? (
-                          <><span className="text-slate-400 font-bold">To:</span> {email.to?.name || email.to?.address || "Unknown"}</>
+                          <><span className="text-slate-400 font-bold">{t("To:", "Komu:", "Címzett:")}</span> {email.to?.name || email.to?.address || t("Unknown", "Neznámy", "Ismeretlen")}</>
                         ) : (
-                          <><span className="text-slate-400 font-bold">From:</span> {email.from.name || email.from.address}</>
+                          <><span className="text-slate-400 font-bold">{t("From:", "Od:", "Feladó:")}</span> {email.from.name || email.from.address}</>
                         )}
                       </span>
                       <span className="text-[9px] text-slate-400 font-medium shrink-0">
@@ -984,13 +985,13 @@ export const EmailView: React.FC<EmailViewProps> = ({
                     <div className="flex items-center gap-1.5">
                       <GeometricIcon emailString={email.isSent ? (email.to?.address || "") : email.from.address} />
                       <span className={`text-[11px] truncate max-w-[260px] ${!email.seen ? "text-slate-900 font-bold" : "text-slate-700"}`}>
-                        {email.isSent ? "📤 " : "📥 "}{email.subject || "(No Subject)"}
+                        {email.isSent ? "📤 " : "📥 "}{email.subject || t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)")}
                       </span>
                     </div>
 
                     {matchedClient && (
                       <span className="w-fit text-[8px] font-black uppercase tracking-widest text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md border border-emerald-250">
-                        🤝 CRM Match: {matchedClient.name}
+                        🤝 {t("CRM Match:", "Zhoda CRM:", "CRM egyezés:")} {matchedClient.name}
                       </span>
                     )}
 
@@ -999,11 +1000,11 @@ export const EmailView: React.FC<EmailViewProps> = ({
                         <Brain className="h-3.5 w-3.5 text-purple-650 shrink-0 mt-0.5" />
                         <div className="space-y-0.5">
                           {loadingSummaries[email.uid] ? (
-                            <span className="text-[8.5px] text-purple-600 font-bold uppercase tracking-wider animate-pulse block">Analyzing email...</span>
+                            <span className="text-[8.5px] text-purple-600 font-bold uppercase tracking-wider animate-pulse block">{t("Analyzing email...", "Analyzuje sa e-mail...", "E-mail elemzése...")}</span>
                           ) : summaries[email.uid] ? (
                             <p className="text-[9.5px] text-purple-850 font-semibold leading-normal">{summaries[email.uid]}</p>
                           ) : (
-                            <span className="text-[8.5px] text-purple-400 italic">No summary available.</span>
+                            <span className="text-[8.5px] text-purple-400 italic">{t("No summary available.", "Súhrn nie je k dispozícii.", "Nincs elérhető összefoglaló.")}</span>
                           )}
                         </div>
                       </div>
@@ -1027,7 +1028,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                 <div>
                   <h3 className="text-sm font-heading font-black text-slate-900 uppercase tracking-tight">{activeThread.subject}</h3>
                   <span className="text-[9px] text-slate-400 font-bold tracking-wider uppercase block mt-1">
-                    Thread Flow ({activeThread.emails.length} correspondence units)
+                    {t("Thread Flow", "Tok vlákna", "Szál folyama")} ({activeThread.emails.length} {t("correspondence units", "jednotiek korešpondencie", "levelezési egység")})
                   </span>
                 </div>
                 
@@ -1037,7 +1038,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                   className="px-3.5 py-1.5 rounded-xl border border-pink-200 bg-pink-50 text-pink-700 hover:bg-pink-100 hover:text-pink-800 text-[10px] font-black uppercase flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
                 >
                   <Reply size={13} />
-                  Reply Thread
+                  {t("Reply Thread", "Odpovedať na vlákno", "Válasz a szálra")}
                 </button>
               </div>
 
@@ -1053,9 +1054,9 @@ export const EmailView: React.FC<EmailViewProps> = ({
                       <div className="flex items-center gap-2">
                         <span className="text-lg">👤</span>
                         <div>
-                          <h4 className="text-[9px] font-black text-slate-505 uppercase tracking-tight">Unmatched Sender</h4>
+                          <h4 className="text-[9px] font-black text-slate-505 uppercase tracking-tight">{t("Unmatched Sender", "Nepriradený odosielateľ", "Nem párosított feladó")}</h4>
                           <p className="text-[10.5px] text-slate-655 font-bold mt-0.5">
-                            Email <span className="text-slate-900 font-extrabold">{senderEmail}</span> is not registered.
+                            {t("Email", "E-mail", "E-mail")} <span className="text-slate-900 font-extrabold">{senderEmail}</span> {t("is not registered.", "nie je registrovaný.", "nincs regisztrálva.")}
                           </p>
                         </div>
                       </div>
@@ -1071,7 +1072,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                         style={{ backgroundColor: "#6366f1", color: "#ffffff" }}
                         className="px-2.5 py-1.5 hover:bg-indigo-700 rounded-xl text-[9px] font-black uppercase tracking-wider cursor-pointer transition-all shadow-sm"
                       >
-                        Create Client
+                        {t("Create Client", "Vytvoriť klienta", "Ügyfél létrehozása")}
                       </button>
                     </div>
                   );
@@ -1081,9 +1082,9 @@ export const EmailView: React.FC<EmailViewProps> = ({
                     <div className="flex items-center gap-2">
                       <span className="text-lg">🤝</span>
                       <div>
-                        <h4 className="text-[9px] font-black text-emerald-950 uppercase tracking-tight">CRM Client / Lead</h4>
+                        <h4 className="text-[9px] font-black text-emerald-950 uppercase tracking-tight">{t("CRM Client / Lead", "Klient CRM / Záujemca", "CRM ügyfél / Érdeklődő")}</h4>
                         <p className="text-[10.5px] text-emerald-850 font-extrabold mt-0.5">
-                          Name: <span className="text-emerald-950 font-black">{client.name}</span>
+                          {t("Name:", "Meno:", "Név:")} <span className="text-emerald-950 font-black">{client.name}</span>
                         </p>
                       </div>
                     </div>
@@ -1095,13 +1096,13 @@ export const EmailView: React.FC<EmailViewProps> = ({
                         }}
                         className="px-2.5 py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300 rounded-xl text-[9px] font-black uppercase tracking-wider cursor-pointer"
                       >
-                        Timeline
+                        {t("Timeline", "Časová os", "Idővonal")}
                       </button>
                       <button
                         onClick={() => window.location.hash = `client-${encodeURIComponent(client.name)}`}
                         className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[9px] font-black uppercase tracking-wider cursor-pointer"
                       >
-                        Profile
+                        {t("Profile", "Profil", "Profil")}
                       </button>
                     </div>
                   </div>
@@ -1116,7 +1117,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                       <Brain className="h-4.5 w-4.5 text-purple-650 shrink-0 mt-0.5" />
                       <div className="space-y-0.5 flex-1">
                         <div className="flex justify-between items-center cursor-pointer select-none" onClick={() => toggleSummaryCollapse(`thread-${activeThread.id}`)}>
-                          <h4 className="text-[10px] font-black text-purple-950 uppercase tracking-tight">AI Flow Summary</h4>
+                          <h4 className="text-[10px] font-black text-purple-950 uppercase tracking-tight">{t("AI Flow Summary", "AI súhrn toku", "AI folyam összefoglaló")}</h4>
                           <span className="text-purple-600 hover:text-purple-800 transition-colors">
                             {collapsedSummaries[`thread-${activeThread.id}`] ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
                           </span>
@@ -1126,12 +1127,12 @@ export const EmailView: React.FC<EmailViewProps> = ({
                             {loadingSummaries[`thread-${activeThread.id}`] ? (
                               <div className="flex items-center gap-1.5 py-1">
                                 <Loader2 className="h-3 w-3 animate-spin text-purple-600" />
-                                <span className="text-[10px] text-purple-700 font-bold uppercase tracking-wider">Analyzing conversation flow...</span>
+                                <span className="text-[10px] text-purple-700 font-bold uppercase tracking-wider">{t("Analyzing conversation flow...", "Analyzuje sa tok konverzácie...", "Beszélgetés folyamának elemzése...")}</span>
                               </div>
                             ) : summaries[`thread-${activeThread.id}`] ? (
                               <p className="text-[11.5px] text-purple-850 font-bold leading-relaxed">{summaries[`thread-${activeThread.id}`]}</p>
                             ) : (
-                              <p className="text-[10.5px] text-purple-500 italic">No summary generated yet.</p>
+                              <p className="text-[10.5px] text-purple-500 italic">{t("No summary generated yet.", "Zatiaľ nebol vygenerovaný žiadny súhrn.", "Még nem készült összefoglaló.")}</p>
                             )}
                           </>
                         )}
@@ -1142,7 +1143,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                       <div className="mt-2 pt-2.5 border-t border-purple-200/50 space-y-2">
                         <h5 className="text-[9px] font-black uppercase text-purple-955 tracking-wider flex items-center gap-1">
                           <CheckCircle2 className="h-3 w-3 text-purple-600" />
-                          Suggested Tasks
+                          {t("Suggested Tasks", "Navrhované úlohy", "Javasolt feladatok")}
                         </h5>
                         <div className="flex flex-wrap gap-1.5">
                           {actionItemsMap[`thread-${activeThread.id}`].map((item, idx) => {
@@ -1165,7 +1166,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                       onClick={() => setAssigningActionItem(assigningActionItem?.item === item ? null : { item, emailUid: `thread-${activeThread.id}` })}
                                       className="shrink-0 text-[8.5px] font-black text-purple-700 hover:text-purple-900 bg-purple-100/80 hover:bg-purple-200/80 px-1.5 py-0.5 rounded-md border border-purple-250/30 cursor-pointer"
                                     >
-                                      + Assign
+                                      + {t("Assign", "Priradiť", "Hozzárendel")}
                                     </button>
                                     
                                     {assigningActionItem?.item === item && assigningActionItem?.emailUid === `thread-${activeThread.id}` && (
@@ -1228,10 +1229,10 @@ export const EmailView: React.FC<EmailViewProps> = ({
                           </span>
                           <div className="min-w-0">
                             <span className="text-[11px] font-extrabold text-slate-800 truncate block">
-                              {isOut ? `To: ${email.to?.name || email.to?.address}` : `From: ${email.from.name || email.from.address}`}
+                              {isOut ? `${t("To:", "Komu:", "Címzett:")} ${email.to?.name || email.to?.address}` : `${t("From:", "Od:", "Feladó:")} ${email.from.name || email.from.address}`}
                             </span>
                             <span className="text-[9px] text-slate-400 block mt-0.5">
-                              {email.subject || "(No Subject)"}
+                              {email.subject || t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)")}
                             </span>
                           </div>
                         </div>
@@ -1257,7 +1258,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                 <Brain className="h-4.5 w-4.5 text-purple-650 shrink-0 mt-0.5" />
                                 <div className="space-y-0.5 flex-1">
                                   <div className="flex justify-between items-center cursor-pointer select-none" onClick={() => toggleSummaryCollapse(email.uid)}>
-                                    <h4 className="text-[9px] font-black text-purple-950 uppercase tracking-tight">AI Mail Summary</h4>
+                                    <h4 className="text-[9px] font-black text-purple-950 uppercase tracking-tight">{t("AI Mail Summary", "AI súhrn e-mailu", "AI e-mail összefoglaló")}</h4>
                                     <span className="text-purple-600 hover:text-purple-800 transition-colors">
                                       {collapsedSummaries[email.uid] ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
                                     </span>
@@ -1267,12 +1268,12 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                       {loadingSummaries[email.uid] ? (
                                         <div className="flex items-center gap-1.5 py-0.5">
                                           <Loader2 className="animate-spin text-purple-500" size={16} />
-                                          <span className="text-[9px] text-purple-600 font-bold uppercase tracking-wider">Analyzing email content...</span>
+                                          <span className="text-[9px] text-purple-600 font-bold uppercase tracking-wider">{t("Analyzing email content...", "Analyzuje sa obsah e-mailu...", "E-mail tartalmának elemzése...")}</span>
                                         </div>
                                       ) : summaries[email.uid] ? (
                                         <p className="text-[10px] text-purple-850 font-bold leading-normal">{summaries[email.uid]}</p>
                                       ) : (
-                                        <p className="text-[9.5px] text-purple-400 italic">No summary available.</p>
+                                        <p className="text-[9.5px] text-purple-400 italic">{t("No summary available.", "Súhrn nie je k dispozícii.", "Nincs elérhető összefoglaló.")}</p>
                                       )}
                                     </>
                                   )}
@@ -1283,7 +1284,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                 <div className="mt-1.5 pt-2 border-t border-purple-200/50 space-y-2">
                                   <h5 className="text-[8px] font-black uppercase text-purple-955 tracking-wider flex items-center gap-1">
                                     <CheckCircle2 className="h-2.5 w-2.5 text-purple-600" />
-                                    Suggested Tasks
+                                    {t("Suggested Tasks", "Navrhované úlohy", "Javasolt feladatok")}
                                   </h5>
                                   <div className="flex flex-wrap gap-1.5">
                                     {actionItemsMap[email.uid].map((item, idx) => {
@@ -1306,7 +1307,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                                 onClick={() => setAssigningActionItem(assigningActionItem?.item === item ? null : { item, emailUid: email.uid })}
                                                 className="shrink-0 text-[8px] font-black text-purple-700 hover:text-white bg-purple-100/80 hover:bg-purple-600 px-1.5 py-0.5 rounded-md border border-purple-200 transition-all cursor-pointer"
                                               >
-                                                + Add
+                                                + {t("Add", "Pridať", "Hozzáad")}
                                               </button>
                                               
                                               {assigningActionItem?.item === item && assigningActionItem?.emailUid === email.uid && (
@@ -1346,7 +1347,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                             <div className="mb-3.5 p-3 bg-amber-50/40 border border-amber-250 rounded-xl flex flex-col gap-2 text-left animate-fade-in shadow-2xs">
                               <h5 className="text-[9px] font-black uppercase text-amber-900 tracking-wider flex items-center gap-1">
                                 <FileText className="h-3 w-3 text-amber-700" />
-                                Attachments ({bodyObj.attachments.length})
+                                {t("Attachments", "Prílohy", "Mellékletek")} ({bodyObj.attachments.length})
                               </h5>
                               <div className="flex flex-wrap gap-2">
                                 {bodyObj.attachments.map((att: any, attIdx: number) => {
@@ -1358,14 +1359,14 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                         onClick={() => handleDownloadAttachment(email.uid, email.isSent ? 'Sent' : activeFolder, att)}
                                         className="text-amber-700 hover:text-amber-900 font-extrabold uppercase text-[8px] cursor-pointer"
                                       >
-                                        Download
+                                        {t("Download", "Stiahnuť", "Letöltés")}
                                       </button>
                                       <span className="text-slate-350">|</span>
                                       <button
                                         onClick={() => handleAddAttachmentToDocs(email.uid, email.isSent ? 'Sent' : activeFolder, att, msgLead)}
                                         className="text-emerald-700 hover:text-emerald-900 font-extrabold uppercase text-[8px] cursor-pointer"
                                       >
-                                        Add to Docs
+                                        {t("Add to Docs", "Pridať do dokumentov", "Hozzáadás a dokumentumokhoz")}
                                       </button>
                                     </div>
                                   );
@@ -1376,7 +1377,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                           {isLoadingDetail && !bodyObj ? (
                             <div className="flex items-center justify-center py-6 gap-2 text-slate-400">
                               <Loader2 className="animate-spin text-pink-500" size={16} />
-                              <span className="text-[9px] font-bold uppercase tracking-wider">Decoding part...</span>
+                              <span className="text-[9px] font-bold uppercase tracking-wider">{t("Decoding part...", "Dekódovanie časti...", "Rész dekódolása...")}</span>
                             </div>
                           ) : bodyObj ? (
                             <iframe 
@@ -1406,7 +1407,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                             />
                           ) : (
                             <div className="text-center py-6 text-[10px] font-bold text-slate-400 uppercase">
-                              Content not found.
+                              {t("Content not found.", "Obsah sa nenašiel.", "A tartalom nem található.")}
                             </div>
                           )}
                           
@@ -1416,13 +1417,13 @@ export const EmailView: React.FC<EmailViewProps> = ({
                               onClick={() => openNewComposer(email.from.address, `Re: ${email.subject}`)}
                               className="px-3 py-1.5 border border-slate-200 bg-white hover:bg-slate-50 text-[9px] font-bold text-slate-600 hover:text-slate-800 rounded-xl flex items-center gap-1 transition-all cursor-pointer"
                             >
-                              <Reply size={11} /> Reply
+                              <Reply size={11} /> {t("Reply", "Odpovedať", "Válasz")}
                             </button>
                             <button
                               onClick={() => handleDeleteEmail(email.uid)}
                               className="px-3 py-1.5 border border-rose-200 bg-white hover:bg-rose-50 text-[9px] font-bold text-rose-600 hover:text-rose-800 rounded-xl flex items-center gap-1 transition-all cursor-pointer"
                             >
-                              <Trash2 size={11} /> Delete
+                              <Trash2 size={11} /> {t("Delete", "Odstrániť", "Törlés")}
                             </button>
                           </div>
                         </div>
@@ -1435,7 +1436,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2">
               <Mail size={40} className="stroke-[1.5] text-slate-350 animate-pulse" />
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Select a threaded conversation flow</span>
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">{t("Select a threaded conversation flow", "Vyberte tok vlákna konverzácie", "Válasszon egy beszélgetésszálat")}</span>
             </div>
           )
         ) : (
@@ -1443,7 +1444,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
           isLoadingDetail ? (
             <div className="flex flex-col items-center justify-center h-full gap-2 text-slate-400">
               <Loader2 className="animate-spin text-pink-500" size={32} />
-              <span className="text-[10px] font-bold uppercase tracking-wider">Decoding Message...</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider">{t("Decoding Message...", "Dekódovanie správy...", "Üzenet dekódolása...")}</span>
             </div>
           ) : selectedEmail ? (() => {
             const bodyObj = threadBodies[selectedEmail.uid];
@@ -1453,7 +1454,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                 {/* Header */}
                 <div className="border-b border-slate-150 pb-3 flex items-center justify-between gap-3 shrink-0">
                   <div className="text-left">
-                    <h3 className="text-sm font-heading font-black text-slate-900 uppercase tracking-tight">{selectedEmail.subject || "(No Subject)"}</h3>
+                    <h3 className="text-sm font-heading font-black text-slate-900 uppercase tracking-tight">{selectedEmail.subject || t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)")}</h3>
                     <p className="text-[10px] text-slate-500 font-bold mt-1">
                       From: <strong className="text-slate-800">{selectedEmail.from.name || selectedEmail.from.address}</strong> &lt;{selectedEmail.from.address}&gt;
                     </p>
@@ -1462,14 +1463,14 @@ export const EmailView: React.FC<EmailViewProps> = ({
                     <button
                       onClick={() => openNewComposer(selectedEmail.from.address, `Re: ${selectedEmail.subject}`)}
                       className="p-2 hover:bg-slate-100 text-slate-655 rounded-xl border border-slate-250 hover:text-slate-900 cursor-pointer"
-                      title="Reply"
+                      title={t("Reply", "Odpovedať", "Válasz")}
                     >
                       <Reply size={15} />
                     </button>
                     <button
                       onClick={() => handleDeleteEmail(selectedEmail.uid)}
                       className="p-2 hover:bg-rose-50 text-rose-655 rounded-xl border border-rose-250 hover:text-rose-700 cursor-pointer"
-                      title="Delete Message"
+                      title={t("Delete Message", "Odstrániť správu", "Üzenet törlése")}
                     >
                       <Trash2 size={15} />
                     </button>
@@ -1482,9 +1483,9 @@ export const EmailView: React.FC<EmailViewProps> = ({
                     <div className="flex items-center gap-2">
                       <span className="text-xl">🤝</span>
                       <div>
-                        <h4 className="text-[10px] font-black text-emerald-950 uppercase tracking-tight">CRM Client / Lead</h4>
+                        <h4 className="text-[10px] font-black text-emerald-950 uppercase tracking-tight">{t("CRM Client / Lead", "Klient CRM / Záujemca", "CRM ügyfél / Érdeklődő")}</h4>
                         <p className="text-[11px] text-emerald-850 font-extrabold mt-0.5">
-                          Name: <span className="text-emerald-950 font-black">{matchedClient.name}</span> ({matchedClient.email})
+                          {t("Name:", "Meno:", "Név:")} <span className="text-emerald-950 font-black">{matchedClient.name}</span> ({matchedClient.email})
                         </p>
                       </div>
                     </div>
@@ -1496,7 +1497,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                         }}
                         className="px-3 py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-xs cursor-pointer"
                       >
-                        View Timeline
+                        {t("View Timeline", "Zobraziť časovú os", "Idővonal megtekintése")}
                       </button>
                       <button
                         onClick={() => {
@@ -1504,7 +1505,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                         }}
                         className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-sm cursor-pointer"
                       >
-                        Open Client
+                        {t("Open Client", "Otvoriť klienta", "Ügyfél megnyitása")}
                       </button>
                     </div>
                   </div>
@@ -1513,9 +1514,9 @@ export const EmailView: React.FC<EmailViewProps> = ({
                     <div className="flex items-center gap-2">
                       <span className="text-xl">👤</span>
                       <div>
-                        <h4 className="text-[10px] font-black text-slate-505 uppercase tracking-tight">Unmatched Sender</h4>
+                        <h4 className="text-[10px] font-black text-slate-505 uppercase tracking-tight">{t("Unmatched Sender", "Nepriradený odosielateľ", "Nem párosított feladó")}</h4>
                         <p className="text-[11px] text-slate-655 font-bold mt-0.5">
-                          Email <span className="text-slate-900 font-extrabold">{selectedEmail.from.address}</span> is not registered in CRM.
+                          {t("Email", "E-mail", "E-mail")} <span className="text-slate-900 font-extrabold">{selectedEmail.from.address}</span> {t("is not registered in CRM.", "nie je registrovaný v CRM.", "nincs regisztrálva a CRM-ben.")}
                         </p>
                       </div>
                     </div>
@@ -1531,7 +1532,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                       style={{ backgroundColor: "#6366f1", color: "#ffffff" }}
                       className="px-3 py-1.5 hover:bg-indigo-700 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-sm cursor-pointer"
                     >
-                      Create Client
+                      {t("Create Client", "Vytvoriť klienta", "Ügyfél létrehozása")}
                     </button>
                   </div>
                 )}
@@ -1542,7 +1543,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                       <Brain className="h-4.5 w-4.5 text-purple-650 shrink-0 mt-0.5" />
                       <div className="space-y-0.5 flex-1">
                         <div className="flex justify-between items-center cursor-pointer select-none" onClick={() => toggleSummaryCollapse(selectedEmail.uid)}>
-                          <h4 className="text-[10px] font-black text-purple-955 uppercase tracking-tight">AI Mail Summary</h4>
+                          <h4 className="text-[10px] font-black text-purple-955 uppercase tracking-tight">{t("AI Mail Summary", "AI súhrn e-mailu", "AI e-mail összefoglaló")}</h4>
                           <span className="text-purple-650 hover:text-purple-855 transition-colors">
                             {collapsedSummaries[selectedEmail.uid] ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
                           </span>
@@ -1552,12 +1553,12 @@ export const EmailView: React.FC<EmailViewProps> = ({
                             {loadingSummaries[selectedEmail.uid] ? (
                               <div className="flex items-center gap-1.5 py-1">
                                 <Loader2 className="h-3 w-3 animate-spin text-purple-600" />
-                                <span className="text-[10px] text-purple-700 font-bold uppercase tracking-wider">Analyzing email content...</span>
+                                <span className="text-[10px] text-purple-700 font-bold uppercase tracking-wider">{t("Analyzing email content...", "Analyzuje sa obsah e-mailu...", "E-mail tartalmának elemzése...")}</span>
                               </div>
                             ) : summaries[selectedEmail.uid] ? (
                               <p className="text-[11px] text-purple-850 font-bold leading-relaxed">{summaries[selectedEmail.uid]}</p>
                             ) : (
-                              <p className="text-[10.5px] text-purple-500 italic">No summary available.</p>
+                              <p className="text-[10.5px] text-purple-500 italic">{t("No summary available.", "Súhrn nie je k dispozícii.", "Nincs elérhető összefoglaló.")}</p>
                             )}
                           </>
                         )}
@@ -1568,7 +1569,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                       <div className="mt-2 pt-2.5 border-t border-purple-200/50 space-y-2">
                         <h5 className="text-[9px] font-black uppercase text-purple-955 tracking-wider flex items-center gap-1">
                           <CheckCircle2 className="h-3 w-3 text-purple-600" />
-                          Suggested Tasks
+                          {t("Suggested Tasks", "Navrhované úlohy", "Javasolt feladatok")}
                         </h5>
                         <div className="flex flex-wrap gap-1.5">
                           {actionItemsMap[selectedEmail.uid].map((item, idx) => {
@@ -1590,7 +1591,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                       onClick={() => setAssigningActionItem(assigningActionItem?.item === item ? null : { item, emailUid: selectedEmail.uid })}
                                       className="shrink-0 text-[8.5px] font-black text-purple-700 hover:text-purple-900 bg-purple-100/80 hover:bg-purple-200/80 px-1.5 py-0.5 rounded-md border border-purple-250/30 cursor-pointer"
                                     >
-                                      + Assign
+                                      + {t("Assign", "Priradiť", "Hozzárendel")}
                                     </button>
                                     
                                     {assigningActionItem?.item === item && assigningActionItem?.emailUid === selectedEmail.uid && (
@@ -1631,7 +1632,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                   <div className="mt-3 p-3.5 bg-amber-50/40 border border-amber-250 rounded-2xl flex flex-col gap-2 text-left animate-fade-in shadow-xs">
                     <h5 className="text-[9px] font-black uppercase text-amber-900 tracking-wider flex items-center gap-1">
                       <FileText className="h-3.5 w-3.5 text-amber-700" />
-                      Attachments ({bodyObj.attachments.length})
+                      {t("Attachments", "Prílohy", "Mellékletek")} ({bodyObj.attachments.length})
                     </h5>
                     <div className="flex flex-wrap gap-2">
                       {bodyObj.attachments.map((att: any, attIdx: number) => {
@@ -1642,14 +1643,14 @@ export const EmailView: React.FC<EmailViewProps> = ({
                               onClick={() => handleDownloadAttachment(selectedEmail.uid, selectedEmail.isSent ? 'Sent' : activeFolder, att)}
                               className="text-amber-700 hover:text-amber-900 font-extrabold uppercase text-[8px] cursor-pointer"
                             >
-                              Download
+                              {t("Download", "Stiahnuť", "Letöltés")}
                             </button>
                             <span className="text-slate-355">|</span>
                             <button
                               onClick={() => handleAddAttachmentToDocs(selectedEmail.uid, selectedEmail.isSent ? 'Sent' : activeFolder, att, matchedClient)}
                               className="text-emerald-700 hover:text-emerald-900 font-extrabold uppercase text-[8px] cursor-pointer"
                             >
-                              Add to Docs
+                              {t("Add to Docs", "Pridať do dokumentov", "Hozzáadás a dokumentumokhoz")}
                             </button>
                           </div>
                         );
@@ -1663,7 +1664,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                   {bodyObj ? (
                     <iframe 
                       className="w-full h-full border-0 rounded-2xl bg-transparent"
-                      title="Parsed mail content"
+                      title={t("Parsed mail content", "Spracovaný obsah pošty", "Feldolgozott levéltartalom")}
                       srcDoc={`
                         <html>
                           <head>
@@ -1688,7 +1689,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                     />
                   ) : (
                     <div className="text-center text-slate-400 py-12 text-xs font-semibold">
-                      No message content.
+                      {t("No message content.", "Žiadny obsah správy.", "Nincs üzenettartalom.")}
                     </div>
                   )}
                 </div>
@@ -1697,7 +1698,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
           })() : (
             <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2">
               <Mail size={40} className="stroke-[1.5] text-slate-300 animate-pulse" />
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Select a conversation thread</span>
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">{t("Select a conversation thread", "Vyberte vlákno konverzácie", "Válasszon egy beszélgetésszálat")}</span>
             </div>
           )
         )}
@@ -1707,7 +1708,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       {composers.map(comp => (
         <div key={comp.id} className={`fixed bottom-0 right-10 w-96 bg-white border-t border-x border-slate-300 rounded-t-2xl shadow-2xl z-50 flex flex-col ${comp.isClosing ? "animate-slide-out-bottom" : "animate-slide-in-bottom"}`}>
           <div className="bg-slate-900 text-white p-3 rounded-t-2xl flex items-center justify-between">
-            <span className="text-xs font-black uppercase tracking-wider">New Email</span>
+            <span className="text-xs font-black uppercase tracking-wider">{t("New Email", "Nový e-mail", "Új e-mail")}</span>
             <button
               onClick={() => closeComposer(comp.id)}
               className="text-slate-400 hover:text-white transition-colors"
@@ -1717,7 +1718,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
           </div>
           <div className="p-4 space-y-3 text-left">
             <div className="space-y-1">
-              <label className="text-[9px] font-black uppercase text-slate-400 block">To Address</label>
+              <label className="text-[9px] font-black uppercase text-slate-400 block">{t("To Address", "Adresa príjemcu", "Címzett címe")}</label>
               <input
                 type="email"
                 value={comp.to}
@@ -1726,7 +1727,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[9px] font-black uppercase text-slate-400 block">Subject</label>
+              <label className="text-[9px] font-black uppercase text-slate-400 block">{t("Subject", "Predmet", "Tárgy")}</label>
               <input
                 type="text"
                 value={comp.subject}
@@ -1735,7 +1736,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[9px] font-black uppercase text-slate-400 block">Message Body</label>
+              <label className="text-[9px] font-black uppercase text-slate-400 block">{t("Message Body", "Telo správy", "Üzenet törzse")}</label>
               <textarea
                 rows={6}
                 value={comp.body}
@@ -1750,7 +1751,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                 disabled={isSending}
                 className="px-5 py-2.5 bg-pink-600 hover:bg-pink-700 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer shadow"
               >
-                {isSending ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />} Send Email
+                {isSending ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />} {t("Send Email", "Odoslať e-mail", "E-mail küldése")}
               </button>
             </div>
           </div>
@@ -1767,7 +1768,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
             {/* Header */}
             <div className="bg-slate-900 text-white p-4 flex items-center justify-between shrink-0">
               <div className="text-left">
-                <span className="text-[10px] font-black uppercase text-pink-500 tracking-wider">CRM Detail Timeline</span>
+                <span className="text-[10px] font-black uppercase text-pink-500 tracking-wider">{t("CRM Detail Timeline", "Detailná časová os CRM", "Részletes CRM idővonal")}</span>
                 <h3 className="text-sm font-heading font-black uppercase tracking-tight">{slideoutLead.name}</h3>
               </div>
               <button
@@ -1783,17 +1784,17 @@ export const EmailView: React.FC<EmailViewProps> = ({
               {isLoadingSlideoutEmails && (
                 <div className="flex flex-col items-center justify-center py-6 gap-2 text-slate-400">
                   <Loader2 className="animate-spin text-pink-500" size={20} />
-                  <span className="text-[9px] font-bold uppercase tracking-wider">Loading correspondences...</span>
+                  <span className="text-[9px] font-bold uppercase tracking-wider">{t("Loading correspondences...", "Načítavanie korešpondencie...", "Levelezés betöltése...")}</span>
                 </div>
               )}
               {slideoutTimelineEvents.length === 0 ? (
                 <div className="text-center text-slate-400 py-12 text-xs font-semibold">
-                  No activities or email records logged on timeline.
+                  {t("No activities or email records logged on timeline.", "Na časovej osi nie sú zaznamenané žiadne aktivity ani e-maily.", "Nincsenek tevékenységek vagy e-mail bejegyzések az idővonalon.")}
                 </div>
               ) : (
                 <div className="space-y-4 relative border-l-2 border-slate-150 pl-4 text-left">
                   {slideoutTimelineEvents.map((event: any) => {
-                    const pmName = slideoutLead.owner || "Erik";
+                    const pmName = slideoutLead.owner || currentUser?.name || "";
                     const pmColor = projectManagerColors[pmName] || "#6366f1";
                     let dotColor = "bg-blue-600 text-white border-blue-700";
                     let cardBorder = "border-slate-200 bg-slate-50/50";
@@ -1832,7 +1833,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                               {event.type === "email" ? (
                                 <>
                                   <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded-full border bg-slate-100 text-slate-700 tracking-wider flex items-center gap-1">
-                                    {event.isOutgoing ? "📤 Outgoing" : "📥 Incoming"}
+                                    {event.isOutgoing ? `📤 ${t("Outgoing", "Odchádzajúce", "Kimenő")}` : `📥 ${t("Incoming", "Prichádzajúce", "Bejövő")}`}
                                   </span>
                                   <span 
                                     className="inline-flex items-center gap-1 text-[8px] font-black uppercase px-2.5 py-0.5 rounded-full border shadow-sm text-white"
@@ -1843,7 +1844,12 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                 </>
                               ) : (
                                 <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded-full border bg-slate-100 text-slate-700 tracking-wider">
-                                  {event.type}
+                                  {event.type === "phone" ? t("Call Logs", "Záznam hovoru", "Hívásnapló")
+                                    : event.type === "email" ? t("Email Sent", "E-mail odoslaný", "E-mail elküldve")
+                                    : event.type === "note" ? t("Timeline Note", "Poznámka na časovej osi", "Idővonal jegyzet")
+                                    : event.type === "offer" ? t("Proposal", "Cenová ponuka", "Ajánlat")
+                                    : event.type === "appointment" ? t("Meeting Log", "Záznam stretnutia", "Találkozó napló")
+                                    : event.type}
                                 </span>
                               )}
                             </div>
@@ -1865,12 +1871,12 @@ export const EmailView: React.FC<EmailViewProps> = ({
                           })()}
                           {event.amount && (
                             <span className="block mt-1 text-[9px] font-black text-emerald-800 uppercase tracking-wider">
-                              Worth: &euro; {event.amount.toLocaleString()}
+                              {t("Worth:", "Hodnota:", "Érték:")} &euro; {event.amount.toLocaleString()}
                             </span>
                           )}
                           {event.extraTime && (
                             <span className="block mt-1 text-[9px] font-black text-rose-800 uppercase tracking-wider">
-                              Time: {event.extraTime}
+                              {t("Time:", "Čas:", "Idő:")} {event.extraTime}
                             </span>
                           )}
                         </div>
@@ -1893,8 +1899,8 @@ export const EmailView: React.FC<EmailViewProps> = ({
           <div className={`w-full max-w-5xl h-[70vh] bg-white rounded-t-[32px] border-t border-slate-200/80 shadow-2xl p-8 flex flex-col justify-between text-left ${isClosingClient ? "animate-slide-out-bottom" : "animate-slide-in-bottom"}`}>
             <div className="flex items-center justify-between border-b border-slate-150 pb-3 shrink-0">
               <div>
-                <span className="text-[10px] font-black uppercase text-pink-500 tracking-wider">CRM Client Registration</span>
-                <h3 className="text-sm font-heading font-black uppercase tracking-tight">Create New Client from Email</h3>
+                <span className="text-[10px] font-black uppercase text-pink-500 tracking-wider">{t("CRM Client Registration", "Registrácia klienta CRM", "CRM ügyfél regisztráció")}</span>
+                <h3 className="text-sm font-heading font-black uppercase tracking-tight">{t("Create New Client from Email", "Vytvoriť nového klienta z e-mailu", "Új ügyfél létrehozása e-mailből")}</h3>
               </div>
               <button
                 onClick={closeClientSlideout}
@@ -1908,7 +1914,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
               <div className="space-y-6">
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Client Name / Business Name</label>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Client Name / Business Name", "Meno klienta / Názov firmy", "Ügyfél neve / Cégnév")}</label>
                     <input
                       type="text"
                       required
@@ -1918,7 +1924,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Email Address</label>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Email Address", "E-mailová adresa", "E-mail cím")}</label>
                     <input
                       type="email"
                       required
@@ -1931,7 +1937,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                 
                 <div className="grid grid-cols-3 gap-6">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Phone Number</label>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Phone Number", "Telefónne číslo", "Telefonszám")}</label>
                     <input
                       type="tel"
                       value={clientFormPhone}
@@ -1940,7 +1946,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">City</label>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("City", "Mesto", "Város")}</label>
                     <input
                       type="text"
                       required
@@ -1950,15 +1956,15 @@ export const EmailView: React.FC<EmailViewProps> = ({
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Client Type</label>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Client Type", "Typ klienta", "Ügyfél típusa")}</label>
                     <select
                       value={clientFormType}
                       onChange={(e) => setClientFormType(e.target.value as any)}
                       className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:bg-white font-semibold cursor-pointer"
                     >
-                      <option value="person">Person</option>
-                      <option value="business">Business</option>
-                      <option value="partner">Partner</option>
+                      <option value="person">{t("Person", "Osoba", "Személy")}</option>
+                      <option value="business">{t("Business", "Firma", "Cég")}</option>
+                      <option value="partner">{t("Partner", "Partner", "Partner")}</option>
                     </select>
                   </div>
                 </div>
@@ -1970,13 +1976,13 @@ export const EmailView: React.FC<EmailViewProps> = ({
                   onClick={closeClientSlideout}
                   className="px-5 py-2.5 border border-slate-250 hover:bg-slate-50 text-slate-600 rounded-xl text-xs font-bold transition-all cursor-pointer"
                 >
-                  Cancel
+                  {t("Cancel", "Zrušiť", "Mégse")}
                 </button>
                 <button
                   type="submit"
                   className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow cursor-pointer"
                 >
-                  Save & Match Client
+                  {t("Save & Match Client", "Uložiť a priradiť klienta", "Mentés és ügyfél párosítása")}
                 </button>
               </div>
             </form>

@@ -66,6 +66,7 @@ const COLOR_MAP: Record<string, { bg: string; text: string; fill: string; border
 };
 
 export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUser, leads: _leads }) => {
+  const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
   const [customAgents, setCustomAgents] = useState<Agent[]>([]);
   const [defaultAgent, setDefaultAgent] = useState<Agent>(() => {
     const saved = localStorage.getItem("ccrm_custom_default_agent");
@@ -229,7 +230,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
     const confirmationMsg = systemLanguage === "sk"
       ? "Naozaj chcete vymazať celú históriu tohto rozhovoru z databázy?"
       : systemLanguage === "hu"
-        ? "Biztosan törölni szeretné ezt a beszélgetést a naptárból?"
+        ? "Biztosan törölni szeretné ennek a beszélgetésnek az előzményeit az adatbázisból?"
         : "Are you sure you want to delete this conversation history from the database?";
 
     if (!confirm(confirmationMsg)) return;
@@ -299,13 +300,13 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
         };
         setMessages((prev) => [...prev, replyMsg]);
       } else {
-        throw new Error(data.message || "Failed to trigger manual run.");
+        throw new Error(data.message || t("Failed to trigger manual run.", "Nepodarilo sa spustiť manuálne spustenie.", "A manuális futtatás elindítása sikertelen."));
       }
     } catch (err: any) {
       const errorMsg: Message = {
         id: Date.now().toString(),
         sender: "agent",
-        text: `Run Error: ${err.message}.`,
+        text: `${t("Run Error", "Chyba spustenia", "Futtatási hiba")}: ${err.message}.`,
         timestamp: new Date()
       };
       setMessages((prev) => [...prev, errorMsg]);
@@ -355,7 +356,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
         };
         setMessages((prev) => [...prev, replyMsg]);
       } else {
-        throw new Error(data.message || "Failed to process chat query.");
+        throw new Error(data.message || t("Failed to process chat query.", "Nepodarilo sa spracovať dotaz chatu.", "A chat lekérdezés feldolgozása sikertelen."));
       }
     } catch (err: any) {
       const errorMsg: Message = {
@@ -412,7 +413,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
       };
       reader.readAsText(file);
     } else {
-      alert("Please upload a valid markdown (.md) file.");
+      alert(t("Please upload a valid markdown (.md) file.", "Nahrajte platný markdown (.md) súbor.", "Kérjük, töltsön fel egy érvényes markdown (.md) fájlt."));
     }
   };
 
@@ -454,7 +455,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
       };
       reader.readAsText(file);
     } else {
-      alert("Please upload a valid markdown (.md) file.");
+      alert(t("Please upload a valid markdown (.md) file.", "Nahrajte platný markdown (.md) súbor.", "Kérjük, töltsön fel egy érvényes markdown (.md) fájlt."));
     }
   };
 
@@ -462,7 +463,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
   const handleCreateAgent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!agentName.trim() || !agentPosition.trim() || !agentSkillContent.trim()) {
-      alert("Name, Position and skill.md file upload are required.");
+      alert(t("Name, Position and skill.md file upload are required.", "Meno, Pozícia a nahranie súboru skill.md sú povinné.", "A név, a pozíció és a skill.md fájl feltöltése kötelező."));
       return;
     }
 
@@ -497,7 +498,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
           // Refresh list
           await fetchAgents();
         } else {
-          alert(data.message || "Failed to create agent.");
+          alert(data.message || t("Failed to create agent.", "Nepodarilo sa vytvoriť agenta.", "Az ügynök létrehozása sikertelen."));
         }
       }
     } catch (err) {
@@ -513,7 +514,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
     if (!editingAgent) return;
     
     if (!editName.trim() || !editPosition.trim() || !editSkillContent.trim()) {
-      alert("Name, Position and skill.md file content are required.");
+      alert(t("Name, Position and skill.md file content are required.", "Meno, Pozícia a obsah súboru skill.md sú povinné.", "A név, a pozíció és a skill.md fájl tartalma kötelező."));
       return;
     }
 
@@ -538,7 +539,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
       setEditingAgent(null);
       setIsLoading(false);
       if (typeof (window as any).showToast === "function") {
-        (window as any).showToast(systemLanguage === "sk" ? "Predvolený agent upravený!" : "Default agent updated successfully!");
+        (window as any).showToast(t("Default agent updated successfully!", "Predvolený agent upravený!", "Az alapértelmezett ügynök sikeresen frissítve!"));
       }
       return;
     }
@@ -568,10 +569,10 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
           // Refresh list
           await fetchAgents();
           if (typeof (window as any).showToast === "function") {
-            (window as any).showToast(systemLanguage === "sk" ? "Agent bol upravený!" : "Agent updated successfully!");
+            (window as any).showToast(t("Agent updated successfully!", "Agent bol upravený!", "Az ügynök sikeresen frissítve!"));
           }
         } else {
-          alert(data.message || "Failed to update agent.");
+          alert(data.message || t("Failed to update agent.", "Nepodarilo sa upraviť agenta.", "Az ügynök frissítése sikertelen."));
         }
       }
     } catch (err) {
@@ -588,7 +589,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
     const confirmMsg = systemLanguage === "sk"
       ? "Naozaj chcete vymazať tohto agenta a celú jeho históriu rozhovorov?"
       : systemLanguage === "hu"
-        ? "Biztosan törölni szeretné ezt az üzenetet és a hozzá tartozó chat előzményeket?"
+        ? "Biztosan törölni szeretné ezt az ügynököt és a hozzá tartozó teljes chat előzményt?"
         : "Are you sure you want to delete this agent and all its chat history?";
         
     if (!confirm(confirmMsg)) return;
@@ -614,10 +615,10 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
           }
           await fetchAgents();
           if (typeof (window as any).showToast === "function") {
-            (window as any).showToast(systemLanguage === "sk" ? "Agent bol odstránený!" : "Agent deleted successfully!");
+            (window as any).showToast(t("Agent deleted successfully!", "Agent bol odstránený!", "Az ügynök sikeresen törölve!"));
           }
         } else {
-          alert(data.message || "Failed to delete agent.");
+          alert(data.message || t("Failed to delete agent.", "Nepodarilo sa odstrániť agenta.", "Az ügynök törlése sikertelen."));
         }
       }
     } catch (err) {
@@ -651,7 +652,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
       setSelectedAgent(restoredDefault);
     }
     if (typeof (window as any).showToast === "function") {
-      (window as any).showToast(systemLanguage === "sk" ? "Predvolený agent resetovaný!" : "Default agent reset successfully!");
+      (window as any).showToast(t("Default agent reset successfully!", "Predvolený agent resetovaný!", "Az alapértelmezett ügynök sikeresen visszaállítva!"));
     }
   };
 
@@ -726,7 +727,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                     type="button"
                     onClick={(e) => openEditModal(e, agent)}
                     className="p-1.5 rounded-lg text-slate-500 hover:text-purple-600 hover:bg-purple-50 transition-colors"
-                    title={systemLanguage === "sk" ? "Upraviť" : "Edit"}
+                    title={t("Edit", "Upraviť", "Szerkesztés")}
                   >
                     <Edit className="h-3.5 w-3.5" />
                   </button>
@@ -738,7 +739,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                         handleDeleteAgent(agent.id);
                       }}
                       className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                      title={systemLanguage === "sk" ? "Vymazať" : "Delete"}
+                      title={t("Delete", "Vymazať", "Törlés")}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -784,7 +785,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                 onClick={handleRunAgent}
                 disabled={isLoading}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-[10px] font-black text-indigo-700 hover:text-indigo-800 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Trigger autonomous skill check now"
+                title={t("Trigger autonomous skill check now", "Spustiť autonómnu kontrolu zručností teraz", "Autonóm képesség-ellenőrzés indítása most")}
               >
                 <Play className="h-3.5 w-3.5 fill-indigo-700" />
                 {systemLanguage === "sk" ? "Spustiť agenta" : systemLanguage === "hu" ? "Futtatás" : "Run Agent"}
@@ -899,32 +900,32 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
 
             <form onSubmit={handleCreateAgent} className="space-y-4">
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Agent Name *</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Agent Name", "Názov agenta", "Ügynök neve")} *</label>
                 <input
                   type="text"
                   required
                   value={agentName}
                   onChange={(e) => setAgentName(e.target.value)}
-                  placeholder="e.g. Lead Qualification Expert"
+                  placeholder={t("e.g. Lead Qualification Expert", "napr. Expert na kvalifikáciu leadov", "pl. Lead minősítési szakértő")}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-550 focus:ring-1 focus:ring-purple-550"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Position / Role *</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Position / Role", "Pozícia / Rola", "Pozíció / Szerepkör")} *</label>
                 <input
                   type="text"
                   required
                   value={agentPosition}
                   onChange={(e) => setAgentPosition(e.target.value)}
-                  placeholder="e.g. Analyzes and qualifications inbound pipeline"
+                  placeholder={t("e.g. Analyzes and qualifies inbound pipeline", "napr. Analyzuje a kvalifikuje prichádzajúci pipeline", "pl. Bejövő pipeline elemzése és minősítése")}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-550 focus:ring-1 focus:ring-purple-550"
                 />
               </div>
 
               {/* Fixed Color Selection Circle Sections */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Theme Color *</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Theme Color", "Farba témy", "Téma színe")} *</label>
                 <div className="flex items-center gap-3 bg-slate-50/50 p-2.5 rounded-2xl border border-slate-150 w-fit">
                   {Object.keys(COLOR_MAP).map((colorKey) => {
                     const colDetails = COLOR_MAP[colorKey];
@@ -946,7 +947,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
 
               {/* Skill file upload */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Skill Configuration (skill.md) *</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Skill Configuration (skill.md)", "Konfigurácia zručností (skill.md)", "Képesség-konfiguráció (skill.md)")} *</label>
                 <input
                   type="file"
                   ref={fileInputRef}
@@ -967,9 +968,9 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                 >
                   <FileText className={`h-8 w-8 transition-colors ${isDragging ? "text-purple-600" : "text-slate-400 animate-pulse"}`} />
                   <span className={`text-[10px] font-black uppercase tracking-wider transition-colors ${isDragging ? "text-purple-700" : "text-slate-500"}`}>
-                    {uploadedFileName ? uploadedFileName : "Drag & Drop or Click to Upload skill.md"}
+                    {uploadedFileName ? uploadedFileName : t("Drag & Drop or Click to Upload skill.md", "Pretiahnite alebo kliknite pre nahranie skill.md", "Húzza ide vagy kattintson a skill.md feltöltéséhez")}
                   </span>
-                  <span className="text-[9px] text-slate-400">Accepts .md instruction logs</span>
+                  <span className="text-[9px] text-slate-400">{t("Accepts .md instruction logs", "Akceptuje inštrukčné .md súbory", "Elfogadja a .md utasításfájlokat")}</span>
                 </div>
               </div>
 
@@ -983,9 +984,9 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                 />
                 <div className="flex flex-col">
                   <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider flex items-center gap-1">
-                    <Clock className="h-3 w-3" /> Set as Autonomous Agent
+                    <Clock className="h-3 w-3" /> {t("Set as Autonomous Agent", "Nastaviť ako autonómneho agenta", "Beállítás autonóm ügynökként")}
                   </span>
-                  <span className="text-[8.5px] text-slate-450 mt-0.5">Executes automatically via cron scheduler and adds Run triggers</span>
+                  <span className="text-[8.5px] text-slate-450 mt-0.5">{t("Executes automatically via cron scheduler and adds Run triggers", "Vykonáva sa automaticky cez cron plánovač a pridáva spúšťače Run", "Automatikusan fut a cron ütemezőn keresztül, és Run triggereket ad hozzá")}</span>
                 </div>
               </label>
 
@@ -995,14 +996,14 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                   onClick={() => setIsModalOpen(false)}
                   className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition-all cursor-pointer"
                 >
-                  Cancel
+                  {t("Cancel", "Zrušiť", "Mégse")}
                 </button>
                 <button
                   type="submit"
                   disabled={isLoading || !agentName.trim() || !agentPosition.trim() || !agentSkillContent.trim()}
                   className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
-                  Create Agent
+                  {t("Create Agent", "Vytvoriť agenta", "Ügynök létrehozása")}
                 </button>
               </div>
             </form>
@@ -1030,32 +1031,32 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
 
             <form onSubmit={handleEditAgent} className="space-y-4">
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Agent Name *</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Agent Name", "Názov agenta", "Ügynök neve")} *</label>
                 <input
                   type="text"
                   required
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
-                  placeholder="e.g. Lead Qualification Expert"
+                  placeholder={t("e.g. Lead Qualification Expert", "napr. Expert na kvalifikáciu leadov", "pl. Lead minősítési szakértő")}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-550 focus:ring-1 focus:ring-purple-550"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Position / Role *</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Position / Role", "Pozícia / Rola", "Pozíció / Szerepkör")} *</label>
                 <input
                   type="text"
                   required
                   value={editPosition}
                   onChange={(e) => setEditPosition(e.target.value)}
-                  placeholder="e.g. Analyzes and qualifications inbound pipeline"
+                  placeholder={t("e.g. Analyzes and qualifies inbound pipeline", "napr. Analyzuje a kvalifikuje prichádzajúci pipeline", "pl. Bejövő pipeline elemzése és minősítése")}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-550 focus:ring-1 focus:ring-purple-550"
                 />
               </div>
 
               {/* Fixed Color Selection Circle Sections */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Theme Color *</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Theme Color", "Farba témy", "Téma színe")} *</label>
                 <div className="flex items-center gap-3 bg-slate-50/50 p-2.5 rounded-2xl border border-slate-150 w-fit">
                   {Object.keys(COLOR_MAP).map((colorKey) => {
                     const colDetails = COLOR_MAP[colorKey];
@@ -1077,7 +1078,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
 
               {/* Skill file upload */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Skill Configuration (skill.md) *</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Skill Configuration (skill.md)", "Konfigurácia zručností (skill.md)", "Képesség-konfiguráció (skill.md)")} *</label>
                 <input
                   type="file"
                   ref={editFileInputRef}
@@ -1098,9 +1099,9 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                 >
                   <FileText className={`h-8 w-8 transition-colors ${isEditDragging ? "text-purple-600" : "text-slate-400 animate-pulse"}`} />
                   <span className={`text-[10px] font-black uppercase tracking-wider transition-colors ${isEditDragging ? "text-purple-700" : "text-slate-500"}`}>
-                    {editUploadedFileName ? editUploadedFileName : "Drag & Drop or Click to Update skill.md"}
+                    {editUploadedFileName ? editUploadedFileName : t("Drag & Drop or Click to Update skill.md", "Pretiahnite alebo kliknite pre aktualizáciu skill.md", "Húzza ide vagy kattintson a skill.md frissítéséhez")}
                   </span>
-                  <span className="text-[9px] text-slate-400">Accepts .md instruction logs</span>
+                  <span className="text-[9px] text-slate-400">{t("Accepts .md instruction logs", "Akceptuje inštrukčné .md súbory", "Elfogadja a .md utasításfájlokat")}</span>
                 </div>
               </div>
 
@@ -1114,9 +1115,9 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                 />
                 <div className="flex flex-col">
                   <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider flex items-center gap-1">
-                    <Clock className="h-3 w-3" /> Set as Autonomous Agent
+                    <Clock className="h-3 w-3" /> {t("Set as Autonomous Agent", "Nastaviť ako autonómneho agenta", "Beállítás autonóm ügynökként")}
                   </span>
-                  <span className="text-[8.5px] text-slate-450 mt-0.5">Executes automatically via cron scheduler and adds Run triggers</span>
+                  <span className="text-[8.5px] text-slate-450 mt-0.5">{t("Executes automatically via cron scheduler and adds Run triggers", "Vykonáva sa automaticky cez cron plánovač a pridáva spúšťače Run", "Automatikusan fut a cron ütemezőn keresztül, és Run triggereket ad hozzá")}</span>
                 </div>
               </label>
 
@@ -1126,7 +1127,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                   onClick={() => { setIsEditModalOpen(false); setEditingAgent(null); }}
                   className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition-all cursor-pointer"
                 >
-                  Cancel
+                  {t("Cancel", "Zrušiť", "Mégse")}
                 </button>
                 {editingAgent.id === "durian" && (
                   <button
@@ -1134,7 +1135,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                     onClick={handleResetDefaultAgent}
                     className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl text-xs font-bold transition-all cursor-pointer mr-auto"
                   >
-                    Reset
+                    {t("Reset", "Resetovať", "Visszaállítás")}
                   </button>
                 )}
                 <button
@@ -1142,7 +1143,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                   disabled={isLoading || !editName.trim() || !editPosition.trim() || !editSkillContent.trim()}
                   className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
-                  Save Changes
+                  {t("Save Changes", "Uložiť zmeny", "Módosítások mentése")}
                 </button>
               </div>
             </form>

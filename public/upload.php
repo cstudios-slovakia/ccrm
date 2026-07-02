@@ -21,7 +21,20 @@ if (php_sapi_name() !== 'cli') {
     }
 
     $file = $_FILES['file'];
-    $eventId = preg_replace('/[^a-zA-Z0-9_]/', '', $_POST['eventId']);
+
+    // Surface a clear message when the upload was rejected for exceeding PHP size limits
+    // instead of the generic "failed to save" that follows.
+    if (isset($file['error']) && $file['error'] !== UPLOAD_ERR_OK) {
+        http_response_code(400);
+        $msg = ($file['error'] === UPLOAD_ERR_INI_SIZE || $file['error'] === UPLOAD_ERR_FORM_SIZE)
+            ? 'File is too large for the server upload limit.'
+            : 'File upload error (code ' . $file['error'] . ').';
+        echo json_encode(['success' => false, 'error' => $msg]);
+        exit;
+    }
+
+    // Keep hyphens so the stored name matches client-generated event ids (which contain "-").
+    $eventId = preg_replace('/[^a-zA-Z0-9_\-]/', '', $_POST['eventId']);
     $fileName = basename($file['name']);
 
     // Reject executable / script extensions that could be run by the web server.
@@ -51,8 +64,11 @@ if (php_sapi_name() !== 'cli') {
         }
 
         echo json_encode([
-            'success' => true, 
+            'success' => true,
             'fileName' => $fileName,
+            // Return the actual stored path so the client stores it and never has to
+            // reconstruct the URL from an event id (which may be mutated after upload).
+            'filePath' => '/uploads/' . $eventId . '_' . $fileName,
             'extractedText' => $extractedText
         ]);
     } else {

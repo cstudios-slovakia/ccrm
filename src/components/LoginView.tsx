@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { LogIn, Key, Mail, Terminal, AlertCircle, CheckCircle } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { LogIn, Key, Mail, Terminal, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
 import type { UserProfile } from "../types";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
@@ -21,6 +21,94 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
   const [isLoading, setIsLoading] = useState(false);
   const [showResetInfo, setShowResetInfo] = useState(false);
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
+
+  // --- Password reset (email-based, only when a mail server is configured) ---
+  const [resetAvailable, setResetAvailable] = useState<boolean | null>(null);
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetRequested, setResetRequested] = useState(false);
+  const [resetToken, setResetToken] = useState<string>("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetDone, setResetDone] = useState(false);
+
+  const tr = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
+
+  // Discover whether email-based reset is possible, and pick up a reset token
+  // from the link the user followed (e.g. /?reset_token=...).
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/password_reset.php?action=status")
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setResetAvailable(!!(d && d.available)); })
+      .catch(() => { if (!cancelled) setResetAvailable(false); });
+    try {
+      const token = new URLSearchParams(window.location.search).get("reset_token");
+      if (token) {
+        setResetToken(token);
+        setShowResetInfo(true);
+      }
+    } catch { /* ignore */ }
+    return () => { cancelled = true; };
+  }, []);
+
+  const requestPasswordReset = async () => {
+    if (!resetEmail.trim()) return;
+    setResetLoading(true);
+    setResetError(null);
+    try {
+      const res = await fetch("/api/password_reset.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "request", email: resetEmail.trim(), lang: systemLanguage })
+      });
+      const data = await res.json().catch(() => null);
+      if (data && data.available === false) {
+        setResetAvailable(false);
+      } else {
+        setResetRequested(true);
+      }
+    } catch {
+      // Still show the generic confirmation — we never reveal delivery state.
+      setResetRequested(true);
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const submitNewPassword = async () => {
+    setResetError(null);
+    if (newPassword.length < 8) {
+      setResetError(tr("Password must be at least 8 characters.", "Heslo musí mať aspoň 8 znakov.", "A jelszónak legalább 8 karakter hosszúnak kell lennie."));
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setResetError(tr("Passwords do not match.", "Heslá sa nezhodujú.", "A jelszavak nem egyeznek."));
+      return;
+    }
+    setResetLoading(true);
+    try {
+      const res = await fetch("/api/password_reset.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reset", token: resetToken, password: newPassword })
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data && data.success) {
+        setResetDone(true);
+        // Drop the token from the URL so a refresh returns to normal login.
+        try { window.history.replaceState({}, "", window.location.pathname); } catch { /* ignore */ }
+      } else {
+        setResetError((data && data.message) || tr("This reset link is invalid or has expired.", "Tento odkaz na obnovenie je neplatný alebo vypršal.", "Ez a visszaállítási link érvénytelen vagy lejárt."));
+      }
+    } catch {
+      setResetError(tr("Network error. Please try again.", "Chyba siete. Skúste to znova.", "Hálózati hiba. Próbálja újra."));
+    } finally {
+      setResetLoading(false);
+    }
+  };
 
   // --- 11x11 Minesweeper Toy Game ---
   const BOARD_SIZE = 11;
@@ -173,7 +261,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
       const res = await fetch("/api/login.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: loginEmail, password: loginPassword })
+        body: JSON.stringify({ email: loginEmail, password: loginPassword, remember: rememberMe })
       });
       const data = await res.json().catch(() => null);
       if (res.ok && data && data.success && data.user) {
@@ -408,6 +496,24 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
               </div>
             </div>
 
+            {/* Remember me */}
+            <label className="flex items-center gap-2.5 cursor-pointer select-none group w-fit">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="sr-only"
+              />
+              <span className={`h-4 w-4 rounded-md border-2 transition-all duration-150 group-active:scale-90 flex items-center justify-center ${
+                rememberMe ? "bg-indigo-600 border-indigo-600" : "border-slate-300 bg-white group-hover:border-slate-400"
+              }`}>
+                {rememberMe && <CheckCircle className="h-3 w-3 text-white" />}
+              </span>
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-550 group-hover:text-slate-700 transition-colors">
+                {systemLanguage === "sk" ? "Zapamätať prihlásenie" : systemLanguage === "hu" ? "Bejelentkezés megjegyzése" : "Remember me"}
+              </span>
+            </label>
+
             {/* Error Alert Display */}
             {error && (
               <div className="flex items-start gap-2.5 p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-850 text-xs font-semibold animate-shake">
@@ -482,22 +588,109 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
               </div>
             </>
           ) : (
-            <div className="text-center mt-6">
-              <button
-                type="button"
-                onClick={() => setShowResetInfo(!showResetInfo)}
-                className="text-[10px] font-black uppercase tracking-wider text-indigo-600 hover:text-indigo-500 transition-colors"
-              >
-                {systemLanguage === "sk" ? "Zabudli ste heslo?" : systemLanguage === "hu" ? "Elfelejtette a jelszavát?" : "Forgot Password?"}
-              </button>
-              {showResetInfo && (
-                <div className="mt-3 p-4 rounded-2xl bg-indigo-50/50 border border-indigo-100/80 text-slate-600 text-[10px] font-semibold text-left leading-normal animate-in fade-in slide-in-from-top-4 duration-300">
-                  {systemLanguage === "sk" ? (
-                    <span>Pre obnovenie prístupu kontaktujte prosím správcu databázy CCRM, alebo manuálne zmeňte hodnotu stĺpca `password_hash` pre zvoleného používateľa priamo v tabuľke `users` vášho MySQL servera.</span>
-                  ) : systemLanguage === "hu" ? (
-                    <span>A hozzáférés visszaállításához forduljon a CCRM adatbázis-adminisztrátorához, vagy módosítsa manuálisan a `password_hash` oszlop értékét a `users` táblában a MySQL-kiszolgálón.</span>
+            <div className="mt-6">
+              {!resetToken && (
+                <div className="text-center">
+                  <button
+                    type="button"
+                    onClick={() => setShowResetInfo(!showResetInfo)}
+                    className="text-[10px] font-black uppercase tracking-wider text-indigo-600 hover:text-indigo-500 transition-colors"
+                  >
+                    {tr("Forgot Password?", "Zabudli ste heslo?", "Elfelejtette a jelszavát?")}
+                  </button>
+                </div>
+              )}
+
+              {(showResetInfo || resetToken) && (
+                <div className="mt-3 p-4 rounded-2xl bg-indigo-50/50 border border-indigo-100/80 text-left leading-normal animate-in fade-in slide-in-from-top-4 duration-300">
+                  {resetToken ? (
+                    resetDone ? (
+                      <div className="space-y-3 text-center">
+                        <CheckCircle className="h-7 w-7 text-emerald-500 mx-auto" />
+                        <p className="text-[11px] font-semibold text-slate-600">
+                          {tr("Your password has been updated. You can now sign in.", "Vaše heslo bolo zmenené. Teraz sa môžete prihlásiť.", "A jelszava frissült. Most már bejelentkezhet.")}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => { setResetToken(""); setShowResetInfo(false); setResetDone(false); }}
+                          className="text-[10px] font-black uppercase tracking-wider text-indigo-600 hover:text-indigo-500"
+                        >
+                          {tr("Back to login", "Späť na prihlásenie", "Vissza a bejelentkezéshez")}
+                        </button>
+                      </div>
+                    ) : (
+                      <form onSubmit={(e) => { e.preventDefault(); submitNewPassword(); }} className="space-y-2.5">
+                        <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                          {tr("Set a new password", "Nastavte nové heslo", "Új jelszó beállítása")}
+                        </p>
+                        <input
+                          type="password"
+                          required
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          placeholder={tr("New password", "Nové heslo", "Új jelszó")}
+                          className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-250 text-xs text-slate-800 focus:outline-none focus:border-indigo-500 font-semibold"
+                        />
+                        <input
+                          type="password"
+                          required
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          placeholder={tr("Confirm new password", "Potvrďte nové heslo", "Új jelszó megerősítése")}
+                          className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-250 text-xs text-slate-800 focus:outline-none focus:border-indigo-500 font-semibold"
+                        />
+                        {resetError && (
+                          <div className="flex items-start gap-1.5 text-[10px] font-semibold text-rose-600">
+                            <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-px" /> <span>{resetError}</span>
+                          </div>
+                        )}
+                        <button
+                          type="submit"
+                          disabled={resetLoading}
+                          className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-300 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5"
+                        >
+                          {resetLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Key className="h-3.5 w-3.5" />}
+                          {tr("Update password", "Zmeniť heslo", "Jelszó frissítése")}
+                        </button>
+                      </form>
+                    )
+                  ) : resetAvailable === null ? (
+                    <div className="flex items-center gap-2 text-[10px] font-semibold text-slate-500">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" /> {tr("Checking…", "Kontrolujem…", "Ellenőrzés…")}
+                    </div>
+                  ) : resetAvailable ? (
+                    resetRequested ? (
+                      <div className="flex items-start gap-2 text-[10px] font-semibold text-slate-600">
+                        <CheckCircle className="h-4 w-4 text-emerald-500 shrink-0 mt-px" />
+                        <span>{tr("If an account exists for that email, a reset link has been sent. Please check your inbox.", "Ak pre danú e-mailovú adresu existuje účet, odkaz na obnovenie hesla bol odoslaný. Skontrolujte si prosím svoju schránku.", "Ha létezik fiók ehhez az e-mail-címhez, a visszaállítási linket elküldtük. Kérjük, ellenőrizze a postaládáját.")}</span>
+                      </div>
+                    ) : (
+                      <form onSubmit={(e) => { e.preventDefault(); requestPasswordReset(); }} className="space-y-2.5">
+                        <p className="text-[10px] font-semibold text-slate-600">
+                          {tr("Enter your email and we'll send you a password reset link.", "Zadajte svoj e-mail a pošleme vám odkaz na obnovenie hesla.", "Adja meg az e-mail-címét, és küldünk egy jelszó-visszaállítási linket.")}
+                        </p>
+                        <input
+                          type="email"
+                          required
+                          value={resetEmail}
+                          onChange={(e) => setResetEmail(e.target.value)}
+                          placeholder={tr("Your email", "Váš e-mail", "Az Ön e-mail-címe")}
+                          className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-250 text-xs text-slate-800 focus:outline-none focus:border-indigo-500 font-semibold"
+                        />
+                        <button
+                          type="submit"
+                          disabled={resetLoading}
+                          className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-300 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5"
+                        >
+                          {resetLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
+                          {tr("Send reset link", "Odoslať odkaz", "Link küldése")}
+                        </button>
+                      </form>
+                    )
                   ) : (
-                    <span>To restore access, please contact your CCRM database administrator, or manually update the `password_hash` column for the targeted user row directly in the `users` table of your MySQL database.</span>
+                    <span className="block text-[10px] font-semibold text-slate-600 leading-normal">
+                      {tr("To restore access, please contact your CCRM database administrator.", "Pre obnovenie prístupu kontaktujte prosím správcu databázy CCRM.", "A hozzáférés visszaállításához forduljon a CCRM adatbázis-adminisztrátorához.")}
+                    </span>
                   )}
                 </div>
               )}

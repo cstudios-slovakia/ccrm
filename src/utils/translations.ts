@@ -414,12 +414,14 @@ export const translations: Record<Language, Record<string, string>> = {
     "timeline.no_events": "No events logged yet",
     "timeline.no_events_desc": "Use the form above to add phone calls, emails, notes or proposals.",
     "timeline.upcoming_meet": "Upcoming Meet",
+    "timeline.upcoming": "Upcoming",
     "timeline.today_line": "Today Line / Future Schedule Above",
     "timeline.badge.phone": "Call Logs",
     "timeline.badge.email": "Email Sent",
     "timeline.badge.note": "Timeline Note",
     "timeline.badge.offer": "Proposal",
     "timeline.badge.appointment": "Meeting Log",
+    "timeline.activity": "Timeline Activity",
     "timeline.doc_suffix": "Document",
     "editor.toggle_placeholder": "Click here to add nested toggle details..."
   },
@@ -504,6 +506,7 @@ export const translations: Record<Language, Record<string, string>> = {
 
     // Email Tab
     "settings.email.title": "Nastavenie odchádzajúceho e-mailového servera",
+    "settings.email.protocol": "Protokol poštového servera",
     "settings.email.smtp_host": "Adresa SMTP servera",
     "settings.email.smtp_port": "Port SMTP servera",
     "settings.email.smtp_secure": "Zabezpečenie a šifrovanie",
@@ -641,6 +644,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "settings.email.conn_success": "✅ Pripojenie úspešne nadviazané",
     "settings.email.conn_failure": "❌ Zlyhanie prenosu",
     "settings.danger.title": "Nebezpečná zóna systému",
+    "settings.danger.desc": "Resetovaním databázy mockupov sa vymažú všetci vlastní záujemcovia, dokumenty, zaznamenaná história, zmeny stavov pipeline a používateľské roly. Táto akcia znova vytvorí čerstvé mockup štruktúry a vymaže všetky úpravy v lokálnom úložisku.",
 
     // Login
     "login.title": "PRACUJTE S NAMI",
@@ -834,12 +838,14 @@ export const translations: Record<Language, Record<string, string>> = {
     "timeline.no_events": "Zatiaľ nie sú zaznamenané žiadne udalosti",
     "timeline.no_events_desc": "Pomocou formulára vyššie pridajte telefonáty, e-maily, poznámky alebo ponuky.",
     "timeline.upcoming_meet": "Nadchádzajúce stretnutie",
+    "timeline.upcoming": "Nadchádzajúce",
     "timeline.today_line": "Dnešná čiara / Budúci plán vyššie",
     "timeline.badge.phone": "Záznam hovoru",
     "timeline.badge.email": "E-mail odoslaný",
     "timeline.badge.note": "Poznámka na časovej osi",
     "timeline.badge.offer": "Cenová ponuka",
     "timeline.badge.appointment": "Záznam stretnutia",
+    "timeline.activity": "Aktivita na časovej osi",
     "timeline.doc_suffix": "Dokument",
     "editor.toggle_placeholder": "Kliknutím sem pridáte podrobnosti rozbaľovacieho zoznamu..."
   },
@@ -924,6 +930,7 @@ export const translations: Record<Language, Record<string, string>> = {
 
     // Email Tab
     "settings.email.title": "Kimenő e-mail szerver beállítása",
+    "settings.email.protocol": "Levelezőszerver protokoll",
     "settings.email.smtp_host": "SMTP szerver címe",
     "settings.email.smtp_port": "SMTP szerver portja",
     "settings.email.smtp_secure": "Titkosítás és biztonság",
@@ -1061,6 +1068,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "settings.email.conn_success": "✅ Kapcsolat létrejött",
     "settings.email.conn_failure": "❌ Kapcsolódási hiba",
     "settings.danger.title": "Rendszer veszélyzóna",
+    "settings.danger.desc": "A mockup adatbázis visszaállítása törli az összes egyéni érdeklődőt, dokumentumot, naplózott előzményt, folyamat-állapotváltozást és felhasználói szerepkört. Ez a művelet friss mockup struktúrákat hoz létre, és törli a helyi tárhely összes módosítását.",
 
     // Login
     "login.title": "MUNKATERÜLET",
@@ -1105,7 +1113,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "dashboard.tab_campaigns": "Kampány teljesítménye",
     "dashboard.tab_crm": "CRM vállalati teljesítmény",
     "dashboard.tab_clients": "Ügyfél statisztikák",
-    "dashboard.analyze_interval": "Interval az elemzéshez:",
+    "dashboard.analyze_interval": "Intervallum az elemzéshez:",
     "dashboard.quick_intervals": "Gyors intervallumok",
     "dashboard.picker.today": "Ma",
     "dashboard.picker.yesterday": "Tegnap",
@@ -1254,12 +1262,14 @@ export const translations: Record<Language, Record<string, string>> = {
     "timeline.no_events": "Még nincsenek rögzített események",
     "timeline.no_events_desc": "A fenti űrlap segítségével adhat hozzá telefonhívásokat, e-maileket, jegyzeteket vagy ajánlatokat.",
     "timeline.upcoming_meet": "Közelgő találkozó",
+    "timeline.upcoming": "Közelgő",
     "timeline.today_line": "Mai vonal / Jövőbeli ütemezés fent",
     "timeline.badge.phone": "Hívásnapló",
     "timeline.badge.email": "E-mail elküldve",
     "timeline.badge.note": "Idővonal jegyzet",
     "timeline.badge.offer": "Ajánlat",
     "timeline.badge.appointment": "Találkozó napló",
+    "timeline.activity": "Idővonal tevékenység",
     "timeline.doc_suffix": "Dokumentum",
     "editor.toggle_placeholder": "Kattintson ide a lenyitható részletek hozzáadásához..."
   }

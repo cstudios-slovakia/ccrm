@@ -220,6 +220,7 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
   onChange,
   systemLanguage = "en"
 }) => {
+  const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
   const [blocks, setBlocks] = useState<EditorBlock[]>(() => {
     if (initialBlocks && initialBlocks.length > 0) return initialBlocks;
     return DEFAULT_BLOCKS;
@@ -550,30 +551,30 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
         >
           {/* Style Controls */}
           <button 
-            onClick={() => applyInlineStyle("bold")} 
+            onClick={() => applyInlineStyle("bold")}
             className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-900 transition-colors cursor-pointer animate-none"
-            title="Bold"
+            title={t("Bold", "Tučné", "Félkövér")}
           >
             <Bold className="h-3.5 w-3.5" />
           </button>
           <button 
-            onClick={() => applyInlineStyle("italic")} 
+            onClick={() => applyInlineStyle("italic")}
             className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-900 transition-colors cursor-pointer animate-none"
-            title="Italic"
+            title={t("Italic", "Kurzíva", "Dőlt")}
           >
             <Italic className="h-3.5 w-3.5" />
           </button>
           <button 
-            onClick={() => applyInlineStyle("underline")} 
+            onClick={() => applyInlineStyle("underline")}
             className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-900 transition-colors cursor-pointer animate-none"
-            title="Underline"
+            title={t("Underline", "Podčiarknuté", "Aláhúzott")}
           >
             <Underline className="h-3.5 w-3.5" />
           </button>
           <button 
-            onClick={() => applyInlineStyle("strikeThrough")} 
+            onClick={() => applyInlineStyle("strikeThrough")}
             className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-900 transition-colors cursor-pointer animate-none"
-            title="Strikethrough"
+            title={t("Strikethrough", "Prečiarknuté", "Áthúzott")}
           >
             <Strikethrough className="h-3.5 w-3.5" />
           </button>
@@ -584,7 +585,7 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
           <button 
             onClick={() => applyCustomSpan("bg-slate-100 text-pink-600 px-1 py-0.5 rounded font-mono text-xs")}
             className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-900 transition-colors cursor-pointer animate-none"
-            title="Code tag"
+            title={t("Code tag", "Značka kódu", "Kód címke")}
           >
             <Code className="h-3.5 w-3.5" />
           </button>
@@ -593,7 +594,7 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
           <div className="relative group">
             <button 
               className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-900 transition-colors cursor-pointer animate-none"
-              title="Text Color"
+              title={t("Text Color", "Farba textu", "Szövegszín")}
             >
               <Palette className="h-3.5 w-3.5" />
             </button>
@@ -613,7 +614,7 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
           <div className="relative group">
             <button 
               className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-900 transition-colors cursor-pointer animate-none"
-              title="Highlight Color"
+              title={t("Highlight Color", "Farba zvýraznenia", "Kiemelés színe")}
             >
               <Highlighter className="h-3.5 w-3.5" />
             </button>
@@ -634,11 +635,11 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
           {/* Link Insertion */}
           <button 
             onClick={() => {
-              const url = prompt("Enter URL link:");
+              const url = prompt(t("Enter URL link:", "Zadajte URL odkaz:", "Adja meg az URL hivatkozást:"));
               if (url) applyInlineStyle("createLink", url);
-            }} 
+            }}
             className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-900 transition-colors cursor-pointer animate-none"
-            title="Insert Link"
+            title={t("Insert Link", "Vložiť odkaz", "Hivatkozás beszúrása")}
           >
             <Link2 className="h-3.5 w-3.5" />
           </button>
@@ -663,7 +664,7 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
                   type="button"
                   onClick={() => insertBlockBelow(block.id, "paragraph")}
                   className="p-1 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-md transition-colors cursor-pointer"
-                  title="Insert block below"
+                  title={t("Insert block below", "Vložiť blok nižšie", "Blokk beszúrása alá")}
                 >
                   <Plus className="h-4 w-4" />
                 </button>
@@ -673,7 +674,7 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
                     setActiveMenuBlockId(isMenuOpen ? null : block.id);
                   }}
                   className="p-1 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-md transition-colors cursor-pointer"
-                  title="Block settings & formats"
+                  title={t("Block settings & formats", "Nastavenia a formáty bloku", "Blokk beállításai és formátumai")}
                 >
                   <GripVertical className="h-4 w-4" />
                 </button>
@@ -753,9 +754,9 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
                     onKeyDown={(e) => handleBlockKeyDown(e, block, idx)}
                     onBlur={(e) => updateBlockContent(block.id, e.currentTarget.innerHTML)}
                     placeholder={
-                      block.type === "paragraph" 
-                        ? (systemLanguage === "sk" ? "Napíšte sem poznámky... (napíšte '/' pre príkazy)" : "Write meeting notes here... (type '/' for commands)")
-                        : (systemLanguage === "sk" ? "Napíšte text..." : "Write block text...")
+                      block.type === "paragraph"
+                        ? t("Write meeting notes here... (type '/' for commands)", "Napíšte sem poznámky... (napíšte '/' pre príkazy)", "Írja ide a jegyzeteket... (parancsokhoz írjon '/' jelet)")
+                        : t("Write block text...", "Napíšte text...", "Írja be a blokk szövegét...")
                     }
                     className={cn(
                       "outline-none text-slate-800 transition-all w-full leading-relaxed select-text py-1 empty:before:content-[attr(data-placeholder)] empty:before:text-slate-350 empty:before:pointer-events-none",
@@ -789,7 +790,7 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
                         <button
                           type="button"
                           className="p-1 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-900 transition-colors cursor-pointer"
-                          title="Banner style options"
+                          title={t("Banner style options", "Možnosti štýlu panela", "Banner stílus beállításai")}
                         >
                           <Palette className="h-3.5 w-3.5" />
                         </button>
@@ -797,7 +798,7 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
                         <div className="absolute right-0 top-full mt-1.5 pb-2 hidden group-hover/palette:block z-40">
                           <div className="bg-white border border-slate-200 p-2.5 rounded-xl shadow-xl space-y-2.5 w-[210px] select-none text-left">
                             <div className="text-[9px] font-black text-slate-400 uppercase tracking-wider">
-                              Light variants
+                              {t("Light variants", "Svetlé varianty", "Világos változatok")}
                             </div>
                             <div className="grid grid-cols-7 gap-1.5">
                               {BANNER_COLORS.map(c => {
@@ -812,14 +813,14 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
                                       BANNER_THEMES[c].previewLight,
                                       isSelected ? "ring-2 ring-slate-800 ring-offset-1" : "border-slate-200/50"
                                     )}
-                                    title={`Light ${c}`}
+                                    title={`${t("Light", "Svetlá", "Világos")} ${c}`}
                                   />
                                 );
                               })}
                             </div>
                             
                             <div className="text-[9px] font-black text-slate-400 uppercase tracking-wider pt-1 border-t border-slate-100">
-                              Saturated variants
+                              {t("Saturated variants", "Sýte varianty", "Telített változatok")}
                             </div>
                             <div className="grid grid-cols-7 gap-1.5">
                               {BANNER_COLORS.map(c => {
@@ -834,7 +835,7 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
                                       BANNER_THEMES[c].previewSat,
                                       isSelected ? "ring-2 ring-slate-800 ring-offset-1" : "border-slate-250/20"
                                     )}
-                                    title={`Saturated ${c}`}
+                                    title={`${t("Saturated", "Sýta", "Telített")} ${c}`}
                                   />
                                 );
                               })}
@@ -879,10 +880,10 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
                         {/* Basic elements column */}
                         <div className="space-y-0.5 pr-2">
                           <div className="px-2.5 py-1 text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 border-b border-slate-100/50 pb-1">
-                            Basic Elements
+                            {t("Basic Elements", "Základné prvky", "Alapelemek")}
                           </div>
                           {basicFiltered.length === 0 ? (
-                            <div className="text-[10px] text-slate-400 italic px-2.5 py-1.5">No matches</div>
+                            <div className="text-[10px] text-slate-400 italic px-2.5 py-1.5">{t("No matches", "Žiadne zhody", "Nincs találat")}</div>
                           ) : (
                             basicFiltered.map(opt => {
                               const globalIdx = filteredOptions.findIndex(o => o.id === opt.id);
@@ -908,10 +909,10 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
                         {/* Advanced elements column */}
                         <div className="space-y-0.5 pl-3">
                           <div className="px-2.5 py-1 text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 border-b border-slate-100/50 pb-1">
-                            Advanced Elements
+                            {t("Advanced Elements", "Pokročilé prvky", "Speciális elemek")}
                           </div>
                           {advancedFiltered.length === 0 ? (
-                            <div className="text-[10px] text-slate-400 italic px-2.5 py-1.5">No matches</div>
+                            <div className="text-[10px] text-slate-400 italic px-2.5 py-1.5">{t("No matches", "Žiadne zhody", "Nincs találat")}</div>
                           ) : (
                             advancedFiltered.map(opt => {
                               const globalIdx = filteredOptions.findIndex(o => o.id === opt.id);
