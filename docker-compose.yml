@@ -1,5 +1,6 @@
 services:
   web:
+    container_name: crm
     build:
       context: .
       dockerfile: Dockerfile

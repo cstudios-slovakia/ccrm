@@ -3,7 +3,7 @@ import { LogIn, Key, Mail, Terminal, AlertCircle, CheckCircle } from "lucide-rea
 import type { UserProfile } from "../types";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
-import { ShaderGradient, ShaderGradientCanvas } from "shadergradient";
+import LightRays from "./LightRays";
 
 interface LoginViewProps {
   users: UserProfile[];
@@ -15,7 +15,6 @@ interface LoginViewProps {
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, systemName, systemLanguage, isDemoMode, isModal }) => {
-  const ShaderGradientAny = ShaderGradient as any;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -248,57 +247,20 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
       {/* Animated 3D Shader Background */}
       {!isModal && (
         <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
-          <ShaderGradientCanvas
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              height: '100%',
-              pointerEvents: 'none'
-            }}
-          >
-            <ShaderGradientAny
-              animate="on"
-              axesHelper="off"
-              brightness={1.5}
-              cAzimuthAngle={250}
-              cDistance={1.5}
-              cPolarAngle={140}
-              cameraZoom={12.5}
-              color1="#809bd6"
-              color2="#910aff"
-              color3="#af38ff"
-              destination="onCanvas"
-              embedMode="off"
-              envPreset="city"
-              format="gif"
-              fov={45}
-              frameRate={10}
-              gizmoHelper="hide"
-              grain="on"
-              lightType="3d"
-              pixelDensity={1}
-              positionX={0}
-              positionY={0}
-              positionZ={0}
-              range="disabled"
-              rangeEnd={40}
-              rangeStart={0}
-              reflection={0.5}
-              rotationX={0}
-              rotationY={0}
-              rotationZ={140}
-              shader="defaults"
-              type="sphere"
-              uAmplitude={7}
-              uDensity={0.8}
-              uFrequency={5.5}
-              uSpeed={0.3}
-              uStrength={0.4}
-              wireframe={false}
-            />
-          </ShaderGradientCanvas>
+          <LightRays
+            raysOrigin="left"
+            raysColor="#ffddbc"
+            raysSpeed={1}
+            lightSpread={1.4}
+            rayLength={3.2}
+            pulsating={false}
+            fadeDistance={1.9}
+            saturation={1}
+            followMouse
+            mouseInfluence={0.1}
+            noiseAmount={0}
+            distortion={0}
+          />
         </div>
       )}
 
