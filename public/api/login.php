@@ -92,6 +92,7 @@ echo json_encode([
         'color'         => $row['color'] ?? '#3b82f6',
         'avatar'        => $row['avatar'] ?? null,
         'activityLog'   => [],
-        'metadata_json' => $row['metadata_json'],
+        // Secrets stay server-side: mask the mailbox password like the sync GET.
+        'metadata_json' => ccrm_mask_user_metadata($row['metadata_json']),
     ],
 ]);

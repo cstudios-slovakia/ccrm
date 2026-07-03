@@ -35,7 +35,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'test_credentials') {
         echo json_encode(['success' => false, 'error' => 'Invalid settings payload.']);
         exit;
     }
-    
+
+    // The client never receives real passwords (they are masked in the sync GET),
+    // so when it re-tests already-saved settings it posts the mask. Substitute the
+    // authenticated user's stored password so the test works without ever exposing
+    // the secret to the browser. A freshly typed password is used as-is.
+    $sessionUser = ccrm_current_user();
+    if ($sessionUser && !empty($sessionUser['email'])) {
+        $stmt = $pdo->prepare("SELECT `metadata_json` FROM `users` WHERE `email` = ?");
+        $stmt->execute([$sessionUser['email']]);
+        $storedMetaRaw = $stmt->fetchColumn();
+        $storedMeta = $storedMetaRaw ? json_decode($storedMetaRaw, true) : [];
+        $storedEmail = (is_array($storedMeta) && isset($storedMeta['emailSettings']) && is_array($storedMeta['emailSettings']))
+            ? $storedMeta['emailSettings'] : [];
+        $settings = ccrm_merge_secrets(is_array($settings) ? $settings : [], $storedEmail, ccrm_email_secret_keys());
+    }
+
     $result = test_mail_connections($settings);
     echo json_encode($result);
     exit;

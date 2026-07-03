@@ -292,7 +292,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'color' => $row['color'] ?? '#3b82f6',
             'avatar' => $row['avatar'] ?? null,
             'activityLog' => [],
-            'metadata_json' => $row['metadata_json']
+            // SECURITY: mask per-user email passwords (IMAP/SMTP) inside the
+            // metadata blob so one user cannot read another's mailbox password.
+            'metadata_json' => ccrm_mask_user_metadata($row['metadata_json'])
         ];
     }
 
@@ -339,6 +341,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $leadStageGroups = isset($settings['LEAD_STAGE_GROUPS']) ? json_decode($settings['LEAD_STAGE_GROUPS'], true) : [];
     $leadStateParents = isset($settings['LEAD_STATE_PARENTS']) ? json_decode($settings['LEAD_STATE_PARENTS'], true) : (object)[];
     $integrationsConfig = isset($settings['INTEGRATIONS_CONFIG']) ? json_decode($settings['INTEGRATIONS_CONFIG'], true) : (object)[];
+    // SECURITY: never send real secret values to the browser — mask them. The
+    // frontend only needs to know a secret is set (e.g. "OpenAI configured");
+    // the backend uses the real values server-side. Saving a masked field is a
+    // no-op (see the POST merge below).
+    if (is_array($integrationsConfig)) {
+        $integrationsConfig = ccrm_mask_secrets($integrationsConfig, ccrm_integration_secret_keys());
+    }
 
     // Fetch Meeting Notes
     $meetingNotes = [];
@@ -581,6 +590,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // 4.1. Save system settings & configurations
         if (isset($payload['settings'])) {
             $s = $payload['settings'];
+
+            // Preserve masked secrets: merge the inbound integrations config over
+            // the one already stored, keeping any secret the client left masked
+            // (see ccrm_mask_secrets in the GET branch). A real inbound value —
+            // including '' to clear — still overwrites the stored secret. If the
+            // client omits integrationsConfig entirely, keep the stored value
+            // untouched rather than wiping it.
+            $existingIntegrationsRaw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'INTEGRATIONS_CONFIG'")->fetchColumn();
+            $existingIntegrations = ($existingIntegrationsRaw !== false && $existingIntegrationsRaw !== null) ? json_decode($existingIntegrationsRaw, true) : [];
+            if (!is_array($existingIntegrations)) { $existingIntegrations = []; }
+            if (isset($s['integrationsConfig']) && is_array($s['integrationsConfig'])) {
+                $mergedIntegrations = ccrm_merge_secrets($s['integrationsConfig'], $existingIntegrations, ccrm_integration_secret_keys());
+                $integrationsValue = json_encode($mergedIntegrations ?: (object)[]);
+            } else {
+                $integrationsValue = ($existingIntegrationsRaw !== false && $existingIntegrationsRaw !== null) ? $existingIntegrationsRaw : json_encode((object)[]);
+            }
+
             $settingsList = [
                 'SYSTEM_NAME' => $s['systemName'] ?? 'CCRM',
                 'SYSTEM_LANGUAGE' => $s['systemLanguage'] ?? 'sk',
@@ -592,7 +618,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'LEAD_CATEGORY_COLORS' => json_encode($s['leadCategoryColors'] ?? []),
                 'LEAD_STAGE_GROUPS' => json_encode($s['leadStageGroups'] ?? []),
                 'LEAD_STATE_PARENTS' => json_encode($s['leadStateParents'] ?? (object)[]),
-                'INTEGRATIONS_CONFIG' => json_encode($s['integrationsConfig'] ?? (object)[])
+                'INTEGRATIONS_CONFIG' => $integrationsValue
             ];
 
             $insSet = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
@@ -612,6 +638,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Existing rows with their current password hashes so we can preserve
             // a user's password when the client does not send a new one.
             $existingHashes = $pdo->query("SELECT `id`, `password_hash` FROM `users`")->fetchAll(PDO::FETCH_KEY_PAIR);
+            // Stored metadata so masked email passwords are preserved on save.
+            $existingMeta = $pdo->query("SELECT `id`, `metadata_json` FROM `users`")->fetchAll(PDO::FETCH_KEY_PAIR);
             $existingUserIds = array_keys($existingHashes);
             $processedUserIds = [];
 
@@ -625,6 +653,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $role = ccrm_normalize_role($u['role'] ?? 'viewer');
 
                 $metaJson = isset($u['metadata_json']) ? (is_array($u['metadata_json']) ? json_encode($u['metadata_json']) : $u['metadata_json']) : (isset($u['metadata']) ? json_encode($u['metadata']) : null);
+                // Keep the stored IMAP/SMTP password when the client sent it masked.
+                $metaJson = ccrm_merge_user_metadata($metaJson, $existingMeta[$userId] ?? null);
 
                 // Password handling:
                 //  - a new, non-empty, non-hashed password is bcrypt-hashed;
