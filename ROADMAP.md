@@ -10,6 +10,20 @@ Effort: S (small, <1h) · M (medium) · L (large / architectural)
 > Note: `.md` files are blocked from web serving by `.htaccess`, but this repo is
 > public on GitHub — do **not** put secrets, passwords, or client data in here.
 
+> **Caveats from the 2026-07-03 hardening pass (`7161672`):**
+> 1. **Secret encryption & existing installs.** New installs get a dedicated
+>    `CCRM_SECRET_KEY` in `config.php`; existing installs fall back to a key derived
+>    from the DB credentials. On an existing install, stored secrets remain plaintext
+>    until the settings/mailbox are next saved, at which point they encrypt with the
+>    fallback key. **Do not add a `CCRM_SECRET_KEY` to an existing install after
+>    secrets have been re-saved** — values encrypted under the fallback key won't
+>    decrypt under the new key. To adopt an explicit key on an existing install, set
+>    it first, then re-save every integration/mailbox secret.
+> 2. **Not yet runtime-tested end-to-end.** The pass was verified by PHP lint, `tsc`
+>    typecheck, a successful `vite build`, and a standalone encrypt/decrypt roundtrip
+>    test — but **not** against a live MySQL instance. Smoke-test login, sync,
+>    password reset, and mailbox send/receive on staging before merging `dev → main`.
+
 ---
 
 ## 0. Owner actions (cannot be done in code — do these first)
@@ -42,13 +56,11 @@ Effort: S (small, <1h) · M (medium) · L (large / architectural)
   the code disabled it citing "container CA bundle issues" — flipping it blind
   could break all AI/registry calls if the host CA store is missing. Plan: flip
   one file to `true`, smoke-test an AI summary, then roll out. (S, needs live test)
-- [ ] 🟡 **Genericize remaining leaked exception messages.** Several endpoints still
-  echo `$e->getMessage()` to the client (`setup.php`, `chat_rag.php`, `cron_agents.php`,
-  `generate_report.php`, `pipeline.php`, `summarize_*.php`, `train_vector.php`).
-  Log server-side, return a generic message. Also set `display_errors=0` centrally. (M)
-- [ ] 🟡 **Password-reset endpoint** (`dist/api/password_reset.php`): add rate limiting
-  (reuse the `login_attempts` throttle) and reconcile the deploy inconsistency —
-  it exists only under `dist/`, not in the tracked root `api/`. (M)
+- [ ] 🟡 **Genericize remaining leaked exception messages.** *Partly done in `7161672`:*
+  `display_errors=0` is now set centrally (in `api/auth.php`) and `sync.php`,
+  `setup.php`, `pipeline.php` were genericized. Still echoing `$e->getMessage()`:
+  `chat_rag.php`, `cron_agents.php`, `generate_report.php`, `summarize_*.php`,
+  `train_vector.php`. Log server-side, return a generic message. (S)
 - [ ] 🔵 **CSRF defense-in-depth.** State-changing endpoints rely on the session
   cookie + `SameSite=Lax` + same-origin CORS. Add a CSRF token for belt-and-braces. (M)
 - [ ] 🔵 **`@`-suppressed file ops** hide real I/O failures (`upload.php`,
@@ -74,9 +86,6 @@ Effort: S (small, <1h) · M (medium) · L (large / architectural)
   insert with no `ON DUPLICATE`), racing concurrent loads into duplicate-key 500s;
   `email-<uid>` event IDs can collide across folders/users. Move ingestion out of
   the GET path. (M)
-- [ ] 🟡 **Malformed payload items abort the whole sync.** Missing required keys
-  (`$l['id']`, `$t['title']`, etc.) throw NOT-NULL violations that roll back the
-  entire multi-entity sync. Validate/skip bad items before the transaction. (M)
 - [ ] 🟡 **ENUM / value validation.** Client strings go straight into ENUM columns
   (`timeline_events.type`, task priority/status); an unknown value fails the whole
   sync in strict mode. Add allowlists; clamp `rating` 1–5; guard `strtotime()`
@@ -106,9 +115,11 @@ Effort: S (small, <1h) · M (medium) · L (large / architectural)
 
 ## 3. Frontend quality — remaining
 
-- [ ] 🟡 **No `AbortController` anywhere** (0 in `src/`) — stale responses race onto
-  the wrong lead/agent/search across LeadsDatagrid, ClientsView, EmailView, Header.
-  Add per-effect abort/ignore. (M)
+- [ ] 🟡 **`AbortController` coverage.** *Partly done in `7161672`:* a
+  `fetchWithTimeout` wrapper (120s abort) now guards the long-running AI ops
+  (transcribe / summarize / report / RAG) so they no longer spin forever. Still
+  missing: per-effect abort/ignore to stop stale responses racing onto the wrong
+  lead/agent/search across LeadsDatagrid, ClientsView, EmailView, Header. (M)
 - [ ] 🟡 **`res.ok` unchecked** on ~half of ~70 `fetch` calls — 500s throw into
   console-only catches and the user sees nothing. Add a shared `apiFetch()` helper
   (ok-check + error toast + abort). (M)
@@ -145,11 +156,11 @@ Effort: S (small, <1h) · M (medium) · L (large / architectural)
 
 ## 4. Build / deploy / hygiene — remaining
 
-- [ ] 🟠 **Restore the Vite source entry.** Repo-root `index.html` points at a built
-  bundle instead of `/src/main.tsx`, so `vite build` re-bundles its own output
-  (proven by chained hashes: `favicon-D81-yVMc-D81-yVMc-…svg`). Frontend source
-  changes may not compile. Restore a source `index.html` and keep build outputs
-  out of the Vite entry path. (M)
+- [ ] 🟠 **Restore the Vite source entry.** *Verified OK on `dev` as of `7161672`:*
+  repo-root `index.html` points at `/src/main.tsx` and `vite build` transformed
+  1,812 modules (real source compile, not a re-bundle of output). Keep it this way;
+  confirm the `main`-branch `index.html` is the compiled entry only at deploy time,
+  and keep build outputs out of the Vite entry path. (S — verify on main)
 - [ ] 🟡 **Fix the hash-reappending build step** and clean stale bundles. `assets/`
   and `dist/assets/` accumulate re-hashed `index-*.js/css`, `favicon-…`, and
   `manifest-CkRMSD6B-CkRMSD6B-…json`. Find the rename step (deploy pipeline /
@@ -172,6 +183,35 @@ Effort: S (small, <1h) · M (medium) · L (large / architectural)
 
 Branch `fable-audit`. Newest first.
 
+- ✅ `7161672` (2026-07-03, v1.5.105, branch `dev`) — Comprehensive model/view/
+  controller + template audit remediation:
+  - **🔴 Privilege escalation in `sync.php` POST.** The mutating sync was gated by
+    auth only; any authenticated *viewer* could promote themselves to admin,
+    overwrite other users' passwords, or delete accounts via the `users`/`roles`/
+    `settings` blocks. Now those writes are admin-only, and a non-admin may edit
+    **only their own record with their role locked**; delete-by-omission is guarded
+    so a non-admin payload can't wipe every other user.
+  - **🟠 Secrets encrypted at rest.** OpenAI key, SMTP/IMAP passwords, OAuth tokens,
+    vector-DB keys are AES-256-GCM encrypted (key from `config.php`, never the DB)
+    with transparent plaintext fallback; decryption wired into all read sites. See
+    the caveat at the top of this file.
+  - **🟠 Audit log.** New `audit_log` table + `ccrm_audit_log()` on role/settings/
+    user-delete/API-key-rotation/password-reset.
+  - **🟠 Password-reset endpoint** now rate-limited (per-IP), transactional, and
+    reconciled to tracked root `api/` (was `dist/`-only).
+  - **🟠 401 mutation recovery.** A push rejected by an expired session is replayed
+    from the latest state after re-login instead of being silently dropped.
+  - **🟡 Webhook idempotency** in `pipeline.php` (`Idempotency-Key`/`event_id`) to
+    stop duplicate leads on retries; **malformed lead/task items skipped** instead
+    of 500-ing the whole sync; **dynamic `ue_` DDL capped** per request.
+  - **🟡 Error hardening.** Central `display_errors=0`; generic messages in
+    `sync.php`/`setup.php`/`pipeline.php`. **CSP header** added to `.htaccess`.
+  - **🟡 AI model** moved from a hardcoded `gpt-4o-mini` literal (8 files) into
+    `INTEGRATIONS_CONFIG` via `ccrm_ai_model()`.
+  - **🟡/🔵 Frontend.** `fetchWithTimeout` on long AI ops; global zero-leads empty
+    state + CTA; `formatBytes` de-duplicated into a shared util.
+  - **🔵 Deploy/hygiene.** `composer audit` + optional post-deploy health check in
+    the `ccrm` CLI; stopped tracking AI/agent context files and scratch update notes.
 - ✅ `6acc992` — Mailbox IDOR (session-derived, not `X-User-Email`); login rate
   limiting (fail-open, per-IP); constant-time API-key compare; cron overlap lock;
   `wipe_demo` transactional DELETEs + random admin password; `JSON_INVALID_UTF8_SUBSTITUTE`
