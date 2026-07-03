@@ -22,6 +22,11 @@ uploads/
 **/uploads/
 server.md
 
+# Throwaway maintenance scripts and raw client data — never commit; these were
+# publicly served from the docroot and leaked PII (see security audit).
+scratch/
+tempData/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

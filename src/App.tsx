@@ -611,6 +611,14 @@ ${log.payload || ''}
       const pollStartTime = Date.now();
       try {
         const res = await fetch(`/sync.php?t=${Date.now()}`);
+        if (res.status === 401) {
+          // Installed, but no valid session: show the login screen instead of
+          // hanging on the loader forever.
+          setIsInstalled(true);
+          setCurrentUser(null);
+          setIsInitialSyncResolved(true);
+          return;
+        }
         if (res.ok) {
           const data = await res.json();
           if (activePushesRef.current > 0 || pollStartTime < lastPushTimeRef.current) {
@@ -620,7 +628,7 @@ ${log.payload || ''}
             setIsInstalled(false);
             return;
           }
-          
+
           if (data && data.installed === true) {
             setIsInstalled(true);
             setIsDemoMode(data.demoMode === true);
@@ -688,6 +696,12 @@ ${log.payload || ''}
       const pollStartTime = Date.now();
       try {
         const res = await fetch(`/sync.php?t=${Date.now()}`);
+        if (res.status === 401) {
+          setIsInstalled(true);
+          setCurrentUser(null);
+          setIsInitialSyncResolved(true);
+          return;
+        }
         if (res.ok) {
           const data = await res.json();
           if (activePushesRef.current > 0 || pollStartTime < lastPushTimeRef.current) {
@@ -790,7 +804,9 @@ ${log.payload || ''}
     }, 5000);
 
     return () => clearInterval(poller);
-  }, [isInstalled]);
+    // Re-subscribe on login/logout so a fresh session immediately re-syncs
+    // (the GET now requires auth) and the poller closure never holds a stale user.
+  }, [isInstalled, currentUser?.email]);
 
   // Background email fetching poller when the user is logged in
   useEffect(() => {

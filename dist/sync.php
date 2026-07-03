@@ -166,6 +166,13 @@ function ccrm_leads_are_identical($inc, $db) {
 
 // 3. Handle GET Request: Read from Database
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    // SECURITY: reading CRM state requires an authenticated session. This
+    // endpoint returns all leads, tasks, users and the integration secrets
+    // (OpenAI key, SMTP/IMAP passwords, OAuth secrets) — it must never serve
+    // that to anonymous callers. The "not installed" check above runs first so
+    // the installer wizard can still bootstrap without a session.
+    ccrm_require_auth();
+
     $settings = fetch_system_settings($pdo);
     $isDemoMode = ($settings['DEMO_MODE'] ?? 'false') === 'true';
 
