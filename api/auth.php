@@ -10,6 +10,13 @@
  *  - Endpoints are same-origin only: no wildcard `Access-Control-Allow-Origin`.
  */
 
+// Production error hardening: never render PHP warnings/notices/stack traces
+// into the HTTP response (they leak DSNs, paths and schema). Errors are still
+// captured in the server log and, for exceptions, the `error_logs` table.
+@ini_set('display_errors', '0');
+@ini_set('log_errors', '1');
+error_reporting(E_ALL);
+
 if (!function_exists('ccrm_send_cors')) {
 
     /**
@@ -210,6 +217,140 @@ if (!function_exists('ccrm_send_cors')) {
         define('CCRM_SECRET_MASK', '********');
     }
 
+    /**
+     * Derive the 32-byte symmetric key used to encrypt secrets at rest.
+     *
+     * Prefers an explicit CCRM_SECRET_KEY from config.php (written by the
+     * installer). Falls back to a key derived from the DB credentials so
+     * existing installs get encryption without regenerating config.php. Either
+     * way the key material lives ONLY in the config file, never in the DB — so a
+     * DB-only compromise cannot decrypt the stored secrets.
+     */
+    function ccrm_secret_key(): string {
+        if (defined('CCRM_SECRET_KEY') && CCRM_SECRET_KEY !== '') {
+            return hash('sha256', (string)CCRM_SECRET_KEY, true);
+        }
+        $material = (defined('DB_PASS') ? DB_PASS : '') . '|'
+                  . (defined('DB_NAME') ? DB_NAME : '') . '|'
+                  . (defined('DB_USER') ? DB_USER : '') . '|ccrm-secret-v1';
+        return hash('sha256', $material, true);
+    }
+
+    /**
+     * Encrypt a single secret value (AES-256-GCM). Returns an `enc:v1:` prefixed
+     * token. Empty strings, already-encrypted values and the mask pass through
+     * unchanged. On any failure the plaintext is returned rather than lost.
+     */
+    function ccrm_encrypt_secret(string $plain): string {
+        if ($plain === '' || $plain === CCRM_SECRET_MASK || strncmp($plain, 'enc:v1:', 7) === 0) {
+            return $plain;
+        }
+        try {
+            $iv  = random_bytes(12);
+            $tag = '';
+            $ct  = openssl_encrypt($plain, 'aes-256-gcm', ccrm_secret_key(), OPENSSL_RAW_DATA, $iv, $tag);
+            if ($ct === false) {
+                return $plain;
+            }
+            return 'enc:v1:' . base64_encode($iv . $tag . $ct);
+        } catch (\Throwable $e) {
+            return $plain;
+        }
+    }
+
+    /**
+     * Decrypt a value produced by ccrm_encrypt_secret(). Legacy plaintext values
+     * (no `enc:v1:` prefix) are returned unchanged, so this is safe to apply to
+     * data written before encryption was introduced.
+     */
+    function ccrm_decrypt_secret(string $stored): string {
+        if (strncmp($stored, 'enc:v1:', 7) !== 0) {
+            return $stored;
+        }
+        $raw = base64_decode(substr($stored, 7), true);
+        if ($raw === false || strlen($raw) < 29) {
+            return $stored;
+        }
+        $iv  = substr($raw, 0, 12);
+        $tag = substr($raw, 12, 16);
+        $ct  = substr($raw, 28);
+        $pt  = openssl_decrypt($ct, 'aes-256-gcm', ccrm_secret_key(), OPENSSL_RAW_DATA, $iv, $tag);
+        return $pt === false ? '' : $pt;
+    }
+
+    /** Encrypt every named secret key in an assoc array (for storage). */
+    function ccrm_encrypt_config_secrets(array $config, array $secretKeys): array {
+        foreach ($secretKeys as $k) {
+            if (isset($config[$k]) && is_string($config[$k]) && $config[$k] !== '') {
+                $config[$k] = ccrm_encrypt_secret($config[$k]);
+            }
+        }
+        return $config;
+    }
+
+    /** Decrypt every named secret key in an assoc array (after loading). */
+    function ccrm_decrypt_config_secrets(array $config, array $secretKeys): array {
+        foreach ($secretKeys as $k) {
+            if (isset($config[$k]) && is_string($config[$k]) && $config[$k] !== '') {
+                $config[$k] = ccrm_decrypt_secret($config[$k]);
+            }
+        }
+        return $config;
+    }
+
+    /**
+     * Return a user's emailSettings array with its secret fields decrypted,
+     * ready for server-side use (IMAP/SMTP login). Accepts the raw array as
+     * stored in metadata_json. Safe on legacy plaintext.
+     */
+    function ccrm_decrypt_email_settings($settings): array {
+        if (!is_array($settings)) {
+            return [];
+        }
+        return ccrm_decrypt_config_secrets($settings, ccrm_email_secret_keys());
+    }
+
+    /**
+     * Append a privileged-action entry to the tamper-evident audit_log table.
+     * Best-effort: a logging failure must never abort the underlying action.
+     */
+    function ccrm_audit_log(\PDO $pdo, ?array $actor, string $action, ?string $detail = null): void {
+        try {
+            // DDL causes an implicit COMMIT in MySQL, so never run CREATE TABLE
+            // while a transaction is open (e.g. inside the sync POST). The table
+            // is normally provisioned up-front by ccrm_apply_schema(); this lazy
+            // create only covers callers that run outside a transaction.
+            if (!$pdo->inTransaction()) {
+                $pdo->exec(
+                    "CREATE TABLE IF NOT EXISTS `audit_log` (
+                      `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+                      `actor_id` VARCHAR(50) NULL,
+                      `actor_email` VARCHAR(255) NULL,
+                      `action` VARCHAR(100) NOT NULL,
+                      `detail` TEXT NULL,
+                      `ip` VARCHAR(45) NULL,
+                      `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                      INDEX `idx_audit_time` (`created_at`),
+                      INDEX `idx_audit_action` (`action`)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+                );
+            }
+            $stmt = $pdo->prepare(
+                "INSERT INTO `audit_log` (`actor_id`, `actor_email`, `action`, `detail`, `ip`)
+                 VALUES (?, ?, ?, ?, ?)"
+            );
+            $stmt->execute([
+                $actor['id'] ?? null,
+                $actor['email'] ?? null,
+                $action,
+                $detail,
+                $_SERVER['REMOTE_ADDR'] ?? null,
+            ]);
+        } catch (\Throwable $e) {
+            error_log('[ccrm audit_log] ' . $e->getMessage());
+        }
+    }
+
     /** System-level integration secrets (system_settings.INTEGRATIONS_CONFIG). */
     function ccrm_integration_secret_keys(): array {
         return [
@@ -223,6 +364,16 @@ if (!function_exists('ccrm_send_cors')) {
     /** Per-user email secrets (users.metadata_json -> emailSettings). */
     function ccrm_email_secret_keys(): array {
         return ['imapPassword', 'smtpPassword', 'password'];
+    }
+
+    /**
+     * Resolve the OpenAI chat model to use, from the admin-configured
+     * INTEGRATIONS_CONFIG, falling back to a sane default. Centralised so the
+     * default is not scattered as a literal across every AI endpoint.
+     */
+    function ccrm_ai_model(array $config = [], string $default = 'gpt-4o-mini'): string {
+        $m = $config['aiModel'] ?? ($config['openAiModel'] ?? '');
+        return (is_string($m) && $m !== '') ? $m : $default;
     }
 
     /**
@@ -264,7 +415,10 @@ if (!function_exists('ccrm_send_cors')) {
             return [];
         }
         $cfg = json_decode($raw, true);
-        return is_array($cfg) ? $cfg : [];
+        if (!is_array($cfg)) {
+            return [];
+        }
+        return ccrm_decrypt_config_secrets($cfg, ccrm_integration_secret_keys());
     }
 
     /** Replace every non-empty secret value with the mask (outbound). */
@@ -325,6 +479,10 @@ if (!function_exists('ccrm_send_cors')) {
         $existingEmail = (is_array($existing) && isset($existing['emailSettings']) && is_array($existing['emailSettings']))
             ? $existing['emailSettings'] : [];
         $incoming['emailSettings'] = ccrm_merge_secrets($incoming['emailSettings'], $existingEmail, ccrm_email_secret_keys());
+        // Encrypt mailbox secrets at rest. Values preserved from the stored copy
+        // are already encrypted (ccrm_encrypt_secret is a no-op on them); only a
+        // freshly supplied plaintext password gets encrypted here.
+        $incoming['emailSettings'] = ccrm_encrypt_config_secrets($incoming['emailSettings'], ccrm_email_secret_keys());
         $encoded = json_encode($incoming, JSON_INVALID_UTF8_SUBSTITUTE);
         return $encoded === false ? $incomingJson : $encoded;
     }

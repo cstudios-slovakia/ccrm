@@ -6,6 +6,7 @@ import {
 import type { Lead } from "../types";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
+import { formatBytes } from "../utils/formatBytes";
 
 interface QueuedFile {
   id: string;
@@ -137,14 +138,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
     setUploadQueue(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item));
   };
 
-  const formatBytes = (bytes: number, decimals = 2) => {
-    if (bytes === 0) return "0 Bytes";
-    const k = 1024;
-    const dm = decimals < 0 ? 0 : decimals;
-    const sizes = ["Bytes", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i];
-  };
+  // formatBytes is imported from ../utils/formatBytes
 
   const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
+import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { createPortal } from "react-dom";
 import { 
   Users, MapPin, Search, Clock, User, Briefcase, Handshake, 
@@ -1312,7 +1313,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     setIsAnalyzingFinancial(true);
     
     try {
-      const res = await fetch("/api/summarize_financial.php", {
+      const res = await fetchWithTimeout("/api/summarize_financial.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1357,7 +1358,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     setIsAnalyzingFinancial(true);
     
     try {
-      const res = await fetch("/api/generate_report.php", {
+      const res = await fetchWithTimeout("/api/generate_report.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1624,7 +1625,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     const activeMeetingId = recordingMeetingId || `note_event_${Date.now()}`;
 
     try {
-      const res = await fetch("/api/transcribe_meeting.php", {
+      const res = await fetchWithTimeout("/api/transcribe_meeting.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1683,7 +1684,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           phone: activeClient.phone || "",
         };
 
-        const response = await fetch("/api/summarize_client_lead.php", {
+        const response = await fetchWithTimeout("/api/summarize_client_lead.php", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

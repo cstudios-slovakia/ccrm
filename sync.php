@@ -32,9 +32,10 @@ require_once $configFile;
 try {
     $pdo = get_db_connection();
 } catch (\Exception $e) {
+    error_log('[ccrm sync] DB connection failed: ' . $e->getMessage());
     echo json_encode([
         'installed' => false,
-        'message' => 'Database connection failed: ' . $e->getMessage()
+        'message' => 'Database connection failed.'
     ]);
     exit;
 }
@@ -43,9 +44,10 @@ try {
 try {
     ccrm_apply_schema($pdo);
 } catch (\Exception $e) {
+    error_log('[ccrm sync] Schema migration failed: ' . $e->getMessage());
     echo json_encode([
         'installed' => false,
-        'message' => 'Automated schema migration failed: ' . $e->getMessage()
+        'message' => 'Automated schema migration failed.'
     ]);
     exit;
 }
@@ -607,6 +609,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // SECURITY: writes require an authenticated session.
     $sessionUser = ccrm_require_auth();
+    // Privileged writes (global settings, RBAC registry, integration secrets,
+    // and management of OTHER users / roles) are admin-only. Non-admin sync
+    // payloads still carry these sections (the client always sends a full
+    // snapshot), so we silently ignore the privileged parts for non-admins
+    // rather than reject the whole sync — otherwise ordinary editing breaks.
+    $isAdmin = (($sessionUser['role'] ?? '') === 'admin');
 
     $input = file_get_contents('php://input');
     $payload = json_decode($input, true);
@@ -630,9 +638,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // make the final commit() fail with "There is no active transaction".
         // DDL cannot be rolled back anyway, so it belongs outside the transaction.
         if (isset($payload['unifiedEntries']) && is_array($payload['unifiedEntries'])) {
+            // Cap dynamic-table provisioning per request so a crafted payload
+            // cannot exhaust the database with unbounded CREATE/ALTER TABLE.
+            $ddlBudget = 200;
             foreach ($payload['unifiedEntries'] as $ue) {
                 if (!isset($ue['id'])) {
                     continue;
+                }
+                if (--$ddlBudget < 0) {
+                    break;
                 }
                 $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($ue['id']));
                 $tableName = "ue_" . $safeId;
@@ -686,8 +700,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $pdo->beginTransaction();
 
-        // 4.1. Save system settings & configurations
-        if (isset($payload['settings'])) {
+        // 4.1. Save system settings & configurations (admin-only).
+        if ($isAdmin && isset($payload['settings'])) {
             $s = $payload['settings'];
 
             // Preserve masked secrets: merge the inbound integrations config over
@@ -701,6 +715,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!is_array($existingIntegrations)) { $existingIntegrations = []; }
             if (isset($s['integrationsConfig']) && is_array($s['integrationsConfig'])) {
                 $mergedIntegrations = ccrm_merge_secrets($s['integrationsConfig'], $existingIntegrations, ccrm_integration_secret_keys());
+                // Encrypt secrets at rest before persisting. Values preserved from
+                // storage are already encrypted (encrypt is a no-op on them).
+                $mergedIntegrations = ccrm_encrypt_config_secrets($mergedIntegrations, ccrm_integration_secret_keys());
                 $integrationsValue = json_encode($mergedIntegrations ?: (object)[]);
             } else {
                 $integrationsValue = ($existingIntegrationsRaw !== false && $existingIntegrationsRaw !== null) ? $existingIntegrationsRaw : json_encode((object)[]);
@@ -727,12 +744,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             foreach ($settingsList as $k => $v) {
                 $insSet->execute([$k, $v]);
             }
+            ccrm_audit_log($pdo, $sessionUser, 'settings.update', 'System settings / integrations updated');
         }
 
-        // Save Roles RBAC registry
-        if (isset($payload['roles'])) {
+        // Save Roles RBAC registry (admin-only).
+        if ($isAdmin && isset($payload['roles'])) {
             $insSet = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
             $insSet->execute(['ROLES_RBAC', json_encode($payload['roles'])]);
+            ccrm_audit_log($pdo, $sessionUser, 'roles.update', 'RBAC role registry updated');
         }
 
         // 4.2. Synchronize Users list
@@ -747,12 +766,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $insUser = $pdo->prepare("INSERT INTO `users` (`id`, `name`, `email`, `password_hash`, `role`, `avatar`, `color`, `metadata_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `email` = VALUES(`email`), `password_hash` = VALUES(`password_hash`), `role` = VALUES(`role`), `avatar` = VALUES(`avatar`), `color` = VALUES(`color`), `metadata_json` = VALUES(`metadata_json`)");
 
+            // Existing roles so a non-admin's own role cannot be changed and so
+            // we can audit privilege changes.
+            $existingRoles = $pdo->query("SELECT `id`, `role` FROM `users`")->fetchAll(PDO::FETCH_KEY_PAIR);
+
             foreach ($payload['users'] as $u) {
                 if (empty($u['email'])) {
                     continue;
                 }
                 $userId = 'u-' . md5(strtolower(trim($u['email'])));
-                $role = ccrm_normalize_role($u['role'] ?? 'viewer');
+
+                // SECURITY: a non-admin may only modify their OWN record and can
+                // never change their role (prevents self-promotion to admin).
+                if (!$isAdmin && $userId !== ($sessionUser['id'] ?? '')) {
+                    continue;
+                }
+                if ($isAdmin) {
+                    $role = ccrm_normalize_role($u['role'] ?? 'viewer');
+                } else {
+                    // Lock to the caller's stored role, ignoring any client value.
+                    $role = ccrm_normalize_role($existingRoles[$userId] ?? ($sessionUser['role'] ?? 'viewer'));
+                }
+                // Audit any admin-driven role change.
+                if ($isAdmin && isset($existingRoles[$userId]) && $existingRoles[$userId] !== $role) {
+                    ccrm_audit_log($pdo, $sessionUser, 'user.role_change',
+                        $u['email'] . ': ' . $existingRoles[$userId] . ' -> ' . $role);
+                }
 
                 $metaJson = isset($u['metadata_json']) ? (is_array($u['metadata_json']) ? json_encode($u['metadata_json']) : $u['metadata_json']) : (isset($u['metadata']) ? json_encode($u['metadata']) : null);
                 // Keep the stored IMAP/SMTP password when the client sent it masked.
@@ -787,8 +826,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // Remove any users not in payload, but never delete the account that
             // is performing this sync (prevents accidental self-lockout).
-            $usersToDelete = array_diff($existingUserIds, $processedUserIds);
-            ccrm_delete_omitted($pdo, 'users', $usersToDelete, $baseSyncedAt, [$sessionUser['id']]);
+            // Admin-only: a non-admin's payload only ever "processes" their own
+            // record, so running this for them would delete every other user.
+            if ($isAdmin) {
+                $usersToDelete = array_diff($existingUserIds, $processedUserIds);
+                if (!empty($usersToDelete)) {
+                    ccrm_delete_omitted($pdo, 'users', $usersToDelete, $baseSyncedAt, [$sessionUser['id']]);
+                    ccrm_audit_log($pdo, $sessionUser, 'user.delete', 'Removed users: ' . implode(', ', $usersToDelete));
+                }
+            }
         }
 
         // 4.3. Synchronize Leads, Categories & Timelines
@@ -847,6 +893,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               // that burned OpenAI credits. It is still set on INSERT for new leads.
 
             foreach ($payload['leads'] as $l) {
+                // Skip malformed items rather than letting a NULL id/name abort
+                // the whole sync transaction mid-loop with a 500.
+                if (!is_array($l) || empty($l['id']) || !isset($l['name']) || $l['name'] === '') {
+                    continue;
+                }
                 $leadId = $l['id'];
                 $processedLeadIds[] = $leadId;
 
@@ -1013,6 +1064,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `status`, `owner`, `related_lead_id`, `is_locking`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `is_locking` = VALUES(`is_locking`)");
 
             foreach ($payload['tasks'] as $t) {
+                // Skip malformed items rather than aborting the whole sync.
+                if (!is_array($t) || empty($t['id']) || !isset($t['title']) || $t['title'] === '' || empty($t['deadline'])) {
+                    continue;
+                }
                 $taskId = $t['id'];
 
                 $insTask->execute([

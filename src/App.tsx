@@ -26,6 +26,9 @@ const ShaderGradientAny = ShaderGradient as any;
 function App() {
   const activePushesRef = useRef(0);
   const lastPushTimeRef = useRef(0);
+  // Set when a push is rejected with 401 (session expired) so the unsaved
+  // change can be replayed after the user re-authenticates.
+  const pendingPushRef = useRef(false);
   // Latest-value refs so a push that updates one entity never ships a stale copy of the
   // others (sync.php destructively replaces each collection, so a stale array would delete
   // freshly-created rows — the root cause of "assignment/recording resets" bugs).
@@ -504,9 +507,12 @@ ${log.payload || ''}
         body: JSON.stringify(payload)
       });
       if (res.status === 401) {
+        // The mutation did not persist. Remember it so it is replayed from the
+        // latest state refs once the user logs back in (see onLoginSuccess).
+        pendingPushRef.current = true;
         setCurrentUser(null);
         if (typeof (window as any).showToast === "function") {
-          (window as any).showToast("Session expired. Please log in again.");
+          (window as any).showToast("Session expired. Please log in again — your last change will be re-saved.");
         }
       } else if (res.ok) {
         // Advance our snapshot clock so a delete right after this edit is not
@@ -1339,6 +1345,17 @@ ${log.payload || ''}
         systemName={systemName}
         onLoginSuccess={(user) => {
           setCurrentUser(user);
+          // If a mutation was lost to an expired session, replay the latest
+          // state now that we are authenticated again so the change is not lost.
+          if (pendingPushRef.current) {
+            pendingPushRef.current = false;
+            setTimeout(() => {
+              pushStateToServer();
+              if (typeof (window as any).showToast === "function") {
+                (window as any).showToast("Re-saved your last change.");
+              }
+            }, 0);
+          }
           // Route the user to their chosen default landing page right after login
           const dp = getDefaultPageForUser(user) || "dashboard";
           setActiveTab(dp);
