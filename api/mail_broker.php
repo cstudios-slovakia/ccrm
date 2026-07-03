@@ -46,8 +46,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'test_credentials') {
         $stmt->execute([$sessionUser['email']]);
         $storedMetaRaw = $stmt->fetchColumn();
         $storedMeta = $storedMetaRaw ? json_decode($storedMetaRaw, true) : [];
-        $storedEmail = (is_array($storedMeta) && isset($storedMeta['emailSettings']) && is_array($storedMeta['emailSettings']))
-            ? $storedMeta['emailSettings'] : [];
+        $storedEmail = ccrm_decrypt_email_settings(
+            (is_array($storedMeta) && isset($storedMeta['emailSettings'])) ? $storedMeta['emailSettings'] : []
+        );
         $settings = ccrm_merge_secrets(is_array($settings) ? $settings : [], $storedEmail, ccrm_email_secret_keys());
     }
 
@@ -81,7 +82,7 @@ if (!$metadataStr) {
 }
 
 $metadata = json_decode($metadataStr, true);
-$emailSettings = isset($metadata['emailSettings']) ? $metadata['emailSettings'] : null;
+$emailSettings = ccrm_decrypt_email_settings($metadata['emailSettings'] ?? null);
 
 if (!$emailSettings) {
     http_response_code(400);
@@ -444,6 +445,7 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                         $stmtConfig->execute();
                         $configJsonStr = $stmtConfig->fetchColumn();
                         $integrationsConfigObj = $configJsonStr ? json_decode($configJsonStr, true) : [];
+                        $integrationsConfigObj = is_array($integrationsConfigObj) ? ccrm_decrypt_config_secrets($integrationsConfigObj, ccrm_integration_secret_keys()) : [];
                         
                         $rPdo = get_rag_db_connection($integrationsConfigObj);
                         if ($rPdo) {

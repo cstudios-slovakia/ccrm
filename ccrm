@@ -75,6 +75,13 @@ function ccrm_update() {
         exit(1);
     }
 
+    // 3b. Audit dependencies for known vulnerabilities (non-fatal, informational).
+    echo "Auditing PHP dependencies (composer audit)...\n";
+    passthru("composer audit --no-interaction 2>&1", $auditResult);
+    if ($auditResult !== 0) {
+        echo "Warning: composer audit reported advisories above. Review before/after deploy.\n";
+    }
+
     if ($hasChanges) {
         echo "Restoring stashed changes...\n";
         passthru("git stash pop");
@@ -90,6 +97,33 @@ function ccrm_update() {
 
     // 5. Run database migrations
     ccrm_migrate();
+
+    // 6. Optional post-deploy health check. Set CCRM_HEALTHCHECK_URL (or pass a
+    //    URL as the 2nd CLI arg) to verify the live site responds after deploy.
+    global $args;
+    $healthUrl = getenv('CCRM_HEALTHCHECK_URL');
+    if (empty($healthUrl) && !empty($args[2])) {
+        $healthUrl = $args[2];
+    }
+    if (!empty($healthUrl) && function_exists('curl_init')) {
+        echo "Running post-deploy health check: $healthUrl\n";
+        $ch = curl_init($healthUrl);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 15,
+            CURLOPT_FOLLOWLOCATION => true,
+        ]);
+        curl_exec($ch);
+        $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($code >= 200 && $code < 400) {
+            echo "Health check OK (HTTP $code).\n";
+        } else {
+            echo "WARNING: health check returned HTTP $code — verify the deployment.\n";
+        }
+    } else {
+        echo "Tip: set CCRM_HEALTHCHECK_URL to enable an automatic post-deploy health check.\n";
+    }
 
     echo "\nSuccess! CCRM updated successfully to the latest version.\n";
 }

@@ -22,6 +22,7 @@ $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'INTE
 $stmt->execute();
 $configJson = $stmt->fetchColumn();
 $integrationsConfig = $configJson ? json_decode($configJson, true) : [];
+$integrationsConfig = is_array($integrationsConfig) ? ccrm_decrypt_config_secrets($integrationsConfig, ccrm_integration_secret_keys()) : [];
 
 $openAiKey = $integrationsConfig['openAiKey'] ?? '';
 $vectorDb = $integrationsConfig['vectorDb'] ?? 'none';
@@ -524,7 +525,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'Authorization: Bearer ' . $openAiKey
     ]);
     curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
-        'model' => 'gpt-4o-mini',
+        'model' => ccrm_ai_model(),
         'messages' => $payloadMessages,
         'temperature' => 0.4
     ], JSON_INVALID_UTF8_SUBSTITUTE));

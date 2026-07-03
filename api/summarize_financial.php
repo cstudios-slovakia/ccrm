@@ -51,6 +51,7 @@ $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'INTE
 $stmt->execute();
 $configJson = $stmt->fetchColumn();
 $integrationsConfig = $configJson ? json_decode($configJson, true) : [];
+$integrationsConfig = is_array($integrationsConfig) ? ccrm_decrypt_config_secrets($integrationsConfig, ccrm_integration_secret_keys()) : [];
 $openAiKey = $integrationsConfig['openAiKey'] ?? '';
 
 if (empty($openAiKey)) {
@@ -175,7 +176,7 @@ curl_setopt($ch, CURLOPT_HTTPHEADER, [
 ]);
 
 $payload = [
-    'model' => 'gpt-4o-mini',
+    'model' => ccrm_ai_model(),
     'messages' => [
         [
             'role' => 'user',

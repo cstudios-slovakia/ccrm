@@ -53,3 +53,14 @@ tempData/
 *.sw?
 
 /.claude/
+
+# AI-assistant context and ephemeral dev scratch notes — must not ship to the
+# web docroot (repo root is the docroot on the production host).
+/.agent/
+AGENT_CONTEXT.md
+clementineupdate.md
+durianupdate.md
+elderberryupdate.md
+figtree.md
+figtreeupdate.md
+figMobileOptimise.md

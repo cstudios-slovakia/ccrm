@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { createPortal } from "react-dom";
 import { Search, Calendar, User, Users, Clock, CheckSquare, Plus, ArrowLeft, Filter, Sparkles, AlertCircle, ChevronDown, X, Archive, Settings, Mic, Play, Pause, Square, Volume2, Trash2 } from "lucide-react";
 import type { Lead, UserProfile, Task } from "../types";
@@ -414,7 +415,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
       : serializeBlocksToPlainText(parseNotesToBlocks(selectedMeeting?.notes || ""));
 
     try {
-      const res = await fetch("/api/transcribe_meeting.php", {
+      const res = await fetchWithTimeout("/api/transcribe_meeting.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -956,7 +957,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
     }
 
     try {
-      const res = await fetch("/api/summarize_meeting.php", {
+      const res = await fetchWithTimeout("/api/summarize_meeting.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notes: plainText })

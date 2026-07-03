@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
+import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { createPortal } from "react-dom";
 import { 
   Users, MapPin, Plus, Search, Trash2, 
@@ -818,7 +819,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const activeMeetingId = recordingMeetingId || `note_event_${Date.now()}`;
 
     try {
-      const res = await fetch("/api/transcribe_meeting.php", {
+      const res = await fetchWithTimeout("/api/transcribe_meeting.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1272,7 +1273,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
           phone: activeLead.phone || "",
         };
 
-        const response = await fetch("/api/summarize_client_lead.php", {
+        const response = await fetchWithTimeout("/api/summarize_client_lead.php", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -4187,6 +4188,29 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 )}
               </div>
             </div>
+          </div>
+        )}
+
+        {leads.length === 0 && (
+          <div className="flex flex-col items-center justify-center text-center py-16 px-6 gap-3">
+            <div className="h-14 w-14 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center">
+              <TableProperties className="h-7 w-7 text-blue-500" />
+            </div>
+            <h3 className="text-sm font-heading font-black text-slate-800 uppercase tracking-tight">
+              {t("No leads yet", "Zatiaľ žiadne leady", "Még nincsenek leadek")}
+            </h3>
+            <p className="text-xs text-slate-400 max-w-sm">
+              {t("Create your first lead to start building your pipeline.",
+                 "Vytvorte svoj prvý lead a začnite budovať pipeline.",
+                 "Hozza létre első leadjét a pipeline felépítéséhez.")}
+            </p>
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(true)}
+              className="mt-1 px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold shadow-sm hover:bg-blue-700 transition-colors"
+            >
+              {t("Create your first lead", "Vytvoriť prvý lead", "Első lead létrehozása")}
+            </button>
           </div>
         )}
 
