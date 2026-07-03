@@ -702,6 +702,10 @@ ${log.payload || ''}
         }
       } catch (err) {
         console.warn("Staging sync backend offline", err);
+      } finally {
+        // Always leave the boot loader, even on a 5xx or malformed response, so
+        // the app never hangs forever on "Syncing…". Worst case the user sees the
+        // login/app shell and the next poll recovers.
         setIsInitialSyncResolved(true);
       }
     };

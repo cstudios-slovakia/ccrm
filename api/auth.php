@@ -145,7 +145,7 @@ if (!function_exists('ccrm_send_cors')) {
                     $e->getTraceAsString(),
                     $_SERVER['REQUEST_URI'] ?? null,
                     $_SERVER['REQUEST_METHOD'] ?? null,
-                    file_get_contents('php://input') ?: null
+                    ccrm_redact_payload(file_get_contents('php://input') ?: null)
                 ]);
             }
         } catch (\Throwable $ex) {
@@ -179,6 +179,34 @@ if (!function_exists('ccrm_send_cors')) {
     /** Per-user email secrets (users.metadata_json -> emailSettings). */
     function ccrm_email_secret_keys(): array {
         return ['imapPassword', 'smtpPassword', 'password'];
+    }
+
+    /**
+     * Redact secret-looking fields from a raw request body before it is stored
+     * in the error log (readable by admins). Only rewrites JSON bodies; anything
+     * whose key looks like a password/secret/token/api key becomes [REDACTED].
+     */
+    function ccrm_redact_payload($raw) {
+        if (!is_string($raw) || $raw === '') {
+            return $raw;
+        }
+        $data = json_decode($raw, true);
+        if (!is_array($data)) {
+            return $raw;
+        }
+        $redactor = function (&$node) use (&$redactor) {
+            foreach ($node as $key => &$val) {
+                if (is_array($val)) {
+                    $redactor($val);
+                } elseif (is_string($key) && preg_match('/pass|secret|token|api[_-]?key|openaikey/i', $key)) {
+                    $val = '[REDACTED]';
+                }
+            }
+            unset($val);
+        };
+        $redactor($data);
+        $encoded = json_encode($data, JSON_INVALID_UTF8_SUBSTITUTE);
+        return $encoded === false ? '[unserializable payload]' : $encoded;
     }
 
     /** Load the stored INTEGRATIONS_CONFIG as an assoc array (server-side use). */
