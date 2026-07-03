@@ -423,6 +423,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $leadCategoryColors = isset($settings['LEAD_CATEGORY_COLORS']) ? json_decode($settings['LEAD_CATEGORY_COLORS'], true) : [];
     $leadStageGroups = isset($settings['LEAD_STAGE_GROUPS']) ? json_decode($settings['LEAD_STAGE_GROUPS'], true) : [];
     $leadStateParents = isset($settings['LEAD_STATE_PARENTS']) ? json_decode($settings['LEAD_STATE_PARENTS'], true) : (object)[];
+    $taskStates = isset($settings['TASK_STATES']) ? json_decode($settings['TASK_STATES'], true) : ["New", "In progress", "Blocked", "Done"];
+    $taskStateColors = isset($settings['TASK_STATE_COLORS']) ? json_decode($settings['TASK_STATE_COLORS'], true) : [];
     $integrationsConfig = isset($settings['INTEGRATIONS_CONFIG']) ? json_decode($settings['INTEGRATIONS_CONFIG'], true) : (object)[];
     // SECURITY: never send real secret values to the browser — mask them. The
     // frontend only needs to know a secret is set (e.g. "OpenAI configured");
@@ -594,6 +596,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'leadCategoryColors' => $leadCategoryColors,
             'leadStageGroups' => $leadStageGroups,
             'leadStateParents' => $leadStateParents,
+            'taskStates' => $taskStates,
+            'taskStateColors' => $taskStateColors,
             'integrationsConfig' => $integrationsConfig,
             'customLabels' => isset($settings['CUSTOM_LABELS']) ? json_decode($settings['CUSTOM_LABELS'], true) : (object)[]
         ]
@@ -730,6 +734,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'LEAD_CATEGORY_COLORS' => json_encode($s['leadCategoryColors'] ?? []),
                 'LEAD_STAGE_GROUPS' => json_encode($s['leadStageGroups'] ?? []),
                 'LEAD_STATE_PARENTS' => json_encode($s['leadStateParents'] ?? (object)[]),
+                'TASK_STATES' => json_encode($s['taskStates'] ?? []),
+                'TASK_STATE_COLORS' => json_encode($s['taskStateColors'] ?? []),
                 'INTEGRATIONS_CONFIG' => $integrationsValue,
                 'CUSTOM_LABELS' => json_encode($s['customLabels'] ?? (object)[])
             ];
