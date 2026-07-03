@@ -26,6 +26,9 @@ const ShaderGradientAny = ShaderGradient as any;
 function App() {
   const activePushesRef = useRef(0);
   const lastPushTimeRef = useRef(0);
+  // DB clock from the last GET/POST. Sent back as baseSyncedAt so the server can
+  // avoid deleting records a concurrent user added after our snapshot.
+  const baseSyncedAtRef = useRef<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isInstalled, setIsInstalled] = useState(true);
   const [isDemoMode, setIsDemoMode] = useState(false);
@@ -422,6 +425,7 @@ ${log.payload || ''}
     activePushesRef.current++;
     lastPushTimeRef.current = Date.now();
     const payload = {
+      baseSyncedAt: baseSyncedAtRef.current,
       leads: nextLeads || leads,
       tasks: nextTasks || tasks,
       users: nextUsers || users,
@@ -456,6 +460,15 @@ ${log.payload || ''}
         if (typeof (window as any).showToast === "function") {
           (window as any).showToast("Session expired. Please log in again.");
         }
+      } else if (res.ok) {
+        // Advance our snapshot clock so a delete right after this edit is not
+        // wrongly skipped by the server's concurrency guard.
+        try {
+          const out = await res.json();
+          if (out && typeof out.serverTime === "string") {
+            baseSyncedAtRef.current = out.serverTime;
+          }
+        } catch { /* non-JSON response — keep the previous snapshot clock */ }
       }
     } catch (err) {
       console.warn("Failed immediate push to sync.php", err);
@@ -632,6 +645,9 @@ ${log.payload || ''}
           if (data && data.installed === true) {
             setIsInstalled(true);
             setIsDemoMode(data.demoMode === true);
+            if (typeof data.serverTime === "string") {
+              baseSyncedAtRef.current = data.serverTime;
+            }
             if (data.leads && Array.isArray(data.leads)) {
               setLeads(prev => {
                 if (JSON.stringify(prev) === JSON.stringify(data.leads)) return prev;
@@ -714,6 +730,9 @@ ${log.payload || ''}
           if (data && data.installed === true) {
             setIsInstalled(true);
             setIsDemoMode(data.demoMode === true);
+            if (typeof data.serverTime === "string") {
+              baseSyncedAtRef.current = data.serverTime;
+            }
             
             if (data.leads && Array.isArray(data.leads)) {
               setLeads((prev) => {

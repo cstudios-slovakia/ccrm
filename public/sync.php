@@ -164,6 +164,41 @@ function ccrm_leads_are_identical($inc, $db) {
     return true;
 }
 
+/**
+ * Delete rows that the client omitted from its payload — but never delete a row
+ * that changed after the client's last sync ($baseSyncedAt). Otherwise a client
+ * working from a stale snapshot would silently delete records another user
+ * created or edited in the meantime (last-write-wins data loss).
+ *
+ * $baseSyncedAt is the DB clock value ('YYYY-MM-DD HH:MM:SS') captured in the GET
+ * the client synced from, so it is compared against the same clock as updated_at.
+ * When it is null (legacy client that didn't send one) we fall back to the old
+ * unconditional delete so behaviour is unchanged for those clients.
+ *
+ * $table is only ever a trusted, sanitized name (fixed table names or the
+ * already-validated ue_<id>), never raw user input.
+ */
+function ccrm_delete_omitted(PDO $pdo, string $table, array $idsToDelete, ?string $baseSyncedAt, array $skipIds = []): void {
+    if (empty($idsToDelete)) {
+        return;
+    }
+    if ($baseSyncedAt !== null) {
+        $stmt = $pdo->prepare("DELETE FROM `{$table}` WHERE `id` = ? AND `updated_at` <= ?");
+    } else {
+        $stmt = $pdo->prepare("DELETE FROM `{$table}` WHERE `id` = ?");
+    }
+    foreach ($idsToDelete as $id) {
+        if (in_array($id, $skipIds, true)) {
+            continue;
+        }
+        if ($baseSyncedAt !== null) {
+            $stmt->execute([$id, $baseSyncedAt]);
+        } else {
+            $stmt->execute([$id]);
+        }
+    }
+}
+
 // 3. Handle GET Request: Read from Database
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // SECURITY: reading CRM state requires an authenticated session. This
@@ -483,9 +518,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         // Fallback
     }
 
+    // DB clock at read time. The client echoes this back as baseSyncedAt on the
+    // next POST so the server can tell "the user deleted this" apart from "the
+    // client never saw this newer row" (see ccrm_delete_omitted).
+    $serverTime = null;
+    try { $serverTime = $pdo->query("SELECT NOW()")->fetchColumn(); } catch (\Throwable $e) {}
+
     echo json_encode([
         'installed' => true,
         'demoMode' => $isDemoMode,
+        'serverTime' => $serverTime,
         'leads' => $leads,
         'tasks' => $tasks,
         'users' => $users,
@@ -523,6 +565,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         echo json_encode(['success' => false, 'message' => 'Invalid JSON payload']);
         exit;
     }
+
+    // Snapshot the client synced from (DB clock from its last GET/POST). Used to
+    // guard delete-by-omission so a stale client cannot wipe another user's
+    // newer records. Null for legacy clients → unconditional delete (old behaviour).
+    $baseSyncedAt = (isset($payload['baseSyncedAt']) && is_string($payload['baseSyncedAt']) && $payload['baseSyncedAt'] !== '')
+        ? $payload['baseSyncedAt'] : null;
 
     try {
         // Ensure dynamic unified-entry table schemas BEFORE opening the
@@ -686,15 +734,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Remove any users not in payload, but never delete the account that
             // is performing this sync (prevents accidental self-lockout).
             $usersToDelete = array_diff($existingUserIds, $processedUserIds);
-            if (!empty($usersToDelete)) {
-                $delUser = $pdo->prepare("DELETE FROM `users` WHERE `id` = ?");
-                foreach ($usersToDelete as $uid) {
-                    if ($uid === $sessionUser['id']) {
-                        continue;
-                    }
-                    $delUser->execute([$uid]);
-                }
-            }
+            ccrm_delete_omitted($pdo, 'users', $usersToDelete, $baseSyncedAt, [$sessionUser['id']]);
         }
 
         // 4.3. Synchronize Leads, Categories & Timelines
@@ -898,12 +938,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // Perform deletions for removed leads
             $leadsToDelete = array_diff($existingLeadIds, $processedLeadIds);
-            if (!empty($leadsToDelete)) {
-                $delLead = $pdo->prepare("DELETE FROM `leads` WHERE `id` = ?");
-                foreach ($leadsToDelete as $lid) {
-                    $delLead->execute([$lid]);
-                }
-            }
+            ccrm_delete_omitted($pdo, 'leads', $leadsToDelete, $baseSyncedAt);
         }
 
         // 4.4. Synchronize Tasks
@@ -945,12 +980,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // Perform task deletes
             $tasksToDelete = array_diff($existingTaskIds, $processedTaskIds);
-            if (!empty($tasksToDelete)) {
-                $delTask = $pdo->prepare("DELETE FROM `tasks` WHERE `id` = ?");
-                foreach ($tasksToDelete as $tid) {
-                    $delTask->execute([$tid]);
-                }
-            }
+            ccrm_delete_omitted($pdo, 'tasks', $tasksToDelete, $baseSyncedAt);
         }
 
         // 4.5. Synchronize Meeting Notes & meeting_tasks
@@ -1008,12 +1038,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // Delete any meeting notes not present in payload
             $meetingsToDelete = array_diff($existingMeetingIds, $processedMeetingIds);
-            if (!empty($meetingsToDelete)) {
-                $delMeeting = $pdo->prepare("DELETE FROM `meeting_notes` WHERE `id` = ?");
-                foreach ($meetingsToDelete as $mid) {
-                    $delMeeting->execute([$mid]);
-                }
-            }
+            ccrm_delete_omitted($pdo, 'meeting_notes', $meetingsToDelete, $baseSyncedAt);
         }
 
         // 4.6. Synchronize Unified Universal Entries (Registry & Dynamic Tables)
@@ -1178,20 +1203,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                     }
 
-                    // Delete rows that are not in the payload
+                    // Delete rows that are not in the payload (guarded against
+                    // deleting rows a concurrent client added after this snapshot).
                     $rowsToDelete = array_diff($existingRowIds, $processedRowIds);
-                    if (!empty($rowsToDelete)) {
-                        $delRow = $pdo->prepare("DELETE FROM `{$tableName}` WHERE `id` = ?");
-                        foreach ($rowsToDelete as $rid) {
-                            $delRow->execute([$rid]);
-                        }
-                    }
+                    ccrm_delete_omitted($pdo, $tableName, $rowsToDelete, $baseSyncedAt);
                 }
             }
         }
 
         $pdo->commit();
-        echo json_encode(['success' => true, 'message' => 'CCRM Database Synced Successfully!']);
+        // Return the post-commit DB clock so the client advances its baseSyncedAt
+        // and can safely delete rows it just created/edited on a later sync.
+        $serverTime = null;
+        try { $serverTime = $pdo->query("SELECT NOW()")->fetchColumn(); } catch (\Throwable $e) {}
+        echo json_encode(['success' => true, 'message' => 'CCRM Database Synced Successfully!', 'serverTime' => $serverTime]);
     } catch (\Throwable $e) {
         if (isset($pdo) && $pdo->inTransaction()) {
             $pdo->rollBack();
