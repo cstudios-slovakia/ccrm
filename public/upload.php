@@ -70,7 +70,7 @@ if (php_sapi_name() !== 'cli') {
             // reconstruct the URL from an event id (which may be mutated after upload).
             'filePath' => '/uploads/' . $eventId . '_' . $fileName,
             'extractedText' => $extractedText
-        ]);
+        ], JSON_INVALID_UTF8_SUBSTITUTE);
     } else {
         http_response_code(500);
         echo json_encode(['success' => false, 'error' => 'Failed to save uploaded file.']);

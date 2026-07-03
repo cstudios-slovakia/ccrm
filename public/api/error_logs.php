@@ -1,11 +1,12 @@
 <?php
-require_once dirname(__DIR__) . '/api/auth.php';
+require_once __DIR__ . '/auth.php';
 require_once dirname(__DIR__) . '/config.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('GET, DELETE, OPTIONS');
 
-$user = ccrm_require_auth();
+// Error logs can contain sensitive request data — restrict to administrators.
+$user = ccrm_require_admin();
 
 try {
     $pdo = get_db_connection();
@@ -27,5 +28,5 @@ try {
     echo json_encode(['success' => false, 'message' => 'Method not allowed.']);
 } catch (\Exception $e) {
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Database error: ' . $e->getMessage()]);
+    echo json_encode(['success' => false, 'message' => 'Database error.']);
 }

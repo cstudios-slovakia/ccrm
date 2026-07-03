@@ -26,6 +26,16 @@ $vectorDb = $data['vectorDb'];
 $configFile = dirname(__DIR__) . '/config.php';
 require_once $configFile;
 
+// Secrets are masked in the sync GET, so re-validating saved settings posts the
+// mask. Substitute the stored values (a freshly typed secret is used as-is).
+try {
+    $appPdo = get_db_connection();
+    $storedCfg = ccrm_load_integrations_config($appPdo);
+    $data = ccrm_merge_secrets(is_array($data) ? $data : [], $storedCfg, ['mariaDbPassword', 'qdrantApiKey', 'pineconeApiKey']);
+} catch (\Throwable $e) {
+    // If the app DB is unreachable, fall through with whatever was posted.
+}
+
 if ($vectorDb === 'mariadb') {
     $host = $data['mariaDbHost'] ?? '';
     $port = $data['mariaDbPort'] ?? '3306';

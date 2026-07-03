@@ -10,6 +10,15 @@ if (php_sapi_name() !== 'cli') {
 }
 require_once __DIR__ . '/agent_utils.php';
 
+// Prevent overlapping runs: each agent makes a ~15s OpenAI call, so two runs at
+// once would duplicate agent messages and double the API spend. A non-blocking
+// lock means a second invocation exits immediately instead of piling up.
+$cronLockHandle = @fopen(sys_get_temp_dir() . '/ccrm_cron_agents.lock', 'c');
+if ($cronLockHandle && !flock($cronLockHandle, LOCK_EX | LOCK_NB)) {
+    echo json_encode(['success' => true, 'message' => 'Another agent run is already in progress; skipping.']);
+    exit;
+}
+
 try {
     $pdo = get_db_connection();
 } catch (\Exception $e) {
