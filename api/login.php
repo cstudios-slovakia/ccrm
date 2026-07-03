@@ -42,6 +42,35 @@ if ($email === '' || $password === '') {
     exit;
 }
 
+// --- Login rate limiting ---------------------------------------------------
+// Throttle repeated failures per client IP to blunt online password guessing.
+// Deliberately fail-open: any error in the throttle path must never block a
+// legitimate login.
+$clientIp = $_SERVER['REMOTE_ADDR'] ?? '';
+$recordLoginFailure = function () use ($pdo, $clientIp, $email) {
+    try {
+        $pdo->prepare("INSERT INTO `login_attempts` (`ip`, `email`) VALUES (?, ?)")->execute([$clientIp, $email]);
+    } catch (\Throwable $e) { /* ignore */ }
+};
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `login_attempts` (
+        `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+        `ip` VARCHAR(45) NULL,
+        `email` VARCHAR(255) NULL,
+        `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX `idx_ip_time` (`ip`, `created_at`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+    $cntStmt = $pdo->prepare("SELECT COUNT(*) FROM `login_attempts` WHERE `ip` = ? AND `created_at` > (NOW() - INTERVAL 15 MINUTE)");
+    $cntStmt->execute([$clientIp]);
+    if ((int)$cntStmt->fetchColumn() >= 20) {
+        http_response_code(429);
+        echo json_encode(['success' => false, 'message' => 'Too many login attempts. Please wait a few minutes and try again.']);
+        exit;
+    }
+} catch (\Throwable $e) {
+    // fail open — never lock users out because of a throttle-store error
+}
+
 $stmt = $pdo->prepare("SELECT * FROM `users` WHERE `email` = ? LIMIT 1");
 $stmt->execute([$email]);
 $row = $stmt->fetch();
@@ -51,6 +80,7 @@ $genericError = ['success' => false, 'message' => 'Invalid email or password.'];
 if (!$row) {
     // Constant-ish work factor to blunt user-enumeration timing.
     password_verify($password, '$2y$10$usesomesillystringforsalt0000000000000000000000000000');
+    $recordLoginFailure();
     http_response_code(401);
     echo json_encode($genericError);
     exit;
@@ -71,10 +101,16 @@ if (ccrm_is_hash($stored)) {
 }
 
 if (!$ok) {
+    $recordLoginFailure();
     http_response_code(401);
     echo json_encode($genericError);
     exit;
 }
+
+// Successful login — clear this IP's recent failures.
+try {
+    $pdo->prepare("DELETE FROM `login_attempts` WHERE `ip` = ?")->execute([$clientIp]);
+} catch (\Throwable $e) { /* ignore */ }
 
 // Establish the authenticated session.
 ccrm_start_session();

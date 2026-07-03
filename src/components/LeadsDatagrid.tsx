@@ -3513,6 +3513,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         <iframe 
                           className="w-full h-full min-h-[400px] border-0 rounded-2xl bg-transparent"
                           title="Timeline parsed mail content"
+                          sandbox=""
                           srcDoc={`
                             <html>
                               <head>

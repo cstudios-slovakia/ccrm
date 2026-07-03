@@ -527,7 +527,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'model' => 'gpt-4o-mini',
         'messages' => $payloadMessages,
         'temperature' => 0.4
-    ]));
+    ], JSON_INVALID_UTF8_SUBSTITUTE));
 
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);

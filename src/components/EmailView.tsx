@@ -1382,6 +1382,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                             <iframe 
                               className="w-full min-h-[220px] max-h-[400px] border-0 bg-transparent"
                               title={`Thread body ${email.uid}`}
+                              sandbox=""
                               srcDoc={`
                                 <html>
                                   <head>
@@ -1664,6 +1665,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                     <iframe 
                       className="w-full h-full border-0 rounded-2xl bg-transparent"
                       title="Parsed mail content"
+                      sandbox=""
                       srcDoc={`
                         <html>
                           <head>

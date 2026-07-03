@@ -97,7 +97,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $actualKey = getOrGenerateKey($apiKeyFile);
 
-    if (empty($providedKey) || $providedKey !== $actualKey) {
+    if (empty($providedKey) || empty($actualKey) || !hash_equals((string)$actualKey, (string)$providedKey)) {
         http_response_code(401);
         echo json_encode(['status' => 'error', 'message' => 'Unauthorized: Invalid or missing X-API-KEY header']);
         exit;
