@@ -26,7 +26,18 @@ const ShaderGradientAny = ShaderGradient as any;
 function App() {
   const activePushesRef = useRef(0);
   const lastPushTimeRef = useRef(0);
-  const [isSyncing, setIsSyncing] = useState(false);
+  // Latest-value refs so a push that updates one entity never ships a stale copy of the
+  // others (sync.php destructively replaces each collection, so a stale array would delete
+  // freshly-created rows — the root cause of "assignment/recording resets" bugs).
+  const leadsRef = useRef<Lead[]>([]);
+  const tasksRef = useRef<Task[]>([]);
+  const rolesRef = useRef<RolePermission[]>([]);
+  const usersRef = useRef<UserProfile[]>([]);
+  const meetingNotesRef = useRef<MeetingNote[]>([]);
+  const integrationsConfigRef = useRef<any>(null);
+  const unifiedEntriesRef = useRef<UnifiedEntryRegistry[]>([]);
+  const unifiedEntriesDataRef = useRef<Record<string, UnifiedEntryRow[]>>({});
+  const [, setIsSyncing] = useState(false);
   const [isInstalled, setIsInstalled] = useState(true);
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [dbInfo, setDbInfo] = useState<{ host: string; port: string; name: string; user: string } | null>(null);
@@ -134,7 +145,7 @@ function App() {
   useEffect(() => {
     localStorage.setItem("crm_meeting_notes", JSON.stringify(meetingNotes));
     if (isInitialSyncResolved) {
-      pushStateToServer(leads, tasks, roles, integrationsConfig, users, meetingNotes);
+      pushStateToServer(undefined, undefined, undefined, undefined, undefined, meetingNotes);
     }
   }, [meetingNotes, isInitialSyncResolved]);
 
@@ -322,23 +333,49 @@ ${log.payload || ''}
     }
   }, [errorSidebarEnabled]);
 
-  useEffect(() => {
-    if (currentUser) {
-      const stored = sessionStorage.getItem(`crm_user_language_${currentUser.name}`);
-      if (stored) {
-        setUserLanguage(stored as "en" | "sk" | "hu");
-      } else {
-        setUserLanguage(systemLanguage);
-      }
-    } else {
-      setUserLanguage(systemLanguage);
+  // Resolve a user's personal interface language from their DB-backed metadata.
+  // Per-user language lives in metadata_json.language — the same durable, server-synced
+  // place we keep their default landing page and nav layout — NOT sessionStorage, which
+  // is per-tab, wiped on browser close, and doesn't follow the user across devices.
+  // Returns null when the user hasn't chosen one, so we fall back to the system language.
+  const getUserLanguage = (user: UserProfile | null): "en" | "sk" | "hu" | null => {
+    if (!user?.metadata_json) return null;
+    try {
+      const meta = typeof user.metadata_json === "string"
+        ? JSON.parse(user.metadata_json || "{}")
+        : (user.metadata_json || {});
+      const lang = meta?.language;
+      return (lang === "en" || lang === "sk" || lang === "hu") ? lang : null;
+    } catch (e) {
+      return null;
     }
-  }, [currentUser, systemLanguage]);
+  };
 
   useEffect(() => {
-    const username = currentUser ? currentUser.name : "guest";
-    sessionStorage.setItem(`crm_user_language_${username}`, userLanguage);
-  }, [userLanguage, currentUser]);
+    setUserLanguage(getUserLanguage(currentUser) || systemLanguage);
+  }, [currentUser, systemLanguage]);
+
+  // Change the active UI language and persist it as the user's personal preference in
+  // their DB-backed metadata, so it survives refreshes, re-logins and other devices.
+  // Falls back to just updating local state when no user is logged in (e.g. login screen).
+  const changeUserLanguage = (lang: "en" | "sk" | "hu") => {
+    setUserLanguage(lang);
+    if (!currentUser) return;
+    let currentMeta: any = {};
+    try {
+      currentMeta = typeof currentUser.metadata_json === "string"
+        ? JSON.parse(currentUser.metadata_json || "{}")
+        : (currentUser.metadata_json || {});
+    } catch (e) {
+      console.error("Error parsing user metadata_json", e);
+    }
+    const nextMeta = { ...currentMeta, language: lang };
+    updateUsersAndSync(prevUsers => prevUsers.map(u =>
+      u.email === currentUser.email ? { ...u, metadata_json: nextMeta } : u
+    ));
+    // Keep the in-memory currentUser in step so the effect above doesn't briefly revert.
+    setCurrentUser(prev => prev ? { ...prev, metadata_json: nextMeta } : prev);
+  };
 
   // Dynamically update browser tab document title based on the active view and language preference
   useEffect(() => {
@@ -406,6 +443,17 @@ ${log.payload || ''}
     }
   }, [activeTab, currentUser, roles]);
 
+  // Keep latest-value refs current on every render so pushStateToServer can fall back to
+  // the freshest state for any entity the caller did not explicitly update.
+  leadsRef.current = leads;
+  tasksRef.current = tasks;
+  rolesRef.current = roles;
+  usersRef.current = users;
+  meetingNotesRef.current = meetingNotes;
+  integrationsConfigRef.current = integrationsConfig;
+  unifiedEntriesRef.current = unifiedEntries;
+  unifiedEntriesDataRef.current = unifiedEntriesData;
+
   // --- REAL-TIME SERVER SYNCHRONIZER ENGINE ---
   const pushStateToServer = async (
     nextLeads?: Lead[],
@@ -422,13 +470,13 @@ ${log.payload || ''}
     activePushesRef.current++;
     lastPushTimeRef.current = Date.now();
     const payload = {
-      leads: nextLeads || leads,
-      tasks: nextTasks || tasks,
-      users: nextUsers || users,
-      roles: nextRoles || roles,
-      meetingNotes: nextMeetingNotes || meetingNotes,
-      unifiedEntries: nextUnifiedEntries || unifiedEntries,
-      unifiedEntriesData: nextUnifiedEntriesData || unifiedEntriesData,
+      leads: nextLeads ?? leadsRef.current,
+      tasks: nextTasks ?? tasksRef.current,
+      users: nextUsers ?? usersRef.current,
+      roles: nextRoles ?? rolesRef.current,
+      meetingNotes: nextMeetingNotes ?? meetingNotesRef.current,
+      unifiedEntries: nextUnifiedEntries ?? unifiedEntriesRef.current,
+      unifiedEntriesData: nextUnifiedEntriesData ?? unifiedEntriesDataRef.current,
       settings: {
         systemName,
         systemLanguage,
@@ -442,7 +490,7 @@ ${log.payload || ''}
         leadStateParents,
         taskStates,
         taskStateColors,
-        integrationsConfig: nextIntegrationsConfig || integrationsConfig
+        integrationsConfig: nextIntegrationsConfig ?? integrationsConfigRef.current
       }
     };
     try {
@@ -478,7 +526,7 @@ ${log.payload || ''}
     }
     setUnifiedEntries(prev => {
       const nextEntries = typeof newEntries === "function" ? newEntries(prev) : newEntries;
-      pushStateToServer(leads, tasks, roles, integrationsConfig, users, meetingNotes, nextEntries, resolvedData);
+      pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, nextEntries, resolvedData);
       return nextEntries;
     });
   };
@@ -491,7 +539,7 @@ ${log.payload || ''}
       const currentRows = prev[ueId] || [];
       const nextRows = typeof updater === "function" ? updater(currentRows) : updater;
       const nextData = { ...prev, [ueId]: nextRows };
-      pushStateToServer(leads, tasks, roles, integrationsConfig, users, meetingNotes, unifiedEntries, nextData);
+      pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, nextData);
       return nextData;
     });
   };
@@ -499,7 +547,7 @@ ${log.payload || ''}
   const updateRolesAndSync = (newRoles: RolePermission[] | ((prev: RolePermission[]) => RolePermission[])) => {
     setRoles(prev => {
       const nextRoles = typeof newRoles === "function" ? newRoles(prev) : newRoles;
-      pushStateToServer(leads, tasks, nextRoles);
+      pushStateToServer(undefined, undefined, nextRoles);
       return nextRoles;
     });
   };
@@ -507,7 +555,7 @@ ${log.payload || ''}
   const updateIntegrationsConfigAndSync = (next: any) => {
     setIntegrationsConfig((prev: any) => {
       const updated = typeof next === "function" ? next(prev) : next;
-      pushStateToServer(leads, tasks, roles, updated);
+      pushStateToServer(undefined, undefined, undefined, updated);
       return updated;
     });
   };
@@ -523,7 +571,7 @@ ${log.payload || ''}
   const updateLeadsAndSync = async (updater: Lead[] | ((prev: Lead[]) => Lead[])) => {
     setLeads((prev) => {
       const nextLeads = typeof updater === "function" ? updater(prev) : updater;
-      pushStateToServer(nextLeads, tasks, roles);
+      pushStateToServer(nextLeads);
       return nextLeads;
     });
   };
@@ -531,7 +579,7 @@ ${log.payload || ''}
   const updateTasksAndSync = (newTasks: Task[] | ((prev: Task[]) => Task[])) => {
     setTasks(prev => {
       const nextTasks = typeof newTasks === "function" ? newTasks(prev) : newTasks;
-      pushStateToServer(leads, nextTasks, roles);
+      pushStateToServer(undefined, nextTasks);
       return nextTasks;
     });
   };
@@ -539,7 +587,7 @@ ${log.payload || ''}
   const updateMeetingNotesAndSync = (newNotes: MeetingNote[] | ((prev: MeetingNote[]) => MeetingNote[])) => {
     setMeetingNotes(prev => {
       const nextNotes = typeof newNotes === "function" ? newNotes(prev) : newNotes;
-      pushStateToServer(leads, tasks, roles, integrationsConfig, users, nextNotes);
+      pushStateToServer(undefined, undefined, undefined, undefined, undefined, nextNotes);
       return nextNotes;
     });
   };
@@ -547,7 +595,7 @@ ${log.payload || ''}
   const updateUsersAndSync = (newUsers: UserProfile[] | ((prev: UserProfile[]) => UserProfile[])) => {
     setUsers(prev => {
       const nextUsers = typeof newUsers === "function" ? newUsers(prev) : newUsers;
-      pushStateToServer(leads, tasks, roles, integrationsConfig, nextUsers);
+      pushStateToServer(undefined, undefined, undefined, undefined, nextUsers);
       if (currentUser) {
         const updatedMe = nextUsers.find(u => u.email === currentUser.email);
         if (updatedMe) {
@@ -577,6 +625,41 @@ ${log.payload || ''}
     }));
   };
 
+  // Resolve the default landing page stored in a user's metadata (falls back to caller default)
+  const getDefaultPageForUser = (user: UserProfile | null): string | null => {
+    if (!user?.metadata_json) return null;
+    try {
+      const meta = typeof user.metadata_json === "string"
+        ? JSON.parse(user.metadata_json || "{}")
+        : (user.metadata_json || {});
+      return meta?.defaultPage || null;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const handleSaveDefaultPage = (pageId: string) => {
+    if (!currentUser) return;
+    let currentMeta: any = {};
+    try {
+      currentMeta = typeof currentUser.metadata_json === "string"
+        ? JSON.parse(currentUser.metadata_json || "{}")
+        : (currentUser.metadata_json || {});
+    } catch (e) {
+      console.error("Error parsing user metadata_json", e);
+    }
+    const nextMeta = { ...currentMeta, defaultPage: pageId };
+    updateUsersAndSync(prevUsers => prevUsers.map(u => {
+      if (u.email === currentUser.email) {
+        return { ...u, metadata_json: nextMeta };
+      }
+      return u;
+    }));
+    if (typeof (window as any).showToast === "function") {
+      (window as any).showToast(userLanguage === "sk" ? "Predvolená úvodná stránka nastavená." : "Default landing page set.");
+    }
+  };
+
   // Expose leads state globally for markdown file name reference lookup
   useEffect(() => {
     (window as any).leads = leads;
@@ -586,7 +669,7 @@ ${log.payload || ''}
   useEffect(() => {
     const syncSettingsToServer = async () => {
       if (!isInstalled || !isInitialSyncResolved) return;
-      pushStateToServer(leads, tasks);
+      pushStateToServer();
     };
     syncSettingsToServer();
   }, [leadStates, leadSources, leadCategories, systemName, systemLanguage, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, taskStates, taskStateColors, isInitialSyncResolved]);
@@ -597,193 +680,131 @@ ${log.payload || ''}
       setActiveTab(getTabFromHash());
     };
     window.addEventListener("hashchange", handleHashChange);
-    
+
     if (!window.location.hash) {
-      window.location.hash = "dashboard";
+      // On initial app load with no explicit route, open the user's chosen default landing page
+      window.location.hash = getDefaultPageForUser(currentUser) || "dashboard";
     }
 
     return () => window.removeEventListener("hashchange", handleHashChange);
   }, []);
 
-  // Server data poller
+  // Server data poller.
+  //
+  // The server exposes a cheap `?probe=1` endpoint that returns only the
+  // current data version. We poll that on every tick and only pull the full
+  // (multi-MB) snapshot when the version actually moves. This replaces the old
+  // behaviour of re-fetching, re-serialising and JSON.stringify-comparing the
+  // entire dataset every few seconds — the main source of UI jank with ~1k
+  // leads. Every ~12th tick we force a full pull regardless, so writes made
+  // outside the SPA (cron agents, AI summaries) that don't bump the version
+  // still surface within a minute.
   useEffect(() => {
-    const syncFromServer = async () => {
-      const pollStartTime = Date.now();
-      try {
-        const res = await fetch(`/sync.php?t=${Date.now()}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (activePushesRef.current > 0 || pollStartTime < lastPushTimeRef.current) {
-            return;
-          }
-          if (data && data.installed === false) {
-            setIsInstalled(false);
-            return;
-          }
-          
-          if (data && data.installed === true) {
-            setIsInstalled(true);
-            setIsDemoMode(data.demoMode === true);
-            if (data.leads && Array.isArray(data.leads)) {
-              setLeads(prev => {
-                if (JSON.stringify(prev) === JSON.stringify(data.leads)) return prev;
-                return data.leads;
-              });
-            }
-            if (data.tasks && Array.isArray(data.tasks)) {
-              setTasks(data.tasks);
-            }
-            if (data.users && Array.isArray(data.users)) {
-              setUsers(data.users);
-              if (currentUser) {
-                const updatedMe = data.users.find((u: UserProfile) => u.email === currentUser.email);
-                if (updatedMe && JSON.stringify(updatedMe) !== JSON.stringify(currentUser)) {
-                  setCurrentUser(updatedMe);
-                }
-              }
-            }
-            if (data.db_info) {
-              setDbInfo(data.db_info);
-            }
-            if (data.roles && Array.isArray(data.roles)) {
-              setRoles(data.roles);
-            }
-            if (data.meetingNotes && Array.isArray(data.meetingNotes)) {
-              setMeetingNotes(data.meetingNotes);
-            }
-            if (data.unifiedEntries && Array.isArray(data.unifiedEntries)) {
-              setUnifiedEntries(data.unifiedEntries);
-            }
-            if (data.unifiedEntriesData) {
-              setUnifiedEntriesData(data.unifiedEntriesData);
-            }
-            if (data.settings) {
-              const s = data.settings;
-              if (s.systemName && s.systemName !== systemName) setSystemName(s.systemName);
-              if (s.systemLanguage && s.systemLanguage !== systemLanguage) setSystemLanguage(s.systemLanguage);
-              setLeadStates((prev) => s.leadStates && JSON.stringify(s.leadStates) !== JSON.stringify(prev) ? s.leadStates : prev);
-              setLeadSources((prev) => s.leadSources && JSON.stringify(s.leadSources) !== JSON.stringify(prev) ? s.leadSources : prev);
-              setLeadCategories((prev) => s.leadCategories && JSON.stringify(s.leadCategories) !== JSON.stringify(prev) ? s.leadCategories : prev);
-              setLeadStateColors((prev) => s.leadStateColors && JSON.stringify(s.leadStateColors) !== JSON.stringify(prev) ? s.leadStateColors : prev);
-              setLeadSourceColors((prev) => s.leadSourceColors && JSON.stringify(s.leadSourceColors) !== JSON.stringify(prev) ? s.leadSourceColors : prev);
-              setLeadCategoryColors((prev) => s.leadCategoryColors && JSON.stringify(s.leadCategoryColors) !== JSON.stringify(prev) ? s.leadCategoryColors : prev);
-              setLeadStageGroups((prev) => s.leadStageGroups && JSON.stringify(s.leadStageGroups) !== JSON.stringify(prev) ? s.leadStageGroups : prev);
-              setLeadStateParents((prev) => s.leadStateParents && JSON.stringify(s.leadStateParents) !== JSON.stringify(prev) ? s.leadStateParents : prev);
-              setTaskStates((prev) => s.taskStates && JSON.stringify(s.taskStates) !== JSON.stringify(prev) ? s.taskStates : prev);
-              setTaskStateColors((prev) => s.taskStateColors && JSON.stringify(s.taskStateColors) !== JSON.stringify(prev) ? s.taskStateColors : prev);
-              if (s.integrationsConfig) syncIntegrationsConfig(s.integrationsConfig);
-            }
-            setIsInitialSyncResolved(true);
+    let lastDataVersion: string | null = null;
+    let tick = 0;
+
+    const applyServerData = (data: any) => {
+      setIsInstalled(true);
+      setIsDemoMode(data.demoMode === true);
+      if (data.leads && Array.isArray(data.leads)) {
+        setLeads(data.leads);
+      }
+      if (data.tasks && Array.isArray(data.tasks)) {
+        setTasks(data.tasks);
+      }
+      if (data.users && Array.isArray(data.users)) {
+        setUsers(data.users);
+        if (currentUser) {
+          const updatedMe = data.users.find((u: UserProfile) => u.email === currentUser.email);
+          if (updatedMe && JSON.stringify(updatedMe) !== JSON.stringify(currentUser)) {
+            setCurrentUser(updatedMe);
           }
         }
-      } catch (err) {
-        console.warn("Staging sync backend offline", err);
+      }
+      if (data.db_info) {
+        setDbInfo(data.db_info);
+      }
+      if (data.roles && Array.isArray(data.roles)) {
+        setRoles(data.roles);
+      }
+      if (data.meetingNotes && Array.isArray(data.meetingNotes)) {
+        setMeetingNotes(data.meetingNotes);
+      }
+      if (data.unifiedEntries && Array.isArray(data.unifiedEntries)) {
+        setUnifiedEntries(data.unifiedEntries);
+      }
+      if (data.unifiedEntriesData) {
+        setUnifiedEntriesData(data.unifiedEntriesData);
+      }
+      if (data.settings) {
+        const s = data.settings;
+        if (s.systemName && s.systemName !== systemName) setSystemName(s.systemName);
+        if (s.systemLanguage && s.systemLanguage !== systemLanguage) setSystemLanguage(s.systemLanguage);
+        setLeadStates((prev) => s.leadStates && JSON.stringify(s.leadStates) !== JSON.stringify(prev) ? s.leadStates : prev);
+        setLeadSources((prev) => s.leadSources && JSON.stringify(s.leadSources) !== JSON.stringify(prev) ? s.leadSources : prev);
+        setLeadCategories((prev) => s.leadCategories && JSON.stringify(s.leadCategories) !== JSON.stringify(prev) ? s.leadCategories : prev);
+        setLeadStateColors((prev) => s.leadStateColors && JSON.stringify(s.leadStateColors) !== JSON.stringify(prev) ? s.leadStateColors : prev);
+        setLeadSourceColors((prev) => s.leadSourceColors && JSON.stringify(s.leadSourceColors) !== JSON.stringify(prev) ? s.leadSourceColors : prev);
+        setLeadCategoryColors((prev) => s.leadCategoryColors && JSON.stringify(s.leadCategoryColors) !== JSON.stringify(prev) ? s.leadCategoryColors : prev);
+        setLeadStageGroups((prev) => s.leadStageGroups && JSON.stringify(s.leadStageGroups) !== JSON.stringify(prev) ? s.leadStageGroups : prev);
+        setLeadStateParents((prev) => s.leadStateParents && JSON.stringify(s.leadStateParents) !== JSON.stringify(prev) ? s.leadStateParents : prev);
+        setTaskStates((prev) => s.taskStates && JSON.stringify(s.taskStates) !== JSON.stringify(prev) ? s.taskStates : prev);
+        setTaskStateColors((prev) => s.taskStateColors && JSON.stringify(s.taskStateColors) !== JSON.stringify(prev) ? s.taskStateColors : prev);
+        if (s.integrationsConfig) syncIntegrationsConfig(s.integrationsConfig);
+      }
+    };
+
+    const fetchFull = async () => {
+      const pollStartTime = Date.now();
+      const res = await fetch(`/sync.php?t=${Date.now()}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (activePushesRef.current > 0 || pollStartTime < lastPushTimeRef.current || Date.now() - lastPushTimeRef.current < 4000) {
+        return;
+      }
+      if (data && data.installed === false) {
+        setIsInstalled(false);
+        return;
+      }
+      if (data && data.installed === true) {
+        applyServerData(data);
+        if (typeof data.dataVersion !== "undefined") lastDataVersion = data.dataVersion;
         setIsInitialSyncResolved(true);
       }
     };
 
-    syncFromServer();
+    // Initial bootstrap is always a full pull.
+    (async () => {
+      try {
+        await fetchFull();
+      } catch (err) {
+        console.warn("Staging sync backend offline", err);
+        setIsInitialSyncResolved(true);
+      }
+    })();
 
     const poller = setInterval(async () => {
       const pollStartTime = Date.now();
       try {
-        const res = await fetch(`/sync.php?t=${Date.now()}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (activePushesRef.current > 0 || pollStartTime < lastPushTimeRef.current) {
+        tick++;
+        const forceFull = tick % 12 === 0;
+        if (!forceFull) {
+          const probeRes = await fetch(`/sync.php?probe=1&t=${Date.now()}`);
+          if (!probeRes.ok) return;
+          const probe = await probeRes.json();
+          if (activePushesRef.current > 0 || pollStartTime < lastPushTimeRef.current || Date.now() - lastPushTimeRef.current < 4000) {
             return;
           }
-          if (data && data.installed === false) {
+          if (probe && probe.installed === false) {
             setIsInstalled(false);
             return;
           }
-          if (data && data.installed === true) {
-            setIsInstalled(true);
-            setIsDemoMode(data.demoMode === true);
-            
-            if (data.leads && Array.isArray(data.leads)) {
-              setLeads((prev) => {
-                if (JSON.stringify(data.leads) !== JSON.stringify(prev)) {
-                  return data.leads;
-                }
-                return prev;
-              });
-            }
-            if (data.tasks && Array.isArray(data.tasks)) {
-              setTasks((prev) => {
-                if (JSON.stringify(data.tasks) !== JSON.stringify(prev)) {
-                  return data.tasks;
-                }
-                return prev;
-              });
-            }
-            if (data.users && Array.isArray(data.users)) {
-              setUsers((prev) => {
-                if (JSON.stringify(data.users) !== JSON.stringify(prev)) {
-                  return data.users;
-                }
-                return prev;
-              });
-              if (currentUser) {
-                const updatedMe = data.users.find((u: UserProfile) => u.email === currentUser.email);
-                if (updatedMe && JSON.stringify(updatedMe) !== JSON.stringify(currentUser)) {
-                  setCurrentUser(updatedMe);
-                }
-              }
-            }
-            if (data.roles && Array.isArray(data.roles)) {
-              setRoles((prev) => {
-                if (JSON.stringify(data.roles) !== JSON.stringify(prev)) {
-                  return data.roles;
-                }
-                return prev;
-              });
-            }
-            if (data.meetingNotes && Array.isArray(data.meetingNotes)) {
-              setMeetingNotes((prev) => {
-                if (JSON.stringify(data.meetingNotes) !== JSON.stringify(prev)) {
-                  return data.meetingNotes;
-                }
-                return prev;
-              });
-            }
-            if (data.unifiedEntries && Array.isArray(data.unifiedEntries)) {
-              setUnifiedEntries((prev) => {
-                if (JSON.stringify(data.unifiedEntries) !== JSON.stringify(prev)) {
-                  return data.unifiedEntries;
-                }
-                return prev;
-              });
-            }
-            if (data.unifiedEntriesData) {
-              setUnifiedEntriesData((prev) => {
-                if (JSON.stringify(data.unifiedEntriesData) !== JSON.stringify(prev)) {
-                  return data.unifiedEntriesData;
-                }
-                return prev;
-              });
-            }
-            if (data.db_info) {
-              setDbInfo(data.db_info);
-            }
-            if (data.settings) {
-              const s = data.settings;
-              if (s.systemName && s.systemName !== systemName) setSystemName(s.systemName);
-              if (s.systemLanguage && s.systemLanguage !== systemLanguage) setSystemLanguage(s.systemLanguage);
-              setLeadStates((prev) => s.leadStates && JSON.stringify(s.leadStates) !== JSON.stringify(prev) ? s.leadStates : prev);
-              setLeadSources((prev) => s.leadSources && JSON.stringify(s.leadSources) !== JSON.stringify(prev) ? s.leadSources : prev);
-              setLeadCategories((prev) => s.leadCategories && JSON.stringify(s.leadCategories) !== JSON.stringify(prev) ? s.leadCategories : prev);
-              setLeadStateColors((prev) => s.leadStateColors && JSON.stringify(s.leadStateColors) !== JSON.stringify(prev) ? s.leadStateColors : prev);
-              setLeadSourceColors((prev) => s.leadSourceColors && JSON.stringify(s.leadSourceColors) !== JSON.stringify(prev) ? s.leadSourceColors : prev);
-              setLeadCategoryColors((prev) => s.leadCategoryColors && JSON.stringify(s.leadCategoryColors) !== JSON.stringify(prev) ? s.leadCategoryColors : prev);
-              setLeadStageGroups((prev) => s.leadStageGroups && JSON.stringify(s.leadStageGroups) !== JSON.stringify(prev) ? s.leadStageGroups : prev);
-              setLeadStateParents((prev) => s.leadStateParents && JSON.stringify(s.leadStateParents) !== JSON.stringify(prev) ? s.leadStateParents : prev);
-              setTaskStates((prev) => s.taskStates && JSON.stringify(s.taskStates) !== JSON.stringify(prev) ? s.taskStates : prev);
-              setTaskStateColors((prev) => s.taskStateColors && JSON.stringify(s.taskStateColors) !== JSON.stringify(prev) ? s.taskStateColors : prev);
-              if (s.integrationsConfig) syncIntegrationsConfig(s.integrationsConfig);
-            }
+          // Nothing changed since our last full pull — skip the heavy fetch.
+          if (lastDataVersion !== null && probe.dataVersion === lastDataVersion) {
+            return;
           }
         }
+        await fetchFull();
       } catch (err) {
         // quiet fail on background polling
       }
@@ -994,6 +1015,8 @@ ${log.payload || ''}
           setTaskStates={setTaskStates}
           taskStateColors={taskStateColors}
           setTaskStateColors={setTaskStateColors}
+          setLeads={updateLeadsAndSync}
+          setTasks={updateTasksAndSync}
           unifiedEntries={unifiedEntries}
           setUnifiedEntries={updateUnifiedEntriesAndSync}
           unifiedEntriesData={unifiedEntriesData}
@@ -1059,7 +1082,7 @@ ${log.payload || ''}
             setUsers={updateUsersAndSync}
             systemLanguage={systemLanguage}
             userLanguage={userLanguage}
-            setUserLanguage={setUserLanguage}
+            setUserLanguage={changeUserLanguage}
             onSync={() => {}}
             errorSidebarEnabled={errorSidebarEnabled}
             setErrorSidebarEnabled={setErrorSidebarEnabled}
@@ -1113,7 +1136,6 @@ ${log.payload || ''}
             integrationsConfig={integrationsConfig}
             tasks={tasks}
             setTasks={updateTasksAndSync}
-            isSyncing={isSyncing}
             taskStates={taskStates}
           />
         );
@@ -1282,7 +1304,13 @@ ${log.payload || ''}
       <LoginView 
         users={users}
         systemName={systemName}
-        onLoginSuccess={(user) => setCurrentUser(user)}
+        onLoginSuccess={(user) => {
+          setCurrentUser(user);
+          // Route the user to their chosen default landing page right after login
+          const dp = getDefaultPageForUser(user) || "dashboard";
+          setActiveTab(dp);
+          window.location.hash = dp;
+        }}
         systemLanguage={userLanguage}
         isDemoMode={isDemoMode}
         isModal={false}
@@ -1317,25 +1345,19 @@ ${log.payload || ''}
           showRagAi={getPermission("rag_view") !== "nothing"}
           currentUser={currentUser}
           roles={roles}
-          canEditNav={getPermission("nav_edit") === "edit"}
+          canEditNav={getPermission("nav_edit") === "edit" || currentUser?.role?.toLowerCase() === "project manager"}
           onSaveUserLayout={handleSaveUserLayout}
           unifiedEntries={unifiedEntries}
+          defaultPage={getDefaultPageForUser(currentUser) || "dashboard"}
+          onSaveDefaultPage={handleSaveDefaultPage}
         />
         
         {/* Workspace Area - Add pb-20 on mobile viewports so that the bottom navigation bar never overlaps content */}
         <div className="flex-1 flex flex-col min-w-0 pb-20 lg:pb-0">
-          <Header 
-            activeTab={activeTab} 
-            systemName={systemName} 
+          <Header
+            activeTab={activeTab}
+            systemName={systemName}
             currentUser={displayUser}
-            users={users}
-            onSwitchUser={(user) => {
-              setCurrentUser(user);
-              if (user.role.toLowerCase() === "project manager" && activeTab === "settings") {
-                setActiveTab("dashboard");
-                window.location.hash = "dashboard";
-              }
-            }}
             onLogout={() => {
               fetch("/api/logout.php", { method: "POST" })
                 .finally(() => {
@@ -1344,7 +1366,7 @@ ${log.payload || ''}
                 });
             }}
             systemLanguage={userLanguage}
-            setSystemLanguage={setUserLanguage}
+            setSystemLanguage={changeUserLanguage}
             isDemoMode={isDemoMode}
             onOpenPersonalSettings={() => {
               setActiveTab("personal-settings");

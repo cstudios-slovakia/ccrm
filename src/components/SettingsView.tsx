@@ -6,7 +6,7 @@ import {
   Eye, Pencil, Minus, GripVertical, ArrowLeft, Activity, Clock, CheckSquare,
   Menu, ArrowUp, FolderOpen, Search
 } from "lucide-react";
-import type { UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow } from "../types";
+import type { UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task } from "../types";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 
@@ -67,6 +67,10 @@ interface SettingsViewProps {
   initialSubTab?: string;
   settingsAction?: string | null;
   settingsActionId?: string | null;
+
+  // Record stores — used to cascade a rename onto existing leads/tasks so they are not orphaned.
+  setLeads?: React.Dispatch<React.SetStateAction<Lead[]>>;
+  setTasks?: React.Dispatch<React.SetStateAction<Task[]>>;
 }
 
 // Extract all valid Lucide icon names dynamically for search
@@ -118,8 +122,130 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   unifiedEntriesData = {},
   initialSubTab = "branding",
   settingsAction = null,
-  settingsActionId = null
+  settingsActionId = null,
+  setLeads,
+  setTasks
 }) => {
+  const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
+
+  // Inline click-to-rename for an actual list entry (source / category / lead-state / task-state).
+  // Shows the existing display node; a pencil affordance (or double-click) swaps it for an input.
+  const InlineRenameName: React.FC<{
+    value: string;
+    canEdit: boolean;
+    onCommit: (next: string) => void;
+    children: React.ReactNode;
+  }> = ({ value, canEdit, onCommit, children }) => {
+    const [editing, setEditing] = React.useState(false);
+    const [draft, setDraft] = React.useState(value);
+    const commit = () => {
+      setEditing(false);
+      const trimmed = draft.trim();
+      if (trimmed && trimmed !== value) onCommit(trimmed);
+    };
+    if (editing) {
+      return (
+        <input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); commit(); }
+            if (e.key === "Escape") { setEditing(false); setDraft(value); }
+          }}
+          className="px-2.5 py-1 rounded-full border border-indigo-300 bg-white text-slate-800 text-xs font-black uppercase tracking-wider focus:outline-none focus:ring-1 focus:ring-indigo-400 min-w-[110px]"
+        />
+      );
+    }
+    const startEdit = () => { if (canEdit) { setDraft(value); setEditing(true); } };
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        <span onDoubleClick={startEdit} className={canEdit ? "cursor-text" : undefined}>{children}</span>
+        {canEdit && (
+          <button
+            type="button"
+            onClick={startEdit}
+            className="text-slate-300 hover:text-indigo-600 transition-colors p-1 rounded-md hover:bg-indigo-50 shrink-0"
+            title={t("Rename", "Premenovať", "Átnevezés")}
+          >
+            <Pencil className="h-3 w-3" />
+          </button>
+        )}
+      </span>
+    );
+  };
+
+  // Migrate a name-keyed map entry (color / group / parent) from oldKey to newKey.
+  const migrateMapKey = <T,>(obj: Record<string, T>, oldKey: string, newKey: string): Record<string, T> => {
+    if (!(oldKey in obj)) return obj;
+    const next = { ...obj };
+    next[newKey] = next[oldKey];
+    delete next[oldKey];
+    return next;
+  };
+
+  const toastNameExists = () =>
+    (window as any).showToast(t("This name already exists!", "Tento názov už existuje!", "Ez a név már létezik!"));
+
+  // Rename a lead source: list + color map + cascade onto existing leads.
+  const handleRenameSource = (oldName: string, raw: string) => {
+    if (getPermission("traffic_sources") !== "edit") return;
+    const next = raw.trim().toLowerCase();
+    if (!next || next === oldName) return;
+    if (leadSources.some((s) => s.toLowerCase() === next)) { toastNameExists(); return; }
+    setLeadSources((prev) => prev.map((s) => (s === oldName ? next : s)));
+    setLeadSourceColors((prev) => migrateMapKey(prev, oldName, next));
+    setLeads?.((prev) => prev.map((l) => (l.source === oldName ? { ...l, source: next } : l)));
+  };
+
+  // Rename a lead state: list + color/group/parent maps (incl. child references) + cascade onto leads.
+  const handleRenameState = (oldName: string, raw: string) => {
+    if (getPermission("pipeline_stages") !== "edit") return;
+    const next = raw.trim().toLowerCase();
+    if (!next || next === oldName) return;
+    if (leadStates.some((s) => s.toLowerCase() === next)) { toastNameExists(); return; }
+    setLeadStates((prev) => prev.map((s) => (s === oldName ? next : s)));
+    setLeadStateColors((prev) => migrateMapKey(prev, oldName, next));
+    setLeadStageGroups((prev) => migrateMapKey(prev, oldName, next));
+    setLeadStateParents((prev) => {
+      const out: Record<string, string> = {};
+      Object.entries(prev).forEach(([child, parent]) => {
+        out[child === oldName ? next : child] = parent === oldName ? next : parent;
+      });
+      return out;
+    });
+    setLeads?.((prev) => prev.map((l) => (l.status === oldName ? { ...l, status: next } : l)));
+  };
+
+  // Rename an interested category: list + color map + cascade onto each lead's categories array.
+  const handleRenameCategory = (oldName: string, raw: string) => {
+    if (getPermission("traffic_sources") !== "edit") return;
+    const next = raw.trim();
+    if (!next || next === oldName) return;
+    if (leadCategories.some((c) => c.toLowerCase() === next.toLowerCase())) { toastNameExists(); return; }
+    setLeadCategories((prev) => prev.map((c) => (c === oldName ? next : c)));
+    setLeadCategoryColors((prev) => migrateMapKey(prev, oldName, next));
+    setLeads?.((prev) =>
+      prev.map((l) =>
+        l.categories?.includes(oldName)
+          ? { ...l, categories: l.categories.map((c) => (c === oldName ? next : c)) }
+          : l
+      )
+    );
+  };
+
+  // Rename a task state: list + color map + cascade onto existing tasks.
+  const handleRenameTaskState = (oldName: string, raw: string) => {
+    if (getPermission("traffic_sources") !== "edit") return;
+    const next = raw.trim();
+    if (!next || next === oldName) return;
+    if (taskStates.some((s) => s.toLowerCase() === next.toLowerCase())) { toastNameExists(); return; }
+    setTaskStates((prev) => prev.map((s) => (s === oldName ? next : s)));
+    setTaskStateColors((prev) => migrateMapKey(prev, oldName, next));
+    setTasks?.((prev) => prev.map((tk) => (tk.status === oldName ? { ...tk, status: next } : tk)));
+  };
+
   const [tempName, setTempName] = React.useState(systemName);
   const [newState, setNewState] = React.useState("");
   const [newSource, setNewSource] = React.useState("");
@@ -182,10 +308,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 : `Default layout for role ${roleToUpdate} uploaded successfully!`
           );
         } else {
-          alert(userLanguage === "sk" ? "Neplatný formát súboru rozloženia." : "Invalid layout file format.");
+          alert(t("Invalid layout file format.", "Neplatný formát súboru rozloženia.", "Érvénytelen elrendezésfájl formátum."));
         }
       } catch (err) {
-        alert(userLanguage === "sk" ? "Chyba pri spracovaní JSON súboru." : "Failed to parse JSON file.");
+        alert(t("Failed to parse JSON file.", "Chyba pri spracovaní JSON súboru.", "A JSON fájl feldolgozása sikertelen."));
       }
     };
     reader.readAsText(file);
@@ -353,7 +479,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const clearErrorLogs = async () => {
-    if (!confirm(userLanguage === "sk" ? "Naozaj chcete vymazať všetky chybové záznamy?" : "Are you sure you want to clear all error logs?")) {
+    if (!confirm(t("Are you sure you want to clear all error logs?", "Naozaj chcete vymazať všetky chybové záznamy?", "Biztosan törölni szeretné az összes hibanaplót?"))) {
       return;
     }
     try {
@@ -361,7 +487,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       const data = await response.json();
       if (data.success) {
         setErrorLogs([]);
-        (window as any).showToast(userLanguage === "sk" ? "Chybové záznamy boli vymazané." : "Error logs cleared.");
+        (window as any).showToast(t("Error logs cleared.", "Chybové záznamy boli vymazané.", "A hibanaplók törölve."));
       }
     } catch (e) {
       console.error("Failed to clear error logs", e);
@@ -1012,10 +1138,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         }
         window.location.reload();
       } else {
-        (window as any).showToast("Wipe failed: " + data.message);
+        (window as any).showToast(t("Wipe failed: ", "Vymazanie zlyhalo: ", "A törlés sikertelen: ") + data.message);
       }
     } catch (err) {
-      (window as any).showToast("Error wiping demo data.");
+      (window as any).showToast(t("Error wiping demo data.", "Chyba pri mazaní demo údajov.", "Hiba a bemutató adatok törlésekor."));
     }
   };
 
@@ -1249,13 +1375,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const handleRemoveUser = (name: string) => {
     if (getPermission("pm_managers") !== "edit") return;
-    if (name.toLowerCase() === "erik") {
+    const target = users.find(u => u.name.toLowerCase() === name.toLowerCase());
+    const adminCount = users.filter(u => (u.role || "").toLowerCase() === "admin").length;
+    if (target && (target.role || "").toLowerCase() === "admin" && adminCount <= 1) {
       (window as any).showToast(
-        userLanguage === "sk" 
-          ? "Predvolený účet správcu 'Erik' je chránený systémom a nemožno ho vymazať." 
-          : userLanguage === "hu" 
-            ? "Az alapértelmezett adminisztrátori fiók 'Erik' rendszer által védett, és nem törölhető." 
-            : "The default Admin account 'Erik' is system-protected and cannot be deleted."
+        userLanguage === "sk"
+          ? "Primárny účet správcu je chránený systémom a nemožno ho vymazať."
+          : userLanguage === "hu"
+            ? "Az elsődleges adminisztrátori fiók rendszer által védett, és nem törölhető."
+            : "The primary administrator account is system-protected and cannot be deleted."
       );
       return;
     }
@@ -1394,11 +1522,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const handleCreateUnifiedEntry = (e: React.FormEvent) => {
     e.preventDefault();
     if (!ueName.trim()) {
-      alert("Name is required");
+      alert(t("Name is required", "Názov je povinný", "A név megadása kötelező"));
       return;
     }
     if (ueModules.length === 0) {
-      alert("Please select at least one module (Title, Due Date, or File)");
+      alert(t("Please select at least one module (Title, Due Date, or File)", "Vyberte aspoň jeden modul (Titulok, Termín alebo Súbor)", "Válasszon ki legalább egy modult (Cím, Határidő vagy Fájl)"));
       return;
     }
 
@@ -1428,7 +1556,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       // Creating
       const safeId = ueName.toLowerCase().replace(/[^a-z0-9]/g, "_").replace(/^[^a-z]+/, "") || "ue_" + Date.now();
       if (unifiedEntries.some(ue => ue.id === safeId)) {
-        alert("A unified entry with this name/id already exists.");
+        alert(t("A unified entry with this name/id already exists.", "Unifikovaný záznam s týmto názvom/id už existuje.", "Ilyen nevű/azonosítójú egységes bejegyzés már létezik."));
         return;
       }
       const newEntry: UnifiedEntryRegistry = {
@@ -1587,18 +1715,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             window.location.hash = "settings/unified";
                           }}
                           className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-700 transition-all cursor-pointer flex items-center justify-center h-9 w-9"
-                          title="Back"
+                          title={t("Back", "Späť", "Vissza")}
                         >
                           <ArrowLeft className="h-4 w-4" />
                         </button>
                         <div className="flex flex-col">
                           <h3 className="text-sm font-heading font-bold text-slate-900 uppercase tracking-wider">
                             {editingUEId
-                              ? (userLanguage === "sk" ? "Upraviť typ unifikovaného záznamu" : "Edit Unified Entry Type")
-                              : (userLanguage === "sk" ? "Vytvoriť nový typ unifikovaného záznamu" : "Create New Unified Entry Type")}
+                              ? t("Edit Unified Entry Type", "Upraviť typ unifikovaného záznamu", "Egységes bejegyzéstípus szerkesztése")
+                              : t("Create New Unified Entry Type", "Vytvoriť nový typ unifikovaného záznamu", "Új egységes bejegyzéstípus létrehozása")}
                           </h3>
                           <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mt-0.5">
-                            {editingUEId ? (userLanguage === "sk" ? "Upravte konfiguráciu unifikovanej schémy" : "Modify the unified entry schema configuration") : (userLanguage === "sk" ? "Pridajte novú databázovú schému pre unifikované záznamy" : "Add a new database schema for unified entries")}
+                            {editingUEId ? t("Modify the unified entry schema configuration", "Upravte konfiguráciu unifikovanej schémy", "Az egységes bejegyzés sémakonfigurációjának módosítása") : t("Add a new database schema for unified entries", "Pridajte novú databázovú schému pre unifikované záznamy", "Új adatbázis-séma hozzáadása egységes bejegyzésekhez")}
                           </p>
                         </div>
                       </div>
@@ -1609,14 +1737,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         {/* Section Name */}
                         <div className="flex flex-col gap-1.5">
                           <label className="text-[10px] font-bold text-slate-455 uppercase tracking-wider">
-                            {userLanguage === "sk" ? "Názov sekcie (napr. Licencie)" : "Section Name (e.g. Licenses)"} *
+                            {t("Section Name (e.g. Licenses)", "Názov sekcie (napr. Licencie)", "Szekció neve (pl. Licencek)")} *
                           </label>
                           <input
                             type="text"
                             value={ueName}
                             onChange={(e) => setUeName(e.target.value)}
                             className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-xs font-semibold focus:outline-none focus:border-indigo-500 transition-all shadow-sm"
-                            placeholder={userLanguage === "sk" ? "Zadajte názov..." : "Enter section name..."}
+                            placeholder={t("Enter section name...", "Zadajte názov...", "Adja meg a szekció nevét...")}
                             required
                           />
                         </div>
@@ -1624,14 +1752,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         {/* Entry Name */}
                         <div className="flex flex-col gap-1.5">
                           <label className="text-[10px] font-bold text-slate-455 uppercase tracking-wider">
-                            {userLanguage === "sk" ? "Názov pre záznamy (jedn. č., napr. Licencia)" : "Entry Name (singular, e.g. License)"} *
+                            {t("Entry Name (singular, e.g. License)", "Názov pre záznamy (jedn. č., napr. Licencia)", "Bejegyzés neve (egyes szám, pl. Licenc)")} *
                           </label>
                           <input
                             type="text"
                             value={ueEntryName}
                             onChange={(e) => setUeEntryName(e.target.value)}
                             className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-xs font-semibold focus:outline-none focus:border-indigo-500 transition-all shadow-sm"
-                            placeholder={userLanguage === "sk" ? "Záznam" : "Entry"}
+                            placeholder={t("Entry", "Záznam", "Bejegyzés")}
                             required
                           />
                         </div>
@@ -1639,14 +1767,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         {/* Folder Name */}
                         <div className="flex flex-col gap-1.5">
                           <label className="text-[10px] font-bold text-slate-455 uppercase tracking-wider">
-                            {userLanguage === "sk" ? "Názov pre priečinky (jedn. č., napr. Priečinok)" : "Folder Name (singular, e.g. Folder)"} *
+                            {t("Folder Name (singular, e.g. Folder)", "Názov pre priečinky (jedn. č., napr. Priečinok)", "Mappa neve (egyes szám, pl. Mappa)")} *
                           </label>
                           <input
                             type="text"
                             value={ueFolderName}
                             onChange={(e) => setUeFolderName(e.target.value)}
                             className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-xs font-semibold focus:outline-none focus:border-indigo-500 transition-all shadow-sm"
-                            placeholder={userLanguage === "sk" ? "Priečinok" : "Folder"}
+                            placeholder={t("Folder", "Priečinok", "Mappa")}
                             required
                           />
                         </div>
@@ -1654,7 +1782,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                       <div className="flex flex-col gap-1.5">
                         <label className="text-[10px] font-bold text-slate-455 uppercase tracking-wider">
-                          {userLanguage === "sk" ? "Ikona" : "Icon"}
+                          {t("Icon", "Ikona", "Ikon")}
                         </label>
                         <div className="flex items-center gap-3">
                           <div className="h-12 w-12 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-700 shadow-sm shrink-0">
@@ -1667,7 +1795,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               onClick={() => setIsIconPickerOpen(true)}
                               className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl text-[10px] font-black text-indigo-700 uppercase tracking-wider transition-all cursor-pointer shadow-sm active:scale-95"
                             >
-                              {userLanguage === "sk" ? "Vybrať z 1000+ ikon..." : "Choose from 1000+ icons..."}
+                              {t("Choose from 1000+ icons...", "Vybrať z 1000+ ikon...", "Válasszon több mint 1000 ikon közül...")}
                             </button>
                           </div>
                         </div>
@@ -1676,7 +1804,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       {/* Color */}
                       <div className="flex flex-col gap-1.5">
                         <label className="text-[10px] font-bold text-slate-455 uppercase tracking-wider">
-                          {userLanguage === "sk" ? "Farba" : "Color"}
+                          {t("Color", "Farba", "Szín")}
                         </label>
                         <div className="flex flex-wrap gap-2">
                           {["#3b82f6", "#ef4444", "#f97316", "#f59e0b", "#10b981", "#14b8a6", "#0ea5e9", "#6366f1", "#8b5cf6", "#ec4899"].map((colorHex) => {
@@ -1701,15 +1829,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       {/* Modules */}
                       <div className="flex flex-col gap-1.5">
                         <label className="text-[10px] font-bold text-slate-455 uppercase tracking-wider text-left">
-                          {userLanguage === "sk" ? "Aktívne moduly (polia) pre záznamy" : "Active Modules (fields) for Entries"}
+                          {t("Active Modules (fields) for Entries", "Aktívne moduly (polia) pre záznamy", "Aktív modulok (mezők) a bejegyzésekhez")}
                         </label>
                         <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
                           {[
-                            { id: "title", label: userLanguage === "sk" ? "Titulok / Názov" : "Title / Name" },
-                            { id: "due_date", label: userLanguage === "sk" ? "Termín (Due Date)" : "Due Date" },
-                            { id: "file", label: userLanguage === "sk" ? "Súbor (File)" : "File" },
-                            { id: "client", label: userLanguage === "sk" ? "Klient (Client)" : "Client" },
-                            { id: "lead", label: userLanguage === "sk" ? "Lead" : "Lead" }
+                            { id: "title", label: t("Title / Name", "Titulok / Názov", "Cím / Név") },
+                            { id: "due_date", label: t("Due Date", "Termín (Due Date)", "Határidő") },
+                            { id: "file", label: t("File", "Súbor (File)", "Fájl") },
+                            { id: "client", label: t("Client", "Klient (Client)", "Ügyfél") },
+                            { id: "lead", label: t("Lead", "Lead", "Lead") }
                           ].map((mod) => {
                             const isChecked = ueModules.includes(mod.id);
                             return (
@@ -1734,10 +1862,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                   <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between animate-in slide-in-from-top-1 duration-150 text-left">
                                     <div className="flex flex-col">
                                       <span className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
-                                        {userLanguage === "sk" ? "Zobraziť prehľad" : "Show summary"}
+                                        {t("Show summary", "Zobraziť prehľad", "Összefoglaló megjelenítése")}
                                       </span>
                                       <span className="text-[9px] font-semibold text-slate-455 mt-0.5">
-                                        {userLanguage === "sk" ? "Zobrazí počet záznamov" : "Shows entry count"}
+                                        {t("Shows entry count", "Zobrazí počet záznamov", "Megjeleníti a bejegyzések számát")}
                                       </span>
                                     </div>
                                     <input
@@ -1758,10 +1886,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       <div className="flex items-center justify-between p-3.5 rounded-xl border border-slate-200 bg-white">
                         <div className="flex flex-col text-left">
                           <span className="text-xs font-bold text-slate-700">
-                            {userLanguage === "sk" ? "Povoliť priečinky (Folders)" : "Enable Folders"}
+                            {t("Enable Folders", "Povoliť priečinky (Folders)", "Mappák engedélyezése")}
                           </span>
                           <span className="text-[9px] font-semibold text-slate-400">
-                            {userLanguage === "sk" ? "Umožňuje zoskupovať záznamy do vnorených zložiek" : "Allows nesting entries within grouping folders"}
+                            {t("Allows nesting entries within grouping folders", "Umožňuje zoskupovať záznamy do vnorených zložiek", "Lehetővé teszi a bejegyzések csoportosító mappákba ágyazását")}
                           </span>
                         </div>
                         <input
@@ -1775,15 +1903,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       {ueFoldersEnabled && (
                         <div className="flex flex-col gap-3 p-4 rounded-2xl border border-slate-200 bg-white shadow-sm">
                           <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider text-left">
-                            {userLanguage === "sk" ? "Aktívne moduly pre priečinky" : "Active Modules for Folders"}
+                            {t("Active Modules for Folders", "Aktívne moduly pre priečinky", "Aktív modulok a mappákhoz")}
                           </label>
                           <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
                             {[
-                              { id: "title", label: userLanguage === "sk" ? "Titulok / Názov" : "Title / Name" },
-                              { id: "due_date", label: userLanguage === "sk" ? "Termín (Due Date)" : "Due Date" },
-                              { id: "file", label: userLanguage === "sk" ? "Súbor (File)" : "File" },
-                              { id: "client", label: userLanguage === "sk" ? "Klient (Client)" : "Client" },
-                              { id: "lead", label: userLanguage === "sk" ? "Lead" : "Lead" }
+                              { id: "title", label: t("Title / Name", "Titulok / Názov", "Cím / Név") },
+                              { id: "due_date", label: t("Due Date", "Termín (Due Date)", "Határidő") },
+                              { id: "file", label: t("File", "Súbor (File)", "Fájl") },
+                              { id: "client", label: t("Client", "Klient (Client)", "Ügyfél") },
+                              { id: "lead", label: t("Lead", "Lead", "Lead") }
                             ].map((mod) => {
                               const isChecked = ueFolderModules.includes(mod.id);
                               return (
@@ -1819,13 +1947,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         }}
                         className="px-4 py-2 rounded-xl hover:bg-slate-100 text-slate-650 text-xs font-bold uppercase transition-all cursor-pointer"
                       >
-                        {userLanguage === "sk" ? "Zrušiť" : "Cancel"}
+                        {t("Cancel", "Zrušiť", "Mégse")}
                       </button>
                       <button
                         type="submit"
                         className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black uppercase transition-all shadow-md shadow-indigo-600/10 cursor-pointer"
                       >
-                        {userLanguage === "sk" ? "Uložiť" : "Save"}
+                        {t("Save", "Uložiť", "Mentés")}
                       </button>
                     </div>
                   </form>
@@ -1856,7 +1984,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           className="px-3.5 py-2 rounded-xl bg-indigo-650 hover:bg-indigo-700 text-white text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md shadow-indigo-600/20 cursor-pointer"
                         >
                           <Plus className="h-4 w-4" />
-                          {userLanguage === "sk" ? "Nový záznam" : "New Entry"}
+                          {t("New Entry", "Nový záznam", "Új bejegyzés")}
                         </button>
                       )}
                     </div>
@@ -1864,17 +1992,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     {/* List of existing UUE types */}
                     <div className="space-y-3.5">
                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-left block">
-                        {userLanguage === "sk" ? "Aktívne databázové typy" : "Active Database Types"}
+                        {t("Active Database Types", "Aktívne databázové typy", "Aktív adatbázistípusok")}
                       </span>
                       
                       {unifiedEntries.filter(ue => !ue.archived).length === 0 ? (
                         <div className="border border-slate-200 border-dashed rounded-2xl p-8 text-center text-slate-400">
                           <span className="text-3xl">🗂️</span>
                           <p className="text-xs font-bold text-slate-500 mt-2 uppercase tracking-wide">
-                            {userLanguage === "sk" ? "Žiadne aktívne unifikované záznamy" : "No active unified entries"}
+                            {t("No active unified entries", "Žiadne aktívne unifikované záznamy", "Nincsenek aktív egységes bejegyzések")}
                           </p>
                           <p className="text-[10px] font-medium text-slate-400 mt-1">
-                            {userLanguage === "sk" ? "Vytvorte nový záznam kliknutím na tlačidlo vyššie." : "Create your first entry schema by clicking the button above."}
+                            {t("Create your first entry schema by clicking the button above.", "Vytvorte nový záznam kliknutím na tlačidlo vyššie.", "Hozza létre első bejegyzéssémáját a fenti gombra kattintva.")}
                           </p>
                         </div>
                       ) : (
@@ -1893,12 +2021,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                     {ue.name}
                                   </span>
                                   <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">
-                                    {userLanguage === "sk" ? "Moduly: " : "Modules: "}
+                                    {t("Modules: ", "Moduly: ", "Modulok: ")}
                                     <span className="text-slate-650 font-semibold">{ue.modules.join(", ")}</span>
                                   </span>
                                   <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                                    {userLanguage === "sk" ? "Zložky: " : "Folders: "}
-                                    <span className="text-slate-650 font-semibold">{ue.foldersEnabled ? "Áno" : "Nie"}</span>
+                                    {t("Folders: ", "Zložky: ", "Mappák: ")}
+                                    <span className="text-slate-650 font-semibold">{ue.foldersEnabled ? t("Yes", "Áno", "Igen") : t("No", "Nie", "Nem")}</span>
                                   </span>
                                 </div>
                               </div>
@@ -1910,19 +2038,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                     window.location.hash = `settings/unified/edit/${ue.id}`;
                                   }}
                                   className="px-2.5 py-1.5 text-[9px] font-black uppercase tracking-wider text-indigo-650 hover:bg-indigo-50 rounded-lg transition-all flex items-center gap-1 cursor-pointer"
-                                  title="Edit entry schema"
+                                  title={t("Edit entry schema", "Upraviť schému záznamu", "Bejegyzéséma szerkesztése")}
                                 >
                                   <Pencil className="h-3 w-3" />
-                                  {userLanguage === "sk" ? "Upraviť" : "Edit"}
+                                  {t("Edit", "Upraviť", "Szerkesztés")}
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => handleArchiveUnifiedEntry(ue.id)}
                                   className="px-2.5 py-1.5 text-[9px] font-black uppercase tracking-wider text-rose-600 hover:bg-rose-50 rounded-lg transition-all flex items-center gap-1 cursor-pointer"
-                                  title="Archive entry schema"
+                                  title={t("Archive entry schema", "Archivovať schému záznamu", "Bejegyzéséma archiválása")}
                                 >
                                   <Trash2 className="h-3 w-3" />
-                                  {userLanguage === "sk" ? "Archivovať" : "Archive"}
+                                  {t("Archive", "Archivovať", "Archiválás")}
                                 </button>
                               </div>
                             </div>
@@ -1937,18 +2065,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass">
                     <h4 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5 pb-3 border-b border-slate-200 mb-3.5">
                       <ShieldAlert className="h-4.5 w-4.5 text-indigo-500" />
-                      {userLanguage === "sk" ? "Dôležité upozornenie" : "System Information"}
+                      {t("System Information", "Dôležité upozornenie", "Rendszerinformáció")}
                     </h4>
                     <div className="space-y-3.5 text-[11px] font-medium text-slate-500 leading-relaxed">
                       <p>
-                        {userLanguage === "sk" 
-                          ? "Vytvorenie unifikovaného záznamu automaticky vytvorí novú tabuľku v relačnej databáze."
-                          : "Creating a unified entry schema automatically instantiates a new table in the database."}
+                        {t("Creating a unified entry schema automatically instantiates a new table in the database.", "Vytvorenie unifikovaného záznamu automaticky vytvorí novú tabuľku v relačnej databáze.", "Egységes bejegyzéséma létrehozása automatikusan új táblát hoz létre az adatbázisban.")}
                       </p>
                       <p>
-                        {userLanguage === "sk" 
-                          ? "Pokiaľ záznam vymažete/archivujete, samotná tabuľka ani v nej uložené údaje sa neodstránia. Iba sa prestane zobrazovať v hlavnom paneli a menu."
-                          : "Archiving an entry hides it from navigation. The underlying SQL table and data remain untouched."}
+                        {t("Archiving an entry hides it from navigation. The underlying SQL table and data remain untouched.", "Pokiaľ záznam vymažete/archivujete, samotná tabuľka ani v nej uložené údaje sa neodstránia. Iba sa prestane zobrazovať v hlavnom paneli a menu.", "A bejegyzés archiválása elrejti azt a navigációból. A mögöttes SQL tábla és az adatok érintetlenül maradnak.")}
                       </p>
                     </div>
                   </div>
@@ -2605,7 +2729,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                     type="button"
                                     onClick={() => triggerRoleLayoutUpload(role.name)}
                                     className="text-indigo-600 hover:text-indigo-850 hover:bg-indigo-50 border border-indigo-200/80 py-1 px-2.5 rounded-xl text-[9px] uppercase font-black tracking-wider flex items-center gap-1 shadow-sm transition-all cursor-pointer"
-                                    title={userLanguage === "sk" ? "Nahrať predvolenú štruktúru menu" : "Upload default navigation structure"}
+                                    title={t("Upload default navigation structure", "Nahrať predvolenú štruktúru menu", "Alapértelmezett navigációs struktúra feltöltése")}
                                   >
                                     <Menu className="h-3 w-3" />
                                     <ArrowUp className="h-3 w-3 animate-pulse" />
@@ -2624,75 +2748,75 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         {
                           groupName: userLanguage === "sk" ? "Klientske Príležitosti & Obchody" : userLanguage === "hu" ? "Ügyfél lehetőségek & Üzletek" : "Client Leads & Opportunities",
                           permissions: [
-                            { key: "leads.view", label: userLanguage === "sk" ? "Prezeranie zoznamu" : "View Leads List", desc: userLanguage === "sk" ? "Prístup k prehľadu a Kanban nástenke príležitostí" : "Access overview and Kanban pipeline board" },
-                            { key: "leads.create", label: userLanguage === "sk" ? "Vytvorenie príležitostí" : "Create Leads", desc: userLanguage === "sk" ? "Možnosť pridať nového klienta alebo partnera" : "Add a new business or personal prospect" },
-                            { key: "leads.edit", label: userLanguage === "sk" ? "Úprava príležitostí" : "Edit Leads", desc: userLanguage === "sk" ? "Zmena hodnôt, ratingov, stavu a informácií o klientskom dopyte" : "Modify estimated deal values, ratings, states, and client info" },
-                            { key: "leads.delete", label: userLanguage === "sk" ? "Odstránenie príležitostí" : "Delete Leads", desc: userLanguage === "sk" ? "Trvalé vymazanie príležitostí a celého ich historického feedu" : "Permanently remove a lead opportunity and its entire feed" }
+                            { key: "leads.view", label: t("View Leads List", "Prezeranie zoznamu", "Leadek listájának megtekintése"), desc: t("Access overview and Kanban pipeline board", "Prístup k prehľadu a Kanban nástenke príležitostí", "Hozzáférés az áttekintéshez és a Kanban pipeline táblához") },
+                            { key: "leads.create", label: t("Create Leads", "Vytvorenie príležitostí", "Leadek létrehozása"), desc: t("Add a new business or personal prospect", "Možnosť pridať nového klienta alebo partnera", "Új üzleti vagy személyes érdeklődő hozzáadása") },
+                            { key: "leads.edit", label: t("Edit Leads", "Úprava príležitostí", "Leadek szerkesztése"), desc: t("Modify estimated deal values, ratings, states, and client info", "Zmena hodnôt, ratingov, stavu a informácií o klientskom dopyte", "Becsült üzleti értékek, minősítések, állapotok és ügyféladatok módosítása") },
+                            { key: "leads.delete", label: t("Delete Leads", "Odstránenie príležitostí", "Leadek törlése"), desc: t("Permanently remove a lead opportunity and its entire feed", "Trvalé vymazanie príležitostí a celého ich historického feedu", "Lead lehetőség és teljes előzménye végleges eltávolítása") }
                           ]
                         },
                         {
                           groupName: userLanguage === "sk" ? "Úlohy & Kanban Checklisty" : userLanguage === "hu" ? "Feladatok & Kanban teendők" : "Checklist Tasks & Kanban Boards",
                           permissions: [
-                            { key: "tasks.view", label: userLanguage === "sk" ? "Prezeranie úloh" : "View Tasks Board", desc: userLanguage === "sk" ? "Prístup k nástenke úloh, prioritám a termínom" : "Inspect system task cards, deadlines, and active priority boards" },
-                            { key: "tasks.create", label: userLanguage === "sk" ? "Vytvorenie úloh" : "Create Tasks", desc: userLanguage === "sk" ? "Možnosť vytvoriť a delegovať novú úlohu pre tím" : "Generate a new task card and specify task checklists" },
-                            { key: "tasks.edit", label: userLanguage === "sk" ? "Úprava úloh" : "Edit Tasks", desc: userLanguage === "sk" ? "Presúvanie stavov úloh (Kanban), priradenie PM a termínov" : "Drag tasks across status lanes, reassign, or alter deadlines" },
-                            { key: "tasks.delete", label: userLanguage === "sk" ? "Odstránenie úloh" : "Delete Tasks", desc: userLanguage === "sk" ? "Trvalé vymazanie checklistov a celých úloh zo systému" : "Remove task registries completely from databases" }
+                            { key: "tasks.view", label: t("View Tasks Board", "Prezeranie úloh", "Feladattábla megtekintése"), desc: t("Inspect system task cards, deadlines, and active priority boards", "Prístup k nástenke úloh, prioritám a termínom", "Feladatkártyák, határidők és aktív prioritási táblák megtekintése") },
+                            { key: "tasks.create", label: t("Create Tasks", "Vytvorenie úloh", "Feladatok létrehozása"), desc: t("Generate a new task card and specify task checklists", "Možnosť vytvoriť a delegovať novú úlohu pre tím", "Új feladatkártya létrehozása és teendőlisták megadása") },
+                            { key: "tasks.edit", label: t("Edit Tasks", "Úprava úloh", "Feladatok szerkesztése"), desc: t("Drag tasks across status lanes, reassign, or alter deadlines", "Presúvanie stavov úloh (Kanban), priradenie PM a termínov", "Feladatok mozgatása az állapotsávok között, újrakiosztás vagy határidők módosítása") },
+                            { key: "tasks.delete", label: t("Delete Tasks", "Odstránenie úloh", "Feladatok törlése"), desc: t("Remove task registries completely from databases", "Trvalé vymazanie checklistov a celých úloh zo systému", "Feladatok teljes eltávolítása az adatbázisból") }
                           ]
                         },
                         {
                           groupName: userLanguage === "sk" ? "Schôdzky & Kalendár" : userLanguage === "hu" ? "Naptár & Foglalások" : "Appointments & Calendar Slots",
                           permissions: [
-                            { key: "calendar.view", label: userLanguage === "sk" ? "Prezeranie termínov" : "View Bookings", desc: userLanguage === "sk" ? "Zobrazenie voľných a obsadených časových slotov tímu" : "Browse scheduled meetings, slots, and time allocations" },
-                            { key: "calendar.create", label: userLanguage === "sk" ? "Rezervácia termínov" : "Create Bookings", desc: userLanguage === "sk" ? "Rezervovanie nového termínu pre klienta v kalendári" : "Add a new client meeting block to the calendar" },
-                            { key: "calendar.edit", label: userLanguage === "sk" ? "Zmena rezervácie" : "Edit Bookings", desc: userLanguage === "sk" ? "Zmena trvania, dňa a detailov schôdzok" : "Reschedule or adjust description details of active calendar events" },
-                            { key: "calendar.delete", label: userLanguage === "sk" ? "Zrušenie rezervácií" : "Delete Bookings", desc: userLanguage === "sk" ? "Vymazanie a stornovanie dohodnutého termínu" : "Remove booked timeslots and cancel team calendar events" }
+                            { key: "calendar.view", label: t("View Bookings", "Prezeranie termínov", "Foglalások megtekintése"), desc: t("Browse scheduled meetings, slots, and time allocations", "Zobrazenie voľných a obsadených časových slotov tímu", "Ütemezett találkozók, időpontok és időbeosztások böngészése") },
+                            { key: "calendar.create", label: t("Create Bookings", "Rezervácia termínov", "Foglalások létrehozása"), desc: t("Add a new client meeting block to the calendar", "Rezervovanie nového termínu pre klienta v kalendári", "Új ügyféltalálkozó hozzáadása a naptárhoz") },
+                            { key: "calendar.edit", label: t("Edit Bookings", "Zmena rezervácie", "Foglalások szerkesztése"), desc: t("Reschedule or adjust description details of active calendar events", "Zmena trvania, dňa a detailov schôdzok", "Aktív naptáresemények átütemezése vagy részleteinek módosítása") },
+                            { key: "calendar.delete", label: t("Delete Bookings", "Zrušenie rezervácií", "Foglalások törlése"), desc: t("Remove booked timeslots and cancel team calendar events", "Vymazanie a stornovanie dohodnutého termínu", "Lefoglalt időpontok eltávolítása és csapatnaptár-események lemondása") }
                           ]
                         },
                         {
                           groupName: userLanguage === "sk" ? "Evidencia Odpracovaného Času" : userLanguage === "hu" ? "Időmérés & Stopwatch" : "Stopwatch & Time Tracking Logs",
                           permissions: [
-                            { key: "time_records.view", label: userLanguage === "sk" ? "Prezeranie výkazov" : "View Time Reports", desc: userLanguage === "sk" ? "Prístup k prehľadom, grafom a zaznamenanému času kolegov" : "Review stopwatch timesheets and summary work reports" },
-                            { key: "time_records.log", label: userLanguage === "sk" ? "Zapisovanie stopiek" : "Log Stopwatch Time", desc: userLanguage === "sk" ? "Možnosť spustiť stopky a zaznamenať hodiny pre projekt" : "Start, pause, and manually save time tracking stopwatch intervals" }
+                            { key: "time_records.view", label: t("View Time Reports", "Prezeranie výkazov", "Időkimutatások megtekintése"), desc: t("Review stopwatch timesheets and summary work reports", "Prístup k prehľadom, grafom a zaznamenanému času kolegov", "Stopperórás munkaidő-kimutatások és összefoglaló munkajelentések áttekintése") },
+                            { key: "time_records.log", label: t("Log Stopwatch Time", "Zapisovanie stopiek", "Stopperidő rögzítése"), desc: t("Start, pause, and manually save time tracking stopwatch intervals", "Možnosť spustiť stopky a zaznamenať hodiny pre projekt", "Időmérő intervallumok indítása, szüneteltetése és kézi mentése") }
                           ]
                         },
                         {
                           groupName: userLanguage === "sk" ? "Newsletter & E-mailový Marketing" : userLanguage === "hu" ? "Hírlevél & Marketing kampányok" : "Bulk Email Marketing & Newsletters",
                           permissions: [
-                            { key: "newsletter.view", label: userLanguage === "sk" ? "Prezeranie kampaní" : "View Campaigns", desc: userLanguage === "sk" ? "Zobrazenie histórie odoslaných newsletterov a metrík" : "Browse draft and sent templates, open rates, and click ratios" },
-                            { key: "newsletter.edit", label: userLanguage === "sk" ? "Úprava šablón" : "Edit Templates", desc: userLanguage === "sk" ? "Písanie a úprava HTML šablón a kampaní newsletterov" : "Create or edit layout HTML design templates for bulk mailings" },
-                            { key: "newsletter.send", label: userLanguage === "sk" ? "Odosielanie správ" : "Send Bulk Mailings", desc: userLanguage === "sk" ? "Možnosť spustiť odoslanie kampane zoznamu adresátov" : "Trigger mass delivery system using defined subscriber segments" }
+                            { key: "newsletter.view", label: t("View Campaigns", "Prezeranie kampaní", "Kampányok megtekintése"), desc: t("Browse draft and sent templates, open rates, and click ratios", "Zobrazenie histórie odoslaných newsletterov a metrík", "Piszkozatok és elküldött sablonok, megnyitási és kattintási arányok böngészése") },
+                            { key: "newsletter.edit", label: t("Edit Templates", "Úprava šablón", "Sablonok szerkesztése"), desc: t("Create or edit layout HTML design templates for bulk mailings", "Písanie a úprava HTML šablón a kampaní newsletterov", "HTML sablonok létrehozása vagy szerkesztése tömeges küldésekhez") },
+                            { key: "newsletter.send", label: t("Send Bulk Mailings", "Odosielanie správ", "Tömeges küldés"), desc: t("Trigger mass delivery system using defined subscriber segments", "Možnosť spustiť odoslanie kampane zoznamu adresátov", "Tömeges kézbesítés indítása a megadott feliratkozói szegmensek alapján") }
                           ]
                         },
                         {
                           groupName: userLanguage === "sk" ? "Evidencia Zamestnancov (HR)" : userLanguage === "hu" ? "Munkatársak nyilvántartása (HR)" : "HR Employee Directories",
                           permissions: [
-                            { key: "hr.view", label: userLanguage === "sk" ? "Zoznam zamestnancov" : "View Employee Roster", desc: userLanguage === "sk" ? "Prezeranie zoznamu PM a kolegov, ich kontaktov a skóre" : "Browse list of active system users, avatars, and metrics" },
-                            { key: "hr.edit", label: userLanguage === "sk" ? "Úprava personálnych údajov" : "Edit Worker Files", desc: userLanguage === "sk" ? "Správa mzdy, úprava departmentov a dovoleniek" : "Manage wages, departments, and approve/reject leave requests" }
+                            { key: "hr.view", label: t("View Employee Roster", "Zoznam zamestnancov", "Munkatársak listájának megtekintése"), desc: t("Browse list of active system users, avatars, and metrics", "Prezeranie zoznamu PM a kolegov, ich kontaktov a skóre", "Aktív rendszerfelhasználók, profilképek és mutatók böngészése") },
+                            { key: "hr.edit", label: t("Edit Worker Files", "Úprava personálnych údajov", "Munkatársi adatok szerkesztése"), desc: t("Manage wages, departments, and approve/reject leave requests", "Správa mzdy, úprava departmentov a dovoleniek", "Bérek és részlegek kezelése, szabadságkérelmek jóváhagyása/elutasítása") }
                           ]
                         },
                         {
                           groupName: userLanguage === "sk" ? "Správca Súborov & Dokumenty" : userLanguage === "hu" ? "Fájlkezelő & Ajánlatok" : "File Cabinet & Proposals",
                           permissions: [
-                            { key: "files.view", label: userLanguage === "sk" ? "Prezeranie súborov" : "Browse File Database", desc: userLanguage === "sk" ? "Sťahovanie zmlúv, cenových ponúk a priložených príloh" : "List, download, and review proposals, contracts, or offer attachments" },
-                            { key: "files.create", label: userLanguage === "sk" ? "Nahrávanie súborov" : "Upload Documents", desc: userLanguage === "sk" ? "Nahrávanie zmlúv a príloh k zoznamu timeline udalostí" : "Upload contract proposals or attachment documents to timeline events" },
-                            { key: "files.delete", label: userLanguage === "sk" ? "Odstránenie súborov" : "Delete Documents", desc: userLanguage === "sk" ? "Trvalé mazanie súborov z databázy príloh" : "Remove document uploads permanently from physical and db storage" }
+                            { key: "files.view", label: t("Browse File Database", "Prezeranie súborov", "Fájladatbázis böngészése"), desc: t("List, download, and review proposals, contracts, or offer attachments", "Sťahovanie zmlúv, cenových ponúk a priložených príloh", "Ajánlatok, szerződések és mellékletek listázása, letöltése és áttekintése") },
+                            { key: "files.create", label: t("Upload Documents", "Nahrávanie súborov", "Dokumentumok feltöltése"), desc: t("Upload contract proposals or attachment documents to timeline events", "Nahrávanie zmlúv a príloh k zoznamu timeline udalostí", "Szerződéstervezetek vagy mellékletek feltöltése az idővonal eseményeihez") },
+                            { key: "files.delete", label: t("Delete Documents", "Odstránenie súborov", "Dokumentumok törlése"), desc: t("Remove document uploads permanently from physical and db storage", "Trvalé mazanie súborov z databázy príloh", "Feltöltött dokumentumok végleges eltávolítása a tárhelyről és az adatbázisból") }
                           ]
                         },
                         {
-                          groupName: userLanguage === "sk" ? "Umelá Inteligencia (AI & RAG)" : "Artificial Intelligence (AI & RAG)",
+                          groupName: t("Artificial Intelligence (AI & RAG)", "Umelá Inteligencia (AI & RAG)", "Mesterséges intelligencia (AI & RAG)"),
                           permissions: [
-                            { key: "ai_config", label: userLanguage === "sk" ? "AI Nastavenia & Model" : "AI Settings & Embeddings", desc: userLanguage === "sk" ? "Konfigurácia kľúčov OpenAI a výber vektorových DB" : "Configure OpenAI access keys, select vector databases, and manage client training data for RAG" },
-                            { key: "rag_view", label: userLanguage === "sk" ? "RAG AI Asistent (Prístup)" : "RAG AI Assistant Access", desc: userLanguage === "sk" ? "Umožňuje používateľom pristupovať a chatovať s RAG AI asistentom" : "Enable user profile access to view and chat with the CRM RAG AI assistant" }
+                            { key: "ai_config", label: t("AI Settings & Embeddings", "AI Nastavenia & Model", "AI beállítások & beágyazások"), desc: t("Configure OpenAI access keys, select vector databases, and manage client training data for RAG", "Konfigurácia kľúčov OpenAI a výber vektorových DB", "OpenAI hozzáférési kulcsok beállítása, vektoradatbázisok kiválasztása és RAG tanítóadatok kezelése") },
+                            { key: "rag_view", label: t("RAG AI Assistant Access", "RAG AI Asistent (Prístup)", "RAG AI asszisztens hozzáférés"), desc: t("Enable user profile access to view and chat with the CRM RAG AI assistant", "Umožňuje používateľom pristupovať a chatovať s RAG AI asistentom", "Felhasználói hozzáférés engedélyezése a CRM RAG AI asszisztens megtekintéséhez és használatához") }
                           ]
                         },
                         {
                           groupName: userLanguage === "sk" ? "Globálne Systémové Nastavenia" : userLanguage === "hu" ? "Globális Rendszerbeállítások" : "Global System Configurations",
                           permissions: [
-                            { key: "general_config", label: userLanguage === "sk" ? "Všeobecná konfigurácia" : "Branding & Language Config", desc: userLanguage === "sk" ? "Úprava názvu systému, loga, jazykov a aktívnych mien" : "Configure system name, languages, active branding colors, and currency" },
-                            { key: "pm_managers", label: userLanguage === "sk" ? "Správa používateľov & PM" : "Manage Managers Directory", desc: userLanguage === "sk" ? "Možnosť spravovať heslá, priraďovať roly a mazať PM účty" : "Create new workspace managers, upgrade roles, or reset login profiles" },
-                            { key: "pipeline_stages", label: userLanguage === "sk" ? "Fázy pipeline" : "Kanban Pipeline Config", desc: userLanguage === "sk" ? "Preusporiadanie, premenovanie a priradenie farieb fázam Kanbanu" : "Reorder, rename, append, or configure status color lanes in pipeline" },
-                            { key: "traffic_sources", label: userLanguage === "sk" ? "Zdroje a kategórie" : "Marketing Sources & Slabs", desc: userLanguage === "sk" ? "Správa marketingových kanálov, kategórií materiálu a farieb tagov" : "Edit marketing channels, custom categories of slabs, and tag colors" },
-                            { key: "system_reset", label: userLanguage === "sk" ? "Reset celého systému" : "Danger Zone System Reset", desc: userLanguage === "sk" ? "Trvalé stiahnutie mock seedrov, čistenie databáz, mazanie" : "Erase CRM database completely, reload clean seeders, or delete logs" },
+                            { key: "general_config", label: t("Branding & Language Config", "Všeobecná konfigurácia", "Márkajelzés & nyelvi beállítások"), desc: t("Configure system name, languages, active branding colors, and currency", "Úprava názvu systému, loga, jazykov a aktívnych mien", "Rendszernév, nyelvek, márkaszínek és pénznem beállítása") },
+                            { key: "pm_managers", label: t("Manage Managers Directory", "Správa používateľov & PM", "Vezetők kezelése"), desc: t("Create new workspace managers, upgrade roles, or reset login profiles", "Možnosť spravovať heslá, priraďovať roly a mazať PM účty", "Új munkaterület-vezetők létrehozása, szerepkörök módosítása vagy bejelentkezési profilok visszaállítása") },
+                            { key: "pipeline_stages", label: t("Kanban Pipeline Config", "Fázy pipeline", "Kanban pipeline beállítása"), desc: t("Reorder, rename, append, or configure status color lanes in pipeline", "Preusporiadanie, premenovanie a priradenie farieb fázam Kanbanu", "Pipeline állapotsávok átrendezése, átnevezése, hozzáadása és színének beállítása") },
+                            { key: "traffic_sources", label: t("Marketing Sources & Slabs", "Zdroje a kategórie", "Marketingforrások & kategóriák"), desc: t("Edit marketing channels, custom categories of slabs, and tag colors", "Správa marketingových kanálov, kategórií materiálu a farieb tagov", "Marketingcsatornák, egyéni kategóriák és címkeszínek szerkesztése") },
+                            { key: "system_reset", label: t("Danger Zone System Reset", "Reset celého systému", "Rendszer-visszaállítás (veszélyzóna)"), desc: t("Erase CRM database completely, reload clean seeders, or delete logs", "Trvalé stiahnutie mock seedrov, čistenie databáz, mazanie", "A CRM adatbázis teljes törlése, tiszta kezdőadatok betöltése vagy naplók törlése") },
                             { key: "nav_edit", label: userLanguage === "sk" ? "Editor štruktúry menu" : userLanguage === "hu" ? "Menüszerkezet Szerkesztő" : "Sidebar Navigation Editor", desc: userLanguage === "sk" ? "Umožňuje používateľom meniť poradie a viditeľnosť položiek v menu" : userLanguage === "hu" ? "Lehetővé teszi a menüelemek sorrendjének és láthatóságának módosítását" : "Allows users to customize the ordering and visibility of sidebar menu items" }
                           ]
                         }
@@ -2943,7 +3067,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                         onClick={() => handleToggleIndent(state, true)}
                                         disabled={isSub}
                                         className="text-[10px] text-slate-400 hover:text-indigo-650 disabled:opacity-20 cursor-pointer p-0.5 font-black hover:scale-110 active:scale-90 transition-all"
-                                        title="Indent as Substate"
+                                        title={t("Indent as Substate", "Odsadiť ako podstav", "Behúzás alállapotként")}
                                       >
                                         ➔
                                       </button>
@@ -2952,7 +3076,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                         onClick={() => handleToggleIndent(state, false)}
                                         disabled={!isSub}
                                         className="text-[10px] text-slate-400 hover:text-indigo-650 disabled:opacity-20 cursor-pointer p-0.5 font-black hover:scale-110 active:scale-90 transition-all"
-                                        title="Outdent to Major State"
+                                        title={t("Outdent to Major State", "Vysunúť na hlavný stav", "Kihúzás fő állapottá")}
                                       >
                                         ⬅
                                       </button>
@@ -2995,16 +3119,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 {isSub && (
                                   <span className="text-slate-400 font-extrabold text-sm ml-2 mr-1 select-none">↳</span>
                                 )}
-                                <span 
-                                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase border"
-                                  style={{
-                                    backgroundColor: `${color}12`,
-                                    color: color,
-                                    borderColor: `${color}35`
-                                  }}
+                                <InlineRenameName
+                                  value={state}
+                                  canEdit={getPermission("pipeline_stages") === "edit"}
+                                  onCommit={(next) => handleRenameState(state, next)}
                                 >
-                                  {state}
-                                </span>
+                                  <span
+                                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase border"
+                                    style={{
+                                      backgroundColor: `${color}12`,
+                                      color: color,
+                                      borderColor: `${color}35`
+                                    }}
+                                  >
+                                    {state}
+                                  </span>
+                                </InlineRenameName>
                               </div>
                             </td>
 
@@ -3179,16 +3309,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           <td className="py-3 px-4 align-middle">
                             <div className="flex items-center gap-3">
                               <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-500 border border-slate-200/60 px-2 py-0.5 rounded-md">ID: {idx + 1}</span>
-                              <span 
-                                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase border"
-                                style={{
-                                  backgroundColor: `${color}12`,
-                                  color: color,
-                                  borderColor: `${color}35`
-                                }}
+                              <InlineRenameName
+                                value={source}
+                                canEdit={getPermission("traffic_sources") === "edit"}
+                                onCommit={(next) => handleRenameSource(source, next)}
                               >
-                                {source}
-                              </span>
+                                <span
+                                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase border"
+                                  style={{
+                                    backgroundColor: `${color}12`,
+                                    color: color,
+                                    borderColor: `${color}35`
+                                  }}
+                                >
+                                  {source}
+                                </span>
+                              </InlineRenameName>
                             </div>
                           </td>
 
@@ -3330,16 +3466,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           <td className="py-3 px-4 align-middle">
                             <div className="flex items-center gap-3">
                               <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-555 border border-slate-200/60 px-2 py-0.5 rounded-md">ID: {idx + 1}</span>
-                              <span 
-                                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase border"
-                                style={{
-                                  backgroundColor: `${color}12`,
-                                  color: color,
-                                  borderColor: `${color}35`
-                                }}
+                              <InlineRenameName
+                                value={cat}
+                                canEdit={getPermission("traffic_sources") === "edit"}
+                                onCommit={(next) => handleRenameCategory(cat, next)}
                               >
-                                {cat}
-                              </span>
+                                <span
+                                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase border"
+                                  style={{
+                                    backgroundColor: `${color}12`,
+                                    color: color,
+                                    borderColor: `${color}35`
+                                  }}
+                                >
+                                  {cat}
+                                </span>
+                              </InlineRenameName>
                             </div>
                           </td>
 
@@ -3437,7 +3579,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                           {/* STATE NAME */}
                           <td className="py-3 px-4 align-middle font-bold text-slate-800 uppercase tracking-wider text-xs">
-                            {state}
+                            <InlineRenameName
+                              value={state}
+                              canEdit={getPermission("traffic_sources") === "edit"}
+                              onCommit={(next) => handleRenameTaskState(state, next)}
+                            >
+                              <span>{state}</span>
+                            </InlineRenameName>
                           </td>
 
                           {/* ACTIONS */}
@@ -3488,7 +3636,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div className="flex items-end gap-3 max-w-md">
                     <div className="flex-1 space-y-1">
                       <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider block">
-                        {userLanguage === "sk" ? "Nový stav úlohy" : "New Task State"}
+                        {t("New Task State", "Nový stav úlohy", "Új feladatállapot")}
                       </label>
                       <input 
                         type="text"
@@ -3505,7 +3653,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         if (!val) return;
                         if (taskStates.map(s => s.toLowerCase()).includes(val.toLowerCase())) {
                           (window as any).showToast(
-                            userLanguage === "sk" ? "Tento stav už existuje!" : "This state already exists!"
+                            t("This state already exists!", "Tento stav už existuje!", "Ez az állapot már létezik!")
                           );
                           return;
                         }
@@ -3518,7 +3666,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       }}
                       className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black uppercase tracking-wider shadow-md transition-all active:scale-95 flex items-center justify-center gap-1 shrink-0"
                     >
-                      <Plus className="h-4 w-4 stroke-[2.5]" /> {userLanguage === "sk" ? "Pridať" : "Add"}
+                      <Plus className="h-4 w-4 stroke-[2.5]" /> {t("Add", "Pridať", "Hozzáadás")}
                     </button>
                   </div>
                 </div>
@@ -4429,26 +4577,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       }}
                       className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-95"
                     >
-                      Reset Configuration
+                      {t("Reset Configuration", "Resetovať konfiguráciu", "Konfiguráció visszaállítása")}
                     </button>
                   )}
                 </div>
                 {/* Active database info summary */}
                 <div className="text-xs font-semibold text-slate-700 bg-slate-50 p-4 rounded-2xl border border-slate-150">
-                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-2">Active Backend Details</span>
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-2">{t("Active Backend Details", "Aktívne detaily backendu", "Aktív backend részletei")}</span>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <span className="text-[10px] text-slate-400 block">DB Type:</span>
+                      <span className="text-[10px] text-slate-400 block">{t("DB Type:", "Typ DB:", "DB típus:")}</span>
                       <span className="font-mono text-xs text-indigo-600 font-bold uppercase">{vectorDb}</span>
                     </div>
                     {vectorDb === "mariadb" && (
                       <>
                         <div>
-                          <span className="text-[10px] text-slate-400 block">Host:</span>
+                          <span className="text-[10px] text-slate-400 block">{t("Host:", "Hostiteľ:", "Kiszolgáló:")}</span>
                           <span className="font-mono text-xs">{mariaDbHost}:{mariaDbPort}</span>
                         </div>
                         <div>
-                          <span className="text-[10px] text-slate-400 block">Database Name:</span>
+                          <span className="text-[10px] text-slate-400 block">{t("Database Name:", "Názov databázy:", "Adatbázis neve:")}</span>
                           <span className="font-mono text-xs">{mariaDbName}</span>
                         </div>
                       </>
@@ -4461,7 +4609,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     )}
                     {vectorDb === "pinecone" && (
                       <div>
-                        <span className="text-[10px] text-slate-400 block">Index Name:</span>
+                        <span className="text-[10px] text-slate-400 block">{t("Index Name:", "Názov indexu:", "Index neve:")}</span>
                         <span className="font-mono text-xs">{pineconeIndex}</span>
                       </div>
                     )}
@@ -4471,31 +4619,31 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 {/* Training widget block */}
                 <div className="space-y-4 pt-4">
                   <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
-                    <Database className="h-4 w-4 text-purple-500 animate-pulse" /> RAG Knowledge Index Ingestion
+                    <Database className="h-4 w-4 text-purple-500 animate-pulse" /> {t("RAG Knowledge Index Ingestion", "Indexovanie znalostnej bázy RAG", "RAG tudásbázis indexelése")}
                   </h4>
                   
                   {trainingStats ? (
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                       <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-150">
-                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Leads Chunks</span>
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">{t("Leads Chunks", "Časti leadov", "Lead darabok")}</span>
                         <span className="text-base font-extrabold text-slate-800">{trainingStats.leads}</span>
                       </div>
                       <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-150">
-                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Clients Chunks</span>
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">{t("Clients Chunks", "Časti klientov", "Ügyfél darabok")}</span>
                         <span className="text-base font-extrabold text-slate-800">{trainingStats.clients}</span>
                       </div>
                       <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-150">
-                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Emails Indexed</span>
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">{t("Emails Indexed", "Indexované e-maily", "Indexelt e-mailek")}</span>
                         <span className="text-base font-extrabold text-slate-800">{trainingStats.emails}</span>
                       </div>
                       <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-150">
-                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Chats / Notes</span>
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">{t("Chats / Notes", "Chaty / Poznámky", "Csevegések / Jegyzetek")}</span>
                         <span className="text-base font-extrabold text-slate-800">{trainingStats.chats}</span>
                       </div>
                     </div>
                   ) : (
                     <div className="h-12 flex items-center justify-center text-xs text-slate-400 font-semibold">
-                      Loading data statistics...
+                      {t("Loading data statistics...", "Načítavajú sa štatistiky údajov...", "Adatstatisztikák betöltése...")}
                     </div>
                   )}
                   
@@ -4503,7 +4651,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   {isTraining && (
                     <div className="space-y-2 animate-pulse">
                       <div className="flex items-center justify-between text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
-                        <span>Ingestion in Progress...</span>
+                        <span>{t("Ingestion in Progress...", "Prebieha indexovanie...", "Indexelés folyamatban...")}</span>
                         <span>{trainingProgress}%</span>
                       </div>
                       <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
@@ -4520,14 +4668,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         onClick={handleStartTraining}
                         className="px-5 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-lg shadow-purple-650/20 active:scale-95 transition-all cursor-pointer"
                       >
-                        Train Existing Data
+                        {t("Train Existing Data", "Trénovať existujúce dáta", "Meglévő adatok betanítása")}
                       </button>
                       <button
                         type="button"
                         onClick={fetchTrainingStats}
                         className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold active:scale-95 transition-all cursor-pointer"
                       >
-                        Refresh Statistics
+                        {t("Refresh Statistics", "Obnoviť štatistiky", "Statisztikák frissítése")}
                       </button>
                     </div>
                   )}
@@ -4535,7 +4683,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   {/* Logs widget */}
                   {trainingLogs.length > 0 && (
                     <div className="space-y-1.5">
-                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Indexation logs</span>
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">{t("Indexation logs", "Záznamy indexovania", "Indexelési naplók")}</span>
                       <div className="bg-slate-950 text-slate-300 p-4 rounded-2xl font-mono text-[10px] leading-relaxed max-h-48 overflow-y-auto space-y-1 scrollbar-thin border border-slate-900 shadow-inner">
                         {trainingLogs.map((log, idx) => (
                           <div key={idx} className={log.includes("[ERROR]") ? "text-rose-400 font-bold" : log.includes("[SUCCESS]") ? "text-emerald-400 font-bold" : ""}>
@@ -4549,11 +4697,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   {/* Autonomous Agents Cron Link */}
                   <div className="pt-4 border-t border-slate-150 space-y-3">
                     <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
-                      <Clock className="h-4 w-4 text-indigo-500 animate-pulse" /> Autonomous Agents Cron Link
+                      <Clock className="h-4 w-4 text-indigo-500 animate-pulse" /> {t("Autonomous Agents Cron Link", "Cron odkaz pre autonómne agenty", "Autonóm ügynökök Cron hivatkozása")}
                     </h4>
                     <div className="p-4 rounded-2xl bg-indigo-50/40 border border-indigo-100/50 text-xs font-semibold leading-relaxed text-slate-700 space-y-2.5">
                       <p className="text-[11px] text-slate-500">
-                        To run autonomous agents automatically, configure your server cron manager (e.g. crontab or a webhook runner) to trigger the endpoint URL below:
+                        {t("To run autonomous agents automatically, configure your server cron manager (e.g. crontab or a webhook runner) to trigger the endpoint URL below:", "Ak chcete autonómne agenty spúšťať automaticky, nastavte cron manažér na serveri (napr. crontab alebo webhook runner), aby spúšťal nižšie uvedenú URL adresu endpointu:", "Az autonóm ügynökök automatikus futtatásához állítsa be a szerver cron-kezelőjét (pl. crontab vagy webhook futtató), hogy meghívja az alábbi végpont URL-t:")}
                       </p>
                       <div className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm font-mono text-[10px] break-all select-all text-slate-850">
                         <span>{window.location.origin}/api/cron_agents.php</span>
@@ -4566,16 +4714,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               /* CONFIGURATION FORM */
               <form onSubmit={handleSaveAiSettings} className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
                 <h3 className="text-sm font-heading font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2 border-b border-slate-200 pb-3">
-                  <Globe className="h-4.5 w-4.5 text-indigo-500 animate-pulse" /> AI & OpenAI Integration
+                  <Globe className="h-4.5 w-4.5 text-indigo-500 animate-pulse" /> {t("AI & OpenAI Integration", "Integrácia AI a OpenAI", "AI és OpenAI integráció")}
                 </h3>
                 
                 <div className="p-4 rounded-2xl bg-indigo-50/50 border border-indigo-100/80 text-xs text-slate-650 leading-relaxed font-semibold">
-                  Configure your OpenAI access credential. Once entered, you can proceed to select your vector database sidecar and enable semantic RAG lookup inside the CRM sidebar assistant.
+                  {t("Configure your OpenAI access credential. Once entered, you can proceed to select your vector database sidecar and enable semantic RAG lookup inside the CRM sidebar assistant.", "Nakonfigurujte svoj prístupový údaj OpenAI. Po jeho zadaní môžete pokračovať výberom sidecar vektorovej databázy a povoliť sémantické vyhľadávanie RAG v asistentovi na bočnom paneli CRM.", "Állítsa be az OpenAI hozzáférési hitelesítő adatát. A megadás után kiválaszthatja a vektoradatbázis sidecart, és engedélyezheti a szemantikus RAG keresést a CRM oldalsávi asszisztensében.")}
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider block">
-                    OpenAI API Secret Key
+                    {t("OpenAI API Secret Key", "Tajný API kľúč OpenAI", "OpenAI API titkos kulcs")}
                   </label>
                   <div className="relative max-w-2xl">
                     <input
@@ -4600,7 +4748,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div className="space-y-4 pt-4 border-t border-slate-100 animate-slide-up">
                     <div className="space-y-2">
                       <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider block">
-                        Vector Database Backend
+                        {t("Vector Database Backend", "Backend vektorovej databázy", "Vektoradatbázis backend")}
                       </label>
                       <select
                         disabled={getPermission("ai_config") === "view"}
@@ -4611,21 +4759,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         }}
                         className="max-w-2xl w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-semibold text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:bg-slate-50 disabled:text-slate-400"
                       >
-                        <option value="none">Disabled</option>
-                        <option value="mariadb">MariaDB (Native SQL Vectors - Recommended)</option>
-                        <option value="qdrant">Qdrant Sidecar Container</option>
-                        <option value="pinecone">Pinecone Cloud Service</option>
+                        <option value="none">{t("Disabled", "Zakázané", "Letiltva")}</option>
+                        <option value="mariadb">{t("MariaDB (Native SQL Vectors - Recommended)", "MariaDB (Natívne SQL vektory – Odporúčané)", "MariaDB (Natív SQL vektorok – Ajánlott)")}</option>
+                        <option value="qdrant">{t("Qdrant Sidecar Container", "Qdrant Sidecar kontajner", "Qdrant Sidecar konténer")}</option>
+                        <option value="pinecone">{t("Pinecone Cloud Service", "Cloudová služba Pinecone", "Pinecone felhőszolgáltatás")}</option>
                       </select>
                     </div>
 
                     {vectorDb === "mariadb" && (
                       <div className="p-5 rounded-2xl bg-slate-50 border border-slate-150 space-y-4 max-w-2xl animate-fade-in">
                         <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                          <Database className="h-4 w-4 text-emerald-500" /> MariaDB Vector Connection Settings
+                          <Database className="h-4 w-4 text-emerald-500" /> {t("MariaDB Vector Connection Settings", "Nastavenia pripojenia MariaDB Vector", "MariaDB vektorkapcsolat beállításai")}
                         </h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="space-y-1">
-                            <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">Database Host</label>
+                            <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">{t("Database Host", "Hostiteľ databázy", "Adatbázis-kiszolgáló")}</label>
                             <input
                               type="text"
                               value={mariaDbHost}
@@ -4635,7 +4783,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             />
                           </div>
                           <div className="space-y-1">
-                            <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">Port</label>
+                            <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">{t("Port", "Port", "Port")}</label>
                             <input
                               type="text"
                               value={mariaDbPort}
@@ -4645,7 +4793,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             />
                           </div>
                           <div className="space-y-1">
-                            <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">Username</label>
+                            <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">{t("Username", "Používateľské meno", "Felhasználónév")}</label>
                             <input
                               type="text"
                               value={mariaDbUser}
@@ -4655,7 +4803,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             />
                           </div>
                           <div className="space-y-1">
-                            <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">Password</label>
+                            <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">{t("Password", "Heslo", "Jelszó")}</label>
                             <input
                               type="password"
                               value={mariaDbPassword}
@@ -4665,7 +4813,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             />
                           </div>
                           <div className="space-y-1 md:col-span-2">
-                            <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">Database Name</label>
+                            <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">{t("Database Name", "Názov databázy", "Adatbázis neve")}</label>
                             <input
                               type="text"
                               value={mariaDbName}
@@ -4681,11 +4829,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     {vectorDb === "qdrant" && (
                       <div className="p-5 rounded-2xl bg-slate-50 border border-slate-150 space-y-4 max-w-2xl animate-fade-in">
                         <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                          <Sliders className="h-4 w-4 text-purple-500" /> Qdrant Sidecar Settings
+                          <Sliders className="h-4 w-4 text-purple-500" /> {t("Qdrant Sidecar Settings", "Nastavenia Qdrant Sidecar", "Qdrant Sidecar beállítások")}
                         </h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="space-y-1 md:col-span-2">
-                            <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">Server URL</label>
+                            <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">{t("Server URL", "URL servera", "Szerver URL")}</label>
                             <input
                               type="text"
                               value={qdrantUrl}
@@ -4695,12 +4843,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             />
                           </div>
                           <div className="space-y-1 md:col-span-2">
-                            <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">API Key (Optional)</label>
+                            <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">{t("API Key (Optional)", "API kľúč (Voliteľné)", "API kulcs (Opcionális)")}</label>
                             <input
                               type="password"
                               value={qdrantApiKey}
                               onChange={(e) => setQdrantApiKey(e.target.value)}
-                              placeholder="Leave blank if unsecured"
+                              placeholder={t("Leave blank if unsecured", "Ponechajte prázdne, ak je nezabezpečené", "Hagyja üresen, ha nincs védve")}
                               className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
                             />
                           </div>
@@ -4711,11 +4859,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     {vectorDb === "pinecone" && (
                       <div className="p-5 rounded-2xl bg-slate-50 border border-slate-150 space-y-4 max-w-2xl animate-fade-in">
                         <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                          <Globe className="h-4 w-4 text-indigo-500" /> Pinecone Cloud Settings
+                          <Globe className="h-4 w-4 text-indigo-500" /> {t("Pinecone Cloud Settings", "Nastavenia Pinecone Cloud", "Pinecone felhő beállítások")}
                         </h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="space-y-1 md:col-span-2">
-                            <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">API Key</label>
+                            <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">{t("API Key", "API kľúč", "API kulcs")}</label>
                             <input
                               type="password"
                               value={pineconeApiKey}
@@ -4725,7 +4873,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             />
                           </div>
                           <div className="space-y-1 md:col-span-2">
-                            <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">Index Name</label>
+                            <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">{t("Index Name", "Názov indexu", "Index neve")}</label>
                             <input
                               type="text"
                               value={pineconeIndex}
@@ -4746,7 +4894,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           onClick={handleValidateConnection}
                           className="w-fit px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md cursor-pointer active:scale-95 disabled:opacity-50"
                         >
-                          {isValidating ? "Validating Connection..." : "Test Vector DB Connection"}
+                          {isValidating ? t("Validating Connection...", "Overuje sa pripojenie...", "Kapcsolat ellenőrzése...") : t("Test Vector DB Connection", "Otestovať pripojenie k vektorovej DB", "Vektoradatbázis-kapcsolat tesztelése")}
                         </button>
 
                         {validationResult && (
@@ -4759,7 +4907,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               <span className={`h-2 w-2 rounded-full mt-1.5 shrink-0 ${validationResult.success ? "bg-emerald-500" : "bg-rose-500"}`} />
                               <div>
                                 <span className="font-bold block mb-0.5">
-                                  {validationResult.success ? "Validation Succeeded" : "Validation Failed"}
+                                  {validationResult.success ? t("Validation Succeeded", "Overenie úspešné", "Az ellenőrzés sikeres") : t("Validation Failed", "Overenie zlyhalo", "Az ellenőrzés sikertelen")}
                                 </span>
                                 <p className="text-[10px] text-slate-500">{validationResult.message}</p>
                               </div>
@@ -4777,7 +4925,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       type="submit"
                       className="px-6 py-3 bg-indigo-650 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-lg shadow-indigo-650/20 active:scale-95 transition-all cursor-pointer flex items-center gap-2"
                     >
-                      <Save className="h-4 w-4" /> Save AI Configuration
+                      <Save className="h-4 w-4" /> {t("Save AI Configuration", "Uložiť konfiguráciu AI", "AI konfiguráció mentése")}
                     </button>
                   </div>
                 )}
@@ -4848,7 +4996,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
               <div className="flex items-center justify-between border-b border-slate-200 pb-3">
                 <h3 className="text-sm font-heading font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                  <Icons.AlertOctagon className="h-4.5 w-4.5 text-red-500 animate-pulse" /> {userLanguage === "sk" ? "Systémové chyby a výnimky" : "System Errors & Exceptions"}
+                  <Icons.AlertOctagon className="h-4.5 w-4.5 text-red-500 animate-pulse" /> {t("System Errors & Exceptions", "Systémové chyby a výnimky", "Rendszerhibák és kivételek")}
                 </h3>
                 <div className="flex gap-2">
                   <button
@@ -4856,14 +5004,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     onClick={fetchErrorLogs}
                     className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1 cursor-pointer font-bold"
                   >
-                    <Icons.RefreshCw className="h-3.5 w-3.5" /> {userLanguage === "sk" ? "Obnoviť" : "Refresh"}
+                    <Icons.RefreshCw className="h-3.5 w-3.5" /> {t("Refresh", "Obnoviť", "Frissítés")}
                   </button>
                   <button
                     type="button"
                     onClick={clearErrorLogs}
                     className="px-3.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-750 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1 cursor-pointer font-bold"
                   >
-                    {userLanguage === "sk" ? "Vymazať záznamy" : "Clear Logs"}
+                    {t("Clear Logs", "Vymazať záznamy", "Naplók törlése")}
                   </button>
                 </div>
               </div>
@@ -4874,17 +5022,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
               ) : errorLogs.length === 0 ? (
                 <div className="text-center py-12 text-slate-500 font-bold text-xs">
-                  {userLanguage === "sk" ? "Nenašli sa žiadne systémové chyby." : "No system errors found."}
+                  {t("No system errors found.", "Nenašli sa žiadne systémové chyby.", "Nem található rendszerhiba.")}
                 </div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
                       <tr className="border-b border-slate-200 text-slate-500 uppercase font-black text-[9px] tracking-wider">
-                        <th className="py-3 px-4">{userLanguage === "sk" ? "Čas" : "Timestamp"}</th>
-                        <th className="py-3 px-4">{userLanguage === "sk" ? "Metóda" : "Method"}</th>
+                        <th className="py-3 px-4">{t("Timestamp", "Čas", "Időbélyeg")}</th>
+                        <th className="py-3 px-4">{t("Method", "Metóda", "Metódus")}</th>
                         <th className="py-3 px-4">URI</th>
-                        <th className="py-3 px-4">{userLanguage === "sk" ? "Chyba" : "Message"}</th>
+                        <th className="py-3 px-4">{t("Message", "Chyba", "Üzenet")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -4930,7 +5078,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <div className="flex items-center gap-2 text-red-650">
                   <Icons.AlertOctagon className="h-5 w-5 shrink-0" />
                   <h3 className="font-heading font-extrabold text-slate-900 uppercase tracking-wider text-xs">
-                    {userLanguage === "sk" ? "Detail výnimky / chyby" : "Exception / Error Details"}
+                    {t("Exception / Error Details", "Detail výnimky / chyby", "Kivétel / hiba részletei")}
                   </h3>
                 </div>
                 <button
@@ -4944,21 +5092,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div className="p-6 overflow-y-auto space-y-4 font-medium text-slate-750 text-xs">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-b border-slate-100 pb-4">
                   <div>
-                    <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{userLanguage === "sk" ? "Dátum a čas" : "Date & Time"}</span>
+                    <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Date & Time", "Dátum a čas", "Dátum és idő")}</span>
                     <span className="font-mono text-[10.5px] text-slate-700 font-bold">{selectedLog.created_at}</span>
                   </div>
                   <div>
-                    <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{userLanguage === "sk" ? "Metóda & URI" : "Method & URI"}</span>
+                    <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Method & URI", "Metóda & URI", "Metódus & URI")}</span>
                     <span className="font-mono text-[10.5px] text-slate-750 font-bold">{selectedLog.request_method} {selectedLog.request_uri}</span>
                   </div>
                   <div>
-                    <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{userLanguage === "sk" ? "Súbor a riadok" : "File & Line"}</span>
+                    <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("File & Line", "Súbor a riadok", "Fájl és sor")}</span>
                     <span className="font-mono text-[10.5px] text-slate-700 font-bold">{selectedLog.file ? `${selectedLog.file.split('/').pop()}:${selectedLog.line}` : 'N/A'}</span>
                   </div>
                 </div>
 
                 <div className="space-y-1">
-                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{userLanguage === "sk" ? "Chybová správa" : "Error Message"}</span>
+                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Error Message", "Chybová správa", "Hibaüzenet")}</span>
                   <div className="p-3 bg-red-50 text-red-800 rounded-xl font-mono text-[11px] font-bold border border-red-100 whitespace-pre-wrap leading-relaxed">
                     {selectedLog.message}
                   </div>
@@ -4966,16 +5114,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                 {selectedLog.file && (
                   <div className="space-y-1">
-                    <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{userLanguage === "sk" ? "Úplná cesta k súboru" : "Full File Path"}</span>
+                    <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Full File Path", "Úplná cesta k súboru", "Teljes fájlútvonal")}</span>
                     <div className="p-2.5 bg-slate-50 text-slate-600 rounded-xl font-mono text-[10.5px] border border-slate-150">
-                      {selectedLog.file} (Line {selectedLog.line})
+                      {selectedLog.file} ({t("Line", "Riadok", "Sor")} {selectedLog.line})
                     </div>
                   </div>
                 )}
 
                 {selectedLog.trace && (
                   <div className="space-y-1">
-                    <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">Stack Trace</span>
+                    <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Stack Trace", "Zásobník volaní", "Hívási verem")}</span>
                     <pre className="p-4 bg-slate-900 text-slate-100 rounded-2xl font-mono text-[10px] overflow-x-auto whitespace-pre leading-relaxed border border-slate-800 max-h-64">
                       {selectedLog.trace}
                     </pre>
@@ -4984,7 +5132,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                 {selectedLog.payload && (
                   <div className="space-y-1">
-                    <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">Request Payload</span>
+                    <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Request Payload", "Telo požiadavky", "Kérés tartalma")}</span>
                     <pre className="p-4 bg-slate-900 text-slate-100 rounded-2xl font-mono text-[10px] overflow-x-auto whitespace-pre leading-relaxed border border-slate-800 max-h-48">
                       {selectedLog.payload}
                     </pre>
@@ -5007,10 +5155,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div className="p-6 border-b border-slate-100 flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-heading font-extrabold text-slate-800 uppercase tracking-wider">
-                  {userLanguage === "sk" ? "Výber ikony" : "Select Icon"}
+                  {t("Select Icon", "Výber ikony", "Ikon kiválasztása")}
                 </h3>
                 <p className="text-xs font-bold text-slate-400 mt-0.5">
-                  {userLanguage === "sk" ? "Prehliadajte a hľadajte z viac ako 1000+ ikon" : "Browse and search from over 1000+ icons"}
+                  {t("Browse and search from over 1000+ icons", "Prehliadajte a hľadajte z viac ako 1000+ ikon", "Böngésszen és keressen több mint 1000 ikon között")}
                 </p>
               </div>
               <button
@@ -5033,7 +5181,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   value={iconSearchQuery}
                   onChange={(e) => setIconSearchQuery(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-800 text-xs font-semibold focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all shadow-sm"
-                  placeholder={userLanguage === "sk" ? "Vyhľadajte ikonu (napr. settings, user, card)..." : "Search icons (e.g. settings, user, card)..."}
+                  placeholder={t("Search icons (e.g. settings, user, card)...", "Vyhľadajte ikonu (napr. settings, user, card)...", "Ikonok keresése (pl. settings, user, card)...")}
                   autoFocus
                 />
                 <Search className="h-5 w-5 text-slate-400 absolute left-3.5 top-3.5" />
@@ -5061,7 +5209,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <div className="py-12 text-center text-slate-400">
                       <Search className="h-8 w-8 mx-auto mb-2 text-slate-300" />
                       <p className="text-xs font-semibold">
-                        {userLanguage === "sk" ? "Nenašli sa žiadne ikony" : "No icons found"}
+                        {t("No icons found", "Nenašli sa žiadne ikony", "Nem található ikon")}
                       </p>
                     </div>
                   );

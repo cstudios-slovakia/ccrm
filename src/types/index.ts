@@ -16,6 +16,7 @@ export interface TimelineEvent {
   fileName?: string; // name of attached file
   fileSize?: string; // size of attached file e.g. "1.5 MB"
   fileType?: "offer" | "contract" | "invoice";
+  filePath?: string; // server-returned path to the attached file, e.g. "/uploads/ev-123_doc.pdf"
   isOutgoing?: boolean;
   audioFile?: string; // path to audio recording file
   transcription?: string; // RAG or speech-to-text transcript

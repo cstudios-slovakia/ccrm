@@ -35,6 +35,7 @@ try {
 $data     = json_decode(file_get_contents('php://input'), true) ?: [];
 $email    = trim((string)($data['email'] ?? ''));
 $password = (string)($data['password'] ?? '');
+$remember = !empty($data['remember']);
 
 if ($email === '' || $password === '') {
     http_response_code(400);
@@ -76,12 +77,34 @@ if (!$ok) {
     exit;
 }
 
-// Establish the authenticated session.
-ccrm_start_session();
+// Establish the authenticated session (extended lifetime when "remember me").
+ccrm_start_session($remember);
 session_regenerate_id(true);
 $_SESSION['ccrm_uid']   = $row['id'];
 $_SESSION['ccrm_role']  = $row['role'];
 $_SESSION['ccrm_email'] = $row['email'];
+
+// Persist (or clear) the non-sensitive marker cookie so later requests keep
+// the right session lifetime. This cookie is NOT a credential — auth still
+// relies entirely on the server-side session.
+$secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
+if ($remember) {
+    setcookie('CCRM_REMEMBER', '1', [
+        'expires'  => time() + CCRM_REMEMBER_LIFETIME,
+        'path'     => '/',
+        'httponly' => true,
+        'samesite' => 'Lax',
+        'secure'   => $secure,
+    ]);
+} elseif (isset($_COOKIE['CCRM_REMEMBER'])) {
+    setcookie('CCRM_REMEMBER', '', [
+        'expires'  => time() - 42000,
+        'path'     => '/',
+        'httponly' => true,
+        'samesite' => 'Lax',
+        'secure'   => $secure,
+    ]);
+}
 
 echo json_encode([
     'success' => true,

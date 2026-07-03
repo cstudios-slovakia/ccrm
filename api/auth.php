@@ -33,15 +33,34 @@ if (!function_exists('ccrm_send_cors')) {
         }
     }
 
+    /** Lifetime (seconds) of a "remember me" session — 30 days. */
+    if (!defined('CCRM_REMEMBER_LIFETIME')) {
+        define('CCRM_REMEMBER_LIFETIME', 60 * 60 * 24 * 30);
+    }
+
     /**
      * Start (or resume) a hardened session.
+     *
+     * When $remember is true (or the non-sensitive CCRM_REMEMBER marker cookie
+     * is present from a previous "remember me" login) the session cookie and the
+     * server-side garbage-collection window are extended to CCRM_REMEMBER_LIFETIME
+     * so the user stays signed in across browser restarts. Otherwise the session
+     * is a normal browser-session cookie that dies when the browser closes.
      */
-    function ccrm_start_session(): void {
+    function ccrm_start_session(?bool $remember = null): void {
         if (session_status() === PHP_SESSION_ACTIVE) {
             return;
         }
+        if ($remember === null) {
+            $remember = (($_COOKIE['CCRM_REMEMBER'] ?? '') === '1');
+        }
+        $lifetime = $remember ? CCRM_REMEMBER_LIFETIME : 0;
+        if ($remember) {
+            // Keep the server-side session file alive for the whole window.
+            @ini_set('session.gc_maxlifetime', (string)CCRM_REMEMBER_LIFETIME);
+        }
         session_set_cookie_params([
-            'lifetime' => 0,
+            'lifetime' => $lifetime,
             'path'     => '/',
             'httponly' => true,
             'samesite' => 'Lax',
@@ -105,6 +124,31 @@ if (!function_exists('ccrm_send_cors')) {
             case 'project_manager': return 'Project Manager';
             default:                return 'Viewer';
         }
+    }
+
+    /**
+     * Resolve the fallback owner / project-manager name for records that are
+     * created without an explicit owner (e.g. external webhook leads, or sync
+     * payloads that omit an owner). Returns the primary administrator's name,
+     * falling back to the first registered user, and finally to an empty
+     * string. This deliberately avoids hardcoding any demo account name (such
+     * as "Tomi"), which would otherwise be stamped onto real installations.
+     */
+    function ccrm_default_owner(\PDO $pdo): string {
+        static $cached = null;
+        if ($cached !== null) {
+            return $cached;
+        }
+        try {
+            $stmt = $pdo->query(
+                "SELECT `name` FROM `users` ORDER BY (`role` = 'admin') DESC, `name` ASC LIMIT 1"
+            );
+            $name = $stmt ? $stmt->fetchColumn() : false;
+            $cached = ($name !== false && $name !== null) ? (string)$name : '';
+        } catch (\Throwable $e) {
+            $cached = '';
+        }
+        return $cached;
     }
 
     /** True if the given string already looks like a bcrypt/argon hash. */

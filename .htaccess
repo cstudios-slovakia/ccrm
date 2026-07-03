@@ -21,3 +21,19 @@ DirectoryIndex index.html index.php
 
 # Disable directory listing.
 Options -Indexes
+
+# Raise upload limits for file attachments when PHP runs as an Apache module.
+# (PHP-FPM / CGI / LiteSpeed read these from .user.ini instead.)
+# Guarded so non-mod_php servers do not 500 on these directives.
+<IfModule mod_php.c>
+    php_value upload_max_filesize 64M
+    php_value post_max_size 80M
+</IfModule>
+<IfModule mod_php7.c>
+    php_value upload_max_filesize 64M
+    php_value post_max_size 80M
+</IfModule>
+<IfModule mod_php8.c>
+    php_value upload_max_filesize 64M
+    php_value post_max_size 80M
+</IfModule>

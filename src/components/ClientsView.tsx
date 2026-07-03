@@ -97,7 +97,7 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
         labels: parsedData.years,
         datasets: [
           {
-            label: systemLanguage === 'sk' ? 'Celkové výnosy (€)' : 'Total Revenues (€)',
+            label: systemLanguage === 'sk' ? 'Celkové výnosy (€)' : systemLanguage === 'hu' ? 'Összes bevétel (€)' : 'Total Revenues (€)',
             data: parsedData.revenues,
             borderColor: 'rgb(79, 70, 229)',
             backgroundColor: 'rgba(79, 70, 229, 0.05)',
@@ -109,7 +109,7 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
             order: 2,
           },
           {
-            label: systemLanguage === 'sk' ? 'Výsledok hospodárenia (€)' : 'Net Profit/Loss (€)',
+            label: systemLanguage === 'sk' ? 'Výsledok hospodárenia (€)' : systemLanguage === 'hu' ? 'Nettó nyereség/veszteség (€)' : 'Net Profit/Loss (€)',
             data: parsedData.profits,
             borderColor: 'rgb(16, 185, 129)',
             backgroundColor: 'rgba(16, 185, 129, 0.05)',
@@ -297,7 +297,7 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
         <div className="p-4 rounded-2xl bg-white border border-slate-150 shadow-sm space-y-3">
           <div className="flex items-center justify-between border-b border-slate-100 pb-2">
             <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
-              {systemLanguage === 'sk' ? 'Graf vývoja hospodárenia' : 'Financial Trend Chart'}
+              {systemLanguage === 'sk' ? 'Graf vývoja hospodárenia' : systemLanguage === 'hu' ? 'Pénzügyi trend diagram' : 'Financial Trend Chart'}
             </h4>
           </div>
           <div className="h-48 relative w-full">
@@ -328,6 +328,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   taskStates,
   systemName = "CCRM"
 }) => {
+  const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState("all");
   const [showFilterDrawer, setShowFilterDrawer] = useState(false);
@@ -861,7 +862,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const handleRegisterClient = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newClientName.trim()) {
-      (window as any).showToast("Client name is required!");
+      (window as any).showToast(t("Client name is required!", "Meno klienta je povinné!", "Az ügyfél neve kötelező!"));
       return;
     }
     const leadId = `client-${Date.now()}`;
@@ -872,7 +873,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       clientType: newClientType,
       status: "accepted", // Won client status
       source: "website",
-      owner: newClientOwner || projectManagers[0] || "Erik",
+      owner: newClientOwner || projectManagers[0] || currentUser?.name || "",
       value: parseFloat(newClientValue) || 0,
       createdAt: new Date().toISOString().split("T")[0],
       rating: 5,
@@ -943,7 +944,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     setNewClientVatResult(null);
     
     closeRegisterDrawer();
-    (window as any).showToast("New client registered successfully!");
+    (window as any).showToast(t("New client registered successfully!", "Nový klient bol úspešne zaregistrovaný!", "Az új ügyfél sikeresen regisztrálva!"));
   };
 
   /**
@@ -1330,7 +1331,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           return lead;
         }));
         if (typeof (window as any).showToast === "function") {
-          (window as any).showToast(systemLanguage === "sk" ? "Finančná analýza bola úspešne vygenerovaná!" : "Financial analysis successfully generated!");
+          (window as any).showToast(t("Financial analysis successfully generated!", "Finančná analýza bola úspešne vygenerovaná!", "A pénzügyi elemzés sikeresen elkészült!"));
         }
       } else {
         throw new Error(result.message || "Failed to generate summary");
@@ -1338,7 +1339,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     } catch (e: any) {
       console.error(e);
       if (typeof (window as any).showToast === "function") {
-        (window as any).showToast(systemLanguage === "sk" ? "Nepodarilo sa vygenerovať analýzu." : "Failed to generate financial analysis.");
+        (window as any).showToast(t("Failed to generate financial analysis.", "Nepodarilo sa vygenerovať analýzu.", "Nem sikerült létrehozni a pénzügyi elemzést."));
       }
     } finally {
       setIsAnalyzingFinancial(false);
@@ -1375,7 +1376,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           return lead;
         }));
         if (typeof (window as any).showToast === "function") {
-          (window as any).showToast(systemLanguage === "sk" ? "Finančný report bol úspešne vygenerovaný!" : "Financial report successfully generated!");
+          (window as any).showToast(t("Financial report successfully generated!", "Finančný report bol úspešne vygenerovaný!", "A pénzügyi jelentés sikeresen elkészült!"));
         }
       } else {
         throw new Error(result.message || "Failed to generate report");
@@ -1383,7 +1384,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     } catch (e: any) {
       console.error(e);
       if (typeof (window as any).showToast === "function") {
-        (window as any).showToast(systemLanguage === "sk" ? "Nepodarilo sa vygenerovať finančný report." : "Failed to generate financial report.");
+        (window as any).showToast(t("Failed to generate financial report.", "Nepodarilo sa vygenerovať finančný report.", "Nem sikerült létrehozni a pénzügyi jelentést."));
       }
     } finally {
       setIsAnalyzingFinancial(false);
@@ -1535,14 +1536,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           if (res.ok && data.success) {
             setUploadedAudioFile(data.filePath);
             if (typeof (window as any).showToast === "function") {
-              (window as any).showToast("Audio recording saved successfully!");
+              (window as any).showToast(t("Audio recording saved successfully!", "Hlasová nahrávka bola úspešne uložená!", "A hangfelvétel sikeresen mentve!"));
             }
           } else {
             throw new Error(data.message || "Upload failed");
           }
         } catch (err: any) {
           if (typeof (window as any).showToast === "function") {
-            (window as any).showToast("Failed to upload audio to server: " + err.message, "error");
+            (window as any).showToast(t("Failed to upload audio to server:", "Nepodarilo sa nahrať zvuk na server:", "Nem sikerült feltölteni a hangot a szerverre:") + " " + err.message, "error");
           }
         } finally {
           setIsUploadingAudio(false);
@@ -1556,7 +1557,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       startVisualizer(stream);
     } catch (err: any) {
       if (typeof (window as any).showToast === "function") {
-        (window as any).showToast("Microphone access denied: " + err.message, "error");
+        (window as any).showToast(t("Microphone access denied:", "Prístup k mikrofónu bol zamietnutý:", "A mikrofonhoz való hozzáférés megtagadva:") + " " + err.message, "error");
       }
     }
   };
@@ -1591,7 +1592,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   };
 
   const removeAudioFile = () => {
-    if (confirm(systemLanguage === "sk" ? "Naozaj chcete odstrániť túto nahrávku?" : "Are you sure you want to remove this recording?")) {
+    if (confirm(t("Are you sure you want to remove this recording?", "Naozaj chcete odstrániť túto nahrávku?", "Biztosan eltávolítja ezt a felvételt?"))) {
       if (audioRef.current) {
         audioRef.current.pause();
       }
@@ -1636,14 +1637,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           setEditorKey(prev => prev + 1);
         }
         if (typeof (window as any).showToast === "function") {
-          (window as any).showToast("AI Transcription completed successfully!");
+          (window as any).showToast(t("AI Transcription completed successfully!", "AI prepis bol úspešne dokončený!", "Az AI átirat sikeresen elkészült!"));
         }
       } else {
         throw new Error(data.message || "Transcription failed");
       }
     } catch (err: any) {
       if (typeof (window as any).showToast === "function") {
-        (window as any).showToast("Transcription failed: " + err.message, "error");
+        (window as any).showToast(t("Transcription failed:", "Prepis zlyhal:", "Az átírás sikertelen:") + " " + err.message, "error");
       }
     } finally {
       setIsTranscribing(false);
@@ -1786,7 +1787,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               type="button"
               onClick={removeAudioFile}
               className="text-slate-400 hover:text-rose-600 transition-colors p-1 cursor-pointer"
-              title="Delete audio"
+              title={t("Delete audio", "Odstrániť nahrávku", "Hangfelvétel törlése")}
             >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
@@ -1812,7 +1813,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 type="button"
                 onClick={pauseRecording}
                 className="p-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg cursor-pointer"
-                title="Pause"
+                title={t("Pause", "Pozastaviť", "Szünet")}
               >
                 <Pause className="h-3 w-3 fill-white" />
               </button>
@@ -1822,7 +1823,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 className="px-2.5 py-1 bg-slate-800 hover:bg-slate-900 text-white text-[9px] font-black uppercase tracking-wider rounded-lg cursor-pointer flex items-center gap-1"
               >
                 <Square className="h-3 w-3 fill-white" />
-                <span>Stop</span>
+                <span>{t("Stop", "Zastaviť", "Leállítás")}</span>
               </button>
             </>
           )}
@@ -1833,7 +1834,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 type="button"
                 onClick={resumeRecording}
                 className="p-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg cursor-pointer"
-                title="Resume"
+                title={t("Resume", "Pokračovať", "Folytatás")}
               >
                 <Play className="h-3 w-3 fill-white" />
               </button>
@@ -1843,7 +1844,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 className="px-2.5 py-1 bg-slate-800 hover:bg-slate-900 text-white text-[9px] font-black uppercase tracking-wider rounded-lg cursor-pointer flex items-center gap-1"
               >
                 <Square className="h-3 w-3 fill-white" />
-                <span>Stop</span>
+                <span>{t("Stop", "Zastaviť", "Leállítás")}</span>
               </button>
             </>
           )}
@@ -1988,7 +1989,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     e.preventDefault();
     if (!activeClient) return;
     if (!profileName.trim()) {
-      (window as any).showToast("Client Name is strictly required!");
+      (window as any).showToast(t("Client Name is strictly required!", "Meno klienta je striktne povinné!", "Az ügyfél neve feltétlenül kötelező!"));
       return;
     }
 
@@ -2032,7 +2033,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     setIsEditingProfile(false); // Toggle back to read-only
     // Update dynamic URL to reflect new client profile name
     window.location.hash = `client-${encodeURIComponent(profileName.trim())}`;
-    (window as any).showToast("Client profile parameters successfully updated!");
+    (window as any).showToast(t("Client profile parameters successfully updated!", "Parametre profilu klienta boli úspešne aktualizované!", "Az ügyfélprofil paraméterei sikeresen frissültek!"));
   };
 
   // --- LOG A NEW EVENT INTO TIMELINE ---
@@ -2056,14 +2057,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       // Note type is rich: saved as JSON stringified blocks
       const hasContent = noteBlocks.some(b => b.content.trim().length > 0);
       if (!hasContent && !uploadedAudioFile) {
-        (window as any).showToast("Please write down some details or record audio for the note!");
+        (window as any).showToast(t("Please write down some details or record audio for the note!", "Napíšte prosím nejaké detaily alebo nahrajte zvuk k poznámke!", "Kérjük, írjon le néhány részletet, vagy rögzítsen hangot a jegyzethez!"));
         return;
       }
       contentString = JSON.stringify(noteBlocks);
     } else if (logType === "appointment") {
       titleString = "Meeting Scheduled";
       if (!logTime.trim()) {
-        (window as any).showToast("Please select appointment time!");
+        (window as any).showToast(t("Please select appointment time!", "Vyberte prosím čas stretnutia!", "Kérjük, válassza ki a találkozó időpontját!"));
         return;
       }
       if (!contentString) contentString = `Client appointment set for ${logTime.trim()}`;
@@ -2071,7 +2072,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       titleString = "Formal Offer Submitted";
       const amt = parseFloat(logAmount);
       if (isNaN(amt) || amt <= 0) {
-        (window as any).showToast("Offer amount must be a positive number!");
+        (window as any).showToast(t("Offer amount must be a positive number!", "Suma ponuky musí byť kladné číslo!", "Az ajánlat összegének pozitív számnak kell lennie!"));
         return;
       }
       titleString = `Commercial Proposal Sent (€ ${amt.toLocaleString()})`;
@@ -2079,13 +2080,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     }
 
     const eventId = `ev-${Date.now()}`;
+    let uploadedFilePath: string | undefined;
 
     // Upload file if selected
     if (logType === "offer" && selectedLogFile) {
       const formData = new FormData();
       formData.append("file", selectedLogFile);
       formData.append("eventId", eventId);
-      
+
       try {
         const uploadRes = await fetch("/upload.php", {
           method: "POST",
@@ -2093,12 +2095,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         });
         const uploadData = await uploadRes.json();
         if (!uploadData.success) {
-          (window as any).showToast("File upload failed: " + uploadData.error);
+          (window as any).showToast(t("File upload failed:", "Nahrávanie súboru zlyhalo:", "A fájl feltöltése sikertelen:") + " " + (uploadData.error || ""));
           return;
         }
+        // Store the actual server path so the timeline link never depends on the event id
+        uploadedFilePath = uploadData.filePath;
       } catch (err) {
         console.error("Error uploading file", err);
-        (window as any).showToast("Error uploading file to server.");
+        (window as any).showToast(t("Error uploading file to server.", "Chyba pri nahrávaní súboru na server.", "Hiba a fájl szerverre való feltöltése közben."));
         return;
       }
     }
@@ -2119,6 +2123,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         newEvent.fileName = logFileName;
         newEvent.fileSize = logFileSize;
         newEvent.fileType = logFileType;
+        if (uploadedFilePath) newEvent.filePath = uploadedFilePath;
       }
     } else if (logType === "appointment") {
       newEvent.extraTime = logTime;
@@ -2152,7 +2157,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
       // Find original lead from activeClient
       const matchedLead = leads.find(l => l.name.trim().toLowerCase() === activeClient.name.trim().toLowerCase());
-      const leadOwner = matchedLead?.owner || "Erik";
+      const leadOwner = matchedLead?.owner || currentUser?.name || projectManagers[0] || "";
       const leadId = matchedLead?.id;
 
       const taskTitle = systemLanguage === "sk" 
@@ -2198,7 +2203,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     const tzOffset = (new Date()).getTimezoneOffset() * 60000;
     setLogDate((new Date(Date.now() - tzOffset)).toISOString().split("T")[0]);
     setLogTimeOfEvent(new Date().toTimeString().substring(0, 5));
-    (window as any).showToast("Event logged successfully!");
+    (window as any).showToast(t("Event logged successfully!", "Udalosť bola úspešne zaznamenaná!", "Az esemény sikeresen rögzítve!"));
   };
 
   const handleAttachFile = async (e: React.FormEvent) => {
@@ -2206,13 +2211,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     if (!activeClient || !uploadFileName) return;
 
     const eventId = `ev-${Date.now()}`;
+    let uploadedFilePath: string | undefined;
 
     // Upload file if selected
     if (selectedUploadFile) {
       const formData = new FormData();
       formData.append("file", selectedUploadFile);
       formData.append("eventId", eventId);
-      
+
       try {
         const uploadRes = await fetch("/upload.php", {
           method: "POST",
@@ -2220,12 +2226,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         });
         const uploadData = await uploadRes.json();
         if (!uploadData.success) {
-          (window as any).showToast("File upload failed: " + uploadData.error);
+          (window as any).showToast(t("File upload failed:", "Nahrávanie súboru zlyhalo:", "A fájl feltöltése sikertelen:") + " " + (uploadData.error || ""));
           return;
         }
+        uploadedFilePath = uploadData.filePath;
       } catch (err) {
         console.error("Error uploading file", err);
-        (window as any).showToast("Error uploading file to server.");
+        (window as any).showToast(t("Error uploading file to server.", "Chyba pri nahrávaní súboru na server.", "Hiba a fájl szerverre való feltöltése közben."));
         return;
       }
     }
@@ -2239,6 +2246,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       fileName: uploadFileName,
       fileSize: uploadFileSize,
       fileType: uploadFileType,
+      filePath: uploadedFilePath,
     };
 
     setLeads(prev => prev.map(lead => {
@@ -2257,7 +2265,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     setUploadFileSize("");
     setUploadDescription("");
     setSelectedUploadFile(null);
-    alert("Document attached successfully!");
+    alert(t("Document attached successfully!", "Dokument bol úspešne pripojený!", "A dokumentum sikeresen csatolva!"));
   };
 
   // Extract unique cities dynamically from the active customer registry
@@ -2376,13 +2384,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       return (
         <div className="p-8 glass-panel rounded-[28px] border-2 border-red-400 bg-white shadow-glass text-center space-y-4">
           <div className="text-4xl text-rose-600 animate-bounce">⚠️</div>
-          <h2 className="text-xl font-heading font-black text-slate-900 uppercase tracking-wide">Client Profile Not Found</h2>
-          <p className="text-xs text-slate-600 font-semibold">The profile name '{initialSelectedClient}' could not be resolved in the active database.</p>
-          <button 
+          <h2 className="text-xl font-heading font-black text-slate-900 uppercase tracking-wide">{t("Client Profile Not Found", "Profil klienta sa nenašiel", "Az ügyfélprofil nem található")}</h2>
+          <p className="text-xs text-slate-600 font-semibold">{t(`The profile name '${initialSelectedClient}' could not be resolved in the active database.`, `Názov profilu '${initialSelectedClient}' sa nepodarilo nájsť v aktívnej databáze.`, `A(z) '${initialSelectedClient}' profilnév nem feloldható az aktív adatbázisban.`)}</p>
+          <button
             onClick={() => { window.location.hash = "clients"; }}
             className="px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all active:scale-95 shadow-md"
           >
-            Back to Clients List
+            {t("Back to Clients List", "Späť na zoznam klientov", "Vissza az ügyféllistához")}
           </button>
         </div>
       );
@@ -2501,7 +2509,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     ? "bg-rose-50 border-rose-300 text-rose-600 hover:bg-rose-100" 
                     : "bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100"
                 }`}
-                title={isEditingProfile ? "Cancel editing" : "Edit Profile details"}
+                title={isEditingProfile ? t("Cancel editing", "Zrušiť úpravy", "Szerkesztés megszakítása") : t("Edit Profile details", "Upraviť údaje profilu", "Profiladatok szerkesztése")}
               >
                 {isEditingProfile ? <X className="h-4.5 w-4.5 stroke-[2.5]" /> : <PencilLine className="h-4.5 w-4.5 stroke-[2.5]" />}
               </button>
@@ -2620,7 +2628,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     <input
                       type="text"
                       readOnly={!isEditingProfile}
-                      placeholder={isEditingProfile ? "e.g. Mlynské Nivy 42" : "No Street Added"}
+                      placeholder={isEditingProfile ? "e.g. Mlynské Nivy 42" : t("No Street Added", "Bez ulice", "Nincs utca megadva")}
                       value={profileStreet}
                       onChange={(e) => setProfileStreet(e.target.value)}
                       className={`w-full px-3 py-1.5 rounded-lg focus:outline-none ${
@@ -2875,7 +2883,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                 ? "bg-white border-2 border-slate-200 text-slate-800" 
                                 : "bg-transparent border-0 pl-0 text-slate-900 font-black cursor-default select-all"
                             }`}
-                            placeholder="Kraj"
+                            placeholder={t("Region", "Kraj", "Megye")}
                           />
                           <input
                             type="text"
@@ -2887,7 +2895,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                 ? "bg-white border-2 border-slate-200 text-slate-800" 
                                 : "bg-transparent border-0 pl-0 text-slate-900 font-black cursor-default select-all"
                             }`}
-                            placeholder="Okres"
+                            placeholder={t("District", "Okres", "Járás")}
                           />
                         </div>
                       </div>
@@ -2971,7 +2979,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 ) : (
                   <div className="flex flex-wrap gap-1.5 pt-1">
                     {profileCategories.length === 0 ? (
-                      <span className="text-[10px] text-slate-400 italic">None</span>
+                      <span className="text-[10px] text-slate-400 italic">{t("None", "Žiadne", "Nincs")}</span>
                     ) : (
                       profileCategories.map((cat) => (
                         <span 
@@ -3050,7 +3058,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         : "text-slate-550 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border-slate-200"
                     }`}
                   >
-                    <TrendingUp className="h-4.5 w-4.5 stroke-[2.5]" /> {systemLanguage === "sk" ? "Finančný report" : "Financial Report"}
+                    <TrendingUp className="h-4.5 w-4.5 stroke-[2.5]" /> {t("Financial Report", "Finančný report", "Pénzügyi jelentés")}
                   </button>
                 )}
               </div>
@@ -3151,11 +3159,21 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                         onChange={(e) => {
                                           const file = e.target.files?.[0];
                                           if (file) {
+                                            const MAX_MB = 64;
+                                            if (file.size > MAX_MB * 1024 * 1024) {
+                                              (window as any).showToast?.(t(
+                                                `File is too large (max ${MAX_MB} MB).`,
+                                                `Súbor je príliš veľký (max ${MAX_MB} MB).`,
+                                                `A fájl túl nagy (max ${MAX_MB} MB).`,
+                                              ));
+                                              e.target.value = "";
+                                              return;
+                                            }
                                             setSelectedLogFile(file);
                                             setLogFileName(file.name);
                                             setLogFileSize((file.size / 1024 / 1024).toFixed(2) + " MB");
                                           }
-                                        }} 
+                                        }}
                                       />
                                     </label>
                                     <input
@@ -3273,14 +3291,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   <div className="border-t-2 border-slate-150 pt-6 space-y-4">
                     <h3 className="text-xs font-black text-slate-450 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
                       <Clock className="h-4.5 w-4.5 text-emerald-600 animate-pulse stroke-[2.5]" /> {getTranslation(systemLanguage, "common.chronological_timeline")}
-                      {isLoadingMails && <span className="ml-2 text-[9px] text-emerald-500 font-extrabold uppercase animate-pulse">Syncing Mail...</span>}
+                      {isLoadingMails && <span className="ml-2 text-[9px] text-emerald-500 font-extrabold uppercase animate-pulse">{t("Syncing Mail...", "Synchronizujem poštu...", "Levelek szinkronizálása...")}</span>}
                     </h3>
 
                     {activeClientTimeline.length === 0 ? (
                       <div className="py-12 text-center text-slate-400">
                         <div className="text-3xl mb-2 animate-bounce">📜</div>
-                        <div className="font-black text-slate-700 uppercase tracking-wider">No events logged yet</div>
-                        <div className="text-[9px] mt-1.5 uppercase tracking-wide font-extrabold text-slate-400">Use the form above to add phone calls, emails, notes or proposals.</div>
+                        <div className="font-black text-slate-700 uppercase tracking-wider">{t("No events logged yet", "Zatiaľ neboli zaznamenané žiadne udalosti", "Még nincs rögzített esemény")}</div>
+                        <div className="text-[9px] mt-1.5 uppercase tracking-wide font-extrabold text-slate-400">{t("Use the form above to add phone calls, emails, notes or proposals.", "Pomocou formulára vyššie pridajte telefonáty, e-maily, poznámky alebo ponuky.", "A fenti űrlap segítségével adjon hozzá hívásokat, e-maileket, jegyzeteket vagy ajánlatokat.")}</div>
                       </div>
                     ) : (
                       <div className="relative pl-0 md:pl-4 space-y-6 py-2">
@@ -3322,10 +3340,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                         {event.title}
                                       </span>
                                       <span className={`text-[8px] font-black uppercase px-2.5 py-0.5 rounded-full border tracking-widest shadow-inner ${colors.badgeBg}`}>
-                                        {event.type}
+                                        {getTranslation(systemLanguage, `timeline.badge.${event.type}`)}
                                       </span>
                                       <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded bg-amber-500 text-white border border-amber-600 tracking-widest shadow-sm">
-                                        Upcoming
+                                        {getTranslation(systemLanguage, "timeline.upcoming")}
                                       </span>
                                     </div>
                                     <span className="block md:hidden text-[9px] font-black text-slate-450 uppercase tracking-wider">
@@ -3346,7 +3364,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                                 {event.transcription && (
                                                   <details className="cursor-pointer">
                                                     <summary className="text-[9px] uppercase tracking-wider text-indigo-600 hover:text-indigo-800 font-extrabold select-none">
-                                                      {systemLanguage === "sk" ? "Prepis" : "Transcript"}
+                                                      {t("Transcript", "Prepis", "Átirat")}
                                                     </summary>
                                                     <div className="mt-1 p-2 bg-white rounded border border-slate-100 text-[9.5px] font-medium leading-relaxed max-w-[240px] whitespace-pre-wrap">
                                                       {event.transcription}
@@ -3407,13 +3425,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                   {/* Extra values */}
                                   {event.type === "offer" && event.amount !== undefined && (
                                     <div className="mt-3 pl-3 border-l-4 border-emerald-500 flex items-center gap-1 text-[10px] font-black text-emerald-700 uppercase tracking-wider">
-                                      <TrendingUp className="h-4 w-4" /> BUDGET WORTH OFFERED: &euro; {event.amount.toLocaleString()}
+                                      <TrendingUp className="h-4 w-4" /> {t("BUDGET WORTH OFFERED:", "PONÚKNUTÝ ROZPOČET:", "FELAJÁNLOTT KÖLTSÉGVETÉS:")} &euro; {event.amount.toLocaleString()}
                                     </div>
                                   )}
 
                                   {event.type === "appointment" && event.extraTime && (
                                     <div className="mt-3 pl-3 border-l-4 border-rose-500 flex items-center gap-1 text-[10px] font-black text-rose-700 uppercase tracking-wider">
-                                      <Calendar className="h-4 w-4" /> MEETING SCHEDULED AT: {event.extraTime}
+                                      <Calendar className="h-4 w-4" /> {t("MEETING SCHEDULED AT:", "STRETNUTIE NAPLÁNOVANÉ NA:", "TALÁLKOZÓ IDŐPONTJA:")} {event.extraTime}
                                     </div>
                                   )}
 
@@ -3426,13 +3444,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                         <span className="text-[9px] font-extrabold text-slate-400">({event.fileSize})</span>
                                       </div>
                                       <a 
-                                        href={`/uploads/${event.id}_${event.fileName}`}
+                                        href={event.filePath || `/uploads/${event.id}_${event.fileName}`}
                                         download={event.fileName}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="px-2.5 py-1 rounded bg-amber-100 border border-amber-300 hover:bg-amber-250 transition-all text-[8px] font-black uppercase text-amber-800 tracking-wider shadow-sm cursor-pointer"
                                       >
-                                        View File
+                                        {t("View File", "Zobraziť súbor", "Fájl megtekintése")}
                                       </a>
                                     </div>
                                   )}
@@ -3449,7 +3467,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                             <div className="h-0.5 bg-emerald-500/35 flex-1"></div>
                             <span className="text-[9px] font-black uppercase text-emerald-800 bg-emerald-100 border-2 border-emerald-300 px-4 py-1.5 rounded-full tracking-widest shadow-sm flex items-center gap-1.5 shrink-0 select-text">
                               <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping"></span>
-                              Today ({new Date().toISOString().substring(0, 10)})
+                              {t("Today", "Dnes", "Ma")} ({new Date().toISOString().substring(0, 10)})
                             </span>
                             <div className="h-0.5 bg-emerald-500/35 flex-1"></div>
                           </div>
@@ -3459,8 +3477,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         {pastEvents.map((event) => {
                           const colors = getEventColors(event.type);
                           const pmName = event.type === "email"
-                            ? (event.isOutgoing ? (currentUser?.name || "Erik") : (activeClient.owner || "Erik"))
-                            : (activeClient.owner || "Erik");
+                            ? (event.isOutgoing ? (currentUser?.name || projectManagers[0] || "") : (activeClient.owner || currentUser?.name || projectManagers[0] || ""))
+                            : (activeClient.owner || currentUser?.name || projectManagers[0] || "");
                           const pmColor = projectManagerColors[pmName] || "#6366f1";
                           return (
                             <div key={event.id} className="relative flex flex-row items-start gap-4 md:gap-8 group animate-in fade-in slide-in-from-bottom duration-250">
@@ -3499,12 +3517,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                             {event.isOutgoing ? (
                                               <>
                                                 <CornerDownLeft className="h-3 w-3 stroke-[2.5]" />
-                                                <span>Outgoing</span>
+                                                <span>{t("Outgoing", "Odchádzajúci", "Kimenő")}</span>
                                               </>
                                             ) : (
                                               <>
                                                 <CornerLeftDown className="h-3 w-3 stroke-[2.5]" />
-                                                <span>Incoming</span>
+                                                <span>{t("Incoming", "Prichádzajúci", "Bejövő")}</span>
                                               </>
                                             )}
                                           </span>
@@ -3517,7 +3535,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                         </>
                                       ) : (
                                         <span className={`text-[8px] font-black uppercase px-2.5 py-0.5 rounded-full border tracking-widest shadow-inner ${colors.badgeBg}`}>
-                                          {event.type}
+                                          {getTranslation(systemLanguage, `timeline.badge.${event.type}`)}
                                         </span>
                                       )}
                                     </div>
@@ -3539,7 +3557,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                                 {event.transcription && (
                                                   <details className="cursor-pointer">
                                                     <summary className="text-[9px] uppercase tracking-wider text-indigo-600 hover:text-indigo-800 font-extrabold select-none">
-                                                      {systemLanguage === "sk" ? "Prepis" : "Transcript"}
+                                                      {t("Transcript", "Prepis", "Átirat")}
                                                     </summary>
                                                     <div className="mt-1 p-2 bg-white rounded border border-slate-100 text-[9.5px] font-medium leading-relaxed max-w-[240px] whitespace-pre-wrap">
                                                       {event.transcription}
@@ -3600,13 +3618,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                   {/* Extra values */}
                                   {event.type === "offer" && event.amount !== undefined && (
                                     <div className="mt-3 pl-3 border-l-4 border-emerald-500 flex items-center gap-1 text-[10px] font-black text-emerald-700 uppercase tracking-wider">
-                                      <TrendingUp className="h-4 w-4" /> BUDGET WORTH OFFERED: &euro; {event.amount.toLocaleString()}
+                                      <TrendingUp className="h-4 w-4" /> {t("BUDGET WORTH OFFERED:", "PONÚKNUTÝ ROZPOČET:", "FELAJÁNLOTT KÖLTSÉGVETÉS:")} &euro; {event.amount.toLocaleString()}
                                     </div>
                                   )}
 
                                   {event.type === "appointment" && event.extraTime && (
                                     <div className="mt-3 pl-3 border-l-4 border-rose-500 flex items-center gap-1 text-[10px] font-black text-rose-700 uppercase tracking-wider">
-                                      <Calendar className="h-4 w-4" /> MEETING SCHEDULED AT: {event.extraTime}
+                                      <Calendar className="h-4 w-4" /> {t("MEETING SCHEDULED AT:", "STRETNUTIE NAPLÁNOVANÉ NA:", "TALÁLKOZÓ IDŐPONTJA:")} {event.extraTime}
                                     </div>
                                   )}
 
@@ -3619,13 +3637,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                         <span className="text-[9px] font-extrabold text-slate-400">({event.fileSize})</span>
                                       </div>
                                       <a 
-                                        href={`/uploads/${event.id}_${event.fileName}`}
+                                        href={event.filePath || `/uploads/${event.id}_${event.fileName}`}
                                         download={event.fileName}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="px-2.5 py-1 rounded bg-amber-100 border border-amber-300 hover:bg-amber-250 transition-all text-[8px] font-black uppercase text-amber-800 tracking-wider shadow-sm cursor-pointer"
                                       >
-                                        View File
+                                        {t("View File", "Zobraziť súbor", "Fájl megtekintése")}
                                       </a>
                                     </div>
                                   )}
@@ -3646,17 +3664,17 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   {/* Attach New Document Form */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border-2 border-slate-200">
                     <h3 className="text-xs font-black text-emerald-700 uppercase tracking-wider mb-4 flex items-center gap-1.5 border-b border-slate-200 pb-2">
-                      <FolderOpen className="h-4.5 w-4.5 text-emerald-600 stroke-[2.5]" /> Attach New Document to Profile
+                      <FolderOpen className="h-4.5 w-4.5 text-emerald-600 stroke-[2.5]" /> {t("Attach New Document to Profile", "Pripojiť nový dokument k profilu", "Új dokumentum csatolása a profilhoz")}
                     </h3>
 
                     <form onSubmit={handleAttachFile} className="space-y-4 text-xs font-bold">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-1">
-                          <label className="text-[9px] font-black text-slate-550 uppercase tracking-wider block pl-0.5">Upload File *</label>
+                          <label className="text-[9px] font-black text-slate-550 uppercase tracking-wider block pl-0.5">{t("Upload File", "Nahrať súbor", "Fájl feltöltése")} *</label>
                           <div className="flex items-center gap-2">
                             <label className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100/80 text-amber-800 border-2 border-amber-300 transition-all cursor-pointer text-[10px] font-black uppercase shadow-sm select-none shrink-0">
                               <FolderOpen className="h-4 w-4" />
-                              <span>Select File</span>
+                              <span>{t("Select File", "Vybrať súbor", "Fájl kiválasztása")}</span>
                               <input 
                                 type="file" 
                                 required
@@ -3664,16 +3682,26 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                 onChange={(e) => {
                                   const file = e.target.files?.[0];
                                   if (file) {
+                                    const MAX_MB = 64;
+                                    if (file.size > MAX_MB * 1024 * 1024) {
+                                      (window as any).showToast?.(t(
+                                        `File is too large (max ${MAX_MB} MB).`,
+                                        `Súbor je príliš veľký (max ${MAX_MB} MB).`,
+                                        `A fájl túl nagy (max ${MAX_MB} MB).`,
+                                      ));
+                                      e.target.value = "";
+                                      return;
+                                    }
                                     setSelectedUploadFile(file);
                                     setUploadFileName(file.name);
                                     setUploadFileSize((file.size / 1024 / 1024).toFixed(2) + " MB");
                                   }
-                                }} 
+                                }}
                               />
                             </label>
                             <input
                               type="text"
-                              placeholder="No file chosen"
+                              placeholder={t("No file chosen", "Nie je vybraný žiadny súbor", "Nincs kiválasztott fájl")}
                               value={uploadFileName ? `${uploadFileName} (${uploadFileSize})` : ""}
                               readOnly
                               className="flex-1 px-3 py-2 rounded-xl bg-white border-2 border-slate-200 focus:outline-none text-[10px] text-slate-550 font-bold"
@@ -3691,7 +3719,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         </div>
 
                         <div className="space-y-1">
-                          <label className="text-[9px] font-black text-slate-550 uppercase tracking-wider block pl-0.5">Document Category *</label>
+                          <label className="text-[9px] font-black text-slate-550 uppercase tracking-wider block pl-0.5">{t("Document Category", "Kategória dokumentu", "Dokumentum kategória")} *</label>
                           <div className="grid grid-cols-3 gap-2 bg-white p-1 rounded-xl border-2 border-slate-200">
                             {(["offer", "contract", "invoice"] as const).map(type => (
                               <button
@@ -3705,9 +3733,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                 }`}
                               >
                                 <span>
-                                  {type === "offer" && "Offer"}
-                                  {type === "contract" && "Contract"}
-                                  {type === "invoice" && "Invoice"}
+                                  {type === "offer" && t("Offer", "Ponuka", "Ajánlat")}
+                                  {type === "contract" && t("Contract", "Zmluva", "Szerződés")}
+                                  {type === "invoice" && t("Invoice", "Faktúra", "Számla")}
                                 </span>
                               </button>
                             ))}
@@ -3716,11 +3744,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       </div>
 
                       <div className="space-y-1">
-                        <label className="text-[9px] font-black text-slate-550 uppercase tracking-wider block pl-0.5">Document Description / Remarks *</label>
+                        <label className="text-[9px] font-black text-slate-550 uppercase tracking-wider block pl-0.5">{t("Document Description / Remarks", "Popis dokumentu / Poznámky", "Dokumentum leírása / Megjegyzések")} *</label>
                         <input
                           type="text"
                           required
-                          placeholder="e.g. Approved price quote sheet for Q2..."
+                          placeholder={t("e.g. Approved price quote sheet for Q2...", "napr. Schválený cenový návrh za Q2...", "pl. Jóváhagyott árajánlat a Q2-re...")}
                           value={uploadDescription}
                           onChange={(e) => setUploadDescription(e.target.value)}
                           className="w-full px-4 py-2 rounded-xl bg-white border-2 border-slate-200 focus:outline-none"
@@ -3731,7 +3759,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         type="submit"
                         className="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 active:scale-95 shadow-lg w-fit ml-auto border-2 border-emerald-700"
                       >
-                        <Plus className="h-4.5 w-4.5 stroke-[2.5]" /> Attach File to Client
+                        <Plus className="h-4.5 w-4.5 stroke-[2.5]" /> {t("Attach File to Client", "Pripojiť súbor ku klientovi", "Fájl csatolása az ügyfélhez")}
                       </button>
                     </form>
                   </div>
@@ -3739,14 +3767,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   {/* Attached Documents List */}
                   <div className="space-y-4">
                     <h3 className="text-xs font-black text-slate-450 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
-                      <FileText className="h-4.5 w-4.5 text-emerald-600 stroke-[2.5]" /> Attached Client Documents ({activeClient.timeline.filter(e => e.fileName).length})
+                      <FileText className="h-4.5 w-4.5 text-emerald-600 stroke-[2.5]" /> {t("Attached Client Documents", "Pripojené dokumenty klienta", "Csatolt ügyféldokumentumok")} ({activeClient.timeline.filter(e => e.fileName).length})
                     </h3>
 
                     {activeClient.timeline.filter(e => e.fileName).length === 0 ? (
                       <div className="py-12 text-center text-slate-400">
                         <div className="text-3xl mb-2">📁</div>
-                        <div className="font-black text-slate-700 uppercase tracking-wider">No files attached to this client</div>
-                        <div className="text-[9px] mt-1.5 uppercase tracking-wide font-extrabold text-slate-400">Use the attachment form above to upload proposals, contracts or invoices.</div>
+                        <div className="font-black text-slate-700 uppercase tracking-wider">{t("No files attached to this client", "K tomuto klientovi nie sú pripojené žiadne súbory", "Nincs fájl csatolva ehhez az ügyfélhez")}</div>
+                        <div className="text-[9px] mt-1.5 uppercase tracking-wide font-extrabold text-slate-400">{t("Use the attachment form above to upload proposals, contracts or invoices.", "Pomocou formulára vyššie nahrajte ponuky, zmluvy alebo faktúry.", "A fenti űrlap segítségével töltsön fel ajánlatokat, szerződéseket vagy számlákat.")}</div>
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 gap-3">
@@ -3778,9 +3806,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                         ? "bg-emerald-100/50 text-emerald-800 border-emerald-200"
                                         : "bg-blue-100/50 text-blue-800 border-blue-200"
                                     }`}>
-                                      {file.fileType || "document"}
+                                      {file.fileType || t("document", "dokument", "dokumentum")}
                                     </span>
-                                    &bull; {file.fileSize || "Unknown size"} &bull; {file.timestamp.substring(0, 10)}
+                                    &bull; {file.fileSize || t("Unknown size", "Neznáma veľkosť", "Ismeretlen méret")} &bull; {file.timestamp.substring(0, 10)}
                                   </span>
                                   <p className="text-[10px] text-slate-505 font-bold mt-1 leading-normal italic line-clamp-1">
                                     "{file.content}"
@@ -3790,7 +3818,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
                               <div className="flex items-center gap-1.5 shrink-0">
                                 <a
-                                  href={`/uploads/${file.id}_${file.fileName}`}
+                                  href={(file as any).filePath || `/uploads/${file.id}_${file.fileName}`}
                                   download={file.fileName}
                                   target="_blank"
                                   rel="noopener noreferrer"
@@ -3872,11 +3900,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                               }}
                             >
                               <div className="min-w-0">
-                                <h4 className="font-heading font-black text-xs uppercase text-slate-800 tracking-tight truncate max-w-[280px]">{lead.name || "Untitled Lead"}</h4>
+                                <h4 className="font-heading font-black text-xs uppercase text-slate-800 tracking-tight truncate max-w-[280px]">{lead.name || t("Untitled Lead", "Lead bez názvu", "Cím nélküli lead")}</h4>
                                 <div className="flex flex-wrap items-center gap-2 mt-1.5 text-[9px] font-black uppercase text-slate-450 tracking-wider">
-                                  <span>Worth: <strong className="text-emerald-700 font-extrabold">&euro; {lead.value.toLocaleString()}</strong></span>
+                                  <span>{t("Worth", "Hodnota", "Érték")}: <strong className="text-emerald-700 font-extrabold">&euro; {lead.value.toLocaleString()}</strong></span>
                                   <span>&bull;</span>
-                                  <span>PM: <strong className="text-slate-600 font-extrabold">{lead.owner || "Unassigned"}</strong></span>
+                                  <span>PM: <strong className="text-slate-600 font-extrabold">{lead.owner || t("Unassigned", "Nepriradené", "Nincs hozzárendelve")}</strong></span>
                                 </div>
                               </div>
                               <div className="shrink-0 flex items-center gap-2">
@@ -3901,7 +3929,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   <div className="flex items-center justify-between border-b-2 border-slate-100 pb-2">
                     <h3 className="text-xs font-black text-slate-455 uppercase tracking-wider flex items-center gap-1.5">
                       <TrendingUp className="h-4.5 w-4.5 text-indigo-600 stroke-[2.5]" /> 
-                      {systemLanguage === "sk" ? "AI Finančný report" : "AI Financial Report"}
+                      {t("AI Financial Report", "AI Finančný report", "AI pénzügyi jelentés")}
                     </h3>
                     {activeClient.clientType !== "person" && activeClient.companyId && (
                       <button
@@ -3913,8 +3941,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         <Brain className="h-3.5 w-3.5 text-indigo-600" />
                         <span>
                           {activeClient.financialSummary
-                            ? (systemLanguage === "sk" ? "Pre-generovať report" : "Regenerate Report")
-                            : (systemLanguage === "sk" ? "Vytvoriť report" : "Create Report")}
+                            ? t("Regenerate Report", "Pre-generovať report", "Jelentés újragenerálása")
+                            : t("Create Report", "Vytvoriť report", "Jelentés létrehozása")}
                         </span>
                       </button>
                     )}
@@ -3923,7 +3951,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   {isAnalyzingFinancial ? (
                     <div className="py-12 flex flex-col items-center justify-center gap-3 text-xs text-slate-500 font-bold uppercase">
                       <Loader2 className="h-6 w-6 animate-spin text-indigo-500" />
-                      <span>{systemLanguage === "sk" ? "AI generuje finančný report..." : "AI is generating financial report..."}</span>
+                      <span>{t("AI is generating financial report...", "AI generuje finančný report...", "Az AI pénzügyi jelentést készít...")}</span>
                     </div>
                   ) : activeClient.financialSummary ? (
                     <FinancialReportView summary={activeClient.financialSummary} systemLanguage={systemLanguage} />
@@ -3931,9 +3959,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     <div className="py-10 text-center text-slate-455 text-xs font-black uppercase tracking-wider flex flex-col items-center justify-center gap-3 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
                       <Brain className="h-8 w-8 text-indigo-300 animate-pulse" />
                       <div>
-                        {systemLanguage === "sk" 
-                          ? "Žiadny finančný report nie je vygenerovaný." 
-                          : "No financial report has been generated yet."}
+                        {t("No financial report has been generated yet.", "Žiadny finančný report nie je vygenerovaný.", "Még nem készült pénzügyi jelentés.")}
                       </div>
                       {activeClient.clientType !== "person" && activeClient.companyId ? (
                         <button
@@ -3942,13 +3968,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           className="mt-2 px-4 py-2 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white border-2 border-indigo-700 text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md active:scale-95 cursor-pointer"
                         >
                           <Brain className="h-4 w-4" />
-                          <span>{systemLanguage === "sk" ? "Vytvoriť finančný report" : "Create Financial Report"}</span>
+                          <span>{t("Create Financial Report", "Vytvoriť finančný report", "Pénzügyi jelentés létrehozása")}</span>
                         </button>
                       ) : (
                         <div className="text-[10px] text-slate-450 font-semibold lowercase tracking-tight max-w-sm mt-1">
-                          {systemLanguage === "sk"
-                            ? "na vytvorenie reportu musí mať klient vyplnené IČO."
-                            : "the client must have a company ID configured to generate a financial report."}
+                          {t("the client must have a company ID configured to generate a financial report.", "na vytvorenie reportu musí mať klient vyplnené IČO.", "a pénzügyi jelentés létrehozásához az ügyfélnek beállított cégazonosítóval kell rendelkeznie.")}
                         </div>
                       )}
                     </div>
@@ -3965,11 +3989,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       {isLoadingRegistryStatements ? (
                         <div className="py-8 flex items-center justify-center gap-2 text-xs text-slate-500 font-bold uppercase">
                           <Loader2 className="h-4 w-4 animate-spin text-emerald-500" />
-                          <span>{systemLanguage === "sk" ? "Načítavam závierky z registra..." : "Loading statements from registry..."}</span>
+                          <span>{t("Loading statements from registry...", "Načítavam závierky z registra...", "Beszámolók betöltése a regiszterből...")}</span>
                         </div>
                       ) : registryStatements.length === 0 ? (
                         <div className="py-6 text-center text-slate-455 text-xs font-extrabold uppercase tracking-wide">
-                          {systemLanguage === "sk" ? "Žiadne závierky neboli nájdené v registri" : "No financial statements found in registry"}
+                          {t("No financial statements found in registry", "Žiadne závierky neboli nájdené v registri", "Nem találhatók pénzügyi beszámolók a regiszterben")}
                         </div>
                       ) : (
                         <div className="grid grid-cols-1 gap-3">
@@ -4017,7 +4041,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                     >
                                       <Download className="h-3.5 w-3.5" />
                                       <span>
-                                        {systemLanguage === "sk" ? `Výkaz ${rIdx + 1}` : `Report ${rIdx + 1}`}
+                                        {t(`Report ${rIdx + 1}`, `Výkaz ${rIdx + 1}`, `Kimutatás ${rIdx + 1}`)}
                                       </span>
                                     </a>
                                   ))}
@@ -4079,10 +4103,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 onChange={(e) => setSelectedType(e.target.value)}
                 className="bg-transparent text-[11px] font-black text-slate-700 focus:outline-none cursor-pointer uppercase tracking-wider w-full select-none"
               >
-                <option value="all" className="bg-white text-slate-700">All Types</option>
-                <option value="person" className="bg-white text-slate-700">Person</option>
-                <option value="business" className="bg-white text-slate-700">Business</option>
-                <option value="partner" className="bg-white text-slate-700">Partner</option>
+                <option value="all" className="bg-white text-slate-700">{t("All Types", "Všetky typy", "Minden típus")}</option>
+                <option value="person" className="bg-white text-slate-700">{t("Person", "Osoba", "Személy")}</option>
+                <option value="business" className="bg-white text-slate-700">{t("Business", "Firma", "Cég")}</option>
+                <option value="partner" className="bg-white text-slate-700">{t("Partner", "Partner", "Partner")}</option>
               </select>
             </div>
           </div>
@@ -4096,7 +4120,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 ? "bg-emerald-700 text-white border-emerald-800 shadow-md shadow-emerald-700/25"
                 : "bg-slate-50 border-slate-250 text-slate-550 hover:bg-slate-100 hover:text-slate-800"
             }`}
-            title={showFilterDrawer ? "Close Filters Drawer" : "Open Filters Drawer"}
+            title={showFilterDrawer ? t("Close Filters Drawer", "Zavrieť panel filtrov", "Szűrőpanel bezárása") : t("Open Filters Drawer", "Otvoriť panel filtrov", "Szűrőpanel megnyitása")}
           >
             <SlidersHorizontal className="h-4.5 w-4.5 stroke-[2.5]" />
           </button>
@@ -4110,7 +4134,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               
               {/* City Location Filter */}
               <div className="space-y-1.5">
-                <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider pl-0.5">Filter by City Location</label>
+                <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider pl-0.5">{t("Filter by City Location", "Filtrovať podľa mesta", "Szűrés város szerint")}</label>
                 <div className="relative">
                   <select
                     value={filterCity}
@@ -4130,7 +4154,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
               {/* Account PM Manager Filter */}
               <div className="space-y-1.5">
-                <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider pl-0.5">Filter by Account Manager (PM)</label>
+                <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider pl-0.5">{t("Filter by Account Manager (PM)", "Filtrovať podľa manažéra (PM)", "Szűrés ügyfélmenedzser szerint (PM)")}</label>
                 <div className="relative">
                   <select
                     value={filterPM}
@@ -4161,7 +4185,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             <thead className="hidden lg:table-header-group">
               <tr className="bg-white text-emerald-700 text-[10px] font-black uppercase tracking-wider">
                 <th className="sticky top-0 bg-white z-10 py-4 px-6 rounded-tl-[24px] border-b-2 border-slate-100">{getTranslation(systemLanguage, "leads.table.client")}</th>
-                <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">Contact Phone</th>
+                <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{t("Contact Phone", "Kontaktný telefón", "Kapcsolattartó telefon")}</th>
                 <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "login.email")}</th>
                 <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "leads.table.city")}</th>
                 <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "leads.table.type")}</th>
@@ -4176,8 +4200,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 <tr className="block lg:table-row">
                   <td colSpan={8} className="py-16 px-6 text-center text-slate-400 block lg:table-cell w-full lg:w-auto">
                     <div className="text-2xl mb-2 animate-bounce">👥</div>
-                    <div className="font-black text-slate-700 uppercase tracking-wider">No registered clients found</div>
-                    <div className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider mt-0.5">We aggregate clients automatically from your leads database.</div>
+                    <div className="font-black text-slate-700 uppercase tracking-wider">{t("No registered clients found", "Nenašli sa žiadni registrovaní klienti", "Nem található regisztrált ügyfél")}</div>
+                    <div className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider mt-0.5">{t("We aggregate clients automatically from your leads database.", "Klientov automaticky agregujeme z vašej databázy leadov.", "Az ügyfeleket automatikusan összesítjük a lead-adatbázisából.")}</div>
                   </td>
                 </tr>
               ) : (
@@ -4210,7 +4234,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       {client.phone ? (
                         <span className="flex items-center gap-1"><Phone className="h-3 w-3 text-emerald-500 stroke-[2.5]" /> {client.phone}</span>
                       ) : (
-                        <span className="text-slate-350 italic">None</span>
+                        <span className="text-slate-350 italic">{t("None", "Žiadne", "Nincs")}</span>
                       )}
                     </td>
 
@@ -4219,7 +4243,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       {client.email ? (
                         <span className="flex items-center gap-1 truncate max-w-[140px]"><Mail className="h-3 w-3 text-emerald-500 stroke-[2.5]" /> {client.email}</span>
                       ) : (
-                        <span className="text-slate-350 italic">None</span>
+                        <span className="text-slate-350 italic">{t("None", "Žiadne", "Nincs")}</span>
                       )}
                     </td>
 
@@ -4239,17 +4263,17 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     <td className="inline-flex items-center lg:table-cell py-1 lg:py-3.5 px-0 lg:px-4 mr-3.5">
                       {client.clientType === "business" && (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-emerald-600 text-white border border-emerald-700 shadow-sm animate-fade-in">
-                          <Briefcase className="h-2.5 w-2.5 text-white" /> Business
+                          <Briefcase className="h-2.5 w-2.5 text-white" /> {t("Business", "Firma", "Cég")}
                         </span>
                       )}
                       {client.clientType === "partner" && (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-amber-500 text-white border border-amber-600 shadow-sm animate-fade-in">
-                          <Handshake className="h-2.5 w-2.5 text-white" /> Partner
+                          <Handshake className="h-2.5 w-2.5 text-white" /> {t("Partner", "Partner", "Partner")}
                         </span>
                       )}
                       {client.clientType === "person" && (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-emerald-500 text-white border border-emerald-600 shadow-sm animate-fade-in">
-                          <User className="h-2.5 w-2.5 text-white" /> Person
+                          <User className="h-2.5 w-2.5 text-white" /> {t("Person", "Osoba", "Személy")}
                         </span>
                       )}
                     </td>
@@ -4268,7 +4292,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     {/* Deals count */}
                     <td className="inline-flex items-center lg:table-cell py-1 lg:py-3.5 px-0 lg:px-4 text-center mr-3.5">
                       <div className="flex items-center gap-1.5">
-                        <span className="text-[9px] font-black text-slate-400 lg:hidden uppercase tracking-wider">Deals:</span>
+                        <span className="text-[9px] font-black text-slate-400 lg:hidden uppercase tracking-wider">{t("Deals", "Obchody", "Üzletek")}:</span>
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500 text-white border border-emerald-600 shadow">
                           <Layers className="h-3 w-3 text-white" /> {client.leadsCount}
                         </span>
@@ -4278,7 +4302,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     {/* Total Value */}
                     <td className="inline-flex items-center lg:table-cell py-1.5 lg:py-3.5 px-0 lg:px-6 font-heading font-black text-emerald-700 text-sm w-full lg:w-auto mt-1 lg:mt-0 pt-2 lg:pt-3.5 border-t border-slate-50 lg:border-t-0">
                       <div className="flex items-center gap-1.5">
-                        <span className="text-[9px] font-black text-slate-400 lg:hidden uppercase tracking-wider">Worth:</span>
+                        <span className="text-[9px] font-black text-slate-400 lg:hidden uppercase tracking-wider">{t("Worth", "Hodnota", "Érték")}:</span>
                         <span className="font-heading font-black text-emerald-700 text-sm">
                           &euro; {client.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
@@ -4301,30 +4325,30 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 disabled={currentPage === 1}
                 className="relative inline-flex items-center px-4 py-2 border border-slate-200 text-xs font-bold rounded-xl text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
               >
-                Previous
+                {t("Previous", "Predchádzajúca", "Előző")}
               </button>
               <button
                 onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(processedClients.length / 50)))}
                 disabled={currentPage === Math.ceil(processedClients.length / 50)}
                 className="ml-3 relative inline-flex items-center px-4 py-2 border border-slate-200 text-xs font-bold rounded-xl text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
               >
-                Next
+                {t("Next", "Ďalšia", "Következő")}
               </button>
             </div>
             <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
               <div>
                 <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-                  Showing <span className="text-emerald-700 font-extrabold">{(currentPage - 1) * 50 + 1}</span> to <span className="text-emerald-700 font-extrabold">{Math.min(currentPage * 50, processedClients.length)}</span> of <span className="text-emerald-700 font-extrabold">{processedClients.length}</span> results
+                  {t("Showing", "Zobrazuje sa", "Megjelenítve")} <span className="text-emerald-700 font-extrabold">{(currentPage - 1) * 50 + 1}</span> {t("to", "až", "–")} <span className="text-emerald-700 font-extrabold">{Math.min(currentPage * 50, processedClients.length)}</span> {t("of", "z", "/")} <span className="text-emerald-700 font-extrabold">{processedClients.length}</span> {t("results", "výsledkov", "találat")}
                 </p>
               </div>
               <div>
-                <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label={t("Pagination", "Stránkovanie", "Lapozás")}>
                   <button
                     onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                     disabled={currentPage === 1}
                     className="relative inline-flex items-center px-2 py-2 rounded-l-xl border border-slate-200 bg-white text-xs font-bold text-slate-500 hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
                   >
-                    <span className="sr-only">Previous</span>
+                    <span className="sr-only">{t("Previous", "Predchádzajúca", "Előző")}</span>
                     <ChevronLeft className="h-4 w-4 text-emerald-600 stroke-[2.5]" aria-hidden="true" />
                   </button>
                   {/* Page numbers */}
@@ -4362,7 +4386,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     disabled={currentPage === Math.ceil(processedClients.length / 50)}
                     className="relative inline-flex items-center px-2 py-2 rounded-r-xl border border-slate-200 bg-white text-xs font-bold text-slate-500 hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
                   >
-                    <span className="sr-only">Next</span>
+                    <span className="sr-only">{t("Next", "Ďalšia", "Következő")}</span>
                     <ChevronRight className="h-4 w-4 text-emerald-600 stroke-[2.5]" aria-hidden="true" />
                   </button>
                 </nav>
@@ -4374,10 +4398,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         <div className="bg-emerald-50/20 border-t-2 border-emerald-100 p-4 flex items-center justify-between text-[10px] text-slate-500 font-black uppercase tracking-wider">
           <div className="flex items-center gap-1.5">
             <Clock className="h-3.5 w-3.5 text-emerald-600 stroke-[2.5]" />
-            <span>Click any client row to inspect profile details & timeline logs</span>
+            <span>{t("Click any client row to inspect profile details & timeline logs", "Kliknutím na riadok klienta zobrazíte detaily profilu a záznamy časovej osi", "Kattintson egy ügyfélsorra a profiladatok és az idővonal megtekintéséhez")}</span>
           </div>
           <div>
-            Total <strong className="text-emerald-700">{processedClients.length}</strong> unique clients
+            {t("Total", "Spolu", "Összesen")} <strong className="text-emerald-700">{processedClients.length}</strong> {t("unique clients", "jedinečných klientov", "egyedi ügyfél")}
           </div>
         </div>
       </div>
@@ -4390,7 +4414,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             {/* Header */}
             <div className="bg-slate-900 text-white p-4 flex items-center justify-between shrink-0">
               <div className="text-left min-w-0 flex-1 pr-4">
-                <span className="text-[10px] font-black uppercase text-pink-500 tracking-wider">Email Correspondence</span>
+                <span className="text-[10px] font-black uppercase text-pink-500 tracking-wider">{t("Email Correspondence", "E-mailová korešpondencia", "E-mail levelezés")}</span>
                 <h3 className="text-sm font-heading font-black uppercase tracking-tight truncate">{selectedTimelineEmail.title}</h3>
               </div>
               <button
@@ -4406,23 +4430,23 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               {isLoadingEmailDetail ? (
                 <div className="flex flex-col items-center justify-center py-12 gap-2 text-slate-400 my-auto">
                   <Loader2 className="animate-spin text-pink-500" size={24} />
-                  <span className="text-[9px] font-bold uppercase tracking-wider">Loading mail contents...</span>
+                  <span className="text-[9px] font-bold uppercase tracking-wider">{t("Loading mail contents...", "Načítavam obsah e-mailu...", "Levél tartalmának betöltése...")}</span>
                 </div>
               ) : timelineEmailDetailBody ? (
                 <div className="flex-1 flex flex-col justify-between">
                   <div className="border-b border-slate-150 pb-3 mb-4 text-left">
                     <p className="text-[10px] text-slate-550 font-bold">
-                      Subject: <strong className="text-slate-800">{selectedTimelineEmail.title}</strong>
+                      {t("Subject", "Predmet", "Tárgy")}: <strong className="text-slate-800">{selectedTimelineEmail.title}</strong>
                     </p>
                     <p className="text-[10px] text-slate-550 font-bold mt-1">
-                      Date: <span className="text-slate-700">{selectedTimelineEmail.timestamp}</span>
+                      {t("Date", "Dátum", "Dátum")}: <span className="text-slate-700">{selectedTimelineEmail.timestamp}</span>
                     </p>
                   </div>
                   <div className="flex-1 min-h-[300px]">
                     {timelineEmailDetailBody.html ? (
                       <iframe 
                         className="w-full h-full min-h-[400px] border-0 rounded-2xl bg-transparent"
-                        title="Timeline parsed mail content"
+                        title={t("Timeline parsed mail content", "Spracovaný obsah e-mailu z časovej osi", "Idővonal feldolgozott e-mail tartalma")}
                         srcDoc={`
                           <html>
                             <head>
@@ -4447,14 +4471,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       />
                     ) : (
                       <div className="text-left text-xs text-slate-700 font-semibold whitespace-pre-wrap leading-relaxed select-text p-4 bg-slate-50 rounded-2xl border border-slate-150">
-                        {timelineEmailDetailBody.text || "No message content."}
+                        {timelineEmailDetailBody.text || t("No message content.", "Žiadny obsah správy.", "Nincs üzenettartalom.")}
                       </div>
                     )}
                   </div>
                 </div>
               ) : (
                 <div className="text-center text-slate-400 py-12 text-xs font-semibold my-auto">
-                  No message content.
+                  {t("No message content.", "Žiadny obsah správy.", "Nincs üzenettartalom.")}
                 </div>
               )}
             </div>

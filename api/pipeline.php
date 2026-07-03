@@ -296,7 +296,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $clientType,
             $status,
             $source,
-            'Tomi', // Default owner
+            ccrm_default_owner($pdo), // Default owner: real primary user, not a demo name
             $value,
             3,      // Default rating
             $phone,
