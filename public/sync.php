@@ -270,7 +270,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // (OpenAI key, SMTP/IMAP passwords, OAuth secrets) — it must never serve
     // that to anonymous callers. The "not installed" check above runs first so
     // the installer wizard can still bootstrap without a session.
-    ccrm_require_auth();
+    $sessionUser = ccrm_require_auth();
 
     $settings = fetch_system_settings($pdo);
     $isDemoMode = ($settings['DEMO_MODE'] ?? 'false') === 'true';
@@ -610,11 +610,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $serverTime = null;
     try { $serverTime = $pdo->query("SELECT NOW()")->fetchColumn(); } catch (\Throwable $e) {}
 
+    // Real database connection info for the Settings "Database" panel. Admins
+    // only — this is infrastructure detail (host/name/user), never the password.
+    // The panel used to show hardcoded placeholders (localhost / ccrm /
+    // ccrm_user), which masked where the data actually lives; now it reflects
+    // config.php so an operator can see the real target at a glance.
+    $dbInfo = null;
+    if (($sessionUser['role'] ?? '') === 'admin') {
+        $dbInfo = [
+            'host' => defined('DB_HOST') ? DB_HOST : '',
+            'port' => defined('DB_PORT') ? (string) DB_PORT : '',
+            'name' => defined('DB_NAME') ? DB_NAME : '',
+            'user' => defined('DB_USER') ? DB_USER : '',
+            'type' => 'MariaDB',
+        ];
+    }
+
     echo json_encode([
         'installed' => true,
         'demoMode' => $isDemoMode,
         'dataVersion' => $dataVersion,
         'serverTime' => $serverTime,
+        'db_info' => $dbInfo,
         'leads' => $leads,
         'tasks' => $tasks,
         'users' => $users,
