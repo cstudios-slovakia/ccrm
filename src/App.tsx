@@ -46,7 +46,7 @@ function App() {
   const [, setIsSyncing] = useState(false);
   const [isInstalled, setIsInstalled] = useState(true);
   const [isDemoMode, setIsDemoMode] = useState(false);
-  const [dbInfo, setDbInfo] = useState<{ host: string; port: string; name: string; user: string } | null>(null);
+  const [dbInfo, setDbInfo] = useState<{ host: string; port: string; name: string; user: string; type?: string } | null>(null);
 
   const getTabFromHash = () => {
     const rawHash = window.location.hash.replace("#", "");
