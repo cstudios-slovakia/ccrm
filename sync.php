@@ -205,19 +205,56 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
  * $table is only ever a trusted, sanitized name (fixed table names or the
  * already-validated ue_<id>), never raw user input.
  */
+// Mass-deletion circuit breaker thresholds (see ccrm_delete_omitted). A single
+// sync may not delete-by-omission a large fraction of a table at once: that is
+// the signature of a client that logged in with empty/stale state and pushed an
+// empty collection (the 2026-07-06 data-loss incident). Tunable if a deployment
+// legitimately needs large bulk deletes through the sync API.
+if (!defined('CCRM_MASS_DELETE_MIN_ROWS')) define('CCRM_MASS_DELETE_MIN_ROWS', 5);
+if (!defined('CCRM_MASS_DELETE_FRACTION')) define('CCRM_MASS_DELETE_FRACTION', 0.5);
+
 function ccrm_delete_omitted(PDO $pdo, string $table, array $idsToDelete, ?string $baseSyncedAt, array $skipIds = []): void {
     if (empty($idsToDelete)) {
         return;
     }
+
+    // Resolve the rows this sync would actually remove (excluding protected ids
+    // such as the session user).
+    $toDelete = [];
+    foreach ($idsToDelete as $id) {
+        if (!in_array($id, $skipIds, true)) {
+            $toDelete[] = $id;
+        }
+    }
+    if (empty($toDelete)) {
+        return;
+    }
+
+    // Circuit breaker: refuse to delete-by-omission a large share of a table in
+    // one request. An empty/stale client push makes array_diff() mark most or
+    // all rows for deletion; without this guard that silently wipes the table
+    // (leads cascade to categories + timeline). Ordinary small deletions — the
+    // real use case — stay below the threshold and pass through untouched. When
+    // tripped we keep the data and log instead of destroying it; the client
+    // re-pulls the rows on its next GET.
+    $deleteCount = count($toDelete);
+    $serverTotal = (int) $pdo->query("SELECT COUNT(*) FROM `{$table}`")->fetchColumn();
+    if ($deleteCount >= CCRM_MASS_DELETE_MIN_ROWS
+        && $serverTotal > 0
+        && ($deleteCount / $serverTotal) >= CCRM_MASS_DELETE_FRACTION) {
+        error_log(sprintf(
+            '[ccrm] BLOCKED delete-by-omission on `%s`: %d of %d rows (%.0f%%) — likely an empty/stale client push; no rows deleted.',
+            $table, $deleteCount, $serverTotal, 100 * $deleteCount / $serverTotal
+        ));
+        return;
+    }
+
     if ($baseSyncedAt !== null) {
         $stmt = $pdo->prepare("DELETE FROM `{$table}` WHERE `id` = ? AND `updated_at` <= ?");
     } else {
         $stmt = $pdo->prepare("DELETE FROM `{$table}` WHERE `id` = ?");
     }
-    foreach ($idsToDelete as $id) {
-        if (in_array($id, $skipIds, true)) {
-            continue;
-        }
+    foreach ($toDelete as $id) {
         if ($baseSyncedAt !== null) {
             $stmt->execute([$id, $baseSyncedAt]);
         } else {
