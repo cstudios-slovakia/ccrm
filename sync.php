@@ -206,14 +206,17 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
  * already-validated ue_<id>), never raw user input.
  */
 // Mass-deletion circuit breaker thresholds (see ccrm_delete_omitted). A single
-// sync may not delete-by-omission a large fraction of a table at once: that is
-// the signature of a client that logged in with empty/stale state and pushed an
-// empty collection (the 2026-07-06 data-loss incident). Tunable if a deployment
-// legitimately needs large bulk deletes through the sync API.
+// sync may never delete-by-omission ALL remaining rows of a table, nor a large
+// FRACTION of them at once: that is the signature of a client that logged in
+// with empty/stale state and pushed an empty collection (the 2026-07-06 and the
+// 2026-07-10 users-table data-loss incidents). MIN_ROWS keeps everyday small
+// deletions on ordinary tables flowing; access-critical tables (users) run in
+// $strict mode where that floor is dropped so even an N-1 wipe is blocked.
+// Tunable if a deployment legitimately needs large bulk deletes through sync.
 if (!defined('CCRM_MASS_DELETE_MIN_ROWS')) define('CCRM_MASS_DELETE_MIN_ROWS', 5);
 if (!defined('CCRM_MASS_DELETE_FRACTION')) define('CCRM_MASS_DELETE_FRACTION', 0.5);
 
-function ccrm_delete_omitted(PDO $pdo, string $table, array $idsToDelete, ?string $baseSyncedAt, array $skipIds = []): void {
+function ccrm_delete_omitted(PDO $pdo, string $table, array $idsToDelete, ?string $baseSyncedAt, array $skipIds = [], bool $strict = false): void {
     if (empty($idsToDelete)) {
         return;
     }
@@ -239,12 +242,27 @@ function ccrm_delete_omitted(PDO $pdo, string $table, array $idsToDelete, ?strin
     // re-pulls the rows on its next GET.
     $deleteCount = count($toDelete);
     $serverTotal = (int) $pdo->query("SELECT COUNT(*) FROM `{$table}`")->fetchColumn();
-    if ($deleteCount >= CCRM_MASS_DELETE_MIN_ROWS
-        && $serverTotal > 0
-        && ($deleteCount / $serverTotal) >= CCRM_MASS_DELETE_FRACTION) {
+
+    // (a) Never delete EVERY remaining row of a table by omission — that is only
+    //     ever an empty/stale push, never a legitimate edit. Applies to every
+    //     table regardless of size, so even a 1- or 2-row table can't be emptied.
+    $wouldEmptyTable = ($serverTotal > 0 && $deleteCount >= $serverTotal);
+
+    // (b) Refuse to delete a large FRACTION of a table in one request. Ordinary
+    //     data tables keep a small absolute-row floor so everyday little
+    //     deletions still pass. In $strict mode — access-critical tables such as
+    //     `users`, where the sync always keeps the calling account so a full wipe
+    //     tops out at N-1 rows and never reaches 100% — the floor drops to 1, so
+    //     the 4-of-5 users wipe that slipped under the row floor is now caught.
+    $minRows = $strict ? 1 : CCRM_MASS_DELETE_MIN_ROWS;
+    $massFraction = ($serverTotal > 0
+        && $deleteCount >= $minRows
+        && ($deleteCount / $serverTotal) >= CCRM_MASS_DELETE_FRACTION);
+
+    if ($wouldEmptyTable || $massFraction) {
         error_log(sprintf(
-            '[ccrm] BLOCKED delete-by-omission on `%s`: %d of %d rows (%.0f%%) — likely an empty/stale client push; no rows deleted.',
-            $table, $deleteCount, $serverTotal, 100 * $deleteCount / $serverTotal
+            '[ccrm] BLOCKED delete-by-omission on `%s`: %d of %d rows (%.0f%%%s) — likely an empty/stale client push; no rows deleted.',
+            $table, $deleteCount, $serverTotal, 100 * $deleteCount / max(1, $serverTotal), $strict ? ', strict' : ''
         ));
         return;
     }
@@ -885,7 +903,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($isAdmin) {
                 $usersToDelete = array_diff($existingUserIds, $processedUserIds);
                 if (!empty($usersToDelete)) {
-                    ccrm_delete_omitted($pdo, 'users', $usersToDelete, $baseSyncedAt, [$sessionUser['id']]);
+                    ccrm_delete_omitted($pdo, 'users', $usersToDelete, $baseSyncedAt, [$sessionUser['id']], true);
                     ccrm_audit_log($pdo, $sessionUser, 'user.delete', 'Removed users: ' . implode(', ', $usersToDelete));
                 }
             }
