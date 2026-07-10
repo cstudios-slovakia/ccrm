@@ -437,10 +437,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     }
 
     // 3.4. Fetch Roles
-    // Read from system_settings table if it exists, otherwise use fallback
-    if (isset($settings['ROLES_RBAC'])) {
-        $roles = json_decode($settings['ROLES_RBAC'], true);
-    } else {
+    // Read from system_settings table if it exists and is non-empty, otherwise
+    // use the built-in Admin/Project Manager fallback. An empty decoded array
+    // is treated the same as "missing" — it can only be the result of a stale
+    // client push wiping the registry (see the roles.update guard above), never
+    // a legitimate state, so recover to the fallback rather than serving every
+    // client a permanently empty role list.
+    $roles = isset($settings['ROLES_RBAC']) ? json_decode($settings['ROLES_RBAC'], true) : null;
+    if (!is_array($roles) || empty($roles)) {
         $roles = [
             [
                 'name' => 'Admin',
@@ -820,10 +824,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         // Save Roles RBAC registry (admin-only).
-        if ($isAdmin && isset($payload['roles'])) {
-            $insSet = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
-            $insSet->execute(['ROLES_RBAC', json_encode($payload['roles'])]);
-            ccrm_audit_log($pdo, $sessionUser, 'roles.update', 'RBAC role registry updated');
+        //
+        // Every sync push always echoes back the client's current in-memory
+        // `roles` state (see pushStateToServer in App.tsx), even for pushes that
+        // have nothing to do with roles. If a client's roles state hasn't
+        // finished loading yet (e.g. a push that races the initial GET), that
+        // empty array would silently overwrite a populated registry here — the
+        // same class of bug ccrm_delete_omitted guards against for DB rows, but
+        // this blob had no such guard. Refuse to replace a non-empty registry
+        // with an empty one.
+        if ($isAdmin && isset($payload['roles']) && is_array($payload['roles'])) {
+            $existingRolesRaw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'ROLES_RBAC'")->fetchColumn();
+            $existingRolesCount = 0;
+            if ($existingRolesRaw !== false && $existingRolesRaw !== null) {
+                $existingRolesDecoded = json_decode($existingRolesRaw, true);
+                if (is_array($existingRolesDecoded)) {
+                    $existingRolesCount = count($existingRolesDecoded);
+                }
+            }
+            if (empty($payload['roles']) && $existingRolesCount > 0) {
+                error_log(sprintf(
+                    '[ccrm] BLOCKED roles.update: incoming roles array is empty but %d role(s) exist — likely an empty/stale client push; roles left untouched.',
+                    $existingRolesCount
+                ));
+            } else {
+                $insSet = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
+                $insSet->execute(['ROLES_RBAC', json_encode($payload['roles'])]);
+                ccrm_audit_log($pdo, $sessionUser, 'roles.update', 'RBAC role registry updated');
+            }
         }
 
         // 4.2. Synchronize Users list

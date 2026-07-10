@@ -549,7 +549,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       if (match) {
         setSelectedUser(match);
         setActiveSubTab("managers");
-        window.location.hash = "settings/managers";
+        // Do NOT rewrite window.location.hash here: App.tsx only passes
+        // initialSelectedUserName on the "user-<name>" route. Rewriting to
+        // "settings/managers" fires a hashchange that re-renders this component
+        // via the plain "settings" route (which never passes
+        // initialSelectedUserName), immediately hitting the else-branch below
+        // and nulling selectedUser back out — the Actions button appeared to
+        // do nothing.
       }
     } else {
       setSelectedUser(null);
