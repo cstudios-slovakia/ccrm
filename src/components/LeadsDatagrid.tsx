@@ -1981,7 +1981,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       source: newLeadSource || leadSources[0] || "website",
       owner: newLeadOwner || "",
       value: valNum,
-      createdAt: new Date().toISOString().split("T")[0],
+      createdAt: new Date().toISOString(),
       rating: newLeadRating,
       categories: newLeadCategories,
       referralLeadId: newLeadReferralId || undefined
@@ -4375,9 +4375,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                   <span>
                                     {(() => {
                                       if (!lead.createdAt) return "N/A";
-                                      const parts = lead.createdAt.split("-");
-                                      if (parts.length !== 3) return lead.createdAt;
-                                      const [yyyy, mm, dd] = parts;
+                                      const dateMatch = lead.createdAt.match(/^(\d{4})-(\d{2})-(\d{2})/);
+                                      if (!dateMatch) return lead.createdAt;
+                                      const [, yyyy, mm, dd] = dateMatch;
                                       
                                       // EN: MM/DD/YYYY
                                       // SK: DD.MM.YYYY
@@ -5442,7 +5442,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     <div key={lead.id} className="flex justify-between items-center text-xs border-b border-white pb-2 last:border-b-0 last:pb-0">
                       <div className="flex flex-col">
                         <span className="font-bold text-slate-800">{lead.name} ({lead.city})</span>
-                        <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">{t("Registered inflow:", "Registrovaný prílev:", "Regisztrált beérkezés:")} {lead.createdAt}</span>
+                        <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">{t("Registered inflow:", "Registrovaný prílev:", "Regisztrált beérkezés:")} {(lead.createdAt || "").slice(0, 10)}</span>
                       </div>
                       <div className="flex flex-col items-end">
                         <span className="font-black text-emerald-700">&euro; {lead.value.toLocaleString()}</span>

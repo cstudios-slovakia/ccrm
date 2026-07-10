@@ -88,7 +88,7 @@ try {
             $l['rating'] ?? 3,
             $l['phone'] ?? null,
             $l['email'] ?? null,
-            $l['createdAt'] ?? date('Y-m-d'),
+            $l['createdAt'] ?? date('Y-m-d H:i:s'),
         ]);
         $nLeads++;
         foreach ($l['timeline'] ?? [] as $ev) {

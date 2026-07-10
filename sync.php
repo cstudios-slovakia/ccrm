@@ -1042,7 +1042,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $l['district'] ?? null,
                     $l['financialSummary'] ?? null,
                     isset($l['vatValidationResult']) ? json_encode($l['vatValidationResult']) : null,
-                    $l['createdAt'] ?? date('Y-m-d')
+                    $l['createdAt'] ?? date('Y-m-d H:i:s')
                 ]);
 
                 // Check if we need to generate financial report in the background

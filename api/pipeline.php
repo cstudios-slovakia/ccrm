@@ -196,7 +196,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $phone = isset($payload['phone']) ? trim($payload['phone']) : "";
     $email = isset($payload['email']) ? trim($payload['email']) : "";
     $country = isset($payload['country']) ? trim($payload['country']) : "Slovakia";
-    $created_at = date('Y-m-d');
+    $created_at = date('Y-m-d H:i:s');
     
     // Check if there is an active lead (not closed) for this client
     $existingLead = null;

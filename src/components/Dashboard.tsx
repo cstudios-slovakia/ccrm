@@ -2339,7 +2339,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   {/* Registered Date */}
                   <div className="bg-slate-50 border border-slate-100 p-3.5 rounded-2xl space-y-1">
                     <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">{t("System Inflow Date", "Dátum zaevidovania", "Rendszerbe kerülés dátuma")}</span>
-                    <span className="text-xs font-black text-slate-800 block mt-1">{selectedLeadForDrawer.createdAt}</span>
+                    <span className="text-xs font-black text-slate-800 block mt-1">{(selectedLeadForDrawer.createdAt || "").slice(0, 10)}</span>
                   </div>
                 </div>
               </div>

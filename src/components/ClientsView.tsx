@@ -882,7 +882,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       source: "website",
       owner: newClientOwner || projectManagers[0] || currentUser?.name || "",
       value: parseFloat(newClientValue) || 0,
-      createdAt: new Date().toISOString().split("T")[0],
+      createdAt: new Date().toISOString(),
       rating: 5,
       phone: newClientPhone.trim() || undefined,
       email: newClientEmail.trim() || undefined,
