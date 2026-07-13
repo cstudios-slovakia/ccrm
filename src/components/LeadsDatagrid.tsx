@@ -2860,7 +2860,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     />
                   ) : (
                     <div className="pt-1 text-[11px] font-bold text-slate-600">
-                      {leadCreatedAt || "N/A"}
+                      {leadCreatedAt ? leadCreatedAt.split("-").reverse().join(". ") : "N/A"}
                     </div>
                   )}
                 </div>
