@@ -43,9 +43,18 @@ function ccrm_update() {
 
     // index.html is expected to differ locally after a build (the dist/ copy
     // overwrites it with build-specific markup) — safe to discard every run.
-    if (in_array('index.html', $dirty, true)) {
-        echo "Restoring index.html to avoid conflict...\n";
-        passthru("git checkout -- index.html");
+    //
+    // vendor/composer/installed.php is expected to differ after step 3 below:
+    // `composer install` always stamps it with the current git commit hash,
+    // so it goes dirty on every run and would otherwise block the *next*
+    // `php ccrm update` for no real reason — safe to discard every run.
+    $autoRestore = ['index.html', 'vendor/composer/installed.php'];
+    $toRestore = array_intersect($autoRestore, $dirty);
+    if (!empty($toRestore)) {
+        foreach ($toRestore as $file) {
+            echo "Restoring $file to avoid conflict...\n";
+            passthru("git checkout -- " . escapeshellarg($file));
+        }
     }
 
     // Any OTHER dirty tracked file must NOT be auto-stashed: a stash created
@@ -56,7 +65,7 @@ function ccrm_update() {
     // sync.php kept resurrecting itself after every `php ccrm update`, masking
     // real fixes (including a data-loss guard) for days. Fail loudly instead
     // and make the operator resolve it explicitly.
-    $unexpectedDirty = array_values(array_diff($dirty, ['index.html']));
+    $unexpectedDirty = array_values(array_diff($dirty, $autoRestore));
     if (!empty($unexpectedDirty)) {
         echo "Error: unexpected local modifications to tracked file(s), refusing to auto-stash:\n";
         foreach ($unexpectedDirty as $file) {
