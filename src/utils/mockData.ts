@@ -1,6 +1,7 @@
 import type { 
   Lead, Appointment, GeneratedDocument, MarketingChannel, 
-  NewsletterCampaign, Task, TimeLog, Employee, CustomForm, FormSubmission 
+  NewsletterCampaign, Task, TimeLog, Employee, CustomForm, FormSubmission,
+  ProjectType, Project
 } from "../types";
 
 export const INITIAL_LEADS: Lead[] = [
@@ -948,9 +949,100 @@ export const DUMMY_TEMPLATES = [
   }
 ];
 
+export const INITIAL_PROJECT_TYPES: ProjectType[] = [
+  {
+    id: "pt-custom-slab",
+    name: "Custom Slab Installation",
+    description: "Custom stone slabs installation for kitchen or bathroom countertops",
+    icon: "Layers",
+    color: "purple",
+    attributes: [
+      {
+        id: "slab-material",
+        name: "Slab Material",
+        type: "select",
+        required: true,
+        options: ["Carrara Marble", "Calacatta Viola", "Super White Quartzite", "Nero Marquina"]
+      },
+      {
+        id: "thickness",
+        name: "Thickness (cm)",
+        type: "number",
+        required: true
+      },
+      {
+        id: "edge-profile",
+        name: "Edge Profile",
+        type: "radio",
+        required: false,
+        options: ["Eased", "Bullnose", "Mitered", "Ogee"]
+      },
+      {
+        id: "installation-date",
+        name: "Requested Install Date",
+        type: "date",
+        required: true
+      },
+      {
+        id: "additional-notes",
+        name: "Additional Custom Notes",
+        type: "textarea",
+        required: false
+      }
+    ],
+    hasTimeline: true,
+    hasGantt: true
+  }
+];
+
+export const INITIAL_PROJECTS: Project[] = [
+  {
+    id: "proj-1",
+    projectTypeId: "pt-custom-slab",
+    leadId: "lead-1",
+    clientId: "lead-1",
+    status: "active",
+    managers: ["Tomi"],
+    data: {
+      "slab-material": "Carrara Marble",
+      "thickness": "3",
+      "edge-profile": "Mitered",
+      "installation-date": "2026-08-15",
+      "additional-notes": "Please verify site readiness before fabrication."
+    },
+    timeline: [
+      {
+        id: "te-p1-1",
+        type: "appointment",
+        timestamp: "2026-07-10 10:00",
+        title: "Initial Site Measurement",
+        content: "Tomi to visit client site for laser measurements and templates."
+      }
+    ],
+    gantt: [
+      {
+        id: "g-p1-1",
+        title: "Laser Measurement & Template",
+        contactId: "lead-1",
+        startDate: "2026-07-10",
+        endDate: "2026-07-11",
+        progress: 100
+      },
+      {
+        id: "g-p1-2",
+        title: "Slab Fabrication",
+        contactId: "lead-1",
+        startDate: "2026-07-12",
+        endDate: "2026-07-16",
+        progress: 40
+      }
+    ]
+  }
+];
+
 // Helper to seed localStorage
 export const seedStorageIfEmpty = () => {
-  if (!localStorage.getItem("crm_seeded_v8")) {
+  if (!localStorage.getItem("crm_seeded_v9")) {
     localStorage.setItem("crm_leads", JSON.stringify(INITIAL_LEADS));
     localStorage.setItem("crm_appointments", JSON.stringify(INITIAL_APPOINTMENTS));
     localStorage.setItem("crm_documents", JSON.stringify(INITIAL_DOCUMENTS));
@@ -961,8 +1053,10 @@ export const seedStorageIfEmpty = () => {
     localStorage.setItem("crm_employees", JSON.stringify(INITIAL_EMPLOYEES));
     localStorage.setItem("crm_forms", JSON.stringify(INITIAL_FORMS));
     localStorage.setItem("crm_submissions", JSON.stringify(INITIAL_SUBMISSIONS));
+    localStorage.setItem("crm_projectTypes", JSON.stringify(INITIAL_PROJECT_TYPES));
+    localStorage.setItem("crm_projects", JSON.stringify(INITIAL_PROJECTS));
     
-    localStorage.setItem("crm_seeded_v8", "true");
+    localStorage.setItem("crm_seeded_v9", "true");
   }
 };
 
@@ -978,6 +1072,8 @@ export interface CRMStore {
   employees: Employee[];
   forms: CustomForm[];
   submissions: FormSubmission[];
+  projectTypes: ProjectType[];
+  projects: Project[];
 }
 
 export const loadCRMData = (): CRMStore => {
@@ -992,7 +1088,9 @@ export const loadCRMData = (): CRMStore => {
     timelogs: JSON.parse(localStorage.getItem("crm_timelogs") || "[]"),
     employees: JSON.parse(localStorage.getItem("crm_employees") || "[]"),
     forms: JSON.parse(localStorage.getItem("crm_forms") || "[]"),
-    submissions: JSON.parse(localStorage.getItem("crm_submissions") || "[]")
+    submissions: JSON.parse(localStorage.getItem("crm_submissions") || "[]"),
+    projectTypes: JSON.parse(localStorage.getItem("crm_projectTypes") || "[]"),
+    projects: JSON.parse(localStorage.getItem("crm_projects") || "[]")
   };
 };
 
@@ -1003,8 +1101,8 @@ export const saveCRMData = (data: Partial<CRMStore>) => {
 };
 
 export const resetCRMData = () => {
-  localStorage.removeItem("crm_seeded_v8");
-  // Also remove the task key to trigger re-seeding
-  localStorage.removeItem("crm_tasks");
+  localStorage.removeItem("crm_seeded_v9");
+  localStorage.removeItem("crm_projectTypes");
+  localStorage.removeItem("crm_projects");
   seedStorageIfEmpty();
 };

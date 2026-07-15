@@ -1,0 +1,26 @@
+this update will expand the system with project management.
+
+- every lead can be converted to a project.
+- every client can have multiple projects
+- the projects of the clients should be visible under the client
+- there could be multiple types of project. these types must be set up in the settings under a new "projects settings" tab.
+- when creating a project type the admin can add the following:
+  - project type name
+  - project type description
+  - project type icon
+  - project type color
+  - attributes like: textfield, textarea, select, date, time, datetime, number, checkbox, radio, files 
+  - by default every project has a: lead, client, project managers (multiple can be selected). these are automatically filled in when created from a lead.
+  - each attribute can be added multiple times, named and marked as required. also orderable in the form view.
+  - also the project can have attached timeline, with custom events. which can have the same attributes as projects. 
+  - each project can have a gant chart where each row has a title, and a contact (from the clients, because it will be expanded to partners and suppliers)
+  - if the project type has these selected it will show in tabs on the right
+  - the attributes will be shown on the card to the left. the same way as leads are now.
+- when a project type is created, the system will create a table in the database with a prefix and an auto generated project type id.
+- projects will be stored with the commond data in a projects table, with the project type id.
+- each project type table will have as many collumns as there are attributes. with the unique ID as collumn name, so when it becames renamed it wont break anything. 
+- when an attribute is removed, it will remove the whole collumn from the table, and everything related to it. same for timeline and gantt chart.
+- the timeline will be stored in an additional table for each project type, with the project id and the timeline event id. the same for gantt chart.
+- all of the project data will be pushed to the RAG vector database.
+- on the project list view. there should be a settings tab.  
+- when creating a new project, and multiple project types are available, the popup should show a dropdown with the project types and short descriptions before creating the project.

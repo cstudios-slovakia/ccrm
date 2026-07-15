@@ -67,7 +67,7 @@ function fetch_system_settings($pdo) {
 // the multi-MB snapshot, and it is immune to no-op re-saves (a sync POST that
 // writes identical rows leaves the checksum untouched).
 function ccrm_compute_data_version($pdo) {
-    $candidates = ['leads', 'timeline_events', 'lead_categories', 'tasks', 'task_assignees', 'users', 'roles', 'meeting_notes', 'meeting_tasks', 'unified_entries', 'system_settings'];
+    $candidates = ['leads', 'timeline_events', 'lead_categories', 'tasks', 'task_assignees', 'users', 'roles', 'meeting_notes', 'meeting_tasks', 'unified_entries', 'system_settings', 'project_types', 'projects', 'project_managers'];
     try {
         $existing = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
         $existingSet = array_flip($existing);
@@ -510,6 +510,139 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         // Fallback
     }
 
+    // 3.6. Fetch Custom Dynamic Dashboards
+    $customDashboards = [];
+    try {
+        $dashStmt = $pdo->query("SELECT * FROM `custom_dashboards` ORDER BY `created_at` ASC");
+        while ($row = $dashStmt->fetch()) {
+            $customDashboards[] = [
+                'id' => $row['id'],
+                'name' => $row['name'],
+                'icon' => $row['icon'],
+                'color' => $row['color'],
+                'prompts' => json_decode($row['prompts_json'] ?? '[]', true),
+                'layout' => json_decode($row['layout_json'] ?? '{}', true),
+                'activeModel' => $row['active_model'],
+                'archived' => (int)$row['archived'] === 1
+            ];
+        }
+    } catch (\Exception $e) {
+        // Table doesn't exist yet or other query error
+    }
+
+    // 3.7. Fetch Project Types & Projects
+    $projectTypes = [];
+    $projects = [];
+    try {
+        $ptStmt = $pdo->query("SELECT * FROM `project_types` ORDER BY `created_at` ASC");
+        while ($row = $ptStmt->fetch(PDO::FETCH_ASSOC)) {
+            $projectTypes[] = [
+                'id' => $row['id'],
+                'name' => $row['name'],
+                'description' => $row['description'] ?? '',
+                'icon' => $row['icon'],
+                'color' => $row['color'],
+                'attributes' => json_decode($row['attributes_json'] ?? '[]', true),
+                'hasTimeline' => (int)$row['has_timeline'] === 1,
+                'hasGantt' => (int)$row['has_gantt'] === 1,
+                'timelineEventTypes' => json_decode($row['timeline_event_types_json'] ?? '[]', true),
+                'timelineAttributes' => json_decode($row['timeline_attributes_json'] ?? '[]', true)
+            ];
+        }
+
+        // Fetch managers
+        $managersByProject = [];
+        $mgrStmt = $pdo->query("SELECT `project_id`, `user_id` FROM `project_managers`");
+        while ($mgr = $mgrStmt->fetch(PDO::FETCH_ASSOC)) {
+            $managersByProject[$mgr['project_id']][] = $mgr['user_id'];
+        }
+
+        $projStmt = $pdo->query("SELECT * FROM `projects` ORDER BY `created_at` DESC");
+        while ($pRow = $projStmt->fetch(PDO::FETCH_ASSOC)) {
+            $projId = $pRow['id'];
+            $ptId = $pRow['project_type_id'];
+            $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($ptId));
+            
+            $projectItem = [
+                'id' => $projId,
+                'projectTypeId' => $ptId,
+                'leadId' => $pRow['lead_id'] ?? null,
+                'clientId' => $pRow['client_id'] ?? null,
+                'status' => $pRow['status'],
+                'managers' => $managersByProject[$projId] ?? [],
+                'data' => [],
+                'timeline' => [],
+                'gantt' => []
+            ];
+
+            // Fetch dynamic data
+            $dataTable = "proj_data_" . $safeId;
+            $chkData = $pdo->query("SHOW TABLES LIKE '{$dataTable}'")->rowCount() > 0;
+            if ($chkData) {
+                $dStmt = $pdo->prepare("SELECT * FROM `{$dataTable}` WHERE `project_id` = ?");
+                $dStmt->execute([$projId]);
+                $dRow = $dStmt->fetch(PDO::FETCH_ASSOC);
+                if ($dRow) {
+                    $parsedData = [];
+                    foreach ($dRow as $col => $val) {
+                        if (str_starts_with($col, 'attr_')) {
+                            $parsedData[str_replace('attr_', '', $col)] = $val;
+                        }
+                    }
+                    $projectItem['data'] = $parsedData;
+                }
+            }
+
+             // Fetch timeline
+             $timelineTable = "proj_timeline_" . $safeId;
+             $chkTimeline = $pdo->query("SHOW TABLES LIKE '{$timelineTable}'")->rowCount() > 0;
+             if ($chkTimeline) {
+                 $tStmt = $pdo->prepare("SELECT * FROM `{$timelineTable}` WHERE `project_id` = ? ORDER BY `timestamp` ASC");
+                 $tStmt->execute([$projId]);
+                 while ($tRow = $tStmt->fetch(PDO::FETCH_ASSOC)) {
+                     $parsedTeData = [];
+                     foreach ($tRow as $col => $val) {
+                         if (str_starts_with($col, 'attr_')) {
+                             $parsedTeData[str_replace('attr_', '', $col)] = json_decode($val, true) !== null ? json_decode($val, true) : $val;
+                         }
+                     }
+                     $projectItem['timeline'][] = [
+                         'id' => $tRow['id'],
+                         'type' => $tRow['type'],
+                         'eventType' => $tRow['event_type'] ?? null,
+                         'timestamp' => $tRow['timestamp'],
+                         'title' => $tRow['title'],
+                         'content' => $tRow['content'],
+                         'data' => $parsedTeData
+                     ];
+                 }
+             }
+
+            // Fetch gantt
+            $ganttTable = "proj_gantt_" . $safeId;
+            $chkGantt = $pdo->query("SHOW TABLES LIKE '{$ganttTable}'")->rowCount() > 0;
+            if ($chkGantt) {
+                $gStmt = $pdo->prepare("SELECT * FROM `{$ganttTable}` WHERE `project_id` = ?");
+                $gStmt->execute([$projId]);
+                while ($gRow = $gStmt->fetch(PDO::FETCH_ASSOC)) {
+                    $projectItem['gantt'][] = [
+                        'id' => $gRow['id'],
+                        'title' => $gRow['title'],
+                        'contactId' => $gRow['contact_id'],
+                        'startDate' => $gRow['start_date'],
+                        'endDate' => $gRow['end_date'],
+                        'progress' => (int)$gRow['progress']
+                    ];
+                }
+            }
+
+            $projects[] = $projectItem;
+        }
+
+    } catch (\Exception $e) {
+        // Fallback if tables don't exist
+    }
+
     echo json_encode([
         'installed' => true,
         'demoMode' => $isDemoMode,
@@ -521,6 +654,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'meetingNotes' => $meetingNotes,
         'unifiedEntries' => $unifiedEntries,
         'unifiedEntriesData' => $unifiedEntriesData,
+        'customDashboards' => $customDashboards,
+        'projectTypes' => $projectTypes,
+        'projects' => $projects,
         'settings' => [
             'systemName' => $settings['SYSTEM_NAME'] ?? 'CCRM',
             'systemLanguage' => $settings['SYSTEM_LANGUAGE'] ?? 'sk',
@@ -614,6 +750,138 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
+        // Project Types dynamic table generation
+        if (isset($payload['projectTypes']) && is_array($payload['projectTypes'])) {
+            require_once __DIR__ . '/api/agent_utils.php';
+            // Extract integrations config from existing settings to instantiate RAG connection
+            $intConfigRaw = '';
+            if (isset($payload['settings']['integrationsConfig'])) {
+                $intConfigRaw = is_array($payload['settings']['integrationsConfig']) ? json_encode($payload['settings']['integrationsConfig']) : $payload['settings']['integrationsConfig'];
+            } else {
+                $stmt = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'INTEGRATIONS_CONFIG'");
+                $intConfigRaw = $stmt->fetchColumn() ?: '{}';
+            }
+            $ragPdo = get_rag_db_connection(json_decode($intConfigRaw, true));
+
+            foreach ($payload['projectTypes'] as $pt) {
+                if (!isset($pt['id'])) continue;
+                $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($pt['id']));
+                $dataTable = "proj_data_" . $safeId;
+                $timelineTable = "proj_timeline_" . $safeId;
+                $ganttTable = "proj_gantt_" . $safeId;
+
+                // Create Data Table
+                $createData = "CREATE TABLE IF NOT EXISTS `{$dataTable}` (
+                    `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+                    `project_id` VARCHAR(50) NOT NULL,
+                    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
+                $pdo->exec($createData);
+                if ($ragPdo) $ragPdo->exec(str_replace("FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE", "", $createData));
+
+                // Add or Remove Columns for Data Table
+                $attributes = $pt['attributes'] ?? [];
+                $currentColsStmt = $pdo->query("SHOW COLUMNS FROM `{$dataTable}`");
+                $existingCols = [];
+                while($col = $currentColsStmt->fetch(PDO::FETCH_ASSOC)) {
+                    $existingCols[] = $col['Field'];
+                }
+                $expectedCols = ['id', 'project_id', 'created_at', 'updated_at'];
+
+                foreach ($attributes as $attr) {
+                    $colName = "attr_" . preg_replace('/[^a-z0-9_]/', '', strtolower($attr['id']));
+                    $expectedCols[] = $colName;
+                    if (!in_array($colName, $existingCols)) {
+                        $addCol = "ALTER TABLE `{$dataTable}` ADD COLUMN `{$colName}` LONGTEXT NULL";
+                        $pdo->exec($addCol);
+                        if ($ragPdo) try { $ragPdo->exec($addCol); } catch(\Exception $e) {}
+                    }
+                }
+
+                foreach ($existingCols as $col) {
+                    if (str_starts_with($col, 'attr_') && !in_array($col, $expectedCols)) {
+                        $dropCol = "ALTER TABLE `{$dataTable}` DROP COLUMN `{$col}`";
+                        $pdo->exec($dropCol);
+                        if ($ragPdo) try { $ragPdo->exec($dropCol); } catch(\Exception $e) {}
+                    }
+                }
+
+                // Create Timeline Table
+                $createTimeline = "CREATE TABLE IF NOT EXISTS `{$timelineTable}` (
+                    `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+                    `project_id` VARCHAR(50) NOT NULL,
+                    `type` VARCHAR(50) NOT NULL DEFAULT 'note',
+                    `event_type` VARCHAR(50) NULL,
+                    `timestamp` DATETIME NOT NULL,
+                    `title` VARCHAR(255) NOT NULL,
+                    `content` TEXT NULL,
+                    FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
+                $pdo->exec($createTimeline);
+                if ($ragPdo) $ragPdo->exec(str_replace("FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE", "", $createTimeline));
+
+                // Add event_type if missing in existing table
+                if (!ccrm_column_exists($pdo, $timelineTable, 'event_type')) {
+                    $addEvType = "ALTER TABLE `{$timelineTable}` ADD COLUMN `event_type` VARCHAR(50) NULL";
+                    $pdo->exec($addEvType);
+                    if ($ragPdo) try { $ragPdo->exec($addEvType); } catch(\Exception $e) {}
+                }
+
+                // Add or Remove Columns for Timeline Table
+                $timelineAttributes = [];
+                if (isset($pt['timelineEventTypes']) && is_array($pt['timelineEventTypes'])) {
+                    foreach ($pt['timelineEventTypes'] as $et) {
+                        if (isset($et['attributes']) && is_array($et['attributes'])) {
+                            foreach ($et['attributes'] as $attr) {
+                                $timelineAttributes[] = $attr;
+                            }
+                        }
+                    }
+                }
+
+                $currentTcolsStmt = $pdo->query("SHOW COLUMNS FROM `{$timelineTable}`");
+                $existingTcols = [];
+                while($col = $currentTcolsStmt->fetch(PDO::FETCH_ASSOC)) {
+                    $existingTcols[] = $col['Field'];
+                }
+                $expectedTcols = ['id', 'project_id', 'type', 'event_type', 'timestamp', 'title', 'content'];
+
+                foreach ($timelineAttributes as $attr) {
+                    $colName = "attr_" . preg_replace('/[^a-z0-9_]/', '', strtolower($attr['id']));
+                    $expectedTcols[] = $colName;
+                    if (!in_array($colName, $existingTcols)) {
+                        $addCol = "ALTER TABLE `{$timelineTable}` ADD COLUMN `{$colName}` LONGTEXT NULL";
+                        $pdo->exec($addCol);
+                        if ($ragPdo) try { $ragPdo->exec($addCol); } catch(\Exception $e) {}
+                    }
+                }
+
+                foreach ($existingTcols as $col) {
+                    if (str_starts_with($col, 'attr_') && !in_array($col, $expectedTcols)) {
+                        $dropCol = "ALTER TABLE `{$timelineTable}` DROP COLUMN `{$col}`";
+                        $pdo->exec($dropCol);
+                        if ($ragPdo) try { $ragPdo->exec($dropCol); } catch(\Exception $e) {}
+                    }
+                }
+
+                // Create Gantt Table
+                $createGantt = "CREATE TABLE IF NOT EXISTS `{$ganttTable}` (
+                    `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+                    `project_id` VARCHAR(50) NOT NULL,
+                    `title` VARCHAR(255) NOT NULL,
+                    `contact_id` VARCHAR(50) NULL,
+                    `start_date` DATE NULL,
+                    `end_date` DATE NULL,
+                    `progress` INT NOT NULL DEFAULT 0,
+                    FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
+                $pdo->exec($createGantt);
+                if ($ragPdo) $ragPdo->exec(str_replace("FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE", "", $createGantt));
+            }
+        }
+
         $pdo->beginTransaction();
 
         // 4.1. Save system settings & configurations
@@ -702,6 +970,173 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         continue;
                     }
                     $delUser->execute([$uid]);
+                }
+            }
+        }
+
+        // 4.2.5. Synchronize Project Types & Projects
+        if (isset($payload['projectTypes']) && is_array($payload['projectTypes'])) {
+            $existingPtIds = $pdo->query("SELECT `id` FROM `project_types`")->fetchAll(PDO::FETCH_COLUMN);
+            $processedPtIds = [];
+            $insPt = $pdo->prepare("INSERT INTO `project_types` (`id`, `name`, `description`, `icon`, `color`, `attributes_json`, `has_timeline`, `has_gantt`, `timeline_event_types_json`, `timeline_attributes_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `icon`=VALUES(`icon`), `color`=VALUES(`color`), `attributes_json`=VALUES(`attributes_json`), `has_timeline`=VALUES(`has_timeline`), `has_gantt`=VALUES(`has_gantt`), `timeline_event_types_json`=VALUES(`timeline_event_types_json`), `timeline_attributes_json`=VALUES(`timeline_attributes_json`)");
+            
+            foreach ($payload['projectTypes'] as $pt) {
+                if (!isset($pt['id'])) continue;
+                $insPt->execute([
+                    $pt['id'],
+                    $pt['name'],
+                    $pt['description'] ?? '',
+                    $pt['icon'],
+                    $pt['color'],
+                    json_encode($pt['attributes'] ?? []),
+                    !empty($pt['hasTimeline']) ? 1 : 0,
+                    !empty($pt['hasGantt']) ? 1 : 0,
+                    json_encode($pt['timelineEventTypes'] ?? []),
+                    json_encode($pt['timelineAttributes'] ?? [])
+                ]);
+                $processedPtIds[] = $pt['id'];
+            }
+            // Deletion of Project Types
+            $ptToDelete = array_diff($existingPtIds, $processedPtIds);
+            if (!empty($ptToDelete)) {
+                $delPt = $pdo->prepare("DELETE FROM `project_types` WHERE `id` = ?");
+                foreach ($ptToDelete as $ptId) {
+                    $delPt->execute([$ptId]);
+                    // Drop dynamic tables (will implicitly commit, but that's fine if it's during deletion which is rare)
+                    $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($ptId));
+                    $pdo->exec("DROP TABLE IF EXISTS `proj_data_{$safeId}`");
+                    $pdo->exec("DROP TABLE IF EXISTS `proj_timeline_{$safeId}`");
+                    $pdo->exec("DROP TABLE IF EXISTS `proj_gantt_{$safeId}`");
+                    if (isset($ragPdo) && $ragPdo) {
+                        try { $ragPdo->exec("DROP TABLE IF EXISTS `proj_data_{$safeId}`"); } catch(\Exception $e) {}
+                        try { $ragPdo->exec("DROP TABLE IF EXISTS `proj_timeline_{$safeId}`"); } catch(\Exception $e) {}
+                        try { $ragPdo->exec("DROP TABLE IF EXISTS `proj_gantt_{$safeId}`"); } catch(\Exception $e) {}
+                    }
+                }
+            }
+        }
+
+        if (isset($payload['projects']) && is_array($payload['projects'])) {
+            $existingProjIds = $pdo->query("SELECT `id` FROM `projects`")->fetchAll(PDO::FETCH_COLUMN);
+            $processedProjIds = [];
+
+            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `lead_id`, `client_id`, `status`) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`)");
+            
+            $pdo->exec("DELETE FROM `project_managers`"); // Simple sync: wipe and insert
+            $insMgr = $pdo->prepare("INSERT IGNORE INTO `project_managers` (`project_id`, `user_id`) VALUES (?, ?)");
+
+            foreach ($payload['projects'] as $p) {
+                if (!isset($p['id']) || !isset($p['projectTypeId'])) continue;
+                $projId = $p['id'];
+                
+                $insProj->execute([
+                    $projId,
+                    $p['projectTypeId'],
+                    empty($p['leadId']) ? null : $p['leadId'],
+                    empty($p['clientId']) ? null : $p['clientId'],
+                    $p['status'] ?? 'active'
+                ]);
+                
+                foreach ($p['managers'] ?? [] as $uid) {
+                    $insMgr->execute([$projId, $uid]);
+                }
+
+                $processedProjIds[] = $projId;
+
+                $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($p['projectTypeId']));
+                
+                // Save dynamic data
+                if (isset($p['data']) && is_array($p['data'])) {
+                    $dataTable = "proj_data_" . $safeId;
+                    $cols = ['id', 'project_id'];
+                    $vals = [$projId, $projId]; 
+                    $updParts = [];
+                    foreach ($p['data'] as $k => $v) {
+                        $colName = "attr_" . preg_replace('/[^a-z0-9_]/', '', strtolower($k));
+                        // Verify column exists
+                        if (ccrm_column_exists($pdo, $dataTable, $colName)) {
+                            $cols[] = $colName;
+                            // Convert arrays to JSON, store strings as is
+                            $vals[] = is_array($v) ? json_encode($v) : $v;
+                            $updParts[] = "`{$colName}`=VALUES(`{$colName}`)";
+                        }
+                    }
+                    if (!empty($updParts)) {
+                        $colsStr = implode(', ', array_map(function($c){return "`$c`";}, $cols));
+                        $placeholders = implode(', ', array_fill(0, count($cols), '?'));
+                        $updStr = implode(', ', $updParts);
+                        $insData = "INSERT INTO `{$dataTable}` ({$colsStr}) VALUES ({$placeholders}) ON DUPLICATE KEY UPDATE {$updStr}";
+                        $pdo->prepare($insData)->execute($vals);
+                        if (isset($ragPdo) && $ragPdo) {
+                           try { $ragPdo->prepare($insData)->execute($vals); } catch(\Exception $e) {}
+                        }
+                    } else {
+                        // At least insert the basic row
+                        $insData = "INSERT INTO `{$dataTable}` (`id`, `project_id`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `project_id`=VALUES(`project_id`)";
+                        $pdo->prepare($insData)->execute([$projId, $projId]);
+                        if (isset($ragPdo) && $ragPdo) {
+                           try { $ragPdo->prepare($insData)->execute([$projId, $projId]); } catch(\Exception $e) {}
+                        }
+                    }
+                }
+
+                // Save Timeline
+                if (isset($p['timeline']) && is_array($p['timeline'])) {
+                    $timelineTable = "proj_timeline_" . $safeId;
+                    $pdo->prepare("DELETE FROM `{$timelineTable}` WHERE `project_id` = ?")->execute([$projId]);
+                    if (isset($ragPdo) && $ragPdo) {
+                        try { $ragPdo->prepare("DELETE FROM `{$timelineTable}` WHERE `project_id` = ?")->execute([$projId]); } catch(\Exception $e) {}
+                    }
+
+                    foreach ($p['timeline'] as $te) {
+                        $cols = ['id', 'project_id', 'type', 'event_type', 'timestamp', 'title', 'content'];
+                        $vals = [$te['id'], $projId, $te['type'], $te['eventType'] ?? null, $te['timestamp'], $te['title'], $te['content'] ?? null];
+
+                        if (isset($te['data']) && is_array($te['data'])) {
+                            foreach ($te['data'] as $k => $v) {
+                                $colName = "attr_" . preg_replace('/[^a-z0-9_]/', '', strtolower($k));
+                                if (ccrm_column_exists($pdo, $timelineTable, $colName)) {
+                                    $cols[] = $colName;
+                                    $vals[] = is_array($v) ? json_encode($v) : $v;
+                                }
+                            }
+                        }
+
+                        $colsStr = implode(', ', array_map(function($c){return "`$c`";}, $cols));
+                        $placeholders = implode(', ', array_fill(0, count($cols), '?'));
+                        $insTime = "INSERT INTO `{$timelineTable}` ({$colsStr}) VALUES ({$placeholders})";
+                        $pdo->prepare($insTime)->execute($vals);
+                        if (isset($ragPdo) && $ragPdo) {
+                            try { $ragPdo->prepare($insTime)->execute($vals); } catch(\Exception $e) {}
+                        }
+                    }
+                }
+
+                // Save Gantt
+                if (isset($p['gantt']) && is_array($p['gantt'])) {
+                    $ganttTable = "proj_gantt_" . $safeId;
+                    $pdo->prepare("DELETE FROM `{$ganttTable}` WHERE `project_id` = ?")->execute([$projId]);
+                    if (isset($ragPdo) && $ragPdo) {
+                        try { $ragPdo->prepare("DELETE FROM `{$ganttTable}` WHERE `project_id` = ?")->execute([$projId]); } catch(\Exception $e) {}
+                    }
+
+                    $insGantt = $pdo->prepare("INSERT INTO `{$ganttTable}` (`id`, `project_id`, `title`, `contact_id`, `start_date`, `end_date`, `progress`) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                    $ragInsGantt = (isset($ragPdo) && $ragPdo) ? $ragPdo->prepare("INSERT INTO `{$ganttTable}` (`id`, `project_id`, `title`, `contact_id`, `start_date`, `end_date`, `progress`) VALUES (?, ?, ?, ?, ?, ?, ?)") : null;
+
+                    foreach ($p['gantt'] as $ge) {
+                        $args = [$ge['id'], $projId, $ge['title'], empty($ge['contactId']) ? null : $ge['contactId'], empty($ge['startDate']) ? null : $ge['startDate'], empty($ge['endDate']) ? null : $ge['endDate'], $ge['progress'] ?? 0];
+                        $insGantt->execute($args);
+                        if ($ragInsGantt) try { $ragInsGantt->execute($args); } catch(\Exception $e) {}
+                    }
+                }
+            }
+
+            // Deletion of Projects
+            $projToDelete = array_diff($existingProjIds, $processedProjIds);
+            if (!empty($projToDelete)) {
+                $delProj = $pdo->prepare("DELETE FROM `projects` WHERE `id` = ?");
+                foreach ($projToDelete as $pid) {
+                    $delProj->execute([$pid]);
                 }
             }
         }
@@ -1199,6 +1634,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $delRow->execute([$rid]);
                         }
                     }
+                }
+            }
+        }
+
+        // 4.7. Synchronize Custom Dynamic Dashboards
+        if (isset($payload['customDashboards']) && is_array($payload['customDashboards'])) {
+            $stmt = $pdo->query("SELECT `id` FROM `custom_dashboards`");
+            $existingDashIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $processedDashIds = [];
+
+            $insDash = $pdo->prepare("INSERT INTO `custom_dashboards` (`id`, `name`, `icon`, `color`, `prompts_json`, `layout_json`, `active_model`, `archived`) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `icon` = VALUES(`icon`), `color` = VALUES(`color`), `prompts_json` = VALUES(`prompts_json`), `layout_json` = VALUES(`layout_json`), `active_model` = VALUES(`active_model`), `archived` = VALUES(`archived`)");
+
+            foreach ($payload['customDashboards'] as $dash) {
+                $dashId = $dash['id'];
+                $prompts = $dash['prompts'] ?? [];
+                $layout = $dash['layout'] ?? [];
+                $insDash->execute([
+                    $dashId,
+                    $dash['name'],
+                    $dash['icon'],
+                    $dash['color'],
+                    json_encode($prompts),
+                    json_encode($layout),
+                    $dash['activeModel'] ?? 'gpt-4o',
+                    ($dash['archived'] ?? false) ? 1 : 0
+                ]);
+                $processedDashIds[] = $dashId;
+            }
+
+            $dashesToDelete = array_diff($existingDashIds, $processedDashIds);
+            if (!empty($dashesToDelete)) {
+                $delDash = $pdo->prepare("DELETE FROM `custom_dashboards` WHERE `id` = ?");
+                foreach ($dashesToDelete as $did) {
+                    $delDash->execute([$did]);
                 }
             }
         }

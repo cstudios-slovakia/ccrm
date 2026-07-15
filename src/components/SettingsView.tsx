@@ -6,9 +6,10 @@ import {
   Eye, Pencil, Minus, GripVertical, ArrowLeft, Activity, Clock, CheckSquare,
   Menu, ArrowUp, FolderOpen, Search
 } from "lucide-react";
-import type { UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task } from "../types";
+import type { UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, ProjectType } from "../types";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
+import { ProjectSettings } from "./ProjectSettings";
 
 interface SettingsViewProps {
   systemName: string;
@@ -71,6 +72,9 @@ interface SettingsViewProps {
   // Record stores — used to cascade a rename onto existing leads/tasks so they are not orphaned.
   setLeads?: React.Dispatch<React.SetStateAction<Lead[]>>;
   setTasks?: React.Dispatch<React.SetStateAction<Task[]>>;
+
+  projectTypes: ProjectType[];
+  setProjectTypes: React.Dispatch<React.SetStateAction<ProjectType[]>>;
 }
 
 // Extract all valid Lucide icon names dynamically for search
@@ -124,7 +128,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   settingsAction = null,
   settingsActionId = null,
   setLeads,
-  setTasks
+  setTasks,
+  projectTypes,
+  setProjectTypes
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
 
@@ -456,7 +462,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // Role creation states
   const [newRoleName, setNewRoleName] = React.useState("");
 
-  const [activeSubTab, setActiveSubTab] = React.useState<"branding" | "managers" | "rbac" | "states" | "sources" | "danger" | "ads" | "api" | "email" | "ai" | "unified" | "errors">((initialSubTab as any) || "branding");
+  const [activeSubTab, setActiveSubTab] = React.useState<"branding" | "managers" | "rbac" | "states" | "sources" | "danger" | "ads" | "api" | "email" | "ai" | "unified" | "errors" | "projects">((initialSubTab as any) || "branding");
 
   // Exception Tracking State
   const [errorLogs, setErrorLogs] = React.useState<any[]>([]);
@@ -1621,6 +1627,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // Filter allowed tabs based on permissions
   const allowedTabs = ([
     { id: "branding", label: "⚙️ General Config", permKey: "general_config" as const },
+    { id: "projects", label: "💼 Project Settings", permKey: "general_config" as const },
     { id: "unified", label: "🗂️ Unified Entries", permKey: "general_config" as const },
     { id: "sources", label: "🚀 Traffic & Categories", permKey: "traffic_sources" as const },
     { id: "states", label: "🏷️ Pipeline Stages", permKey: "pipeline_stages" as const },
@@ -2080,6 +2087,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </>
             )}
           </>
+        )}
+
+        {/* TAB: Projects Configuration */}
+        {activeSubTab === "projects" && getPermission("general_config") !== "nothing" && (
+          <div className="lg:col-span-12 space-y-6">
+            {renderReadOnlyBanner("general_config")}
+            <ProjectSettings
+              projectTypes={projectTypes}
+              setProjectTypes={setProjectTypes}
+              userLanguage={userLanguage}
+              canEdit={getPermission("general_config") === "edit"}
+            />
+          </div>
         )}
 
         {/* TAB 1: General Branding Config */}

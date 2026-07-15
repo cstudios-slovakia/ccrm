@@ -255,6 +255,55 @@ if (!function_exists('ccrm_schema_statements')) {
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               PRIMARY KEY (`token`),
               INDEX `idx_pwreset_user` (`user_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Custom Dynamic Dashboards
+            "CREATE TABLE IF NOT EXISTS `custom_dashboards` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `name` VARCHAR(100) NOT NULL,
+              `icon` VARCHAR(50) NOT NULL,
+              `color` VARCHAR(20) NOT NULL,
+              `prompts_json` LONGTEXT NOT NULL,
+              `layout_json` LONGTEXT NOT NULL,
+              `active_model` VARCHAR(50) NOT NULL,
+              `archived` TINYINT(1) NOT NULL DEFAULT 0,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Project Types (Metadata for dynamic tables)
+            "CREATE TABLE IF NOT EXISTS `project_types` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `name` VARCHAR(100) NOT NULL,
+              `description` TEXT NULL,
+              `icon` VARCHAR(50) NOT NULL,
+              `color` VARCHAR(20) NOT NULL,
+              `attributes_json` LONGTEXT NOT NULL,
+              `has_timeline` TINYINT(1) NOT NULL DEFAULT 0,
+              `has_gantt` TINYINT(1) NOT NULL DEFAULT 0,
+              `timeline_event_types_json` LONGTEXT NULL,
+              `timeline_attributes_json` LONGTEXT NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Projects (Base common table)
+            "CREATE TABLE IF NOT EXISTS `projects` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `project_type_id` VARCHAR(50) NOT NULL,
+              `lead_id` VARCHAR(50) NULL,
+              `client_id` VARCHAR(50) NULL,
+              `status` VARCHAR(50) NOT NULL DEFAULT 'active',
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              FOREIGN KEY (`project_type_id`) REFERENCES `project_types` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Project Managers (Junction table)
+            "CREATE TABLE IF NOT EXISTS `project_managers` (
+              `project_id` VARCHAR(50) NOT NULL,
+              `user_id` VARCHAR(50) NOT NULL,
+              PRIMARY KEY (`project_id`, `user_id`),
+              FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
         ];
     }
@@ -349,6 +398,12 @@ if (!function_exists('ccrm_schema_statements')) {
         }
         if (!ccrm_column_exists($pdo, 'leads', 'vat_validation_result')) {
             $pdo->exec("ALTER TABLE `leads` ADD COLUMN `vat_validation_result` TEXT NULL");
+        }
+        if (!ccrm_column_exists($pdo, 'project_types', 'timeline_event_types_json')) {
+            $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `timeline_event_types_json` LONGTEXT NULL");
+        }
+        if (!ccrm_column_exists($pdo, 'project_types', 'timeline_attributes_json')) {
+            $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `timeline_attributes_json` LONGTEXT NULL");
         }
     }
 

@@ -1,10 +1,16 @@
 import React, { useState } from "react";
 import * as Icons from "lucide-react";
-import { LayoutDashboard, ChevronLeft, ChevronRight, Settings, LogOut, TableProperties, Users, FolderOpen, BarChart3, Mail, Brain, PencilLine, Pencil, X, GripVertical, Download, Upload, Save } from "lucide-react";
+import { LayoutDashboard, ChevronLeft, ChevronRight, Settings, LogOut, TableProperties, Users, FolderOpen, BarChart3, Mail, Brain, PencilLine, Pencil, X, GripVertical, Download, Upload, Save, Trash2 } from "lucide-react";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { cn } from "../utils/cn";
-import type { UserProfile, RolePermission, UnifiedEntryRegistry } from "../types";
+import type { UserProfile, RolePermission, UnifiedEntryRegistry, CustomDashboard } from "../types";
+
+const ALL_LUCIDE_ICONS = Object.keys(Icons).filter(key => {
+  return /^[A-Z][a-zA-Z0-9]*$/.test(key) && 
+         key !== 'createReactComponent' &&
+         key !== 'Icon';
+});
 
 interface SidebarProps {
   activeTab: string;
@@ -21,6 +27,8 @@ interface SidebarProps {
   canEditNav: boolean;
   onSaveUserLayout: (layout: string[]) => void;
   unifiedEntries?: UnifiedEntryRegistry[];
+  customDashboards?: CustomDashboard[];
+  onSaveCustomDashboards?: (dashboards: CustomDashboard[]) => void;
   defaultPage?: string;
   onSaveDefaultPage?: (pageId: string) => void;
 }
@@ -40,6 +48,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   canEditNav,
   onSaveUserLayout,
   unifiedEntries = [],
+  customDashboards = [],
+  onSaveCustomDashboards,
   defaultPage,
   onSaveDefaultPage
 }) => {
@@ -93,6 +103,104 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
+  // State variables for Custom Dashboard Modal
+  const [isDashModalOpen, setIsDashModalOpen] = useState(false);
+  const [dashName, setDashName] = useState("");
+  const [dashIcon, setDashIcon] = useState("LayoutDashboard");
+  const [dashColor, setDashColor] = useState("#4f46e5");
+  const [isIconSearchOpen, setIsIconSearchOpen] = useState(false);
+  const [iconSearchQuery, setIconSearchQuery] = useState("");
+
+
+
+  const dashColors = [
+    "#2563eb", // Blue
+    "#4f46e5", // Indigo
+    "#059669", // Emerald
+    "#8b5cf6", // Purple
+    "#b45309", // Amber
+    "#e11d48", // Rose
+    "#0891b2", // Cyan
+    "#db2777"  // Pink
+  ];
+
+  // Dynamic Custom Dashboards mapping
+  const dynamicDashItems = React.useMemo(() => {
+    return (customDashboards || [])
+      .filter(dash => !dash.archived)
+      .map(dash => {
+        const IconComponent = (Icons as any)[dash.icon] || LayoutDashboard;
+        return {
+          id: `dash_${dash.id}`,
+          label: dash.name,
+          icon: IconComponent,
+          isCustomDash: true,
+          customColor: dash.color
+        };
+      });
+  }, [customDashboards]);
+
+  const handleCreateDashboard = () => {
+    if (!dashName.trim()) {
+      alert("Name is required");
+      return;
+    }
+    const safeId = dashName.toLowerCase().replace(/[^a-z0-9]/g, "_").replace(/^[^a-z]+/, "") || "dash_" + Date.now();
+    if ((customDashboards || []).some(d => d.id === safeId)) {
+      alert("A dashboard with this name/id already exists.");
+      return;
+    }
+
+    const newDash: CustomDashboard = {
+      id: safeId,
+      name: dashName.trim(),
+      icon: dashIcon,
+      color: dashColor,
+      prompts: [],
+      layout: { widgets: [] },
+      activeModel: "gpt-4o",
+      archived: false
+    };
+
+    const nextDashboards = [...(customDashboards || []), newDash];
+    if (onSaveCustomDashboards) {
+      onSaveCustomDashboards(nextDashboards);
+    }
+
+    // Automatically append to active navigation items in edit mode
+    const itemNavId = `dash_${safeId}`;
+    setActiveItems(prev => [...prev, itemNavId]);
+
+    // Reset and close
+    setDashName("");
+    setIsDashModalOpen(false);
+    
+    // Switch to it immediately
+    setActiveTab(itemNavId);
+  };
+
+  const handleDeleteDashboard = (itemId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!window.confirm(t("Are you sure you want to delete this dashboard?", "Naozaj chcete vymazať tento panel?", "Biztosan törli ezt az irányítópultot?"))) {
+      return;
+    }
+    const dashId = itemId.replace("dash_", "");
+    
+    // 1. Remove from customDashboards list and notify parent
+    const nextDashboards = (customDashboards || []).filter(d => d.id !== dashId);
+    if (onSaveCustomDashboards) {
+      onSaveCustomDashboards(nextDashboards);
+    }
+    
+    // 2. Remove from active/hidden items and save navigation order
+    const nextActive = activeItems.filter(id => id !== itemId);
+    const nextHidden = hiddenItems.filter(id => id !== itemId);
+    setActiveItems(nextActive);
+    setHiddenItems(nextHidden);
+    onSaveUserLayout(nextActive);
+  };
+
   // Dynamic Unified Entries Items mapping
   const dynamicUeItems = React.useMemo(() => {
     return unifiedEntries
@@ -114,15 +222,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return [
       "dashboard", 
       "overview", 
+      "projects",
       "rag_ai", 
       "leads", 
       "clients", 
       "meetings", 
       ...dynamicUeItems.map(item => item.id),
+      ...dynamicDashItems.map(item => item.id),
       "files", 
       "email"
     ];
-  }, [dynamicUeItems]);
+  }, [dynamicUeItems, dynamicDashItems]);
 
   const userMetadata = React.useMemo(() => {
     if (!currentUser?.metadata_json) return null;
@@ -280,15 +390,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return [
       { id: "dashboard", label: systemLanguage === "sk" ? "Panel úloh" : systemLanguage === "hu" ? "Feladat Irányítópult" : "Task Dashboard", icon: LayoutDashboard, color: "#ff5d00" },
       { id: "overview", label: getTranslation(systemLanguage, "sidebar.dashboard"), icon: BarChart3, color: "#0891b2" },
+      { id: "projects", label: systemLanguage === "sk" ? "Projekty" : systemLanguage === "hu" ? "Projektek" : "Projects", icon: Icons.Briefcase || LayoutDashboard, color: "#a855f7", isLavender: true },
       { id: "rag_ai", label: systemLanguage === "sk" ? "RAG AI Asistent" : systemLanguage === "hu" ? "RAG AI Asszisztens" : "RAG AI Assistant", icon: Brain, color: "#8b5cf6", isPurple: true },
       { id: "leads", label: getTranslation(systemLanguage, "sidebar.leads"), icon: TableProperties, color: "#2563eb" },
       { id: "clients", label: getTranslation(systemLanguage, "sidebar.clients"), icon: Users, color: "#059669" },
       { id: "meetings", label: getTranslation(systemLanguage, "sidebar.meetings"), icon: PencilLine, color: "#4f46e5", isNightBlue: true },
       ...dynamicUeItems,
+      ...dynamicDashItems,
       { id: "files", label: getTranslation(systemLanguage, "sidebar.files"), icon: FolderOpen, color: "#b45309" },
       { id: "email", label: systemLanguage === "sk" ? "Pošta" : systemLanguage === "hu" ? "Levelezés" : "Mail Client", icon: Mail, color: "#db2777" }
     ];
-  }, [systemLanguage, dynamicUeItems]);
+  }, [systemLanguage, dynamicUeItems, dynamicDashItems]);
 
   const isItemVisibleInSystem = (id: string) => {
     if (id === "rag_ai") {
@@ -375,7 +487,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   "w-full flex items-center gap-3.5 px-3 py-3 rounded-2xl transition-all duration-200 group text-left relative",
                   isEditingNav
                     ? "bg-slate-50/50 border border-slate-200/80 hover:bg-slate-100/50 cursor-grab active:cursor-grabbing"
-                    : item.isCustomUE
+                    : (item.isCustomUE || item.isCustomDash)
                       ? (isActive
                           ? "text-white font-bold"
                           : "text-slate-450 hover:text-slate-700 hover:bg-slate-100/50")
@@ -383,10 +495,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         ? (isActive
                             ? "bg-purple-600 text-white font-bold shadow-lg shadow-purple-600/30 border border-purple-500/20"
                             : "text-purple-600 hover:text-purple-700 hover:bg-purple-50/50")
+                      : item.isLavender
+                        ? (isActive
+                            ? "bg-purple-500 text-white font-bold shadow-lg shadow-purple-500/30 border border-purple-400/20"
+                            : "text-purple-500 hover:text-purple-650 hover:bg-purple-50/50")
                         : item.isNightBlue
                           ? (isActive
                               ? "bg-slate-900 text-white font-bold shadow-lg shadow-slate-900/30 border border-slate-800/20"
-                              : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/50")
+                              : "text-slate-605 hover:text-slate-900 hover:bg-slate-100/50")
                           : isActive 
                             ? (item.id === "leads"
                                 ? "bg-blue-600 text-white font-bold shadow-lg shadow-blue-600/30 border border-blue-500/20"
@@ -403,7 +519,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             : "text-slate-400 hover:text-slate-700 hover:bg-slate-100/50",
                   isOver && "border-2 border-dashed border-indigo-400 bg-indigo-50/40 scale-[0.98]"
                 )}
-                style={(!isEditingNav && isActive && item.isCustomUE) ? { 
+                style={(!isEditingNav && isActive && (item.isCustomUE || item.isCustomDash)) ? { 
                   backgroundColor: item.customColor,
                   boxShadow: `0 10px 15px -3px ${item.customColor}4D, 0 4px 6px -4px ${item.customColor}4D`
                 } : undefined}
@@ -428,13 +544,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     "text-sm font-heading font-medium tracking-wide",
                     isEditingNav
                       ? "text-slate-700 font-semibold"
-                      : item.isCustomUE
+                      : (item.isCustomUE || item.isCustomDash)
                         ? (isActive ? "text-white font-bold" : "text-slate-500 font-semibold group-hover:text-slate-700")
                         : item.isPurple 
                           ? (isActive ? "text-white font-bold" : "text-purple-600 font-bold")
-                          : item.isNightBlue
-                            ? (isActive ? "text-white font-bold" : "text-slate-800 font-semibold")
-                            : isActive ? "text-white font-bold" : "text-slate-500 font-semibold"
+                          : item.isLavender
+                            ? (isActive ? "text-white font-bold" : "text-purple-500 font-semibold")
+                            : item.isNightBlue
+                              ? (isActive ? "text-white font-bold" : "text-slate-800 font-semibold")
+                              : isActive ? "text-white font-bold" : "text-slate-500 font-semibold"
                   )}>
                     {item.label}
                   </span>
@@ -622,6 +740,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </button>
           </div>
 
+          <div className="mb-4 shrink-0">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsDashModalOpen(true);
+              }}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs transition-all shadow-md shadow-purple-600/10 cursor-pointer"
+            >
+              <Brain className="h-4 w-4 shrink-0 animate-pulse" />
+              <span>{t("New Dashboard", "Nový panel", "Új irányítópult")}</span>
+            </button>
+          </div>
+
           <div className="flex-1 overflow-y-auto space-y-2 pr-1 scrollbar-thin">
             {hiddenItems.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center text-slate-400 select-none">
@@ -644,13 +776,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     draggable
                     onDragStart={(e) => handleDragStart(e, item.id, 'hidden')}
                     onDragEnd={handleDragEnd}
-                    className="w-full flex items-center gap-3.5 px-3 py-3 rounded-2xl bg-white border border-slate-200 shadow-sm transition-all duration-200 cursor-grab active:cursor-grabbing hover:bg-slate-50 relative group"
+                    className="w-full flex items-center justify-between px-3 py-3 rounded-2xl bg-white border border-slate-200 shadow-sm transition-all duration-200 cursor-grab active:cursor-grabbing hover:bg-slate-50 relative group"
                   >
-                    <GripVertical className="h-4 w-4 text-slate-350 shrink-0" />
-                    <Icon className="h-5 w-5 text-slate-405 shrink-0" />
-                    <span className="text-xs font-semibold text-slate-700 tracking-wide text-left">
-                      {item.label}
-                    </span>
+                    <div className="flex items-center gap-3.5 overflow-hidden">
+                      <GripVertical className="h-4 w-4 text-slate-350 shrink-0" />
+                      <Icon className="h-5 w-5 text-slate-405 shrink-0" />
+                      <span className="text-xs font-semibold text-slate-700 tracking-wide text-left truncate">
+                        {item.label}
+                      </span>
+                    </div>
+
+                    {(item as any).isCustomDash && (
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeleteDashboard(item.id, e)}
+                        className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-rose-600 p-1 hover:bg-rose-50 rounded-lg transition-all cursor-pointer shrink-0 z-10"
+                        title={t("Delete Dashboard", "Vymazať panel", "Irányítópult törlése")}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
                   </div>
                 );
               })
@@ -730,6 +875,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           : (isMobileMenuOpen
                               ? "bg-purple-50 border-purple-200 text-purple-600"
                               : "bg-purple-50/50 border-purple-100 text-purple-500 hover:bg-purple-100 hover:text-purple-700"))
+                    : item.isLavender
+                      ? (isActive
+                          ? "bg-purple-500 border-purple-600 text-white"
+                          : (isMobileMenuOpen
+                              ? "bg-purple-50 border-purple-100 text-purple-500"
+                              : "bg-purple-50/50 border-purple-100 text-purple-500 hover:bg-purple-100 hover:text-purple-650"))
                       : item.isNightBlue
                         ? (isActive
                             ? "bg-slate-900 border-slate-950 text-white"
@@ -836,9 +987,203 @@ export const Sidebar: React.FC<SidebarProps> = ({
               )}
             </button>
           </div>
-
         </div>
       </div>
+
+      {/* New Custom Dashboard Modal */}
+      {isDashModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-[32px] shadow-2xl border border-slate-200/80 w-full max-w-md overflow-hidden flex flex-col p-6 space-y-6 animate-in zoom-in-95 duration-200 text-left">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600 shrink-0">
+                  <Brain className="h-4.5 w-4.5 animate-pulse" />
+                </div>
+                <span className="text-sm font-black text-slate-800 uppercase tracking-wider">
+                  {t("Create New Dashboard", "Vytvoriť nový panel", "Új irányítópult létrehozása")}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDashModalOpen(false)}
+                className="text-slate-400 hover:text-slate-650 p-1 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Form */}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                  {t("Dashboard Name", "Názov panela", "Irányítópult neve")}
+                </label>
+                <input
+                  type="text"
+                  value={dashName}
+                  onChange={(e) => setDashName(e.target.value)}
+                  placeholder={t("Enter dashboard name...", "Zadajte názov panela...", "Adja meg az irányítópult nevét...")}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm bg-slate-50 transition-all font-semibold"
+                />
+              </div>
+
+              {/* Icon Picker */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                  {t("Select Icon", "Vybrať ikonu", "Ikon kiválasztása")}
+                </label>
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl border border-slate-200 bg-slate-50 flex items-center justify-center text-slate-700 shrink-0">
+                    {(() => {
+                      const IconComp = (Icons as any)[dashIcon] || Icons.LayoutDashboard;
+                      return <IconComp className="h-6 w-6" />;
+                    })()}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsIconSearchOpen(true)}
+                    className="flex-1 px-4 py-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold text-slate-650 tracking-wide text-center transition-colors cursor-pointer"
+                  >
+                    {t("Choose from 1000+ icons...", "Vybrať z 1000+ ikon...", "Válasszon több mint 1000 ikon közül...")}
+                  </button>
+                </div>
+              </div>
+
+              {/* Color Picker */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
+                  {t("Select Color", "Vybrať farbu", "Szín kiválasztása")}
+                </label>
+                <div className="grid grid-cols-8 gap-2">
+                  {dashColors.map((color) => (
+                    <button
+                      key={color}
+                      type="button"
+                      onClick={() => setDashColor(color)}
+                      className={cn(
+                        "h-6 w-6 rounded-full transition-all cursor-pointer relative flex items-center justify-center scale-95 hover:scale-100",
+                        dashColor === color ? "ring-2 ring-indigo-500/30 scale-105" : ""
+                      )}
+                      style={{ backgroundColor: color }}
+                    >
+                      {dashColor === color && (
+                        <span className="block h-2 w-2 rounded-full bg-white shadow-sm" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer Actions */}
+            <div className="flex gap-3 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsDashModalOpen(false)}
+                className="flex-1 px-4 py-3 border border-slate-200 rounded-xl hover:bg-slate-50 text-xs font-bold text-slate-550 uppercase tracking-wider transition-colors cursor-pointer"
+              >
+                {t("Cancel", "Zrušiť", "Mégse")}
+              </button>
+              <button
+                type="button"
+                onClick={handleCreateDashboard}
+                className="flex-1 px-4 py-3 bg-indigo-600 hover:bg-indigo-750 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-md shadow-indigo-600/10 cursor-pointer"
+              >
+                {t("Create", "Vytvoriť", "Létrehozás")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Icon Search Picker Modal */}
+      {isIconSearchOpen && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col text-left overflow-hidden m-4 animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">
+                  {t("Select Icon", "Výber ikony", "Ikon kiválasztása")}
+                </h3>
+                <p className="text-[10px] font-bold text-slate-400 mt-0.5">
+                  {t("Search from over 1000+ icons", "Prehliadajte a hľadajte z viac ako 1000+ ikon", "Böngésszen és keressen több mint 1000 ikon között")}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsIconSearchOpen(false);
+                  setIconSearchQuery("");
+                }}
+                className="p-2 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-100 text-slate-400 hover:text-slate-650 transition-all cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Search Input */}
+            <div className="p-4 bg-slate-50/50 border-b border-slate-100">
+              <input
+                type="text"
+                value={iconSearchQuery}
+                onChange={(e) => setIconSearchQuery(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-xs font-semibold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all"
+                placeholder={t("Search icons (e.g. settings, chart, file)...", "Vyhľadajte ikonu (napr. settings, chart, file)...", "Ikonok keresése...")}
+                autoFocus
+              />
+            </div>
+
+            {/* Grid */}
+            <div className="p-6 overflow-y-auto flex-1 bg-white">
+              {(() => {
+                const query = iconSearchQuery.toLowerCase().trim();
+                const filtered = ALL_LUCIDE_ICONS.filter(name => name.toLowerCase().includes(query));
+                const displayed = filtered.slice(0, 100);
+
+                if (displayed.length === 0) {
+                  return (
+                    <div className="py-8 text-center text-slate-400">
+                      <p className="text-xs font-semibold">{t("No icons found", "Nenašli sa žiadne ikony", "Nem található ikon")}</p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-3">
+                    {displayed.map((name) => {
+                      const IconComponent = (Icons as any)[name];
+                      if (!IconComponent) return null;
+                      const isSelected = dashIcon === name;
+                      return (
+                        <button
+                          key={name}
+                          type="button"
+                          onClick={() => {
+                            setDashIcon(name);
+                            setIsIconSearchOpen(false);
+                            setIconSearchQuery("");
+                          }}
+                          className={`p-2.5 rounded-xl flex flex-col items-center justify-center gap-1 border transition-all cursor-pointer ${
+                            isSelected
+                              ? "bg-purple-600 border-purple-600 text-white"
+                              : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 hover:border-slate-300 hover:scale-[1.03]"
+                          }`}
+                          title={name}
+                        >
+                          <IconComponent className="h-5 w-5" />
+                          <span className="text-[8px] font-semibold truncate w-full text-center">{name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

@@ -9,7 +9,7 @@ import {
   Calendar, FolderOpen, FileText, Minimize2, CheckSquare, Lock,
   CornerDownLeft, CornerLeftDown, Loader2, Brain, Mic, Play, Pause, Square, Sparkles, ChevronDown
 } from "lucide-react";
-import type { Lead, TimelineEvent, Task, UserProfile } from "../types";
+import type { Lead, TimelineEvent, Task, UserProfile, Project, ProjectType } from "../types";
 import { cn } from "../utils/cn";
 
 // Searchable lead/referral picker (item 6): a select whose options are filtered by a fulltext
@@ -414,6 +414,10 @@ interface LeadsDatagridProps {
   taskStateColors?: Record<string, string>;
   integrationsConfig?: any;
   leadStageGroups?: Record<string, "new" | "in_progress" | "closed">;
+  
+  projectTypes?: ProjectType[];
+  setProjects?: React.Dispatch<React.SetStateAction<Project[]>>;
+  setActiveTab?: (tab: string) => void;
 }
 
 export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
@@ -442,7 +446,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     "Done": "#10b981"
   },
   integrationsConfig,
-  leadStageGroups = {}
+  leadStageGroups = {},
+  projectTypes = [],
+  setProjects,
+  setActiveTab
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
   const getSafeStateColor = (stateName: string) => {
@@ -1214,6 +1221,53 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
   }, [leads, initialSelectedLeadId]);
 
   const [isEditingLead, setIsEditingLead] = useState(false);
+  const [isConvertDropdownOpen, setIsConvertDropdownOpen] = useState(false);
+
+  const handleConvertToProject = (type: ProjectType) => {
+    if (!activeLead || !setProjects || !setActiveTab) return;
+    
+    setIsConvertDropdownOpen(false);
+
+    // Heuristic autofill for custom fields
+    const dynamicData: Record<string, any> = {};
+    (type.attributes || []).forEach(attr => {
+      const attrNameLower = attr.name.toLowerCase();
+      const attrIdLower = attr.id.toLowerCase();
+      if (attrNameLower.includes("email") || attrIdLower.includes("email")) {
+        dynamicData[attr.id] = activeLead.email || "";
+      } else if (attrNameLower.includes("phone") || attrIdLower.includes("phone") || attrNameLower.includes("tel") || attrIdLower.includes("tel")) {
+        dynamicData[attr.id] = activeLead.phone || "";
+      } else if (attrNameLower.includes("city") || attrIdLower.includes("city")) {
+        dynamicData[attr.id] = activeLead.city || "";
+      } else if (attrNameLower.includes("address") || attrIdLower.includes("address") || attrNameLower.includes("street") || attrIdLower.includes("street")) {
+        dynamicData[attr.id] = activeLead.address?.street || "";
+      } else if (attrNameLower.includes("company") || attrIdLower.includes("company") || attrNameLower.includes("firma") || attrIdLower.includes("firma")) {
+        dynamicData[attr.id] = activeLead.companyId || "";
+      }
+    });
+
+    const newProj: Project = {
+      id: "proj-" + Date.now(),
+      projectTypeId: type.id,
+      leadId: activeLead.id,
+      clientId: activeLead.id,
+      status: "active",
+      managers: activeLead.owner ? [activeLead.owner] : [],
+      data: dynamicData,
+      timeline: [],
+      gantt: []
+    };
+
+    setProjects(prev => [newProj, ...prev]);
+
+    (window as any).showToast(
+      t("Converted successfully! Redirecting to projects...", "Konverzia úspešná! Presmerovanie na projekty...", "Konverzió sikeres! Átirányítás a projektekhez...")
+    );
+
+    setActiveTab("projects");
+    window.location.hash = `projects?edit=${newProj.id}`;
+  };
+
   const [leadName, setLeadName] = useState("");
   const [leadValue, setLeadValue] = useState("");
   const [leadOwner, setLeadOwner] = useState("");
@@ -2336,6 +2390,38 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 </div>
               </div>
             ) : null}
+
+            {/* Convert to Project Button */}
+            {projectTypes && projectTypes.length > 0 && setProjects && setActiveTab && (
+              <div className="relative select-none inline-block">
+                <button
+                  onClick={() => setIsConvertDropdownOpen(!isConvertDropdownOpen)}
+                  className="px-4.5 py-2.5 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-purple-600/10 cursor-pointer"
+                >
+                  <Briefcase className="h-4.5 w-4.5" />
+                  <span>{t("Convert to Project", "Konvertovať na projekt", "Konvertálás projektté")}</span>
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </button>
+
+                {isConvertDropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-white border border-slate-200 shadow-xl py-2 z-[999] text-left animate-in slide-in-from-top-2 duration-200">
+                    <span className="block px-4 py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2 mb-1.5">
+                      {t("Choose Project Type", "Vyberte typ projektu", "Válasszon projekt típust")}
+                    </span>
+                    {projectTypes.map(type => (
+                      <button
+                        key={type.id}
+                        onClick={() => handleConvertToProject(type)}
+                        className="w-full text-left px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-purple-50 hover:text-purple-600 transition-colors flex items-center gap-2 cursor-pointer"
+                      >
+                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: type.color }} />
+                        <span>{type.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             <span className="text-xs font-black uppercase tracking-widest text-blue-800 bg-blue-100 border-2 border-blue-300 px-4 py-2 rounded-2xl shadow-inner">
               {getTranslation(systemLanguage, "common.lead_value")}: &euro; {activeLead.value.toLocaleString(undefined, { minimumFractionDigits: 2 })}

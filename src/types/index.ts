@@ -254,3 +254,89 @@ export interface UnifiedEntryRow {
   icon?: string;
 }
 
+export interface CustomDashboard {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  prompts: { prompt: string; layout: any }[];
+  layout: {
+    widgets: any[];
+  };
+  activeModel: string;
+  archived: boolean;
+}
+
+export type ProjectAttributeType = 
+  | "textfield" 
+  | "textarea" 
+  | "select" 
+  | "date" 
+  | "time" 
+  | "datetime" 
+  | "number" 
+  | "checkbox" 
+  | "radio" 
+  | "files"
+  | "contact";
+
+export interface ProjectAttribute {
+  id: string;
+  name: string;
+  type: ProjectAttributeType;
+  required: boolean;
+  options?: string[];
+}
+
+export interface TimelineEventType {
+  id: string;
+  name: string;
+  color: string;
+  icon: string;
+  attributes: ProjectAttribute[];
+}
+
+export interface ProjectType {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  color: string;
+  attributes: ProjectAttribute[];
+  hasTimeline: boolean;
+  hasGantt: boolean;
+  timelineEventTypes?: TimelineEventType[];
+}
+
+export interface ProjectTimelineEvent {
+  id: string;
+  type: string; // fallback or general categorizer
+  eventType?: string; // custom event type ID
+  timestamp: string; // YYYY-MM-DD HH:MM or YYYY-MM-DDTHH:MM
+  title: string;
+  content?: string;
+  data?: Record<string, any>; // timeline event custom attributes
+}
+
+export interface ProjectGanttRow {
+  id: string;
+  title: string;
+  contactId: string; // client id
+  startDate?: string; // YYYY-MM-DD
+  endDate?: string; // YYYY-MM-DD
+  progress: number; // 0-100
+}
+
+export interface Project {
+  id: string;
+  projectTypeId: string;
+  leadId?: string | null;
+  clientId?: string | null;
+  status: string; // e.g. "active" | "completed" | "on_hold" | "cancelled"
+  managers: string[]; // employee ids or names
+  data: Record<string, any>; // keyed by attribute.id
+  timeline?: ProjectTimelineEvent[];
+  gantt?: ProjectGanttRow[];
+}
+
+

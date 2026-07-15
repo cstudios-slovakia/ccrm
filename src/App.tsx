@@ -11,7 +11,8 @@ import { TaskDashboardView } from "./components/TaskDashboardView";
 import { PersonalSettingsView } from "./components/PersonalSettingsView";
 import { EmailView } from "./components/EmailView";
 import { RagAiView } from "./components/RagAiView";
-import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow } from "./types";
+import { ProjectsView } from "./components/ProjectsView";
+import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project } from "./types";
 import { VERSION } from "./utils/version";
 import { MeetingRoomView } from "./components/MeetingRoomView";
 import type { MeetingNote } from "./components/MeetingRoomView";
@@ -19,6 +20,7 @@ import { getTranslation } from "./utils/translations";
 import { InstallerWizard } from "./components/InstallerWizard";
 import { RefreshCw, AlertOctagon, Trash2, Copy } from "lucide-react";
 import { UnifiedEntryView } from "./components/UnifiedEntryView";
+import { DynamicDashboardView } from "./components/DynamicDashboardView";
 import { ShaderGradient, ShaderGradientCanvas } from "shadergradient";
 
 const ShaderGradientAny = ShaderGradient as any;
@@ -37,6 +39,9 @@ function App() {
   const integrationsConfigRef = useRef<any>(null);
   const unifiedEntriesRef = useRef<UnifiedEntryRegistry[]>([]);
   const unifiedEntriesDataRef = useRef<Record<string, UnifiedEntryRow[]>>({});
+  const customDashboardsRef = useRef<CustomDashboard[]>([]);
+  const projectTypesRef = useRef<ProjectType[]>([]);
+  const projectsRef = useRef<Project[]>([]);
   const [, setIsSyncing] = useState(false);
   const [isInstalled, setIsInstalled] = useState(true);
   const [isDemoMode, setIsDemoMode] = useState(false);
@@ -46,10 +51,10 @@ function App() {
     const rawHash = window.location.hash.replace("#", "");
     const baseHash = rawHash.split(/[/?]/)[0];
     const hashLower = baseHash.toLowerCase();
-    if (hashLower.startsWith("client-") || hashLower.startsWith("lead-") || hashLower.startsWith("user-") || hashLower.startsWith("ue_") || hashLower.startsWith("settings")) {
+    if (hashLower.startsWith("client-") || hashLower.startsWith("lead-") || hashLower.startsWith("user-") || hashLower.startsWith("ue_") || hashLower.startsWith("dash_") || hashLower.startsWith("settings")) {
       return rawHash; // Keep case sensitivity and allow sub-tabs for settings
     }
-    const validTabs = ["dashboard", "overview", "leads", "clients", "tasks", "files", "personal-settings", "email", "rag_ai", "meetings"];
+    const validTabs = ["dashboard", "overview", "leads", "clients", "tasks", "files", "personal-settings", "email", "rag_ai", "meetings", "projects"];
     return validTabs.includes(hashLower) ? hashLower : "dashboard";
   };
 
@@ -149,11 +154,47 @@ function App() {
     }
   }, [meetingNotes, isInitialSyncResolved]);
 
+  // Project Management state
+  const [projectTypes, setProjectTypes] = useState<ProjectType[]>(() => {
+    const stored = localStorage.getItem("crm_projectTypes");
+    if (stored) {
+      try {
+        return JSON.parse(stored);
+      } catch (e) {}
+    }
+    return [];
+  });
+
+  const [projects, setProjects] = useState<Project[]>(() => {
+    const stored = localStorage.getItem("crm_projects");
+    if (stored) {
+      try {
+        return JSON.parse(stored);
+      } catch (e) {}
+    }
+    return [];
+  });
+
+  useEffect(() => {
+    localStorage.setItem("crm_projectTypes", JSON.stringify(projectTypes));
+    if (isInitialSyncResolved) {
+      pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, projectTypes);
+    }
+  }, [projectTypes, isInitialSyncResolved]);
+
+  useEffect(() => {
+    localStorage.setItem("crm_projects", JSON.stringify(projects));
+    if (isInitialSyncResolved) {
+      pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, projects);
+    }
+  }, [projects, isInitialSyncResolved]);
+
   // Initial states set to empty / defaults without localStorage or mockData loaders
   const [leads, setLeads] = useState<Lead[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [unifiedEntries, setUnifiedEntries] = useState<UnifiedEntryRegistry[]>([]);
   const [unifiedEntriesData, setUnifiedEntriesData] = useState<Record<string, UnifiedEntryRow[]>>({});
+  const [customDashboards, setCustomDashboards] = useState<CustomDashboard[]>([]);
 
   const [leadStates, setLeadStates] = useState<string[]>([
     "new", "contacted", "offer sent", "accepted", "rejected"
@@ -453,6 +494,9 @@ ${log.payload || ''}
   integrationsConfigRef.current = integrationsConfig;
   unifiedEntriesRef.current = unifiedEntries;
   unifiedEntriesDataRef.current = unifiedEntriesData;
+  customDashboardsRef.current = customDashboards;
+  projectTypesRef.current = projectTypes;
+  projectsRef.current = projects;
 
   // --- REAL-TIME SERVER SYNCHRONIZER ENGINE ---
   const pushStateToServer = async (
@@ -463,7 +507,10 @@ ${log.payload || ''}
     nextUsers?: UserProfile[],
     nextMeetingNotes?: MeetingNote[],
     nextUnifiedEntries?: UnifiedEntryRegistry[],
-    nextUnifiedEntriesData?: Record<string, UnifiedEntryRow[]>
+    nextUnifiedEntriesData?: Record<string, UnifiedEntryRow[]>,
+    nextCustomDashboards?: CustomDashboard[],
+    nextProjectTypes?: ProjectType[],
+    nextProjects?: Project[]
   ) => {
     if (!isInstalled) return;
     setIsSyncing(true);
@@ -477,6 +524,9 @@ ${log.payload || ''}
       meetingNotes: nextMeetingNotes ?? meetingNotesRef.current,
       unifiedEntries: nextUnifiedEntries ?? unifiedEntriesRef.current,
       unifiedEntriesData: nextUnifiedEntriesData ?? unifiedEntriesDataRef.current,
+      customDashboards: nextCustomDashboards ?? customDashboardsRef.current,
+      projectTypes: nextProjectTypes ?? projectTypesRef.current,
+      projects: nextProjects ?? projectsRef.current,
       settings: {
         systemName,
         systemLanguage,
@@ -544,6 +594,16 @@ ${log.payload || ''}
     });
   };
 
+  const updateCustomDashboardsAndSync = (
+    newDashboards: CustomDashboard[] | ((prev: CustomDashboard[]) => CustomDashboard[])
+  ) => {
+    setCustomDashboards(prev => {
+      const nextDashboards = typeof newDashboards === "function" ? newDashboards(prev) : newDashboards;
+      pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, nextDashboards);
+      return nextDashboards;
+    });
+  };
+
   const updateRolesAndSync = (newRoles: RolePermission[] | ((prev: RolePermission[]) => RolePermission[])) => {
     setRoles(prev => {
       const nextRoles = typeof newRoles === "function" ? newRoles(prev) : newRoles;
@@ -581,6 +641,22 @@ ${log.payload || ''}
       const nextTasks = typeof newTasks === "function" ? newTasks(prev) : newTasks;
       pushStateToServer(undefined, nextTasks);
       return nextTasks;
+    });
+  };
+
+  const updateProjectsAndSync = (newProjects: Project[] | ((prev: Project[]) => Project[])) => {
+    setProjects(prev => {
+      const nextProjects = typeof newProjects === "function" ? newProjects(prev) : newProjects;
+      pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, nextProjects);
+      return nextProjects;
+    });
+  };
+
+  const updateProjectTypesAndSync = (newTypes: ProjectType[] | ((prev: ProjectType[]) => ProjectType[])) => {
+    setProjectTypes(prev => {
+      const nextTypes = typeof newTypes === "function" ? newTypes(prev) : newTypes;
+      pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, nextTypes);
+      return nextTypes;
     });
   };
 
@@ -735,6 +811,15 @@ ${log.payload || ''}
       }
       if (data.unifiedEntriesData) {
         setUnifiedEntriesData(data.unifiedEntriesData);
+      }
+      if (data.customDashboards && Array.isArray(data.customDashboards)) {
+        setCustomDashboards(data.customDashboards);
+      }
+      if (data.projectTypes && Array.isArray(data.projectTypes)) {
+        setProjectTypes(data.projectTypes);
+      }
+      if (data.projects && Array.isArray(data.projects)) {
+        setProjects(data.projects);
       }
       if (data.settings) {
         const s = data.settings;
@@ -902,8 +987,28 @@ ${log.payload || ''}
           setTaskStateColors={setTaskStateColors}
           isDemoMode={isDemoMode}
           dbInfo={dbInfo || undefined}
+          projectTypes={projectTypes}
+          setProjectTypes={updateProjectTypesAndSync}
         />
       );
+    }
+
+    if (activeTab.startsWith("dash_")) {
+      const dashId = activeTab.replace("dash_", "");
+      const dashboard = customDashboards.find(d => d.id === dashId);
+      if (dashboard) {
+        return (
+          <DynamicDashboardView
+            dashboard={dashboard}
+            onSaveDashboard={(updated) => {
+              updateCustomDashboardsAndSync((prev) =>
+                prev.map((d) => (d.id === updated.id ? updated : d))
+              );
+            }}
+            systemLanguage={userLanguage}
+          />
+        );
+      }
     }
 
     if (activeTab.startsWith("ue_")) {
@@ -970,6 +1075,9 @@ ${log.payload || ''}
           taskStateColors={taskStateColors}
           integrationsConfig={integrationsConfig}
           leadStageGroups={leadStageGroups}
+          projectTypes={projectTypes}
+          setProjects={updateProjectsAndSync}
+          setActiveTab={setActiveTab}
         />
       );
     }
@@ -1017,6 +1125,8 @@ ${log.payload || ''}
           setTaskStateColors={setTaskStateColors}
           setLeads={updateLeadsAndSync}
           setTasks={updateTasksAndSync}
+          projectTypes={projectTypes}
+          setProjectTypes={updateProjectTypesAndSync}
           unifiedEntries={unifiedEntries}
           setUnifiedEntries={updateUnifiedEntriesAndSync}
           unifiedEntriesData={unifiedEntriesData}
@@ -1051,6 +1161,22 @@ ${log.payload || ''}
             taskStateColors={taskStateColors}
             integrationsConfig={integrationsConfig}
             leadStageGroups={leadStageGroups}
+            projectTypes={projectTypes}
+            setProjects={updateProjectsAndSync}
+            setActiveTab={setActiveTab}
+          />
+        );
+      case "projects":
+        return (
+          <ProjectsView
+            projects={projects}
+            setProjects={updateProjectsAndSync}
+            projectTypes={projectTypes}
+            setProjectTypes={updateProjectTypesAndSync}
+            leads={leads}
+            users={users}
+            userLanguage={userLanguage}
+            canEdit={getPermission("general_config") === "edit"}
           />
         );
       case "clients":
@@ -1348,6 +1474,8 @@ ${log.payload || ''}
           canEditNav={getPermission("nav_edit") === "edit" || currentUser?.role?.toLowerCase() === "project manager"}
           onSaveUserLayout={handleSaveUserLayout}
           unifiedEntries={unifiedEntries}
+          customDashboards={customDashboards}
+          onSaveCustomDashboards={updateCustomDashboardsAndSync}
           defaultPage={getDefaultPageForUser(currentUser) || "dashboard"}
           onSaveDefaultPage={handleSaveDefaultPage}
         />
