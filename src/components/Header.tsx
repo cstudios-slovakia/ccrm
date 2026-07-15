@@ -1,9 +1,11 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { User, PencilLine, Mic, Plus, List, CheckSquare, Search, Mail, Database, FileText, Loader2, X } from "lucide-react";
+import { User, PencilLine, Mic, Plus, List, CheckSquare, Search, Mail, Database, FileText, Loader2, X, Sparkles } from "lucide-react";
 import type { UserProfile } from "../types";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
+import { UpdateNotesModal } from "./UpdateNotesModal";
+import type { UpdateEntry } from "./UpdateNotesModal";
 
 interface HeaderProps {
   activeTab: string;
@@ -36,6 +38,103 @@ export const Header: React.FC<HeaderProps> = ({
   const [isMeetingsOpen, setIsMeetingsOpen] = React.useState(false);
   const dropdownRef = React.useRef<HTMLDivElement>(null);
   const meetingsDropdownRef = React.useRef<HTMLDivElement>(null);
+
+  // Update notes states
+  const [isUpdatesOpen, setIsUpdatesOpen] = useState(false);
+  const [updatesList, setUpdatesList] = useState<UpdateEntry[]>([]);
+  const [hasNewUpdate, setHasNewUpdate] = useState(false);
+
+  useEffect(() => {
+    const fetchUpdateNotes = async () => {
+      const query = `
+        query GetUpdateNotes {
+          entries(section: "updateNotes", site: "*") {
+            id
+            title
+            siteHandle
+            postDate @formatDateTime(format: "Y-m-d")
+            ... on news_Entry {
+              version
+              contentMatrix {
+                __typename
+                ... on textblock_Entry {
+                  text
+                }
+                ... on image_Entry {
+                  image {
+                    url
+                    title
+                  }
+                }
+                ... on imageWithText_Entry {
+                  text
+                  image {
+                    url
+                    title
+                  }
+                  imageDirection
+                }
+              }
+            }
+          }
+        }
+      `;
+      try {
+        const res = await fetch("https://ccrm.softwaresolutions.sk/api", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+          },
+          body: JSON.stringify({ query })
+        });
+        if (!res.ok) throw new Error("Network response was not ok");
+        const json = await res.json();
+        const rawEntries = json.data?.entries || [];
+
+        // Helper to group by version and select best localized entry
+        const groups: Record<string, UpdateEntry[]> = {};
+        rawEntries.forEach((e: any) => {
+          if (!e.version) return;
+          if (!groups[e.version]) groups[e.version] = [];
+          groups[e.version].push(e);
+        });
+
+        const localizedList: UpdateEntry[] = [];
+        Object.keys(groups).forEach(ver => {
+          const group = groups[ver];
+          let best = group.find(e => e.siteHandle === systemLanguage);
+          if (!best) {
+            best = group.find(e => e.siteHandle === "en") || group.find(e => e.siteHandle === "sk") || group[0];
+          }
+          if (best) localizedList.push(best);
+        });
+
+        localizedList.sort((a, b) => new Date(b.postDate).getTime() - new Date(a.postDate).getTime());
+        setUpdatesList(localizedList);
+
+        // Check if there is a new unseen update
+        if (localizedList.length > 0) {
+          const latestId = localizedList[0].id;
+          const seenId = localStorage.getItem("ccrm_seen_update_id");
+          if (seenId !== latestId) {
+            setHasNewUpdate(true);
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching release notes:", err);
+      }
+    };
+    fetchUpdateNotes();
+  }, [systemLanguage]);
+
+  const handleOpenUpdates = () => {
+    setIsUpdatesOpen(true);
+    if (updatesList.length > 0) {
+      localStorage.setItem("ccrm_seen_update_id", updatesList[0].id);
+      setHasNewUpdate(false);
+    }
+  };
 
   // Universal Search states
   const [searchQuery, setSearchQuery] = React.useState("");
@@ -432,6 +531,37 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           )}
         </div>
+
+        {/* Product Release Notes Updates Button */}
+        {updatesList.length > 0 && (
+          <div className="relative">
+            <button
+              onClick={handleOpenUpdates}
+              className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-colors shadow-sm cursor-pointer relative ${
+                isUpdatesOpen 
+                  ? "bg-[#0b1329] border-[#0b1329] text-white" 
+                  : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-350 hover:bg-slate-50"
+              }`}
+              title={systemLanguage === "sk" ? "Aktualizácie a novinky" : systemLanguage === "hu" ? "Frissítések és hírek" : "Updates & News"}
+            >
+              <Sparkles className="h-5 w-5 text-amber-550 text-amber-500" />
+              {hasNewUpdate && (
+                <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-450 bg-rose-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
+                </span>
+              )}
+            </button>
+          </div>
+        )}
+
+        {/* Update Notes Modal */}
+        <UpdateNotesModal
+          isOpen={isUpdatesOpen}
+          onClose={() => setIsUpdatesOpen(false)}
+          updates={updatesList}
+          systemLanguage={systemLanguage}
+        />
 
         {/* User Account Trigger Button */}
         <div>
