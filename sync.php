@@ -283,16 +283,54 @@ function ccrm_delete_omitted(PDO $pdo, string $table, array $idsToDelete, ?strin
 
 // 3. Handle GET Request: Read from Database
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    // SECURITY: reading CRM state requires an authenticated session. This
-    // endpoint returns all leads, tasks, users and the integration secrets
-    // (OpenAI key, SMTP/IMAP passwords, OAuth secrets) — it must never serve
-    // that to anonymous callers. The "not installed" check above runs first so
-    // the installer wizard can still bootstrap without a session.
-    $sessionUser = ccrm_require_auth();
-
     $settings = fetch_system_settings($pdo);
     $isDemoMode = ($settings['DEMO_MODE'] ?? 'false') === 'true';
     $dataVersion = ccrm_compute_data_version($pdo);
+
+    // SECURITY: reading CRM state requires an authenticated session.
+    // If not authenticated, we only allow access to non-sensitive user profile
+    // suggestions if DEMO_MODE is active. Otherwise, require auth.
+    $sessionUser = ccrm_current_user();
+    if ($sessionUser === null) {
+        if ($isDemoMode) {
+            $users = [];
+            $usersStmt = $pdo->query("SELECT `id`, `name`, `email`, `role`, `avatar`, `color` FROM `users` ORDER BY `name` ASC");
+            while ($row = $usersStmt->fetch()) {
+                $users[] = [
+                    'id'     => $row['id'],
+                    'name'   => $row['name'],
+                    'email'  => $row['email'],
+                    'role'   => ccrm_role_label($row['role']),
+                    'color'  => $row['color'] ?? '#3b82f6',
+                    'avatar' => $row['avatar'] ?? null,
+                ];
+            }
+            echo json_encode([
+                'installed' => true,
+                'demoMode' => true,
+                'dataVersion' => $dataVersion,
+                'users' => $users,
+                'leads' => [],
+                'tasks' => [],
+                'roles' => [],
+                'meetingNotes' => [],
+                'unifiedEntries' => [],
+                'unifiedEntriesData' => [],
+                'customDashboards' => [],
+                'projectTypes' => [],
+                'projects' => [],
+                'settings' => [
+                    'systemName' => $settings['SYSTEM_NAME'] ?? 'CCRM',
+                    'systemLanguage' => $settings['SYSTEM_LANGUAGE'] ?? 'sk',
+                ]
+            ]);
+            exit;
+        } else {
+            http_response_code(401);
+            echo json_encode(['success' => false, 'message' => 'Authentication required.']);
+            exit;
+        }
+    }
 
     // Lightweight probe: the SPA polls this every few seconds to learn whether
     // anything changed. It returns only the current data version (one cheap
