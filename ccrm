@@ -39,21 +39,41 @@ function ccrm_update() {
     echo "Checking git status...\n";
     exec("git diff --name-only", $dirtyFiles);
     exec("git diff --cached --name-only", $stagedFiles);
-    $dirty = array_unique(array_merge($dirtyFiles, $stagedFiles));
-    
-    $hasChanges = false;
-    foreach ($dirty as $file) {
-        if ($file === 'index.html') {
-            echo "Restoring index.html to avoid conflict...\n";
-            passthru("git checkout -- index.html");
-        } else if (!empty($file)) {
-            $hasChanges = true;
+    $dirty = array_unique(array_filter(array_merge($dirtyFiles, $stagedFiles)));
+
+    // index.html is expected to differ locally after a build (the dist/ copy
+    // overwrites it with build-specific markup) — safe to discard every run.
+    //
+    // vendor/composer/installed.php is expected to differ after step 3 below:
+    // `composer install` always stamps it with the current git commit hash,
+    // so it goes dirty on every run and would otherwise block the *next*
+    // `php ccrm update` for no real reason — safe to discard every run.
+    $autoRestore = ['index.html', 'vendor/composer/installed.php'];
+    $toRestore = array_intersect($autoRestore, $dirty);
+    if (!empty($toRestore)) {
+        foreach ($toRestore as $file) {
+            echo "Restoring $file to avoid conflict...\n";
+            passthru("git checkout -- " . escapeshellarg($file));
         }
     }
 
-    if ($hasChanges) {
-        echo "Warning: You have uncommitted changes. Stashing them...\n";
-        passthru("git stash");
+    // Any OTHER dirty tracked file must NOT be auto-stashed: a stash created
+    // here would get popped back after the pull below, re-applying whatever
+    // stale local edit was sitting in the file ON TOP of the freshly-pulled
+    // code — silently reverting the very fix the update was meant to deliver.
+    // This is exactly what happened on 2026-07-10: a forgotten local edit to
+    // sync.php kept resurrecting itself after every `php ccrm update`, masking
+    // real fixes (including a data-loss guard) for days. Fail loudly instead
+    // and make the operator resolve it explicitly.
+    $unexpectedDirty = array_values(array_diff($dirty, $autoRestore));
+    if (!empty($unexpectedDirty)) {
+        echo "Error: unexpected local modifications to tracked file(s), refusing to auto-stash:\n";
+        foreach ($unexpectedDirty as $file) {
+            echo "  - $file\n";
+        }
+        echo "Inspect with `git diff`, then commit, `git stash`, or `git checkout --` each file\n";
+        echo "manually before re-running `php ccrm update`.\n";
+        exit(1);
     }
 
     // 2. Pull latest code
@@ -61,9 +81,6 @@ function ccrm_update() {
     passthru("git pull origin main", $pullResult);
     if ($pullResult !== 0) {
         echo "Error: git pull failed.\n";
-        if ($hasChanges) {
-            passthru("git stash pop");
-        }
         exit(1);
     }
 
@@ -75,9 +92,11 @@ function ccrm_update() {
         exit(1);
     }
 
-    if ($hasChanges) {
-        echo "Restoring stashed changes...\n";
-        passthru("git stash pop");
+    // 3b. Audit dependencies for known vulnerabilities (non-fatal, informational).
+    echo "Auditing PHP dependencies (composer audit)...\n";
+    passthru("composer audit --no-interaction 2>&1", $auditResult);
+    if ($auditResult !== 0) {
+        echo "Warning: composer audit reported advisories above. Review before/after deploy.\n";
     }
 
     // 4. Publish assets (copy dist/* to root) if we are in a direct git clone deployment
@@ -90,6 +109,33 @@ function ccrm_update() {
 
     // 5. Run database migrations
     ccrm_migrate();
+
+    // 6. Optional post-deploy health check. Set CCRM_HEALTHCHECK_URL (or pass a
+    //    URL as the 2nd CLI arg) to verify the live site responds after deploy.
+    global $args;
+    $healthUrl = getenv('CCRM_HEALTHCHECK_URL');
+    if (empty($healthUrl) && !empty($args[2])) {
+        $healthUrl = $args[2];
+    }
+    if (!empty($healthUrl) && function_exists('curl_init')) {
+        echo "Running post-deploy health check: $healthUrl\n";
+        $ch = curl_init($healthUrl);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 15,
+            CURLOPT_FOLLOWLOCATION => true,
+        ]);
+        curl_exec($ch);
+        $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($code >= 200 && $code < 400) {
+            echo "Health check OK (HTTP $code).\n";
+        } else {
+            echo "WARNING: health check returned HTTP $code — verify the deployment.\n";
+        }
+    } else {
+        echo "Tip: set CCRM_HEALTHCHECK_URL to enable an automatic post-deploy health check.\n";
+    }
 
     echo "\nSuccess! CCRM updated successfully to the latest version.\n";
 }

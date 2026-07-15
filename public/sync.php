@@ -32,9 +32,10 @@ require_once $configFile;
 try {
     $pdo = get_db_connection();
 } catch (\Exception $e) {
+    error_log('[ccrm sync] DB connection failed: ' . $e->getMessage());
     echo json_encode([
         'installed' => false,
-        'message' => 'Database connection failed: ' . $e->getMessage()
+        'message' => 'Database connection failed.'
     ]);
     exit;
 }
@@ -43,9 +44,10 @@ try {
 try {
     ccrm_apply_schema($pdo);
 } catch (\Exception $e) {
+    error_log('[ccrm sync] Schema migration failed: ' . $e->getMessage());
     echo json_encode([
         'installed' => false,
-        'message' => 'Automated schema migration failed: ' . $e->getMessage()
+        'message' => 'Automated schema migration failed.'
     ]);
     exit;
 }
@@ -118,7 +120,9 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
         'dissolution_date' => $inc['dissolutionDate'] ?? null,
         'region' => $inc['region'] ?? null,
         'district' => $inc['district'] ?? null,
-        'financial_summary' => $inc['financialSummary'] ?? null,
+        // 'financial_summary' is deliberately excluded: it is server-owned, so a
+        // lead whose only difference is the server-generated report still counts
+        // as identical and is skipped (no rewrite, no needless report re-spawn).
         'created_at' => $inc['createdAt'] ?? null
     ];
     
@@ -187,8 +191,105 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
     return true;
 }
 
+/**
+ * Delete rows that the client omitted from its payload — but never delete a row
+ * that changed after the client's last sync ($baseSyncedAt). Otherwise a client
+ * working from a stale snapshot would silently delete records another user
+ * created or edited in the meantime (last-write-wins data loss).
+ *
+ * $baseSyncedAt is the DB clock value ('YYYY-MM-DD HH:MM:SS') captured in the GET
+ * the client synced from, so it is compared against the same clock as updated_at.
+ * When it is null (legacy client that didn't send one) we fall back to the old
+ * unconditional delete so behaviour is unchanged for those clients.
+ *
+ * $table is only ever a trusted, sanitized name (fixed table names or the
+ * already-validated ue_<id>), never raw user input.
+ */
+// Mass-deletion circuit breaker thresholds (see ccrm_delete_omitted). A single
+// sync may never delete-by-omission ALL remaining rows of a table, nor a large
+// FRACTION of them at once: that is the signature of a client that logged in
+// with empty/stale state and pushed an empty collection (the 2026-07-06 and the
+// 2026-07-10 users-table data-loss incidents). MIN_ROWS keeps everyday small
+// deletions on ordinary tables flowing; access-critical tables (users) run in
+// $strict mode where that floor is dropped so even an N-1 wipe is blocked.
+// Tunable if a deployment legitimately needs large bulk deletes through sync.
+if (!defined('CCRM_MASS_DELETE_MIN_ROWS')) define('CCRM_MASS_DELETE_MIN_ROWS', 5);
+if (!defined('CCRM_MASS_DELETE_FRACTION')) define('CCRM_MASS_DELETE_FRACTION', 0.5);
+
+function ccrm_delete_omitted(PDO $pdo, string $table, array $idsToDelete, ?string $baseSyncedAt, array $skipIds = [], bool $strict = false): void {
+    if (empty($idsToDelete)) {
+        return;
+    }
+
+    // Resolve the rows this sync would actually remove (excluding protected ids
+    // such as the session user).
+    $toDelete = [];
+    foreach ($idsToDelete as $id) {
+        if (!in_array($id, $skipIds, true)) {
+            $toDelete[] = $id;
+        }
+    }
+    if (empty($toDelete)) {
+        return;
+    }
+
+    // Circuit breaker: refuse to delete-by-omission a large share of a table in
+    // one request. An empty/stale client push makes array_diff() mark most or
+    // all rows for deletion; without this guard that silently wipes the table
+    // (leads cascade to categories + timeline). Ordinary small deletions — the
+    // real use case — stay below the threshold and pass through untouched. When
+    // tripped we keep the data and log instead of destroying it; the client
+    // re-pulls the rows on its next GET.
+    $deleteCount = count($toDelete);
+    $serverTotal = (int) $pdo->query("SELECT COUNT(*) FROM `{$table}`")->fetchColumn();
+
+    // (a) Never delete EVERY remaining row of a table by omission — that is only
+    //     ever an empty/stale push, never a legitimate edit. Applies to every
+    //     table regardless of size, so even a 1- or 2-row table can't be emptied.
+    $wouldEmptyTable = ($serverTotal > 0 && $deleteCount >= $serverTotal);
+
+    // (b) Refuse to delete a large FRACTION of a table in one request. Ordinary
+    //     data tables keep a small absolute-row floor so everyday little
+    //     deletions still pass. In $strict mode — access-critical tables such as
+    //     `users`, where the sync always keeps the calling account so a full wipe
+    //     tops out at N-1 rows and never reaches 100% — the floor drops to 1, so
+    //     the 4-of-5 users wipe that slipped under the row floor is now caught.
+    $minRows = $strict ? 1 : CCRM_MASS_DELETE_MIN_ROWS;
+    $massFraction = ($serverTotal > 0
+        && $deleteCount >= $minRows
+        && ($deleteCount / $serverTotal) >= CCRM_MASS_DELETE_FRACTION);
+
+    if ($wouldEmptyTable || $massFraction) {
+        error_log(sprintf(
+            '[ccrm] BLOCKED delete-by-omission on `%s`: %d of %d rows (%.0f%%%s) — likely an empty/stale client push; no rows deleted.',
+            $table, $deleteCount, $serverTotal, 100 * $deleteCount / max(1, $serverTotal), $strict ? ', strict' : ''
+        ));
+        return;
+    }
+
+    if ($baseSyncedAt !== null) {
+        $stmt = $pdo->prepare("DELETE FROM `{$table}` WHERE `id` = ? AND `updated_at` <= ?");
+    } else {
+        $stmt = $pdo->prepare("DELETE FROM `{$table}` WHERE `id` = ?");
+    }
+    foreach ($toDelete as $id) {
+        if ($baseSyncedAt !== null) {
+            $stmt->execute([$id, $baseSyncedAt]);
+        } else {
+            $stmt->execute([$id]);
+        }
+    }
+}
+
 // 3. Handle GET Request: Read from Database
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    // SECURITY: reading CRM state requires an authenticated session. This
+    // endpoint returns all leads, tasks, users and the integration secrets
+    // (OpenAI key, SMTP/IMAP passwords, OAuth secrets) — it must never serve
+    // that to anonymous callers. The "not installed" check above runs first so
+    // the installer wizard can still bootstrap without a session.
+    $sessionUser = ccrm_require_auth();
+
     $settings = fetch_system_settings($pdo);
     $isDemoMode = ($settings['DEMO_MODE'] ?? 'false') === 'true';
     $dataVersion = ccrm_compute_data_version($pdo);
@@ -329,15 +430,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'color' => $row['color'] ?? '#3b82f6',
             'avatar' => $row['avatar'] ?? null,
             'activityLog' => [],
-            'metadata_json' => $row['metadata_json']
+            // SECURITY: mask per-user email passwords (IMAP/SMTP) inside the
+            // metadata blob so one user cannot read another's mailbox password.
+            'metadata_json' => ccrm_mask_user_metadata($row['metadata_json'])
         ];
     }
 
     // 3.4. Fetch Roles
-    // Read from system_settings table if it exists, otherwise use fallback
-    if (isset($settings['ROLES_RBAC'])) {
-        $roles = json_decode($settings['ROLES_RBAC'], true);
-    } else {
+    // Read from system_settings table if it exists and is non-empty, otherwise
+    // use the built-in Admin/Project Manager fallback. An empty decoded array
+    // is treated the same as "missing" — it can only be the result of a stale
+    // client push wiping the registry (see the roles.update guard above), never
+    // a legitimate state, so recover to the fallback rather than serving every
+    // client a permanently empty role list.
+    $roles = isset($settings['ROLES_RBAC']) ? json_decode($settings['ROLES_RBAC'], true) : null;
+    if (!is_array($roles) || empty($roles)) {
         $roles = [
             [
                 'name' => 'Admin',
@@ -375,7 +482,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $leadCategoryColors = isset($settings['LEAD_CATEGORY_COLORS']) ? json_decode($settings['LEAD_CATEGORY_COLORS'], true) : [];
     $leadStageGroups = isset($settings['LEAD_STAGE_GROUPS']) ? json_decode($settings['LEAD_STAGE_GROUPS'], true) : [];
     $leadStateParents = isset($settings['LEAD_STATE_PARENTS']) ? json_decode($settings['LEAD_STATE_PARENTS'], true) : (object)[];
+    $taskStates = isset($settings['TASK_STATES']) ? json_decode($settings['TASK_STATES'], true) : ["New", "In progress", "Blocked", "Done"];
+    $taskStateColors = isset($settings['TASK_STATE_COLORS']) ? json_decode($settings['TASK_STATE_COLORS'], true) : [];
     $integrationsConfig = isset($settings['INTEGRATIONS_CONFIG']) ? json_decode($settings['INTEGRATIONS_CONFIG'], true) : (object)[];
+    // SECURITY: never send real secret values to the browser — mask them. The
+    // frontend only needs to know a secret is set (e.g. "OpenAI configured");
+    // the backend uses the real values server-side. Saving a masked field is a
+    // no-op (see the POST merge below).
+    if (is_array($integrationsConfig)) {
+        $integrationsConfig = ccrm_mask_secrets($integrationsConfig, ccrm_integration_secret_keys());
+    }
 
     // Fetch Meeting Notes (meeting_tasks pre-fetched in one query, grouped by meeting_id)
     $meetingNotes = [];
@@ -502,7 +618,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     }
                     $unifiedEntriesData[$ueId] = $ueRows;
                 } else {
-                    $unifiedEntriesData[$ueId] = [];
+        $unifiedEntriesData[$ueId] = [];
                 }
             }
         }
@@ -643,10 +759,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         // Fallback if tables don't exist
     }
 
+    // DB clock at read time. The client echoes this back as baseSyncedAt on the
+    // next POST so the server can tell "the user deleted this" apart from "the
+    // client never saw this newer row" (see ccrm_delete_omitted).
+    $serverTime = null;
+    try { $serverTime = $pdo->query("SELECT NOW()")->fetchColumn(); } catch (\Throwable $e) {}
+
+    // Real database connection info for the Settings "Database" panel. Admins
+    // only — this is infrastructure detail (host/name/user), never the password.
+    // The panel used to show hardcoded placeholders (localhost / ccrm /
+    // ccrm_user), which masked where the data actually lives; now it reflects
+    // config.php so an operator can see the real target at a glance.
+    $dbInfo = null;
+    if (($sessionUser['role'] ?? '') === 'admin') {
+        $dbInfo = [
+            'host' => defined('DB_HOST') ? DB_HOST : '',
+            'port' => defined('DB_PORT') ? (string) DB_PORT : '',
+            'name' => defined('DB_NAME') ? DB_NAME : '',
+            'user' => defined('DB_USER') ? DB_USER : '',
+            'type' => 'MariaDB',
+        ];
+    }
+
     echo json_encode([
         'installed' => true,
         'demoMode' => $isDemoMode,
         'dataVersion' => $dataVersion,
+        'serverTime' => $serverTime,
+        'db_info' => $dbInfo,
         'leads' => $leads,
         'tasks' => $tasks,
         'users' => $users,
@@ -668,6 +808,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'leadCategoryColors' => $leadCategoryColors,
             'leadStageGroups' => $leadStageGroups,
             'leadStateParents' => $leadStateParents,
+            'taskStates' => $taskStates,
+            'taskStateColors' => $taskStateColors,
             'integrationsConfig' => $integrationsConfig,
             'customLabels' => isset($settings['CUSTOM_LABELS']) ? json_decode($settings['CUSTOM_LABELS'], true) : (object)[]
         ]
@@ -679,6 +821,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // SECURITY: writes require an authenticated session.
     $sessionUser = ccrm_require_auth();
+    // Privileged writes (global settings, RBAC registry, integration secrets,
+    // and management of OTHER users / roles) are admin-only. Non-admin sync
+    // payloads still carry these sections (the client always sends a full
+    // snapshot), so we silently ignore the privileged parts for non-admins
+    // rather than reject the whole sync — otherwise ordinary editing breaks.
+    $isAdmin = (($sessionUser['role'] ?? '') === 'admin');
 
     $input = file_get_contents('php://input');
     $payload = json_decode($input, true);
@@ -689,6 +837,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    // Snapshot the client synced from (DB clock from its last GET/POST). Used to
+    // guard delete-by-omission so a stale client cannot wipe another user's
+    // newer records. Null for legacy clients → unconditional delete (old behaviour).
+    $baseSyncedAt = (isset($payload['baseSyncedAt']) && is_string($payload['baseSyncedAt']) && $payload['baseSyncedAt'] !== '')
+        ? $payload['baseSyncedAt'] : null;
+
     try {
         // Ensure dynamic unified-entry table schemas BEFORE opening the
         // transaction. DDL (CREATE/ALTER TABLE) triggers an implicit commit in
@@ -696,9 +850,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // make the final commit() fail with "There is no active transaction".
         // DDL cannot be rolled back anyway, so it belongs outside the transaction.
         if (isset($payload['unifiedEntries']) && is_array($payload['unifiedEntries'])) {
+            // Cap dynamic-table provisioning per request so a crafted payload
+            // cannot exhaust the database with unbounded CREATE/ALTER TABLE.
+            $ddlBudget = 200;
             foreach ($payload['unifiedEntries'] as $ue) {
                 if (!isset($ue['id'])) {
                     continue;
+                }
+                if (--$ddlBudget < 0) {
+                    break;
                 }
                 $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($ue['id']));
                 $tableName = "ue_" . $safeId;
@@ -884,9 +1044,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $pdo->beginTransaction();
 
-        // 4.1. Save system settings & configurations
-        if (isset($payload['settings'])) {
+        // 4.1. Save system settings & configurations (admin-only).
+        if ($isAdmin && isset($payload['settings'])) {
             $s = $payload['settings'];
+
+            // Preserve masked secrets: merge the inbound integrations config over
+            // the one already stored, keeping any secret the client left masked
+            // (see ccrm_mask_secrets in the GET branch). A real inbound value —
+            // including '' to clear — still overwrites the stored secret. If the
+            // client omits integrationsConfig entirely, keep the stored value
+            // untouched rather than wiping it.
+            $existingIntegrationsRaw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'INTEGRATIONS_CONFIG'")->fetchColumn();
+            $existingIntegrations = ($existingIntegrationsRaw !== false && $existingIntegrationsRaw !== null) ? json_decode($existingIntegrationsRaw, true) : [];
+            if (!is_array($existingIntegrations)) { $existingIntegrations = []; }
+            if (isset($s['integrationsConfig']) && is_array($s['integrationsConfig'])) {
+                $mergedIntegrations = ccrm_merge_secrets($s['integrationsConfig'], $existingIntegrations, ccrm_integration_secret_keys());
+                // Encrypt secrets at rest before persisting. Values preserved from
+                // storage are already encrypted (encrypt is a no-op on them).
+                $mergedIntegrations = ccrm_encrypt_config_secrets($mergedIntegrations, ccrm_integration_secret_keys());
+                $integrationsValue = json_encode($mergedIntegrations ?: (object)[]);
+            } else {
+                $integrationsValue = ($existingIntegrationsRaw !== false && $existingIntegrationsRaw !== null) ? $existingIntegrationsRaw : json_encode((object)[]);
+            }
+
             $settingsList = [
                 'SYSTEM_NAME' => $s['systemName'] ?? 'CCRM',
                 'SYSTEM_LANGUAGE' => $s['systemLanguage'] ?? 'sk',
@@ -898,7 +1078,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'LEAD_CATEGORY_COLORS' => json_encode($s['leadCategoryColors'] ?? []),
                 'LEAD_STAGE_GROUPS' => json_encode($s['leadStageGroups'] ?? []),
                 'LEAD_STATE_PARENTS' => json_encode($s['leadStateParents'] ?? (object)[]),
-                'INTEGRATIONS_CONFIG' => json_encode($s['integrationsConfig'] ?? (object)[]),
+                'TASK_STATES' => json_encode($s['taskStates'] ?? []),
+                'TASK_STATE_COLORS' => json_encode($s['taskStateColors'] ?? []),
+                'INTEGRATIONS_CONFIG' => $integrationsValue,
                 'CUSTOM_LABELS' => json_encode($s['customLabels'] ?? (object)[])
             ];
 
@@ -906,12 +1088,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             foreach ($settingsList as $k => $v) {
                 $insSet->execute([$k, $v]);
             }
+            ccrm_audit_log($pdo, $sessionUser, 'settings.update', 'System settings / integrations updated');
         }
 
-        // Save Roles RBAC registry
-        if (isset($payload['roles'])) {
-            $insSet = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
-            $insSet->execute(['ROLES_RBAC', json_encode($payload['roles'])]);
+        // Save Roles RBAC registry (admin-only).
+        //
+        // Every sync push always echoes back the client's current in-memory
+        // `roles` state (see pushStateToServer in App.tsx), even for pushes that
+        // have nothing to do with roles. If a client's roles state hasn't
+        // finished loading yet (e.g. a push that races the initial GET), that
+        // empty array would silently overwrite a populated registry here — the
+        // same class of bug ccrm_delete_omitted guards against for DB rows, but
+        // this blob had no such guard. Refuse to replace a non-empty registry
+        // with an empty one.
+        if ($isAdmin && isset($payload['roles']) && is_array($payload['roles'])) {
+            $existingRolesRaw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'ROLES_RBAC'")->fetchColumn();
+            $existingRolesCount = 0;
+            if ($existingRolesRaw !== false && $existingRolesRaw !== null) {
+                $existingRolesDecoded = json_decode($existingRolesRaw, true);
+                if (is_array($existingRolesDecoded)) {
+                    $existingRolesCount = count($existingRolesDecoded);
+                }
+            }
+            if (empty($payload['roles']) && $existingRolesCount > 0) {
+                error_log(sprintf(
+                    '[ccrm] BLOCKED roles.update: incoming roles array is empty but %d role(s) exist — likely an empty/stale client push; roles left untouched.',
+                    $existingRolesCount
+                ));
+            } else {
+                $insSet = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
+                $insSet->execute(['ROLES_RBAC', json_encode($payload['roles'])]);
+                ccrm_audit_log($pdo, $sessionUser, 'roles.update', 'RBAC role registry updated');
+            }
         }
 
         // 4.2. Synchronize Users list
@@ -919,19 +1127,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Existing rows with their current password hashes so we can preserve
             // a user's password when the client does not send a new one.
             $existingHashes = $pdo->query("SELECT `id`, `password_hash` FROM `users`")->fetchAll(PDO::FETCH_KEY_PAIR);
+            // Stored metadata so masked email passwords are preserved on save.
+            $existingMeta = $pdo->query("SELECT `id`, `metadata_json` FROM `users`")->fetchAll(PDO::FETCH_KEY_PAIR);
             $existingUserIds = array_keys($existingHashes);
             $processedUserIds = [];
 
             $insUser = $pdo->prepare("INSERT INTO `users` (`id`, `name`, `email`, `password_hash`, `role`, `avatar`, `color`, `metadata_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `email` = VALUES(`email`), `password_hash` = VALUES(`password_hash`), `role` = VALUES(`role`), `avatar` = VALUES(`avatar`), `color` = VALUES(`color`), `metadata_json` = VALUES(`metadata_json`)");
+
+            // Existing roles so a non-admin's own role cannot be changed and so
+            // we can audit privilege changes.
+            $existingRoles = $pdo->query("SELECT `id`, `role` FROM `users`")->fetchAll(PDO::FETCH_KEY_PAIR);
 
             foreach ($payload['users'] as $u) {
                 if (empty($u['email'])) {
                     continue;
                 }
                 $userId = 'u-' . md5(strtolower(trim($u['email'])));
-                $role = ccrm_normalize_role($u['role'] ?? 'viewer');
+
+                // SECURITY: a non-admin may only modify their OWN record and can
+                // never change their role (prevents self-promotion to admin).
+                if (!$isAdmin && $userId !== ($sessionUser['id'] ?? '')) {
+                    continue;
+                }
+                if ($isAdmin) {
+                    $role = ccrm_normalize_role($u['role'] ?? 'viewer');
+                } else {
+                    // Lock to the caller's stored role, ignoring any client value.
+                    $role = ccrm_normalize_role($existingRoles[$userId] ?? ($sessionUser['role'] ?? 'viewer'));
+                }
+                // Audit any admin-driven role change.
+                if ($isAdmin && isset($existingRoles[$userId]) && $existingRoles[$userId] !== $role) {
+                    ccrm_audit_log($pdo, $sessionUser, 'user.role_change',
+                        $u['email'] . ': ' . $existingRoles[$userId] . ' -> ' . $role);
+                }
 
                 $metaJson = isset($u['metadata_json']) ? (is_array($u['metadata_json']) ? json_encode($u['metadata_json']) : $u['metadata_json']) : (isset($u['metadata']) ? json_encode($u['metadata']) : null);
+                // Keep the stored IMAP/SMTP password when the client sent it masked.
+                $metaJson = ccrm_merge_user_metadata($metaJson, $existingMeta[$userId] ?? null);
 
                 // Password handling:
                 //  - a new, non-empty, non-hashed password is bcrypt-hashed;
@@ -962,14 +1194,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // Remove any users not in payload, but never delete the account that
             // is performing this sync (prevents accidental self-lockout).
-            $usersToDelete = array_diff($existingUserIds, $processedUserIds);
-            if (!empty($usersToDelete)) {
-                $delUser = $pdo->prepare("DELETE FROM `users` WHERE `id` = ?");
-                foreach ($usersToDelete as $uid) {
-                    if ($uid === $sessionUser['id']) {
-                        continue;
-                    }
-                    $delUser->execute([$uid]);
+            // Admin-only: a non-admin's payload only ever "processes" their own
+            // record, so running this for them would delete every other user.
+            if ($isAdmin) {
+                $usersToDelete = array_diff($existingUserIds, $processedUserIds);
+                if (!empty($usersToDelete)) {
+                    ccrm_delete_omitted($pdo, 'users', $usersToDelete, $baseSyncedAt, [$sessionUser['id']], true);
+                    ccrm_audit_log($pdo, $sessionUser, 'user.delete', 'Removed users: ' . implode(', ', $usersToDelete));
                 }
             }
         }
@@ -1188,10 +1419,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) 
             ON DUPLICATE KEY UPDATE 
               `name` = VALUES(`name`), `city` = VALUES(`city`), `client_type` = VALUES(`client_type`), `status` = VALUES(`status`), `source` = VALUES(`source`), `owner` = VALUES(`owner`), `value` = VALUES(`value`), `rating` = VALUES(`rating`), `phone` = VALUES(`phone`), `email` = VALUES(`email`), `company_id` = VALUES(`company_id`), `tax_id` = VALUES(`tax_id`), `vat_id` = VALUES(`vat_id`), `contact_person` = VALUES(`contact_person`), `website` = VALUES(`website`), `street` = VALUES(`street`), `postal_code` = VALUES(`postal_code`), `country` = VALUES(`country`), `ai_summary` = VALUES(`ai_summary`), `ai_summary_fingerprint` = VALUES(`ai_summary_fingerprint`),
-              `establishment_date` = VALUES(`establishment_date`), `legal_form` = VALUES(`legal_form`), `sk_nace` = VALUES(`sk_nace`), `organization_size` = VALUES(`organization_size`), `ownership_type` = VALUES(`ownership_type`), `data_source` = VALUES(`data_source`), `dissolution_date` = VALUES(`dissolution_date`), `region` = VALUES(`region`), `district` = VALUES(`district`), `financial_summary` = VALUES(`financial_summary`),
+              `establishment_date` = VALUES(`establishment_date`), `legal_form` = VALUES(`legal_form`), `sk_nace` = VALUES(`sk_nace`), `organization_size` = VALUES(`organization_size`), `ownership_type` = VALUES(`ownership_type`), `data_source` = VALUES(`data_source`), `dissolution_date` = VALUES(`dissolution_date`), `region` = VALUES(`region`), `district` = VALUES(`district`),
               `vat_validation_result` = VALUES(`vat_validation_result`)");
+              // NOTE: `financial_summary` is intentionally NOT updated here. It is
+              // server-owned — generated by api/generate_report.php in the
+              // background and written directly to the row. Letting the client's
+              // (usually empty) copy overwrite it caused a wipe/regenerate loop
+              // that burned OpenAI credits. It is still set on INSERT for new leads.
 
             foreach ($payload['leads'] as $l) {
+                // Skip malformed items rather than letting a NULL id/name abort
+                // the whole sync transaction mid-loop with a 500.
+                if (!is_array($l) || empty($l['id']) || !isset($l['name']) || $l['name'] === '') {
+                    continue;
+                }
                 $leadId = $l['id'];
                 $processedLeadIds[] = $leadId;
 
@@ -1236,7 +1477,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $l['district'] ?? null,
                     $l['financialSummary'] ?? null,
                     isset($l['vatValidationResult']) ? json_encode($l['vatValidationResult']) : null,
-                    $l['createdAt'] ?? date('Y-m-d')
+                    $l['createdAt'] ?? date('Y-m-d H:i:s')
                 ]);
 
                 // Check if we need to generate financial report in the background
@@ -1346,12 +1587,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // Perform deletions for removed leads
             $leadsToDelete = array_diff($existingLeadIds, $processedLeadIds);
-            if (!empty($leadsToDelete)) {
-                $delLead = $pdo->prepare("DELETE FROM `leads` WHERE `id` = ?");
-                foreach ($leadsToDelete as $lid) {
-                    $delLead->execute([$lid]);
-                }
-            }
+            ccrm_delete_omitted($pdo, 'leads', $leadsToDelete, $baseSyncedAt);
         }
 
         // 4.4. Synchronize Tasks
@@ -1363,6 +1599,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `status`, `owner`, `related_lead_id`, `is_locking`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `is_locking` = VALUES(`is_locking`)");
 
             foreach ($payload['tasks'] as $t) {
+                // Skip malformed items rather than aborting the whole sync.
+                if (!is_array($t) || empty($t['id']) || !isset($t['title']) || $t['title'] === '' || empty($t['deadline'])) {
+                    continue;
+                }
                 $taskId = $t['id'];
 
                 $insTask->execute([
@@ -1393,12 +1633,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // Perform task deletes
             $tasksToDelete = array_diff($existingTaskIds, $processedTaskIds);
-            if (!empty($tasksToDelete)) {
-                $delTask = $pdo->prepare("DELETE FROM `tasks` WHERE `id` = ?");
-                foreach ($tasksToDelete as $tid) {
-                    $delTask->execute([$tid]);
-                }
-            }
+            ccrm_delete_omitted($pdo, 'tasks', $tasksToDelete, $baseSyncedAt);
         }
 
         // 4.5. Synchronize Meeting Notes & meeting_tasks
@@ -1456,12 +1691,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // Delete any meeting notes not present in payload
             $meetingsToDelete = array_diff($existingMeetingIds, $processedMeetingIds);
-            if (!empty($meetingsToDelete)) {
-                $delMeeting = $pdo->prepare("DELETE FROM `meeting_notes` WHERE `id` = ?");
-                foreach ($meetingsToDelete as $mid) {
-                    $delMeeting->execute([$mid]);
-                }
-            }
+            ccrm_delete_omitted($pdo, 'meeting_notes', $meetingsToDelete, $baseSyncedAt);
         }
 
         // 4.6. Synchronize Unified Universal Entries (Registry & Dynamic Tables)
@@ -1626,14 +1856,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                     }
 
-                    // Delete rows that are not in the payload
+                    // Delete rows that are not in the payload (guarded against
+                    // deleting rows a concurrent client added after this snapshot).
                     $rowsToDelete = array_diff($existingRowIds, $processedRowIds);
-                    if (!empty($rowsToDelete)) {
-                        $delRow = $pdo->prepare("DELETE FROM `{$tableName}` WHERE `id` = ?");
-                        foreach ($rowsToDelete as $rid) {
-                            $delRow->execute([$rid]);
-                        }
-                    }
+                    ccrm_delete_omitted($pdo, $tableName, $rowsToDelete, $baseSyncedAt);
                 }
             }
         }
@@ -1677,7 +1903,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Report the post-commit content version so the client can immediately
         // sync its local `dataVersion` and avoid an extra full pull on the next
         // probe. Computed after commit so it reflects what we just wrote.
-        echo json_encode(['success' => true, 'message' => 'CCRM Database Synced Successfully!', 'dataVersion' => ccrm_compute_data_version($pdo)]);
+        //
+        // Also return the post-commit DB clock so the client advances its
+        // baseSyncedAt and can safely delete rows it just created/edited on a
+        // later sync.
+        $serverTime = null;
+        try { $serverTime = $pdo->query("SELECT NOW()")->fetchColumn(); } catch (\Throwable $e) {}
+        echo json_encode(['success' => true, 'message' => 'CCRM Database Synced Successfully!', 'dataVersion' => ccrm_compute_data_version($pdo), 'serverTime' => $serverTime]);
     } catch (\Throwable $e) {
         if (isset($pdo) && $pdo->inTransaction()) {
             $pdo->rollBack();

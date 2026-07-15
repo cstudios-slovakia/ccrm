@@ -5,18 +5,46 @@
 # index.php, which served the host's parking page instead of the app.
 DirectoryIndex index.html index.php
 
-# Never expose secrets or documentation via direct web requests.
-# (These files are still readable by PHP's include/require server-side.)
+# Never expose secrets, docs, tooling manifests or data dumps via direct web
+# requests. (These files are still readable by PHP's include/require server-side.)
+# manifest.json / asset *.json are intentionally NOT blocked so the PWA works.
 <IfModule mod_authz_core.c>
-    <FilesMatch "(^config\.php$|^api_key\.txt$|\.(md|sample\.php)$)">
+    <FilesMatch "(^config\.php$|^api_key\.txt$|^composer\.(json|lock)$|^package(-lock)?\.json$|^tsconfig.*\.json$|\.(md|sample\.php|txt|lock|yml|yaml|sql|env)$)">
         Require all denied
     </FilesMatch>
 </IfModule>
 <IfModule !mod_authz_core.c>
-    <FilesMatch "(^config\.php$|^api_key\.txt$|\.(md|sample\.php)$)">
+    <FilesMatch "(^config\.php$|^api_key\.txt$|^composer\.(json|lock)$|^package(-lock)?\.json$|^tsconfig.*\.json$|\.(md|sample\.php|txt|lock|yml|yaml|sql|env)$)">
         Order allow,deny
         Deny from all
     </FilesMatch>
+</IfModule>
+
+# Block direct access to sensitive directories that must never be web-served:
+# the git metadata (source + credential history), throwaway maintenance scripts,
+# raw client data dumps, and dependency/tooling folders.
+# Guarded by IfModule so a host without mod_rewrite doesn't 500 on every request.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule (^|/)\.git(/|$) - [F,L]
+    RewriteRule ^(scratch|tempData|\.agent|\.claude|src-php|node_modules|docs)(/|$) - [F,L]
+</IfModule>
+# Fallback (mod_alias, almost always present): 404 the git dir even without mod_rewrite.
+<IfModule mod_alias.c>
+    RedirectMatch 404 (?i)/\.git(/|$)
+</IfModule>
+
+# Security headers.
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    # Content Security Policy. 'unsafe-inline'/'unsafe-eval' are required by the
+    # Vite bundle, inline styles and the WebGL (three.js) shader background;
+    # the hardening value here is object-src/base-uri/form-action/frame-ancestors.
+    # Untrusted email HTML is rendered in sandboxed iframes, not against this policy.
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.cdnfonts.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com https://fonts.cdnfonts.com; connect-src 'self' https://cdn.jsdelivr.net; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
 </IfModule>
 
 # Disable directory listing.

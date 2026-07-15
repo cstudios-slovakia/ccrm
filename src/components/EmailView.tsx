@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { 
   Send, Trash2, Search, Mail, Plus, X, Loader2, 
   Reply, CheckCircle2, CircleAlert, Clock, Phone, FileText, Calendar, TrendingUp,
   CornerDownLeft, CornerLeftDown, ChevronDown, ChevronUp, Brain
 } from "lucide-react";
 import type { Lead, Task, UserProfile } from "../types";
+import { formatBytes } from "../utils/formatBytes";
 
 interface EmailViewProps {
   currentUser: any;
@@ -135,14 +137,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
   const [clientFormPhone, setClientFormPhone] = useState("");
   const [clientFormType, setClientFormType] = useState<"person" | "business" | "partner">("person");
 
-  const formatBytes = (bytes: number, decimals = 2) => {
-    if (bytes === 0) return "0 Bytes";
-    const k = 1024;
-    const dm = decimals < 0 ? 0 : decimals;
-    const sizes = ["Bytes", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i];
-  };
+  // formatBytes is imported from ../utils/formatBytes
 
   const handleDownloadAttachment = async (uid: string, folder: string, att: any) => {
     try {
@@ -250,7 +245,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
     if (summaries[emailUid] || loadingSummaries[emailUid]) return;
     setLoadingSummaries(prev => ({ ...prev, [emailUid]: true }));
     try {
-      const res = await fetch("/api/summarize_email.php", {
+      const res = await fetchWithTimeout("/api/summarize_email.php", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1383,6 +1378,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                             <iframe 
                               className="w-full min-h-[220px] max-h-[400px] border-0 bg-transparent"
                               title={`Thread body ${email.uid}`}
+                              sandbox=""
                               srcDoc={`
                                 <html>
                                   <head>
@@ -1665,6 +1661,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                     <iframe 
                       className="w-full h-full border-0 rounded-2xl bg-transparent"
                       title={t("Parsed mail content", "Spracovaný obsah pošty", "Feldolgozott levéltartalom")}
+                      sandbox=""
                       srcDoc={`
                         <html>
                           <head>

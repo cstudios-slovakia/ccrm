@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { Brain, Send, Bot, User, Sparkles, Database, Check, RotateCcw, Plus, X, FileText, Play, Clock, Trash2, Edit } from "lucide-react";
 import type { Language } from "../utils/translations";
 import { Markdown } from "../utils/markdown";
@@ -239,7 +240,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
     const userId = currentUser?.email || 'default_user';
 
     try {
-      const res = await fetch("/api/chat_rag.php", {
+      const res = await fetchWithTimeout("/api/chat_rag.php", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -276,7 +277,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
     setIsLoading(true);
     const userId = currentUser?.email || 'default_user';
     try {
-      const res = await fetch("/api/chat_rag.php", {
+      const res = await fetchWithTimeout("/api/chat_rag.php", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -332,7 +333,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
     setIsLoading(true);
 
     try {
-      const res = await fetch("/api/chat_rag.php", {
+      const res = await fetchWithTimeout("/api/chat_rag.php", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -469,7 +470,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
 
     setIsLoading(true);
     try {
-      const res = await fetch("/api/chat_rag.php", {
+      const res = await fetchWithTimeout("/api/chat_rag.php", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -545,7 +546,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
     }
 
     try {
-      const res = await fetch("/api/chat_rag.php", {
+      const res = await fetchWithTimeout("/api/chat_rag.php", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -596,7 +597,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
 
     setIsLoading(true);
     try {
-      const res = await fetch("/api/chat_rag.php", {
+      const res = await fetchWithTimeout("/api/chat_rag.php", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"

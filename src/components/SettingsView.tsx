@@ -52,7 +52,7 @@ interface SettingsViewProps {
   
   integrationsConfig?: any;
   updateIntegrationsConfig?: (next: any) => void;
-  dbInfo?: { host: string; port: string; name: string; user: string };
+  dbInfo?: { host: string; port: string; name: string; user: string; type?: string };
 
   taskStates: string[];
   setTaskStates: React.Dispatch<React.SetStateAction<string[]>>;
@@ -555,7 +555,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       if (match) {
         setSelectedUser(match);
         setActiveSubTab("managers");
-        window.location.hash = "settings/managers";
+        // Do NOT rewrite window.location.hash here: App.tsx only passes
+        // initialSelectedUserName on the "user-<name>" route. Rewriting to
+        // "settings/managers" fires a hashchange that re-renders this component
+        // via the plain "settings" route (which never passes
+        // initialSelectedUserName), immediately hitting the else-branch below
+        // and nulling selectedUser back out — the Actions button appeared to
+        // do nothing.
       }
     } else {
       setSelectedUser(null);
@@ -2171,25 +2177,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div className="space-y-2">
                     <div className="flex justify-between border-b border-slate-100 pb-1.5">
                       <span className="text-slate-450 uppercase text-[9px] tracking-wider">{getTranslation(userLanguage, "settings.general.db_host")}</span>
-                      <span className="text-slate-800">localhost</span>
+                      <span className="text-slate-800">{dbInfo?.host || "—"}</span>
                     </div>
                     <div className="flex justify-between border-b border-slate-100 pb-1.5">
                       <span className="text-slate-450 uppercase text-[9px] tracking-wider">{getTranslation(userLanguage, "settings.general.db_port")}</span>
-                      <span>{dbInfo?.port || "3306"}</span>
+                      <span>{dbInfo?.port || "—"}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-450 uppercase text-[9px] tracking-wider">{getTranslation(userLanguage, "settings.general.db_type")}</span>
-                      <span className="text-rose-500 font-extrabold uppercase">MySQL/Laravel Core</span>
+                      <span className="text-rose-500 font-extrabold uppercase">{dbInfo?.type || "MariaDB"}</span>
                     </div>
                   </div>
                   <div className="space-y-2">
                     <div className="flex justify-between border-b border-slate-100 pb-1.5">
                       <span className="text-slate-450 uppercase text-[9px] tracking-wider">{getTranslation(userLanguage, "settings.general.db_name")}</span>
-                      <span className="text-slate-800">ccrm</span>
+                      <span className="text-slate-800">{dbInfo?.name || "—"}</span>
                     </div>
                     <div className="flex justify-between border-b border-slate-100 pb-1.5">
                       <span className="text-slate-450 uppercase text-[9px] tracking-wider">{getTranslation(userLanguage, "settings.general.db_user")}</span>
-                      <span>ccrm_user</span>
+                      <span>{dbInfo?.user || "—"}</span>
                     </div>
                     <div className="flex justify-between font-bold">
                       <span className="text-slate-450 uppercase text-[9px] tracking-wider">{getTranslation(userLanguage, "settings.general.db_integrity")}</span>

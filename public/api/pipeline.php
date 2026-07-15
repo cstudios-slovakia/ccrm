@@ -61,9 +61,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'get_key') {
 
 // 2. RESET KEY Action (admin only)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'reset_key') {
-    ccrm_require_admin();
+    $admin = ccrm_require_admin();
     $key = 'sk_live_' . bin2hex(random_bytes(12));
     file_put_contents($apiKeyFile, $key);
+    ccrm_audit_log($pdo, $admin, 'api_key.reset', 'Public lead-intake API key rotated');
     echo json_encode(['status' => 'success', 'api_key' => $key]);
     exit;
 }
@@ -97,7 +98,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $actualKey = getOrGenerateKey($apiKeyFile);
 
-    if (empty($providedKey) || $providedKey !== $actualKey) {
+    if (empty($providedKey) || empty($actualKey) || !hash_equals((string)$actualKey, (string)$providedKey)) {
         http_response_code(401);
         echo json_encode(['status' => 'error', 'message' => 'Unauthorized: Invalid or missing X-API-KEY header']);
         exit;
@@ -126,6 +127,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         http_response_code(400);
         echo json_encode(['status' => 'error', 'message' => 'Missing required field: contact_name or company_name is required']);
         exit;
+    }
+
+    // Idempotency: if the caller supplies a key (Idempotency-Key header or
+    // idempotency_key/event_id field), the same submission is processed once.
+    // Retries then return the original result instead of creating duplicate
+    // leads / timeline events. Table is provisioned here, OUTSIDE any
+    // transaction, since DDL implicitly commits in MySQL.
+    $idempotencyKey = '';
+    if (isset($_SERVER['HTTP_IDEMPOTENCY_KEY'])) {
+        $idempotencyKey = trim($_SERVER['HTTP_IDEMPOTENCY_KEY']);
+    } elseif (isset($payload['idempotency_key'])) {
+        $idempotencyKey = trim((string)$payload['idempotency_key']);
+    } elseif (isset($payload['event_id'])) {
+        $idempotencyKey = trim((string)$payload['event_id']);
+    }
+    if ($idempotencyKey !== '') {
+        try {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS `webhook_events` (
+                `event_key` VARCHAR(191) NOT NULL PRIMARY KEY,
+                `lead_id` VARCHAR(50) NULL,
+                `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+            $seen = $pdo->prepare("SELECT `lead_id` FROM `webhook_events` WHERE `event_key` = ?");
+            $seen->execute([$idempotencyKey]);
+            $prior = $seen->fetch(PDO::FETCH_ASSOC);
+            if ($prior) {
+                echo json_encode(['status' => 'success', 'deduplicated' => true, 'lead_id' => $prior['lead_id']]);
+                exit;
+            }
+        } catch (\Throwable $e) {
+            // fail open — never drop a real lead because of a dedup-store error
+            $idempotencyKey = '';
+        }
     }
 
     // Fetch lists from database for matching
@@ -162,7 +196,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $phone = isset($payload['phone']) ? trim($payload['phone']) : "";
     $email = isset($payload['email']) ? trim($payload['email']) : "";
     $country = isset($payload['country']) ? trim($payload['country']) : "Slovakia";
-    $created_at = date('Y-m-d');
+    $created_at = date('Y-m-d H:i:s');
     
     // Check if there is an active lead (not closed) for this client
     $existingLead = null;
@@ -263,6 +297,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $pdo->commit();
 
+            if ($idempotencyKey !== '') {
+                try {
+                    $pdo->prepare("INSERT IGNORE INTO `webhook_events` (`event_key`, `lead_id`) VALUES (?, ?)")
+                        ->execute([$idempotencyKey, $existingLeadId]);
+                } catch (\Throwable $e) { /* best effort */ }
+            }
+
             echo json_encode([
                 'status' => 'success',
                 'message' => 'Lead inquiry appended to existing active lead',
@@ -278,8 +319,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
+            error_log('[ccrm pipeline] write failed: ' . $e->getMessage());
             http_response_code(500);
-            echo json_encode(['status' => 'error', 'message' => 'Database write failed: ' . $e->getMessage()]);
+            echo json_encode(['status' => 'error', 'message' => 'Database write failed.']);
         }
         exit;
     }
@@ -327,6 +369,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $pdo->commit();
 
+        if ($idempotencyKey !== '') {
+            try {
+                $pdo->prepare("INSERT IGNORE INTO `webhook_events` (`event_key`, `lead_id`) VALUES (?, ?)")
+                    ->execute([$idempotencyKey, $newLeadId]);
+            } catch (\Throwable $e) { /* best effort */ }
+        }
+
         echo json_encode([
             'status' => 'success',
             'message' => 'Lead created successfully',
@@ -342,8 +391,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($pdo->inTransaction()) {
             $pdo->rollBack();
         }
+        error_log('[ccrm pipeline] write failed: ' . $e->getMessage());
         http_response_code(500);
-        echo json_encode(['status' => 'error', 'message' => 'Database write failed: ' . $e->getMessage()]);
+        echo json_encode(['status' => 'error', 'message' => 'Database write failed.']);
     }
     exit;
 }

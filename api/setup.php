@@ -65,8 +65,9 @@ try {
     ];
     $pdo = new PDO($dsn, $user, $pass, $options);
 } catch (\PDOException $e) {
+    error_log('[ccrm setup] DB connection failed: ' . $e->getMessage());
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Database connection failed: ' . $e->getMessage()]);
+    echo json_encode(['success' => false, 'message' => 'Database connection failed. Check the host, database name and credentials.']);
     exit;
 }
 
@@ -88,6 +89,10 @@ define('DB_PORT', " . var_export($port, true) . ");
 define('DB_NAME', " . var_export($dbname, true) . ");
 define('DB_USER', " . var_export($user, true) . ");
 define('DB_PASS', " . var_export($pass, true) . ");
+
+// Symmetric key for encrypting integration/mailbox secrets at rest.
+// Generated once at install; keep it secret and out of the database.
+define('CCRM_SECRET_KEY', " . var_export(bin2hex(random_bytes(32)), true) . ");
 
 try {
     \$dsn = \"mysql:host=\" . DB_HOST . \";port=\" . DB_PORT . \";dbname=\" . DB_NAME . \";charset=utf8mb4\";
@@ -123,8 +128,9 @@ try {
 
     ccrm_apply_schema($pdo);
 } catch (\Exception $e) {
+    error_log('[ccrm setup] Schema migration failed: ' . $e->getMessage());
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Schema migration failed: ' . $e->getMessage()]);
+    echo json_encode(['success' => false, 'message' => 'Schema migration failed.']);
     exit;
 }
 

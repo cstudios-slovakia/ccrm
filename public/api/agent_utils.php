@@ -287,10 +287,10 @@ function execute_autonomous_run($pdo, $ragPdo, $agent, $openAiKey) {
         'Authorization: Bearer ' . $openAiKey
     ]);
     curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
-        'model' => 'gpt-4o-mini',
+        'model' => ccrm_ai_model(),
         'messages' => $payloadMessages,
         'temperature' => 0.4
-    ]));
+    ], JSON_INVALID_UTF8_SUBSTITUTE));
 
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);

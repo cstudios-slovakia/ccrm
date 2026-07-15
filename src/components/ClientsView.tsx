@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
+import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { createPortal } from "react-dom";
 import { 
   Users, MapPin, Search, Clock, User, Briefcase, Handshake, 
@@ -198,7 +199,13 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
 
     const formatInlineMarkdown = (str: string) => {
       if (!str) return '';
-      return str
+      // Escape HTML first so any markup in AI/registry-sourced text is inert;
+      // only our own ** / * markers are then turned into <strong>/<em>.
+      const escaped = str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      return escaped
         .replace(/\*\*(.*?)\*\*/g, '<strong class="font-black text-slate-900 font-extrabold">$1</strong>')
         .replace(/\*(.*?)\*/g, '<em class="italic text-slate-700">$1</em>');
     };
@@ -208,7 +215,7 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
         elements.push(
           <ul key={`list-${key}`} className="space-y-1 my-3 pl-5 list-disc text-slate-650 font-semibold leading-relaxed">
             {listItems.map((item, idx) => (
-              <li key={idx} dangerouslySetInnerHTML={{ __html: item }} />
+              <li key={idx} dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(item) }} />
             ))}
           </ul>
         );
@@ -875,7 +882,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       source: "website",
       owner: newClientOwner || projectManagers[0] || currentUser?.name || "",
       value: parseFloat(newClientValue) || 0,
-      createdAt: new Date().toISOString().split("T")[0],
+      createdAt: new Date().toISOString(),
       rating: 5,
       phone: newClientPhone.trim() || undefined,
       email: newClientEmail.trim() || undefined,
@@ -1306,7 +1313,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     setIsAnalyzingFinancial(true);
     
     try {
-      const res = await fetch("/api/summarize_financial.php", {
+      const res = await fetchWithTimeout("/api/summarize_financial.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1351,7 +1358,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     setIsAnalyzingFinancial(true);
     
     try {
-      const res = await fetch("/api/generate_report.php", {
+      const res = await fetchWithTimeout("/api/generate_report.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1618,7 +1625,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     const activeMeetingId = recordingMeetingId || `note_event_${Date.now()}`;
 
     try {
-      const res = await fetch("/api/transcribe_meeting.php", {
+      const res = await fetchWithTimeout("/api/transcribe_meeting.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1677,7 +1684,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           phone: activeClient.phone || "",
         };
 
-        const response = await fetch("/api/summarize_client_lead.php", {
+        const response = await fetchWithTimeout("/api/summarize_client_lead.php", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -2551,7 +2558,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           onClick={() => handleSelectSuggestion(item)}
                           className="px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer border-b border-slate-100 last:border-0 text-left cursor-pointer"
                         >
-                          <div className="font-bold text-slate-800 text-[11px]" dangerouslySetInnerHTML={{ __html: item.entityName }} />
+                          <div className="font-bold text-slate-800 text-[11px]">{stripHtml(item.entityName)}</div>
                           <div className="text-[10px] text-slate-400 mt-0.5">
                             {item.entNumber && `IČO: ${item.entNumber}`}
                           </div>
@@ -2729,7 +2736,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                 onClick={() => handleSelectSuggestion(item)}
                                 className="px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer border-b border-slate-100 last:border-0 text-left cursor-pointer"
                               >
-                                <div className="font-bold text-slate-800 text-[11px]" dangerouslySetInnerHTML={{ __html: item.entityName }} />
+                                <div className="font-bold text-slate-800 text-[11px]">{stripHtml(item.entityName)}</div>
                                 <div className="text-[10px] text-slate-400 mt-0.5">
                                   {item.entNumber && `IČO: ${item.entNumber}`}
                                 </div>
@@ -4447,6 +4454,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       <iframe 
                         className="w-full h-full min-h-[400px] border-0 rounded-2xl bg-transparent"
                         title={t("Timeline parsed mail content", "Spracovaný obsah e-mailu z časovej osi", "Idővonal feldolgozott e-mail tartalma")}
+                        sandbox=""
                         srcDoc={`
                           <html>
                             <head>
@@ -4611,7 +4619,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                             onClick={() => handleSelectSuggestion(item)}
                             className="px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer border-b border-slate-100 last:border-0 text-left cursor-pointer"
                           >
-                            <div className="font-bold text-slate-800 text-[11px]" dangerouslySetInnerHTML={{ __html: item.entityName }} />
+                            <div className="font-bold text-slate-800 text-[11px]">{stripHtml(item.entityName)}</div>
                             <div className="text-[10px] text-slate-400 mt-0.5">
                               {item.entNumber && `IČO: ${item.entNumber}`}
                               {item.entNumber && item.taxNumber && " | "}
@@ -4801,7 +4809,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                               onClick={() => handleSelectSuggestion(item)}
                               className="px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer border-b border-slate-100 last:border-0 text-left cursor-pointer"
                             >
-                              <div className="font-bold text-slate-800 text-[11px]" dangerouslySetInnerHTML={{ __html: item.entityName }} />
+                              <div className="font-bold text-slate-800 text-[11px]">{stripHtml(item.entityName)}</div>
                               <div className="text-[10px] text-slate-400 mt-0.5">
                                 {item.entNumber && `IČO: ${item.entNumber}`}
                                 {item.entNumber && item.taxNumber && " | "}

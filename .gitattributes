@@ -1,0 +1,2 @@
+# Built frontend bundle: ship byte-for-byte, never normalize line endings.
+/dist/assets/** -text

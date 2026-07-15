@@ -35,28 +35,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'test_credentials') {
         echo json_encode(['success' => false, 'error' => 'Invalid settings payload.']);
         exit;
     }
-    
+
+    // The client never receives real passwords (they are masked in the sync GET),
+    // so when it re-tests already-saved settings it posts the mask. Substitute the
+    // authenticated user's stored password so the test works without ever exposing
+    // the secret to the browser. A freshly typed password is used as-is.
+    $sessionUser = ccrm_current_user();
+    if ($sessionUser && !empty($sessionUser['email'])) {
+        $stmt = $pdo->prepare("SELECT `metadata_json` FROM `users` WHERE `email` = ?");
+        $stmt->execute([$sessionUser['email']]);
+        $storedMetaRaw = $stmt->fetchColumn();
+        $storedMeta = $storedMetaRaw ? json_decode($storedMetaRaw, true) : [];
+        $storedEmail = ccrm_decrypt_email_settings(
+            (is_array($storedMeta) && isset($storedMeta['emailSettings'])) ? $storedMeta['emailSettings'] : []
+        );
+        $settings = ccrm_merge_secrets(is_array($settings) ? $settings : [], $storedEmail, ccrm_email_secret_keys());
+    }
+
     $result = test_mail_connections($settings);
     echo json_encode($result);
     exit;
 }
 
-// 2. Otherwise, authenticate via X-User-Email header
-$userEmail = '';
-if (isset($_SERVER['HTTP_X_USER_EMAIL'])) {
-    $userEmail = trim($_SERVER['HTTP_X_USER_EMAIL']);
-} else {
-    $headers = function_exists('getallheaders') ? getallheaders() : [];
-    if (isset($headers['X-User-Email'])) {
-        $userEmail = trim($headers['X-User-Email']);
-    } elseif (isset($headers['x-user-email'])) {
-        $userEmail = trim($headers['x-user-email']);
-    }
-}
+// 2. The mailbox to operate on is ALWAYS the authenticated session user's own.
+// SECURITY: the old X-User-Email header let any logged-in user open, read, send
+// from or delete another user's mailbox just by supplying their address (IDOR).
+// The header is now ignored entirely.
+$sessionUser = ccrm_current_user();
+$userEmail = $sessionUser['email'] ?? '';
 
 if (empty($userEmail)) {
     http_response_code(401);
-    echo json_encode(['success' => false, 'error' => 'Unauthorized: Missing X-User-Email header.']);
+    echo json_encode(['success' => false, 'error' => 'Unauthorized.']);
     exit;
 }
 
@@ -72,7 +82,7 @@ if (!$metadataStr) {
 }
 
 $metadata = json_decode($metadataStr, true);
-$emailSettings = isset($metadata['emailSettings']) ? $metadata['emailSettings'] : null;
+$emailSettings = ccrm_decrypt_email_settings($metadata['emailSettings'] ?? null);
 
 if (!$emailSettings) {
     http_response_code(400);
@@ -435,6 +445,7 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                         $stmtConfig->execute();
                         $configJsonStr = $stmtConfig->fetchColumn();
                         $integrationsConfigObj = $configJsonStr ? json_decode($configJsonStr, true) : [];
+                        $integrationsConfigObj = is_array($integrationsConfigObj) ? ccrm_decrypt_config_secrets($integrationsConfigObj, ccrm_integration_secret_keys()) : [];
                         
                         $rPdo = get_rag_db_connection($integrationsConfigObj);
                         if ($rPdo) {
@@ -892,11 +903,15 @@ function save_imap_attachment_to_uploads($settings, $folder, $uid, $partNum, $na
             }
             $extractedText = implode(' ', $texts);
         }
-        
+
+        // Raw PDF byte extraction can produce invalid UTF-8; scrub it so the
+        // caller's json_encode() cannot return false and emit an empty body.
+        $extractedText = mb_convert_encoding($extractedText, 'UTF-8', 'UTF-8');
+
         if (mb_strlen($extractedText) > 60000) {
             $extractedText = mb_substr($extractedText, 0, 60000) . '... [TRUNCATED]';
         }
-        
+
         return [
             'success' => true,
             'fileName' => basename($name),

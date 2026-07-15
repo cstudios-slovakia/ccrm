@@ -304,6 +304,28 @@ if (!function_exists('ccrm_schema_statements')) {
               `user_id` VARCHAR(50) NOT NULL,
               PRIMARY KEY (`project_id`, `user_id`),
               FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Audit trail for privileged / financial actions (see ccrm_audit_log).
+            "CREATE TABLE IF NOT EXISTS `audit_log` (
+              `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+              `actor_id` VARCHAR(50) NULL,
+              `actor_email` VARCHAR(255) NULL,
+              `action` VARCHAR(100) NOT NULL,
+              `detail` TEXT NULL,
+              `ip` VARCHAR(45) NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              INDEX `idx_audit_time` (`created_at`),
+              INDEX `idx_audit_action` (`action`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Rate-limit ledger for password-reset requests (per IP/email).
+            "CREATE TABLE IF NOT EXISTS `password_reset_attempts` (
+              `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+              `ip` VARCHAR(45) NULL,
+              `email` VARCHAR(255) NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              INDEX `idx_pwreset_ip_time` (`ip`, `created_at`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
         ];
     }

@@ -28,6 +28,9 @@ const ShaderGradientAny = ShaderGradient as any;
 function App() {
   const activePushesRef = useRef(0);
   const lastPushTimeRef = useRef(0);
+  // Set when a push is rejected with 401 (session expired) so the unsaved
+  // change can be replayed after the user re-authenticates.
+  const pendingPushRef = useRef(false);
   // Latest-value refs so a push that updates one entity never ships a stale copy of the
   // others (sync.php destructively replaces each collection, so a stale array would delete
   // freshly-created rows — the root cause of "assignment/recording resets" bugs).
@@ -42,10 +45,13 @@ function App() {
   const customDashboardsRef = useRef<CustomDashboard[]>([]);
   const projectTypesRef = useRef<ProjectType[]>([]);
   const projectsRef = useRef<Project[]>([]);
+  // DB clock from the last GET/POST. Sent back as baseSyncedAt so the server can
+  // avoid deleting records a concurrent user added after our snapshot.
+  const baseSyncedAtRef = useRef<string | null>(null);
   const [, setIsSyncing] = useState(false);
   const [isInstalled, setIsInstalled] = useState(true);
   const [isDemoMode, setIsDemoMode] = useState(false);
-  const [dbInfo, setDbInfo] = useState<{ host: string; port: string; name: string; user: string } | null>(null);
+  const [dbInfo, setDbInfo] = useState<{ host: string; port: string; name: string; user: string; type?: string } | null>(null);
 
   const getTabFromHash = () => {
     const rawHash = window.location.hash.replace("#", "");
@@ -517,6 +523,7 @@ ${log.payload || ''}
     activePushesRef.current++;
     lastPushTimeRef.current = Date.now();
     const payload = {
+      baseSyncedAt: baseSyncedAtRef.current,
       leads: nextLeads ?? leadsRef.current,
       tasks: nextTasks ?? tasksRef.current,
       users: nextUsers ?? usersRef.current,
@@ -550,10 +557,22 @@ ${log.payload || ''}
         body: JSON.stringify(payload)
       });
       if (res.status === 401) {
+        // The mutation did not persist. Remember it so it is replayed from the
+        // latest state refs once the user logs back in (see onLoginSuccess).
+        pendingPushRef.current = true;
         setCurrentUser(null);
         if (typeof (window as any).showToast === "function") {
-          (window as any).showToast("Session expired. Please log in again.");
+          (window as any).showToast("Session expired. Please log in again — your last change will be re-saved.");
         }
+      } else if (res.ok) {
+        // Advance our snapshot clock so a delete right after this edit is not
+        // wrongly skipped by the server's concurrency guard.
+        try {
+          const out = await res.json();
+          if (out && typeof out.serverTime === "string") {
+            baseSyncedAtRef.current = out.serverTime;
+          }
+        } catch { /* non-JSON response — keep the previous snapshot clock */ }
       }
     } catch (err) {
       console.warn("Failed immediate push to sync.php", err);
@@ -782,14 +801,17 @@ ${log.payload || ''}
     const applyServerData = (data: any) => {
       setIsInstalled(true);
       setIsDemoMode(data.demoMode === true);
+      if (typeof data.serverTime === "string") {
+        baseSyncedAtRef.current = data.serverTime;
+      }
       if (data.leads && Array.isArray(data.leads)) {
-        setLeads(data.leads);
+        setLeads((prev) => JSON.stringify(prev) === JSON.stringify(data.leads) ? prev : data.leads);
       }
       if (data.tasks && Array.isArray(data.tasks)) {
-        setTasks(data.tasks);
+        setTasks((prev) => JSON.stringify(prev) === JSON.stringify(data.tasks) ? prev : data.tasks);
       }
       if (data.users && Array.isArray(data.users)) {
-        setUsers(data.users);
+        setUsers((prev) => JSON.stringify(prev) === JSON.stringify(data.users) ? prev : data.users);
         if (currentUser) {
           const updatedMe = data.users.find((u: UserProfile) => u.email === currentUser.email);
           if (updatedMe && JSON.stringify(updatedMe) !== JSON.stringify(currentUser)) {
@@ -801,16 +823,16 @@ ${log.payload || ''}
         setDbInfo(data.db_info);
       }
       if (data.roles && Array.isArray(data.roles)) {
-        setRoles(data.roles);
+        setRoles((prev) => JSON.stringify(prev) === JSON.stringify(data.roles) ? prev : data.roles);
       }
       if (data.meetingNotes && Array.isArray(data.meetingNotes)) {
-        setMeetingNotes(data.meetingNotes);
+        setMeetingNotes((prev) => JSON.stringify(prev) === JSON.stringify(data.meetingNotes) ? prev : data.meetingNotes);
       }
       if (data.unifiedEntries && Array.isArray(data.unifiedEntries)) {
-        setUnifiedEntries(data.unifiedEntries);
+        setUnifiedEntries((prev) => JSON.stringify(prev) === JSON.stringify(data.unifiedEntries) ? prev : data.unifiedEntries);
       }
       if (data.unifiedEntriesData) {
-        setUnifiedEntriesData(data.unifiedEntriesData);
+        setUnifiedEntriesData((prev) => JSON.stringify(prev) === JSON.stringify(data.unifiedEntriesData) ? prev : data.unifiedEntriesData);
       }
       if (data.customDashboards && Array.isArray(data.customDashboards)) {
         setCustomDashboards(data.customDashboards);
@@ -842,6 +864,13 @@ ${log.payload || ''}
     const fetchFull = async () => {
       const pollStartTime = Date.now();
       const res = await fetch(`/sync.php?t=${Date.now()}`);
+      if (res.status === 401) {
+        // Installed, but no valid session: show the login screen instead of
+        // hanging on the loader forever.
+        setIsInstalled(true);
+        setCurrentUser(null);
+        return;
+      }
       if (!res.ok) return;
       const data = await res.json();
       if (activePushesRef.current > 0 || pollStartTime < lastPushTimeRef.current || Date.now() - lastPushTimeRef.current < 4000) {
@@ -854,7 +883,6 @@ ${log.payload || ''}
       if (data && data.installed === true) {
         applyServerData(data);
         if (typeof data.dataVersion !== "undefined") lastDataVersion = data.dataVersion;
-        setIsInitialSyncResolved(true);
       }
     };
 
@@ -864,6 +892,10 @@ ${log.payload || ''}
         await fetchFull();
       } catch (err) {
         console.warn("Staging sync backend offline", err);
+      } finally {
+        // Always leave the boot loader, even on a 5xx or malformed response, so
+        // the app never hangs forever on "Syncing…". Worst case the user sees the
+        // login/app shell and the next poll recovers.
         setIsInitialSyncResolved(true);
       }
     })();
@@ -875,6 +907,11 @@ ${log.payload || ''}
         const forceFull = tick % 12 === 0;
         if (!forceFull) {
           const probeRes = await fetch(`/sync.php?probe=1&t=${Date.now()}`);
+          if (probeRes.status === 401) {
+            setIsInstalled(true);
+            setCurrentUser(null);
+            return;
+          }
           if (!probeRes.ok) return;
           const probe = await probeRes.json();
           if (activePushesRef.current > 0 || pollStartTime < lastPushTimeRef.current || Date.now() - lastPushTimeRef.current < 4000) {
@@ -896,7 +933,9 @@ ${log.payload || ''}
     }, 5000);
 
     return () => clearInterval(poller);
-  }, [isInstalled]);
+    // Re-subscribe on login/logout so a fresh session immediately re-syncs
+    // (the GET now requires auth) and the poller closure never holds a stale user.
+  }, [isInstalled, currentUser?.email]);
 
   // Background email fetching poller when the user is logged in
   useEffect(() => {
@@ -1432,6 +1471,17 @@ ${log.payload || ''}
         systemName={systemName}
         onLoginSuccess={(user) => {
           setCurrentUser(user);
+          // If a mutation was lost to an expired session, replay the latest
+          // state now that we are authenticated again so the change is not lost.
+          if (pendingPushRef.current) {
+            pendingPushRef.current = false;
+            setTimeout(() => {
+              pushStateToServer();
+              if (typeof (window as any).showToast === "function") {
+                (window as any).showToast("Re-saved your last change.");
+              }
+            }, 0);
+          }
           // Route the user to their chosen default landing page right after login
           const dp = getDefaultPageForUser(user) || "dashboard";
           setActiveTab(dp);

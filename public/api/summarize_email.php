@@ -149,7 +149,7 @@ if (empty($body) && $folder !== 'thread') {
     $metadataStr = $userStmt->fetchColumn();
     if ($metadataStr) {
         $metadata = json_decode($metadataStr, true);
-        $emailSettings = $metadata['emailSettings'] ?? null;
+        $emailSettings = ccrm_decrypt_email_settings($metadata['emailSettings'] ?? null);
         if ($emailSettings && ($emailSettings['isValidated'] ?? false)) {
             try {
                 $imapBody = fetch_imap_email_body_helper($emailSettings, $folder, $emailUid);
@@ -194,6 +194,7 @@ $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'INTE
 $stmt->execute();
 $configJson = $stmt->fetchColumn();
 $integrationsConfig = $configJson ? json_decode($configJson, true) : [];
+$integrationsConfig = is_array($integrationsConfig) ? ccrm_decrypt_config_secrets($integrationsConfig, ccrm_integration_secret_keys()) : [];
 $openAiKey = $integrationsConfig['openAiKey'] ?? '';
 
 if (empty($openAiKey)) {
@@ -230,7 +231,7 @@ Output structure:
 Email Subject: " . $subject . "\n\nEmail Content:\n" . $plainTextBody;
 
 $payload = [
-    'model' => 'gpt-4o-mini',
+    'model' => ccrm_ai_model(),
     'messages' => [
         [
             'role' => 'user',

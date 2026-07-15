@@ -63,7 +63,7 @@ function ccrm_pwreset_find_sender(PDO $pdo): ?array {
         if (!is_array($meta) || empty($meta['emailSettings']) || !is_array($meta['emailSettings'])) {
             continue;
         }
-        $es = $meta['emailSettings'];
+        $es = ccrm_decrypt_email_settings($meta['emailSettings']);
         $provider = $es['provider'] ?? 'smtp';
         $hasHost = !empty($es['smtpHost']) || $provider === 'exchange';
         list($u, $p) = ccrm_pwreset_get_smtp_credentials($es);
@@ -182,6 +182,30 @@ if ($action === 'request') {
     $email = trim((string)($input['email'] ?? ''));
     $lang  = in_array(($input['lang'] ?? 'en'), ['sk', 'hu', 'en'], true) ? $input['lang'] : 'en';
 
+    // Rate limit reset requests per client IP to prevent mail-bombing a victim
+    // and abusing the configured SMTP sender. Fail-open on any throttle error.
+    $clientIp = $_SERVER['REMOTE_ADDR'] ?? '';
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS `password_reset_attempts` (
+            `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+            `ip` VARCHAR(45) NULL,
+            `email` VARCHAR(255) NULL,
+            `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX `idx_pwreset_ip_time` (`ip`, `created_at`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+        $rl = $pdo->prepare("SELECT COUNT(*) FROM `password_reset_attempts` WHERE `ip` = ? AND `created_at` > (NOW() - INTERVAL 15 MINUTE)");
+        $rl->execute([$clientIp]);
+        if ((int)$rl->fetchColumn() >= 5) {
+            http_response_code(429);
+            // Generic body preserves anti-enumeration.
+            echo json_encode(['success' => true, 'available' => true]);
+            exit;
+        }
+        $pdo->prepare("INSERT INTO `password_reset_attempts` (`ip`, `email`) VALUES (?, ?)")->execute([$clientIp, $email]);
+    } catch (\Throwable $e) {
+        // fail open — never block legitimate resets because of a throttle-store error
+    }
+
     $sender = ccrm_pwreset_find_sender($pdo);
     if ($sender === null) {
         // No outbound mailbox configured — caller should show the contact-admin note.
@@ -284,9 +308,13 @@ if ($action === 'reset') {
     }
 
     $hash = ccrm_hash_password($password);
+    $pdo->beginTransaction();
     $pdo->prepare("UPDATE `users` SET `password_hash` = ? WHERE `id` = ?")->execute([$hash, $row['user_id']]);
     // Burn the token (and any siblings) so it cannot be reused.
     $pdo->prepare("DELETE FROM `password_resets` WHERE `user_id` = ?")->execute([$row['user_id']]);
+    $pdo->commit();
+
+    ccrm_audit_log($pdo, ['id' => $row['user_id'], 'email' => null], 'password.reset', 'Password reset via email token');
 
     echo json_encode(['success' => true]);
     exit;

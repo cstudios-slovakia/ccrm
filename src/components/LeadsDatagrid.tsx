@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
+import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { createPortal } from "react-dom";
 import { 
   Users, MapPin, Plus, Search, Trash2, 
@@ -825,7 +826,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const activeMeetingId = recordingMeetingId || `note_event_${Date.now()}`;
 
     try {
-      const res = await fetch("/api/transcribe_meeting.php", {
+      const res = await fetchWithTimeout("/api/transcribe_meeting.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1278,6 +1279,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
   const [leadClientType, setLeadClientType] = useState<"person" | "business" | "partner">("person");
   const [leadSelectedCategories, setLeadSelectedCategories] = useState<string[]>([]);
   const [leadReferralId, setLeadReferralId] = useState("");
+  const [leadCreatedAt, setLeadCreatedAt] = useState("");
 
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [localSummary, setLocalSummary] = useState<string | undefined>(undefined);
@@ -1326,7 +1328,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
           phone: activeLead.phone || "",
         };
 
-        const response = await fetch("/api/summarize_client_lead.php", {
+        const response = await fetchWithTimeout("/api/summarize_client_lead.php", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1385,6 +1387,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       setLeadClientType(activeLead.clientType || "person");
       setLeadSelectedCategories(activeLead.categories || []);
       setLeadReferralId(activeLead.referralLeadId || "");
+      setLeadCreatedAt((activeLead.createdAt || "").slice(0, 10));
     }
   }, [activeLead, isEditingLead]);
 
@@ -1658,6 +1661,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     setLeads(prev => prev.map(l => {
       if (l.id === activeLead.id) {
+        const timePart = l.createdAt && l.createdAt.includes("T") ? l.createdAt.slice(10) : "T00:00:00.000Z";
+        const newCreatedAt = leadCreatedAt ? `${leadCreatedAt}${timePart}` : l.createdAt;
         return {
           ...l,
           name: leadName.trim(),
@@ -1669,7 +1674,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
           source: leadSource.toLowerCase(),
           rating: leadRating,
           categories: leadSelectedCategories,
-          referralLeadId: leadReferralId || undefined
+          referralLeadId: leadReferralId || undefined,
+          createdAt: newCreatedAt
         };
       }
       return l;
@@ -2034,7 +2040,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       source: newLeadSource || leadSources[0] || "website",
       owner: newLeadOwner || "",
       value: valNum,
-      createdAt: new Date().toISOString().split("T")[0],
+      createdAt: new Date().toISOString(),
       rating: newLeadRating,
       categories: newLeadCategories,
       referralLeadId: newLeadReferralId || undefined
@@ -2926,6 +2932,25 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                   )}
                 </div>
 
+                {/* Lead Creation Date */}
+                <div className="space-y-2 border-t-2 border-slate-100 pt-3 text-left">
+                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <Calendar className="h-3.5 w-3.5 text-blue-500" /> {systemLanguage === "sk" ? "Dátum vytvorenia leadu" : systemLanguage === "hu" ? "Lead létrehozásának dátuma" : "Lead creation date"}
+                  </label>
+                  {isEditingLead ? (
+                    <input
+                      type="date"
+                      value={leadCreatedAt}
+                      onChange={(e) => setLeadCreatedAt(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:outline-none text-xs font-bold text-slate-700"
+                    />
+                  ) : (
+                    <div className="pt-1 text-[11px] font-bold text-slate-600">
+                      {leadCreatedAt ? leadCreatedAt.split("-").reverse().join(". ") : "N/A"}
+                    </div>
+                  )}
+                </div>
+
                 {/* Save Changes button */}
                 {isEditingLead && (
                   <div className="pt-4 border-t-2 border-slate-100 flex animate-in fade-in duration-200 justify-end">
@@ -3695,6 +3720,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         <iframe 
                           className="w-full h-full min-h-[400px] border-0 rounded-2xl bg-transparent"
                           title={t("Timeline parsed mail content", "Spracovaný obsah e-mailu časovej osi", "Idővonal feldolgozott e-mail tartalma")}
+                          sandbox=""
                           srcDoc={`
                             <html>
                               <head>
@@ -4275,6 +4301,29 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
           </div>
         )}
 
+        {leads.length === 0 && (
+          <div className="flex flex-col items-center justify-center text-center py-16 px-6 gap-3">
+            <div className="h-14 w-14 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center">
+              <TableProperties className="h-7 w-7 text-blue-500" />
+            </div>
+            <h3 className="text-sm font-heading font-black text-slate-800 uppercase tracking-tight">
+              {t("No leads yet", "Zatiaľ žiadne leady", "Még nincsenek leadek")}
+            </h3>
+            <p className="text-xs text-slate-400 max-w-sm">
+              {t("Create your first lead to start building your pipeline.",
+                 "Vytvorte svoj prvý lead a začnite budovať pipeline.",
+                 "Hozza létre első leadjét a pipeline felépítéséhez.")}
+            </p>
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(true)}
+              className="mt-1 px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold shadow-sm hover:bg-blue-700 transition-colors"
+            >
+              {t("Create your first lead", "Vytvoriť prvý lead", "Első lead létrehozása")}
+            </button>
+          </div>
+        )}
+
         {viewMode === "list" ? (
           <div className="overflow-x-auto lg:overflow-x-auto scrollbar-thin">
             <table className="w-full border-collapse text-left block lg:table">
@@ -4436,9 +4485,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                   <span>
                                     {(() => {
                                       if (!lead.createdAt) return "N/A";
-                                      const parts = lead.createdAt.split("-");
-                                      if (parts.length !== 3) return lead.createdAt;
-                                      const [yyyy, mm, dd] = parts;
+                                      const dateMatch = lead.createdAt.match(/^(\d{4})-(\d{2})-(\d{2})/);
+                                      if (!dateMatch) return lead.createdAt;
+                                      const [, yyyy, mm, dd] = dateMatch;
                                       
                                       // EN: MM/DD/YYYY
                                       // SK: DD.MM.YYYY
@@ -5503,7 +5552,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     <div key={lead.id} className="flex justify-between items-center text-xs border-b border-white pb-2 last:border-b-0 last:pb-0">
                       <div className="flex flex-col">
                         <span className="font-bold text-slate-800">{lead.name} ({lead.city})</span>
-                        <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">{t("Registered inflow:", "Registrovaný prílev:", "Regisztrált beérkezés:")} {lead.createdAt}</span>
+                        <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">{t("Registered inflow:", "Registrovaný prílev:", "Regisztrált beérkezés:")} {(lead.createdAt || "").slice(0, 10)}</span>
                       </div>
                       <div className="flex flex-col items-end">
                         <span className="font-black text-emerald-700">&euro; {lead.value.toLocaleString()}</span>

@@ -48,6 +48,7 @@ $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'INTE
 $stmt->execute();
 $configJson = $stmt->fetchColumn();
 $integrationsConfig = $configJson ? json_decode($configJson, true) : [];
+$integrationsConfig = is_array($integrationsConfig) ? ccrm_decrypt_config_secrets($integrationsConfig, ccrm_integration_secret_keys()) : [];
 $openAiKey = $integrationsConfig['openAiKey'] ?? '';
 
 if (empty($openAiKey)) {
@@ -88,7 +89,7 @@ Meeting Notes:
 " . $notesText;
 
 $payload = [
-    'model' => 'gpt-4o-mini',
+    'model' => ccrm_ai_model(),
     'messages' => [
         [
             'role' => 'user',
@@ -98,7 +99,7 @@ $payload = [
     'temperature' => 0.3
 ];
 
-curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload, JSON_INVALID_UTF8_SUBSTITUTE));
 $response = curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 $curlErr = curl_error($ch);
