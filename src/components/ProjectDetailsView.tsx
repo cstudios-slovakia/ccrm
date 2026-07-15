@@ -4,6 +4,84 @@ import { Plus, Trash2, Upload, FileText, ArrowLeft, Mail, Phone } from "lucide-r
 import type { Project, ProjectType, Lead, UserProfile, ProjectTimelineEvent, ProjectGanttRow } from "../types";
 import type { Language } from "../utils/translations";
 
+const SearchableClientSelect: React.FC<{
+  leads: Lead[];
+  value: string;
+  onChange: (id: string) => void;
+  userLanguage: Language;
+}> = ({ leads, value, onChange, userLanguage }) => {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const ref = React.useRef<HTMLDivElement>(null);
+  
+  const noneLabel = userLanguage === "sk" ? "Žiadny klient" : userLanguage === "hu" ? "Nincs ügyfél" : "No associated client";
+  const searchLabel = userLanguage === "sk" ? "Hľadať..." : userLanguage === "hu" ? "Keresés..." : "Search...";
+  const selectLabel = userLanguage === "sk" ? "Vybrať klienta..." : userLanguage === "hu" ? "Ügyfél választása..." : "Select Client...";
+  const emptyLabel = userLanguage === "sk" ? "Žiadne výsledky" : userLanguage === "hu" ? "Nincs találat" : "No matches";
+
+  const filtered = query.trim()
+    ? leads.filter((l) => `${l.name} ${l.city || ""}`.toLowerCase().includes(query.trim().toLowerCase()))
+    : leads;
+  const selected = leads.find((l) => l.id === value);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    if (open) document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  return (
+    <div className="relative font-sans" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 bg-white focus:outline-none flex items-center justify-between gap-2 cursor-pointer text-left"
+      >
+        <span className={selected ? "truncate" : "truncate text-slate-400 font-normal"}>
+          {selected ? `${selected.name} (${selected.city || "N/A"})` : selectLabel}
+        </span>
+        <Icons.ChevronDown className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+      </button>
+      {open && (
+        <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-2xl border border-slate-200 shadow-xl max-h-64 overflow-y-auto z-[999] animate-in fade-in zoom-in-95 duration-150 scrollbar-thin">
+          <div className="p-2 sticky top-0 bg-white border-b border-slate-100 z-10">
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={searchLabel}
+              className="w-full px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs focus:outline-none focus:border-indigo-400"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => { onChange(""); setOpen(false); setQuery(""); }}
+            className="w-full text-left px-4 py-2.5 text-xs font-semibold text-slate-500 hover:bg-slate-50 cursor-pointer"
+          >
+            {noneLabel}
+          </button>
+          {filtered.length === 0 ? (
+            <div className="px-4 py-2.5 text-xs text-slate-400 text-center font-medium">{emptyLabel}</div>
+          ) : (
+            filtered.map((l) => (
+              <button
+                type="button"
+                key={l.id}
+                onClick={() => { onChange(l.id); setOpen(false); setQuery(""); }}
+                className={`w-full text-left px-4 py-2.5 text-xs hover:bg-indigo-50/50 cursor-pointer ${l.id === value ? "bg-indigo-50/50 font-bold text-indigo-700" : "text-slate-700"}`}
+              >
+                {l.name} ({l.city || "N/A"})
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 interface ProjectDetailsViewProps {
   project: Project | null;
   projectType: ProjectType | null;
@@ -387,7 +465,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
         <div className="flex items-center gap-2">
           <button
             onClick={handleSave}
-            className="flex items-center gap-1.5 px-4.5 py-2 rounded-2xl bg-indigo-650 hover:bg-indigo-750 text-white font-black text-xs uppercase tracking-wider transition-all shadow-md cursor-pointer"
+            className="flex items-center gap-1.5 px-4.5 py-2 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs uppercase tracking-wider transition-all shadow-md cursor-pointer"
           >
             <Icons.Save className="h-4.5 w-4.5" />
             <span>{t("Save Changes", "Uložiť zmeny", "Mentés")}</span>
@@ -423,19 +501,15 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             {/* Lead / Client Link */}
             <div>
               <label className="block text-[10px] font-black text-slate-450 uppercase mb-1">{t("Associated Client", "Priradený klient", "Kapcsolódó ügyfél")}</label>
-              <select
+              <SearchableClientSelect
+                leads={leads}
                 value={associatedLeadId}
-                onChange={e => {
-                  setAssociatedLeadId(e.target.value);
-                  setAssociatedClientId(e.target.value);
+                onChange={id => {
+                  setAssociatedLeadId(id);
+                  setAssociatedClientId(id);
                 }}
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 bg-white"
-              >
-                <option value="">{t("Select Client...", "Vybrať klienta...", "Ügyfél választása...")}</option>
-                {leads.map(l => (
-                  <option key={l.id} value={l.id}>{l.name} ({l.city})</option>
-                ))}
-              </select>
+                userLanguage={userLanguage}
+              />
             </div>
 
             {/* Project Managers (Multiple selection) */}
@@ -456,7 +530,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                             setSelectedManagers(prev => [...prev, u.name]);
                           }
                         }}
-                        className="h-4 w-4 rounded border-slate-300 text-indigo-650"
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600"
                       />
                       <span>{u.name}</span>
                     </label>
@@ -573,7 +647,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                       : [...checkedList, opt];
                                     updateVal(nextList);
                                   }}
-                                  className="h-4 w-4 rounded border-slate-300 text-indigo-650"
+                                  className="h-4 w-4 rounded border-slate-300 text-indigo-600"
                                 />
                                 <span>{opt}</span>
                               </label>
@@ -585,7 +659,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                               type="checkbox"
                               checked={!!val}
                               onChange={e => updateVal(e.target.checked)}
-                              className="h-4 w-4 rounded border-slate-300 text-indigo-650"
+                              className="h-4 w-4 rounded border-slate-300 text-indigo-600"
                             />
                             <span>{t("Yes / Enabled", "Áno / Povolené", "Igen / Engedélyezve")}</span>
                           </label>
@@ -604,7 +678,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                               value={opt}
                               checked={val === opt}
                               onChange={() => updateVal(opt)}
-                              className="h-4 w-4 border-slate-300 text-indigo-650"
+                              className="h-4 w-4 border-slate-300 text-indigo-600"
                             />
                             <span>{opt}</span>
                           </label>
@@ -622,7 +696,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                 href={f.path} 
                                 target="_blank" 
                                 rel="noopener noreferrer"
-                                className="flex items-center gap-2 text-indigo-650 hover:text-indigo-850 truncate animate-fade-in"
+                                className="flex items-center gap-2 text-indigo-600 hover:text-indigo-800 truncate animate-fade-in"
                               >
                                 <FileText className="h-4 w-4 shrink-0 text-slate-400" />
                                 <span className="truncate">{f.name}</span>
@@ -684,7 +758,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                 <span className="text-slate-800 font-bold">{contact.name}</span>
                                 <a 
                                   href={`#lead-${contact.id}`}
-                                  className="text-indigo-650 hover:text-indigo-850 text-[10px] underline"
+                                  className="text-indigo-600 hover:text-indigo-800 text-[10px] underline"
                                 >
                                   {t("View Profile", "Zobraziť profil", "Profil megtekintése")}
                                 </a>
@@ -912,7 +986,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                             : [...checkedList, opt];
                                           updateVal(nextList);
                                         }}
-                                        className="h-4 w-4 rounded border-slate-300 text-indigo-650"
+                                        className="h-4 w-4 rounded border-slate-300 text-indigo-600"
                                       />
                                       <span>{opt}</span>
                                     </label>
@@ -924,7 +998,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                     type="checkbox"
                                     checked={!!val}
                                     onChange={e => updateVal(e.target.checked)}
-                                    className="h-4 w-4 rounded border-slate-300 text-indigo-650"
+                                    className="h-4 w-4 rounded border-slate-300 text-indigo-600"
                                   />
                                   <span>{t("Yes", "Áno", "Igen")}</span>
                                 </label>
@@ -941,7 +1015,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                     value={opt}
                                     checked={val === opt}
                                     onChange={() => updateVal(opt)}
-                                    className="h-4 w-4 border-slate-300 text-indigo-650"
+                                    className="h-4 w-4 border-slate-300 text-indigo-600"
                                   />
                                   <span>{opt}</span>
                                 </label>
@@ -1018,7 +1092,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
                   <button
                     type="submit"
-                    className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-650 hover:bg-indigo-750 text-white font-bold cursor-pointer mt-4"
+                    className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold cursor-pointer mt-4"
                   >
                     <Plus className="h-4 w-4" />
                     <span>{t("Add Event", "Pridať udalosť", "Esemény hozzáadása")}</span>
@@ -1043,7 +1117,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                           <div className="flex items-center gap-2">
                             <span className="text-slate-800 text-[13px] font-bold">{event.title}</span>
                             {event.eventType && (
-                              <span className="text-[9px] font-black text-indigo-650 bg-indigo-50 border border-indigo-150 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                              <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full uppercase tracking-wider">
                                 {projectType.timelineEventTypes?.find(t => t.id === event.eventType)?.name || event.eventType}
                               </span>
                             )}
@@ -1080,7 +1154,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                   renderedVal = (
                                     <div className="flex flex-col gap-1 mt-0.5">
                                       {filesList.map((f: any, fIdx: number) => (
-                                        <a key={fIdx} href={f.path} target="_blank" rel="noopener noreferrer" className="text-indigo-650 hover:underline flex items-center gap-1 text-[10px] font-bold">
+                                        <a key={fIdx} href={f.path} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline flex items-center gap-1 text-[10px] font-bold">
                                           <FileText className="h-3 w-3 shrink-0 text-slate-400" />
                                           <span className="truncate max-w-[120px]">{f.name}</span>
                                         </a>
@@ -1173,7 +1247,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
                   <button
                     type="submit"
-                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-650 hover:bg-indigo-755 text-white font-bold cursor-pointer"
+                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold cursor-pointer"
                   >
                     <Plus className="h-4 w-4" />
                     <span>{t("Add Row", "Pridať", "Hozzáadás")}</span>
@@ -1249,7 +1323,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => setSelectedGanttEdit(row)}
-                                  className="text-slate-555 hover:text-indigo-650 hover:bg-indigo-50/50 font-bold px-2 py-0.5 rounded-xl border border-slate-200 transition-all text-[10.5px] cursor-pointer"
+                                  className="text-slate-555 hover:text-indigo-600 hover:bg-indigo-50/50 font-bold px-2 py-0.5 rounded-xl border border-slate-200 transition-all text-[10.5px] cursor-pointer"
                                 >
                                   {row.endDate ? (
                                     new Date(row.endDate).toLocaleDateString(userLanguage === "sk" ? "sk-SK" : userLanguage === "hu" ? "hu-HU" : "en-US", { month: "short", day: "numeric" })
@@ -1519,7 +1593,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                           setSelectedGanttEdit(prev => prev ? { ...prev, progress: val } : null);
                           setGantt(prev => prev.map(r => r.id === selectedGanttEdit.id ? { ...r, progress: val } : r));
                         }}
-                        className="flex-1 accent-indigo-650"
+                        className="flex-1 accent-indigo-600"
                       />
                       <div className="flex gap-1">
                         <button
@@ -1538,7 +1612,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                             setSelectedGanttEdit(prev => prev ? { ...prev, progress: 100 } : null);
                             setGantt(prev => prev.map(r => r.id === selectedGanttEdit.id ? { ...r, progress: 100 } : r));
                           }}
-                          className="px-2 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-750 text-[10px] cursor-pointer"
+                          className="px-2 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] cursor-pointer"
                         >
                           100%
                         </button>
@@ -1551,7 +1625,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setSelectedGanttEdit(null)}
-                    className="px-4 py-2 bg-indigo-650 hover:bg-indigo-755 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer"
                   >
                     {t("Close", "Zatvoriť", "Bezárás")}
                   </button>
