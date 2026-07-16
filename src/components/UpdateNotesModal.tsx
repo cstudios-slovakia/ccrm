@@ -10,9 +10,9 @@ export interface UpdateEntry {
   version: string;
   contentMatrix: Array<{
     __typename: string;
-    text?: string;
+    text?: { html: string };
     image?: Array<{ url: string; title: string }>;
-    imageDirection?: string;
+    imageDirection?: string | boolean;
   }>;
 }
 
@@ -114,12 +114,12 @@ export const UpdateNotesModal: React.FC<UpdateNotesModalProps> = ({
           {/* Matrix Content Rendering */}
           <div className="space-y-6">
             {activeUpdate.contentMatrix?.map((block, idx) => {
-              if (block.__typename === "textblock_Entry" && block.text) {
+              if (block.__typename === "textblock_Entry" && block.text?.html) {
                 return (
                   <div 
                     key={idx}
-                    className="prose prose-slate max-w-none text-xs font-semibold text-slate-600 leading-relaxed font-sans"
-                    dangerouslySetInnerHTML={{ __html: block.text }}
+                    className="prose prose-slate max-w-none text-xs text-slate-600 leading-relaxed font-sans ck-content"
+                    dangerouslySetInnerHTML={{ __html: block.text.html }}
                   />
                 );
               }
@@ -139,7 +139,7 @@ export const UpdateNotesModal: React.FC<UpdateNotesModalProps> = ({
 
               if (block.__typename === "imageWithText_Entry") {
                 const img = block.image && block.image[0];
-                const isRight = block.imageDirection === "right" || block.imageDirection === "Right";
+                const isRight = block.imageDirection === true || block.imageDirection === "right" || block.imageDirection === "Right" || block.imageDirection === "on" || block.imageDirection === "On";
                 return (
                   <div 
                     key={idx} 
@@ -155,10 +155,10 @@ export const UpdateNotesModal: React.FC<UpdateNotesModalProps> = ({
                       </div>
                     )}
                     <div className="flex-1">
-                      {block.text && (
+                      {block.text?.html && (
                         <div 
-                          className="prose prose-slate max-w-none text-xs font-semibold text-slate-600 leading-relaxed font-sans"
-                          dangerouslySetInnerHTML={{ __html: block.text }}
+                          className="prose prose-slate max-w-none text-xs text-slate-600 leading-relaxed font-sans ck-content"
+                          dangerouslySetInnerHTML={{ __html: block.text.html }}
                         />
                       )}
                     </div>
