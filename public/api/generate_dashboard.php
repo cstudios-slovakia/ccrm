@@ -84,6 +84,14 @@ CCRM Database Tables and Columns (Read-Only):
 7. `unified_entries`: `id`, `name`, `entry_name`, `folder_name`, `icon`, `color`.
 8. Dynamic tables for custom unified entries: Named `ue_{safeId}` where `safeId` is lowercase alphanumeric of the entry id. Columns: `id`, `parent_id` (parent folder), `is_folder` (TINYINT), `title`, `due_date`, `file_name`, `file_size`, `file_type` (offer, contract, invoice), `file_path`, `client_id`, `lead_id`, `warning_days`, `icon`.
    * Use these tables to count or query files (where `file_name IS NOT NULL` or `is_folder = 0`).
+9. `project_types` (project definitions): `id` (VARCHAR), `name` (VARCHAR), `description` (TEXT), `icon` (VARCHAR), `color` (VARCHAR), `has_timeline` (TINYINT), `has_gantt` (TINYINT).
+10. `projects` (project instances): `id` (VARCHAR), `project_type_id` (VARCHAR), `lead_id` (VARCHAR, references lead/client), `client_id` (VARCHAR, references client lead), `status` (VARCHAR, e.g. active, completed, archived).
+11. `project_managers` (assigned users): `project_id` (VARCHAR), `user_id` (VARCHAR).
+12. Dynamic tables for project types:
+    - Custom attribute values: Named `proj_data_{safeId}` (where `safeId` is lowercase alphanumeric of project_type_id). Columns: `id`, `project_id`, `created_at`, `updated_at`, and `attr_{attributeId}` columns for custom attributes.
+    - Project Timeline: Named `proj_timeline_{safeId}`. Columns: `id`, `project_id`, `type` (e.g. note), `event_type` (VARCHAR), `timestamp` (DATETIME), `title` (VARCHAR), `content` (TEXT), and custom attributes starting with `attr_`.
+    - Project Gantt tasks: Named `proj_gantt_{safeId}`. Columns: `id`, `project_id`, `title` (VARCHAR), `contact_id` (VARCHAR), `start_date` (DATE), `end_date` (DATE), `progress` (INT).
+
 
 Visual Design Guidelines:
 1. Grid Layout: The dashboard utilizes a 12-column grid. Each widget's `size` property maps as follows:

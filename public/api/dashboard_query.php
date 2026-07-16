@@ -47,7 +47,7 @@ function is_safe_select_query($sql, $pdo) {
     }
     
     // 5. Check all table names in SQL against the database list
-    $allowed = ['leads', 'tasks', 'users', 'roles', 'role_permissions', 'meeting_notes', 'meeting_tasks', 'email_summaries', 'rag_emails', 'unified_entries', 'custom_dashboards', 'error_logs', 'lead_categories', 'task_assignees', 'timeline_events'];
+    $allowed = ['leads', 'tasks', 'users', 'roles', 'role_permissions', 'meeting_notes', 'meeting_tasks', 'email_summaries', 'rag_emails', 'unified_entries', 'custom_dashboards', 'error_logs', 'lead_categories', 'task_assignees', 'timeline_events', 'project_types', 'projects', 'project_managers'];
     
     try {
         $stmt = $pdo->query("SHOW TABLES");
@@ -61,7 +61,11 @@ function is_safe_select_query($sql, $pdo) {
         // If this table appears in the SQL query
         if (preg_match('/\b' . preg_quote($dbTableLower, '/') . '\b/i', $lowerSql)) {
             // Check if it's allowed
-            if (in_array($dbTableLower, $allowed) || strpos($dbTableLower, 'ue_') === 0) {
+            if (in_array($dbTableLower, $allowed) || 
+                strpos($dbTableLower, 'ue_') === 0 || 
+                strpos($dbTableLower, 'proj_data_') === 0 || 
+                strpos($dbTableLower, 'proj_timeline_') === 0 || 
+                strpos($dbTableLower, 'proj_gantt_') === 0) {
                 continue;
             }
             return false; // Found disallowed table in SQL
