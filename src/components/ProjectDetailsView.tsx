@@ -354,11 +354,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     maxDate.setDate(maxDate.getDate() + 20);
 
     const validDates = gantt
-      .filter(r => r.startDate)
-      .map(r => new Date(r.startDate!));
+      .filter(r => r.startDate || r.endDate)
+      .map(r => new Date(r.startDate || r.endDate!));
     const validEndDates = gantt
-      .filter(r => r.endDate)
-      .map(r => new Date(r.endDate!));
+      .filter(r => r.startDate || r.endDate)
+      .map(r => new Date(r.endDate || r.startDate!));
 
     if (validDates.length > 0) {
       const minVal = Math.min(...validDates.map(d => d.getTime()));
@@ -1414,9 +1414,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                             let pillLeft = 0;
                             let pillWidth = 0;
 
-                            if (row.startDate && row.endDate) {
-                              const startIdx = weekdays.findIndex(d => d.toISOString().slice(0,10) === row.startDate);
-                              const endIdx = weekdays.findIndex(d => d.toISOString().slice(0,10) === row.endDate);
+                            const effectiveStart = row.startDate || row.endDate;
+                            const effectiveEnd = row.endDate || row.startDate;
+
+                            if (effectiveStart && effectiveEnd) {
+                              const startIdx = weekdays.findIndex(d => d.toISOString().slice(0,10) === effectiveStart);
+                              const endIdx = weekdays.findIndex(d => d.toISOString().slice(0,10) === effectiveEnd);
                               if (startIdx !== -1 && endIdx !== -1) {
                                 hasPill = true;
                                 const leftIdx = Math.min(startIdx, endIdx);
@@ -1445,7 +1448,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                       className="h-6 rounded-lg bg-emerald-500/20 border border-emerald-500/40 shrink-0 select-none cursor-pointer flex items-center justify-center hover:bg-emerald-500/30 transition-colors"
                                       style={{ width: pillWidth }}
                                       onClick={() => setSelectedGanttEdit(row)}
-                                      title={`${row.startDate} to ${row.endDate}`}
+                                      title={`${row.startDate || row.endDate} to ${row.endDate || row.startDate}`}
                                     />
                                     
                                     {/* Assignee initials badge */}
