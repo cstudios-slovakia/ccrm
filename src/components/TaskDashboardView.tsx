@@ -45,7 +45,7 @@ const DateRangeCalendarFilter: React.FC<{
 
     const year = viewDate.getFullYear();
     const month = viewDate.getMonth();
-    const fmt = (d: Date | null) => (d ? d.toISOString().split("T")[0] : "");
+    const fmt = (d: Date | null) => (d ? toLocalDateStr(d) : "");
     const locale = systemLanguage === "sk" ? "sk-SK" : systemLanguage === "hu" ? "hu-HU" : "en-US";
 
     const handleSelect = (date: Date) => {
@@ -132,6 +132,17 @@ const DateRangeCalendarFilter: React.FC<{
             )}
         </div>
     );
+};
+
+// Format a Date as a LOCAL calendar date (YYYY-MM-DD). Task deadlines are stored
+// as plain local date strings, so we must NOT go through toISOString() (which
+// converts to UTC and, in timezones ahead of UTC, shifts the day back by one —
+// making tasks appear on the wrong calendar cell and breaking day-click matching).
+const toLocalDateStr = (d: Date): string => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
 };
 
 // Named preset deadline times offered in the picker. "End of day (23:59)" was removed
@@ -260,8 +271,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // Inclusive date-range check against a YYYY-MM-DD string (item 9 calendar filters)
     const dateInRange = (dateStr: string, start: Date | null, end: Date | null) => {
         if (!start) return true;
-        const startStr = start.toISOString().split("T")[0];
-        const endStr = (end || start).toISOString().split("T")[0];
+        const startStr = toLocalDateStr(start);
+        const endStr = toLocalDateStr(end || start);
         return dateStr >= startStr && dateStr <= endStr;
     };
 
@@ -398,14 +409,12 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const [newPriority, setNewPriority] = useState<"low" | "medium" | "high">(
         "medium",
     );
-    const [newStartDate, setNewStartDate] = useState(() => {
-        const d = new Date();
-        return d.toISOString().split("T")[0];
-    });
-    const [newDeadline, setNewDeadline] = useState(() => {
-        const d = new Date();
-        return d.toISOString().split("T")[0];
-    });
+    const [newStartDate, setNewStartDate] = useState(() =>
+        toLocalDateStr(new Date()),
+    );
+    const [newDeadline, setNewDeadline] = useState(() =>
+        toLocalDateStr(new Date()),
+    );
     const [newDeadlineTime, setNewDeadlineTime] = useState("16:00");
     const [newRelatedLeadId, setNewRelatedLeadId] = useState("");
     const [newIsLocking, setNewIsLocking] = useState(false);
@@ -413,7 +422,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
     // Helpers
     const today = new Date();
-    const todayStr = today.toISOString().split("T")[0];
+    const todayStr = toLocalDateStr(today);
     const currentYear = currentDate.getFullYear();
     const currentMonth = currentDate.getMonth();
 
@@ -636,7 +645,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         setNewTitle("");
         setNewDescription("");
         setNewPriority("medium");
-        setNewStartDate(new Date().toISOString().split("T")[0]);
+        setNewStartDate(toLocalDateStr(new Date()));
         setNewDeadlineTime("16:00");
         setNewRelatedLeadId("");
         setNewIsLocking(false);
@@ -673,7 +682,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     ))}
 
                     {daysInMonth.map((date, idx) => {
-                        const dateStr = date.toISOString().split("T")[0];
+                        const dateStr = toLocalDateStr(date);
                         const isToday = dateStr === todayStr;
                         const isPast = dateStr < todayStr;
                         const isTomorrow = dateStr === tomorrowStr;
@@ -748,7 +757,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const renderDayView = () => {
         if (!selectedDay) return null;
 
-        const selectedDateStr = selectedDay.toISOString().split("T")[0];
+        const selectedDateStr = toLocalDateStr(selectedDay);
         const { dayTasks } = getItemsForDate(selectedDateStr);
 
         return (
@@ -843,7 +852,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         if (isDoneState(task.status)) return false;
 
         const now = new Date();
-        const currentDateStr = now.toISOString().split("T")[0];
+        const currentDateStr = toLocalDateStr(now);
 
         if (task.deadline < currentDateStr) {
             return true;
@@ -860,9 +869,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         return false;
     };
 
-    const tomorrowStr = new Date(today.getTime() + 86400000)
-        .toISOString()
-        .split("T")[0];
+    const tomorrowStr = toLocalDateStr(new Date(today.getTime() + 86400000));
     const overdueTasks = myTasks
         .filter((t) => isTaskOverdue(t))
         .sort((a, b) => {
@@ -907,7 +914,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         const newStatus = e.target.value;
                         const now = new Date();
                         const completedAtStr = isDoneState(newStatus)
-                            ? now.toISOString().split("T")[0] +
+                            ? toLocalDateStr(now) +
                               " " +
                               now.toTimeString().split(" ")[0].substring(0, 5)
                             : undefined;
@@ -2269,7 +2276,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     const val = e.target.value;
                                     const now = new Date();
                                     const completedAtStr = isDoneState(val)
-                                        ? now.toISOString().split("T")[0] +
+                                        ? toLocalDateStr(now) +
                                           " " +
                                           now
                                               .toTimeString()
