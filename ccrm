@@ -104,6 +104,18 @@ function ccrm_update() {
     if (!$isVendor) {
         echo "Publishing built assets from dist/ to root directory...\n";
         require_once __DIR__ . '/src-php/Installer.php';
+        // Refresh dist/ backend PHP from public/ (the tracked source of truth)
+        // BEFORE publishing. Locally `vite build` copies public/* into dist/*,
+        // but there is no build step on the server, so dist/*.php (e.g.
+        // dist/sync.php, which is gitignored and never pulled) would otherwise
+        // stay stale and overwrite the freshly-pulled root sync.php on publish.
+        // This reproduces the build's public/->dist/ copy so backend fixes
+        // actually reach the served root files. (dist/index.html + dist/assets/
+        // are the built frontend; public/ has no index.html/assets, so they are
+        // left untouched.)
+        if (is_dir(__DIR__ . '/public')) {
+            \CCRM\Installer::copyDir(__DIR__ . '/public', __DIR__ . '/dist', ['config.php']);
+        }
         \CCRM\Installer::copyDir(__DIR__ . '/dist', __DIR__, ['config.php']);
     }
 
