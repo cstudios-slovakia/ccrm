@@ -120,6 +120,8 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
         'dissolution_date' => $inc['dissolutionDate'] ?? null,
         'region' => $inc['region'] ?? null,
         'district' => $inc['district'] ?? null,
+        'follow_up_done' => !empty($inc['followUpDone']) ? 1 : 0,
+        'follow_up_done_at' => $inc['followUpDoneAt'] ?? null,
         // 'financial_summary' is deliberately excluded: it is server-owned, so a
         // lead whose only difference is the server-generated report still counts
         // as identical and is skipped (no rewrite, no needless report re-spawn).
@@ -130,7 +132,7 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
         $dbVal = $db[$col] ?? null;
         if ($col === 'value') {
             if (abs(floatval($val) - floatval($dbVal)) > 0.001) return false;
-        } elseif ($col === 'rating') {
+        } elseif ($col === 'rating' || $col === 'follow_up_done') {
             if (intval($val) !== intval($dbVal)) return false;
         } else {
             $v1 = ($val === '') ? null : $val;
@@ -385,7 +387,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'dissolutionDate' => $row['dissolution_date'] ?? '',
             'region' => $row['region'] ?? '',
             'district' => $row['district'] ?? '',
-            'financialSummary' => $row['financial_summary'] ?? ''
+            'financialSummary' => $row['financial_summary'] ?? '',
+            'followUpDone' => intval($row['follow_up_done'] ?? 0) === 1,
+            'followUpDoneAt' => $row['follow_up_done_at'] ?? null
         ];
     }
 
@@ -483,6 +487,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $leadCategoryColors = isset($settings['LEAD_CATEGORY_COLORS']) ? json_decode($settings['LEAD_CATEGORY_COLORS'], true) : [];
     $leadStageGroups = isset($settings['LEAD_STAGE_GROUPS']) ? json_decode($settings['LEAD_STAGE_GROUPS'], true) : [];
     $leadStateParents = isset($settings['LEAD_STATE_PARENTS']) ? json_decode($settings['LEAD_STATE_PARENTS'], true) : (object)[];
+    $leadStateFollowUp = isset($settings['LEAD_STATE_FOLLOWUP']) ? json_decode($settings['LEAD_STATE_FOLLOWUP'], true) : (object)[];
     $taskStates = isset($settings['TASK_STATES']) ? json_decode($settings['TASK_STATES'], true) : ["New", "In progress", "Blocked", "Done"];
     $taskStateColors = isset($settings['TASK_STATE_COLORS']) ? json_decode($settings['TASK_STATE_COLORS'], true) : [];
     $integrationsConfig = isset($settings['INTEGRATIONS_CONFIG']) ? json_decode($settings['INTEGRATIONS_CONFIG'], true) : (object)[];
@@ -673,6 +678,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'leadCategoryColors' => $leadCategoryColors,
             'leadStageGroups' => $leadStageGroups,
             'leadStateParents' => $leadStateParents,
+            'leadStateFollowUp' => $leadStateFollowUp,
             'taskStates' => $taskStates,
             'taskStateColors' => $taskStateColors,
             'integrationsConfig' => $integrationsConfig,
@@ -811,6 +817,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'LEAD_CATEGORY_COLORS' => json_encode($s['leadCategoryColors'] ?? []),
                 'LEAD_STAGE_GROUPS' => json_encode($s['leadStageGroups'] ?? []),
                 'LEAD_STATE_PARENTS' => json_encode($s['leadStateParents'] ?? (object)[]),
+                'LEAD_STATE_FOLLOWUP' => json_encode($s['leadStateFollowUp'] ?? (object)[]),
                 'TASK_STATES' => json_encode($s['taskStates'] ?? []),
                 'TASK_STATE_COLORS' => json_encode($s['taskStateColors'] ?? []),
                 'INTEGRATIONS_CONFIG' => $integrationsValue,
@@ -981,12 +988,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               `ai_summary`, `ai_summary_fingerprint`, 
               `establishment_date`, `legal_form`, `sk_nace`, `organization_size`, `ownership_type`, `data_source`, `dissolution_date`, `region`, `district`, `financial_summary`,
               `vat_validation_result`,
-              `created_at`
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) 
-            ON DUPLICATE KEY UPDATE 
+              `created_at`,
+              `follow_up_done`, `follow_up_done_at`
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
               `name` = VALUES(`name`), `city` = VALUES(`city`), `client_type` = VALUES(`client_type`), `status` = VALUES(`status`), `source` = VALUES(`source`), `owner` = VALUES(`owner`), `value` = VALUES(`value`), `rating` = VALUES(`rating`), `phone` = VALUES(`phone`), `email` = VALUES(`email`), `company_id` = VALUES(`company_id`), `tax_id` = VALUES(`tax_id`), `vat_id` = VALUES(`vat_id`), `contact_person` = VALUES(`contact_person`), `website` = VALUES(`website`), `street` = VALUES(`street`), `postal_code` = VALUES(`postal_code`), `country` = VALUES(`country`), `ai_summary` = VALUES(`ai_summary`), `ai_summary_fingerprint` = VALUES(`ai_summary_fingerprint`),
               `establishment_date` = VALUES(`establishment_date`), `legal_form` = VALUES(`legal_form`), `sk_nace` = VALUES(`sk_nace`), `organization_size` = VALUES(`organization_size`), `ownership_type` = VALUES(`ownership_type`), `data_source` = VALUES(`data_source`), `dissolution_date` = VALUES(`dissolution_date`), `region` = VALUES(`region`), `district` = VALUES(`district`),
-              `vat_validation_result` = VALUES(`vat_validation_result`)");
+              `vat_validation_result` = VALUES(`vat_validation_result`),
+              `follow_up_done` = VALUES(`follow_up_done`), `follow_up_done_at` = VALUES(`follow_up_done_at`)");
               // NOTE: `financial_summary` is intentionally NOT updated here. It is
               // server-owned — generated by api/generate_report.php in the
               // background and written directly to the row. Letting the client's
@@ -1043,7 +1052,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $l['district'] ?? null,
                     $l['financialSummary'] ?? null,
                     isset($l['vatValidationResult']) ? json_encode($l['vatValidationResult']) : null,
-                    $l['createdAt'] ?? date('Y-m-d H:i:s')
+                    $l['createdAt'] ?? date('Y-m-d H:i:s'),
+                    !empty($l['followUpDone']) ? 1 : 0,
+                    (isset($l['followUpDoneAt']) && $l['followUpDoneAt'] !== '') ? $l['followUpDoneAt'] : null
                 ]);
 
                 // Check if we need to generate financial report in the background

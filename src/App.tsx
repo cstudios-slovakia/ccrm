@@ -218,6 +218,11 @@ function App() {
 
   const [leadStateParents, setLeadStateParents] = useState<Record<string, string>>({});
 
+  // Per-state flag: which lead states show a "Follow-up done" checkbox on the lead.
+  // Keyed by lowercased state name (admin-configurable in Settings). Robust to
+  // renaming/removing states — a removed state's entry simply stops mattering.
+  const [leadStateFollowUp, setLeadStateFollowUp] = useState<Record<string, boolean>>({});
+
   const [integrationsConfig, setIntegrationsConfig] = useState<any>({
     emailProvider: "smtp",
     smtpHost: "",
@@ -495,6 +500,7 @@ ${log.payload || ''}
         leadCategoryColors,
         leadStageGroups,
         leadStateParents,
+        leadStateFollowUp,
         taskStates,
         taskStateColors,
         integrationsConfig: nextIntegrationsConfig ?? integrationsConfigRef.current
@@ -691,7 +697,7 @@ ${log.payload || ''}
       pushStateToServer();
     };
     syncSettingsToServer();
-  }, [leadStates, leadSources, leadCategories, systemName, systemLanguage, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, taskStates, taskStateColors, isInitialSyncResolved]);
+  }, [leadStates, leadSources, leadCategories, systemName, systemLanguage, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, taskStates, taskStateColors, isInitialSyncResolved]);
 
   // Layout Hash change listener
   useEffect(() => {
@@ -770,6 +776,7 @@ ${log.payload || ''}
         setLeadCategoryColors((prev) => s.leadCategoryColors && JSON.stringify(s.leadCategoryColors) !== JSON.stringify(prev) ? s.leadCategoryColors : prev);
         setLeadStageGroups((prev) => s.leadStageGroups && JSON.stringify(s.leadStageGroups) !== JSON.stringify(prev) ? s.leadStageGroups : prev);
         setLeadStateParents((prev) => s.leadStateParents && JSON.stringify(s.leadStateParents) !== JSON.stringify(prev) ? s.leadStateParents : prev);
+        setLeadStateFollowUp((prev) => s.leadStateFollowUp && JSON.stringify(s.leadStateFollowUp) !== JSON.stringify(prev) ? s.leadStateFollowUp : prev);
         setTaskStates((prev) => s.taskStates && JSON.stringify(s.taskStates) !== JSON.stringify(prev) ? s.taskStates : prev);
         setTaskStateColors((prev) => s.taskStateColors && JSON.stringify(s.taskStateColors) !== JSON.stringify(prev) ? s.taskStateColors : prev);
         if (s.integrationsConfig) syncIntegrationsConfig(s.integrationsConfig);
@@ -929,6 +936,8 @@ ${log.payload || ''}
           setLeadCategoryColors={setLeadCategoryColors}
           leadStageGroups={leadStageGroups}
           setLeadStageGroups={setLeadStageGroups}
+          leadStateFollowUp={leadStateFollowUp}
+          setLeadStateFollowUp={setLeadStateFollowUp}
           systemLanguage={systemLanguage}
           setSystemLanguage={setSystemLanguage}
           userLanguage={userLanguage}
@@ -1009,6 +1018,7 @@ ${log.payload || ''}
           taskStateColors={taskStateColors}
           integrationsConfig={integrationsConfig}
           leadStageGroups={leadStageGroups}
+          leadStateFollowUp={leadStateFollowUp}
         />
       );
     }
@@ -1041,6 +1051,8 @@ ${log.payload || ''}
           setLeadCategoryColors={setLeadCategoryColors}
           leadStageGroups={leadStageGroups}
           setLeadStageGroups={setLeadStageGroups}
+          leadStateFollowUp={leadStateFollowUp}
+          setLeadStateFollowUp={setLeadStateFollowUp}
           systemLanguage={systemLanguage}
           setSystemLanguage={setSystemLanguage}
           userLanguage={userLanguage}
@@ -1090,6 +1102,7 @@ ${log.payload || ''}
             taskStateColors={taskStateColors}
             integrationsConfig={integrationsConfig}
             leadStageGroups={leadStageGroups}
+            leadStateFollowUp={leadStateFollowUp}
           />
         );
       case "clients":
