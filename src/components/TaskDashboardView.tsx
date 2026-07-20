@@ -134,6 +134,77 @@ const DateRangeCalendarFilter: React.FC<{
     );
 };
 
+// Named preset deadline times offered in the picker. "End of day (23:59)" was removed
+// in favour of a "Custom" option that lets the user type any specific time.
+const DEADLINE_TIME_PRESETS = ["10:00", "12:00", "16:00", "19:00"];
+
+// Deadline-time picker shared by the Add and Edit task drawers. Offers the named
+// presets plus a "Custom" option that reveals a free time input. Defined at module
+// scope (stable identity) so its internal state survives parent re-renders and the
+// custom <input> keeps focus while typing.
+const DeadlineTimePicker: React.FC<{
+    value: string;
+    onChange: (val: string) => void;
+    t: (en: string, sk: string, hu: string) => string;
+}> = ({ value, onChange, t }) => {
+    const currentValue = value || "";
+    const isPreset = DEADLINE_TIME_PRESETS.includes(currentValue);
+    // Custom mode is active when the value isn't a named preset (e.g. a legacy 23:59
+    // or a hand-typed time) or once the user explicitly opens the custom input.
+    const [customOpen, setCustomOpen] = useState(!isPreset && currentValue !== "");
+    const showCustom = customOpen || (!isPreset && currentValue !== "");
+
+    const presetLabel = (p: string) => {
+        switch (p) {
+            case "10:00":
+                return t("Morning (10:00)", "Ráno (10:00)", "Reggel (10:00)");
+            case "12:00":
+                return t("Noon (12:00)", "Poludnie (12:00)", "Dél (12:00)");
+            case "16:00":
+                return t("Afternoon (16:00)", "Popoludnie (16:00)", "Délután (16:00)");
+            case "19:00":
+                return t("Evening (19:00)", "Večer (19:00)", "Este (19:00)");
+            default:
+                return p;
+        }
+    };
+
+    return (
+        <div className="space-y-1.5">
+            <select
+                value={showCustom ? "custom" : currentValue}
+                onChange={(e) => {
+                    if (e.target.value === "custom") {
+                        setCustomOpen(true);
+                        if (!currentValue) onChange("12:00");
+                    } else {
+                        setCustomOpen(false);
+                        onChange(e.target.value);
+                    }
+                }}
+                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none bg-white font-bold"
+            >
+                {DEADLINE_TIME_PRESETS.map((p) => (
+                    <option key={p} value={p}>
+                        {presetLabel(p)}
+                    </option>
+                ))}
+                <option value="custom">
+                    {t("Custom…", "Vlastný čas…", "Egyéni időpont…")}
+                </option>
+            </select>
+            {showCustom && (
+                <input
+                    type="time"
+                    value={currentValue}
+                    onChange={(e) => onChange(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none bg-white font-bold"
+                />
+            )}
+        </div>
+    );
+};
+
 interface TaskDashboardViewProps {
     tasks: Task[];
     setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
@@ -335,7 +406,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         const d = new Date();
         return d.toISOString().split("T")[0];
     });
-    const [newDeadlineTime, setNewDeadlineTime] = useState("23:59");
+    const [newDeadlineTime, setNewDeadlineTime] = useState("16:00");
     const [newRelatedLeadId, setNewRelatedLeadId] = useState("");
     const [newIsLocking, setNewIsLocking] = useState(false);
     const [newAssignedUser, setNewAssignedUser] = useState("");
@@ -566,7 +637,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         setNewDescription("");
         setNewPriority("medium");
         setNewStartDate(new Date().toISOString().split("T")[0]);
-        setNewDeadlineTime("23:59");
+        setNewDeadlineTime("16:00");
         setNewRelatedLeadId("");
         setNewIsLocking(false);
         setNewAssignedUser("");
@@ -1883,49 +1954,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                         "Határidő időpontja",
                                     )}
                                 </label>
-                                <select
+                                <DeadlineTimePicker
                                     value={newDeadlineTime}
-                                    onChange={(e) =>
-                                        setNewDeadlineTime(e.target.value)
-                                    }
-                                    className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none bg-white"
-                                >
-                                    <option value="10:00">
-                                        {t(
-                                            "Morning (10:00)",
-                                            "Ráno (10:00)",
-                                            "Reggel (10:00)",
-                                        )}
-                                    </option>
-                                    <option value="12:00">
-                                        {t(
-                                            "Noon (12:00)",
-                                            "Poludnie (12:00)",
-                                            "Dél (12:00)",
-                                        )}
-                                    </option>
-                                    <option value="16:00">
-                                        {t(
-                                            "Afternoon (16:00)",
-                                            "Popoludnie (16:00)",
-                                            "Délután (16:00)",
-                                        )}
-                                    </option>
-                                    <option value="19:00">
-                                        {t(
-                                            "Evening (19:00)",
-                                            "Večer (19:00)",
-                                            "Este (19:00)",
-                                        )}
-                                    </option>
-                                    <option value="23:59">
-                                        {t(
-                                            "End of day (23:59)",
-                                            "Koniec dňa (23:59)",
-                                            "Nap végén (23:59)",
-                                        )}
-                                    </option>
-                                </select>
+                                    onChange={setNewDeadlineTime}
+                                    t={t}
+                                />
                             </div>
                         </div>
 
@@ -2205,57 +2238,20 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                         "Határidő időpontja",
                                     )}
                                 </label>
-                                <select
-                                    value={currentTask.deadlineTime || "23:59"}
-                                    onChange={(e) =>
+                                <DeadlineTimePicker
+                                    value={currentTask.deadlineTime || ""}
+                                    onChange={(val) =>
                                         setEditingTask((prev) =>
                                             prev
                                                 ? {
                                                       ...prev,
-                                                      deadlineTime:
-                                                          e.target.value,
+                                                      deadlineTime: val,
                                                   }
                                                 : null,
                                         )
                                     }
-                                    className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none bg-white font-bold"
-                                >
-                                    <option value="10:00">
-                                        {t(
-                                            "Morning (10:00)",
-                                            "Ráno (10:00)",
-                                            "Reggel (10:00)",
-                                        )}
-                                    </option>
-                                    <option value="12:00">
-                                        {t(
-                                            "Noon (12:00)",
-                                            "Poludnie (12:00)",
-                                            "Dél (12:00)",
-                                        )}
-                                    </option>
-                                    <option value="16:00">
-                                        {t(
-                                            "Afternoon (16:00)",
-                                            "Popoludnie (16:00)",
-                                            "Délután (16:00)",
-                                        )}
-                                    </option>
-                                    <option value="19:00">
-                                        {t(
-                                            "Evening (19:00)",
-                                            "Večer (19:00)",
-                                            "Este (19:00)",
-                                        )}
-                                    </option>
-                                    <option value="23:59">
-                                        {t(
-                                            "End of day (23:59)",
-                                            "Koniec dňa (23:59)",
-                                            "Nap végén (23:59)",
-                                        )}
-                                    </option>
-                                </select>
+                                    t={t}
+                                />
                             </div>
                         </div>
 

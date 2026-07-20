@@ -409,6 +409,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'priority' => $row['priority'],
             'startDate' => $row['start_date'] ?? null,
             'deadline' => $row['deadline'],
+            'deadlineTime' => $row['deadline_time'] ?? null,
             'status' => $row['status'],
             'owner' => $row['owner'],
             'relatedLeadId' => $row['related_lead_id'] ?? null,
@@ -1161,7 +1162,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingTaskIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedTaskIds = [];
 
-            $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `status`, `owner`, `related_lead_id`, `is_locking`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `is_locking` = VALUES(`is_locking`)");
+            $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `related_lead_id`, `is_locking`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `is_locking` = VALUES(`is_locking`)");
 
             foreach ($payload['tasks'] as $t) {
                 // Skip malformed items rather than aborting the whole sync.
@@ -1177,6 +1178,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $t['priority'] ?? 'medium',
                     (isset($t['startDate']) && $t['startDate'] !== '') ? $t['startDate'] : null,
                     $t['deadline'],
+                    (isset($t['deadlineTime']) && $t['deadlineTime'] !== '') ? $t['deadlineTime'] : null,
                     $t['status'] ?? 'todo',
                     $t['owner'],
                     $t['relatedLeadId'] ?? null,
