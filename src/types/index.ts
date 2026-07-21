@@ -73,10 +73,10 @@ export interface Lead {
   // Lead Referral (links to another Lead/Client ID)
   referralLeadId?: string;
 
-  // Follow-up tracking — whether a follow-up has been done for this lead, and when.
-  // The checkbox is shown only for lead states flagged in Settings (leadStateFollowUp).
-  followUpDone?: boolean;
-  followUpDoneAt?: string; // YYYY-MM-DD when it was ticked
+  // Follow-up tracking — a map of completed follow-ups keyed by the lowercased
+  // lead-state name, value = YYYY-MM-DD it was ticked. One checkbox is shown per
+  // state flagged for follow-up in Settings (leadStateFollowUp).
+  followUps?: Record<string, string>;
 
   // AI Summary & Verification Fingerprint
   aiSummary?: string;

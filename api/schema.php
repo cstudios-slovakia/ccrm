@@ -72,8 +72,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `ai_summary_fingerprint` TEXT NULL,
               `metadata_json` TEXT NULL COMMENT 'Plugin support',
               `vat_validation_result` TEXT NULL,
-              `follow_up_done` TINYINT(1) NOT NULL DEFAULT 0,
-              `follow_up_done_at` VARCHAR(10) NULL COMMENT 'YYYY-MM-DD when follow-up was marked done',
+              `follow_ups` TEXT NULL COMMENT 'JSON map: {stateKey: YYYY-MM-DD} of completed follow-ups',
               `created_at` DATE NOT NULL,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               PRIMARY KEY (`id`),
@@ -378,11 +377,8 @@ if (!function_exists('ccrm_schema_statements')) {
         if (!ccrm_column_exists($pdo, 'tasks', 'deadline_time')) {
             $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `deadline_time` VARCHAR(5) NULL AFTER `deadline`");
         }
-        if (!ccrm_column_exists($pdo, 'leads', 'follow_up_done')) {
-            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `follow_up_done` TINYINT(1) NOT NULL DEFAULT 0");
-        }
-        if (!ccrm_column_exists($pdo, 'leads', 'follow_up_done_at')) {
-            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `follow_up_done_at` VARCHAR(10) NULL");
+        if (!ccrm_column_exists($pdo, 'leads', 'follow_ups')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `follow_ups` TEXT NULL");
         }
     }
 

@@ -449,15 +449,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
 
-  // A lead shows the "Follow-up done" checkbox when its current state — or that
-  // state's parent — is flagged for follow-up tracking in Settings. Keyed by
-  // lowercased state name so it survives state renames/removals gracefully.
-  const leadShowsFollowUp = (status: string) => {
-    const sLower = (status || "").toLowerCase();
-    if (leadStateFollowUp[sLower]) return true;
-    const parent = leadStateParents[sLower];
-    return !!(parent && leadStateFollowUp[parent.toLowerCase()]);
-  };
+  // Lead states flagged as "follow-up" in Settings, in the configured order.
+  // Each becomes its own checkbox on the lead so several follow-up rounds can be
+  // tracked independently. Keyed by lowercased state name in the lead's followUps
+  // map, so it survives state renames/removals gracefully.
+  const followUpStates = leadStates.filter(s => !!leadStateFollowUp[s.toLowerCase()]);
   const getSafeStateColor = (stateName: string) => {
     if (!leadStateColors) return "#64748b";
     const key = (stateName || "").toLowerCase();
@@ -494,7 +490,15 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       }
     };
 
-    const majorStates = leadStates.filter(s => !leadStateParents[s.toLowerCase()]);
+    // Order major states exactly like the Settings pipeline table: grouped by
+    // stage group (new → in_progress → closed), preserving the configured
+    // leadStates order within each group.
+    const majorStates = (["new", "in_progress", "closed"] as const).flatMap(group =>
+      leadStates.filter(s =>
+        !leadStateParents[s.toLowerCase()] &&
+        (leadStageGroups[s.toLowerCase()] || "in_progress") === group
+      )
+    );
 
     if (!isEditing) {
       if (leadStateParents[sName]) {
@@ -2908,29 +2912,44 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 </span>
               </div>
 
-              {/* Follow-up done — shown only for lead states flagged in Settings (leadStateFollowUp) */}
-              {leadShowsFollowUp(activeLead.status) && (
-                <label className="flex items-center gap-2.5 p-3 rounded-2xl border border-amber-200 bg-amber-50/40 cursor-pointer select-none hover:bg-amber-50/70 transition-colors">
-                  <input
-                    type="checkbox"
-                    checked={!!activeLead.followUpDone}
-                    onChange={(e) => {
-                      const checked = e.target.checked;
-                      const now = new Date();
-                      const stamp = checked
-                        ? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
-                        : undefined;
-                      setLeads(prev => prev.map(l => l.id === activeLead.id ? { ...l, followUpDone: checked, followUpDoneAt: stamp } : l));
-                    }}
-                    className="h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
-                  />
-                  <span className="text-[11px] font-black uppercase tracking-wide text-amber-800">
-                    {t("Follow-up done", "Follow-up prebehol", "Follow-up megtörtént")}
-                  </span>
-                  {activeLead.followUpDone && activeLead.followUpDoneAt && (
-                    <span className="ml-auto text-[9px] font-bold text-amber-600">{activeLead.followUpDoneAt}</span>
-                  )}
-                </label>
+              {/* Follow-ups — one checkbox per lead state flagged in Settings (leadStateFollowUp) */}
+              {followUpStates.length > 0 && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50/40 p-3 space-y-2">
+                  <div className="text-[9px] font-black uppercase tracking-wider text-amber-700">
+                    {t("Follow-ups", "Follow-upy", "Follow-upok")}
+                  </div>
+                  <div className="space-y-1">
+                    {followUpStates.map((st) => {
+                      const key = st.toLowerCase();
+                      const doneAt = activeLead.followUps?.[key];
+                      return (
+                        <label
+                          key={key}
+                          className="flex items-center gap-2.5 py-1 px-1.5 rounded-lg cursor-pointer select-none hover:bg-amber-50/80 transition-colors"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={!!doneAt}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              const now = new Date();
+                              const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+                              setLeads(prev => prev.map(l => {
+                                if (l.id !== activeLead.id) return l;
+                                const next = { ...(l.followUps || {}) };
+                                if (checked) next[key] = stamp; else delete next[key];
+                                return { ...l, followUps: next };
+                              }));
+                            }}
+                            className="h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                          />
+                          <span className="text-[11px] font-bold uppercase tracking-wide text-amber-800">{st}</span>
+                          {doneAt && <span className="ml-auto text-[9px] font-bold text-amber-600">{doneAt}</span>}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
 
               {/* Tasks List */}
