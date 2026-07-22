@@ -121,6 +121,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `owner` VARCHAR(100) NOT NULL COMMENT 'Assigned Project Manager Name',
               `related_lead_id` VARCHAR(50) NULL,
               `is_locking` TINYINT(1) NOT NULL DEFAULT 0,
+              `archived` TINYINT(1) NOT NULL DEFAULT 0,
               `metadata_json` TEXT NULL COMMENT 'Plugin support',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -447,6 +448,9 @@ if (!function_exists('ccrm_schema_statements')) {
         )->fetchColumn();
         if ($statusType === 'enum') {
             $pdo->exec("ALTER TABLE `tasks` MODIFY COLUMN `status` VARCHAR(50) NOT NULL DEFAULT 'todo'");
+        }
+        if (!ccrm_column_exists($pdo, 'tasks', 'archived')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `archived` TINYINT(1) NOT NULL DEFAULT 0 AFTER `is_locking`");
         }
     }
 

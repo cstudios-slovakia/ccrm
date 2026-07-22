@@ -15,6 +15,7 @@ import {
     Settings,
     RotateCcw,
     List,
+    Archive as ArchiveIcon,
 } from "lucide-react";
 import type { Task, UserProfile, Lead } from "../types";
 import type { Language } from "../utils/translations";
@@ -266,7 +267,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const isMyTask = (task: Task) =>
         task.owner === myName ||
         (Array.isArray(task.assignedUsers) && task.assignedUsers.includes(myName));
-    const myTasks = tasks.filter(isMyTask);
+    const myTasks = tasks.filter(isMyTask).filter((t) => !t.archived);
 
     // Inclusive date-range check against a YYYY-MM-DD string (item 9 calendar filters)
     const dateInRange = (dateStr: string, start: Date | null, end: Date | null) => {
@@ -623,6 +624,40 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         }
     };
 
+    const handleArchiveTask = (task: Task) => {
+        setTasks((prev) =>
+            prev.map((t) =>
+                t.id === task.id ? { ...t, archived: true } : t,
+            ),
+        );
+        if (typeof (window as any).showToast === "function") {
+            (window as any).showToast(
+                t(
+                    "Task archived",
+                    "Úloha archivovaná",
+                    "Feladat archiválva",
+                ),
+            );
+        }
+    };
+
+    const handleUnarchiveTask = (task: Task) => {
+        setTasks((prev) =>
+            prev.map((t) =>
+                t.id === task.id ? { ...t, archived: false } : t,
+            ),
+        );
+        if (typeof (window as any).showToast === "function") {
+            (window as any).showToast(
+                t(
+                    "Task unarchived",
+                    "Archivácia úlohy zrušená",
+                    "Feladat archiválása visszavonva",
+                ),
+            );
+        }
+    };
+
     const handleCreateTask = (e: React.FormEvent) => {
         e.preventDefault();
         if (!newTitle.trim()) {
@@ -968,20 +1003,36 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     <h4 className="text-sm font-black text-slate-800 truncate">
                         {task.title}
                     </h4>
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingTask(task);
-                        }}
-                        className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-650 transition-colors cursor-pointer"
-                        title={t(
-                            "Edit Task",
-                            "Upraviť úlohu",
-                            "Feladat szerkesztése",
-                        )}
-                    >
-                        <Settings className="h-3.5 w-3.5" />
-                    </button>
+                    <div className="flex items-center gap-0.5 shrink-0">
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleArchiveTask(task);
+                            }}
+                            className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-650 transition-colors cursor-pointer"
+                            title={t(
+                                "Archive Task",
+                                "Archivovať úlohu",
+                                "Feladat archiválása",
+                            )}
+                        >
+                            <ArchiveIcon className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingTask(task);
+                            }}
+                            className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-650 transition-colors cursor-pointer"
+                            title={t(
+                                "Edit Task",
+                                "Upraviť úlohu",
+                                "Feladat szerkesztése",
+                            )}
+                        >
+                            <Settings className="h-3.5 w-3.5" />
+                        </button>
+                    </div>
                 </div>
                 {!isCompact && task.description && (
                     <p className="text-xs font-semibold text-slate-500 line-clamp-1">
@@ -1043,7 +1094,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const renderGlobalTasksView = () => {
         // Item 11: non-admins only see their own tasks/column here too
         const activeTasks = (canSeeAllTasks ? tasks : myTasks).filter(
-            (t) => !isDoneState(t.status),
+            (t) => !isDoneState(t.status) && !t.archived,
         );
         const columnUsers = canSeeAllTasks ? allUsersList : [myName];
 
@@ -1677,6 +1728,81 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             </div>
                         )}
                     </div>
+
+                    {/* Manually archived tasks — hidden from active views independent of status */}
+                    {(() => {
+                        const archivedList = tasks.filter(
+                            (task) =>
+                                task.archived &&
+                                (canSeeAllTasks || isMyTask(task)),
+                        );
+                        if (archivedList.length === 0) return null;
+                        return (
+                            <div className="mt-8 pt-6 border-t border-slate-100">
+                                <div className="flex items-center gap-2 mb-4">
+                                    <ArchiveIcon className="h-4 w-4 text-slate-400" />
+                                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                                        {t(
+                                            "Archived Tasks",
+                                            "Archivované úlohy",
+                                            "Archivált feladatok",
+                                        )}
+                                    </span>
+                                    <span className="text-[10px] font-black text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
+                                        {archivedList.length}
+                                    </span>
+                                </div>
+                                <div className="space-y-2">
+                                    {archivedList.map((task) => (
+                                        <div
+                                            key={task.id}
+                                            className="p-2.5 rounded-xl border border-slate-200 bg-slate-50/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                                        >
+                                            <div className="flex-1 min-w-0 flex items-center gap-3">
+                                                <span
+                                                    className={`h-2.5 w-2.5 rounded-full shrink-0 ${
+                                                        task.priority ===
+                                                        "high"
+                                                            ? "bg-rose-500"
+                                                            : task.priority ===
+                                                                "medium"
+                                                              ? "bg-amber-500"
+                                                              : "bg-slate-400"
+                                                    }`}
+                                                />
+                                                <div className="min-w-0 flex-1">
+                                                    <span className="font-extrabold text-slate-700 truncate">
+                                                        {task.title}
+                                                    </span>
+                                                    <div className="text-[9px] font-bold text-slate-400 mt-0.5">
+                                                        {t(
+                                                            "Due",
+                                                            "Termín",
+                                                            "Határidő",
+                                                        )}
+                                                        : {task.deadline}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={() =>
+                                                    handleUnarchiveTask(task)
+                                                }
+                                                className="px-2.5 py-1.5 border border-indigo-255 hover:bg-indigo-50 text-indigo-650 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer shrink-0"
+                                            >
+                                                <RotateCcw className="h-3 w-3 stroke-[2.5]" />
+                                                {t(
+                                                    "Unarchive",
+                                                    "Zrušiť archiváciu",
+                                                    "Archiválás visszavonása",
+                                                )}
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        );
+                    })()}
                 </div>
             ) : viewMode === "global" ? (
                 renderGlobalTasksView()

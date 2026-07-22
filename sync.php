@@ -488,6 +488,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'owner' => $row['owner'],
             'relatedLeadId' => $row['related_lead_id'] ?? null,
             'isLocking' => intval($row['is_locking']) === 1,
+            'archived' => intval($row['archived'] ?? 0) === 1,
             'assignedUsers' => $assignedUsers
         ];
     }
@@ -1699,7 +1700,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingTaskIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedTaskIds = [];
 
-            $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `related_lead_id`, `is_locking`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `is_locking` = VALUES(`is_locking`)");
+            $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `related_lead_id`, `is_locking`, `archived`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`)");
 
             foreach ($payload['tasks'] as $t) {
                 // Skip malformed items rather than aborting the whole sync.
@@ -1719,7 +1720,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $t['status'] ?? 'todo',
                     $t['owner'],
                     $t['relatedLeadId'] ?? null,
-                    ($t['isLocking'] ?? false) ? 1 : 0
+                    ($t['isLocking'] ?? false) ? 1 : 0,
+                    ($t['archived'] ?? false) ? 1 : 0
                 ]);
                 $processedTaskIds[] = $taskId;
 
