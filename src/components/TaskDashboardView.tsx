@@ -382,11 +382,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
     React.useEffect(() => {
         if (autoOpenAddTask) {
+            resetNewTaskForm();
             setIsAddDrawerOpen(true);
             if (setAutoOpenAddTask) {
                 setAutoOpenAddTask(false);
             }
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [autoOpenAddTask, setAutoOpenAddTask]);
 
     const closeEditDrawer = () => {
@@ -419,6 +421,20 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const [newRelatedLeadId, setNewRelatedLeadId] = useState("");
     const [newIsLocking, setNewIsLocking] = useState(false);
     const [newAssignedUser, setNewAssignedUser] = useState("");
+
+    // Resets the "New Task" form to fresh defaults; called every time the
+    // drawer is opened so it never carries over the previously used values.
+    const resetNewTaskForm = (deadlineDateStr?: string) => {
+        setNewTitle("");
+        setNewDescription("");
+        setNewPriority("medium");
+        setNewStartDate(toLocalDateStr(new Date()));
+        setNewDeadline(deadlineDateStr || toLocalDateStr(new Date()));
+        setNewDeadlineTime("16:00");
+        setNewRelatedLeadId("");
+        setNewIsLocking(false);
+        setNewAssignedUser("");
+    };
 
     // Helpers
     const today = new Date();
@@ -642,14 +658,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         setTasks((prev) => [createdTask, ...prev]);
 
         // Reset Form & Close Drawer
-        setNewTitle("");
-        setNewDescription("");
-        setNewPriority("medium");
-        setNewStartDate(toLocalDateStr(new Date()));
-        setNewDeadlineTime("16:00");
-        setNewRelatedLeadId("");
-        setNewIsLocking(false);
-        setNewAssignedUser("");
+        resetNewTaskForm();
         closeAddDrawer();
     };
 
@@ -794,7 +803,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     </div>
                     <button
                         onClick={() => {
-                            setNewDeadline(selectedDateStr);
+                            resetNewTaskForm(selectedDateStr);
                             setIsAddDrawerOpen(true);
                         }}
                         className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-[10px] uppercase tracking-wider shadow-md shadow-indigo-600/30 transition-all active:scale-95 cursor-pointer"
@@ -1678,7 +1687,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         {/* Create New Task Button + Compact view toggle (item 10) */}
                         <div className="flex items-center gap-2">
                             <button
-                                onClick={() => setIsAddDrawerOpen(true)}
+                                onClick={() => {
+                                    resetNewTaskForm();
+                                    setIsAddDrawerOpen(true);
+                                }}
                                 className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-indigo-600/20 transition-all active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer border-2 border-indigo-550"
                             >
                                 <Plus className="h-4 w-4 stroke-[3]" />
