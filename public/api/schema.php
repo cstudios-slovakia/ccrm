@@ -117,7 +117,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `start_date` DATE NULL,
               `deadline` DATE NOT NULL,
               `deadline_time` VARCHAR(5) NULL COMMENT 'HH:MM deadline/overdue time',
-              `status` ENUM('todo', 'in_progress', 'blocked', 'done') NOT NULL DEFAULT 'todo',
+              `status` VARCHAR(50) NOT NULL DEFAULT 'todo' COMMENT 'User-customizable task state',
               `owner` VARCHAR(100) NOT NULL COMMENT 'Assigned Project Manager Name',
               `related_lead_id` VARCHAR(50) NULL,
               `is_locking` TINYINT(1) NOT NULL DEFAULT 0,
@@ -434,6 +434,19 @@ if (!function_exists('ccrm_schema_statements')) {
         }
         if (!ccrm_column_exists($pdo, 'leads', 'follow_ups')) {
             $pdo->exec("ALTER TABLE `leads` ADD COLUMN `follow_ups` TEXT NULL");
+        }
+        // `tasks`.`status` was originally a fixed ENUM, but task states are
+        // user-customizable free text (see Settings > task states / taskStates
+        // in App.tsx), same as `leads`.`status`. A custom state name that
+        // doesn't match the old enum list (e.g. default "New") gets silently
+        // truncated by MySQL, which errors out under strict mode. Widen it to
+        // match the leads.status pattern.
+        $statusType = $pdo->query(
+            "SELECT DATA_TYPE FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tasks' AND COLUMN_NAME = 'status'"
+        )->fetchColumn();
+        if ($statusType === 'enum') {
+            $pdo->exec("ALTER TABLE `tasks` MODIFY COLUMN `status` VARCHAR(50) NOT NULL DEFAULT 'todo'");
         }
     }
 
