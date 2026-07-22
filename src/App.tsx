@@ -43,7 +43,11 @@ function App() {
   // DB clock from the last GET/POST. Sent back as baseSyncedAt so the server can
   // avoid deleting records a concurrent user added after our snapshot.
   const baseSyncedAtRef = useRef<string | null>(null);
-  const [, setIsSyncing] = useState(false);
+  // Serializes outbound pushes so two near-simultaneous saves (e.g. a rename that
+  // triggers both a leads push and the settings-effect push) commit in order and
+  // cannot revert each other on the server.
+  const pushChainRef = useRef<Promise<void>>(Promise.resolve());
+  const [isSyncing, setIsSyncing] = useState(false);
   const [isInstalled, setIsInstalled] = useState(true);
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [dbInfo, setDbInfo] = useState<{ host: string; port: string; name: string; user: string; type?: string } | null>(null);
@@ -466,7 +470,7 @@ ${log.payload || ''}
   unifiedEntriesDataRef.current = unifiedEntriesData;
 
   // --- REAL-TIME SERVER SYNCHRONIZER ENGINE ---
-  const pushStateToServer = async (
+  const pushStateToServer = (
     nextLeads?: Lead[],
     nextTasks?: Task[],
     nextRoles?: RolePermission[],
@@ -475,8 +479,12 @@ ${log.payload || ''}
     nextMeetingNotes?: MeetingNote[],
     nextUnifiedEntries?: UnifiedEntryRegistry[],
     nextUnifiedEntriesData?: Record<string, UnifiedEntryRow[]>
-  ) => {
-    if (!isInstalled) return;
+  ): Promise<void> => {
+    if (!isInstalled) return pushChainRef.current;
+    // Queue this push behind any in-flight one. Chaining (rather than firing in
+    // parallel) guarantees the server applies saves in the order they were made,
+    // so a stale settings snapshot can never land after the fresh one.
+    const doPush = async () => {
     setIsSyncing(true);
     activePushesRef.current++;
     lastPushTimeRef.current = Date.now();
@@ -557,6 +565,9 @@ ${log.payload || ''}
         setIsSyncing(false);
       }
     }
+    };
+    pushChainRef.current = pushChainRef.current.then(doPush, doPush);
+    return pushChainRef.current;
   };
 
   const updateUnifiedEntriesAndSync = (
@@ -708,6 +719,19 @@ ${log.payload || ''}
   useEffect(() => {
     (window as any).leads = leads;
   }, [leads]);
+
+  // Warn before the page is unloaded while a save is still in flight, so a rename
+  // (or any edit) is never lost by reloading/closing before it reaches the server.
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (isSyncing) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isSyncing]);
 
   // Sync settings when modified (only AFTER the initial database sync is resolved to prevent overwriting with defaults)
   useEffect(() => {
@@ -1402,7 +1426,19 @@ ${log.payload || ''}
 
   return (
     <div className="flex h-screen overflow-hidden relative font-sans antialiased text-slate-800 bg-slate-50/50">
-      
+
+      {/* Global save indicator — reassures the user their change is being saved
+          and, together with the beforeunload guard, that they should not leave or
+          reload the page until it disappears. */}
+      {isSyncing && (
+        <div className="fixed bottom-5 right-5 z-[9999] flex items-center gap-2 px-3.5 py-2 rounded-full bg-slate-900/90 text-white shadow-lg backdrop-blur-sm animate-in fade-in slide-in-from-bottom duration-200 select-none">
+          <span className="h-3.5 w-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" aria-hidden="true" />
+          <span className="text-[11px] font-black uppercase tracking-wider">
+            {userLanguage === "sk" ? "Ukladá sa…" : userLanguage === "hu" ? "Mentés…" : "Saving…"}
+          </span>
+        </div>
+      )}
+
       {/* Blurred application background layout if not logged in */}
       <div className={`flex flex-1 overflow-hidden transition-all duration-500 ${!currentUser ? "filter blur-md pointer-events-none select-none" : ""}`}>
         {/* Sidebar navigation with role-gated settings visibility */}
