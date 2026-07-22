@@ -88,11 +88,12 @@ if (php_sapi_name() !== 'cli') {
 function ccrm_sanitize_upload_text($str, $maxBytes) {
     if (!is_string($str)) $str = (string) $str;
     $str = ccrm_clean_extracted_text($str);
-    // Discard extraction output that is mostly non-textual. For a scanned or
+    // Discard extraction output that is not genuinely readable. For a scanned or
     // image-based PDF (e.g. a product catalogue) the stream extractor emits
-    // decompressed binary that renders as "weird symbols" and needlessly bloats
-    // the sync payload — better to store nothing than garbage.
-    if ($str === '' || !ccrm_text_is_meaningful($str)) {
+    // decompressed binary and metadata (xmp ids, hex blobs) that render as "weird
+    // symbols" — better to store nothing than garbage. Only real, word-like text
+    // is kept, so a text-based PDF/DOCX/TXT still contributes useful content.
+    if ($str === '' || !ccrm_text_is_readable($str)) {
         return '';
     }
     if (strlen($str) > $maxBytes) {
@@ -124,20 +125,40 @@ function ccrm_clean_extracted_text($str) {
 }
 
 /**
- * Heuristic: is this string mostly real, human-readable text (as opposed to the
- * binary noise a naive PDF extractor produces)? Requires a minimum length, a
- * minimum count of letters, and a high ratio of letters/digits/punctuation/space
- * to total characters.
+ * Heuristic: is this string genuinely human-readable prose (as opposed to the
+ * binary noise, hex ids and XMP metadata a naive PDF extractor produces)?
+ *
+ * A character-ratio test is not enough — a hex blob like
+ * "xmp.did:0a36bf44-a353-4174-a29b" is 100% printable and its a-f digits count
+ * as "letters", so it sails through. Instead we look for actual WORDS: run-length
+ * tokens made only of letters, of sensible length, and containing a vowel. Real
+ * documents have many; metadata/hex dumps have almost none.
  */
-function ccrm_text_is_meaningful($str) {
+function ccrm_text_is_readable($str) {
     $len = function_exists('mb_strlen') ? mb_strlen($str, 'UTF-8') : strlen($str);
-    if ($len < 12) return false;
-    $letters = @preg_match_all('/\p{L}/u', $str);
-    if ($letters === false) $letters = preg_match_all('/[A-Za-z]/', $str);
-    if ($letters < 8) return false;
-    $printable = @preg_match_all('/[\p{L}\p{N}\p{P}\p{Zs}]/u', $str);
-    if ($printable === false) $printable = $letters;
-    return ($printable / max(1, $len)) >= 0.6;
+    if ($len < 20) return false;
+
+    $tokens = preg_split('/\s+/u', $str, -1, PREG_SPLIT_NO_EMPTY);
+    if (!$tokens || count($tokens) < 5) return false;
+
+    // Latin vowels incl. common Slovak/Hungarian accented forms.
+    $vowel = '/[aàáâäeèéêiìíîoòóôöőuùúûüűyý]/iu';
+
+    $realWords = 0;
+    $total = 0;
+    foreach ($tokens as $tok) {
+        $total++;
+        // Trim surrounding punctuation/symbols before judging the token.
+        $w = preg_replace('/^[\p{P}\p{S}]+|[\p{P}\p{S}]+$/u', '', $tok);
+        if ($w === null || $w === '') continue;
+        if (preg_match('/^\p{L}{2,30}$/u', $w) && preg_match($vowel, $w)) {
+            $realWords++;
+        }
+    }
+
+    // Need a solid absolute count of real words AND a healthy proportion of them,
+    // so a few stray words buried in a binary dump do not qualify.
+    return $realWords >= 8 && ($realWords / max(1, $total)) >= 0.45;
 }
 
 /**

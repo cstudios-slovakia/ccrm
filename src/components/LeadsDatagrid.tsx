@@ -1721,6 +1721,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         if (uploadData.success) {
           finalFileName = uploadData.fileName || logFileObject.name;
           finalFilePath = uploadData.filePath;
+          // The server only returns extracted text when it is genuinely readable
+          // (its quality filter drops binary/metadata noise from any format,
+          // including PDFs), so append whatever comes back. Garbage arrives empty.
           if (uploadData.extractedText) {
             contentString = `${contentString}\n\n--- Document Content ---\n${uploadData.extractedText}`;
           }

@@ -234,6 +234,8 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
               if (category === "invoice") eventTitle = "Számla kiállítva";
             }
 
+            // The server only returns readable extracted text (its quality filter
+            // drops binary/metadata noise), so append whatever survives.
             const baseDescription = queuedFile.description || `Uploaded ${category} document.`;
             const finalContent = extractedText
               ? `${baseDescription}\n\n--- Document Content ---\n${extractedText}`
