@@ -11,6 +11,60 @@ import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { ProjectSettings } from "./ProjectSettings";
 
+// Inline "double-click / pencil to rename" field.
+//
+// IMPORTANT: this MUST live at module scope, not inside SettingsView. When it was
+// declared in the render body React saw a brand-new component type on every parent
+// re-render (each sync tick, each isSyncing toggle) and remounted the <input>,
+// wiping the in-progress edit — so typing in a source/category/state name "kicked
+// the user out" mid-edit. Hoisting it gives the component a stable identity.
+const InlineRenameName: React.FC<{
+  value: string;
+  canEdit: boolean;
+  onCommit: (next: string) => void;
+  renameTitle: string;
+  children: React.ReactNode;
+}> = ({ value, canEdit, onCommit, renameTitle, children }) => {
+  const [editing, setEditing] = React.useState(false);
+  const [draft, setDraft] = React.useState(value);
+  const commit = () => {
+    setEditing(false);
+    const trimmed = draft.trim();
+    if (trimmed && trimmed !== value) onCommit(trimmed);
+  };
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") { e.preventDefault(); commit(); }
+          if (e.key === "Escape") { setEditing(false); setDraft(value); }
+        }}
+        className="px-2.5 py-1 rounded-full border border-indigo-300 bg-white text-slate-800 text-xs font-black uppercase tracking-wider focus:outline-none focus:ring-1 focus:ring-indigo-400 min-w-[110px]"
+      />
+    );
+  }
+  const startEdit = () => { if (canEdit) { setDraft(value); setEditing(true); } };
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span onDoubleClick={startEdit} className={canEdit ? "cursor-text" : undefined}>{children}</span>
+      {canEdit && (
+        <button
+          type="button"
+          onClick={startEdit}
+          className="text-slate-300 hover:text-indigo-600 transition-colors p-1 rounded-md hover:bg-indigo-50 shrink-0"
+          title={renameTitle}
+        >
+          <Pencil className="h-3 w-3" />
+        </button>
+      )}
+    </span>
+  );
+};
+
 interface SettingsViewProps {
   systemName: string;
   setSystemName: (name: string) => void;
@@ -41,6 +95,8 @@ interface SettingsViewProps {
   setLeadCategoryColors: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   leadStageGroups: Record<string, "new" | "in_progress" | "closed">;
   setLeadStageGroups: React.Dispatch<React.SetStateAction<Record<string, "new" | "in_progress" | "closed">>>;
+  leadStateFollowUp: Record<string, boolean>;
+  setLeadStateFollowUp: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
 
   systemLanguage: Language;
   setSystemLanguage: (lang: Language) => void;
@@ -108,6 +164,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setLeadCategoryColors,
   leadStageGroups,
   setLeadStageGroups,
+  leadStateFollowUp,
+  setLeadStateFollowUp,
   systemLanguage,
   setSystemLanguage,
   userLanguage,
@@ -136,52 +194,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   // Inline click-to-rename for an actual list entry (source / category / lead-state / task-state).
   // Shows the existing display node; a pencil affordance (or double-click) swaps it for an input.
-  const InlineRenameName: React.FC<{
-    value: string;
-    canEdit: boolean;
-    onCommit: (next: string) => void;
-    children: React.ReactNode;
-  }> = ({ value, canEdit, onCommit, children }) => {
-    const [editing, setEditing] = React.useState(false);
-    const [draft, setDraft] = React.useState(value);
-    const commit = () => {
-      setEditing(false);
-      const trimmed = draft.trim();
-      if (trimmed && trimmed !== value) onCommit(trimmed);
-    };
-    if (editing) {
-      return (
-        <input
-          autoFocus
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") { e.preventDefault(); commit(); }
-            if (e.key === "Escape") { setEditing(false); setDraft(value); }
-          }}
-          className="px-2.5 py-1 rounded-full border border-indigo-300 bg-white text-slate-800 text-xs font-black uppercase tracking-wider focus:outline-none focus:ring-1 focus:ring-indigo-400 min-w-[110px]"
-        />
-      );
-    }
-    const startEdit = () => { if (canEdit) { setDraft(value); setEditing(true); } };
-    return (
-      <span className="inline-flex items-center gap-1.5">
-        <span onDoubleClick={startEdit} className={canEdit ? "cursor-text" : undefined}>{children}</span>
-        {canEdit && (
-          <button
-            type="button"
-            onClick={startEdit}
-            className="text-slate-300 hover:text-indigo-600 transition-colors p-1 rounded-md hover:bg-indigo-50 shrink-0"
-            title={t("Rename", "Premenovať", "Átnevezés")}
-          >
-            <Pencil className="h-3 w-3" />
-          </button>
-        )}
-      </span>
-    );
-  };
-
   // Migrate a name-keyed map entry (color / group / parent) from oldKey to newKey.
   const migrateMapKey = <T,>(obj: Record<string, T>, oldKey: string, newKey: string): Record<string, T> => {
     if (!(oldKey in obj)) return obj;
@@ -2958,6 +2970,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-44">{getTranslation(userLanguage, "settings.states.th_color")}</th>
                       <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">{getTranslation(userLanguage, "settings.states.th_name")}</th>
                       <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-36">{getTranslation(userLanguage, "settings.states.th_group")}</th>
+                      <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-28 text-center">{t("Follow-up", "Follow-up", "Follow-up")}</th>
                       <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-16 text-center">{getTranslation(userLanguage, "settings.states.th_delete")}</th>
                     </tr>
                   </thead>
@@ -3027,7 +3040,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 isDragOver ? "bg-indigo-50/60 scale-[0.99] border-2 border-dashed border-indigo-300" : "bg-slate-100/70"
                               }`}
                             >
-                              <td colSpan={5} className="py-3 px-4 font-black uppercase text-slate-800 tracking-wide select-none">
+                              <td colSpan={6} className="py-3 px-4 font-black uppercase text-slate-800 tracking-wide select-none">
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-2">
                                     <span className="text-[11px] text-slate-900 font-extrabold uppercase">{item.name}</span>
@@ -3149,6 +3162,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                   value={state}
                                   canEdit={getPermission("pipeline_stages") === "edit"}
                                   onCommit={(next) => handleRenameState(state, next)}
+                                  renameTitle={t("Rename", "Premenovať", "Átnevezés")}
                                 >
                                   <span
                                     className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase border"
@@ -3178,6 +3192,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                     : (userLanguage === "sk" ? "UZAVRETÉ" : userLanguage === "hu" ? "LEZÁRT" : "CLOSED")
                                 }
                               </span>
+                            </td>
+
+                            {/* 4b. FOLLOW-UP TOGGLE — leads in this state show a "Follow-up done" checkbox */}
+                            <td className="py-3 px-4 text-center align-middle select-none">
+                              {(() => {
+                                const fuKey = state.toLowerCase();
+                                const enabled = !!leadStateFollowUp[fuKey];
+                                const canEdit = getPermission("pipeline_stages") === "edit";
+                                return (
+                                  <button
+                                    type="button"
+                                    disabled={!canEdit}
+                                    onClick={() => setLeadStateFollowUp(prev => ({ ...prev, [fuKey]: !prev[fuKey] }))}
+                                    title={t(
+                                      "Show a follow-up checkbox on leads in this state",
+                                      "Zobraziť follow-up zaškrtávacie pole pri leadoch v tomto stave",
+                                      "Follow-up jelölőnégyzet megjelenítése az ebben az állapotban lévő leadeknél",
+                                    )}
+                                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${enabled ? "bg-indigo-600" : "bg-slate-300"} ${canEdit ? "cursor-pointer hover:opacity-90" : "opacity-50 cursor-not-allowed"}`}
+                                  >
+                                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${enabled ? "translate-x-4" : "translate-x-0.5"}`} />
+                                  </button>
+                                );
+                              })()}
                             </td>
 
                             {/* 5. DELETE BUTTON */}
@@ -3339,6 +3377,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 value={source}
                                 canEdit={getPermission("traffic_sources") === "edit"}
                                 onCommit={(next) => handleRenameSource(source, next)}
+                                renameTitle={t("Rename", "Premenovať", "Átnevezés")}
                               >
                                 <span
                                   className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase border"
@@ -3496,6 +3535,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 value={cat}
                                 canEdit={getPermission("traffic_sources") === "edit"}
                                 onCommit={(next) => handleRenameCategory(cat, next)}
+                                renameTitle={t("Rename", "Premenovať", "Átnevezés")}
                               >
                                 <span
                                   className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase border"
@@ -3609,6 +3649,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               value={state}
                               canEdit={getPermission("traffic_sources") === "edit"}
                               onCommit={(next) => handleRenameTaskState(state, next)}
+                              renameTitle={t("Rename", "Premenovať", "Átnevezés")}
                             >
                               <span>{state}</span>
                             </InlineRenameName>

@@ -73,6 +73,11 @@ export interface Lead {
   // Lead Referral (links to another Lead/Client ID)
   referralLeadId?: string;
 
+  // Follow-up tracking — a map of completed follow-ups keyed by the lowercased
+  // lead-state name, value = YYYY-MM-DD it was ticked. One checkbox is shown per
+  // state flagged for follow-up in Settings (leadStateFollowUp).
+  followUps?: Record<string, string>;
+
   // AI Summary & Verification Fingerprint
   aiSummary?: string;
   aiSummaryFingerprint?: string;

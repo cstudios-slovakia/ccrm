@@ -57,11 +57,14 @@ if (php_sapi_name() !== 'cli') {
 
     if (move_uploaded_file($file['tmp_name'], $targetPath)) {
         $extractedText = ccrm_extract_text_from_file($targetPath, $fileName);
-        
-        // Limit length to avoid DB overflow in TEXT column (max 64KB)
-        if (mb_strlen($extractedText) > 60000) {
-            $extractedText = mb_substr($extractedText, 0, 60000) . '... [TRUNCATED]';
-        }
+
+        // Coerce to valid UTF-8, strip control bytes, and DROP the text entirely
+        // when it is mostly binary garbage (which is what the naive PDF stream
+        // extractor produces for image-heavy or compressed PDFs — the "weird
+        // symbols" the user saw). Clamp what survives by BYTES (not characters)
+        // so it can never overflow the timeline `content` TEXT column (65535
+        // bytes) nor bloat the whole-dataset sync payload the client POSTs back.
+        $extractedText = ccrm_sanitize_upload_text($extractedText, 20000);
 
         echo json_encode([
             'success' => true,
@@ -75,6 +78,87 @@ if (php_sapi_name() !== 'cli') {
         http_response_code(500);
         echo json_encode(['success' => false, 'error' => 'Failed to save uploaded file.']);
     }
+}
+
+/**
+ * Coerce extracted text to valid, storable UTF-8 and clamp it to a safe byte
+ * length so it can never overflow the timeline `content` TEXT column or carry
+ * invalid byte sequences into the sync transaction.
+ */
+function ccrm_sanitize_upload_text($str, $maxBytes) {
+    if (!is_string($str)) $str = (string) $str;
+    $str = ccrm_clean_extracted_text($str);
+    // Discard extraction output that is not genuinely readable. For a scanned or
+    // image-based PDF (e.g. a product catalogue) the stream extractor emits
+    // decompressed binary and metadata (xmp ids, hex blobs) that render as "weird
+    // symbols" — better to store nothing than garbage. Only real, word-like text
+    // is kept, so a text-based PDF/DOCX/TXT still contributes useful content.
+    if ($str === '' || !ccrm_text_is_readable($str)) {
+        return '';
+    }
+    if (strlen($str) > $maxBytes) {
+        $str = function_exists('mb_strcut') ? mb_strcut($str, 0, $maxBytes, 'UTF-8') : substr($str, 0, $maxBytes);
+        $str .= "\n... [skrátené]";
+    }
+    return $str;
+}
+
+/**
+ * Coerce to valid UTF-8 and strip control/binary bytes (keeping tab, newline and
+ * carriage return) so extracted text is always safe to store and display.
+ */
+function ccrm_clean_extracted_text($str) {
+    if (!is_string($str) || $str === '') return '';
+    if (function_exists('mb_convert_encoding')) {
+        $clean = @mb_convert_encoding($str, 'UTF-8', 'UTF-8');
+        if ($clean !== false) $str = $clean;
+    }
+    $clean = @iconv('UTF-8', 'UTF-8//IGNORE', $str);
+    if ($clean !== false) $str = $clean;
+    // Remove C0/C1 control characters except \t (09), \n (0A), \r (0D), and DEL.
+    $stripped = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $str);
+    if ($stripped !== null) $str = $stripped;
+    // Collapse absurd whitespace runs the extractor leaves behind.
+    $str = preg_replace('/[ \t]{2,}/', ' ', $str);
+    $str = preg_replace('/\n{3,}/', "\n\n", $str);
+    return trim($str);
+}
+
+/**
+ * Heuristic: is this string genuinely human-readable prose (as opposed to the
+ * binary noise, hex ids and XMP metadata a naive PDF extractor produces)?
+ *
+ * A character-ratio test is not enough — a hex blob like
+ * "xmp.did:0a36bf44-a353-4174-a29b" is 100% printable and its a-f digits count
+ * as "letters", so it sails through. Instead we look for actual WORDS: run-length
+ * tokens made only of letters, of sensible length, and containing a vowel. Real
+ * documents have many; metadata/hex dumps have almost none.
+ */
+function ccrm_text_is_readable($str) {
+    $len = function_exists('mb_strlen') ? mb_strlen($str, 'UTF-8') : strlen($str);
+    if ($len < 20) return false;
+
+    $tokens = preg_split('/\s+/u', $str, -1, PREG_SPLIT_NO_EMPTY);
+    if (!$tokens || count($tokens) < 5) return false;
+
+    // Latin vowels incl. common Slovak/Hungarian accented forms.
+    $vowel = '/[aàáâäeèéêiìíîoòóôöőuùúûüűyý]/iu';
+
+    $realWords = 0;
+    $total = 0;
+    foreach ($tokens as $tok) {
+        $total++;
+        // Trim surrounding punctuation/symbols before judging the token.
+        $w = preg_replace('/^[\p{P}\p{S}]+|[\p{P}\p{S}]+$/u', '', $tok);
+        if ($w === null || $w === '') continue;
+        if (preg_match('/^\p{L}{2,30}$/u', $w) && preg_match($vowel, $w)) {
+            $realWords++;
+        }
+    }
+
+    // Need a solid absolute count of real words AND a healthy proportion of them,
+    // so a few stray words buried in a binary dump do not qualify.
+    return $realWords >= 8 && ($realWords / max(1, $total)) >= 0.45;
 }
 
 /**
@@ -203,6 +287,11 @@ function ccrm_extract_pdf_text($filePath) {
                         return chr(octdec($m[1]));
                     }, $txt);
                     $txt = str_replace(['\\(', '\\)', '\\\\'], ['(', ')', '\\'], $txt);
+                    // Skip fragments that carry no actual letters — for compressed
+                    // or image streams these are just decoded binary noise.
+                    if (@preg_match('/\p{L}/u', $txt) !== 1 && !preg_match('/[A-Za-z]/', $txt)) {
+                        continue;
+                    }
                     $texts[] = $txt;
                 }
             }

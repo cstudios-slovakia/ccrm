@@ -415,10 +415,10 @@ interface LeadsDatagridProps {
   taskStateColors?: Record<string, string>;
   integrationsConfig?: any;
   leadStageGroups?: Record<string, "new" | "in_progress" | "closed">;
-  
   projectTypes?: ProjectType[];
   setProjects?: React.Dispatch<React.SetStateAction<Project[]>>;
   setActiveTab?: (tab: string) => void;
+  leadStateFollowUp?: Record<string, boolean>;
 }
 
 export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
@@ -450,9 +450,16 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
   leadStageGroups = {},
   projectTypes = [],
   setProjects,
-  setActiveTab
+  setActiveTab,
+  leadStateFollowUp = {}
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
+
+  // Lead states flagged as "follow-up" in Settings, in the configured order.
+  // Each becomes its own checkbox on the lead so several follow-up rounds can be
+  // tracked independently. Keyed by lowercased state name in the lead's followUps
+  // map, so it survives state renames/removals gracefully.
+  const followUpStates = leadStates.filter(s => !!leadStateFollowUp[s.toLowerCase()]);
   const getSafeStateColor = (stateName: string) => {
     if (!leadStateColors) return "#64748b";
     const key = (stateName || "").toLowerCase();
@@ -489,7 +496,15 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       }
     };
 
-    const majorStates = leadStates.filter(s => !leadStateParents[s.toLowerCase()]);
+    // Order major states exactly like the Settings pipeline table: grouped by
+    // stage group (new → in_progress → closed), preserving the configured
+    // leadStates order within each group.
+    const majorStates = (["new", "in_progress", "closed"] as const).flatMap(group =>
+      leadStates.filter(s =>
+        !leadStateParents[s.toLowerCase()] &&
+        (leadStageGroups[s.toLowerCase()] || "in_progress") === group
+      )
+    );
 
     if (!isEditing) {
       if (leadStateParents[sName]) {
@@ -1429,7 +1444,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
   const [logFileSize, setLogFileSize] = useState("");
   const [logFileType, setLogFileType] = useState<"offer" | "contract" | "invoice">("offer");
   const [logFileObject, setLogFileObject] = useState<File | null>(null);
-  
+
+  // Inline edit/delete of an already-logged timeline event
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
+  const [editingEventDraft, setEditingEventDraft] = useState("");
+
   // Explicit Event Date/Time
   const [logDate, setLogDate] = useState(() => {
     const tzOffset = (new Date()).getTimezoneOffset() * 60000;
@@ -1605,7 +1624,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
   const { futureEvents, pastEvents } = useMemo(() => {
     if (!activeLead) return { futureEvents: [], pastEvents: [] };
-    const nowStr = new Date().toISOString().replace("T", " ").substring(0, 16);
+    // Event timestamps are stored in LOCAL time (`${logDate} ${logTimeOfEvent}`),
+    // so "now" must be local too — using UTC here misfiles just-created events
+    // (e.g. CEST 15:14) as "future" versus a UTC now (13:14).
+    const nowLocal = new Date(Date.now() - new Date().getTimezoneOffset() * 60000);
+    const nowStr = nowLocal.toISOString().replace("T", " ").substring(0, 16);
     
     const future = activeLeadTimeline
       .filter(e => e.timestamp > nowStr)
@@ -1751,6 +1774,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         if (uploadData.success) {
           finalFileName = uploadData.fileName || logFileObject.name;
           finalFilePath = uploadData.filePath;
+          // The server only returns extracted text when it is genuinely readable
+          // (its quality filter drops binary/metadata noise from any format,
+          // including PDFs), so append whatever comes back. Garbage arrives empty.
           if (uploadData.extractedText) {
             contentString = `${contentString}\n\n--- Document Content ---\n${uploadData.extractedText}`;
           }
@@ -1845,6 +1871,58 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const tzOffset = (new Date()).getTimezoneOffset() * 60000;
     setLogDate((new Date(Date.now() - tzOffset)).toISOString().split("T")[0]);
     setLogTimeOfEvent(new Date().toTimeString().substring(0, 5));
+  };
+
+  // Begin editing an already-logged event: prefill the draft with its text.
+  // Rich "note" events are stored as JSON blocks — flatten them to plain text so
+  // they can be edited in a simple textarea (they re-render fine as plain text).
+  const handleStartEditEvent = (event: TimelineEvent) => {
+    let text = event.content || "";
+    if (event.type === "note" && text.trim().startsWith("[")) {
+      try {
+        const blocks: EditorBlock[] = JSON.parse(text);
+        text = blocks.map((b) => (b.content || "").replace(/<[^>]*>/g, "")).join("\n");
+      } catch { /* keep raw content if it is not valid block JSON */ }
+    }
+    setEditingEventId(event.id);
+    setEditingEventDraft(text);
+  };
+
+  const handleCancelEditEvent = () => {
+    setEditingEventId(null);
+    setEditingEventDraft("");
+  };
+
+  const handleSaveEditEvent = (eventId: string) => {
+    if (!activeLead) return;
+    const nextContent = editingEventDraft;
+    setLeads((prev) =>
+      prev.map((l) =>
+        l.id === activeLead.id
+          ? { ...l, timeline: (l.timeline || []).map((e) => (e.id === eventId ? { ...e, content: nextContent } : e)) }
+          : l
+      )
+    );
+    setEditingEventId(null);
+    setEditingEventDraft("");
+    (window as any).showToast?.(t("Event updated.", "Udalosť bola upravená.", "Az esemény frissítve."));
+  };
+
+  const handleDeleteTimelineEvent = (eventId: string) => {
+    if (!activeLead) return;
+    const ok = window.confirm(
+      t("Delete this event from the lead history?", "Odstrániť túto udalosť z histórie leadu?", "Törli ezt az eseményt a lead előzményeiből?")
+    );
+    if (!ok) return;
+    setLeads((prev) =>
+      prev.map((l) =>
+        l.id === activeLead.id
+          ? { ...l, timeline: (l.timeline || []).filter((e) => e.id !== eventId) }
+          : l
+      )
+    );
+    if (editingEventId === eventId) handleCancelEditEvent();
+    (window as any).showToast?.(t("Event deleted.", "Udalosť bola odstránená.", "Az esemény törölve."));
   };
 
   const handleAddInlineLockingTask = (e: React.FormEvent) => {
@@ -2982,6 +3060,46 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 </span>
               </div>
 
+              {/* Follow-ups — one checkbox per lead state flagged in Settings (leadStateFollowUp) */}
+              {followUpStates.length > 0 && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50/40 p-3 space-y-2">
+                  <div className="text-[9px] font-black uppercase tracking-wider text-amber-700">
+                    {t("Follow-ups", "Follow-upy", "Follow-upok")}
+                  </div>
+                  <div className="space-y-1">
+                    {followUpStates.map((st) => {
+                      const key = st.toLowerCase();
+                      const doneAt = activeLead.followUps?.[key];
+                      return (
+                        <label
+                          key={key}
+                          className="flex items-center gap-2.5 py-1 px-1.5 rounded-lg cursor-pointer select-none hover:bg-amber-50/80 transition-colors"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={!!doneAt}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              const now = new Date();
+                              const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+                              setLeads(prev => prev.map(l => {
+                                if (l.id !== activeLead.id) return l;
+                                const next = { ...(l.followUps || {}) };
+                                if (checked) next[key] = stamp; else delete next[key];
+                                return { ...l, followUps: next };
+                              }));
+                            }}
+                            className="h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                          />
+                          <span className="text-[11px] font-bold uppercase tracking-wide text-amber-800">{st}</span>
+                          {doneAt && <span className="ml-auto text-[9px] font-bold text-amber-600">{doneAt}</span>}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Tasks List */}
               <div className="space-y-2.5 max-h-[220px] overflow-y-auto pr-1 scrollbar-thin">
                 {tasks.filter(t => t.relatedLeadId === activeLead.id).length === 0 ? (
@@ -3410,12 +3528,64 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                               <h4 className="font-heading font-black text-[11px] uppercase tracking-tight text-slate-850 leading-tight">
                                 {event.title}
                               </h4>
-                              <span className="px-2.5 py-0.5 rounded-full text-[8.5px] font-extrabold uppercase border shrink-0 bg-purple-50 text-purple-700 border-purple-250">
-                                {getTranslation(systemLanguage, "timeline.upcoming_meet")}
-                              </span>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <span className="px-2.5 py-0.5 rounded-full text-[8.5px] font-extrabold uppercase border bg-purple-50 text-purple-700 border-purple-250">
+                                  {getTranslation(systemLanguage, "timeline.upcoming_meet")}
+                                </span>
+                                {editingEventId !== event.id && (
+                                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); handleStartEditEvent(event); }}
+                                      className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                                      title={t("Edit event", "Upraviť udalosť", "Esemény szerkesztése")}
+                                    >
+                                      <PencilLine className="h-3.5 w-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); handleDeleteTimelineEvent(event.id); }}
+                                      className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                                      title={t("Delete event", "Odstrániť udalosť", "Esemény törlése")}
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
                             </div>
 
-                            {(() => {
+                            {editingEventId === event.id ? (
+                              <div className="space-y-2 animate-in fade-in duration-150">
+                                <textarea
+                                  autoFocus
+                                  rows={4}
+                                  value={editingEventDraft}
+                                  onChange={(e) => setEditingEventDraft(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Escape") { e.preventDefault(); handleCancelEditEvent(); }
+                                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); handleSaveEditEvent(event.id); }
+                                  }}
+                                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-indigo-200 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400 text-[11px] text-slate-700 font-bold resize-y whitespace-pre-wrap"
+                                />
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={handleCancelEditEvent}
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider text-slate-500 hover:bg-slate-100 transition-colors"
+                                  >
+                                    <X className="h-3 w-3" /> {t("Cancel", "Zrušiť", "Mégse")}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveEditEvent(event.id)}
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition-colors"
+                                  >
+                                    <Check className="h-3 w-3" /> {t("Save", "Uložiť", "Mentés")}
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (() => {
                               if (event.type === "note" && event.content.trim().startsWith("[")) {
                                 try {
                                   const blocks: EditorBlock[] = JSON.parse(event.content);
@@ -3554,16 +3724,68 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                   </span>
                                 </div>
                               ) : (
-                                <span className={`px-2.5 py-0.5 rounded-full text-[8.5px] font-extrabold uppercase border shrink-0 ${colors.badgeBg}`}>
-                                  {event.type === "phone" && getTranslation(systemLanguage, "timeline.badge.phone")}
-                                  {event.type === "note" && getTranslation(systemLanguage, "timeline.badge.note")}
-                                  {event.type === "offer" && getTranslation(systemLanguage, "timeline.badge.offer")}
-                                  {event.type === "appointment" && getTranslation(systemLanguage, "timeline.badge.appointment")}
-                                </span>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <span className={`px-2.5 py-0.5 rounded-full text-[8.5px] font-extrabold uppercase border ${colors.badgeBg}`}>
+                                    {event.type === "phone" && getTranslation(systemLanguage, "timeline.badge.phone")}
+                                    {event.type === "note" && getTranslation(systemLanguage, "timeline.badge.note")}
+                                    {event.type === "offer" && getTranslation(systemLanguage, "timeline.badge.offer")}
+                                    {event.type === "appointment" && getTranslation(systemLanguage, "timeline.badge.appointment")}
+                                  </span>
+                                  {editingEventId !== event.id && (
+                                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <button
+                                        type="button"
+                                        onClick={(e) => { e.stopPropagation(); handleStartEditEvent(event); }}
+                                        className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                                        title={t("Edit event", "Upraviť udalosť", "Esemény szerkesztése")}
+                                      >
+                                        <PencilLine className="h-3.5 w-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => { e.stopPropagation(); handleDeleteTimelineEvent(event.id); }}
+                                        className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                                        title={t("Delete event", "Odstrániť udalosť", "Esemény törlése")}
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
                               )}
                             </div>
 
-                            {(() => {
+                            {editingEventId === event.id ? (
+                              <div className="space-y-2 animate-in fade-in duration-150">
+                                <textarea
+                                  autoFocus
+                                  rows={4}
+                                  value={editingEventDraft}
+                                  onChange={(e) => setEditingEventDraft(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Escape") { e.preventDefault(); handleCancelEditEvent(); }
+                                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); handleSaveEditEvent(event.id); }
+                                  }}
+                                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-indigo-200 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400 text-[11px] text-slate-700 font-bold resize-y whitespace-pre-wrap"
+                                />
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={handleCancelEditEvent}
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider text-slate-500 hover:bg-slate-100 transition-colors"
+                                  >
+                                    <X className="h-3 w-3" /> {t("Cancel", "Zrušiť", "Mégse")}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveEditEvent(event.id)}
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition-colors"
+                                  >
+                                    <Check className="h-3 w-3" /> {t("Save", "Uložiť", "Mentés")}
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (() => {
                               if (event.type === "note" && event.content.trim().startsWith("[")) {
                                 try {
                                   const blocks: EditorBlock[] = JSON.parse(event.content);

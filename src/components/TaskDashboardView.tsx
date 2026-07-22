@@ -45,7 +45,7 @@ const DateRangeCalendarFilter: React.FC<{
 
     const year = viewDate.getFullYear();
     const month = viewDate.getMonth();
-    const fmt = (d: Date | null) => (d ? d.toISOString().split("T")[0] : "");
+    const fmt = (d: Date | null) => (d ? toLocalDateStr(d) : "");
     const locale = systemLanguage === "sk" ? "sk-SK" : systemLanguage === "hu" ? "hu-HU" : "en-US";
 
     const handleSelect = (date: Date) => {
@@ -134,6 +134,88 @@ const DateRangeCalendarFilter: React.FC<{
     );
 };
 
+// Format a Date as a LOCAL calendar date (YYYY-MM-DD). Task deadlines are stored
+// as plain local date strings, so we must NOT go through toISOString() (which
+// converts to UTC and, in timezones ahead of UTC, shifts the day back by one —
+// making tasks appear on the wrong calendar cell and breaking day-click matching).
+const toLocalDateStr = (d: Date): string => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+};
+
+// Named preset deadline times offered in the picker. "End of day (23:59)" was removed
+// in favour of a "Custom" option that lets the user type any specific time.
+const DEADLINE_TIME_PRESETS = ["10:00", "12:00", "16:00", "19:00"];
+
+// Deadline-time picker shared by the Add and Edit task drawers. Offers the named
+// presets plus a "Custom" option that reveals a free time input. Defined at module
+// scope (stable identity) so its internal state survives parent re-renders and the
+// custom <input> keeps focus while typing.
+const DeadlineTimePicker: React.FC<{
+    value: string;
+    onChange: (val: string) => void;
+    t: (en: string, sk: string, hu: string) => string;
+}> = ({ value, onChange, t }) => {
+    const currentValue = value || "";
+    const isPreset = DEADLINE_TIME_PRESETS.includes(currentValue);
+    // Custom mode is active when the value isn't a named preset (e.g. a legacy 23:59
+    // or a hand-typed time) or once the user explicitly opens the custom input.
+    const [customOpen, setCustomOpen] = useState(!isPreset && currentValue !== "");
+    const showCustom = customOpen || (!isPreset && currentValue !== "");
+
+    const presetLabel = (p: string) => {
+        switch (p) {
+            case "10:00":
+                return t("Morning (10:00)", "Ráno (10:00)", "Reggel (10:00)");
+            case "12:00":
+                return t("Noon (12:00)", "Poludnie (12:00)", "Dél (12:00)");
+            case "16:00":
+                return t("Afternoon (16:00)", "Popoludnie (16:00)", "Délután (16:00)");
+            case "19:00":
+                return t("Evening (19:00)", "Večer (19:00)", "Este (19:00)");
+            default:
+                return p;
+        }
+    };
+
+    return (
+        <div className="space-y-1.5">
+            <select
+                value={showCustom ? "custom" : currentValue}
+                onChange={(e) => {
+                    if (e.target.value === "custom") {
+                        setCustomOpen(true);
+                        if (!currentValue) onChange("12:00");
+                    } else {
+                        setCustomOpen(false);
+                        onChange(e.target.value);
+                    }
+                }}
+                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none bg-white font-bold"
+            >
+                {DEADLINE_TIME_PRESETS.map((p) => (
+                    <option key={p} value={p}>
+                        {presetLabel(p)}
+                    </option>
+                ))}
+                <option value="custom">
+                    {t("Custom…", "Vlastný čas…", "Egyéni időpont…")}
+                </option>
+            </select>
+            {showCustom && (
+                <input
+                    type="time"
+                    value={currentValue}
+                    onChange={(e) => onChange(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none bg-white font-bold"
+                />
+            )}
+        </div>
+    );
+};
+
 interface TaskDashboardViewProps {
     tasks: Task[];
     setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
@@ -189,8 +271,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // Inclusive date-range check against a YYYY-MM-DD string (item 9 calendar filters)
     const dateInRange = (dateStr: string, start: Date | null, end: Date | null) => {
         if (!start) return true;
-        const startStr = start.toISOString().split("T")[0];
-        const endStr = (end || start).toISOString().split("T")[0];
+        const startStr = toLocalDateStr(start);
+        const endStr = toLocalDateStr(end || start);
         return dateStr >= startStr && dateStr <= endStr;
     };
 
@@ -327,22 +409,20 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const [newPriority, setNewPriority] = useState<"low" | "medium" | "high">(
         "medium",
     );
-    const [newStartDate, setNewStartDate] = useState(() => {
-        const d = new Date();
-        return d.toISOString().split("T")[0];
-    });
-    const [newDeadline, setNewDeadline] = useState(() => {
-        const d = new Date();
-        return d.toISOString().split("T")[0];
-    });
-    const [newDeadlineTime, setNewDeadlineTime] = useState("23:59");
+    const [newStartDate, setNewStartDate] = useState(() =>
+        toLocalDateStr(new Date()),
+    );
+    const [newDeadline, setNewDeadline] = useState(() =>
+        toLocalDateStr(new Date()),
+    );
+    const [newDeadlineTime, setNewDeadlineTime] = useState("16:00");
     const [newRelatedLeadId, setNewRelatedLeadId] = useState("");
     const [newIsLocking, setNewIsLocking] = useState(false);
     const [newAssignedUser, setNewAssignedUser] = useState("");
 
     // Helpers
     const today = new Date();
-    const todayStr = today.toISOString().split("T")[0];
+    const todayStr = toLocalDateStr(today);
     const currentYear = currentDate.getFullYear();
     const currentMonth = currentDate.getMonth();
 
@@ -565,8 +645,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         setNewTitle("");
         setNewDescription("");
         setNewPriority("medium");
-        setNewStartDate(new Date().toISOString().split("T")[0]);
-        setNewDeadlineTime("23:59");
+        setNewStartDate(toLocalDateStr(new Date()));
+        setNewDeadlineTime("16:00");
         setNewRelatedLeadId("");
         setNewIsLocking(false);
         setNewAssignedUser("");
@@ -602,7 +682,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     ))}
 
                     {daysInMonth.map((date, idx) => {
-                        const dateStr = date.toISOString().split("T")[0];
+                        const dateStr = toLocalDateStr(date);
                         const isToday = dateStr === todayStr;
                         const isPast = dateStr < todayStr;
                         const isTomorrow = dateStr === tomorrowStr;
@@ -677,7 +757,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const renderDayView = () => {
         if (!selectedDay) return null;
 
-        const selectedDateStr = selectedDay.toISOString().split("T")[0];
+        const selectedDateStr = toLocalDateStr(selectedDay);
         const { dayTasks } = getItemsForDate(selectedDateStr);
 
         return (
@@ -772,7 +852,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         if (isDoneState(task.status)) return false;
 
         const now = new Date();
-        const currentDateStr = now.toISOString().split("T")[0];
+        const currentDateStr = toLocalDateStr(now);
 
         if (task.deadline < currentDateStr) {
             return true;
@@ -789,9 +869,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         return false;
     };
 
-    const tomorrowStr = new Date(today.getTime() + 86400000)
-        .toISOString()
-        .split("T")[0];
+    const tomorrowStr = toLocalDateStr(new Date(today.getTime() + 86400000));
     const overdueTasks = myTasks
         .filter((t) => isTaskOverdue(t))
         .sort((a, b) => {
@@ -836,7 +914,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         const newStatus = e.target.value;
                         const now = new Date();
                         const completedAtStr = isDoneState(newStatus)
-                            ? now.toISOString().split("T")[0] +
+                            ? toLocalDateStr(now) +
                               " " +
                               now.toTimeString().split(" ")[0].substring(0, 5)
                             : undefined;
@@ -1883,49 +1961,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                         "Határidő időpontja",
                                     )}
                                 </label>
-                                <select
+                                <DeadlineTimePicker
                                     value={newDeadlineTime}
-                                    onChange={(e) =>
-                                        setNewDeadlineTime(e.target.value)
-                                    }
-                                    className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none bg-white"
-                                >
-                                    <option value="10:00">
-                                        {t(
-                                            "Morning (10:00)",
-                                            "Ráno (10:00)",
-                                            "Reggel (10:00)",
-                                        )}
-                                    </option>
-                                    <option value="12:00">
-                                        {t(
-                                            "Noon (12:00)",
-                                            "Poludnie (12:00)",
-                                            "Dél (12:00)",
-                                        )}
-                                    </option>
-                                    <option value="16:00">
-                                        {t(
-                                            "Afternoon (16:00)",
-                                            "Popoludnie (16:00)",
-                                            "Délután (16:00)",
-                                        )}
-                                    </option>
-                                    <option value="19:00">
-                                        {t(
-                                            "Evening (19:00)",
-                                            "Večer (19:00)",
-                                            "Este (19:00)",
-                                        )}
-                                    </option>
-                                    <option value="23:59">
-                                        {t(
-                                            "End of day (23:59)",
-                                            "Koniec dňa (23:59)",
-                                            "Nap végén (23:59)",
-                                        )}
-                                    </option>
-                                </select>
+                                    onChange={setNewDeadlineTime}
+                                    t={t}
+                                />
                             </div>
                         </div>
 
@@ -2205,57 +2245,20 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                         "Határidő időpontja",
                                     )}
                                 </label>
-                                <select
-                                    value={currentTask.deadlineTime || "23:59"}
-                                    onChange={(e) =>
+                                <DeadlineTimePicker
+                                    value={currentTask.deadlineTime || ""}
+                                    onChange={(val) =>
                                         setEditingTask((prev) =>
                                             prev
                                                 ? {
                                                       ...prev,
-                                                      deadlineTime:
-                                                          e.target.value,
+                                                      deadlineTime: val,
                                                   }
                                                 : null,
                                         )
                                     }
-                                    className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none bg-white font-bold"
-                                >
-                                    <option value="10:00">
-                                        {t(
-                                            "Morning (10:00)",
-                                            "Ráno (10:00)",
-                                            "Reggel (10:00)",
-                                        )}
-                                    </option>
-                                    <option value="12:00">
-                                        {t(
-                                            "Noon (12:00)",
-                                            "Poludnie (12:00)",
-                                            "Dél (12:00)",
-                                        )}
-                                    </option>
-                                    <option value="16:00">
-                                        {t(
-                                            "Afternoon (16:00)",
-                                            "Popoludnie (16:00)",
-                                            "Délután (16:00)",
-                                        )}
-                                    </option>
-                                    <option value="19:00">
-                                        {t(
-                                            "Evening (19:00)",
-                                            "Večer (19:00)",
-                                            "Este (19:00)",
-                                        )}
-                                    </option>
-                                    <option value="23:59">
-                                        {t(
-                                            "End of day (23:59)",
-                                            "Koniec dňa (23:59)",
-                                            "Nap végén (23:59)",
-                                        )}
-                                    </option>
-                                </select>
+                                    t={t}
+                                />
                             </div>
                         </div>
 
@@ -2273,7 +2276,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     const val = e.target.value;
                                     const now = new Date();
                                     const completedAtStr = isDoneState(val)
-                                        ? now.toISOString().split("T")[0] +
+                                        ? toLocalDateStr(now) +
                                           " " +
                                           now
                                               .toTimeString()

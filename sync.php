@@ -85,6 +85,32 @@ function ccrm_compute_data_version($pdo) {
     }
 }
 
+// Coerce a string to valid, storable UTF-8 and clamp it to a safe byte length.
+//
+// Timeline event content can hold text extracted from uploaded PDFs, which is
+// produced by raw stream decoding and frequently contains invalid UTF-8 byte
+// sequences or is longer (in bytes) than the TEXT column allows. Writing such a
+// value throws an "Incorrect string value" / "Data too long" PDOException — and
+// because the whole POST sync runs in a single transaction, that would roll back
+// the ENTIRE push (the uploaded document, plus any other pending change). This
+// scrubs the value so the insert always succeeds.
+function ccrm_sanitize_db_text($str, $maxBytes) {
+    if ($str === null) return null;
+    if (!is_string($str)) $str = (string) $str;
+    // Substitute any byte sequence that is not valid UTF-8.
+    if (function_exists('mb_convert_encoding')) {
+        $clean = @mb_convert_encoding($str, 'UTF-8', 'UTF-8');
+        if ($clean !== false) $str = $clean;
+    }
+    $clean = @iconv('UTF-8', 'UTF-8//IGNORE', $str);
+    if ($clean !== false) $str = $clean;
+    // Truncate on a character boundary so we never split a multibyte glyph.
+    if (strlen($str) > $maxBytes) {
+        $str = function_exists('mb_strcut') ? mb_strcut($str, 0, $maxBytes, 'UTF-8') : substr($str, 0, $maxBytes);
+    }
+    return $str;
+}
+
 // Helper to check if an incoming lead payload is identical to its database record
 function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
     if (!$db) return false;
@@ -120,6 +146,7 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
         'dissolution_date' => $inc['dissolutionDate'] ?? null,
         'region' => $inc['region'] ?? null,
         'district' => $inc['district'] ?? null,
+        'follow_ups' => (isset($inc['followUps']) && !empty($inc['followUps'])) ? $inc['followUps'] : null,
         // 'financial_summary' is deliberately excluded: it is server-owned, so a
         // lead whose only difference is the server-generated report still counts
         // as identical and is skipped (no rewrite, no needless report re-spawn).
@@ -132,6 +159,14 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
             if (abs(floatval($val) - floatval($dbVal)) > 0.001) return false;
         } elseif ($col === 'rating') {
             if (intval($val) !== intval($dbVal)) return false;
+        } elseif ($col === 'follow_ups') {
+            // Compare the per-state follow-up map order-independently. $val is the
+            // incoming assoc array (or null); $dbVal is the stored JSON string.
+            $incMap = is_array($val) ? $val : [];
+            $dbMap = ($dbVal !== null && $dbVal !== '') ? (json_decode($dbVal, true) ?: []) : [];
+            ksort($incMap);
+            ksort($dbMap);
+            if (json_encode($incMap) !== json_encode($dbMap)) return false;
         } else {
             $v1 = ($val === '') ? null : $val;
             $v2 = ($dbVal === '') ? null : $dbVal;
@@ -423,7 +458,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'dissolutionDate' => $row['dissolution_date'] ?? '',
             'region' => $row['region'] ?? '',
             'district' => $row['district'] ?? '',
-            'financialSummary' => $row['financial_summary'] ?? ''
+            'financialSummary' => $row['financial_summary'] ?? '',
+            'followUps' => (isset($row['follow_ups']) && $row['follow_ups'] !== '' && $row['follow_ups'] !== null) ? json_decode($row['follow_ups'], true) : (object)[]
         ];
     }
 
@@ -447,6 +483,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'priority' => $row['priority'],
             'startDate' => $row['start_date'] ?? null,
             'deadline' => $row['deadline'],
+            'deadlineTime' => $row['deadline_time'] ?? null,
             'status' => $row['status'],
             'owner' => $row['owner'],
             'relatedLeadId' => $row['related_lead_id'] ?? null,
@@ -520,6 +557,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $leadCategoryColors = isset($settings['LEAD_CATEGORY_COLORS']) ? json_decode($settings['LEAD_CATEGORY_COLORS'], true) : [];
     $leadStageGroups = isset($settings['LEAD_STAGE_GROUPS']) ? json_decode($settings['LEAD_STAGE_GROUPS'], true) : [];
     $leadStateParents = isset($settings['LEAD_STATE_PARENTS']) ? json_decode($settings['LEAD_STATE_PARENTS'], true) : (object)[];
+    $leadStateFollowUp = isset($settings['LEAD_STATE_FOLLOWUP']) ? json_decode($settings['LEAD_STATE_FOLLOWUP'], true) : (object)[];
     $taskStates = isset($settings['TASK_STATES']) ? json_decode($settings['TASK_STATES'], true) : ["New", "In progress", "Blocked", "Done"];
     $taskStateColors = isset($settings['TASK_STATE_COLORS']) ? json_decode($settings['TASK_STATE_COLORS'], true) : [];
     $integrationsConfig = isset($settings['INTEGRATIONS_CONFIG']) ? json_decode($settings['INTEGRATIONS_CONFIG'], true) : (object)[];
@@ -846,6 +884,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'leadCategoryColors' => $leadCategoryColors,
             'leadStageGroups' => $leadStageGroups,
             'leadStateParents' => $leadStateParents,
+            'leadStateFollowUp' => $leadStateFollowUp,
             'taskStates' => $taskStates,
             'taskStateColors' => $taskStateColors,
             'integrationsConfig' => $integrationsConfig,
@@ -870,8 +909,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $payload = json_decode($input, true);
 
     if (!$payload) {
+        // A silently-empty body here is the classic cause of an optimistic change
+        // (e.g. an uploaded offer) that appears and then vanishes: when the POST
+        // exceeds post_max_size PHP hands us an EMPTY php://input, so decoding
+        // yields null and the write never happens. Log the specifics so this is
+        // diagnosable, and return a message the client can actually show.
+        $contentLength = $_SERVER['CONTENT_LENGTH'] ?? 'unknown';
+        $inputBytes = strlen($input);
+        $jsonError = json_last_error_msg();
+        error_log(
+            "CCRM sync POST rejected: content_length={$contentLength} " .
+            "input_bytes={$inputBytes} json_error={$jsonError} " .
+            "post_max_size=" . ini_get('post_max_size')
+        );
         http_response_code(400);
-        echo json_encode(['success' => false, 'message' => 'Invalid JSON payload']);
+        echo json_encode([
+            'success' => false,
+            'message' => 'Empty or invalid sync payload (received ' . $inputBytes .
+                ' bytes, header said ' . $contentLength . '; ' . $jsonError . ').'
+        ]);
         exit;
     }
 
@@ -1116,6 +1172,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'LEAD_CATEGORY_COLORS' => json_encode($s['leadCategoryColors'] ?? []),
                 'LEAD_STAGE_GROUPS' => json_encode($s['leadStageGroups'] ?? []),
                 'LEAD_STATE_PARENTS' => json_encode($s['leadStateParents'] ?? (object)[]),
+                'LEAD_STATE_FOLLOWUP' => json_encode($s['leadStateFollowUp'] ?? (object)[]),
                 'TASK_STATES' => json_encode($s['taskStates'] ?? []),
                 'TASK_STATE_COLORS' => json_encode($s['taskStateColors'] ?? []),
                 'INTEGRATIONS_CONFIG' => $integrationsValue,
@@ -1453,12 +1510,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               `ai_summary`, `ai_summary_fingerprint`, 
               `establishment_date`, `legal_form`, `sk_nace`, `organization_size`, `ownership_type`, `data_source`, `dissolution_date`, `region`, `district`, `financial_summary`,
               `vat_validation_result`,
-              `created_at`
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) 
-            ON DUPLICATE KEY UPDATE 
+              `created_at`,
+              `follow_ups`
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
               `name` = VALUES(`name`), `city` = VALUES(`city`), `client_type` = VALUES(`client_type`), `status` = VALUES(`status`), `source` = VALUES(`source`), `owner` = VALUES(`owner`), `value` = VALUES(`value`), `rating` = VALUES(`rating`), `phone` = VALUES(`phone`), `email` = VALUES(`email`), `company_id` = VALUES(`company_id`), `tax_id` = VALUES(`tax_id`), `vat_id` = VALUES(`vat_id`), `contact_person` = VALUES(`contact_person`), `website` = VALUES(`website`), `street` = VALUES(`street`), `postal_code` = VALUES(`postal_code`), `country` = VALUES(`country`), `ai_summary` = VALUES(`ai_summary`), `ai_summary_fingerprint` = VALUES(`ai_summary_fingerprint`),
               `establishment_date` = VALUES(`establishment_date`), `legal_form` = VALUES(`legal_form`), `sk_nace` = VALUES(`sk_nace`), `organization_size` = VALUES(`organization_size`), `ownership_type` = VALUES(`ownership_type`), `data_source` = VALUES(`data_source`), `dissolution_date` = VALUES(`dissolution_date`), `region` = VALUES(`region`), `district` = VALUES(`district`),
-              `vat_validation_result` = VALUES(`vat_validation_result`)");
+              `vat_validation_result` = VALUES(`vat_validation_result`),
+              `follow_ups` = VALUES(`follow_ups`)");
               // NOTE: `financial_summary` is intentionally NOT updated here. It is
               // server-owned — generated by api/generate_report.php in the
               // background and written directly to the row. Letting the client's
@@ -1515,7 +1574,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $l['district'] ?? null,
                     $l['financialSummary'] ?? null,
                     isset($l['vatValidationResult']) ? json_encode($l['vatValidationResult']) : null,
-                    $l['createdAt'] ?? date('Y-m-d H:i:s')
+                    $l['createdAt'] ?? date('Y-m-d H:i:s'),
+                    (isset($l['followUps']) && !empty($l['followUps'])) ? json_encode($l['followUps']) : null
                 ]);
 
                 // Check if we need to generate financial report in the background
@@ -1584,39 +1644,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                         $timestamp = isset($te['timestamp']) ? date('Y-m-d H:i:s', strtotime($te['timestamp'])) : date('Y-m-d H:i:s');
 
+                        // Scrub free-text so an out-of-range or invalid-UTF-8 value
+                        // (typically PDF-extracted content) can never abort the sync.
+                        // title = VARCHAR(255), content = TEXT (65535 bytes).
+                        $teTitle = ccrm_sanitize_db_text($te['title'] ?? '', 1020);
+                        if (function_exists('mb_substr')) { $teTitle = mb_substr($teTitle, 0, 255, 'UTF-8'); }
+                        $teContent = ccrm_sanitize_db_text($te['content'] ?? null, 63000);
+
+                        $teParams = [
+                            $teId,
+                            $leadId,
+                            $te['type'] ?? 'note',
+                            $timestamp,
+                            $teTitle,
+                            $teContent,
+                            $te['amount'] ?? null,
+                            $te['fileName'] ?? null,
+                            $te['fileSize'] ?? null,
+                            $te['fileType'] ?? null,
+                            $te['extraTime'] ?? $te['extra_time'] ?? null
+                        ];
+
                         try {
-                            $insTimeline->execute([
-                                $teId,
-                                $leadId,
-                                $te['type'] ?? 'note',
-                                $timestamp,
-                                $te['title'],
-                                $te['content'] ?? null,
-                                $te['amount'] ?? null,
-                                $te['fileName'] ?? null,
-                                $te['fileSize'] ?? null,
-                                $te['fileType'] ?? null,
-                                $te['extraTime'] ?? $te['extra_time'] ?? null
-                            ]);
+                            $insTimeline->execute($teParams);
                         } catch (\PDOException $pdoEx) {
                             // If duplicate key (SQLSTATE 23000 / error 1062), regenerate ID and retry
                             if ($pdoEx->getCode() == 23000 || strpos($pdoEx->getMessage(), '1062') !== false) {
-                                $teId = 'ev-' . uniqid() . '-' . rand(1000, 9999);
-                                $insTimeline->execute([
-                                    $teId,
-                                    $leadId,
-                                    $te['type'] ?? 'note',
-                                    $timestamp,
-                                    $te['title'],
-                                    $te['content'] ?? null,
-                                    $te['amount'] ?? null,
-                                    $te['fileName'] ?? null,
-                                    $te['fileSize'] ?? null,
-                                    $te['fileType'] ?? null,
-                                    $te['extraTime'] ?? $te['extra_time'] ?? null
-                                ]);
+                                $teParams[0] = 'ev-' . uniqid() . '-' . rand(1000, 9999);
+                                try {
+                                    $insTimeline->execute($teParams);
+                                } catch (\PDOException $pdoEx2) {
+                                    // Skip this one event rather than rolling back the
+                                    // entire push (which would lose the document upload).
+                                    if (function_exists('ccrm_log_exception')) { ccrm_log_exception($pdoEx2); }
+                                }
                             } else {
-                                throw $pdoEx;
+                                // A single bad event must never abort the whole
+                                // transaction — log it and keep going.
+                                if (function_exists('ccrm_log_exception')) { ccrm_log_exception($pdoEx); }
                             }
                         }
                     }
@@ -1634,7 +1699,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingTaskIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedTaskIds = [];
 
-            $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `status`, `owner`, `related_lead_id`, `is_locking`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `is_locking` = VALUES(`is_locking`)");
+            $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `related_lead_id`, `is_locking`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `is_locking` = VALUES(`is_locking`)");
 
             foreach ($payload['tasks'] as $t) {
                 // Skip malformed items rather than aborting the whole sync.
@@ -1650,6 +1715,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $t['priority'] ?? 'medium',
                     (isset($t['startDate']) && $t['startDate'] !== '') ? $t['startDate'] : null,
                     $t['deadline'],
+                    (isset($t['deadlineTime']) && $t['deadlineTime'] !== '') ? $t['deadlineTime'] : null,
                     $t['status'] ?? 'todo',
                     $t['owner'],
                     $t['relatedLeadId'] ?? null,

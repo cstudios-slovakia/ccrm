@@ -72,6 +72,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `ai_summary_fingerprint` TEXT NULL,
               `metadata_json` TEXT NULL COMMENT 'Plugin support',
               `vat_validation_result` TEXT NULL,
+              `follow_ups` TEXT NULL COMMENT 'JSON map: {stateKey: YYYY-MM-DD} of completed follow-ups',
               `created_at` DATE NOT NULL,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               PRIMARY KEY (`id`),
@@ -115,6 +116,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `priority` ENUM('low', 'medium', 'high') NOT NULL DEFAULT 'medium',
               `start_date` DATE NULL,
               `deadline` DATE NOT NULL,
+              `deadline_time` VARCHAR(5) NULL COMMENT 'HH:MM deadline/overdue time',
               `status` ENUM('todo', 'in_progress', 'blocked', 'done') NOT NULL DEFAULT 'todo',
               `owner` VARCHAR(100) NOT NULL COMMENT 'Assigned Project Manager Name',
               `related_lead_id` VARCHAR(50) NULL,
@@ -426,6 +428,12 @@ if (!function_exists('ccrm_schema_statements')) {
         }
         if (!ccrm_column_exists($pdo, 'project_types', 'timeline_attributes_json')) {
             $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `timeline_attributes_json` LONGTEXT NULL");
+        }
+        if (!ccrm_column_exists($pdo, 'tasks', 'deadline_time')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `deadline_time` VARCHAR(5) NULL AFTER `deadline`");
+        }
+        if (!ccrm_column_exists($pdo, 'leads', 'follow_ups')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `follow_ups` TEXT NULL");
         }
     }
 

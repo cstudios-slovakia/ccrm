@@ -25,6 +25,38 @@ import { ShaderGradient, ShaderGradientCanvas } from "shadergradient";
 
 const ShaderGradientAny = ShaderGradient as any;
 
+// Stable, order-fixed fingerprint of the settings block. Used to tell a genuine
+// user edit apart from merely re-receiving the server's own settings, so the
+// settings-sync effect never echoes server data back. Field order must be fixed
+// (hence an array) and must match on both the client-state and server-data sides.
+//
+// Empty containers are normalised to null because the two sides represent "empty"
+// differently: the server falls back to `[]` for colour maps but `{}` for
+// leadStateParents/leadStateFollowUp (and `null` for a malformed column), while
+// the client defaults to `{}`. Without this an "empty" field would look different
+// on every load and trigger a spurious push (the saving indicator flashing).
+const normSettingVal = (v: any): any => {
+  if (v == null) return null;
+  if (Array.isArray(v)) return v.length ? v : null;
+  if (typeof v === "object") return Object.keys(v).length ? v : null;
+  return v;
+};
+const computeSettingsSig = (o: any): string => JSON.stringify([
+  normSettingVal(o?.leadStates),
+  normSettingVal(o?.leadSources),
+  normSettingVal(o?.leadCategories),
+  o?.systemName ?? null,
+  o?.systemLanguage ?? null,
+  normSettingVal(o?.leadStateColors),
+  normSettingVal(o?.leadSourceColors),
+  normSettingVal(o?.leadCategoryColors),
+  normSettingVal(o?.leadStageGroups),
+  normSettingVal(o?.leadStateParents),
+  normSettingVal(o?.leadStateFollowUp),
+  normSettingVal(o?.taskStates),
+  normSettingVal(o?.taskStateColors),
+]);
+
 function App() {
   const activePushesRef = useRef(0);
   const lastPushTimeRef = useRef(0);
@@ -48,7 +80,19 @@ function App() {
   // DB clock from the last GET/POST. Sent back as baseSyncedAt so the server can
   // avoid deleting records a concurrent user added after our snapshot.
   const baseSyncedAtRef = useRef<string | null>(null);
-  const [, setIsSyncing] = useState(false);
+  // Serializes outbound pushes so two near-simultaneous saves (e.g. a rename that
+  // triggers both a leads push and the settings-effect push) commit in order and
+  // cannot revert each other on the server.
+  const pushChainRef = useRef<Promise<void>>(Promise.resolve());
+  // Signature of the settings we last knew the SERVER held. The settings-sync
+  // effect pushes ONLY when the live settings diverge from this — i.e. a genuine
+  // user edit — and never when the change came from applying the server's own
+  // data. Without this the app echoes the loaded settings straight back and the
+  // saving indicator flashes on every page load / poll. (A boolean "skip first
+  // run" flag is not enough: the first run is often consumed by the pre-session
+  // 401 bootstrap, before the real settings even arrive.)
+  const lastSyncedSettingsSigRef = useRef<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [isInstalled, setIsInstalled] = useState(true);
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [dbInfo, setDbInfo] = useState<{ host: string; port: string; name: string; user: string; type?: string } | null>(null);
@@ -258,6 +302,11 @@ function App() {
   });
 
   const [leadStateParents, setLeadStateParents] = useState<Record<string, string>>({});
+
+  // Per-state flag: which lead states show a "Follow-up done" checkbox on the lead.
+  // Keyed by lowercased state name (admin-configurable in Settings). Robust to
+  // renaming/removing states — a removed state's entry simply stops mattering.
+  const [leadStateFollowUp, setLeadStateFollowUp] = useState<Record<string, boolean>>({});
 
   const [integrationsConfig, setIntegrationsConfig] = useState<any>({
     emailProvider: "smtp",
@@ -505,7 +554,7 @@ ${log.payload || ''}
   projectsRef.current = projects;
 
   // --- REAL-TIME SERVER SYNCHRONIZER ENGINE ---
-  const pushStateToServer = async (
+  const pushStateToServer = (
     nextLeads?: Lead[],
     nextTasks?: Task[],
     nextRoles?: RolePermission[],
@@ -517,8 +566,12 @@ ${log.payload || ''}
     nextCustomDashboards?: CustomDashboard[],
     nextProjectTypes?: ProjectType[],
     nextProjects?: Project[]
-  ) => {
-    if (!isInstalled) return;
+  ): Promise<void> => {
+    if (!isInstalled) return pushChainRef.current;
+    // Queue this push behind any in-flight one. Chaining (rather than firing in
+    // parallel) guarantees the server applies saves in the order they were made,
+    // so a stale settings snapshot can never land after the fresh one.
+    const doPush = async () => {
     setIsSyncing(true);
     activePushesRef.current++;
     lastPushTimeRef.current = Date.now();
@@ -545,6 +598,7 @@ ${log.payload || ''}
         leadCategoryColors,
         leadStageGroups,
         leadStateParents,
+        leadStateFollowUp,
         taskStates,
         taskStateColors,
         integrationsConfig: nextIntegrationsConfig ?? integrationsConfigRef.current
@@ -573,15 +627,37 @@ ${log.payload || ''}
             baseSyncedAtRef.current = out.serverTime;
           }
         } catch { /* non-JSON response — keep the previous snapshot clock */ }
+      } else {
+        // Any other failure (400 invalid payload, 413 too large, 500 DB error).
+        // Previously this was swallowed silently, so the change stayed on screen
+        // optimistically and then vanished on the next poll with no explanation
+        // (exactly the "uploaded offer disappears" report). Surface it instead so
+        // the user knows the save did not persist and can retry.
+        let serverMsg = "";
+        try { serverMsg = (await res.clone().json())?.message || ""; }
+        catch { try { serverMsg = await res.text(); } catch { /* ignore */ } }
+        console.error("sync.php push failed", res.status, serverMsg);
+        if (typeof (window as any).showToast === "function") {
+          (window as any).showToast(
+            `Change not saved (server ${res.status}). Please try again.` +
+            (serverMsg ? ` — ${String(serverMsg).slice(0, 140)}` : "")
+          );
+        }
       }
     } catch (err) {
       console.warn("Failed immediate push to sync.php", err);
+      if (typeof (window as any).showToast === "function") {
+        (window as any).showToast("Change not saved — network error. Please check your connection and try again.");
+      }
     } finally {
       activePushesRef.current = Math.max(0, activePushesRef.current - 1);
       if (activePushesRef.current === 0) {
         setIsSyncing(false);
       }
     }
+    };
+    pushChainRef.current = pushChainRef.current.then(doPush, doPush);
+    return pushChainRef.current;
   };
 
   const updateUnifiedEntriesAndSync = (
@@ -760,14 +836,41 @@ ${log.payload || ''}
     (window as any).leads = leads;
   }, [leads]);
 
+  // Warn before the page is unloaded while a save is still in flight, so a rename
+  // (or any edit) is never lost by reloading/closing before it reaches the server.
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (isSyncing) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isSyncing]);
+
   // Sync settings when modified (only AFTER the initial database sync is resolved to prevent overwriting with defaults)
   useEffect(() => {
-    const syncSettingsToServer = async () => {
-      if (!isInstalled || !isInitialSyncResolved) return;
-      pushStateToServer();
-    };
-    syncSettingsToServer();
-  }, [leadStates, leadSources, leadCategories, systemName, systemLanguage, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, taskStates, taskStateColors, isInitialSyncResolved]);
+    if (!isInstalled || !isInitialSyncResolved) return;
+    const currentSig = computeSettingsSig({
+      leadStates, leadSources, leadCategories, systemName, systemLanguage,
+      leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups,
+      leadStateParents, leadStateFollowUp, taskStates, taskStateColors,
+    });
+    // Before we have ever seen the server's settings, just record the current
+    // signature — there is nothing to push yet, and pushing here would echo the
+    // freshly-loaded data (the cause of the indicator flashing on every reload).
+    if (lastSyncedSettingsSigRef.current === null) {
+      lastSyncedSettingsSigRef.current = currentSig;
+      return;
+    }
+    // Identical to what the server last gave us → this change came from applying
+    // server data, not a user edit. Do not echo it back.
+    if (lastSyncedSettingsSigRef.current === currentSig) return;
+    // A real divergence → persist it, and remember the new baseline.
+    lastSyncedSettingsSigRef.current = currentSig;
+    pushStateToServer();
+  }, [leadStates, leadSources, leadCategories, systemName, systemLanguage, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, taskStates, taskStateColors, isInitialSyncResolved]);
 
   // Layout Hash change listener
   useEffect(() => {
@@ -855,9 +958,13 @@ ${log.payload || ''}
         setLeadCategoryColors((prev) => s.leadCategoryColors && JSON.stringify(s.leadCategoryColors) !== JSON.stringify(prev) ? s.leadCategoryColors : prev);
         setLeadStageGroups((prev) => s.leadStageGroups && JSON.stringify(s.leadStageGroups) !== JSON.stringify(prev) ? s.leadStageGroups : prev);
         setLeadStateParents((prev) => s.leadStateParents && JSON.stringify(s.leadStateParents) !== JSON.stringify(prev) ? s.leadStateParents : prev);
+        setLeadStateFollowUp((prev) => s.leadStateFollowUp && JSON.stringify(s.leadStateFollowUp) !== JSON.stringify(prev) ? s.leadStateFollowUp : prev);
         setTaskStates((prev) => s.taskStates && JSON.stringify(s.taskStates) !== JSON.stringify(prev) ? s.taskStates : prev);
         setTaskStateColors((prev) => s.taskStateColors && JSON.stringify(s.taskStateColors) !== JSON.stringify(prev) ? s.taskStateColors : prev);
         if (s.integrationsConfig) syncIntegrationsConfig(s.integrationsConfig);
+        // Remember what the server just gave us. The settings-sync effect compares
+        // against this so applying server data never triggers an echo push.
+        lastSyncedSettingsSigRef.current = computeSettingsSig(s);
       }
     };
 
@@ -1014,6 +1121,8 @@ ${log.payload || ''}
           setLeadCategoryColors={setLeadCategoryColors}
           leadStageGroups={leadStageGroups}
           setLeadStageGroups={setLeadStageGroups}
+          leadStateFollowUp={leadStateFollowUp}
+          setLeadStateFollowUp={setLeadStateFollowUp}
           systemLanguage={systemLanguage}
           setSystemLanguage={setSystemLanguage}
           userLanguage={userLanguage}
@@ -1117,6 +1226,7 @@ ${log.payload || ''}
           projectTypes={projectTypes}
           setProjects={updateProjectsAndSync}
           setActiveTab={setActiveTab}
+          leadStateFollowUp={leadStateFollowUp}
         />
       );
     }
@@ -1149,6 +1259,8 @@ ${log.payload || ''}
           setLeadCategoryColors={setLeadCategoryColors}
           leadStageGroups={leadStageGroups}
           setLeadStageGroups={setLeadStageGroups}
+          leadStateFollowUp={leadStateFollowUp}
+          setLeadStateFollowUp={setLeadStateFollowUp}
           systemLanguage={systemLanguage}
           setSystemLanguage={setSystemLanguage}
           userLanguage={userLanguage}
@@ -1203,6 +1315,7 @@ ${log.payload || ''}
             projectTypes={projectTypes}
             setProjects={updateProjectsAndSync}
             setActiveTab={setActiveTab}
+            leadStateFollowUp={leadStateFollowUp}
           />
         );
       case "projects":
@@ -1496,7 +1609,19 @@ ${log.payload || ''}
 
   return (
     <div className="flex h-screen overflow-hidden relative font-sans antialiased text-slate-800 bg-slate-50/50">
-      
+
+      {/* Global save indicator — reassures the user their change is being saved
+          and, together with the beforeunload guard, that they should not leave or
+          reload the page until it disappears. */}
+      {isSyncing && (
+        <div className="fixed bottom-5 right-5 z-[9999] flex items-center gap-2 px-3.5 py-2 rounded-full bg-slate-900/90 text-white shadow-lg backdrop-blur-sm animate-in fade-in slide-in-from-bottom duration-200 select-none">
+          <span className="h-3.5 w-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" aria-hidden="true" />
+          <span className="text-[11px] font-black uppercase tracking-wider">
+            {userLanguage === "sk" ? "Ukladá sa…" : userLanguage === "hu" ? "Mentés…" : "Saving…"}
+          </span>
+        </div>
+      )}
+
       {/* Blurred application background layout if not logged in */}
       <div className={`flex flex-1 overflow-hidden transition-all duration-500 ${!currentUser ? "filter blur-md pointer-events-none select-none" : ""}`}>
         {/* Sidebar navigation with role-gated settings visibility */}
