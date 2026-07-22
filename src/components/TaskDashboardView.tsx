@@ -283,6 +283,28 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         return en;
     };
 
+    // Locale for native date/time display — driven by the language/region setting.
+    const locale = systemLanguage === "sk" ? "sk-SK" : systemLanguage === "hu" ? "hu-HU" : "en-US";
+
+    // Formats a stored "YYYY-MM-DD" string as a regional date (e.g. 23. 7. 2026 / 7/23/2026).
+    const formatDateDisplay = (dateStr?: string) => {
+        if (!dateStr) return "";
+        const [y, m, d] = dateStr.split("-").map(Number);
+        if (!y || !m || !d) return dateStr;
+        return new Date(y, m - 1, d).toLocaleDateString(locale);
+    };
+
+    // Formats a stored "HH:MM" string as a regional time (24h for sk/hu, AM/PM for en-US).
+    const formatTimeDisplay = (timeStr?: string) => {
+        if (!timeStr) return "";
+        const [h, min] = timeStr.split(":").map(Number);
+        if (isNaN(h) || isNaN(min)) return timeStr;
+        return new Date(2000, 0, 1, h, min).toLocaleTimeString(locale, {
+            hour: "2-digit",
+            minute: "2-digit",
+        });
+    };
+
     // Calendar weekday headers (Mon-first), localized.
     const weekdayNames =
         systemLanguage === "sk"
@@ -1005,15 +1027,16 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         <span className="text-[9px] font-bold text-slate-500 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md">
                             <span>
                                 {t("Start", "Začiatok", "Kezdés")}:{" "}
-                                {task.startDate}
+                                {formatDateDisplay(task.startDate)}
                             </span>
                         </span>
                     )}
 
                     <span className="text-[9px] font-bold text-slate-500 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md bg-indigo-50/50 border border-indigo-100">
                         <span>
-                            {t("Due", "Termín", "Határidő")}: {task.deadline} @{" "}
-                            {task.deadlineTime || "23:59"}
+                            {t("Due", "Termín", "Határidő")}:{" "}
+                            {formatDateDisplay(task.deadline)} @{" "}
+                            {formatTimeDisplay(task.deadlineTime || "23:59")}
                         </span>
                     </span>
 
