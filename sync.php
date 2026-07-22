@@ -85,6 +85,32 @@ function ccrm_compute_data_version($pdo) {
     }
 }
 
+// Coerce a string to valid, storable UTF-8 and clamp it to a safe byte length.
+//
+// Timeline event content can hold text extracted from uploaded PDFs, which is
+// produced by raw stream decoding and frequently contains invalid UTF-8 byte
+// sequences or is longer (in bytes) than the TEXT column allows. Writing such a
+// value throws an "Incorrect string value" / "Data too long" PDOException — and
+// because the whole POST sync runs in a single transaction, that would roll back
+// the ENTIRE push (the uploaded document, plus any other pending change). This
+// scrubs the value so the insert always succeeds.
+function ccrm_sanitize_db_text($str, $maxBytes) {
+    if ($str === null) return null;
+    if (!is_string($str)) $str = (string) $str;
+    // Substitute any byte sequence that is not valid UTF-8.
+    if (function_exists('mb_convert_encoding')) {
+        $clean = @mb_convert_encoding($str, 'UTF-8', 'UTF-8');
+        if ($clean !== false) $str = $clean;
+    }
+    $clean = @iconv('UTF-8', 'UTF-8//IGNORE', $str);
+    if ($clean !== false) $str = $clean;
+    // Truncate on a character boundary so we never split a multibyte glyph.
+    if (strlen($str) > $maxBytes) {
+        $str = function_exists('mb_strcut') ? mb_strcut($str, 0, $maxBytes, 'UTF-8') : substr($str, 0, $maxBytes);
+    }
+    return $str;
+}
+
 // Helper to check if an incoming lead payload is identical to its database record
 function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
     if (!$db) return false;
@@ -1128,39 +1154,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                         $timestamp = isset($te['timestamp']) ? date('Y-m-d H:i:s', strtotime($te['timestamp'])) : date('Y-m-d H:i:s');
 
+                        // Scrub free-text so an out-of-range or invalid-UTF-8 value
+                        // (typically PDF-extracted content) can never abort the sync.
+                        // title = VARCHAR(255), content = TEXT (65535 bytes).
+                        $teTitle = ccrm_sanitize_db_text($te['title'] ?? '', 1020);
+                        if (function_exists('mb_substr')) { $teTitle = mb_substr($teTitle, 0, 255, 'UTF-8'); }
+                        $teContent = ccrm_sanitize_db_text($te['content'] ?? null, 63000);
+
+                        $teParams = [
+                            $teId,
+                            $leadId,
+                            $te['type'] ?? 'note',
+                            $timestamp,
+                            $teTitle,
+                            $teContent,
+                            $te['amount'] ?? null,
+                            $te['fileName'] ?? null,
+                            $te['fileSize'] ?? null,
+                            $te['fileType'] ?? null,
+                            $te['extraTime'] ?? $te['extra_time'] ?? null
+                        ];
+
                         try {
-                            $insTimeline->execute([
-                                $teId,
-                                $leadId,
-                                $te['type'] ?? 'note',
-                                $timestamp,
-                                $te['title'],
-                                $te['content'] ?? null,
-                                $te['amount'] ?? null,
-                                $te['fileName'] ?? null,
-                                $te['fileSize'] ?? null,
-                                $te['fileType'] ?? null,
-                                $te['extraTime'] ?? $te['extra_time'] ?? null
-                            ]);
+                            $insTimeline->execute($teParams);
                         } catch (\PDOException $pdoEx) {
                             // If duplicate key (SQLSTATE 23000 / error 1062), regenerate ID and retry
                             if ($pdoEx->getCode() == 23000 || strpos($pdoEx->getMessage(), '1062') !== false) {
-                                $teId = 'ev-' . uniqid() . '-' . rand(1000, 9999);
-                                $insTimeline->execute([
-                                    $teId,
-                                    $leadId,
-                                    $te['type'] ?? 'note',
-                                    $timestamp,
-                                    $te['title'],
-                                    $te['content'] ?? null,
-                                    $te['amount'] ?? null,
-                                    $te['fileName'] ?? null,
-                                    $te['fileSize'] ?? null,
-                                    $te['fileType'] ?? null,
-                                    $te['extraTime'] ?? $te['extra_time'] ?? null
-                                ]);
+                                $teParams[0] = 'ev-' . uniqid() . '-' . rand(1000, 9999);
+                                try {
+                                    $insTimeline->execute($teParams);
+                                } catch (\PDOException $pdoEx2) {
+                                    // Skip this one event rather than rolling back the
+                                    // entire push (which would lose the document upload).
+                                    if (function_exists('ccrm_log_exception')) { ccrm_log_exception($pdoEx2); }
+                                }
                             } else {
-                                throw $pdoEx;
+                                // A single bad event must never abort the whole
+                                // transaction — log it and keep going.
+                                if (function_exists('ccrm_log_exception')) { ccrm_log_exception($pdoEx); }
                             }
                         }
                     }

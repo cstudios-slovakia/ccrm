@@ -57,11 +57,13 @@ if (php_sapi_name() !== 'cli') {
 
     if (move_uploaded_file($file['tmp_name'], $targetPath)) {
         $extractedText = ccrm_extract_text_from_file($targetPath, $fileName);
-        
-        // Limit length to avoid DB overflow in TEXT column (max 64KB)
-        if (mb_strlen($extractedText) > 60000) {
-            $extractedText = mb_substr($extractedText, 0, 60000) . '... [TRUNCATED]';
-        }
+
+        // Coerce to valid UTF-8 and clamp by BYTES (not characters). PDF stream
+        // extraction routinely yields invalid byte sequences, and the timeline
+        // `content` column is TEXT (65535 bytes) — an over-long or invalid value
+        // would make the later sync INSERT throw and roll back the whole push,
+        // which is exactly why an uploaded offer would vanish after saving.
+        $extractedText = ccrm_sanitize_upload_text($extractedText, 55000);
 
         echo json_encode([
             'success' => true,
@@ -75,6 +77,26 @@ if (php_sapi_name() !== 'cli') {
         http_response_code(500);
         echo json_encode(['success' => false, 'error' => 'Failed to save uploaded file.']);
     }
+}
+
+/**
+ * Coerce extracted text to valid, storable UTF-8 and clamp it to a safe byte
+ * length so it can never overflow the timeline `content` TEXT column or carry
+ * invalid byte sequences into the sync transaction.
+ */
+function ccrm_sanitize_upload_text($str, $maxBytes) {
+    if (!is_string($str)) $str = (string) $str;
+    if (function_exists('mb_convert_encoding')) {
+        $clean = @mb_convert_encoding($str, 'UTF-8', 'UTF-8');
+        if ($clean !== false) $str = $clean;
+    }
+    $clean = @iconv('UTF-8', 'UTF-8//IGNORE', $str);
+    if ($clean !== false) $str = $clean;
+    if (strlen($str) > $maxBytes) {
+        $str = function_exists('mb_strcut') ? mb_strcut($str, 0, $maxBytes, 'UTF-8') : substr($str, 0, $maxBytes);
+        $str .= '... [TRUNCATED]';
+    }
+    return $str;
 }
 
 /**
