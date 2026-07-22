@@ -197,12 +197,13 @@ function App() {
     ];
   });
 
+  // Persist locally only. Server pushes happen explicitly in updateMeetingNotesAndSync
+  // on real user edits; pushing here as well would echo freshly-loaded/polled server
+  // data back (and re-fire on the isInitialSyncResolved flip), which is exactly what
+  // made the "Saving…" indicator flash on login and on every reload with no user action.
   useEffect(() => {
     localStorage.setItem("crm_meeting_notes", JSON.stringify(meetingNotes));
-    if (isInitialSyncResolved) {
-      pushStateToServer(undefined, undefined, undefined, undefined, undefined, meetingNotes);
-    }
-  }, [meetingNotes, isInitialSyncResolved]);
+  }, [meetingNotes]);
 
   // Project Management state
   const [projectTypes, setProjectTypes] = useState<ProjectType[]>(() => {
@@ -225,19 +226,15 @@ function App() {
     return [];
   });
 
+  // Persist locally only — real edits push via updateProjectTypesAndSync. See note above.
   useEffect(() => {
     localStorage.setItem("crm_projectTypes", JSON.stringify(projectTypes));
-    if (isInitialSyncResolved) {
-      pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, projectTypes);
-    }
-  }, [projectTypes, isInitialSyncResolved]);
+  }, [projectTypes]);
 
+  // Persist locally only — real edits push via updateProjectsAndSync. See note above.
   useEffect(() => {
     localStorage.setItem("crm_projects", JSON.stringify(projects));
-    if (isInitialSyncResolved) {
-      pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, projects);
-    }
-  }, [projects, isInitialSyncResolved]);
+  }, [projects]);
 
   // Initial states set to empty / defaults without localStorage or mockData loaders
   const [leads, setLeads] = useState<Lead[]>([]);
