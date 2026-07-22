@@ -23,6 +23,38 @@ import { ShaderGradient, ShaderGradientCanvas } from "shadergradient";
 
 const ShaderGradientAny = ShaderGradient as any;
 
+// Stable, order-fixed fingerprint of the settings block. Used to tell a genuine
+// user edit apart from merely re-receiving the server's own settings, so the
+// settings-sync effect never echoes server data back. Field order must be fixed
+// (hence an array) and must match on both the client-state and server-data sides.
+//
+// Empty containers are normalised to null because the two sides represent "empty"
+// differently: the server falls back to `[]` for colour maps but `{}` for
+// leadStateParents/leadStateFollowUp (and `null` for a malformed column), while
+// the client defaults to `{}`. Without this an "empty" field would look different
+// on every load and trigger a spurious push (the saving indicator flashing).
+const normSettingVal = (v: any): any => {
+  if (v == null) return null;
+  if (Array.isArray(v)) return v.length ? v : null;
+  if (typeof v === "object") return Object.keys(v).length ? v : null;
+  return v;
+};
+const computeSettingsSig = (o: any): string => JSON.stringify([
+  normSettingVal(o?.leadStates),
+  normSettingVal(o?.leadSources),
+  normSettingVal(o?.leadCategories),
+  o?.systemName ?? null,
+  o?.systemLanguage ?? null,
+  normSettingVal(o?.leadStateColors),
+  normSettingVal(o?.leadSourceColors),
+  normSettingVal(o?.leadCategoryColors),
+  normSettingVal(o?.leadStageGroups),
+  normSettingVal(o?.leadStateParents),
+  normSettingVal(o?.leadStateFollowUp),
+  normSettingVal(o?.taskStates),
+  normSettingVal(o?.taskStateColors),
+]);
+
 function App() {
   const activePushesRef = useRef(0);
   const lastPushTimeRef = useRef(0);
@@ -47,10 +79,14 @@ function App() {
   // triggers both a leads push and the settings-effect push) commit in order and
   // cannot revert each other on the server.
   const pushChainRef = useRef<Promise<void>>(Promise.resolve());
-  // Guards the settings-sync effect so the first run after the initial load (which
-  // is just the server data we just fetched) does not echo back to the server and
-  // flash the saving indicator on every page reload. Real edits arm it thereafter.
-  const settingsSyncArmedRef = useRef(false);
+  // Signature of the settings we last knew the SERVER held. The settings-sync
+  // effect pushes ONLY when the live settings diverge from this — i.e. a genuine
+  // user edit — and never when the change came from applying the server's own
+  // data. Without this the app echoes the loaded settings straight back and the
+  // saving indicator flashes on every page load / poll. (A boolean "skip first
+  // run" flag is not enough: the first run is often consumed by the pre-session
+  // 401 bootstrap, before the real settings even arrive.)
+  const lastSyncedSettingsSigRef = useRef<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isInstalled, setIsInstalled] = useState(true);
   const [isDemoMode, setIsDemoMode] = useState(false);
@@ -740,13 +776,23 @@ ${log.payload || ''}
   // Sync settings when modified (only AFTER the initial database sync is resolved to prevent overwriting with defaults)
   useEffect(() => {
     if (!isInstalled || !isInitialSyncResolved) return;
-    // The first run once the initial sync resolves is triggered by loading the
-    // server's own settings — echoing it back is pointless and would show the
-    // "Saving…" indicator on every reload. Skip it; arm genuine edits after.
-    if (!settingsSyncArmedRef.current) {
-      settingsSyncArmedRef.current = true;
+    const currentSig = computeSettingsSig({
+      leadStates, leadSources, leadCategories, systemName, systemLanguage,
+      leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups,
+      leadStateParents, leadStateFollowUp, taskStates, taskStateColors,
+    });
+    // Before we have ever seen the server's settings, just record the current
+    // signature — there is nothing to push yet, and pushing here would echo the
+    // freshly-loaded data (the cause of the indicator flashing on every reload).
+    if (lastSyncedSettingsSigRef.current === null) {
+      lastSyncedSettingsSigRef.current = currentSig;
       return;
     }
+    // Identical to what the server last gave us → this change came from applying
+    // server data, not a user edit. Do not echo it back.
+    if (lastSyncedSettingsSigRef.current === currentSig) return;
+    // A real divergence → persist it, and remember the new baseline.
+    lastSyncedSettingsSigRef.current = currentSig;
     pushStateToServer();
   }, [leadStates, leadSources, leadCategories, systemName, systemLanguage, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, taskStates, taskStateColors, isInitialSyncResolved]);
 
@@ -831,6 +877,9 @@ ${log.payload || ''}
         setTaskStates((prev) => s.taskStates && JSON.stringify(s.taskStates) !== JSON.stringify(prev) ? s.taskStates : prev);
         setTaskStateColors((prev) => s.taskStateColors && JSON.stringify(s.taskStateColors) !== JSON.stringify(prev) ? s.taskStateColors : prev);
         if (s.integrationsConfig) syncIntegrationsConfig(s.integrationsConfig);
+        // Remember what the server just gave us. The settings-sync effect compares
+        // against this so applying server data never triggers an echo push.
+        lastSyncedSettingsSigRef.current = computeSettingsSig(s);
       }
     };
 
