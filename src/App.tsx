@@ -529,9 +529,28 @@ ${log.payload || ''}
             baseSyncedAtRef.current = out.serverTime;
           }
         } catch { /* non-JSON response — keep the previous snapshot clock */ }
+      } else {
+        // Any other failure (400 invalid payload, 413 too large, 500 DB error).
+        // Previously this was swallowed silently, so the change stayed on screen
+        // optimistically and then vanished on the next poll with no explanation
+        // (exactly the "uploaded offer disappears" report). Surface it instead so
+        // the user knows the save did not persist and can retry.
+        let serverMsg = "";
+        try { serverMsg = (await res.clone().json())?.message || ""; }
+        catch { try { serverMsg = await res.text(); } catch { /* ignore */ } }
+        console.error("sync.php push failed", res.status, serverMsg);
+        if (typeof (window as any).showToast === "function") {
+          (window as any).showToast(
+            `Change not saved (server ${res.status}). Please try again.` +
+            (serverMsg ? ` — ${String(serverMsg).slice(0, 140)}` : "")
+          );
+        }
       }
     } catch (err) {
       console.warn("Failed immediate push to sync.php", err);
+      if (typeof (window as any).showToast === "function") {
+        (window as any).showToast("Change not saved — network error. Please check your connection and try again.");
+      }
     } finally {
       activePushesRef.current = Math.max(0, activePushesRef.current - 1);
       if (activePushesRef.current === 0) {

@@ -735,8 +735,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $payload = json_decode($input, true);
 
     if (!$payload) {
+        // A silently-empty body here is the classic cause of an optimistic change
+        // (e.g. an uploaded offer) that appears and then vanishes: when the POST
+        // exceeds post_max_size PHP hands us an EMPTY php://input, so decoding
+        // yields null and the write never happens. Log the specifics so this is
+        // diagnosable, and return a message the client can actually show.
+        $contentLength = $_SERVER['CONTENT_LENGTH'] ?? 'unknown';
+        $inputBytes = strlen($input);
+        $jsonError = json_last_error_msg();
+        error_log(
+            "CCRM sync POST rejected: content_length={$contentLength} " .
+            "input_bytes={$inputBytes} json_error={$jsonError} " .
+            "post_max_size=" . ini_get('post_max_size')
+        );
         http_response_code(400);
-        echo json_encode(['success' => false, 'message' => 'Invalid JSON payload']);
+        echo json_encode([
+            'success' => false,
+            'message' => 'Empty or invalid sync payload (received ' . $inputBytes .
+                ' bytes, header said ' . $contentLength . '; ' . $jsonError . ').'
+        ]);
         exit;
     }
 

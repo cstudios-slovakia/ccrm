@@ -58,12 +58,13 @@ if (php_sapi_name() !== 'cli') {
     if (move_uploaded_file($file['tmp_name'], $targetPath)) {
         $extractedText = ccrm_extract_text_from_file($targetPath, $fileName);
 
-        // Coerce to valid UTF-8 and clamp by BYTES (not characters). PDF stream
-        // extraction routinely yields invalid byte sequences, and the timeline
-        // `content` column is TEXT (65535 bytes) — an over-long or invalid value
-        // would make the later sync INSERT throw and roll back the whole push,
-        // which is exactly why an uploaded offer would vanish after saving.
-        $extractedText = ccrm_sanitize_upload_text($extractedText, 55000);
+        // Coerce to valid UTF-8, strip control bytes, and DROP the text entirely
+        // when it is mostly binary garbage (which is what the naive PDF stream
+        // extractor produces for image-heavy or compressed PDFs — the "weird
+        // symbols" the user saw). Clamp what survives by BYTES (not characters)
+        // so it can never overflow the timeline `content` TEXT column (65535
+        // bytes) nor bloat the whole-dataset sync payload the client POSTs back.
+        $extractedText = ccrm_sanitize_upload_text($extractedText, 20000);
 
         echo json_encode([
             'success' => true,
@@ -86,17 +87,57 @@ if (php_sapi_name() !== 'cli') {
  */
 function ccrm_sanitize_upload_text($str, $maxBytes) {
     if (!is_string($str)) $str = (string) $str;
+    $str = ccrm_clean_extracted_text($str);
+    // Discard extraction output that is mostly non-textual. For a scanned or
+    // image-based PDF (e.g. a product catalogue) the stream extractor emits
+    // decompressed binary that renders as "weird symbols" and needlessly bloats
+    // the sync payload — better to store nothing than garbage.
+    if ($str === '' || !ccrm_text_is_meaningful($str)) {
+        return '';
+    }
+    if (strlen($str) > $maxBytes) {
+        $str = function_exists('mb_strcut') ? mb_strcut($str, 0, $maxBytes, 'UTF-8') : substr($str, 0, $maxBytes);
+        $str .= "\n... [skrátené]";
+    }
+    return $str;
+}
+
+/**
+ * Coerce to valid UTF-8 and strip control/binary bytes (keeping tab, newline and
+ * carriage return) so extracted text is always safe to store and display.
+ */
+function ccrm_clean_extracted_text($str) {
+    if (!is_string($str) || $str === '') return '';
     if (function_exists('mb_convert_encoding')) {
         $clean = @mb_convert_encoding($str, 'UTF-8', 'UTF-8');
         if ($clean !== false) $str = $clean;
     }
     $clean = @iconv('UTF-8', 'UTF-8//IGNORE', $str);
     if ($clean !== false) $str = $clean;
-    if (strlen($str) > $maxBytes) {
-        $str = function_exists('mb_strcut') ? mb_strcut($str, 0, $maxBytes, 'UTF-8') : substr($str, 0, $maxBytes);
-        $str .= '... [TRUNCATED]';
-    }
-    return $str;
+    // Remove C0/C1 control characters except \t (09), \n (0A), \r (0D), and DEL.
+    $stripped = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $str);
+    if ($stripped !== null) $str = $stripped;
+    // Collapse absurd whitespace runs the extractor leaves behind.
+    $str = preg_replace('/[ \t]{2,}/', ' ', $str);
+    $str = preg_replace('/\n{3,}/', "\n\n", $str);
+    return trim($str);
+}
+
+/**
+ * Heuristic: is this string mostly real, human-readable text (as opposed to the
+ * binary noise a naive PDF extractor produces)? Requires a minimum length, a
+ * minimum count of letters, and a high ratio of letters/digits/punctuation/space
+ * to total characters.
+ */
+function ccrm_text_is_meaningful($str) {
+    $len = function_exists('mb_strlen') ? mb_strlen($str, 'UTF-8') : strlen($str);
+    if ($len < 12) return false;
+    $letters = @preg_match_all('/\p{L}/u', $str);
+    if ($letters === false) $letters = preg_match_all('/[A-Za-z]/', $str);
+    if ($letters < 8) return false;
+    $printable = @preg_match_all('/[\p{L}\p{N}\p{P}\p{Zs}]/u', $str);
+    if ($printable === false) $printable = $letters;
+    return ($printable / max(1, $len)) >= 0.6;
 }
 
 /**
@@ -225,6 +266,11 @@ function ccrm_extract_pdf_text($filePath) {
                         return chr(octdec($m[1]));
                     }, $txt);
                     $txt = str_replace(['\\(', '\\)', '\\\\'], ['(', ')', '\\'], $txt);
+                    // Skip fragments that carry no actual letters — for compressed
+                    // or image streams these are just decoded binary noise.
+                    if (@preg_match('/\p{L}/u', $txt) !== 1 && !preg_match('/[A-Za-z]/', $txt)) {
+                        continue;
+                    }
                     $texts[] = $txt;
                 }
             }
