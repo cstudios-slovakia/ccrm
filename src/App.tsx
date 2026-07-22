@@ -47,6 +47,10 @@ function App() {
   // triggers both a leads push and the settings-effect push) commit in order and
   // cannot revert each other on the server.
   const pushChainRef = useRef<Promise<void>>(Promise.resolve());
+  // Guards the settings-sync effect so the first run after the initial load (which
+  // is just the server data we just fetched) does not echo back to the server and
+  // flash the saving indicator on every page reload. Real edits arm it thereafter.
+  const settingsSyncArmedRef = useRef(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isInstalled, setIsInstalled] = useState(true);
   const [isDemoMode, setIsDemoMode] = useState(false);
@@ -735,11 +739,15 @@ ${log.payload || ''}
 
   // Sync settings when modified (only AFTER the initial database sync is resolved to prevent overwriting with defaults)
   useEffect(() => {
-    const syncSettingsToServer = async () => {
-      if (!isInstalled || !isInitialSyncResolved) return;
-      pushStateToServer();
-    };
-    syncSettingsToServer();
+    if (!isInstalled || !isInitialSyncResolved) return;
+    // The first run once the initial sync resolves is triggered by loading the
+    // server's own settings — echoing it back is pointless and would show the
+    // "Saving…" indicator on every reload. Skip it; arm genuine edits after.
+    if (!settingsSyncArmedRef.current) {
+      settingsSyncArmedRef.current = true;
+      return;
+    }
+    pushStateToServer();
   }, [leadStates, leadSources, leadCategories, systemName, systemLanguage, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, taskStates, taskStateColors, isInitialSyncResolved]);
 
   // Layout Hash change listener
