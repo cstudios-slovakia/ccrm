@@ -2686,6 +2686,41 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 "Módosítások mentése",
                             )}
                         </button>
+
+                        {currentTask.id && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (currentTask.archived) {
+                                        handleUnarchiveTask(currentTask);
+                                    } else {
+                                        handleArchiveTask(currentTask);
+                                    }
+                                    closeEditDrawer();
+                                }}
+                                className="w-full py-2.5 border-2 border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl font-black text-[10px] uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer"
+                            >
+                                {currentTask.archived ? (
+                                    <>
+                                        <RotateCcw className="h-3.5 w-3.5" />
+                                        {t(
+                                            "Unarchive Task",
+                                            "Zrušiť archiváciu úlohy",
+                                            "Feladat archiválásának visszavonása",
+                                        )}
+                                    </>
+                                ) : (
+                                    <>
+                                        <ArchiveIcon className="h-3.5 w-3.5" />
+                                        {t(
+                                            "Archive Task",
+                                            "Archivovať úlohu",
+                                            "Feladat archiválása",
+                                        )}
+                                    </>
+                                )}
+                            </button>
+                        )}
                     </form>
                 </div>
             </div>,
