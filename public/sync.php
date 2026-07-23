@@ -1746,7 +1746,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            // Permanent task deletion uses the explicit, permission-checked task endpoint.
+            // Task deletion is intentionally not inferred from an omitted snapshot.
+            // It uses api/task.php so permission checks and server confirmation
+            // cannot be bypassed by a stale or incomplete client payload.
         }
 
         // 4.5. Synchronize Meeting Notes & meeting_tasks

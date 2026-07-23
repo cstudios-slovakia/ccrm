@@ -455,6 +455,9 @@ if (!function_exists('ccrm_schema_statements')) {
         }
         if (!ccrm_column_exists($pdo, 'tasks', 'created_by')) {
             $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `created_by` VARCHAR(100) NULL AFTER `owner`");
+            // Before created_by existed, owner represented the assigned PM. Preserve
+            // that responsibility in the junction table without pretending it was
+            // reliable creator history.
             $pdo->exec(
                 "INSERT IGNORE INTO `task_assignees` (`task_id`, `user_name`)
                  SELECT `id`, `owner` FROM `tasks` WHERE `owner` <> ''"

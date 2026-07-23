@@ -78,6 +78,8 @@ if (!$isAdmin) {
     }
 }
 
+// Legacy tasks predate created_by. Preserve their previous behavior by allowing
+// an assignee to delete them; new tasks use the immutable creator field.
 $isLegacyAssignee = false;
 if (empty($task['created_by'])) {
     $assigneeStmt = $pdo->prepare(
