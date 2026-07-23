@@ -566,42 +566,21 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                   )}
                 </div>
 
-                {/* Tabs & Attributes Schema Builder under the input field */}
+                {/* Attributes Schema Builder for the selected event type */}
                 {timelineEventTypes.length > 0 && (
                   <div className="space-y-4 border-t border-slate-200 pt-4 mt-4 bg-white p-4 rounded-3xl border border-slate-100 shadow-sm text-left">
-                    <h4 className="font-heading font-bold text-[11px] text-slate-500 uppercase tracking-widest">
-                      {t("Configure Attributes per Event Type", "Konfigurovať atribúty podľa typu udalosti", "Attribútumok konfigurálása eseménytípus szerint")}
-                    </h4>
-
-                    {/* Event Type Tabs */}
-                    <div className="flex border-b border-slate-200 overflow-x-auto gap-2 mb-4 scrollbar-none">
-                      {timelineEventTypes.map(et => {
-                        const isSelected = selectedTeTypeId === et.id;
-                        return (
-                          <button
-                            key={et.id}
-                            type="button"
-                            onClick={() => setSelectedTeTypeId(et.id)}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 border-b-2 font-black text-[10px] uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer ${
-                              isSelected
-                                ? "border-purple-600 text-purple-700"
-                                : "border-transparent text-slate-400 hover:text-slate-700"
-                            }`}
-                          >
-                            {renderIcon(et.icon, "h-3.5 w-3.5")}
-                            <span style={{ color: et.color }}>●</span>
-                            <span>{et.name}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-
                     {(() => {
                       const selectedTeType = timelineEventTypes.find(t => t.id === selectedTeTypeId);
                       if (!selectedTeType) return null;
 
                       return (
                         <div className="space-y-4 animate-fade-in text-left">
+                          <h4 className="font-heading font-bold text-[11px] text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                            {t("Configure Attributes:", "Konfigurovať atribúty:", "Attribútumok konfigurálása:")}
+                            {renderIcon(selectedTeType.icon, "h-3.5 w-3.5")}
+                            <span style={{ color: selectedTeType.color }}>●</span>
+                            <span className="normal-case tracking-normal text-slate-700">{selectedTeType.name}</span>
+                          </h4>
                           {/* Existing timeline attributes list */}
                           <div className="space-y-2 max-h-60 overflow-y-auto pr-2 scrollbar-thin">
                             {selectedTeType.attributes.length === 0 ? (

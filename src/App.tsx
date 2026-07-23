@@ -1203,7 +1203,7 @@ ${log.payload || ''}
           leadSources={leadSources}
           setLeadSources={setLeadSources}
           users={users}
-          setUsers={setUsers}
+          setUsers={updateUsersAndSync}
           roles={roles}
           setRoles={updateRolesAndSync}
           getPermission={getPermission}

@@ -1452,7 +1452,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const handleUpdateUser = (updated: UserProfile) => {
-    setUsers(prev => prev.map(u => u.email === updated.email ? updated : u));
+    // Match on the identity the record had before this edit — matching on
+    // updated.email loses the change whenever the email itself is what changed.
+    const previousEmail = selectedUser?.email ?? updated.email;
+    setUsers(prev => prev.map(u => u.email === previousEmail ? updated : u));
     setSelectedUser(updated);
   };
 
