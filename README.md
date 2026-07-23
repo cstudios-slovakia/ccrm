@@ -70,12 +70,24 @@ and committed to `dist/`, then published to the docroot by `php ccrm update`.
    ```bash
    composer install --no-dev
    ```
-4. Make sure the web server user can write to the docroot root (the setup
+4. **Publish the built frontend + backend into the docroot.** A fresh clone's
+   root `index.html` is the Vite *dev* entry (`<script src="/src/main.tsx">`),
+   which a browser can't execute — you'll get a blank white page if you skip
+   this. `dist/*.php` (sync.php, api/, `.htaccess`) are also git-ignored and
+   don't exist yet on a bare clone. Run the update script once to fix both —
+   it refreshes `dist/` from `public/` and copies `dist/` over the docroot
+   root:
+   ```bash
+   php ccrm update
+   ```
+   (`git pull` will just report "already up to date" on a fresh clone —
+   that's fine, the publish + migrate steps are what you need here.)
+5. Make sure the web server user can write to the docroot root (the setup
    wizard creates `config.php`/`api_key.txt` there) and to `uploads/`.
-5. Confirm `mod_rewrite` and `mod_headers` are enabled — the shipped
+6. Confirm `mod_rewrite` and `mod_headers` are enabled — the shipped
    `.htaccess` uses both for SPA routing, security headers, and blocking
    `.git/`.
-6. Open the site URL in a browser. The setup wizard (`api/setup.php`)
+7. Open the site URL in a browser. The setup wizard (`api/setup.php`)
    displays automatically:
    - Enter your MySQL host/port/name/username/password — it test-connects.
    - It writes `config.php` and applies the schema migrations.
