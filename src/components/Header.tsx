@@ -20,8 +20,7 @@ interface HeaderProps {
   onAddTask?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ 
-  activeTab, 
+export const Header: React.FC<HeaderProps> = ({
   systemName,
   currentUser,
   onLogout,
@@ -300,30 +299,6 @@ export const Header: React.FC<HeaderProps> = ({
     }
   };
 
-  const getPageTitle = (tab: string) => {
-    if (tab.startsWith("client-")) {
-      return getTranslation(systemLanguage, "header.title.clients");
-    }
-    if (tab.startsWith("lead-")) {
-      return getTranslation(systemLanguage, "header.title.leads");
-    }
-    switch (tab) {
-      case "dashboard":
-      case "tasks": return getTranslation(systemLanguage, "header.title.tasks");
-      case "overview": return getTranslation(systemLanguage, "header.title.dashboard");
-      case "leads": return getTranslation(systemLanguage, "header.title.leads");
-      case "clients": return getTranslation(systemLanguage, "header.title.clients");
-      case "files": return getTranslation(systemLanguage, "header.title.files");
-      case "projects": return getTranslation(systemLanguage, "header.title.projects");
-      case "email": return getTranslation(systemLanguage, "header.title.email");
-      case "rag_ai": return getTranslation(systemLanguage, "header.title.rag_ai");
-      case "meetings": return getTranslation(systemLanguage, "header.title.meetings");
-      case "personal-settings": return getTranslation(systemLanguage, "header.title.personal");
-      case "settings": return getTranslation(systemLanguage, "header.title.settings");
-      default: return systemName;
-    }
-  };
-
   return (
     <header className="h-20 border-b border-white/40 bg-white/25 backdrop-blur-md px-4 md:px-6 flex items-center justify-between sticky top-0 z-50 select-none">
       <style>{`
@@ -336,14 +311,11 @@ export const Header: React.FC<HeaderProps> = ({
         }
       `}</style>
 
-      {/* View Title */}
+      {/* Brand Title */}
       <div className="flex flex-col">
         <h1 className="text-xl font-heading font-extrabold text-slate-900 tracking-tight leading-none uppercase">
-          {getPageTitle(activeTab)}
+          {systemName}
         </h1>
-        <p className="text-[10px] text-slate-500 font-bold tracking-wider mt-1.5 uppercase">
-          {systemName} &bull; {getTranslation(systemLanguage, "header.active_node")}
-        </p>
       </div>
 
       {/* Universal Search bar in the center */}
