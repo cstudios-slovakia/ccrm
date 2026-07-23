@@ -540,7 +540,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                           onClick={() => setSelectedTeTypeId(et.id)}
                           className={`flex items-center gap-1.5 px-2.5 py-1 border rounded-lg text-xs font-bold transition-all cursor-pointer select-none ${
                             isSelected
-                              ? "border-purple-300 bg-purple-50 text-purple-755 ring-2 ring-purple-600 ring-offset-1"
+                              ? "border-purple-600 bg-purple-50 text-purple-755"
                               : "bg-slate-100 border-slate-200 text-slate-700 hover:border-slate-300"
                           }`}
                         >
@@ -575,12 +575,27 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
 
                       return (
                         <div className="space-y-4 animate-fade-in text-left">
-                          <h4 className="font-heading font-bold text-[11px] text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
-                            {t("Configure Attributes:", "Konfigurovať atribúty:", "Attribútumok konfigurálása:")}
-                            {renderIcon(selectedTeType.icon, "h-3.5 w-3.5")}
-                            <span style={{ color: selectedTeType.color }}>●</span>
-                            <span className="normal-case tracking-normal text-slate-700">{selectedTeType.name}</span>
-                          </h4>
+                          <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-200">
+                            <div className="min-w-0">
+                              <div className="font-heading font-black text-[10px] text-slate-400 uppercase tracking-widest">
+                                {t("Attributes for event type", "Atribúty typu udalosti", "Eseménytípus attribútumai")}
+                              </div>
+                              <div className="flex items-center gap-1.5 mt-1 min-w-0">
+                                <span
+                                  className="flex items-center justify-center h-6 w-6 rounded-lg shrink-0"
+                                  style={{ backgroundColor: `${selectedTeType.color}1a`, color: selectedTeType.color }}
+                                >
+                                  {renderIcon(selectedTeType.icon, "h-3.5 w-3.5")}
+                                </span>
+                                <span className="font-heading font-bold text-sm text-slate-800 truncate">
+                                  {selectedTeType.name}
+                                </span>
+                              </div>
+                            </div>
+                            <span className="shrink-0 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 font-bold text-[10px] uppercase tracking-wider">
+                              {selectedTeType.attributes.length} {t("attributes", "atribútov", "attribútum")}
+                            </span>
+                          </div>
                           {/* Existing timeline attributes list */}
                           <div className="space-y-2 max-h-60 overflow-y-auto pr-2 scrollbar-thin">
                             {selectedTeType.attributes.length === 0 ? (
