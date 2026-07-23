@@ -2349,7 +2349,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               >
                                 <Eye className="h-3 w-3" /> {getTranslation(userLanguage, "settings.managers.th_actions")}
                               </button>
-                              {getPermission("pm_managers") === "edit" && u.name.toLowerCase() !== "erik" && (
+                              {getPermission("pm_managers") === "edit" && u.name.toLowerCase() !== currentUser.name.toLowerCase() && (
                                 <button
                                   type="button"
                                   onClick={() => handleRemoveUser(u.name)}
@@ -2414,7 +2414,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           <label className="text-[9px] font-black text-slate-450 uppercase tracking-wider block">{getTranslation(userLanguage, "settings.managers.lbl_fullname")}</label>
                           <input
                             type="text"
-                            disabled={getPermission("pm_managers") === "view" || selectedUser.name.toLowerCase() === "erik"}
+                            disabled={getPermission("pm_managers") === "view"}
                             value={selectedUser.name}
                             onChange={(e) => {
                               const updated = { ...selectedUser, name: e.target.value };
@@ -2429,7 +2429,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">{getTranslation(userLanguage, "settings.managers.lbl_email")}</label>
                           <input
                             type="email"
-                            disabled={getPermission("pm_managers") === "view" || selectedUser.name.toLowerCase() === "erik"}
+                            disabled={getPermission("pm_managers") === "view"}
                             value={selectedUser.email}
                             onChange={(e) => {
                               const updated = { ...selectedUser, email: e.target.value };
@@ -2458,7 +2458,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         {/* Security Access Level Role */}
                         <div className="space-y-1">
                           <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">{getTranslation(userLanguage, "settings.managers.lbl_access")}</label>
-                          {getPermission("pm_managers") === "edit" && selectedUser.name.toLowerCase() !== "erik" ? (
+                          {getPermission("pm_managers") === "edit" ? (
                             <select
                               value={selectedUser.role}
                               onChange={(e) => {
