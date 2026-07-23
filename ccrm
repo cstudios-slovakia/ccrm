@@ -135,11 +135,20 @@ function ccrm_update() {
         // dist/sync.php, which is gitignored and never pulled) would otherwise
         // stay stale and overwrite the freshly-pulled root sync.php on publish.
         // This reproduces the build's public/->dist/ copy so backend fixes
-        // actually reach the served root files. (dist/index.html + dist/assets/
-        // are the built frontend; public/ has no index.html/assets, so they are
-        // left untouched.)
+        // actually reach the served root files.
         if (is_dir(__DIR__ . '/public')) {
             \CCRM\Installer::copyDir(__DIR__ . '/public', __DIR__ . '/dist', ['config.php']);
+
+            // The copy above is only meant to refresh backend PHP. But public/
+            // can also hold STALE frontend artifacts (a leftover index.html
+            // pointing at an old bundle hash, plus old assets/), which would
+            // clobber the freshly-pulled, git-tracked build in dist/ and make
+            // the published index.html load a bundle that no longer matches the
+            // deployed code. Restore the tracked frontend so the published
+            // frontend is always exactly the one we just pulled. (Extra untracked
+            // old bundles left in dist/assets are harmless — index.html points at
+            // the correct hash.)
+            passthru("git checkout -- dist/index.html dist/assets");
         }
         \CCRM\Installer::copyDir(__DIR__ . '/dist', __DIR__, ['config.php']);
     }
