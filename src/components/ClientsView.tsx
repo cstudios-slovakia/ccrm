@@ -1866,7 +1866,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               type="button"
               disabled={isTranscribing || isUploadingAudio || !uploadedAudioFile}
               onClick={handleTranscribeMeeting}
-              className="px-2.5 py-1 bg-indigo-650 hover:bg-indigo-600 disabled:bg-slate-200 text-white text-[9px] font-black uppercase tracking-wider rounded-lg cursor-pointer flex items-center gap-1.5"
+              className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white text-[9px] font-black uppercase tracking-wider rounded-lg cursor-pointer flex items-center gap-1.5"
             >
               {isTranscribing ? (
                 <Loader2 className="h-3 w-3 animate-spin" />

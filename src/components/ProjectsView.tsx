@@ -261,7 +261,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               <div className="relative select-none">
                 <button
                   onClick={() => setIsCreateDropdownOpen(!isCreateDropdownOpen)}
-                  className="flex items-center gap-1.5 px-5 py-2.5 rounded-2xl bg-indigo-600 text-white font-black text-xs uppercase tracking-wider hover:bg-indigo-750 shadow-md shadow-indigo-600/10 cursor-pointer"
+                  className="flex items-center gap-1.5 px-5 py-2.5 rounded-2xl bg-indigo-600 text-white font-black text-xs uppercase tracking-wider hover:bg-indigo-700 shadow-md shadow-indigo-600/10 cursor-pointer"
                 >
                   <Plus className="h-4.5 w-4.5" />
                   <span>{t("New Project", "Nový projekt", "Új projekt")}</span>

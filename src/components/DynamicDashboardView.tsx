@@ -281,7 +281,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 <button
                   type="submit"
                   disabled={isGenerating || !promptText.trim()}
-                  className="flex items-center gap-1.5 px-6 py-3 bg-indigo-600 hover:bg-indigo-750 disabled:bg-slate-200 text-white disabled:text-slate-400 rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-indigo-600/10 cursor-pointer shrink-0"
+                  className="flex items-center gap-1.5 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white disabled:text-slate-400 rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-indigo-600/10 cursor-pointer shrink-0"
                 >
                   {isGenerating ? (
                     <>
@@ -444,7 +444,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
             <button
               type="submit"
               disabled={isGenerating || !promptText.trim()}
-              className="flex items-center justify-center h-9 px-4 bg-indigo-600 hover:bg-indigo-750 disabled:bg-slate-200 text-white disabled:text-slate-400 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer shrink-0"
+              className="flex items-center justify-center h-9 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white disabled:text-slate-400 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer shrink-0"
             >
               {isGenerating ? (
                 <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -642,7 +642,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 {/* Tabs */}
                 <div className="p-4 border border-slate-150 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
                   <div className="w-24 h-16 rounded-xl bg-white border border-slate-200 p-2 flex gap-1.5 items-start shrink-0 shadow-sm justify-center">
-                    <div className="px-1.5 py-0.5 rounded bg-indigo-550 text-[6px] font-bold text-white">Tab A</div>
+                    <div className="px-1.5 py-0.5 rounded bg-indigo-600 text-[6px] font-bold text-white">Tab A</div>
                     <div className="px-1.5 py-0.5 rounded bg-slate-50 text-[6px] font-bold text-slate-500">Tab B</div>
                   </div>
                   <div>

@@ -314,11 +314,11 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
               onClick={() => setActiveSubTab("errors")}
               className={`w-full text-left px-4 py-3 rounded-2xl font-black text-[10.5px] uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
                 activeSubTab === "errors"
-                  ? "bg-red-650 text-white shadow-lg shadow-red-600/20 border border-red-750"
+                  ? "bg-red-600 text-white shadow-lg shadow-red-600/20 border border-red-700"
                   : "text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-transparent"
               }`}
             >
-              <AlertOctagon className="h-4 w-4 text-red-500" /> {t("Error Logs", "Chyby a Výnimky", "Hibanaplók")}
+              <AlertOctagon className={`h-4 w-4 ${activeSubTab === "errors" ? "text-white" : "text-red-500"}`} /> {t("Error Logs", "Chyby a Výnimky", "Hibanaplók")}
             </button>
 
             <div className="border-t border-slate-150 my-1 pt-2.5">

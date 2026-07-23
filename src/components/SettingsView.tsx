@@ -2011,7 +2011,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           onClick={() => {
                             window.location.hash = "settings/unified/new";
                           }}
-                          className="px-3.5 py-2 rounded-xl bg-indigo-650 hover:bg-indigo-700 text-white text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md shadow-indigo-600/20 cursor-pointer"
+                          className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md shadow-indigo-600/20 cursor-pointer"
                         >
                           <Plus className="h-4 w-4" />
                           {t("New Entry", "Nový záznam", "Új bejegyzés")}
@@ -2643,7 +2643,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         </div>
                         <button
                           type="submit"
-                          className="w-full py-2.5 rounded-xl bg-slate-850 hover:bg-slate-750 text-white text-[10px] font-black uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                          className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-[10px] font-black uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center justify-center gap-1.5"
                         >
                           <Plus className="h-3.5 w-3.5" /> {getTranslation(userLanguage, "settings.managers.sim_btn")}
                         </button>
@@ -4602,7 +4602,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <button
                       type="submit"
                       disabled={isSendingTest || !testRecipient}
-                      className="w-full py-3 bg-slate-850 hover:bg-slate-750 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-55"
+                      className="w-full py-3 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-55"
                     >
                       {isSendingTest ? (
                         <>
@@ -5017,7 +5017,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div className="flex justify-end pt-3">
                     <button
                       type="submit"
-                      className="px-6 py-3 bg-indigo-650 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-lg shadow-indigo-650/20 active:scale-95 transition-all cursor-pointer flex items-center gap-2"
+                      className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-lg shadow-indigo-600/20 active:scale-95 transition-all cursor-pointer flex items-center gap-2"
                     >
                       <Save className="h-4 w-4" /> {t("Save AI Configuration", "Uložiť konfiguráciu AI", "AI konfiguráció mentése")}
                     </button>

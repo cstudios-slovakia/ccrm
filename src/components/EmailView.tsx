@@ -1802,7 +1802,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                       dotColor = "bg-blue-600 text-white border-blue-700";
                       icon = <Phone size={12} />;
                     } else if (event.type === "email") {
-                      dotColor = "bg-indigo-650 text-white border-indigo-755";
+                      dotColor = "bg-indigo-600 text-white border-indigo-700";
                       icon = event.isOutgoing 
                         ? <CornerDownLeft size={12} /> 
                         : <CornerLeftDown size={12} />;

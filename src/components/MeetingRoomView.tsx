@@ -1326,7 +1326,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
             type="button"
             disabled={isGeneratingDetailSummary || !integrationsConfig?.openAiKey || integrationsConfig.openAiKey.trim() === ""}
             onClick={() => handleGenerateSummary(meeting)}
-            className="w-full py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-250 disabled:text-slate-400 text-white font-heading font-black text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/20"
+            className="w-full py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-200 disabled:text-slate-400 text-white font-heading font-black text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/20"
           >
             <Sparkles className="h-4 w-4" />
             {isGeneratingDetailSummary ? t("Generating...", "Generuje sa...", "Generálás...") : t("Make AI Summary", "Vytvoriť AI zhrnutie", "AI összefoglaló készítése")}
@@ -2567,7 +2567,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               <button
                 type="button"
                 onClick={() => handleSaveTaskDetails(activeTaskForEdit)}
-                className="flex-1 py-2.5 bg-indigo-650 hover:bg-indigo-600 hover:text-white rounded-xl text-xs font-heading font-black uppercase tracking-wider transition-colors cursor-pointer animate-none"
+                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 hover:text-white rounded-xl text-xs font-heading font-black uppercase tracking-wider transition-colors cursor-pointer animate-none"
               >
                 {t("Save Changes", "Uložiť zmeny", "Módosítások mentése")}
               </button>

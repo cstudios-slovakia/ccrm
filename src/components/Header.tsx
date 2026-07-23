@@ -544,7 +544,7 @@ export const Header: React.FC<HeaderProps> = ({
               }`}
               title={systemLanguage === "sk" ? "Aktualizácie a novinky" : systemLanguage === "hu" ? "Frissítések és hírek" : "Updates & News"}
             >
-              <Sparkles className="h-5 w-5 text-amber-550 text-amber-500" />
+              <Sparkles className={`h-5 w-5 ${isUpdatesOpen ? "text-white" : "text-amber-500"}`} />
               {hasNewUpdate && (
                 <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-450 bg-rose-400 opacity-75"></span>

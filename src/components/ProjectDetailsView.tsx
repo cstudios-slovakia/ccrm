@@ -1476,7 +1476,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                   <div className="absolute h-full flex items-center left-3">
                                     <div className="h-2 w-2 rounded-full bg-amber-400 shrink-0 animate-pulse" />
                                     {initials && (
-                                      <div className="h-5 w-5 rounded-full bg-slate-350 shrink-0 flex items-center justify-center text-[8.5px] font-black text-white ml-2 shadow-sm">
+                                      <div className="h-5 w-5 rounded-full bg-slate-500 shrink-0 flex items-center justify-center text-[8.5px] font-black text-white ml-2 shadow-sm">
                                         {initials}
                                       </div>
                                     )}

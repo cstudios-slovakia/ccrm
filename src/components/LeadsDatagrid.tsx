@@ -1016,7 +1016,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
               type="button"
               disabled={isTranscribing || isUploadingAudio || !uploadedAudioFile}
               onClick={handleTranscribeMeeting}
-              className="px-2.5 py-1 bg-indigo-650 hover:bg-indigo-600 disabled:bg-slate-200 text-white text-[9px] font-black uppercase tracking-wider rounded-lg cursor-pointer flex items-center gap-1.5"
+              className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white text-[9px] font-black uppercase tracking-wider rounded-lg cursor-pointer flex items-center gap-1.5"
             >
               {isTranscribing ? (
                 <Loader2 className="h-3 w-3 animate-spin" />
@@ -3412,7 +3412,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                       onClick={() => setLogFileType(type)}
                                       className={`py-1.5 rounded-lg font-black text-[9px] uppercase tracking-wider transition-all text-center flex items-center justify-center gap-1.5 ${
                                         logFileType === type 
-                                          ? "bg-amber-750 text-white border border-amber-800 shadow" 
+                                          ? "bg-amber-700 text-white border border-amber-800 shadow"
                                           : "text-slate-550 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
                                       }`}
                                     >
@@ -4519,7 +4519,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                           <button 
                             type="button"
                             onClick={() => setIsOfferDatePickerOpen(false)}
-                            className="px-3 py-1 bg-purple-650 hover:bg-purple-700 text-white rounded-lg font-black uppercase tracking-wider transition-colors cursor-pointer shadow-md shadow-purple-600/10"
+                            className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-black uppercase tracking-wider transition-colors cursor-pointer shadow-md shadow-purple-600/10"
                           >
                             {getTranslation(systemLanguage, "dashboard.picker.apply")}
                           </button>

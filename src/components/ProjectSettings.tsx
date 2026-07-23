@@ -936,7 +936,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
         {canEdit && (
           <button
             onClick={handleStartCreate}
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl bg-indigo-600 text-white font-black text-xs uppercase tracking-wider hover:bg-indigo-750 shadow-md shadow-indigo-600/10 cursor-pointer"
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl bg-indigo-600 text-white font-black text-xs uppercase tracking-wider hover:bg-indigo-700 shadow-md shadow-indigo-600/10 cursor-pointer"
           >
             <Plus className="h-4.5 w-4.5" />
             <span>{t("New Project Type", "Nový typ", "Új típus")}</span>

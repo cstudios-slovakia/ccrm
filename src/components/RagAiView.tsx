@@ -873,7 +873,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
             <button
               type="submit"
               disabled={!inputText.trim()}
-              className="absolute right-2 p-2 rounded-xl bg-purple-650 hover:bg-purple-700 text-white transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              className="absolute right-2 p-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Send className="h-4 w-4" />
             </button>

@@ -468,10 +468,18 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
                     : "text-slate-550 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
                 }`}
               >
-                {type === "all" && <FolderOpen className="h-3.5 w-3.5" />}
-                {type === "offer" && <Euro className="h-3.5 w-3.5 text-emerald-500" />}
-                {type === "contract" && <Handshake className="h-3.5 w-3.5 text-blue-500" />}
-                {type === "invoice" && <Receipt className="h-3.5 w-3.5 text-rose-500" />}
+                {type === "all" && (
+                  <FolderOpen className={`h-3.5 w-3.5 ${selectedTypeFilter === type ? "text-white" : "text-slate-650"}`} />
+                )}
+                {type === "offer" && (
+                  <Euro className={`h-3.5 w-3.5 ${selectedTypeFilter === type ? "text-white" : "text-emerald-500"}`} />
+                )}
+                {type === "contract" && (
+                  <Handshake className={`h-3.5 w-3.5 ${selectedTypeFilter === type ? "text-white" : "text-blue-500"}`} />
+                )}
+                {type === "invoice" && (
+                  <Receipt className={`h-3.5 w-3.5 ${selectedTypeFilter === type ? "text-white" : "text-rose-500"}`} />
+                )}
                 <span>
                   {type === "all" && getTranslation(systemLanguage, "files.all")}
                   {type === "offer" && getTranslation(systemLanguage, "files.offers")}

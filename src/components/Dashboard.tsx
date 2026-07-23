@@ -979,7 +979,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     <button 
                       type="button"
                       onClick={() => setIsDatePickerOpen(false)}
-                      className="px-3.5 py-1.5 bg-purple-650 hover:bg-purple-700 text-white rounded-xl font-black uppercase tracking-wider transition-colors cursor-pointer shadow-md shadow-purple-600/10"
+                      className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-black uppercase tracking-wider transition-colors cursor-pointer shadow-md shadow-purple-600/10"
                     >
                       {getTranslation(systemLanguage, "dashboard.picker.apply")}
                     </button>

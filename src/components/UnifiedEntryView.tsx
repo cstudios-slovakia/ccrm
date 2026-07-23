@@ -648,7 +648,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
           <p>{t(`${entrySingularEn} not found.`, `${entrySingularSk} sa nenašiel.`, `A(z) ${entrySingularHu} nem található.`)}</p>
           <button
             onClick={() => { window.location.hash = "ue_" + registry.id; }}
-            className="mt-4 px-4 py-2 bg-indigo-650 hover:bg-indigo-750 text-white rounded-xl font-bold cursor-pointer"
+            className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold cursor-pointer"
           >
             {t("Go Back", "Späť", "Vissza")}
           </button>
