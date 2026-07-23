@@ -78,7 +78,7 @@ try {
         $stmt = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('DEMO_MODE', 'false') ON DUPLICATE KEY UPDATE `value` = 'false'");
         $stmt->execute();
         
-        // Remove only the non-Erik managers if keeping configs (optional, keep Tomi & Roli but prompt)
+        // Remove only the non-admin managers if keeping configs (optional, keep other demo PMs but prompt)
         // Here we just toggle DEMO_MODE to false and clean transactional data
     }
     

@@ -12,7 +12,7 @@ export const INITIAL_LEADS: Lead[] = [
     clientType: "business",
     status: "new",
     source: "website",
-    owner: "Tomi",
+    owner: "Sam",
     value: 12500,
     createdAt: "2026-05-15",
     rating: 5,
@@ -49,7 +49,7 @@ export const INITIAL_LEADS: Lead[] = [
         type: "appointment",
         timestamp: "2026-05-20 14:00",
         title: "Showroom Meeting Bratislava",
-        content: "Met at our main showroom. Selected grey marble slab variants. Tomi compiled official technical logistics requirements.",
+        content: "Met at our main showroom. Selected grey marble slab variants. Sam compiled official technical logistics requirements.",
         extraTime: "14:00"
       },
       {
@@ -101,7 +101,7 @@ export const INITIAL_LEADS: Lead[] = [
     clientType: "person",
     status: "contacted",
     source: "instagram",
-    owner: "Roli",
+    owner: "Jordan",
     value: 8400,
     createdAt: "2026-05-18",
     rating: 4,
@@ -144,7 +144,7 @@ export const INITIAL_LEADS: Lead[] = [
     clientType: "partner",
     status: "offer sent",
     source: "showroom",
-    owner: "Erik",
+    owner: "Alex",
     value: 45000,
     createdAt: "2026-05-10",
     rating: 3,
@@ -185,7 +185,7 @@ export const INITIAL_LEADS: Lead[] = [
     clientType: "business",
     status: "accepted",
     source: "website",
-    owner: "Roli",
+    owner: "Jordan",
     value: 19800,
     createdAt: "2026-05-12",
     rating: 5,
@@ -249,7 +249,7 @@ export const INITIAL_LEADS: Lead[] = [
     clientType: "person",
     status: "new",
     source: "facebook",
-    owner: "Erik",
+    owner: "Alex",
     value: 32000,
     createdAt: "2026-05-02",
     rating: 4,
@@ -308,7 +308,7 @@ export const INITIAL_LEADS: Lead[] = [
     clientType: "partner",
     status: "rejected",
     source: "facebook",
-    owner: "Tomi",
+    owner: "Sam",
     value: 4200,
     createdAt: "2026-04-20",
     rating: 2
@@ -320,7 +320,7 @@ export const INITIAL_LEADS: Lead[] = [
     clientType: "business",
     status: "contacted",
     source: "website",
-    owner: "Tomi",
+    owner: "Sam",
     value: 28500,
     createdAt: "2026-05-20",
     rating: 4
@@ -332,7 +332,7 @@ export const INITIAL_LEADS: Lead[] = [
     clientType: "person",
     status: "offer sent",
     source: "showroom",
-    owner: "Roli",
+    owner: "Jordan",
     value: 15000,
     createdAt: "2026-05-22",
     rating: 3
@@ -344,7 +344,7 @@ export const INITIAL_LEADS: Lead[] = [
     clientType: "partner",
     status: "accepted",
     source: "facebook",
-    owner: "Erik",
+    owner: "Alex",
     value: 62000,
     createdAt: "2026-05-05",
     rating: 5
@@ -356,7 +356,7 @@ export const INITIAL_LEADS: Lead[] = [
     clientType: "business",
     status: "new",
     source: "instagram",
-    owner: "Tomi",
+    owner: "Sam",
     value: 9500,
     createdAt: "2026-05-24",
     rating: 1
@@ -368,7 +368,7 @@ export const INITIAL_LEADS: Lead[] = [
     clientType: "person",
     status: "offer sent",
     source: "website",
-    owner: "Roli",
+    owner: "Jordan",
     value: 21400,
     createdAt: "2026-05-19",
     rating: 4
@@ -380,7 +380,7 @@ export const INITIAL_LEADS: Lead[] = [
     clientType: "partner",
     status: "accepted",
     source: "showroom",
-    owner: "Erik",
+    owner: "Alex",
     value: 74000,
     createdAt: "2026-05-08",
     rating: 5
@@ -392,7 +392,7 @@ export const INITIAL_LEADS: Lead[] = [
     clientType: "business",
     status: "contacted",
     source: "facebook",
-    owner: "Tomi",
+    owner: "Sam",
     value: 11200,
     createdAt: "2026-05-21",
     rating: 3
@@ -404,7 +404,7 @@ export const INITIAL_LEADS: Lead[] = [
     clientType: "person",
     status: "rejected",
     source: "website",
-    owner: "Roli",
+    owner: "Jordan",
     value: 5900,
     createdAt: "2026-05-14",
     rating: 2
@@ -416,7 +416,7 @@ export const INITIAL_LEADS: Lead[] = [
     clientType: "business",
     status: "new",
     source: "showroom",
-    owner: "Erik",
+    owner: "Alex",
     value: 36800,
     createdAt: "2026-05-25",
     rating: 4
@@ -428,7 +428,7 @@ export const INITIAL_LEADS: Lead[] = [
     clientType: "partner",
     status: "accepted",
     source: "website",
-    owner: "Tomi",
+    owner: "Sam",
     value: 85000,
     createdAt: "2026-05-01",
     rating: 5
@@ -440,7 +440,7 @@ export const INITIAL_LEADS: Lead[] = [
     clientType: "person",
     status: "contacted",
     source: "instagram",
-    owner: "Roli",
+    owner: "Jordan",
     value: 14300,
     createdAt: "2026-05-23",
     rating: 3
@@ -452,7 +452,7 @@ export const INITIAL_LEADS: Lead[] = [
     clientType: "business",
     status: "offer sent",
     source: "facebook",
-    owner: "Erik",
+    owner: "Alex",
     value: 23000,
     createdAt: "2026-05-11",
     rating: 4
@@ -464,7 +464,7 @@ export const INITIAL_LEADS: Lead[] = [
     clientType: "person",
     status: "accepted",
     source: "website",
-    owner: "Tomi",
+    owner: "Sam",
     value: 18700,
     createdAt: "2026-05-03",
     rating: 5
@@ -476,7 +476,7 @@ export const INITIAL_LEADS: Lead[] = [
     clientType: "partner",
     status: "new",
     source: "showroom",
-    owner: "Roli",
+    owner: "Jordan",
     value: 6500,
     createdAt: "2026-05-26",
     rating: 2
@@ -488,7 +488,7 @@ export const INITIAL_LEADS: Lead[] = [
     clientType: "business",
     status: "contacted",
     source: "website",
-    owner: "Erik",
+    owner: "Alex",
     value: 29900,
     createdAt: "2026-05-17",
     rating: 4
@@ -500,7 +500,7 @@ export const INITIAL_LEADS: Lead[] = [
     clientType: "person",
     status: "offer sent",
     source: "instagram",
-    owner: "Tomi",
+    owner: "Sam",
     value: 41200,
     createdAt: "2026-05-09",
     rating: 5
@@ -512,7 +512,7 @@ export const INITIAL_LEADS: Lead[] = [
     clientType: "partner",
     status: "accepted",
     source: "facebook",
-    owner: "Roli",
+    owner: "Jordan",
     value: 17600,
     createdAt: "2026-05-04",
     rating: 3
@@ -524,7 +524,7 @@ export const INITIAL_LEADS: Lead[] = [
     clientType: "business",
     status: "rejected",
     source: "website",
-    owner: "Erik",
+    owner: "Alex",
     value: 53000,
     createdAt: "2026-04-28",
     rating: 4
@@ -536,7 +536,7 @@ export const INITIAL_LEADS: Lead[] = [
     clientType: "person",
     status: "new",
     source: "showroom",
-    owner: "Tomi",
+    owner: "Sam",
     value: 38000,
     createdAt: "2026-05-27",
     rating: 5
@@ -548,7 +548,7 @@ export const INITIAL_LEADS: Lead[] = [
     clientType: "partner",
     status: "contacted",
     source: "instagram",
-    owner: "Roli",
+    owner: "Jordan",
     value: 8900,
     createdAt: "2026-05-16",
     rating: 3
@@ -560,7 +560,7 @@ export const INITIAL_LEADS: Lead[] = [
     clientType: "business",
     status: "offer sent",
     source: "website",
-    owner: "Erik",
+    owner: "Alex",
     value: 48600,
     createdAt: "2026-05-07",
     rating: 5
@@ -682,8 +682,8 @@ export const INITIAL_TASKS: Task[] = [
     priority: "high",
     deadline: "2026-05-30",
     deadlineTime: "12:00",
-    owner: "Erik",
-    assignedUsers: ["Erik", "Roli"],
+    owner: "Alex",
+    assignedUsers: ["Alex", "Jordan"],
     relatedLeadId: "lead-3",
     isLocking: true
   },
@@ -695,8 +695,8 @@ export const INITIAL_TASKS: Task[] = [
     priority: "high",
     deadline: "2026-05-31",
     deadlineTime: "10:00",
-    owner: "Tomi",
-    assignedUsers: ["Tomi"],
+    owner: "Sam",
+    assignedUsers: ["Sam"],
     relatedLeadId: "lead-2",
     isLocking: true
   },
@@ -708,8 +708,8 @@ export const INITIAL_TASKS: Task[] = [
     priority: "medium",
     deadline: "2026-06-02",
     deadlineTime: "16:00",
-    owner: "Roli",
-    assignedUsers: ["Roli"],
+    owner: "Jordan",
+    assignedUsers: ["Jordan"],
     relatedLeadId: "lead-1",
     isLocking: false
   },
@@ -721,8 +721,8 @@ export const INITIAL_TASKS: Task[] = [
     priority: "high",
     deadline: "2026-05-29",
     deadlineTime: "19:00",
-    owner: "Erik",
-    assignedUsers: ["Erik"],
+    owner: "Alex",
+    assignedUsers: ["Alex"],
     relatedLeadId: "lead-5",
     isLocking: false,
     isAiGenerated: true
@@ -735,8 +735,8 @@ export const INITIAL_TASKS: Task[] = [
     priority: "medium",
     deadline: "2026-05-28",
     deadlineTime: "23:59",
-    owner: "Roli",
-    assignedUsers: ["Roli"],
+    owner: "Jordan",
+    assignedUsers: ["Jordan"],
     relatedLeadId: "lead-4",
     isLocking: false
   },
@@ -748,8 +748,8 @@ export const INITIAL_TASKS: Task[] = [
     priority: "low",
     deadline: "2026-06-05",
     deadlineTime: "12:00",
-    owner: "Tomi",
-    assignedUsers: ["Tomi"],
+    owner: "Sam",
+    assignedUsers: ["Sam"],
     relatedLeadId: "lead-2",
     isLocking: false
   },
@@ -761,8 +761,8 @@ export const INITIAL_TASKS: Task[] = [
     priority: "medium",
     deadline: "2026-05-30",
     deadlineTime: "23:59",
-    owner: "Erik",
-    assignedUsers: ["Erik"],
+    owner: "Alex",
+    assignedUsers: ["Alex"],
     relatedLeadId: "lead-1",
     isLocking: false
   },
@@ -774,8 +774,8 @@ export const INITIAL_TASKS: Task[] = [
     priority: "high",
     deadline: "2026-05-30",
     deadlineTime: "10:00",
-    owner: "Tomi",
-    assignedUsers: ["Tomi"],
+    owner: "Sam",
+    assignedUsers: ["Sam"],
     relatedLeadId: "lead-4",
     isLocking: true
   },
@@ -787,8 +787,8 @@ export const INITIAL_TASKS: Task[] = [
     priority: "medium",
     deadline: "2026-05-27",
     deadlineTime: "16:00",
-    owner: "Roli",
-    assignedUsers: ["Roli"],
+    owner: "Jordan",
+    assignedUsers: ["Jordan"],
     relatedLeadId: "lead-3",
     isLocking: false
   },
@@ -800,8 +800,8 @@ export const INITIAL_TASKS: Task[] = [
     priority: "medium",
     deadline: "2026-05-31",
     deadlineTime: "23:59",
-    owner: "Tomi",
-    assignedUsers: ["Tomi"],
+    owner: "Sam",
+    assignedUsers: ["Sam"],
     relatedLeadId: "lead-3",
     isLocking: false
   },
@@ -813,8 +813,8 @@ export const INITIAL_TASKS: Task[] = [
     priority: "low",
     deadline: "2026-06-10",
     deadlineTime: "23:59",
-    owner: "Erik",
-    assignedUsers: ["Erik"],
+    owner: "Alex",
+    assignedUsers: ["Alex"],
     isLocking: false
   }
 ];
@@ -1002,7 +1002,7 @@ export const INITIAL_PROJECTS: Project[] = [
     leadId: "lead-1",
     clientId: "lead-1",
     status: "active",
-    managers: ["Tomi"],
+    managers: ["Sam"],
     data: {
       "slab-material": "Carrara Marble",
       "thickness": "3",
@@ -1016,7 +1016,7 @@ export const INITIAL_PROJECTS: Project[] = [
         type: "appointment",
         timestamp: "2026-07-10 10:00",
         title: "Initial Site Measurement",
-        content: "Tomi to visit client site for laser measurements and templates."
+        content: "Sam to visit client site for laser measurements and templates."
       }
     ],
     gantt: [

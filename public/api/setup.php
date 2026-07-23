@@ -203,9 +203,9 @@ try {
 
         // Demo accounts (password: "password"), stored hashed.
         $demoUsers = [
-            ['Erik', 'erik@crm.com', 'password', 'admin', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop', '#10b981'],
-            ['Tomi', 'tomi@crm.com', 'password', 'project_manager', null, '#6366f1'],
-            ['Roli', 'roli@crm.com', 'password', 'project_manager', null, '#f59e0b'],
+            ['Alex', 'alex@crm.com', 'password', 'admin', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop', '#10b981'],
+            ['Sam', 'sam@crm.com', 'password', 'project_manager', null, '#6366f1'],
+            ['Jordan', 'jordan@crm.com', 'password', 'project_manager', null, '#f59e0b'],
         ];
         foreach ($demoUsers as $u) {
             $insUser->execute([$userId($u[1]), $u[0], $u[1], password_hash($u[2], PASSWORD_DEFAULT), $u[3], $u[4], $u[5]]);
@@ -213,9 +213,9 @@ try {
 
         // Seed default leads
         $leads = [
-            ['lead-1', 'Ján Novák', 'Bratislava', 'business', 'new', 'website', 'Tomi', 12500, 5, '+421 905 123 456', 'novak@example.com', '36123456', '2021234567', 'SK2021234567', 'Ing. Ján Novák', 'https://example.com', 'Mlynské Nivy 42', '821 09', 'Slovakia', '2026-05-15'],
-            ['lead-2', 'Martina Kováčová', 'Trnava', 'person', 'contacted', 'instagram', 'Roli', 8400, 4, '+421 911 987 654', 'm.kovacova@example.com', null, null, null, null, null, 'Kukučínova 15', '917 01', 'Slovakia', '2026-05-18'],
-            ['lead-3', 'Thomas Müller', 'Košice', 'partner', 'offer sent', 'showroom', 'Erik', 45000, 3, '+49 172 888 999', 't.mueller@example.de', 'DE98765432', '115/908/332', null, 'Thomas Müller', 'https://example.de', 'Hauptstrasse 102', '040 01', 'Germany', '2026-05-10'],
+            ['lead-1', 'Ján Novák', 'Bratislava', 'business', 'new', 'website', 'Sam', 12500, 5, '+421 905 123 456', 'novak@example.com', '36123456', '2021234567', 'SK2021234567', 'Ing. Ján Novák', 'https://example.com', 'Mlynské Nivy 42', '821 09', 'Slovakia', '2026-05-15'],
+            ['lead-2', 'Martina Kováčová', 'Trnava', 'person', 'contacted', 'instagram', 'Jordan', 8400, 4, '+421 911 987 654', 'm.kovacova@example.com', null, null, null, null, null, 'Kukučínova 15', '917 01', 'Slovakia', '2026-05-18'],
+            ['lead-3', 'Thomas Müller', 'Košice', 'partner', 'offer sent', 'showroom', 'Alex', 45000, 3, '+49 172 888 999', 't.mueller@example.de', 'DE98765432', '115/908/332', null, 'Thomas Müller', 'https://example.de', 'Hauptstrasse 102', '040 01', 'Germany', '2026-05-10'],
         ];
         $insLead = $pdo->prepare("INSERT INTO `leads` (`id`, `name`, `city`, `client_type`, `status`, `source`, `owner`, `value`, `rating`, `phone`, `email`, `company_id`, `tax_id`, `vat_id`, `contact_person`, `website`, `street`, `postal_code`, `country`, `created_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
         foreach ($leads as $l) {
@@ -236,7 +236,7 @@ try {
         $timelineEvents = [
             ['ev-1', 'lead-1', 'phone', '2026-05-15 10:00', 'Discovery Call Logged', 'Discussed interior stone cladding options for the main showroom. Client is highly interested in thin porcelain slate slabs.', null, null, null, null, null],
             ['ev-2', 'lead-1', 'email', '2026-05-16 11:30', 'Sent Digital Catalog & Pricing', 'Emailed complete porcelain slate stone catalog and basic thickness pricing guidelines.', null, null, null, null, null],
-            ['ev-3', 'lead-1', 'appointment', '2026-05-20 14:00', 'Showroom Meeting Bratislava', 'Met at our main showroom. Selected grey marble slab variants. Tomi compiled official technical logistics requirements.', null, null, null, null, '14:00'],
+            ['ev-3', 'lead-1', 'appointment', '2026-05-20 14:00', 'Showroom Meeting Bratislava', 'Met at our main showroom. Selected grey marble slab variants. Sam compiled official technical logistics requirements.', null, null, null, null, '14:00'],
             ['ev-4', 'lead-1', 'offer', '2026-05-22 15:45', 'Official Price Offer Sent', 'Drafted and emailed formal budget quote detailing complete slabs cutting & assembly pricing.', 12500.00, 'novak_slabs_proposal.pdf', '1.45 MB', 'offer', null],
         ];
         $insTimeline = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`, `amount`, `file_name`, `file_size`, `file_type`, `extra_time`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
@@ -245,9 +245,9 @@ try {
         }
 
         $tasks = [
-            ['task-1', 'Draft SLA contract for wholesale partner', 'Prepare standard wholesale SLA layout including slab delivery timelines.', 'high', '2026-05-30', 'in_progress', 'Erik', 'lead-3', 1],
-            ['task-2', 'Onsite laser measurement for kitchen countertop', 'Visit the property in Trnava to take precise Proliner measurements for Calacatta Quartz.', 'high', '2026-05-31', 'todo', 'Tomi', 'lead-2', 1],
-            ['task-3', 'Slab delivery coordination from Italy', 'Coordinate with logistics for the 12mm thickness slabs arriving from Fiorano Modenese.', 'medium', '2026-06-02', 'todo', 'Roli', 'lead-1', 0],
+            ['task-1', 'Draft SLA contract for wholesale partner', 'Prepare standard wholesale SLA layout including slab delivery timelines.', 'high', '2026-05-30', 'in_progress', 'Alex', 'lead-3', 1],
+            ['task-2', 'Onsite laser measurement for kitchen countertop', 'Visit the property in Trnava to take precise Proliner measurements for Calacatta Quartz.', 'high', '2026-05-31', 'todo', 'Sam', 'lead-2', 1],
+            ['task-3', 'Slab delivery coordination from Italy', 'Coordinate with logistics for the 12mm thickness slabs arriving from Fiorano Modenese.', 'medium', '2026-06-02', 'todo', 'Jordan', 'lead-1', 0],
         ];
         $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `deadline`, `status`, `owner`, `related_lead_id`, `is_locking`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
         foreach ($tasks as $t) {
@@ -255,10 +255,10 @@ try {
         }
 
         $taskAssignees = [
-            ['task-1', 'Erik'],
-            ['task-1', 'Roli'],
-            ['task-2', 'Tomi'],
-            ['task-3', 'Roli'],
+            ['task-1', 'Alex'],
+            ['task-1', 'Jordan'],
+            ['task-2', 'Sam'],
+            ['task-3', 'Jordan'],
         ];
         $insAssignee = $pdo->prepare("INSERT INTO `task_assignees` (`task_id`, `user_name`) VALUES (?, ?)");
         foreach ($taskAssignees as $ta) {

@@ -283,9 +283,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // Project manager color map following brand guidelines
   const getPMColor = (name: string, idx: number) => {
     const pmColors: Record<string, string> = {
-      "Erik": "#10b981", // Emerald Green
-      "Tomi": "#6366f1", // Indigo
-      "Roli": "#f59e0b"  // Amber
+      "Alex": "#10b981", // Emerald Green
+      "Sam": "#6366f1", // Indigo
+      "Jordan": "#f59e0b"  // Amber
     };
     if (pmColors[name]) return pmColors[name];
     const defaultColors = ["#3b82f6", "#f43f5e", "#8b5cf6", "#ec4899"];
