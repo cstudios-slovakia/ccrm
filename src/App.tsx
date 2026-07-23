@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, lazy, Suspense } from "react";
+import { useState, useEffect, useMemo, useRef, lazy, Suspense } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { LoginView } from "./components/LoginView";
@@ -7,6 +7,7 @@ import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, Uni
 import { VERSION } from "./utils/version";
 import type { MeetingNote } from "./components/MeetingRoomView";
 import { getTranslation } from "./utils/translations";
+import { orderLeadStates } from "./utils/leadStates";
 import { InstallerWizard } from "./components/InstallerWizard";
 import { RefreshCw, AlertOctagon, Trash2, Copy } from "lucide-react";
 import { ShaderGradient, ShaderGradientCanvas } from "shadergradient";
@@ -336,6 +337,13 @@ function App() {
   });
 
   const [leadStateParents, setLeadStateParents] = useState<Record<string, string>>({});
+
+  // Pipeline order shown everywhere in the app — the raw `leadStates` array keeps
+  // insertion order, so it has to be sorted the way Settings lists the stages.
+  const orderedLeadStates = useMemo(
+    () => orderLeadStates(leadStates, leadStageGroups, leadStateParents),
+    [leadStates, leadStageGroups, leadStateParents],
+  );
 
   // Per-state flag: which lead states show a "Follow-up done" checkbox on the lead.
   // Keyed by lowercased state name (admin-configurable in Settings). Robust to
@@ -1198,7 +1206,7 @@ ${log.payload || ''}
         <SettingsView 
           systemName={systemName} 
           setSystemName={setSystemName} 
-          leadStates={leadStates}
+          leadStates={orderedLeadStates}
           setLeadStates={setLeadStates}
           leadSources={leadSources}
           setLeadSources={setLeadSources}
@@ -1306,7 +1314,7 @@ ${log.payload || ''}
           systemName={systemName}
           leads={leads}
           setLeads={updateLeadsAndSync}
-          leadStates={leadStates}
+          leadStates={orderedLeadStates}
           leadSources={leadSources}
           projectManagers={projectManagers}
           leadStateColors={leadStateColors}
@@ -1341,7 +1349,7 @@ ${log.payload || ''}
         <SettingsView 
           systemName={systemName} 
           setSystemName={setSystemName} 
-          leadStates={leadStates}
+          leadStates={orderedLeadStates}
           setLeadStates={setLeadStates}
           leadSources={leadSources}
           setLeadSources={setLeadSources}
@@ -1399,7 +1407,7 @@ ${log.payload || ''}
             systemName={systemName}
             leads={leads}
             setLeads={updateLeadsAndSync}
-            leadStates={leadStates}
+            leadStates={orderedLeadStates}
             leadSources={leadSources}
             projectManagers={projectManagers}
             leadStateColors={leadStateColors}
@@ -1496,7 +1504,7 @@ ${log.payload || ''}
             leadSourceColors={leadSourceColors}
             leadCategoryColors={leadCategoryColors}
             leadStageGroups={leadStageGroups}
-            leadStates={leadStates}
+            leadStates={orderedLeadStates}
             leadStateColors={leadStateColors}
             systemLanguage={userLanguage}
             leadStateParents={leadStateParents}
