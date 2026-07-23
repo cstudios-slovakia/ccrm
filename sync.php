@@ -357,6 +357,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'settings' => [
                     'systemName' => $settings['SYSTEM_NAME'] ?? 'CCRM',
                     'systemLanguage' => $settings['SYSTEM_LANGUAGE'] ?? 'sk',
+                    'systemCurrency' => $settings['SYSTEM_CURRENCY'] ?? '',
                 ]
             ]);
             exit;
@@ -877,6 +878,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'settings' => [
             'systemName' => $settings['SYSTEM_NAME'] ?? 'CCRM',
             'systemLanguage' => $settings['SYSTEM_LANGUAGE'] ?? 'sk',
+            'systemCurrency' => $settings['SYSTEM_CURRENCY'] ?? '',
             'leadStates' => $leadStates,
             'leadSources' => $leadSources,
             'leadCategories' => $leadCategories,
@@ -1165,6 +1167,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $settingsList = [
                 'SYSTEM_NAME' => $s['systemName'] ?? 'CCRM',
                 'SYSTEM_LANGUAGE' => $s['systemLanguage'] ?? 'sk',
+                'SYSTEM_CURRENCY' => $s['systemCurrency'] ?? '',
                 'LEAD_STATES' => json_encode($s['leadStates'] ?? []),
                 'LEAD_SOURCES' => json_encode($s['leadSources'] ?? []),
                 'LEAD_CATEGORIES' => json_encode($s['leadCategories'] ?? []),

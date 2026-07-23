@@ -17,6 +17,7 @@ import { VERSION } from "./utils/version";
 import { MeetingRoomView } from "./components/MeetingRoomView";
 import type { MeetingNote } from "./components/MeetingRoomView";
 import { getTranslation } from "./utils/translations";
+import { resolveCurrencySymbol } from "./utils/currency";
 import { InstallerWizard } from "./components/InstallerWizard";
 import { RefreshCw, AlertOctagon, Trash2, Copy } from "lucide-react";
 import { UnifiedEntryView } from "./components/UnifiedEntryView";
@@ -47,6 +48,7 @@ const computeSettingsSig = (o: any): string => JSON.stringify([
   normSettingVal(o?.leadCategories),
   o?.systemName ?? null,
   o?.systemLanguage ?? null,
+  o?.systemCurrency ?? null,
   normSettingVal(o?.leadStateColors),
   normSettingVal(o?.leadSourceColors),
   normSettingVal(o?.leadCategoryColors),
@@ -55,6 +57,19 @@ const computeSettingsSig = (o: any): string => JSON.stringify([
   normSettingVal(o?.leadStateFollowUp),
   normSettingVal(o?.taskStates),
   normSettingVal(o?.taskStateColors),
+]);
+// Signature of an entire sync.php push payload (minus baseSyncedAt, which is
+// just a concurrency token and changes on every request regardless of content).
+// Used to tell a genuine unsaved edit apart from an automatic background push
+// (e.g. the settings-resync effect) that happens to land after the session died.
+const computePushSig = (p: {
+  leads: unknown; tasks: unknown; users: unknown; roles: unknown;
+  meetingNotes: unknown; unifiedEntries: unknown; unifiedEntriesData: unknown;
+  customDashboards: unknown; projectTypes: unknown; projects: unknown; settings: any;
+}): string => JSON.stringify([
+  p.leads, p.tasks, p.users, p.roles, p.meetingNotes, p.unifiedEntries,
+  p.unifiedEntriesData, p.customDashboards, p.projectTypes, p.projects,
+  computeSettingsSig(p.settings),
 ]);
 
 function App() {
@@ -92,6 +107,12 @@ function App() {
   // run" flag is not enough: the first run is often consumed by the pre-session
   // 401 bootstrap, before the real settings even arrive.)
   const lastSyncedSettingsSigRef = useRef<string | null>(null);
+  // Signature of the full push payload the server last confirmed (via a successful
+  // push or a fresh poll pull). A 401'd push only counts as a "lost" edit — worth
+  // alarming the user about and replaying after re-login — when its content
+  // actually diverges from this. null means we have no confirmed baseline yet
+  // (e.g. before the initial sync resolves), so treat that case as "assume real".
+  const lastConfirmedPushSigRef = useRef<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isInstalled, setIsInstalled] = useState(true);
   const [isDemoMode, setIsDemoMode] = useState(false);
@@ -134,6 +155,8 @@ function App() {
   const [systemName, setSystemName] = useState("CCRM");
   const [systemLanguage, setSystemLanguage] = useState<"en" | "sk" | "hu">("sk");
   const [userLanguage, setUserLanguage] = useState<"en" | "sk" | "hu">("sk");
+  // Empty string means "auto" — follow the region's currency (see currencyForRegion) until an admin overrides it.
+  const [systemCurrency, setSystemCurrency] = useState<string>("");
 
   // Meeting Room state
   const [meetingsAction, setMeetingsAction] = useState<"list" | "new">("list");
@@ -587,6 +610,7 @@ ${log.payload || ''}
       settings: {
         systemName,
         systemLanguage,
+        systemCurrency,
         leadStates,
         leadSources,
         leadCategories,
@@ -608,14 +632,26 @@ ${log.payload || ''}
         body: JSON.stringify(payload)
       });
       if (res.status === 401) {
-        // The mutation did not persist. Remember it so it is replayed from the
-        // latest state refs once the user logs back in (see onLoginSuccess).
-        pendingPushRef.current = true;
         setCurrentUser(null);
-        if (typeof (window as any).showToast === "function") {
-          (window as any).showToast("Session expired. Please log in again — your last change will be re-saved.");
+        // Only treat this as a lost edit worth alarming the user about (and
+        // replaying after re-login) if the payload actually diverges from what
+        // the server last confirmed. Otherwise this was an automatic background
+        // push (e.g. the settings-resync effect) that happened to land after the
+        // session had already died — nothing was really lost, so stay quiet.
+        const pushSig = computePushSig(payload);
+        const isRealUnsavedChange = lastConfirmedPushSigRef.current === null || pushSig !== lastConfirmedPushSigRef.current;
+        if (isRealUnsavedChange) {
+          // The mutation did not persist. Remember it so it is replayed from the
+          // latest state refs once the user logs back in (see onLoginSuccess).
+          pendingPushRef.current = true;
+          if (typeof (window as any).showToast === "function") {
+            (window as any).showToast("Session expired. Please log in again — your last change will be re-saved.");
+          }
         }
       } else if (res.ok) {
+        // The server now holds this exact payload — remember it so a later 401
+        // can tell a genuine unsaved edit apart from an echoed no-op push.
+        lastConfirmedPushSigRef.current = computePushSig(payload);
         // Advance our snapshot clock so a delete right after this edit is not
         // wrongly skipped by the server's concurrency guard.
         try {
@@ -850,7 +886,7 @@ ${log.payload || ''}
   useEffect(() => {
     if (!isInstalled || !isInitialSyncResolved) return;
     const currentSig = computeSettingsSig({
-      leadStates, leadSources, leadCategories, systemName, systemLanguage,
+      leadStates, leadSources, leadCategories, systemName, systemLanguage, systemCurrency,
       leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups,
       leadStateParents, leadStateFollowUp, taskStates, taskStateColors,
     });
@@ -867,7 +903,7 @@ ${log.payload || ''}
     // A real divergence → persist it, and remember the new baseline.
     lastSyncedSettingsSigRef.current = currentSig;
     pushStateToServer();
-  }, [leadStates, leadSources, leadCategories, systemName, systemLanguage, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, taskStates, taskStateColors, isInitialSyncResolved]);
+  }, [leadStates, leadSources, leadCategories, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, taskStates, taskStateColors, isInitialSyncResolved]);
 
   // Layout Hash change listener
   useEffect(() => {
@@ -947,6 +983,7 @@ ${log.payload || ''}
         const s = data.settings;
         if (s.systemName && s.systemName !== systemName) setSystemName(s.systemName);
         if (s.systemLanguage && s.systemLanguage !== systemLanguage) setSystemLanguage(s.systemLanguage);
+        if (s.systemCurrency !== undefined && s.systemCurrency !== systemCurrency) setSystemCurrency(s.systemCurrency || "");
         setLeadStates((prev) => s.leadStates && JSON.stringify(s.leadStates) !== JSON.stringify(prev) ? s.leadStates : prev);
         setLeadSources((prev) => s.leadSources && JSON.stringify(s.leadSources) !== JSON.stringify(prev) ? s.leadSources : prev);
         setLeadCategories((prev) => s.leadCategories && JSON.stringify(s.leadCategories) !== JSON.stringify(prev) ? s.leadCategories : prev);
@@ -963,6 +1000,21 @@ ${log.payload || ''}
         // against this so applying server data never triggers an echo push.
         lastSyncedSettingsSigRef.current = computeSettingsSig(s);
       }
+      // Baseline for the "was this a real unsaved edit" check on a future 401
+      // (see pushStateToServer) — local state now matches what the server holds.
+      lastConfirmedPushSigRef.current = computePushSig({
+        leads: data.leads ?? leadsRef.current,
+        tasks: data.tasks ?? tasksRef.current,
+        users: data.users ?? usersRef.current,
+        roles: data.roles ?? rolesRef.current,
+        meetingNotes: data.meetingNotes ?? meetingNotesRef.current,
+        unifiedEntries: data.unifiedEntries ?? unifiedEntriesRef.current,
+        unifiedEntriesData: data.unifiedEntriesData ?? unifiedEntriesDataRef.current,
+        customDashboards: data.customDashboards ?? customDashboardsRef.current,
+        projectTypes: data.projectTypes ?? projectTypesRef.current,
+        projects: data.projects ?? projectsRef.current,
+        settings: data.settings ?? {},
+      });
     };
 
     const fetchFull = async () => {
@@ -1081,6 +1133,7 @@ ${log.payload || ''}
 
   // View router
   const renderWorkspaceView = () => {
+    const currencySymbol = resolveCurrencySymbol(systemCurrency, userLanguage);
     const activeUser = currentUser || users[0] || {
       id: "guest",
       name: "Guest User",
@@ -1122,6 +1175,8 @@ ${log.payload || ''}
           setLeadStateFollowUp={setLeadStateFollowUp}
           systemLanguage={systemLanguage}
           setSystemLanguage={setSystemLanguage}
+          systemCurrency={systemCurrency}
+          setSystemCurrency={setSystemCurrency}
           userLanguage={userLanguage}
           initialSelectedUserName={username}
           leadStateParents={leadStateParents}
@@ -1151,6 +1206,7 @@ ${log.payload || ''}
               );
             }}
             systemLanguage={userLanguage}
+            currencySymbol={currencySymbol}
           />
         );
       }
@@ -1191,6 +1247,7 @@ ${log.payload || ''}
           integrationsConfig={integrationsConfig}
           taskStates={taskStates}
           systemName={systemName}
+          currencySymbol={currencySymbol}
         />
       );
     }
@@ -1224,6 +1281,7 @@ ${log.payload || ''}
           setProjects={updateProjectsAndSync}
           setActiveTab={setActiveTab}
           leadStateFollowUp={leadStateFollowUp}
+          currencySymbol={currencySymbol}
         />
       );
     }
@@ -1260,6 +1318,8 @@ ${log.payload || ''}
           setLeadStateFollowUp={setLeadStateFollowUp}
           systemLanguage={systemLanguage}
           setSystemLanguage={setSystemLanguage}
+          systemCurrency={systemCurrency}
+          setSystemCurrency={setSystemCurrency}
           userLanguage={userLanguage}
           leadStateParents={leadStateParents}
           setLeadStateParents={setLeadStateParents}
@@ -1313,6 +1373,7 @@ ${log.payload || ''}
             setProjects={updateProjectsAndSync}
             setActiveTab={setActiveTab}
             leadStateFollowUp={leadStateFollowUp}
+            currencySymbol={currencySymbol}
           />
         );
       case "projects":
@@ -1343,11 +1404,12 @@ ${log.payload || ''}
             taskStates={taskStates}
             integrationsConfig={integrationsConfig}
             systemName={systemName}
+            currencySymbol={currencySymbol}
           />
         );
       case "files":
         return (
-          <FilesView leads={leads} setLeads={updateLeadsAndSync} systemLanguage={userLanguage} />
+          <FilesView leads={leads} setLeads={updateLeadsAndSync} systemLanguage={userLanguage} currencySymbol={currencySymbol} />
         );
       case "personal-settings":
         return (
@@ -1392,6 +1454,7 @@ ${log.payload || ''}
             systemLanguage={userLanguage}
             leadStateParents={leadStateParents}
             campaigns={integrationsConfig.campaigns}
+            currencySymbol={currencySymbol}
           />
         );
       case "rag_ai":

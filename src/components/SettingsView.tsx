@@ -10,6 +10,7 @@ import type { UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { ProjectSettings } from "./ProjectSettings";
+import { CURRENCY_OPTIONS, currencyForRegion } from "../utils/currency";
 
 // Inline "double-click / pencil to rename" field.
 //
@@ -100,6 +101,8 @@ interface SettingsViewProps {
 
   systemLanguage: Language;
   setSystemLanguage: (lang: Language) => void;
+  systemCurrency: string;
+  setSystemCurrency: (currency: string) => void;
   userLanguage: Language;
   initialSelectedUserName?: string;
   leadStateParents: Record<string, string>;
@@ -168,6 +171,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setLeadStateFollowUp,
   systemLanguage,
   setSystemLanguage,
+  systemCurrency,
+  setSystemCurrency,
   userLanguage,
   leadStateParents,
   setLeadStateParents,
@@ -2164,6 +2169,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </select>
                   <p className="text-[10px] text-slate-400">
                     {getTranslation(userLanguage, "settings.general.system_lang_desc")}
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider">
+                    {getTranslation(userLanguage, "settings.general.currency")}
+                  </label>
+                  <select
+                    disabled={getPermission("general_config") === "view"}
+                    value={systemCurrency || ""}
+                    onChange={(e) => setSystemCurrency(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-855 font-heading font-bold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:bg-slate-50 disabled:text-slate-400"
+                  >
+                    <option value="">
+                      {getTranslation(userLanguage, "settings.general.currency_auto")} ({currencyForRegion(systemLanguage)})
+                    </option>
+                    {CURRENCY_OPTIONS.map((c) => (
+                      <option key={c.code} value={c.code}>{c.label}</option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-slate-400">
+                    {getTranslation(userLanguage, "settings.general.currency_desc")}
                   </p>
                 </div>
 
