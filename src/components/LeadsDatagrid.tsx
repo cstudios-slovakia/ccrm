@@ -4875,7 +4875,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 ) : (
                                   <div className="flex items-center gap-1">
                                     <span className="text-[9px] font-black text-slate-400 lg:hidden uppercase tracking-wider">{t("Val:", "Hodn.:", "Érték:")}</span>
-                                    <span className="border-b border-transparent hover:border-blue-400/50 transition-all font-black text-blue-700">
+                                    <span className="border-b border-transparent hover:border-blue-400/50 transition-all font-black text-blue-700 whitespace-nowrap">
                                       {currencySymbol} {lead.value.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                     </span>
                                   </div>
