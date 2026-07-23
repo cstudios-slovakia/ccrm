@@ -7,7 +7,7 @@ import type { Lead } from "../types";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { formatBytes } from "../utils/formatBytes";
-import { resolveCurrencySymbol } from "../utils/currency";
+import { formatMoney } from "../utils/currency";
 
 interface QueuedFile {
   id: string;
@@ -22,12 +22,12 @@ interface FilesViewProps {
   leads: Lead[];
   setLeads: (updater: Lead[] | ((prev: Lead[]) => Lead[])) => void;
   systemLanguage: Language;
-  currencySymbol?: string;
+  currencyCode?: string | null;
 }
 
-export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLanguage, currencySymbol: currencySymbolProp }) => {
+export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLanguage, currencyCode }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
-  const currencySymbol = currencySymbolProp || resolveCurrencySymbol(undefined, systemLanguage);
+  const money = (value: number, opts?: Intl.NumberFormatOptions) => formatMoney(value, currencyCode, systemLanguage, opts);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<"all" | "offer" | "contract" | "invoice">("all");
   const [selectedClientFilter, setSelectedClientFilter] = useState("all");
@@ -596,7 +596,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
                       {/* Offer Value */}
                       <td className="py-3.5 px-4 font-heading font-black text-amber-800 text-xs">
                         {file.offerValue > 0 ? (
-                          <span>{currencySymbol} {file.offerValue.toLocaleString()}</span>
+                          <span>{money(file.offerValue)}</span>
                         ) : (
                           <span className="text-slate-350 italic">{t("None", "Žiadna", "Nincs")}</span>
                         )}

@@ -15,7 +15,7 @@ import { BlockEditor } from "./BlockEditor";
 import type { EditorBlock } from "./BlockEditor";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
-import { resolveCurrencySymbol } from "../utils/currency";
+import { resolveCurrencySymbol, formatMoney } from "../utils/currency";
 
 interface ClientsViewProps {
   leads: Lead[];
@@ -31,7 +31,7 @@ interface ClientsViewProps {
   integrationsConfig?: any;
   taskStates: string[];
   systemName?: string;
-  currencySymbol?: string;
+  currencyCode?: string | null;
 }
 
 
@@ -336,10 +336,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   integrationsConfig,
   taskStates,
   systemName = "CCRM",
-  currencySymbol: currencySymbolProp
+  currencyCode
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
-  const currencySymbol = currencySymbolProp || resolveCurrencySymbol(undefined, systemLanguage);
+  const currencySymbol = resolveCurrencySymbol(currencyCode, systemLanguage);
+  const money = (value: number, opts?: Intl.NumberFormatOptions) => formatMoney(value, currencyCode, systemLanguage, opts);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState("all");
   const [showFilterDrawer, setShowFilterDrawer] = useState(false);
@@ -2086,8 +2087,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         (window as any).showToast(t("Offer amount must be a positive number!", "Suma ponuky musí byť kladné číslo!", "Az ajánlat összegének pozitív számnak kell lennie!"));
         return;
       }
-      titleString = `Commercial Proposal Sent (${currencySymbol} ${amt.toLocaleString()})`;
-      if (!contentString) contentString = `Submitted commercial proposal of ${currencySymbol} ${amt.toLocaleString()} to client.`;
+      titleString = `Commercial Proposal Sent (${money(amt)})`;
+      if (!contentString) contentString = `Submitted commercial proposal of ${money(amt)} to client.`;
     }
 
     const eventId = `ev-${Date.now()}`;
@@ -2451,7 +2452,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             ) : null}
 
             <span className="text-xs font-black uppercase tracking-widest text-emerald-800 bg-emerald-100 border-2 border-emerald-300 px-4 py-2 rounded-2xl shadow-inner">
-              {getTranslation(systemLanguage, "common.client_value")}: {currencySymbol} {activeClient.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              {getTranslation(systemLanguage, "common.client_value")}: {money(activeClient.totalValue, { minimumFractionDigits: 2 })}
             </span>
           </div>
         </div>
@@ -3436,7 +3437,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                   {/* Extra values */}
                                   {event.type === "offer" && event.amount !== undefined && (
                                     <div className="mt-3 pl-3 border-l-4 border-emerald-500 flex items-center gap-1 text-[10px] font-black text-emerald-700 uppercase tracking-wider">
-                                      <TrendingUp className="h-4 w-4" /> {t("BUDGET WORTH OFFERED:", "PONÚKNUTÝ ROZPOČET:", "FELAJÁNLOTT KÖLTSÉGVETÉS:")} {currencySymbol} {event.amount.toLocaleString()}
+                                      <TrendingUp className="h-4 w-4" /> {t("BUDGET WORTH OFFERED:", "PONÚKNUTÝ ROZPOČET:", "FELAJÁNLOTT KÖLTSÉGVETÉS:")} {money(event.amount)}
                                     </div>
                                   )}
 
@@ -3629,7 +3630,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                   {/* Extra values */}
                                   {event.type === "offer" && event.amount !== undefined && (
                                     <div className="mt-3 pl-3 border-l-4 border-emerald-500 flex items-center gap-1 text-[10px] font-black text-emerald-700 uppercase tracking-wider">
-                                      <TrendingUp className="h-4 w-4" /> {t("BUDGET WORTH OFFERED:", "PONÚKNUTÝ ROZPOČET:", "FELAJÁNLOTT KÖLTSÉGVETÉS:")} {currencySymbol} {event.amount.toLocaleString()}
+                                      <TrendingUp className="h-4 w-4" /> {t("BUDGET WORTH OFFERED:", "PONÚKNUTÝ ROZPOČET:", "FELAJÁNLOTT KÖLTSÉGVETÉS:")} {money(event.amount)}
                                     </div>
                                   )}
 
@@ -3913,7 +3914,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                               <div className="min-w-0">
                                 <h4 className="font-heading font-black text-xs uppercase text-slate-800 tracking-tight truncate max-w-[280px]">{lead.name || t("Untitled Lead", "Lead bez názvu", "Cím nélküli lead")}</h4>
                                 <div className="flex flex-wrap items-center gap-2 mt-1.5 text-[9px] font-black uppercase text-slate-450 tracking-wider">
-                                  <span>{t("Worth", "Hodnota", "Érték")}: <strong className="text-emerald-700 font-extrabold">{currencySymbol} {lead.value.toLocaleString()}</strong></span>
+                                  <span>{t("Worth", "Hodnota", "Érték")}: <strong className="text-emerald-700 font-extrabold">{money(lead.value)}</strong></span>
                                   <span>&bull;</span>
                                   <span>PM: <strong className="text-slate-600 font-extrabold">{lead.owner || t("Unassigned", "Nepriradené", "Nincs hozzárendelve")}</strong></span>
                                 </div>
@@ -4315,7 +4316,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       <div className="flex items-center gap-1.5">
                         <span className="text-[9px] font-black text-slate-400 lg:hidden uppercase tracking-wider">{t("Worth", "Hodnota", "Érték")}:</span>
                         <span className="font-heading font-black text-emerald-700 text-sm">
-                          {currencySymbol} {client.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          {money(client.totalValue, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                       </div>
                     </td>

@@ -94,7 +94,7 @@ import { BlockEditor } from "./BlockEditor";
 import type { EditorBlock } from "./BlockEditor";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
-import { resolveCurrencySymbol } from "../utils/currency";
+import { formatMoney } from "../utils/currency";
 
 const CalendarPane: React.FC<{
   title: string;
@@ -241,7 +241,11 @@ const getPresetTranslationKey = (name: string) => {
   }
 };
 
-const generateAiSummary = (lead: Lead, lang: Language, currency: string = "€"): string => {
+const generateAiSummary = (
+  lead: Lead,
+  lang: Language,
+  formatAmount: (value: number) => string = (v) => `€${v.toLocaleString()}`
+): string => {
   const typeText = lead.clientType === "person" 
     ? (lang === "sk" ? "Súkromná osoba" : lang === "hu" ? "Magánszemély" : "Private person")
     : lead.clientType === "business"
@@ -302,7 +306,7 @@ const generateAiSummary = (lead: Lead, lang: Language, currency: string = "€")
     }
     if (statusLower === "offer sent") {
       let desc = `Vypracovaná a odoslaná cenová ponuka`;
-      if (lead.value > 0) desc += ` v hodnote ${currency}${lead.value.toLocaleString()}`;
+      if (lead.value > 0) desc += ` v hodnote ${formatAmount(lead.value)}`;
       if (categoriesText) desc += ` na ${categoriesText}`;
       desc += `. Čaká sa na spätnú väzbu od zákazníka.`;
       if (latestEventStr) desc += ` Posledná komunikácia: ${latestEventStr}.`;
@@ -310,7 +314,7 @@ const generateAiSummary = (lead: Lead, lang: Language, currency: string = "€")
     }
     if (statusLower === "accepted") {
       let desc = `Úspešný obchod. Ponuka bola schválená klientom`;
-      if (lead.value > 0) desc += ` v celkovej hodnote ${currency}${lead.value.toLocaleString()}`;
+      if (lead.value > 0) desc += ` v celkovej hodnote ${formatAmount(lead.value)}`;
       desc += `. Projekt prechádza do realizačnej fázy`;
       if (ownerText) desc += ` pod vedením manažéra ${ownerText}`;
       return desc;
@@ -337,7 +341,7 @@ const generateAiSummary = (lead: Lead, lang: Language, currency: string = "€")
     }
     if (statusLower === "offer sent") {
       let desc = `Árajánlat kiküldve`;
-      if (lead.value > 0) desc += ` ${currency}${lead.value.toLocaleString()} értékben`;
+      if (lead.value > 0) desc += ` ${formatAmount(lead.value)} értékben`;
       if (categoriesText) desc += ` (${categoriesText})`;
       desc += `. Vevői visszajelzésre vár.`;
       if (latestEventStr) desc += ` Utolsó egyeztetés: ${latestEventStr}.`;
@@ -345,7 +349,7 @@ const generateAiSummary = (lead: Lead, lang: Language, currency: string = "€")
     }
     if (statusLower === "accepted") {
       let desc = `Sikeres üzlet. Az ajánlatot elfogadta az ügyfél`;
-      if (lead.value > 0) desc += ` ${currency}${lead.value.toLocaleString()} összértékben`;
+      if (lead.value > 0) desc += ` ${formatAmount(lead.value)} összértékben`;
       desc += `. Projekt átadva megvalósításra`;
       if (ownerText) desc += `, projektmenedzser: ${ownerText}`;
       return desc;
@@ -372,7 +376,7 @@ const generateAiSummary = (lead: Lead, lang: Language, currency: string = "€")
     }
     if (statusLower === "offer sent") {
       let desc = `Price proposal sent`;
-      if (lead.value > 0) desc += ` in the amount of ${currency}${lead.value.toLocaleString()}`;
+      if (lead.value > 0) desc += ` in the amount of ${formatAmount(lead.value)}`;
       if (categoriesText) desc += ` for ${categoriesText}`;
       desc += `. Awaiting feedback from client.`;
       if (latestEventStr) desc += ` Last activity: ${latestEventStr}.`;
@@ -380,7 +384,7 @@ const generateAiSummary = (lead: Lead, lang: Language, currency: string = "€")
     }
     if (statusLower === "accepted") {
       let desc = `Won deal. Offer was approved by client`;
-      if (lead.value > 0) desc += ` for a total value of ${currency}${lead.value.toLocaleString()}`;
+      if (lead.value > 0) desc += ` for a total value of ${formatAmount(lead.value)}`;
       desc += `. Moving to execution phase`;
       if (ownerText) desc += ` managed by ${ownerText}`;
       return desc;
@@ -420,7 +424,7 @@ interface LeadsDatagridProps {
   setProjects?: React.Dispatch<React.SetStateAction<Project[]>>;
   setActiveTab?: (tab: string) => void;
   leadStateFollowUp?: Record<string, boolean>;
-  currencySymbol?: string;
+  currencyCode?: string | null;
 }
 
 export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
@@ -454,10 +458,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
   setProjects,
   setActiveTab,
   leadStateFollowUp = {},
-  currencySymbol: currencySymbolProp
+  currencyCode
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
-  const currencySymbol = currencySymbolProp || resolveCurrencySymbol(undefined, systemLanguage);
+  const money = (value: number, opts?: Intl.NumberFormatOptions) => formatMoney(value, currencyCode, systemLanguage, opts);
 
   // Lead states flagged as "follow-up" in Settings, in the configured order.
   // Each becomes its own checkbox on the lead so several follow-up rounds can be
@@ -1748,8 +1752,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         (window as any).showToast(t("Offer amount must be a positive number!", "Suma ponuky musí byť kladné číslo!", "Az ajánlat összegének pozitív számnak kell lennie!"));
         return;
       }
-      titleString = `${t("Commercial Proposal Sent", "Cenová ponuka odoslaná", "Kereskedelmi ajánlat elküldve")} (${currencySymbol} ${amt.toLocaleString()})`;
-      if (!contentString) contentString = `${t("Submitted commercial proposal of", "Odoslaná cenová ponuka vo výške", "Benyújtott kereskedelmi ajánlat összege")} ${currencySymbol} ${amt.toLocaleString()} ${t("to client.", "klientovi.", "az ügyfélnek.")}`;
+      titleString = `${t("Commercial Proposal Sent", "Cenová ponuka odoslaná", "Kereskedelmi ajánlat elküldve")} (${money(amt)})`;
+      if (!contentString) contentString = `${t("Submitted commercial proposal of", "Odoslaná cenová ponuka vo výške", "Benyújtott kereskedelmi ajánlat összege")} ${money(amt)} ${t("to client.", "klientovi.", "az ügyfélnek.")}`;
     }
 
     const eventId = "evt_" + Math.random().toString(36).substr(2, 9);
@@ -2512,7 +2516,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             )}
 
             <span className="text-xs font-black uppercase tracking-widest text-blue-800 bg-blue-100 border-2 border-blue-300 px-4 py-2 rounded-2xl shadow-inner">
-              {getTranslation(systemLanguage, "common.lead_value")}: {currencySymbol} {activeLead.value.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              {getTranslation(systemLanguage, "common.lead_value")}: {money(activeLead.value, { minimumFractionDigits: 2 })}
             </span>
           </div>
         </div>
@@ -4622,7 +4626,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                   className="text-[10px] font-heading font-black tracking-wide shrink-0"
                                   style={{ color: stateColor }}
                                 >
-                                  {orderingMode === "pm" ? t("MANAGER VALUE", "HODNOTA MANAŽÉRA", "MENEDZSER ÉRTÉK") : t("STAGE VALUE", "HODNOTA FÁZY", "FÁZIS ÉRTÉK")}: {currencySymbol} {stageTotalValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                  {orderingMode === "pm" ? t("MANAGER VALUE", "HODNOTA MANAŽÉRA", "MENEDZSER ÉRTÉK") : t("STAGE VALUE", "HODNOTA FÁZY", "FÁZIS ÉRTÉK")}: {money(stageTotalValue, { minimumFractionDigits: 2 })}
                                 </span>
                               </div>
                             </td>
@@ -4876,7 +4880,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                   <div className="flex items-center gap-1">
                                     <span className="text-[9px] font-black text-slate-400 lg:hidden uppercase tracking-wider">{t("Val:", "Hodn.:", "Érték:")}</span>
                                     <span className="border-b border-transparent hover:border-blue-400/50 transition-all font-black text-blue-700 whitespace-nowrap">
-                                      {currencySymbol} {lead.value.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                      {money(lead.value, { minimumFractionDigits: 2 })}
                                     </span>
                                   </div>
                                 )}
@@ -5113,7 +5117,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                               >
                                 <td colSpan={9} className="px-6 pb-3 pt-1 text-[10px] font-medium text-purple-650 tracking-wide text-left block lg:table-cell">
                                   <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="italic" style={{ color: "#7c3aed" }}>{generateAiSummary(lead, systemLanguage, currencySymbol)}</span>
+                                    <span className="italic" style={{ color: "#7c3aed" }}>{generateAiSummary(lead, systemLanguage, (v) => money(v))}</span>
                                   </div>
                                 </td>
                               </tr>
@@ -5198,7 +5202,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         {group.leads.length}
                       </span>
                       <span className="text-[10px] font-extrabold text-indigo-700">
-                        {currencySymbol}{totalVal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        {money(totalVal, { maximumFractionDigits: 0 })}
                       </span>
                     </div>
                   </div>
@@ -5298,7 +5302,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             <div className={`flex items-center justify-between border-t border-slate-100 shrink-0 ${compactMode ? "pt-1.5 mt-0.5" : "pt-2.5 mt-1"}`}>
                               {/* Price Tag */}
                               <span className="text-xs font-black text-slate-900 leading-none">
-                                {currencySymbol}{lead.value.toLocaleString(undefined, { minimumFractionDigits: 0 })}
+                                {money(lead.value, { minimumFractionDigits: 0 })}
                               </span>
 
                               {/* PM Avatar & Source */}
@@ -5781,7 +5785,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">{t("Registered inflow:", "Registrovaný prílev:", "Regisztrált beérkezés:")} {(lead.createdAt || "").slice(0, 10)}</span>
                       </div>
                       <div className="flex flex-col items-end">
-                        <span className="font-black text-emerald-700">{currencySymbol} {lead.value.toLocaleString()}</span>
+                        <span className="font-black text-emerald-700">{money(lead.value)}</span>
                         <div className="mt-1 select-none">
                           <StatusSelector 
                             status={lead.status} 

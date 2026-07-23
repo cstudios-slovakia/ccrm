@@ -17,7 +17,6 @@ import { VERSION } from "./utils/version";
 import { MeetingRoomView } from "./components/MeetingRoomView";
 import type { MeetingNote } from "./components/MeetingRoomView";
 import { getTranslation } from "./utils/translations";
-import { resolveCurrencySymbol } from "./utils/currency";
 import { InstallerWizard } from "./components/InstallerWizard";
 import { RefreshCw, AlertOctagon, Trash2, Copy } from "lucide-react";
 import { UnifiedEntryView } from "./components/UnifiedEntryView";
@@ -48,7 +47,13 @@ const computeSettingsSig = (o: any): string => JSON.stringify([
   normSettingVal(o?.leadCategories),
   o?.systemName ?? null,
   o?.systemLanguage ?? null,
-  o?.systemCurrency ?? null,
+  // Empty string and "field absent" must hash identically: the server omits
+  // systemCurrency entirely, while local state defaults it to "". With `?? null`
+  // those differ ("" vs null), so the settings-sync effect saw a phantom diff and
+  // fired a push on every load — which 401'd on a dead session and produced the
+  // spurious "Re-saved your last change" toast. `|| null` collapses ""/null/absent
+  // to the same value so an unset currency never looks like an edit.
+  o?.systemCurrency || null,
   normSettingVal(o?.leadStateColors),
   normSettingVal(o?.leadSourceColors),
   normSettingVal(o?.leadCategoryColors),
@@ -1133,7 +1138,10 @@ ${log.payload || ''}
 
   // View router
   const renderWorkspaceView = () => {
-    const currencySymbol = resolveCurrencySymbol(systemCurrency, userLanguage);
+    // Raw currency code (or "" for "auto, follow region") — passed down so each
+    // view can resolve the symbol AND its correct prefix/suffix position using
+    // its own display language (see src/utils/currency.ts).
+    const currencyCode = systemCurrency || null;
     const activeUser = currentUser || users[0] || {
       id: "guest",
       name: "Guest User",
@@ -1206,7 +1214,7 @@ ${log.payload || ''}
               );
             }}
             systemLanguage={userLanguage}
-            currencySymbol={currencySymbol}
+            currencyCode={currencyCode}
           />
         );
       }
@@ -1247,7 +1255,7 @@ ${log.payload || ''}
           integrationsConfig={integrationsConfig}
           taskStates={taskStates}
           systemName={systemName}
-          currencySymbol={currencySymbol}
+          currencyCode={currencyCode}
         />
       );
     }
@@ -1281,7 +1289,7 @@ ${log.payload || ''}
           setProjects={updateProjectsAndSync}
           setActiveTab={setActiveTab}
           leadStateFollowUp={leadStateFollowUp}
-          currencySymbol={currencySymbol}
+          currencyCode={currencyCode}
         />
       );
     }
@@ -1373,7 +1381,7 @@ ${log.payload || ''}
             setProjects={updateProjectsAndSync}
             setActiveTab={setActiveTab}
             leadStateFollowUp={leadStateFollowUp}
-            currencySymbol={currencySymbol}
+            currencyCode={currencyCode}
           />
         );
       case "projects":
@@ -1404,12 +1412,12 @@ ${log.payload || ''}
             taskStates={taskStates}
             integrationsConfig={integrationsConfig}
             systemName={systemName}
-            currencySymbol={currencySymbol}
+            currencyCode={currencyCode}
           />
         );
       case "files":
         return (
-          <FilesView leads={leads} setLeads={updateLeadsAndSync} systemLanguage={userLanguage} currencySymbol={currencySymbol} />
+          <FilesView leads={leads} setLeads={updateLeadsAndSync} systemLanguage={userLanguage} currencyCode={currencyCode} />
         );
       case "personal-settings":
         return (
@@ -1454,7 +1462,7 @@ ${log.payload || ''}
             systemLanguage={userLanguage}
             leadStateParents={leadStateParents}
             campaigns={integrationsConfig.campaigns}
-            currencySymbol={currencySymbol}
+            currencyCode={currencyCode}
           />
         );
       case "rag_ai":

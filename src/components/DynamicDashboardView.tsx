@@ -2,22 +2,26 @@ import React, { useState, useEffect, useRef } from "react";
 import { Sparkles, Save, Edit, RefreshCw, Send, AlertCircle, LayoutDashboard, FileText, HelpCircle, X, Info } from "lucide-react";
 import type { CustomDashboard } from "../types";
 import { cn } from "../utils/cn";
+import type { Language } from "../utils/translations";
+import { formatMoney } from "../utils/currency";
 
 interface DynamicDashboardViewProps {
   dashboard: CustomDashboard;
   onSaveDashboard: (updated: CustomDashboard) => void;
   systemLanguage: string;
-  currencySymbol?: string;
+  currencyCode?: string | null;
 }
 
 export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   dashboard,
   onSaveDashboard,
   systemLanguage,
-  currencySymbol = "€"
+  currencyCode
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
+  const money = (value: number, opts?: Intl.NumberFormatOptions) =>
+    formatMoney(value, currencyCode, (systemLanguage as Language) || "en", opts);
 
   const [isEditMode, setIsEditMode] = useState(dashboard.layout.widgets.length === 0);
   const [promptText, setPromptText] = useState("");
@@ -361,7 +365,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                                 titleLower.includes("revenue");
 
                               if (isCurrency && !isNaN(Number(val))) {
-                                return `${currencySymbol}${Number(val).toLocaleString()}`;
+                                return money(Number(val));
                               }
                               return typeof val === "number" ? val.toLocaleString() : String(val);
                             }
@@ -370,7 +374,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                         }
                         if (typeof data === "object") {
                           if (data.count !== undefined) return data.count;
-                          if (data.value !== undefined) return `${currencySymbol}${Number(data.value).toLocaleString()}`;
+                          if (data.value !== undefined) return money(Number(data.value));
                           return JSON.stringify(data);
                         }
                         return String(data);
@@ -383,7 +387,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                   )}
 
                   {w.type === "table" && (
-                    <DashboardTable widget={w} data={widgetData[w.id]} t={t} currencySymbol={currencySymbol} />
+                    <DashboardTable widget={w} data={widgetData[w.id]} t={t} formatCurrency={money} />
                   )}
                 </div>
               </div>
@@ -894,17 +898,17 @@ interface DashboardTableProps {
   widget: any;
   data: any;
   t: (en: string, sk: string, hu: string) => string;
-  currencySymbol?: string;
+  formatCurrency?: (value: number) => string;
 }
 
-const DashboardTable: React.FC<DashboardTableProps> = ({ widget, data, t, currencySymbol = "€" }) => {
+const DashboardTable: React.FC<DashboardTableProps> = ({ widget, data, t, formatCurrency = (v) => `€${v.toLocaleString()}` }) => {
   const dataList = Array.isArray(data) ? data : [];
   const columns = widget.columns || [];
 
   const formatCell = (val: any, format: string) => {
     if (val === null || val === undefined) return "-";
     if (format === "currency") {
-      return `${currencySymbol}${Number(val).toLocaleString()}`;
+      return formatCurrency(Number(val));
     }
     if (format === "date") {
       return new Date(val).toLocaleDateString();
