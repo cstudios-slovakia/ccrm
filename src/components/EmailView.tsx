@@ -753,7 +753,18 @@ export const EmailView: React.FC<EmailViewProps> = ({
   }, [emails, isThreadedMode, isOpenAiKeySet, threadedEmails, filteredIndividualEmails]);
 
   return (
-    <div className={`grid grid-cols-1 lg:grid-cols-12 gap-5 select-none h-[calc(100vh-220px)] items-stretch overflow-hidden animate-slide-up email-view-root ${isLargeFont ? 'email-view-large' : ''}`}>
+    <div className="space-y-6 select-none animate-fade-in text-slate-800">
+    {/* Title header */}
+    <div className="flex flex-col border-b border-slate-100 pb-4">
+      <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+        <Mail className="h-6 w-6 text-pink-600" /> {t("Email Inbox", "Emailová schránka", "E-mail postafiók")}
+      </h2>
+      <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
+        {t("Unified SMTP / IMAP inbox connected to your CRM contacts", "Jednotná SMTP / IMAP schránka prepojená s kontaktmi CRM", "Egységes SMTP / IMAP postafiók a CRM kapcsolatokhoz")}
+      </p>
+    </div>
+
+    <div className={`grid grid-cols-1 lg:grid-cols-12 gap-5 select-none h-[calc(100vh-300px)] items-stretch overflow-hidden animate-slide-up email-view-root ${isLargeFont ? 'email-view-large' : ''}`}>
       <style>{`
         .email-view-large .text-\\[9px\\] { font-size: 12px !important; }
         .email-view-large .text-\\[8px\\] { font-size: 11px !important; }
@@ -1987,6 +1998,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 };

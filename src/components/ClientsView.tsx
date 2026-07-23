@@ -4080,7 +4080,17 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   // ----------------------------------------------------
   return (
     <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
-      
+
+      {/* 1. Title header */}
+      <div className="flex flex-col border-b border-slate-100 pb-4">
+        <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+          <Users className="h-6 w-6 text-emerald-600" /> {getTranslation(systemLanguage, "clients.title")}
+        </h2>
+        <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
+          {getTranslation(systemLanguage, "clients.subtitle")}
+        </p>
+      </div>
+
       {/* 2. Control search & filter bar */}
       <div className="glass-panel p-6 rounded-[28px] border-2 border-emerald-450 bg-white shadow-lg space-y-4">
         <div className="flex flex-col sm:flex-row items-center gap-3 w-full">

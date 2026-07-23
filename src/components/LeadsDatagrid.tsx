@@ -4002,6 +4002,16 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
   return (
     <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
+      {/* 0. Title header */}
+      <div className="flex flex-col border-b border-slate-100 pb-4">
+        <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+          <Layers className="h-6 w-6 text-blue-600" /> {getTranslation(systemLanguage, "leads.title")}
+        </h2>
+        <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
+          {getTranslation(systemLanguage, "leads.subtitle")}
+        </p>
+      </div>
+
       {/* 1. Sleek Minimalist Stage Counter Statistics Strip */}
       <div className="glass-panel px-6 py-4 rounded-[26px] border border-blue-50 bg-white/85 shadow-glass flex flex-col lg:flex-row lg:items-center justify-between gap-4 select-none">
         <div className="flex items-center gap-3">

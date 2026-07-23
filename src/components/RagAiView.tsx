@@ -660,7 +660,18 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
   const activeColorTheme = COLOR_MAP[selectedAgent.color] || COLOR_MAP.purple;
 
   return (
-    <div className="glass-panel p-0 rounded-3xl border border-white/60 bg-white/95 shadow-glass overflow-hidden flex flex-col md:flex-row h-[calc(100vh-12rem)] min-h-[500px] animate-slide-up">
+    <div className="space-y-6 select-none animate-fade-in text-slate-800">
+    {/* Title header */}
+    <div className="flex flex-col border-b border-slate-100 pb-4">
+      <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+        <Brain className="h-6 w-6 text-purple-600" /> {t("AI Agents & Knowledge Base", "AI agenti a znalostná báza", "AI ügynökök és tudásbázis")}
+      </h2>
+      <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
+        {t("Chat with RAG agents grounded in your CRM data", "Konverzujte s RAG agentmi napojenými na dáta vášho CRM", "Beszélgessen a CRM-adatokra épülő RAG ügynökökkel")}
+      </p>
+    </div>
+
+    <div className="glass-panel p-0 rounded-3xl border border-white/60 bg-white/95 shadow-glass overflow-hidden flex flex-col md:flex-row h-[calc(100vh-17rem)] min-h-[500px] animate-slide-up">
       {/* Left Sidebar - Agent Selector */}
       <div className="w-full md:w-80 border-r border-slate-200/80 bg-slate-50/40 flex flex-col shrink-0">
         <div className="p-4 border-b border-slate-200/80 bg-white/50 backdrop-blur flex items-center justify-between">
@@ -1151,6 +1162,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 };

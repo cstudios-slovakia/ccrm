@@ -308,10 +308,17 @@ export const Header: React.FC<HeaderProps> = ({
       return getTranslation(systemLanguage, "header.title.leads");
     }
     switch (tab) {
-      case "dashboard": return getTranslation(systemLanguage, "header.title.dashboard");
+      case "dashboard":
+      case "tasks": return getTranslation(systemLanguage, "header.title.tasks");
+      case "overview": return getTranslation(systemLanguage, "header.title.dashboard");
       case "leads": return getTranslation(systemLanguage, "header.title.leads");
       case "clients": return getTranslation(systemLanguage, "header.title.clients");
       case "files": return getTranslation(systemLanguage, "header.title.files");
+      case "projects": return getTranslation(systemLanguage, "header.title.projects");
+      case "email": return getTranslation(systemLanguage, "header.title.email");
+      case "rag_ai": return getTranslation(systemLanguage, "header.title.rag_ai");
+      case "meetings": return getTranslation(systemLanguage, "header.title.meetings");
+      case "personal-settings": return getTranslation(systemLanguage, "header.title.personal");
       case "settings": return getTranslation(systemLanguage, "header.title.settings");
       default: return systemName;
     }

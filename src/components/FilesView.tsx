@@ -422,15 +422,12 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
     <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
       
       {/* Title Header */}
-      <div className="flex items-center justify-between border-b-2 border-slate-150 pb-4">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-amber-600 to-amber-700 text-white flex items-center justify-center shadow-lg shadow-amber-600/35 shrink-0 border-2 border-amber-800">
-            <FolderOpen className="h-5 w-5 animate-pulse" />
-          </div>
-          <div>
-            <h2 className="text-lg font-heading font-black text-slate-900 uppercase tracking-tight">{getTranslation(systemLanguage, "files.title")}</h2>
-            <p className="text-[10px] text-slate-400 font-extrabold uppercase mt-0.5">{getTranslation(systemLanguage, "files.subtitle")}</p>
-          </div>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-4">
+        <div className="flex flex-col">
+          <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+            <FolderOpen className="h-6 w-6 text-amber-600" /> {getTranslation(systemLanguage, "files.title")}
+          </h2>
+          <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">{getTranslation(systemLanguage, "files.subtitle")}</p>
         </div>
 
         {/* Upload Documents Trigger Button */}

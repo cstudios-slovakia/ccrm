@@ -268,9 +268,9 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
   return (
     <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16">
       {/* Title */}
-      <div className="flex flex-col">
+      <div className="flex flex-col border-b border-slate-100 pb-4">
         <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-          <Settings className="h-6 w-6 text-pink-500 animate-spin-slow" /> {t("Personal Settings", "Osobné Nastavenia", "Személyes beállítások")}
+          <Settings className="h-6 w-6 text-pink-500" /> {t("Personal Settings", "Osobné nastavenia", "Személyes beállítások")}
         </h2>
         <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
           {t(

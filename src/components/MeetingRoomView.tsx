@@ -1519,15 +1519,15 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* HEADER SECTION */}
       {viewState !== "new" && (
-        <div className="flex flex-row items-center justify-between gap-4 bg-white/40 backdrop-blur-md p-6 rounded-3xl border border-white/60 shadow-sm">
+        <div className="flex flex-row items-center justify-between gap-4 border-b border-slate-100 pb-4">
           {viewState === "list" ? (
             <>
-              <div>
-                <h2 className="text-xl font-heading font-extrabold text-[#0b1329] flex items-center gap-2">
-                  <Sparkles className="h-5 w-5 text-indigo-500 animate-pulse" />
-                  {systemLanguage === "sk" ? "AI Zasadačka & Analýza Stretnutí" : systemLanguage === "hu" ? "AI Tárgyaló & Megbeszélés Elemzés" : "AI Meeting Room & Note Summarizer"}
+              <div className="flex flex-col">
+                <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                  <Sparkles className="h-6 w-6 text-indigo-500" />
+                  {systemLanguage === "sk" ? "AI Zasadačka a analýza stretnutí" : systemLanguage === "hu" ? "AI Tárgyaló és megbeszélés elemzés" : "AI Meeting Room & Note Summarizer"}
                 </h2>
-                <p className="text-xs text-slate-500 font-medium mt-1">
+                <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
                   {systemLanguage === "sk" 
                     ? "Nahrávajte stretnutia, sledujte prepisy a nechajte umelú inteligenciu vygenerovať zhrnutia a úlohy." 
                     : systemLanguage === "hu" 

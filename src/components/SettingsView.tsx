@@ -1679,9 +1679,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   return (
     <div className="space-y-8 select-none text-slate-800 animate-fade-in">
       {/* Title Header */}
-      <div className="flex flex-col">
+      <div className="flex flex-col border-b border-slate-100 pb-4">
         <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-          <Settings className="h-6 w-6 text-indigo-600 animate-spin-slow" /> {getTranslation(userLanguage, "header.title.settings")}
+          <Settings className="h-6 w-6 text-indigo-600" /> {getTranslation(userLanguage, "header.title.settings")}
         </h2>
         <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
           {userLanguage === "sk" 
