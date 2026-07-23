@@ -16,6 +16,7 @@ import {
     RotateCcw,
     List,
     Archive as ArchiveIcon,
+    Clock,
 } from "lucide-react";
 import type { Task, UserProfile, Lead } from "../types";
 import type { Language } from "../utils/translations";
@@ -321,6 +322,26 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             default:
                 return st;
         }
+    };
+
+    // Locale used to render dates in the region format configured in Settings.
+    const dateLocale =
+        systemLanguage === "sk"
+            ? "sk-SK"
+            : systemLanguage === "hu"
+              ? "hu-HU"
+              : "en-US";
+
+    // Renders a "YYYY-MM-DD" task date as a short, region-formatted string (e.g. "23 Jul 2026").
+    const formatTaskDate = (dateStr: string) => {
+        if (!dateStr) return dateStr;
+        const [y, m, d] = dateStr.split("-").map(Number);
+        if (!y || !m || !d) return dateStr;
+        return new Date(y, m - 1, d).toLocaleDateString(dateLocale, {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+        });
     };
 
     const [currentDate, setCurrentDate] = useState(new Date());
@@ -1053,17 +1074,24 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     </span>
 
                     {!isCompact && task.startDate && (
-                        <span className="text-[9px] font-bold text-slate-500 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md">
-                            <span>
-                                {t("Start", "Začiatok", "Kezdés")}:{" "}
-                                {task.startDate}
+                        <span className="text-[9px] font-bold text-slate-500 flex items-center gap-1 bg-slate-100 px-2 py-1 rounded-lg transition-colors hover:bg-slate-200/70">
+                            <CalendarIcon className="h-2.5 w-2.5 shrink-0 stroke-[2.5]" />
+                            <span className="uppercase tracking-wider text-slate-400">
+                                {t("Start", "Začiatok", "Kezdés")}
+                            </span>
+                            <span className="text-slate-700">
+                                {formatTaskDate(task.startDate)}
                             </span>
                         </span>
                     )}
 
-                    <span className="text-[9px] font-bold text-slate-500 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md bg-indigo-50/50 border border-indigo-100">
-                        <span>
-                            {t("Due", "Termín", "Határidő")}: {task.deadline} @{" "}
+                    <span className="text-[9px] font-bold text-indigo-600 flex items-center gap-1 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100 transition-colors hover:bg-indigo-100/70">
+                        <Clock className="h-2.5 w-2.5 shrink-0 stroke-[2.5]" />
+                        <span className="uppercase tracking-wider text-indigo-400">
+                            {t("Due", "Termín", "Határidő")}
+                        </span>
+                        <span className="font-black">
+                            {formatTaskDate(task.deadline)} ·{" "}
                             {task.deadlineTime || "23:59"}
                         </span>
                     </span>
