@@ -111,6 +111,16 @@ function ccrm_sanitize_db_text($str, $maxBytes) {
     return $str;
 }
 
+// Narrow a client-supplied date to the `Y-m-d` form a MySQL DATE column accepts.
+// Older/other clients may send a full ISO timestamp ("2026-05-15T00:00:00.000Z");
+// binding that raises SQLSTATE 22007 and rolls back the entire sync transaction,
+// so every later push fails too until the offending record is repaired.
+function ccrm_date_only($val) {
+    if ($val === null || $val === '') return null;
+    if (!is_string($val)) $val = (string) $val;
+    return preg_match('/^(\d{4}-\d{2}-\d{2})/', $val, $m) ? $m[1] : null;
+}
+
 // Helper to check if an incoming lead payload is identical to its database record
 function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
     if (!$db) return false;
@@ -150,7 +160,7 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
         // 'financial_summary' is deliberately excluded: it is server-owned, so a
         // lead whose only difference is the server-generated report still counts
         // as identical and is skipped (no rewrite, no needless report re-spawn).
-        'created_at' => $inc['createdAt'] ?? null
+        'created_at' => ccrm_date_only($inc['createdAt'] ?? null)
     ];
     
     foreach ($fields as $col => $val) {
@@ -1591,7 +1601,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $l['district'] ?? null,
                     $l['financialSummary'] ?? null,
                     isset($l['vatValidationResult']) ? json_encode($l['vatValidationResult']) : null,
-                    $l['createdAt'] ?? date('Y-m-d H:i:s'),
+                    ccrm_date_only($l['createdAt'] ?? null) ?? date('Y-m-d'),
                     (isset($l['followUps']) && !empty($l['followUps'])) ? json_encode($l['followUps']) : null
                 ]);
 

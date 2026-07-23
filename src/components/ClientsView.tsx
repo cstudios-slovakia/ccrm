@@ -16,6 +16,7 @@ import type { EditorBlock } from "./BlockEditor";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { resolveCurrencySymbol, formatMoney } from "../utils/currency";
+import { todayLocal, nowLocalStamp } from "../utils/localTime";
 
 interface ClientsViewProps {
   leads: Lead[];
@@ -887,7 +888,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       source: "website",
       owner: newClientOwner || projectManagers[0] || currentUser?.name || "",
       value: parseFloat(newClientValue) || 0,
-      createdAt: new Date().toISOString(),
+      // `leads.created_at` is a DATE column: a full ISO timestamp makes MySQL
+      // reject the whole sync payload. Local date so a client registered just
+      // after midnight is not filed under the previous day.
+      createdAt: todayLocal(),
       rating: 5,
       phone: newClientPhone.trim() || undefined,
       email: newClientEmail.trim() || undefined,
@@ -917,7 +921,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         {
           id: `ev-${Date.now()}`,
           type: "note",
-          timestamp: new Date().toISOString().replace("T", " ").substring(0, 16),
+          timestamp: nowLocalStamp(),
           title: t("Client Registered", "Klient zaregistrovaný", "Ügyfél regisztrálva"),
           content: t(
             "Client profile successfully registered inside CRM system.",
@@ -2263,7 +2267,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     const newEvent: TimelineEvent = {
       id: eventId,
       type: "offer",
-      timestamp: new Date().toISOString().replace("T", " ").substring(0, 16),
+      timestamp: nowLocalStamp(),
       title: `Document Attached: ${uploadFileName}`,
       content: uploadDescription.trim() || `Attached document for category ${uploadFileType}.`,
       fileName: uploadFileName,

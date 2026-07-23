@@ -3,6 +3,7 @@ import * as Icons from "lucide-react";
 import { Plus, Trash2, Upload, FileText, ArrowLeft, Mail, Phone } from "lucide-react";
 import type { Project, ProjectType, Lead, UserProfile, ProjectTimelineEvent, ProjectGanttRow } from "../types";
 import type { Language } from "../utils/translations";
+import { nowLocalStamp } from "../utils/localTime";
 
 const SearchableClientSelect: React.FC<{
   leads: Lead[];
@@ -263,7 +264,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       id: "pte-" + Date.now(),
       type: isCustom ? "custom" : newTeType,
       eventType: isCustom ? newTeType : undefined,
-      timestamp: newTeTime || new Date().toISOString().slice(0, 16).replace("T", " "),
+      timestamp: newTeTime || nowLocalStamp(),
       title: newTeTitle.trim(),
       content: newTeContent.trim(),
       data: timelineEventData

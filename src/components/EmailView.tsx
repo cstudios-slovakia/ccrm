@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import type { Lead, Task, UserProfile } from "../types";
 import { formatBytes } from "../utils/formatBytes";
+import { nowLocalStamp } from "../utils/localTime";
 
 interface EmailViewProps {
   currentUser: any;
@@ -205,7 +206,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
           const newEvent = {
             id: eventId,
             type: "offer" as const,
-            timestamp: new Date().toISOString().replace("T", " ").substring(0, 16),
+            timestamp: nowLocalStamp(),
             title: t("Email Attachment Saved", "Príloha e-mailu uložená", "E-mail melléklet mentve"),
             content: data.extractedText ? `${t("Saved email attachment:", "Uložená príloha e-mailu:", "Mentett e-mail melléklet:")} ${data.fileName}\n\n--- ${t("Document Content", "Obsah dokumentu", "Dokumentum tartalma")} ---\n${data.extractedText}` : `${t("Saved email attachment:", "Uložená príloha e-mailu:", "Mentett e-mail melléklet:")} ${data.fileName}`,
             amount: undefined,

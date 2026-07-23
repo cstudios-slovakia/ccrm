@@ -7,6 +7,7 @@ import { cn } from "../utils/cn";
 import { BlockEditor } from "./BlockEditor";
 import type { EditorBlock } from "./BlockEditor";
 import { Markdown } from "../utils/markdown";
+import { todayLocal } from "../utils/localTime";
 
 const parseNotesToBlocks = (notes: string): EditorBlock[] => {
   if (notes.trim().startsWith("[")) {
@@ -110,7 +111,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
   const [attachedLeads, setAttachedLeads] = useState<string[]>([]);
   const [attachedClients, setAttachedClients] = useState<string[]>([]);
   const [attachedUsers, setAttachedUsers] = useState<string[]>([]);
-  const [newDate, setNewDate] = useState(new Date().toISOString().split("T")[0]);
+  const [newDate, setNewDate] = useState(todayLocal());
   const [newBlocks, setNewBlocks] = useState<EditorBlock[]>([
     { id: "b-1", type: "paragraph", content: "" }
   ]);
@@ -432,7 +433,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
           title: title,
           description: `Extracted from meeting action items: ${title}`,
           assignedUser: "",
-          startDate: new Date().toISOString().split("T")[0],
+          startDate: todayLocal(),
           dueDate: new Date(Date.now() + 86400000 * 3).toISOString().split("T")[0],
           priority: "medium",
           status: "todo"
@@ -888,7 +889,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
         description: targetTask.description || `AI extracted suggestion from meeting notes`,
         status: mapMeetingTaskStatusToCrmStatus(targetTask.status),
         priority: targetTask.priority || "medium",
-        startDate: targetTask.startDate || new Date().toISOString().split("T")[0],
+        startDate: targetTask.startDate || todayLocal(),
         deadline: targetTask.dueDate || new Date(Date.now() + 86400000).toISOString().split("T")[0],
         deadlineTime: "23:59",
         owner: username,
@@ -975,7 +976,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
           title: title,
           description: `Extracted from meeting action items: ${title}`,
           assignedUser: "",
-          startDate: new Date().toISOString().split("T")[0],
+          startDate: todayLocal(),
           dueDate: new Date(Date.now() + 86400000 * 3).toISOString().split("T")[0],
           priority: "medium",
           status: "todo"
@@ -1073,7 +1074,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
         title: title,
         description: `Suggested action item: ${title}`,
         assignedUser: "",
-        startDate: new Date().toISOString().split("T")[0],
+        startDate: todayLocal(),
         dueDate: new Date(Date.now() + 86400000 * 3).toISOString().split("T")[0],
         priority: "medium",
         status: "todo"

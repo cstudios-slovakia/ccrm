@@ -144,6 +144,27 @@ const ALL_LUCIDE_ICONS = Object.keys(Icons).filter(key => {
          key !== 'Icon';
 });
 
+// Every settings category, with the permission that unlocks it. The sidebar and
+// the "fall back to a permitted category" effect both read this one list. While
+// the effect kept its own shorter copy, standing on a category missing from that
+// copy (Projects, Unified records, Email, API, Ads, AI, Errors) bounced the user
+// back to Branding every time a background sync produced a new `roles` array.
+const SETTINGS_TABS = [
+  { id: "branding", permKey: "general_config" },
+  { id: "projects", permKey: "general_config" },
+  { id: "unified", permKey: "general_config" },
+  { id: "sources", permKey: "traffic_sources" },
+  { id: "states", permKey: "pipeline_stages" },
+  { id: "managers", permKey: "pm_managers" },
+  { id: "rbac", permKey: "pm_managers" },
+  { id: "email", permKey: "general_config" },
+  { id: "api", permKey: "general_config" },
+  { id: "ads", permKey: "general_config" },
+  { id: "ai", permKey: "ai_config" },
+  { id: "errors", permKey: "general_config" },
+  { id: "danger", permKey: "system_reset" }
+] as const;
+
 export const SettingsView: React.FC<SettingsViewProps> = ({
   systemName,
   setSystemName,
@@ -1110,17 +1131,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   // Set default initial tab if permissions changed
   React.useEffect(() => {
-    const tabs = [
-      { id: "branding", key: "general_config" as const },
-      { id: "ads", key: "general_config" as const },
-      { id: "managers", key: "pm_managers" as const },
-      { id: "rbac", key: "pm_managers" as const },
-      { id: "states", key: "pipeline_stages" as const },
-      { id: "sources", key: "traffic_sources" as const },
-      { id: "danger", key: "system_reset" as const }
-    ];
-    const allowed = tabs.find(t => getPermission(t.key) !== "nothing");
-    if (allowed && !tabs.find(t => t.id === activeSubTab && getPermission(t.key) !== "nothing")) {
+    const tabs = SETTINGS_TABS;
+    const allowed = tabs.find(t => getPermission(t.permKey) !== "nothing");
+    if (allowed && !tabs.find(t => t.id === activeSubTab && getPermission(t.permKey) !== "nothing")) {
       setActiveSubTab(allowed.id as any);
       window.location.hash = "settings/" + allowed.id;
     }
@@ -1409,7 +1422,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     const newUser: UserProfile = {
       name: nameVal,
       email: emailVal,
-      password: pwdVal || "password",
+      // The form marks the password field `required`, so this is never blank —
+      // the old `|| "password"` fallback advertised a default the UI would not
+      // let anyone actually use.
+      password: pwdVal,
       role: newUserRole,
       color: "#3b82f6", // default blue preset
       activityLog: [
@@ -1672,21 +1688,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   // Filter allowed tabs based on permissions
-  const allowedTabs = ([
-    { id: "branding", label: getTranslation(userLanguage, "settings.tab.branding"), permKey: "general_config" as const },
-    { id: "projects", label: getTranslation(userLanguage, "settings.tab.projects"), permKey: "general_config" as const },
-    { id: "unified", label: getTranslation(userLanguage, "settings.tab.unified"), permKey: "general_config" as const },
-    { id: "sources", label: getTranslation(userLanguage, "settings.tab.sources"), permKey: "traffic_sources" as const },
-    { id: "states", label: getTranslation(userLanguage, "settings.tab.states"), permKey: "pipeline_stages" as const },
-    { id: "managers", label: getTranslation(userLanguage, "settings.tab.managers"), permKey: "pm_managers" as const },
-    { id: "rbac", label: getTranslation(userLanguage, "settings.tab.rbac"), permKey: "pm_managers" as const },
-    { id: "email", label: getTranslation(userLanguage, "settings.tab.email"), permKey: "general_config" as const },
-    { id: "api", label: getTranslation(userLanguage, "settings.tab.api"), permKey: "general_config" as const },
-    { id: "ads", label: getTranslation(userLanguage, "settings.tab.ads"), permKey: "general_config" as const },
-    { id: "ai", label: getTranslation(userLanguage, "settings.tab.ai"), permKey: "ai_config" as const },
-    { id: "errors", label: getTranslation(userLanguage, "settings.tab.errors"), permKey: "general_config" as const },
-    { id: "danger", label: getTranslation(userLanguage, "settings.tab.danger"), permKey: "system_reset" as const }
-  ] as const).filter(tab => getPermission(tab.permKey) !== "nothing");
+  const allowedTabs = SETTINGS_TABS
+    .map(tab => ({ ...tab, label: getTranslation(userLanguage, `settings.tab.${tab.id}`) }))
+    .filter(tab => getPermission(tab.permKey) !== "nothing");
   // Read-only alert component
   const renderReadOnlyBanner = (permKey: keyof RolePermission["permissions"]) => {
     const isReadOnly = getPermission(permKey) === "view";

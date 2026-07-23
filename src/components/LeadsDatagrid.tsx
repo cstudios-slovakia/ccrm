@@ -94,6 +94,7 @@ import { BlockEditor } from "./BlockEditor";
 import type { EditorBlock } from "./BlockEditor";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
+import { todayLocal } from "../utils/localTime";
 import { formatMoney } from "../utils/currency";
 
 const CalendarPane: React.FC<{
@@ -1459,8 +1460,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
   // Explicit Event Date/Time
   const [logDate, setLogDate] = useState(() => {
-    const tzOffset = (new Date()).getTimezoneOffset() * 60000;
-    return (new Date(Date.now() - tzOffset)).toISOString().split("T")[0];
+    return todayLocal();
   });
   const [logTimeOfEvent, setLogTimeOfEvent] = useState(() => {
     const d = new Date();
@@ -1692,8 +1692,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     setLeads(prev => prev.map(l => {
       if (l.id === activeLead.id) {
-        const timePart = l.createdAt && l.createdAt.includes("T") ? l.createdAt.slice(10) : "T00:00:00.000Z";
-        const newCreatedAt = leadCreatedAt ? `${leadCreatedAt}${timePart}` : l.createdAt;
+        // `leads.created_at` is a plain DATE column server-side. Appending a
+        // time part (especially a `Z`-suffixed ISO timestamp) makes MySQL reject
+        // the whole sync payload with SQLSTATE 22007, which silently blocks
+        // every later push too. Keep it date-only.
+        const newCreatedAt = leadCreatedAt ? leadCreatedAt.slice(0, 10) : (l.createdAt || "").slice(0, 10);
         return {
           ...l,
           name: leadName.trim(),
@@ -1877,8 +1880,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     if ((window as any)._latestTranscription) delete (window as any)._latestTranscription;
     
     // Reset date/time to now
-    const tzOffset = (new Date()).getTimezoneOffset() * 60000;
-    setLogDate((new Date(Date.now() - tzOffset)).toISOString().split("T")[0]);
+    setLogDate(todayLocal());
     setLogTimeOfEvent(new Date().toTimeString().substring(0, 5));
   };
 
@@ -2128,7 +2130,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       source: newLeadSource || leadSources[0] || "website",
       owner: newLeadOwner || "",
       value: valNum,
-      createdAt: new Date().toISOString(),
+      // Date-only and in LOCAL time: `leads.created_at` is a DATE column, and a
+      // UTC-derived date files leads created after midnight under the previous day.
+      createdAt: todayLocal(),
       rating: newLeadRating,
       categories: newLeadCategories,
       referralLeadId: newLeadReferralId || undefined

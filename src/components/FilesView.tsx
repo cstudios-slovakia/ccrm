@@ -8,6 +8,7 @@ import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { formatBytes } from "../utils/formatBytes";
 import { formatMoney } from "../utils/currency";
+import { nowLocalStamp } from "../utils/localTime";
 
 interface QueuedFile {
   id: string;
@@ -247,7 +248,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
             return {
               id: eventId,
               type: "offer" as const,
-              timestamp: new Date().toISOString().replace("T", " ").substring(0, 16),
+              timestamp: nowLocalStamp(),
               title: eventTitle,
               content: finalContent,
               amount: isNaN(valNum) ? undefined : valNum,
