@@ -16,7 +16,7 @@ export const translations: Record<Language, Record<string, string>> = {
 
     // Header Titles
     "header.active_node": "Active Node",
-    "header.title.dashboard": "Performance Dashboard 2026",
+    "header.title.dashboard": "Performance Dashboard",
     "header.title.leads": "Sales Pipeline & Leads",
     "header.title.clients": "Clients Registry & Directory",
     "header.title.files": "Document Vault & File Registry",
@@ -449,7 +449,7 @@ export const translations: Record<Language, Record<string, string>> = {
 
     // Header Titles
     "header.active_node": "Aktívny uzol",
-    "header.title.dashboard": "Výkonnostný prehľad 2026",
+    "header.title.dashboard": "Výkonnostný prehľad",
     "header.title.leads": "Obchodná pipeline a leady",
     "header.title.clients": "Register a adresár klientov",
     "header.title.files": "Trezor dokumentov a súborov",
@@ -882,7 +882,7 @@ export const translations: Record<Language, Record<string, string>> = {
 
     // Header Titles
     "header.active_node": "Aktív csomópont",
-    "header.title.dashboard": "Teljesítmény vezérlőpult 2026",
+    "header.title.dashboard": "Teljesítmény vezérlőpult",
     "header.title.leads": "Értékesítési folyamatok és lead-ek",
     "header.title.clients": "Ügyfelek regisztere és címtára",
     "header.title.files": "Biztonságos dokumentum- és fájltár",
