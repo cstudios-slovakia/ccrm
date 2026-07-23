@@ -24,6 +24,14 @@ node_modules
 dist-ssr
 *.local
 
+# public/ is the Vite publicDir (static inputs: PWA icons, manifest, sw.js, backend PHP).
+# The built frontend (index.html + hashed assets/) must NEVER be committed here: the
+# server's `php ccrm update` copies public/* over dist/ to refresh backend PHP, so a
+# stale public/index.html + public/assets/ would clobber the freshly-built bundle and
+# roll the deployed frontend back to an old version (caused the 1.6.11 save-fail regression).
+/public/index.html
+/public/assets/
+
 # Local scratch / personal to-do notes (not part of the app)
 chyby na opravu.txt
 
