@@ -45,6 +45,14 @@ try {
 
     // Wipe customizable lists if "Keep Configs" was false
     if (!$keepConfigs) {
+        // Preserve the language the CRM was installed in BEFORE dropping the
+        // settings, so the reset re-seeds the pipeline labels in that language
+        // (mirrors setup.php) instead of forcing English/Slovak defaults.
+        $systemLanguage = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'SYSTEM_LANGUAGE'")->fetchColumn();
+        if (!in_array($systemLanguage, ['en', 'sk', 'hu'], true)) {
+            $systemLanguage = 'sk';
+        }
+
         $pdo->exec("DELETE FROM `users`;");
         $pdo->exec("DELETE FROM `system_settings`;");
 
@@ -55,17 +63,27 @@ try {
         $insUser = $pdo->prepare("INSERT INTO `users` (`id`, `name`, `email`, `password_hash`, `role`, `avatar`, `color`) VALUES (?, ?, ?, ?, ?, ?, ?)");
         $insUser->execute(['u-' . md5($adminEmail), 'Admin', $adminEmail, password_hash($generatedAdminPassword, PASSWORD_DEFAULT), 'admin', null, '#f43f5e']);
 
+        // Pipeline labels are persisted values, so seed them in the language chosen.
+        $pipelineStagesByLanguage = [
+            'en' => ['new', 'contacted', 'offer sent', 'accepted', 'rejected'],
+            'sk' => ['nový', 'kontaktovaný', 'ponuka odoslaná', 'prijatý', 'zamietnutý'],
+            'hu' => ['új', 'kapcsolatfelvétel', 'ajánlat elküldve', 'elfogadva', 'elutasítva'],
+        ];
+        $leadStates = $pipelineStagesByLanguage[$systemLanguage];
+        $leadStageGroups = array_combine($leadStates, ['new', 'in_progress', 'in_progress', 'closed', 'closed']);
+        $leadStateColors = array_combine($leadStates, ['#3b82f6', '#0ea5e9', '#6366f1', '#10b981', '#ef4444']);
+
         $settings = [
             'DEMO_MODE' => 'false',
             'SYSTEM_NAME' => 'CCRM',
-            'SYSTEM_LANGUAGE' => 'sk',
-            'LEAD_STATES' => json_encode(["new", "contacted", "offer sent", "accepted", "rejected"]),
+            'SYSTEM_LANGUAGE' => $systemLanguage,
+            'LEAD_STATES' => json_encode($leadStates),
             'LEAD_SOURCES' => json_encode(["showroom", "facebook", "instagram", "website"]),
             'LEAD_CATEGORIES' => json_encode(["Kitchen Countertops", "Flooring Tiles", "Bathroom Renovation", "Granite Slabs", "Plumbing Services", "Custom Masonry"]),
-            'LEAD_STATE_COLORS' => json_encode(["new" => "#3b82f6", "contacted" => "#0ea5e9", "offer sent" => "#6366f1", "accepted" => "#10b981", "rejected" => "#ef4444"]),
+            'LEAD_STATE_COLORS' => json_encode($leadStateColors),
             'LEAD_SOURCE_COLORS' => json_encode(["showroom" => "#10b981", "facebook" => "#3b82f6", "instagram" => "#ec4899", "website" => "#8b5cf6"]),
             'LEAD_CATEGORY_COLORS' => json_encode(["Kitchen Countertops" => "#f59e0b", "Flooring Tiles" => "#10b981", "Bathroom Renovation" => "#3b82f6", "Granite Slabs" => "#6366f1", "Plumbing Services" => "#0ea5e9", "Custom Masonry" => "#ec4899"]),
-            'LEAD_STAGE_GROUPS' => json_encode(["new" => "new", "contacted" => "in_progress", "offer sent" => "in_progress", "accepted" => "closed", "rejected" => "closed"]),
+            'LEAD_STAGE_GROUPS' => json_encode($leadStageGroups),
             'LEAD_STATE_PARENTS' => json_encode((object)[])
         ];
 
