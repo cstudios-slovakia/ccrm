@@ -41,15 +41,25 @@ function ccrm_update() {
     exec("git diff --cached --name-only", $stagedFiles);
     $dirty = array_unique(array_filter(array_merge($dirtyFiles, $stagedFiles)));
 
-    // index.html is expected to differ locally after a build (the dist/ copy
-    // overwrites it with build-specific markup) — safe to discard every run.
+    // Files that are EXPECTED to go dirty on the server and are always safe to
+    // discard (via `git checkout --`, never stash — see the danger note below):
     //
-    // vendor/composer/installed.php is expected to differ after step 3 below:
-    // `composer install` always stamps it with the current git commit hash,
-    // so it goes dirty on every run and would otherwise block the *next*
-    // `php ccrm update` for no real reason — safe to discard every run.
-    $autoRestore = ['index.html', 'vendor/composer/installed.php'];
-    $toRestore = array_intersect($autoRestore, $dirty);
+    //  - index.html: overwritten every build by the dist/ copy with
+    //    build-specific markup, so the root copy differs from git.
+    //  - vendor/composer/installed.php: `composer install` (step 3) re-stamps it
+    //    with the current git commit hash on every run, so it goes dirty each
+    //    time and would otherwise block the *next* `php ccrm update`.
+    //  - the entire dist/ tree: this is generated frontend build output,
+    //    committed byte-for-byte from the build machine. The server has no build
+    //    step and never legitimately hand-edits it, so the pulled version is
+    //    always authoritative. Line-ending normalization or a stale FTP/rsync
+    //    upload over the checkout can leave these hashed assets "modified"; that
+    //    is noise, not a real change worth blocking a deploy over.
+    $isAutoRestore = function ($file) {
+        static $exact = ['index.html', 'vendor/composer/installed.php'];
+        return in_array($file, $exact, true) || strpos($file, 'dist/') === 0;
+    };
+    $toRestore = array_filter($dirty, $isAutoRestore);
     if (!empty($toRestore)) {
         foreach ($toRestore as $file) {
             echo "Restoring $file to avoid conflict...\n";
@@ -64,8 +74,13 @@ function ccrm_update() {
     // This is exactly what happened on 2026-07-10: a forgotten local edit to
     // sync.php kept resurrecting itself after every `php ccrm update`, masking
     // real fixes (including a data-loss guard) for days. Fail loudly instead
-    // and make the operator resolve it explicitly.
-    $unexpectedDirty = array_values(array_diff($dirty, $autoRestore));
+    // and make the operator resolve it explicitly. Note we never stash here at
+    // all — auto-restored files above are DISCARDED, so nothing gets resurrected;
+    // this branch only exists to stop on genuine backend/source edits (e.g.
+    // api/error_logs.php, sync.php) that a human must resolve.
+    $unexpectedDirty = array_values(array_filter($dirty, function ($f) use ($isAutoRestore) {
+        return !$isAutoRestore($f);
+    }));
     if (!empty($unexpectedDirty)) {
         echo "Error: unexpected local modifications to tracked file(s), refusing to auto-stash:\n";
         foreach ($unexpectedDirty as $file) {
