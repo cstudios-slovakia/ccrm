@@ -17,6 +17,8 @@ Stores user profile information and credentials.
 * `avatar` VARCHAR(255)
 * `created_at` TIMESTAMP
 * `updated_at` TIMESTAMP
+
+Fresh and demo installations seed SYSTEM_LANGUAGE, LEAD_STATES, LEAD_STATE_COLORS, and LEAD_STAGE_GROUPS together. Pipeline-stage labels use the language selected in the installer (en, sk, or hu).
 * `metadata_json` LONGTEXT (e.g., user preferences, email connection status)
 
 ### `permissions`

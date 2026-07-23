@@ -134,6 +134,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
         body: JSON.stringify({
           host, port, dbname, user, pass,
           type: installType,
+          systemLanguage: lang,
           adminName, adminEmail, adminPassword
         })
       });
