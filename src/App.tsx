@@ -1,27 +1,33 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
-import { Dashboard } from "./components/Dashboard";
-import { SettingsView } from "./components/SettingsView";
-import { LeadsDatagrid } from "./components/LeadsDatagrid";
-import { ClientsView } from "./components/ClientsView";
-import { FilesView } from "./components/FilesView";
 import { LoginView } from "./components/LoginView";
 import { TaskDashboardView } from "./components/TaskDashboardView";
-import { PersonalSettingsView } from "./components/PersonalSettingsView";
-import { EmailView } from "./components/EmailView";
-import { RagAiView } from "./components/RagAiView";
-import { ProjectsView } from "./components/ProjectsView";
 import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project } from "./types";
 import { VERSION } from "./utils/version";
-import { MeetingRoomView } from "./components/MeetingRoomView";
 import type { MeetingNote } from "./components/MeetingRoomView";
 import { getTranslation } from "./utils/translations";
 import { InstallerWizard } from "./components/InstallerWizard";
 import { RefreshCw, AlertOctagon, Trash2, Copy } from "lucide-react";
-import { UnifiedEntryView } from "./components/UnifiedEntryView";
-import { DynamicDashboardView } from "./components/DynamicDashboardView";
 import { ShaderGradient, ShaderGradientCanvas } from "shadergradient";
+
+// Lazy-loaded: each is only needed once the user navigates to that specific
+// tab, so keeping them out of the eager import graph shrinks both the
+// production entry chunk and (more noticeably) Vite dev's cold-start
+// transform graph — TaskDashboardView (the default landing tab) and LoginView
+// stay eager since they're needed immediately.
+const Dashboard = lazy(() => import("./components/Dashboard").then(m => ({ default: m.Dashboard })));
+const SettingsView = lazy(() => import("./components/SettingsView").then(m => ({ default: m.SettingsView })));
+const LeadsDatagrid = lazy(() => import("./components/LeadsDatagrid").then(m => ({ default: m.LeadsDatagrid })));
+const ClientsView = lazy(() => import("./components/ClientsView").then(m => ({ default: m.ClientsView })));
+const FilesView = lazy(() => import("./components/FilesView").then(m => ({ default: m.FilesView })));
+const PersonalSettingsView = lazy(() => import("./components/PersonalSettingsView").then(m => ({ default: m.PersonalSettingsView })));
+const EmailView = lazy(() => import("./components/EmailView").then(m => ({ default: m.EmailView })));
+const RagAiView = lazy(() => import("./components/RagAiView").then(m => ({ default: m.RagAiView })));
+const ProjectsView = lazy(() => import("./components/ProjectsView").then(m => ({ default: m.ProjectsView })));
+const MeetingRoomView = lazy(() => import("./components/MeetingRoomView").then(m => ({ default: m.MeetingRoomView })));
+const UnifiedEntryView = lazy(() => import("./components/UnifiedEntryView").then(m => ({ default: m.UnifiedEntryView })));
+const DynamicDashboardView = lazy(() => import("./components/DynamicDashboardView").then(m => ({ default: m.DynamicDashboardView })));
 
 const ShaderGradientAny = ShaderGradient as any;
 
@@ -1793,7 +1799,9 @@ ${log.payload || ''}
           
           <main className="flex-1 p-4 md:p-6 overflow-y-auto max-w-[1600px] mx-auto w-full relative flex flex-col justify-between">
             <div className="shrink-0 w-full">
-              {renderWorkspaceView()}
+              <Suspense fallback={<div className="w-full flex items-center justify-center py-24"><RefreshCw className="w-6 h-6 text-indigo-400 animate-spin" /></div>}>
+                {renderWorkspaceView()}
+              </Suspense>
             </div>
             <footer className="mt-12 pt-4 border-t border-slate-200/50 flex justify-between items-center text-[10px] text-slate-400 select-none font-semibold uppercase tracking-wider">
               <span>{systemName} CRM &bull; Active Node</span>
