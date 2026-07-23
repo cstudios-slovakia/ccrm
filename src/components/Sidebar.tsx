@@ -446,7 +446,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
             {!isCollapsed && (
               <div className="flex flex-col animate-in fade-in duration-300">
-                <span className="font-heading font-bold text-sm leading-none bg-gradient-to-r from-slate-800 to-slate-950 bg-clip-text text-transparent truncate max-w-[150px]">
+                {/* leading-snug, not leading-none: `truncate` clips anything
+                    growing past the line box, which eats accents (Laminám) */}
+                <span className="font-heading font-bold text-sm leading-snug bg-gradient-to-r from-slate-800 to-slate-950 bg-clip-text text-transparent truncate max-w-[150px]">
                   {systemName}
                 </span>
                 <span className="text-[10px] text-slate-400 tracking-wider font-semibold uppercase mt-0.5">

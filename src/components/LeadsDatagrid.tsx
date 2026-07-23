@@ -2731,8 +2731,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                           <span 
                             className="text-[10px] font-black uppercase tracking-wider px-1 truncate"
                             style={{ 
-                              fontSize: "10px", 
-                              lineHeight: "10px",
+                              fontSize: "10px",
+                              // Room for the accents on uppercase Slovak/Hungarian
+                              // labels (Ý, Á, Ô, Ő) — `truncate` clips whatever
+                              // grows past the line box.
+                              lineHeight: "14px",
                               color: textColor
                             }}
                           >
@@ -5098,8 +5101,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                               <span 
                                                 className="text-[10px] font-black uppercase tracking-wider px-1 truncate"
                                                 style={{ 
-                                                  fontSize: "10px", 
-                                                  lineHeight: "10px",
+                                                  fontSize: "10px",
+                                                  // Room for the accents on uppercase Slovak/Hungarian
+                                                  // labels (Ý, Á, Ô, Ő) — `truncate` clips whatever
+                                                  // grows past the line box.
+                                                  lineHeight: "14px",
                                                   color: textColor
                                                 }}
                                               >
