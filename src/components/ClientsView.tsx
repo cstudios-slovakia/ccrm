@@ -918,8 +918,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           id: `ev-${Date.now()}`,
           type: "note",
           timestamp: new Date().toISOString().replace("T", " ").substring(0, 16),
-          title: "Client Registered",
-          content: "Client profile successfully registered inside CRM system."
+          title: t("Client Registered", "Klient zaregistrovaný", "Ügyfél regisztrálva"),
+          content: t(
+            "Client profile successfully registered inside CRM system.",
+            "Profil klienta bol úspešne zaregistrovaný v CRM systéme.",
+            "Az ügyfélprofil sikeresen regisztrálva a CRM rendszerben."
+          )
         }
       ]
     };
@@ -1203,8 +1207,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             id: `email-${folderPrefix}-${mail.uid}`,
             type: "email" as const,
             timestamp: mail.date.substring(0, 16),
-            title: mail.subject || "(No Subject)",
-            content: `From: ${mail.from.name || mail.from.address} <${mail.from.address}>\n\nTo view this email or reply, please open the Mail Client.`,
+            title: mail.subject || t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)"),
+            content: `${t("From:", "Od:", "Feladó:")} ${mail.from.name || mail.from.address} <${mail.from.address}>\n\n${t(
+              "To view this email or reply, please open the Mail Client.",
+              "Ak si chcete e-mail zobraziť alebo naň odpovedať, otvorte poštového klienta.",
+              "Az e-mail megtekintéséhez vagy megválaszolásához nyissa meg a levelezőt."
+            )}`,
             seen: mail.seen,
             isOutgoing: isOutgoing
           };
@@ -1644,7 +1652,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           // Append transcription to block editor
           setNoteBlocks(prev => [
             ...prev,
-            { id: `b-trans-${Date.now()}`, type: "paragraph", content: `<strong>Transcription:</strong> ${data.transcription}` }
+            { id: `b-trans-${Date.now()}`, type: "paragraph", content: `<strong>${t("Transcription:", "Prepis:", "Átirat:")}</strong> ${data.transcription}` }
           ]);
           setEditorKey(prev => prev + 1);
         }
@@ -1924,7 +1932,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         setTimelineEmailDetailBody({
           uid,
           html: "",
-          text: event.content || "No message content."
+          text: event.content || t("No message content.", "Správa nemá obsah.", "Az üzenetnek nincs tartalma.")
         });
       }
     } catch (e) {
@@ -1932,7 +1940,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       setTimelineEmailDetailBody({
         uid: event.id,
         html: "",
-        text: event.content || "No message content."
+        text: event.content || t("No message content.", "Správa nemá obsah.", "Az üzenetnek nincs tartalma.")
       });
     } finally {
       setIsLoadingEmailDetail(false);
@@ -2059,13 +2067,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     const timestampStr = `${logDate} ${logTimeOfEvent}`;
 
     if (logType === "phone") {
-      titleString = "Phone Call Logged";
-      if (!contentString) contentString = "Completed voice call with customer regarding updates.";
+      titleString = t("Phone Call Logged", "Zaznamenaný telefonát", "Rögzített telefonhívás");
+      if (!contentString) contentString = t("Completed voice call with customer regarding updates.", "Uskutočnený telefonát so zákazníkom ohľadom noviniek.", "Telefonhívás az ügyféllel a fejleményekről.");
     } else if (logType === "email") {
-      titleString = "Email Logged";
-      if (!contentString) contentString = "Outbound email correspondence successfully transmitted.";
+      titleString = t("Email Logged", "Zaznamenaný e-mail", "Rögzített e-mail");
+      if (!contentString) contentString = t("Outbound email correspondence successfully transmitted.", "Odchádzajúca e-mailová komunikácia bola úspešne odoslaná.", "A kimenő e-mail sikeresen elküldve.");
     } else if (logType === "note") {
-      titleString = "Internal Note Added";
+      titleString = t("Internal Note Added", "Pridaná interná poznámka", "Belső jegyzet hozzáadva");
       // Note type is rich: saved as JSON stringified blocks
       const hasContent = noteBlocks.some(b => b.content.trim().length > 0);
       if (!hasContent && !uploadedAudioFile) {
@@ -2074,14 +2082,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       }
       contentString = JSON.stringify(noteBlocks);
     } else if (logType === "appointment") {
-      titleString = "Meeting Scheduled";
+      titleString = t("Meeting Scheduled", "Naplánované stretnutie", "Találkozó ütemezve");
       if (!logTime.trim()) {
         (window as any).showToast(t("Please select appointment time!", "Vyberte prosím čas stretnutia!", "Kérjük, válassza ki a találkozó időpontját!"));
         return;
       }
-      if (!contentString) contentString = `Client appointment set for ${logTime.trim()}`;
+      if (!contentString) contentString = `${t("Client appointment set for", "Stretnutie s klientom naplánované na", "Ügyféltalálkozó időpontja")} ${logTime.trim()}`;
     } else if (logType === "offer") {
-      titleString = "Formal Offer Submitted";
+      titleString = t("Formal Offer Submitted", "Odoslaná oficiálna ponuka", "Hivatalos ajánlat elküldve");
       const amt = parseFloat(logAmount);
       if (isNaN(amt) || amt <= 0) {
         (window as any).showToast(t("Offer amount must be a positive number!", "Suma ponuky musí byť kladné číslo!", "Az ajánlat összegének pozitív számnak kell lennie!"));
@@ -2181,7 +2189,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       const autoPMTask: Task = {
         id: `task-${Date.now()}`,
         title: taskTitle,
-        description: logType === "note" ? "Meeting Note Added" : (contentString || `Scheduled for ${logDate} ${logTimeOfEvent}`),
+        description: logType === "note"
+          ? t("Meeting Note Added", "Pridaná poznámka zo stretnutia", "Találkozó jegyzet hozzáadva")
+          : (contentString || `${t("Scheduled for", "Naplánované na", "Ütemezve erre")} ${logDate} ${logTimeOfEvent}`),
         status: taskStates[0] || "todo",
         priority: "medium",
         deadline: deadlineVal,
@@ -2603,7 +2613,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     type="text"
                     required
                     readOnly={!isEditingProfile}
-                    placeholder="e.g. +421 905..."
+                    placeholder={t("e.g. +421 905...", "napr. +421 905...", "pl. +421 905...")}
                     value={profilePhone}
                     onChange={(e) => setProfilePhone(e.target.value)}
                     className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all ${
@@ -2619,7 +2629,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     type="email"
                     required
                     readOnly={!isEditingProfile}
-                    placeholder="e.g. client@email.com"
+                    placeholder={t("e.g. client@email.com", "napr. client@email.com", "pl. client@email.com")}
                     value={profileEmail}
                     onChange={(e) => setProfileEmail(e.target.value)}
                     className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all ${
@@ -2657,7 +2667,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       <input
                         type="text"
                         readOnly={!isEditingProfile}
-                        placeholder={isEditingProfile ? "e.g. Bratislava" : ""}
+                        placeholder={isEditingProfile ? t("e.g. Bratislava", "napr. Bratislava", "pl. Pozsony") : ""}
                         value={profileCity}
                         onChange={(e) => setProfileCity(e.target.value)}
                         className={`w-full px-3 py-1.5 rounded-lg focus:outline-none ${
@@ -2672,7 +2682,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       <input
                         type="text"
                         readOnly={!isEditingProfile}
-                        placeholder={isEditingProfile ? "e.g. 821 09" : ""}
+                        placeholder={isEditingProfile ? t("e.g. 821 09", "napr. 821 09", "pl. 821 09") : ""}
                         value={profilePostalCode}
                         onChange={(e) => setProfilePostalCode(e.target.value)}
                         className={`w-full px-3 py-1.5 rounded-lg focus:outline-none ${
@@ -2802,7 +2812,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         <input
                           type="text"
                           readOnly={!isEditingProfile}
-                          placeholder={isEditingProfile ? "e.g. www.company.sk" : ""}
+                          placeholder={isEditingProfile ? t("e.g. www.company.sk", "napr. www.firma.sk", "pl. www.cegnev.hu") : ""}
                           value={profileWebsite}
                           onChange={(e) => setProfileWebsite(e.target.value)}
                           className={`w-full px-3 py-1.5 rounded-lg focus:outline-none ${
@@ -3154,7 +3164,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                     type="number"
                                     required
                                     min="0"
-                                    placeholder="e.g. 15000"
+                                    placeholder={t("e.g. 15000", "napr. 15000", "pl. 15000")}
                                     value={logAmount}
                                     onChange={(e) => setLogAmount(e.target.value)}
                                     className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:outline-none font-bold text-xs"
@@ -4805,7 +4815,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           type="text"
                           value={newClientCompanyId}
                           onChange={handleCompanyIdChange}
-                          placeholder="e.g. 36123456"
+                          placeholder={t("e.g. 36123456", "napr. 36123456", "pl. 36123456")}
                           className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold pr-9"
                         />
                         {isLoadingSuggestions && activeSuggestionInput === "companyId" && (
@@ -4845,7 +4855,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         type="text"
                         value={newClientTaxId}
                         onChange={(e) => setNewClientTaxId(e.target.value)}
-                        placeholder="e.g. 2021234567"
+                        placeholder={t("e.g. 2021234567", "napr. 2021234567", "pl. 2021234567")}
                         className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold"
                       />
                     </div>
@@ -4859,7 +4869,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         value={newClientVatId}
                         onChange={(e) => setNewClientVatId(e.target.value)}
                         onBlur={() => validateVatCode(newClientVatId, false)}
-                        placeholder="e.g. SK2021234567"
+                        placeholder={t("e.g. SK2021234567", "napr. SK2021234567", "pl. SK2021234567")}
                         className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold"
                       />
                       {renderVatValidation(newClientVatStatus, newClientVatResult)}

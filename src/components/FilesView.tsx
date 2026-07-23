@@ -278,7 +278,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
     } catch (err: any) {
       console.error(err);
       if (typeof (window as any).showToast === "function") {
-        (window as any).showToast(err.message || "Failed to upload files.");
+        (window as any).showToast(err.message || t("Failed to upload files.", "Nahranie súborov zlyhalo.", "A fájlok feltöltése sikertelen."));
       }
     } finally {
       setIsUploading(false);
@@ -329,7 +329,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
     } catch (err: any) {
       console.error(err);
       if (typeof (window as any).showToast === "function") {
-        (window as any).showToast(err.message || "Failed to delete file.");
+        (window as any).showToast(err.message || t("Failed to delete file.", "Vymazanie súboru zlyhalo.", "A fájl törlése sikertelen."));
       }
     }
   };
@@ -899,7 +899,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
                                 value={item.amount}
                                 onChange={(e) => handleQueueChange(item.id, "amount", e.target.value)}
                                 className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-[10px] font-bold focus:outline-none focus:border-amber-700"
-                                placeholder="e.g. 5200"
+                                placeholder={t("e.g. 5200", "napr. 5200", "pl. 5200")}
                               />
                             </div>
                           </div>

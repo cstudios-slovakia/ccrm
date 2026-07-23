@@ -121,6 +121,28 @@ const BLOCK_OPTIONS = [
   { id: "delete", type: "delete" as any, label: "Delete Block", group: "advanced", icon: Trash }
 ];
 
+// Slash-menu labels live next to the option list rather than inside it so
+// BLOCK_OPTIONS stays a plain module constant while the visible text (and the
+// text the slash-search matches against) follows the workspace language.
+const BLOCK_LABELS: Record<string, [string, string, string]> = {
+  paragraph: ["Normal Text", "Bežný text", "Normál szöveg"],
+  h1: ["Heading 1", "Nadpis 1", "Címsor 1"],
+  h2: ["Heading 2", "Nadpis 2", "Címsor 2"],
+  h3: ["Heading 3", "Nadpis 3", "Címsor 3"],
+  todo: ["Checklist", "Zoznam úloh", "Teendőlista"],
+  bullet: ["Bulleted List", "Odrážkový zoznam", "Felsorolás"],
+  number: ["Numbered List", "Číslovaný zoznam", "Számozott lista"],
+  toggle: ["Toggle List", "Rozbaľovací zoznam", "Lenyíló lista"],
+  "banner-info": ["Info Banner", "Informačný banner", "Információs sáv"],
+  "banner-warning": ["Warning Banner", "Varovný banner", "Figyelmeztető sáv"],
+  "banner-success": ["Success Banner", "Banner úspechu", "Sikeres sáv"],
+  "banner-danger": ["Danger Banner", "Banner nebezpečenstva", "Veszély sáv"],
+  code: ["Code Block", "Blok kódu", "Kódblokk"],
+  quote: ["Block Quote", "Citát", "Idézet"],
+  pullquote: ["Pull Quote", "Zvýraznený citát", "Kiemelt idézet"],
+  delete: ["Delete Block", "Odstrániť blok", "Blokk törlése"],
+};
+
 const BANNER_COLORS = ["blue", "green", "yellow", "red", "purple", "orange", "gray"] as const;
 
 const BANNER_THEMES: Record<string, {
@@ -239,9 +261,12 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
   const [slashQuery, setSlashQuery] = useState("");
   const [selectedMenuIndex, setSelectedMenuIndex] = useState(0);
 
-  const filteredOptions = BLOCK_OPTIONS.filter(opt => 
-    opt.label.toLowerCase().includes(slashQuery.toLowerCase())
-  );
+  const filteredOptions = BLOCK_OPTIONS
+    .map(opt => {
+      const label = BLOCK_LABELS[opt.id];
+      return label ? { ...opt, label: t(label[0], label[1], label[2]) } : opt;
+    })
+    .filter(opt => opt.label.toLowerCase().includes(slashQuery.toLowerCase()));
 
   const basicFiltered = filteredOptions.filter(o => o.group === "basic");
   const advancedFiltered = filteredOptions.filter(o => o.group === "advanced");

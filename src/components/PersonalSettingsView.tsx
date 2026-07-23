@@ -528,7 +528,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                             required
                             value={emailSettings.username}
                             onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, username: e.target.value }))}
-                            placeholder="e.g. user@domain.sk"
+                            placeholder={t("e.g. user@domain.sk", "napr. user@domain.sk", "pl. user@domain.sk")}
                             className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none focus:bg-white"
                           />
                         </div>

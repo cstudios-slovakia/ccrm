@@ -170,6 +170,9 @@ function App() {
   const [systemName, setSystemName] = useState("CCRM");
   const [systemLanguage, setSystemLanguage] = useState<"en" | "sk" | "hu">("sk");
   const [userLanguage, setUserLanguage] = useState<"en" | "sk" | "hu">("sk");
+  // Same three-language shorthand every view uses for one-off copy that has no
+  // entry in translations.ts.
+  const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
   // Empty string means "auto" — follow the region's currency (see currencyForRegion) until an admin overrides it.
   const [systemCurrency, setSystemCurrency] = useState<string>("");
 
@@ -300,8 +303,10 @@ function App() {
     "showroom", "facebook", "instagram", "website"
   ]);
 
+  // Placeholders only — the real, language-aware lists are seeded at install
+  // (see ccrm_default_lists in api/schema.php) and arrive with the first sync.
   const [leadCategories, setLeadCategories] = useState<string[]>([
-    "Kitchen Countertops", "Flooring Tiles", "Bathroom Renovation", "Granite Slabs", "Plumbing Services", "Custom Masonry"
+    "Products", "Services"
   ]);
 
   const [leadStateColors, setLeadStateColors] = useState<Record<string, string>>({
@@ -320,12 +325,8 @@ function App() {
   });
 
   const [leadCategoryColors, setLeadCategoryColors] = useState<Record<string, string>>({
-    "Kitchen Countertops": "#f59e0b",
-    "Flooring Tiles": "#10b981",
-    "Bathroom Renovation": "#3b82f6",
-    "Granite Slabs": "#6366f1",
-    "Plumbing Services": "#0ea5e9",
-    "Custom Masonry": "#ec4899"
+    "Products": "#f59e0b",
+    "Services": "#10b981"
   });
 
   const [leadStageGroups, setLeadStageGroups] = useState<Record<string, "new" | "in_progress" | "closed">>({
@@ -422,7 +423,7 @@ function App() {
   };
 
   const clearErrorLogs = async () => {
-    if (!confirm(userLanguage === "sk" ? "Naozaj chcete vymazať všetky chybové záznamy?" : "Are you sure you want to clear all error logs?")) {
+    if (!confirm(t("Are you sure you want to clear all error logs?", "Naozaj chcete vymazať všetky chybové záznamy?", "Biztosan törli az összes hibanaplót?"))) {
       return;
     }
     try {
@@ -431,7 +432,7 @@ function App() {
       if (data.success) {
         setErrorLogs([]);
         if (typeof (window as any).showToast === "function") {
-          (window as any).showToast(userLanguage === "sk" ? "Chybové záznamy boli vymazané." : "Error logs cleared.");
+          (window as any).showToast(t("Error logs cleared.", "Chybové záznamy boli vymazané.", "A hibanaplók törölve."));
         }
       }
     } catch (e) {
@@ -458,7 +459,7 @@ ${log.payload || ''}
 `;
     navigator.clipboard.writeText(text).then(() => {
       if (typeof (window as any).showToast === "function") {
-        (window as any).showToast(userLanguage === "sk" ? "Detaily boli skopírované!" : "Error details copied!");
+        (window as any).showToast(t("Error details copied!", "Detaily boli skopírované!", "A hiba részletei kimásolva!"));
       }
     });
   };
@@ -492,6 +493,17 @@ ${log.payload || ''}
   useEffect(() => {
     setUserLanguage(getUserLanguage(currentUser) || systemLanguage);
   }, [currentUser, systemLanguage]);
+
+  // Mirror the active language into localStorage. Components that render OUTSIDE
+  // the App tree — the ErrorBoundary that wraps it — have no other way to know
+  // which language to crash in.
+  useEffect(() => {
+    try {
+      localStorage.setItem("crm_language", userLanguage);
+    } catch (e) {
+      // Private-mode / quota failures must never break rendering.
+    }
+  }, [userLanguage]);
 
   // Change the active UI language and persist it as the user's personal preference in
   // their DB-backed metadata, so it survives refreshes, re-logins and other devices.
@@ -726,7 +738,11 @@ ${log.payload || ''}
     } catch (err) {
       console.warn("Failed immediate push to sync.php", err);
       if (typeof (window as any).showToast === "function") {
-        (window as any).showToast("Change not saved — network error. Please check your connection and try again.");
+        (window as any).showToast(t(
+          "Change not saved — network error. Please check your connection and try again.",
+          "Zmena sa neuložila — chyba siete. Skontrolujte pripojenie a skúste to znova.",
+          "A módosítás nem mentődött el — hálózati hiba. Ellenőrizze a kapcsolatot, és próbálja újra."
+        ));
       }
     } finally {
       activePushesRef.current = Math.max(0, activePushesRef.current - 1);
@@ -912,7 +928,7 @@ ${log.payload || ''}
       return u;
     }));
     if (typeof (window as any).showToast === "function") {
-      (window as any).showToast(userLanguage === "sk" ? "Predvolená úvodná stránka nastavená." : "Default landing page set.");
+      (window as any).showToast(t("Default landing page set.", "Predvolená úvodná stránka nastavená.", "Az alapértelmezett kezdőoldal beállítva."));
     }
   };
 
@@ -1191,7 +1207,7 @@ ${log.payload || ''}
     const currencyCode = systemCurrency || null;
     const activeUser = currentUser || users[0] || {
       id: "guest",
-      name: "Guest User",
+      name: t("Guest User", "Hosť", "Vendég"),
       email: "guest@example.com",
       role: "Viewer",
       color: "#6366f1",
@@ -1665,7 +1681,7 @@ ${log.payload || ''}
             CCRM
           </h2>
           <p className="text-[10px] font-black text-white/90 uppercase tracking-widest mt-3.5 animate-pulse [text-shadow:0_1px_5px_rgba(30,27,75,0.6)]">
-            Syncing database connection...
+            {t("Syncing database connection...", "Pripájam sa k databáze...", "Kapcsolódás az adatbázishoz...")}
           </p>
         </div>
       </div>
@@ -1674,7 +1690,7 @@ ${log.payload || ''}
 
   const displayUser = currentUser || users[0] || {
     id: "guest",
-    name: "Guest User",
+    name: t("Guest User", "Hosť", "Vendég"),
     email: "guest@example.com",
     role: "Viewer",
     color: "#6366f1",
@@ -1858,7 +1874,7 @@ ${log.payload || ''}
             {/* Header */}
             <div className="flex items-center justify-between border-b border-slate-150 pb-3 shrink-0">
               <div className="min-w-0 pr-4">
-                <span className="text-[10px] font-black uppercase text-amber-700 tracking-wider">File Preview</span>
+                <span className="text-[10px] font-black uppercase text-amber-700 tracking-wider">{t("File Preview", "Náhľad súboru", "Fájl előnézet")}</span>
                 <h3 className="text-sm font-heading font-black uppercase tracking-tight truncate">{previewFile.name}</h3>
               </div>
               <div className="flex items-center gap-2">
@@ -1867,7 +1883,7 @@ ${log.payload || ''}
                   download={previewFile.name}
                   className="px-3 py-1.5 rounded-xl bg-amber-700 hover:bg-amber-600 border border-amber-800 text-white text-[10px] font-black uppercase flex items-center gap-1 transition-all"
                 >
-                  Download
+                  {t("Download", "Stiahnuť", "Letöltés")}
                 </a>
                 <button
                   type="button"
@@ -1909,8 +1925,8 @@ ${log.payload || ''}
                 return (
                   <div className="text-center p-8 text-slate-500">
                     <p className="text-3xl mb-2">📄</p>
-                    <p className="text-xs font-bold uppercase tracking-wider">Preview not supported for this file format.</p>
-                    <p className="text-[10px] text-slate-400 mt-1">Please use the Download button above to view it offline.</p>
+                    <p className="text-xs font-bold uppercase tracking-wider">{t("Preview not supported for this file format.", "Náhľad nie je podporovaný pre tento formát súboru.", "Ehhez a fájlformátumhoz nem érhető el előnézet.")}</p>
+                    <p className="text-[10px] text-slate-400 mt-1">{t("Please use the Download button above to view it offline.", "Použite tlačidlo Stiahnuť vyššie a otvorte súbor offline.", "A fenti Letöltés gombbal nyithatja meg offline.")}</p>
                   </div>
                 );
               })()}
@@ -1926,7 +1942,7 @@ ${log.payload || ''}
             <div className="flex items-center gap-1.5 text-red-650">
               <AlertOctagon className="h-4.5 w-4.5 text-red-550 animate-pulse" />
               <span className="font-heading font-extrabold text-slate-900 uppercase tracking-wider text-[10.5px]">
-                {userLanguage === "sk" ? "Chyby na pozadí" : "Background Errors"}
+                {t("Background Errors", "Chyby na pozadí", "Háttérhibák")}
               </span>
             </div>
             <div className="flex items-center gap-1">
@@ -1934,7 +1950,7 @@ ${log.payload || ''}
                 type="button"
                 onClick={fetchErrorLogs}
                 className="p-1.5 hover:bg-slate-200 text-slate-500 hover:text-slate-850 rounded-xl transition-all cursor-pointer"
-                title="Refresh"
+                title={t("Refresh", "Obnoviť", "Frissítés")}
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${isLoadingLogs ? 'animate-spin' : ''}`} />
               </button>
@@ -1942,7 +1958,7 @@ ${log.payload || ''}
                 type="button"
                 onClick={clearErrorLogs}
                 className="p-1.5 hover:bg-red-50 text-red-650 hover:text-red-800 rounded-xl transition-all cursor-pointer"
-                title="Clear All"
+                title={t("Clear All", "Vymazať všetko", "Összes törlése")}
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
@@ -1956,7 +1972,7 @@ ${log.payload || ''}
               </div>
             ) : errorLogs.length === 0 ? (
               <div className="text-center py-12 text-slate-400 font-bold text-[10.5px]">
-                {userLanguage === "sk" ? "Žiadne chyby na pozadí" : "No background errors"}
+                {t("No background errors", "Žiadne chyby na pozadí", "Nincsenek háttérhibák")}
               </div>
             ) : (
               errorLogs.map((log: any) => (
@@ -1994,7 +2010,7 @@ ${log.payload || ''}
               <div className="flex items-center gap-2 text-red-650">
                 <AlertOctagon className="h-5 w-5 shrink-0" />
                 <h3 className="font-heading font-extrabold text-slate-900 uppercase tracking-wider text-xs">
-                  {userLanguage === "sk" ? "Detail výnimky / chyby" : "Exception / Error Details"}
+                  {t("Exception / Error Details", "Detail výnimky / chyby", "Kivétel / hiba részletei")}
                 </h3>
               </div>
               <div className="flex items-center gap-2">
@@ -2004,7 +2020,7 @@ ${log.payload || ''}
                   className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 font-bold"
                 >
                   <Copy className="h-3.5 w-3.5" />
-                  {userLanguage === "sk" ? "Kopírovať" : "Copy"}
+                  {t("Copy", "Kopírovať", "Másolás")}
                 </button>
                 <button
                   type="button"
@@ -2018,21 +2034,21 @@ ${log.payload || ''}
             <div className="p-6 overflow-y-auto space-y-4 font-medium text-slate-750 text-xs">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-b border-slate-100 pb-4">
                 <div>
-                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{userLanguage === "sk" ? "Dátum a čas" : "Date & Time"}</span>
+                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Date & Time", "Dátum a čas", "Dátum és idő")}</span>
                   <span className="font-mono text-[10.5px] text-slate-700 font-bold">{selectedLog.created_at}</span>
                 </div>
                 <div>
-                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{userLanguage === "sk" ? "Metóda & URI" : "Method & URI"}</span>
+                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Method & URI", "Metóda a URI", "Metódus és URI")}</span>
                   <span className="font-mono text-[10.5px] text-slate-750 font-bold">{selectedLog.request_method} {selectedLog.request_uri}</span>
                 </div>
                 <div>
-                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{userLanguage === "sk" ? "Súbor a riadok" : "File & Line"}</span>
+                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("File & Line", "Súbor a riadok", "Fájl és sor")}</span>
                   <span className="font-mono text-[10.5px] text-slate-700 font-bold">{selectedLog.file ? `${selectedLog.file.split('/').pop()}:${selectedLog.line}` : 'N/A'}</span>
                 </div>
               </div>
 
               <div className="space-y-1">
-                <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{userLanguage === "sk" ? "Chybová správa" : "Error Message"}</span>
+                <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Error Message", "Chybová správa", "Hibaüzenet")}</span>
                 <div className="p-3 bg-red-50 text-red-800 rounded-xl font-mono text-[11px] font-bold border border-red-100 whitespace-pre-wrap leading-relaxed">
                   {selectedLog.message}
                 </div>
@@ -2040,7 +2056,7 @@ ${log.payload || ''}
 
               {selectedLog.file && (
                 <div className="space-y-1">
-                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{userLanguage === "sk" ? "Úplná cesta k súboru" : "Full File Path"}</span>
+                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Full File Path", "Úplná cesta k súboru", "Teljes fájlútvonal")}</span>
                   <div className="p-2.5 bg-slate-50 text-slate-600 rounded-xl font-mono text-[10.5px] border border-slate-150">
                     {selectedLog.file} (Line {selectedLog.line})
                   </div>
@@ -2049,7 +2065,7 @@ ${log.payload || ''}
 
               {selectedLog.trace && (
                 <div className="space-y-1">
-                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">Stack Trace</span>
+                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Stack Trace", "Výpis zásobníka", "Hívási verem")}</span>
                   <pre className="p-4 bg-slate-900 text-slate-100 rounded-2xl font-mono text-[10px] overflow-x-auto whitespace-pre leading-relaxed border border-slate-800 max-h-64">
                     {selectedLog.trace}
                   </pre>
@@ -2058,7 +2074,7 @@ ${log.payload || ''}
 
               {selectedLog.payload && (
                 <div className="space-y-1">
-                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">Request Payload</span>
+                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Request Payload", "Telo požiadavky", "Kérés tartalma")}</span>
                   <pre className="p-4 bg-slate-900 text-slate-100 rounded-2xl font-mono text-[10px] overflow-x-auto whitespace-pre leading-relaxed border border-slate-800 max-h-48">
                     {selectedLog.payload}
                   </pre>

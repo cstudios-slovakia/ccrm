@@ -112,10 +112,10 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
         setPromptText("");
         setIsSaved(false);
       } else {
-        setErrorMsg(json.message || "Failed to generate dashboard layout.");
+        setErrorMsg(json.message || t("Failed to generate dashboard layout.", "Vygenerovanie rozloženia nástenky zlyhalo.", "Az irányítópult elrendezésének létrehozása sikertelen."));
       }
     } catch (err: any) {
-      setErrorMsg(err.message || "Connection to AI agent failed.");
+      setErrorMsg(err.message || t("Connection to AI agent failed.", "Pripojenie k AI agentovi zlyhalo.", "Az AI ügynökhöz való kapcsolódás sikertelen."));
     } finally {
       setIsGenerating(false);
     }
@@ -554,7 +554,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 {/* Metric Card */}
                 <div className="p-4 border border-slate-150 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
                   <div className="p-2.5 rounded-xl bg-white border border-slate-200 flex flex-col justify-between shrink-0 shadow-sm w-24 h-16">
-                    <span className="text-[7px] font-bold text-slate-400 uppercase tracking-wide truncate">Total Leads</span>
+                    <span className="text-[7px] font-bold text-slate-400 uppercase tracking-wide truncate">{t("Total Leads", "Počet leadov", "Leadek száma")}</span>
                     <span className="text-base font-black text-slate-850">142</span>
                   </div>
                   <div>
@@ -659,7 +659,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                     <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                       <div className="h-full bg-emerald-500 w-3/4 rounded-full" />
                     </div>
-                    <span className="text-[8px] font-black text-emerald-600 text-center">75% Goal</span>
+                    <span className="text-[8px] font-black text-emerald-600 text-center">{t("75% Goal", "75 % cieľa", "75% cél")}</span>
                   </div>
                   <div>
                     <h5 className="text-xs font-bold text-slate-800">{t("Progress & Goals", "Ukazovatele pokroku (Gauge)", "Célok és Folyamatjelzők")}</h5>

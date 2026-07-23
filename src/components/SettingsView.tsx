@@ -741,24 +741,40 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         if (!smtpHost || !smtpUser || !senderEmail) {
           setTestResult({
             status: "error",
-            message: "SMTP handshake failed. Missing host address, username, or sender email envelope."
+            message: t(
+              "SMTP handshake failed. Missing host address, username, or sender email envelope.",
+              "SMTP spojenie zlyhalo. Chýba adresa hostiteľa, používateľské meno alebo e-mail odosielateľa.",
+              "Az SMTP kapcsolat sikertelen. Hiányzik a kiszolgáló címe, a felhasználónév vagy a feladó e-mail címe."
+            )
           });
         } else {
           setTestResult({
             status: "success",
-            message: `SMTP envelope delivered! Successfully connected to ${smtpHost}:${smtpPort} (${smtpSecure.toUpperCase()}) and sent test envelope to ${testRecipient}.`
+            message: t(
+              `SMTP envelope delivered! Successfully connected to ${smtpHost}:${smtpPort} (${smtpSecure.toUpperCase()}) and sent test envelope to ${testRecipient}.`,
+              `Testovací e-mail odoslaný! Pripojenie na ${smtpHost}:${smtpPort} (${smtpSecure.toUpperCase()}) prebehlo úspešne a správa bola doručená na ${testRecipient}.`,
+              `A teszt e-mail elküldve! Sikeres kapcsolódás a(z) ${smtpHost}:${smtpPort} (${smtpSecure.toUpperCase()}) kiszolgálóhoz, az üzenet elment ide: ${testRecipient}.`
+            )
           });
         }
       } else {
         if (exchAuth === "oauth" && (!exchClientId || !exchTenantId)) {
           setTestResult({
             status: "error",
-            message: "Exchange Server authentication failed. Missing Client ID or Tenant ID for OAuth 2.0 connection workflow."
+            message: t(
+              "Exchange Server authentication failed. Missing Client ID or Tenant ID for OAuth 2.0 connection workflow.",
+              "Overenie voči Exchange serveru zlyhalo. Pre OAuth 2.0 chýba Client ID alebo Tenant ID.",
+              "Az Exchange kiszolgáló hitelesítése sikertelen. Az OAuth 2.0 kapcsolathoz hiányzik a Client ID vagy a Tenant ID."
+            )
           });
         } else {
           setTestResult({
             status: "success",
-            message: `Microsoft Exchange handshake verified! Autodiscovered OWA endpoints, completed authentication via ${exchAuth.toUpperCase()}, and pushed message to ${testRecipient} from mailbox ${exchMailbox}.`
+            message: t(
+              `Microsoft Exchange handshake verified! Autodiscovered OWA endpoints, completed authentication via ${exchAuth.toUpperCase()}, and pushed message to ${testRecipient} from mailbox ${exchMailbox}.`,
+              `Spojenie s Microsoft Exchange overené! Endpointy OWA boli nájdené, overenie cez ${exchAuth.toUpperCase()} prebehlo úspešne a správa bola odoslaná na ${testRecipient} zo schránky ${exchMailbox}.`,
+              `A Microsoft Exchange kapcsolat ellenőrizve! Az OWA végpontok megtalálva, a(z) ${exchAuth.toUpperCase()} hitelesítés sikeres, az üzenet elment ide: ${testRecipient} a(z) ${exchMailbox} postafiókból.`
+            )
           });
         }
       }
@@ -831,7 +847,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setIsValidating(false);
       setValidationResult({
         success: false,
-        message: "Failed to communicate with vector DB validation API."
+        message: t(
+          "Failed to communicate with vector DB validation API.",
+          "Nepodarilo sa spojiť s validačným API vektorovej databázy.",
+          "Nem sikerült kapcsolódni a vektoradatbázis ellenőrző API-jához."
+        )
       });
       setVectorDbValidated(false);
     }
@@ -1393,7 +1413,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       role: newUserRole,
       color: "#3b82f6", // default blue preset
       activityLog: [
-        { id: "log_" + Date.now(), action: "Account provisioned", timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16), details: "User account provisioned inside secure Settings Console", type: "system" }
+        { id: "log_" + Date.now(), action: "Account provisioned", timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16), details: t("User account provisioned inside secure Settings Console", "Používateľské konto bolo vytvorené v zabezpečenej konzole nastavení", "A felhasználói fiók a biztonságos beállítási konzolban jött létre"), type: "system" }
       ]
     };
 
@@ -1653,19 +1673,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   // Filter allowed tabs based on permissions
   const allowedTabs = ([
-    { id: "branding", label: "⚙️ General Config", permKey: "general_config" as const },
-    { id: "projects", label: "💼 Project Settings", permKey: "general_config" as const },
-    { id: "unified", label: "🗂️ Unified Entries", permKey: "general_config" as const },
-    { id: "sources", label: "🚀 Traffic & Categories", permKey: "traffic_sources" as const },
-    { id: "states", label: "🏷️ Pipeline Stages", permKey: "pipeline_stages" as const },
-    { id: "managers", label: "👥 Users & PMs", permKey: "pm_managers" as const },
-    { id: "rbac", label: "🛡️ Roles & RBAC", permKey: "pm_managers" as const },
-    { id: "email", label: "📧 Email Server", permKey: "general_config" as const },
-    { id: "api", label: "🔌 Public API", permKey: "general_config" as const },
-    { id: "ads", label: "📢 Ads APIs & Campaigns", permKey: "general_config" as const },
-    { id: "ai", label: "🧠 AI Integrations", permKey: "ai_config" as const },
-    { id: "errors", label: "⚠️ Error Logs", permKey: "general_config" as const },
-    { id: "danger", label: "⚠️ System Reset", permKey: "system_reset" as const }
+    { id: "branding", label: getTranslation(userLanguage, "settings.tab.branding"), permKey: "general_config" as const },
+    { id: "projects", label: getTranslation(userLanguage, "settings.tab.projects"), permKey: "general_config" as const },
+    { id: "unified", label: getTranslation(userLanguage, "settings.tab.unified"), permKey: "general_config" as const },
+    { id: "sources", label: getTranslation(userLanguage, "settings.tab.sources"), permKey: "traffic_sources" as const },
+    { id: "states", label: getTranslation(userLanguage, "settings.tab.states"), permKey: "pipeline_stages" as const },
+    { id: "managers", label: getTranslation(userLanguage, "settings.tab.managers"), permKey: "pm_managers" as const },
+    { id: "rbac", label: getTranslation(userLanguage, "settings.tab.rbac"), permKey: "pm_managers" as const },
+    { id: "email", label: getTranslation(userLanguage, "settings.tab.email"), permKey: "general_config" as const },
+    { id: "api", label: getTranslation(userLanguage, "settings.tab.api"), permKey: "general_config" as const },
+    { id: "ads", label: getTranslation(userLanguage, "settings.tab.ads"), permKey: "general_config" as const },
+    { id: "ai", label: getTranslation(userLanguage, "settings.tab.ai"), permKey: "ai_config" as const },
+    { id: "errors", label: getTranslation(userLanguage, "settings.tab.errors"), permKey: "general_config" as const },
+    { id: "danger", label: getTranslation(userLanguage, "settings.tab.danger"), permKey: "system_reset" as const }
   ] as const).filter(tab => getPermission(tab.permKey) !== "nothing");
   // Read-only alert component
   const renderReadOnlyBanner = (permKey: keyof RolePermission["permissions"]) => {
@@ -2150,7 +2170,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     value={tempName}
                     onChange={(e) => setTempName(e.target.value)}
                     className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-heading font-bold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:bg-slate-50 disabled:text-slate-400"
-                    placeholder="e.g. CCRM"
+                    placeholder={t("e.g. CCRM", "napr. CCRM", "pl. CCRM")}
                   />
                   <p className="text-[10px] text-slate-400">
                     {getTranslation(userLanguage, "settings.general.system_name_desc")}
@@ -2673,7 +2693,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         required
                         value={newManager}
                         onChange={(e) => setNewManager(e.target.value)}
-                        placeholder="e.g. Sara Nováková"
+                        placeholder={t("e.g. Sara Nováková", "napr. Sara Nováková", "pl. Sara Nováková")}
                         className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
                       />
                     </div>
@@ -2684,7 +2704,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         required
                         value={newUserEmail}
                         onChange={(e) => setNewUserEmail(e.target.value)}
-                        placeholder="e.g. sara@crm.com"
+                        placeholder={t("e.g. sara@crm.com", "napr. sara@crm.com", "pl. sara@crm.com")}
                         className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
                       />
                     </div>
@@ -3739,7 +3759,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         type="text"
                         value={newTaskState}
                         onChange={(e) => setNewTaskState(e.target.value)}
-                        placeholder="e.g. Pending review"
+                        placeholder={t("e.g. Pending review", "napr. Čaká na kontrolu", "pl. Ellenőrzésre vár")}
                         className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:outline-none font-bold text-xs"
                       />
                     </div>
@@ -3798,7 +3818,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         localStorage.setItem("ads_meta_app_id", e.target.value);
                       }}
                       onBlur={syncAdsCredentialsToDb}
-                      placeholder="e.g. 8493029104928"
+                      placeholder={t("e.g. 8493029104928", "napr. 8493029104928", "pl. 8493029104928")}
                       className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
                     />
                   </div>
@@ -3855,7 +3875,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           localStorage.setItem("ads_google_dev_token", e.target.value);
                         }}
                         onBlur={syncAdsCredentialsToDb}
-                        placeholder="e.g. AbC12D34E5..."
+                        placeholder={t("e.g. AbC12D34E5...", "napr. AbC12D34E5...", "pl. AbC12D34E5...")}
                         className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
                       />
                     </div>
@@ -4650,10 +4670,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     </div>
                     <div>
                       <h3 className="text-sm font-heading font-extrabold text-slate-900 uppercase tracking-wider">
-                        Vector Database Connected
+                        {t("Vector Database Connected", "Vektorová databáza pripojená", "Vektoradatbázis csatlakoztatva")}
                       </h3>
                       <p className="text-[10px] text-slate-500 font-semibold mt-0.5">
-                        Your RAG pipeline backend is successfully configured and active.
+                        {t(
+                          "Your RAG pipeline backend is successfully configured and active.",
+                          "Backend vašej RAG pipeline je úspešne nakonfigurovaný a aktívny.",
+                          "A RAG folyamat háttérrendszere sikeresen be van állítva és aktív."
+                        )}
                       </p>
                     </div>
                   </div>
@@ -4873,7 +4897,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               type="text"
                               value={mariaDbHost}
                               onChange={(e) => setMariaDbHost(e.target.value)}
-                              placeholder="e.g. localhost or vector_db"
+                              placeholder={t("e.g. localhost or vector_db", "napr. localhost alebo vector_db", "pl. localhost vagy vector_db")}
                               className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
                             />
                           </div>
@@ -4883,7 +4907,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               type="text"
                               value={mariaDbPort}
                               onChange={(e) => setMariaDbPort(e.target.value)}
-                              placeholder="3306 or 3307"
+                              placeholder={t("3306 or 3307", "3306 alebo 3307", "3306 vagy 3307")}
                               className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
                             />
                           </div>
@@ -4893,7 +4917,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               type="text"
                               value={mariaDbUser}
                               onChange={(e) => setMariaDbUser(e.target.value)}
-                              placeholder="e.g. vector_user"
+                              placeholder={t("e.g. vector_user", "napr. vector_user", "pl. vector_user")}
                               className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
                             />
                           </div>
@@ -4912,7 +4936,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               type="text"
                               value={mariaDbName}
                               onChange={(e) => setMariaDbName(e.target.value)}
-                              placeholder="e.g. vector_db"
+                              placeholder={t("e.g. vector_db", "napr. vector_db", "pl. vector_db")}
                               className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
                             />
                           </div>
@@ -4932,7 +4956,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               type="text"
                               value={qdrantUrl}
                               onChange={(e) => setQdrantUrl(e.target.value)}
-                              placeholder="e.g. http://localhost:6333"
+                              placeholder={t("e.g. http://localhost:6333", "napr. http://localhost:6333", "pl. http://localhost:6333")}
                               className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
                             />
                           </div>
@@ -4970,7 +4994,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               type="text"
                               value={pineconeIndex}
                               onChange={(e) => setPineconeIndex(e.target.value)}
-                              placeholder="e.g. laminam-kb"
+                              placeholder={t("e.g. laminam-kb", "napr. laminam-kb", "pl. laminam-kb")}
                               className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
                             />
                           </div>

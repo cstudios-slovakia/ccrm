@@ -422,7 +422,7 @@ export const Header: React.FC<HeaderProps> = ({
             className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 border border-amber-600 text-white text-[10px] font-black uppercase tracking-wider shadow-md shadow-amber-500/25 transition-all flex items-center gap-1 hover:scale-[1.02] shrink-0"
           >
             <span className="h-2 w-2 rounded-full bg-white animate-pulse" />
-            DEMO MODE
+            {t("DEMO MODE", "DEMO REŽIM", "DEMÓ MÓD")}
           </a>
         )}
 

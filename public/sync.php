@@ -551,18 +551,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         ];
     }
 
-    // Reconstruct settings from system_settings DB table
-    $leadStates = isset($settings['LEAD_STATES']) ? json_decode($settings['LEAD_STATES'], true) : ["new", "contacted", "offer sent", "accepted", "rejected"];
-    $leadSources = isset($settings['LEAD_SOURCES']) ? json_decode($settings['LEAD_SOURCES'], true) : ["showroom", "facebook", "instagram", "website"];
-    $leadCategories = isset($settings['LEAD_CATEGORIES']) ? json_decode($settings['LEAD_CATEGORIES'], true) : ["Kitchen Countertops", "Flooring Tiles", "Bathroom Renovation", "Granite Slabs", "Plumbing Services", "Custom Masonry"];
+    // Reconstruct settings from system_settings DB table. Anything not stored yet
+    // falls back to the defaults for the installation language, so an unseeded
+    // list never shows up as English in a Slovak/Hungarian workspace.
+    $defaultLists = ccrm_default_lists($settings['SYSTEM_LANGUAGE'] ?? 'sk');
+    $leadStates = isset($settings['LEAD_STATES']) ? json_decode($settings['LEAD_STATES'], true) : $defaultLists['leadStates'];
+    $leadSources = isset($settings['LEAD_SOURCES']) ? json_decode($settings['LEAD_SOURCES'], true) : $defaultLists['leadSources'];
+    $leadCategories = isset($settings['LEAD_CATEGORIES']) ? json_decode($settings['LEAD_CATEGORIES'], true) : $defaultLists['leadCategories'];
     $leadStateColors = isset($settings['LEAD_STATE_COLORS']) ? json_decode($settings['LEAD_STATE_COLORS'], true) : [];
     $leadSourceColors = isset($settings['LEAD_SOURCE_COLORS']) ? json_decode($settings['LEAD_SOURCE_COLORS'], true) : [];
     $leadCategoryColors = isset($settings['LEAD_CATEGORY_COLORS']) ? json_decode($settings['LEAD_CATEGORY_COLORS'], true) : [];
     $leadStageGroups = isset($settings['LEAD_STAGE_GROUPS']) ? json_decode($settings['LEAD_STAGE_GROUPS'], true) : [];
     $leadStateParents = isset($settings['LEAD_STATE_PARENTS']) ? json_decode($settings['LEAD_STATE_PARENTS'], true) : (object)[];
     $leadStateFollowUp = isset($settings['LEAD_STATE_FOLLOWUP']) ? json_decode($settings['LEAD_STATE_FOLLOWUP'], true) : (object)[];
-    $taskStates = isset($settings['TASK_STATES']) ? json_decode($settings['TASK_STATES'], true) : ["New", "In progress", "Blocked", "Done"];
+    $taskStates = isset($settings['TASK_STATES']) ? json_decode($settings['TASK_STATES'], true) : $defaultLists['taskStates'];
     $taskStateColors = isset($settings['TASK_STATE_COLORS']) ? json_decode($settings['TASK_STATE_COLORS'], true) : [];
+    // An empty colour map would make every task state render in the same grey.
+    // Fall back to the workflow palette keyed by whatever states are configured.
+    if (!is_array($taskStateColors) || !$taskStateColors) {
+        $taskStateColors = ccrm_default_task_state_colors(is_array($taskStates) ? $taskStates : []);
+    }
     $integrationsConfig = isset($settings['INTEGRATIONS_CONFIG']) ? json_decode($settings['INTEGRATIONS_CONFIG'], true) : (object)[];
     // SECURITY: never send real secret values to the browser — mask them. The
     // frontend only needs to know a secret is set (e.g. "OpenAI configured");

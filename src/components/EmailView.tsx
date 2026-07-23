@@ -1464,7 +1464,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                   <div className="text-left">
                     <h3 className="text-sm font-heading font-black text-slate-900 uppercase tracking-tight">{selectedEmail.subject || t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)")}</h3>
                     <p className="text-[10px] text-slate-500 font-bold mt-1">
-                      From: <strong className="text-slate-800">{selectedEmail.from.name || selectedEmail.from.address}</strong> &lt;{selectedEmail.from.address}&gt;
+                      {t("From:", "Od:", "Feladó:")} <strong className="text-slate-800">{selectedEmail.from.name || selectedEmail.from.address}</strong> &lt;{selectedEmail.from.address}&gt;
                     </p>
                   </div>
                   <div className="flex gap-2">

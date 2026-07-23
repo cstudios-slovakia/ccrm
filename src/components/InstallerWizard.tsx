@@ -115,10 +115,10 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
       if (res.ok && data && data.success) {
         setStep(2);
       } else {
-        setError((data && data.message) || (lang === "sk" ? "Nepodarilo sa overiť pripojenie. Skontrolujte parametre." : "Connection validation failed. Check settings."));
+        setError((data && data.message) || (lang === "sk" ? "Nepodarilo sa overiť pripojenie. Skontrolujte parametre." : lang === "hu" ? "A kapcsolat ellenőrzése sikertelen. Ellenőrizze a beállításokat." : "Connection validation failed. Check settings."));
       }
     } catch (err) {
-      setError(lang === "sk" ? "Nepodarilo sa overiť pripojenie. Skontrolujte parametre." : "Connection validation failed. Check settings.");
+      setError(lang === "sk" ? "Nepodarilo sa overiť pripojenie. Skontrolujte parametre." : lang === "hu" ? "A kapcsolat ellenőrzése sikertelen. Ellenőrizze a beállításokat." : "Connection validation failed. Check settings.");
     } finally {
       setIsLoading(false);
     }
@@ -147,10 +147,10 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
         }
         setStep(3);
       } else {
-        setError(data.message || "Setup failed.");
+        setError(data.message || (lang === "sk" ? "Inštalácia zlyhala." : lang === "hu" ? "A telepítés sikertelen." : "Setup failed."));
       }
     } catch (err) {
-      setError(lang === "sk" ? "Inštalačný proces zlyhal." : "Installation process failed.");
+      setError(lang === "sk" ? "Inštalačný proces zlyhal." : lang === "hu" ? "A telepítési folyamat sikertelen." : "Installation process failed.");
     } finally {
       setIsLoading(false);
     }

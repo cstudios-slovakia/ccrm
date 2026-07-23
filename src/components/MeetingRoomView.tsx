@@ -453,7 +453,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
           const finalTitle = newTitle.trim() || t("Untitled Note", "Nepomenovaný zápis", "Névtelen jegyzet");
           let primaryLeadId = "";
-          let primaryLeadName = "General Contact";
+          let primaryLeadName = t("General Contact", "Všeobecný kontakt", "Általános kapcsolat");
           if (attachedClients.length > 0) {
             const firstClient = leads.find((l) => String(l.id) === attachedClients[0]);
             if (firstClient) {
@@ -1063,7 +1063,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
       // Final fallback if the document is totally empty of content
       if (localSuggestions.length === 0) {
-        localSuggestions.push("Follow up on topics discussed in meeting");
+        localSuggestions.push(t("Follow up on topics discussed in meeting", "Nadviazať na témy prebrané na stretnutí", "Utánkövetés a megbeszélésen érintett témákhoz"));
       }
 
       const finalSuggestions = localSuggestions.slice(0, 4);
@@ -1088,7 +1088,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
         aiSummary: {
           summary: localSummary,
           sentiment: "neutral" as const,
-          topics: ["Meeting Note"],
+          topics: [t("Meeting Note", "Poznámka zo stretnutia", "Találkozó jegyzet")],
           actionItems: finalSuggestions
         }
       };
@@ -1169,30 +1169,37 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
       sentiment = "negative";
     }
 
-    const topics = ["Budget & Pricing", "Project Timeline"];
+    const topics = [
+      t("Budget & Pricing", "Rozpočet a ceny", "Költségvetés és árazás"),
+      t("Project Timeline", "Harmonogram projektu", "Projekt ütemterve")
+    ];
     if (textToAnalyze.includes("color") || textToAnalyze.includes("design") || textToAnalyze.includes("aesthetic")) {
-      topics.push("Design System");
+      topics.push(t("Design System", "Dizajn a vzhľad", "Dizájnrendszer"));
     }
     if (textToAnalyze.includes("contract") || textToAnalyze.includes("sign")) {
-      topics.push("Legal & Contracts");
+      topics.push(t("Legal & Contracts", "Právo a zmluvy", "Jog és szerződések"));
     }
     if (textToAnalyze.includes("technical") || textToAnalyze.includes("api") || textToAnalyze.includes("code")) {
-      topics.push("Technical Spec");
+      topics.push(t("Technical Spec", "Technická špecifikácia", "Műszaki specifikáció"));
     }
 
     const actionItems = [
-      "Send follow-up email with updated project metrics",
-      "Update contract details as discussed in the call"
+      t("Send follow-up email with updated project metrics", "Poslať nadväzujúci e-mail s aktualizovanými údajmi projektu", "Utánkövető e-mail küldése a frissített projektadatokkal"),
+      t("Update contract details as discussed in the call", "Aktualizovať detaily zmluvy podľa dohody z hovoru", "A szerződés részleteinek frissítése a hívásban egyeztetettek szerint")
     ];
     if (textToAnalyze.includes("call") || textToAnalyze.includes("phone")) {
-      actionItems.push("Schedule next progress call next Tuesday");
+      actionItems.push(t("Schedule next progress call next Tuesday", "Naplánovať ďalší kontrolný hovor na budúci utorok", "A következő státuszhívás ütemezése jövő keddre"));
     }
     if (textToAnalyze.includes("design") || textToAnalyze.includes("mock")) {
-      actionItems.push("Review UI design mocks internally");
+      actionItems.push(t("Review UI design mocks internally", "Interne prejsť návrhy používateľského rozhrania", "A UI dizájntervek belső átnézése"));
     }
 
     const aiSummary = newSummaryGenerated && newAiSummary ? newAiSummary : {
-      summary: `This meeting focused on clarifying primary requirements. The client discussed their budget parameters and established critical milestone dates. ${plainTextNotes.substring(0, 120)}...`,
+      summary: `${t(
+        "This meeting focused on clarifying primary requirements. The client discussed their budget parameters and established critical milestone dates.",
+        "Stretnutie sa sústredilo na vyjasnenie hlavných požiadaviek. Klient prebral rozpočet a stanovili sa kľúčové termíny.",
+        "A megbeszélés a fő követelmények tisztázásáról szólt. Az ügyfél átbeszélte a költségkeretet, és rögzítettük a fő határidőket."
+      )} ${plainTextNotes.substring(0, 120)}...`,
       actionItems,
       sentiment,
       topics
@@ -1287,7 +1294,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
       title: newTitle.trim() || t("Untitled Note", "Nepomenovaný zápis", "Névtelen jegyzet"),
       date: newDate,
       leadId: attachedLeads[0] || "",
-      leadName: leads.find(l => String(l.id) === attachedLeads[0])?.name || "General Contact",
+      leadName: leads.find(l => String(l.id) === attachedLeads[0])?.name || t("General Contact", "Všeobecný kontakt", "Általános kapcsolat"),
       duration: 0,
       notes: JSON.stringify(newBlocks),
       attachedLeads,

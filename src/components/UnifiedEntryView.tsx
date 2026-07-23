@@ -412,7 +412,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                 <span className="font-bold">{linkedClient.city || "-"}</span>
               </div>
               <div>
-                <span className="text-[10px] text-emerald-600 block">Email</span>
+                <span className="text-[10px] text-emerald-600 block">{t("Email", "E-mail", "E-mail")}</span>
                 <span className="font-bold truncate block">{linkedClient.email || "-"}</span>
               </div>
               <div>
@@ -533,7 +533,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                 <span className="font-bold uppercase tracking-wider text-[9px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 border border-indigo-200 inline-block">{linkedLead.status || "-"}</span>
               </div>
               <div>
-                <span className="text-[10px] text-indigo-600 block">Email</span>
+                <span className="text-[10px] text-indigo-600 block">{t("Email", "E-mail", "E-mail")}</span>
                 <span className="font-bold truncate block">{linkedLead.email || "-"}</span>
               </div>
               <div>

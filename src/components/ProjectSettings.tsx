@@ -17,18 +17,18 @@ const ALL_LUCIDE_ICONS = Object.keys(Icons).filter(key => {
          key !== 'Icon';
 });
 
-const ATTRIBUTE_TYPES: { id: ProjectAttributeType; label: string }[] = [
-  { id: "textfield", label: "Text Field" },
-  { id: "textarea", label: "Text Area" },
-  { id: "select", label: "Dropdown Select" },
-  { id: "date", label: "Date" },
-  { id: "time", label: "Time" },
-  { id: "datetime", label: "Date & Time" },
-  { id: "number", label: "Number" },
-  { id: "checkbox", label: "Checkbox" },
-  { id: "radio", label: "Radio Button" },
-  { id: "files", label: "File Upload" },
-  { id: "contact", label: "Contact Picker" }
+const ATTRIBUTE_TYPES: { id: ProjectAttributeType; label: [string, string, string] }[] = [
+  { id: "textfield", label: ["Text Field", "Textové pole", "Szövegmező"] },
+  { id: "textarea", label: ["Text Area", "Textová oblasť", "Szövegterület"] },
+  { id: "select", label: ["Dropdown Select", "Rozbaľovací zoznam", "Legördülő lista"] },
+  { id: "date", label: ["Date", "Dátum", "Dátum"] },
+  { id: "time", label: ["Time", "Čas", "Idő"] },
+  { id: "datetime", label: ["Date & Time", "Dátum a čas", "Dátum és idő"] },
+  { id: "number", label: ["Number", "Číslo", "Szám"] },
+  { id: "checkbox", label: ["Checkbox", "Zaškrtávacie pole", "Jelölőnégyzet"] },
+  { id: "radio", label: ["Radio Button", "Prepínač", "Választógomb"] },
+  { id: "files", label: ["File Upload", "Nahranie súboru", "Fájlfeltöltés"] },
+  { id: "contact", label: ["Contact Picker", "Výber kontaktu", "Kapcsolatválasztó"] }
 ];
 
 export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
@@ -38,6 +38,10 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
   canEdit
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
+  const attributeTypeLabel = (id: ProjectAttributeType) => {
+    const entry = ATTRIBUTE_TYPES.find((a) => a.id === id);
+    return entry ? t(entry.label[0], entry.label[1], entry.label[2]) : id;
+  };
 
   const [editingType, setEditingType] = useState<ProjectType | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -435,7 +439,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                       <input
                         value={newTeTypeName}
                         onChange={e => setNewTeTypeName(e.target.value)}
-                        placeholder="e.g. Measurement, Site Survey, Offer"
+                        placeholder={t("e.g. Measurement, Site Survey, Offer", "napr. Zameranie, Obhliadka, Ponuka", "pl. Felmérés, Helyszíni szemle, Ajánlat")}
                         className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white"
                       />
                     </div>
@@ -608,8 +612,8 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                                   <div className="flex flex-col">
                                     <span className="text-slate-800 text-[13px]">{attr.name}</span>
                                     <span className="text-slate-400 font-medium">
-                                      {ATTRIBUTE_TYPES.find(t => t.id === attr.type)?.label} 
-                                      {attr.required && " • Required"}
+                                      {attributeTypeLabel(attr.type)} 
+                                      {attr.required && t(" • Required", " • Povinné", " • Kötelező")}
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-1">
@@ -654,7 +658,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                                   <input
                                     value={newTeAttrName}
                                     onChange={e => setNewTeAttrName(e.target.value)}
-                                    placeholder="e.g. Photograph, Site Report"
+                                    placeholder={t("e.g. Photograph, Site Report", "napr. Fotografia, Správa z obhliadky", "pl. Fénykép, Helyszíni jelentés")}
                                     className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white"
                                   />
                                 </div>
@@ -668,7 +672,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                                     className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white"
                                   >
                                     {ATTRIBUTE_TYPES.map(t => (
-                                      <option key={t.id} value={t.id}>{t.label}</option>
+                                      <option key={t.id} value={t.id}>{attributeTypeLabel(t.id)}</option>
                                     ))}
                                   </select>
                                 </div>
@@ -682,7 +686,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                                   <input
                                     value={newTeAttrOptions}
                                     onChange={e => setNewTeAttrOptions(e.target.value)}
-                                    placeholder="Option 1, Option 2, Option 3"
+                                    placeholder={t("Option 1, Option 2, Option 3", "Možnosť 1, Možnosť 2, Možnosť 3", "1. lehetőség, 2. lehetőség, 3. lehetőség")}
                                     className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white"
                                   />
                                 </div>
@@ -737,8 +741,8 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                     <div className="flex flex-col">
                       <span className="text-slate-800 text-[13px]">{attr.name}</span>
                       <span className="text-slate-400 font-medium">
-                        {ATTRIBUTE_TYPES.find(t => t.id === attr.type)?.label} 
-                        {attr.required && " • Required"}
+                        {attributeTypeLabel(attr.type)} 
+                        {attr.required && t(" • Required", " • Povinné", " • Kötelező")}
                       </span>
                     </div>
                     <div className="flex items-center gap-1">
@@ -783,7 +787,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                     <input
                       value={newAttrName}
                       onChange={e => setNewAttrName(e.target.value)}
-                      placeholder="e.g. Dimensions"
+                      placeholder={t("e.g. Dimensions", "napr. Rozmery", "pl. Méretek")}
                       className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white"
                     />
                   </div>
@@ -797,7 +801,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                       className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white"
                     >
                       {ATTRIBUTE_TYPES.map(t => (
-                        <option key={t.id} value={t.id}>{t.label}</option>
+                        <option key={t.id} value={t.id}>{attributeTypeLabel(t.id)}</option>
                       ))}
                     </select>
                   </div>
@@ -811,7 +815,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                     <input
                       value={newAttrOptions}
                       onChange={e => setNewAttrOptions(e.target.value)}
-                      placeholder="Option 1, Option 2, Option 3"
+                      placeholder={t("Option 1, Option 2, Option 3", "Možnosť 1, Možnosť 2, Možnosť 3", "1. lehetőség, 2. lehetőség, 3. lehetőség")}
                       className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white"
                     />
                   </div>

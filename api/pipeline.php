@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/schema.php';
 
 // This file exposes a PUBLIC lead-capture webhook (POST, authenticated by the
 // X-API-KEY header) that is intentionally reachable cross-origin from external
@@ -163,9 +164,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // Fetch lists from database for matching
-    $leadStates = get_db_setting($pdo, 'LEAD_STATES', ["new", "contacted", "offer sent", "accepted", "rejected"]);
-    $leadSources = get_db_setting($pdo, 'LEAD_SOURCES', ["showroom", "facebook", "instagram", "website"]);
-    $leadCategories = get_db_setting($pdo, 'LEAD_CATEGORIES', ["Kitchen Countertops", "Flooring Tiles", "Bathroom Renovation", "Granite Slabs", "Plumbing Services", "Custom Masonry"]);
+    $defaultLists = ccrm_default_lists(get_db_setting($pdo, 'SYSTEM_LANGUAGE', 'sk'));
+    $leadStates = get_db_setting($pdo, 'LEAD_STATES', $defaultLists['leadStates']);
+    $leadSources = get_db_setting($pdo, 'LEAD_SOURCES', $defaultLists['leadSources']);
+    $leadCategories = get_db_setting($pdo, 'LEAD_CATEGORIES', $defaultLists['leadCategories']);
 
     // Determine status (first state)
     $status = 'new';

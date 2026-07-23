@@ -475,7 +475,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="e.g. alex@crm.com"
+                  placeholder={tr("e.g. alex@crm.com", "napr. alex@crm.com", "pl. alex@crm.com")}
                   className="w-full pl-11 pr-4 py-3 rounded-2xl bg-white border border-slate-250 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all font-semibold"
                 />
               </div>

@@ -142,12 +142,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const handleCreateDashboard = () => {
     if (!dashName.trim()) {
-      alert("Name is required");
+      alert(t("Name is required", "Názov je povinný", "A név megadása kötelező"));
       return;
     }
     const safeId = dashName.toLowerCase().replace(/[^a-z0-9]/g, "_").replace(/^[^a-z]+/, "") || "dash_" + Date.now();
     if ((customDashboards || []).some(d => d.id === safeId)) {
-      alert("A dashboard with this name/id already exists.");
+      alert(t("A dashboard with this name/id already exists.", "Nástenka s týmto názvom/ID už existuje.", "Ilyen nevű/azonosítójú irányítópult már létezik."));
       return;
     }
 

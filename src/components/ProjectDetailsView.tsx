@@ -835,7 +835,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     <input
                       value={newTeTitle}
                       onChange={e => setNewTeTitle(e.target.value)}
-                      placeholder="e.g. Site survey completed"
+                      placeholder={t("e.g. Site survey completed", "napr. Zameranie dokončené", "pl. Helyszíni felmérés kész")}
                       className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white"
                     />
                   </div>
@@ -1206,7 +1206,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     <input
                       value={newGeTitle}
                       onChange={e => setNewGeTitle(e.target.value)}
-                      placeholder="e.g. Slab fabrication"
+                      placeholder={t("e.g. Slab fabrication", "napr. Výroba dosiek", "pl. Lapok gyártása")}
                       className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white font-bold text-slate-800"
                     />
                   </div>
@@ -1316,7 +1316,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                     setGantt(prev => prev.map(r => r.id === row.id ? { ...r, title: val } : r));
                                   }}
                                   className="bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-indigo-500/30 rounded px-1.5 py-0.5 flex-1 min-w-0 truncate text-slate-800 font-bold"
-                                  placeholder="Task name"
+                                  placeholder={t("Task name", "Názov úlohy", "Feladat neve")}
                                 />
                               </div>
                               <div className="flex items-center gap-1 shrink-0 ml-2">

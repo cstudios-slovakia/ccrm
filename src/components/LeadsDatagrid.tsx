@@ -2270,7 +2270,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
       rawGrouped = [
         {
-          state: "All Leads",
+          state: t("All Leads", "Všetky leady", "Összes lead"),
           colorOverride: "#6366f1",
           leads: sorted
         }

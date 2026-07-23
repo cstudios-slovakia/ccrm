@@ -267,6 +267,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "files.btn_client": "Client Sheet",
     "files.btn_view": "View File",
     "files.footer_note": "Files are categorized and synchronized from client pipeline histories",
+    "files.showing": "Showing",
     "files.showing_docs": "indexed documents",
 
     // Dashboard
@@ -407,6 +408,8 @@ export const translations: Record<Language, Record<string, string>> = {
     "profile.none_added": "None added",
     "logger.event_type": "Event type Selection",
     "logger.offer_amount": "Offer Amount (€) *",
+    "logger.event_date": "Event Date",
+    "logger.event_time": "Event Time",
     "logger.attach_doc": "Attach Document / Sheet",
     "logger.choose_file": "Choose File",
     "logger.no_file": "No file chosen",
@@ -840,6 +843,8 @@ export const translations: Record<Language, Record<string, string>> = {
     "profile.none_added": "Nepridané",
     "logger.event_type": "Výber typu udalosti",
     "logger.offer_amount": "Suma ponuky (€) *",
+    "logger.event_date": "Dátum udalosti",
+    "logger.event_time": "Čas udalosti",
     "logger.attach_doc": "Priložiť dokument / list",
     "logger.choose_file": "Vybrať súbor",
     "logger.no_file": "Žiadny vybraný súbor",
@@ -1273,6 +1278,8 @@ export const translations: Record<Language, Record<string, string>> = {
     "profile.none_added": "Nincs megadva",
     "logger.event_type": "Eseménytípus kiválasztása",
     "logger.offer_amount": "Ajánlat összege (€) *",
+    "logger.event_date": "Esemény dátuma",
+    "logger.event_time": "Esemény időpontja",
     "logger.attach_doc": "Dokumentum / lap csatolása",
     "logger.choose_file": "Fájl kiválasztása",
     "logger.no_file": "Nincs kiválasztott fájl",
@@ -1304,4 +1311,21 @@ export const translations: Record<Language, Record<string, string>> = {
 
 export const getTranslation = (lang: Language, key: string): string => {
   return translations[lang]?.[key] || translations["en"]?.[key] || key;
+};
+
+/**
+ * Active UI language for the few components that cannot receive it as a prop:
+ * the ErrorBoundary (it wraps <App/>, so it is outside every provider) and
+ * leaf inputs reused across unrelated trees. App mirrors the language into
+ * localStorage on every change; the browser locale covers the first render.
+ */
+export const getStoredLanguage = (): Language => {
+  try {
+    const stored = localStorage.getItem("crm_language");
+    if (stored === "en" || stored === "sk" || stored === "hu") return stored;
+  } catch (e) {
+    // localStorage throws in private mode — fall through to the browser locale.
+  }
+  const locale = (typeof navigator !== "undefined" ? navigator.language || "" : "").slice(0, 2).toLowerCase();
+  return locale === "sk" ? "sk" : locale === "hu" ? "hu" : "en";
 };
