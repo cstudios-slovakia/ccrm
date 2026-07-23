@@ -1,80 +1,115 @@
 # CCRM
 
 CCRM is a React + TypeScript + Vite single-page CRM with a small PHP/MySQL
-backend, distributed as an updatable Composer package.
+backend.
 
-## Installation & Git Integration Tutorial
+There are two different setups depending on what you're doing — don't mix
+them up:
 
-This guide walks you through setting up a host PHP application, integrating CCRM via Composer, and configuring your Git repository to ensure smooth updates without exposing secrets.
+- **Local development**: run the frontend with hot-reload against a Docker
+  backend. No git deploy involved.
+- **Production deployment**: the app is deployed by cloning this repo
+  directly into the server's web document root and pulling updates with
+  `git`/`php ccrm update` — there is no build step on the server.
 
-### Step 1: Initialize Git in your Host Project
-If you are starting a new project, initialize Git in your project root:
+## Local Development Setup
+
+1. Clone the repo and install JS dependencies:
+   ```bash
+   git clone https://github.com/cstudios-slovakia/ccrm.git
+   cd ccrm
+   npm install
+   ```
+2. Create your local backend config from the sample and point it at the
+   Docker Compose database (service name `db`, credentials from
+   `docker-compose.yml`):
+   ```bash
+   cp config.sample.php config.php
+   ```
+   Edit `config.php`: `DB_HOST` = `db`, `DB_NAME` = `ccrm`, `DB_USER` =
+   `ccrm_user`, `DB_PASS` = `ccrm_password` (or whatever you changed those to
+   in `docker-compose.yml`).
+3. Start the PHP/MySQL backend in Docker (Apache+PHP on `:8080`, MySQL on
+   `:3306`, a MariaDB vector store on `:3307` for the RAG/AI features):
+   ```bash
+   docker compose up -d --build
+   ```
+4. Start the Vite dev server:
+   ```bash
+   npm run dev
+   ```
+   `vite.config.ts` proxies `/sync.php`, `/upload.php` and `/api/*` from the
+   dev server to the Docker container on `:8080`, so the app behaves like
+   production while the frontend still gets full HMR.
+5. Open the printed `localhost` URL. Since `config.php` already points at a
+   real (empty) database, the setup wizard skips straight to **Seed with
+   Demo Data** / **Start Fresh** and admin-account creation.
+
+## Production Deployment
+
+The two live instances (laminam.sk, strechyokoc.sk) are both deployed by
+cloning this repo straight into the server's document root — **not** by
+requiring it as a Composer dependency of a separate host project. There is no
+Node/Vite build step on the server; the compiled frontend is built locally
+and committed to `dist/`, then published to the docroot by `php ccrm update`.
+
+### First-time install on a new server
+
+1. Prerequisites: SSH access to the host; a MySQL/MariaDB database + user
+   already created; PHP ≥ 8.0 (8.2+ recommended) with the `pdo_mysql`,
+   `imap`, `zip` and `curl` extensions enabled; `git` and `composer`
+   available over SSH.
+2. SSH in and clone directly into the (empty) docroot — this folder **is**
+   the install target, not a parent of it:
+   ```bash
+   cd /path/to/docroot
+   git clone https://github.com/cstudios-slovakia/ccrm.git .
+   ```
+3. Install PHP dependencies (generates `vendor/autoload.php`; the package
+   itself has no third-party dependencies):
+   ```bash
+   composer install --no-dev
+   ```
+4. Make sure the web server user can write to the docroot root (the setup
+   wizard creates `config.php`/`api_key.txt` there) and to `uploads/`.
+5. Confirm `mod_rewrite` and `mod_headers` are enabled — the shipped
+   `.htaccess` uses both for SPA routing, security headers, and blocking
+   `.git/`.
+6. Open the site URL in a browser. The setup wizard (`api/setup.php`)
+   displays automatically:
+   - Enter your MySQL host/port/name/username/password — it test-connects.
+   - It writes `config.php` and applies the schema migrations.
+   - Choose **Seed with Demo Data** or **Start Fresh**.
+   - Create your system administrator account.
+
+   `config.php`, `api_key.txt` and `uploads/` are git-ignored, so future
+   updates never touch them.
+
+### Shipping updates after the first install
+
+From your machine:
 ```bash
-git init
+npm run deploy
 ```
+(`scripts/deploy.mjs`) builds `dist/`, commits it, pushes your working
+branch, then advances `main` (the branch the server pulls).
 
-### Step 2: Configure Composer for the Repository
-To tell Composer where to find the `cstudios-slovakia/ccrm` package, add the Git VCS repository configuration to your host project's `composer.json` (create one with `composer init` if it does not exist yet):
-
-```json
-{
-    "name": "your-company/your-project",
-    "repositories": [
-        {
-            "type": "vcs",
-            "url": "https://github.com/cstudios-slovakia/ccrm.git"
-        }
-    ],
-    "require": {}
-}
-```
-
-### Step 3: Install the CCRM Package
-Run the following command to download the package and run the auto-installation hook:
+On the server:
 ```bash
-composer require cstudios-slovakia/ccrm
+php ccrm update
 ```
+Pulls `origin/main`, runs `composer install`, publishes `dist/` over the
+docroot, and runs DB migrations — see the `ccrm` script at the repo root.
 
-On `composer install` or `composer update`, the bundled plugin (`CCRM\ComposerPlugin`) automatically:
-1. Copies the pre-compiled React frontend and PHP API files from the package's `dist/` directory into your project's **web document root**.
-2. Applies idempotent database migrations.
+### Legacy: Composer-package consumption
 
-### Step 4: Configure the Installation Destination (Optional)
-By default, CCRM auto-detects standard web directories like `public`, `web`, `public_html`, etc. If you want to specify a custom target directory (for instance, a subfolder), configure it in your `composer.json` under `extra`:
-
-```json
-{
-    "extra": {
-        "ccrm-install-dir": "public/crm"
-    }
-}
-```
-*Alternatively, you can specify the absolute target path by setting the `CCRM_INSTALL_DIR` environment variable.*
-
-### Step 5: Configure Git Ignored Files
-Because CCRM generates dynamic local configuration files and stores uploaded media on the host server, you must add them to your host project's `.gitignore` file to avoid committing credentials:
-
-```gitignore
-# Ignore CCRM environment & database configuration
-public/config.php
-public/api_key.txt
-
-# Ignore user media uploads
-public/uploads/
-
-# Standard composer and node directories
-vendor/
-node_modules/
-```
-
-### Step 6: Run the Web Setup Wizard
-1. Open your host application URL in a web browser (e.g. `http://localhost/` or the configured subfolder path).
-2. The CCRM setup wizard will automatically display.
-3. Enter your MySQL database credentials (host, port, username, password, database name).
-4. Follow the prompt to either **Seed with Demo Data** (recommended for testing/demos) or **Start Fresh**.
-5. Create your system administrator account.
-
-Once completed, the wizard writes `config.php` locally and disables itself. Future updates via `composer update` will preserve this configuration file automatically!
+This repo can still be required as a Composer dependency of a separate host
+PHP project — `src-php/ComposerPlugin.php` copies `dist/` into the host's
+detected (or configured, via `extra.ccrm-install-dir`/`CCRM_INSTALL_DIR`) web
+root and applies migrations on `composer install`/`update`. This was the
+original distribution design, but it is **not** how either current
+production instance is deployed, and it isn't actively exercised anymore —
+retest it before relying on it if you need this path.
 
 ## Security notes
 
@@ -87,9 +122,9 @@ Once completed, the wizard writes `config.php` locally and disables itself. Futu
 
 ## Development
 
-This is a Vite app. `npm install` then `npm run build` regenerates `dist/`
-(the PHP API and `.htaccess` live in `public/` and are copied into `dist/` on
-build). The database DDL lives in a single source of truth: `public/api/schema.php`.
+The database DDL lives in a single source of truth: `public/api/schema.php`,
+copied into `dist/api/schema.php` by `npm run build` (the PHP API and
+`.htaccess` live in `public/` and are copied into `dist/` on build).
 
 ---
 
