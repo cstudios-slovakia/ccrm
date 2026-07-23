@@ -1572,7 +1572,8 @@ ${log.payload || ''}
             content: "";
             position: absolute;
             border-radius: 50px;
-            box-shadow: 0 0 0 3px inset #6366f1;
+            box-shadow: 0 0 0 3px inset rgba(255,255,255,0.95);
+            filter: drop-shadow(0 1px 4px rgba(30,27,75,0.45));
             animation: l4 2.5s infinite;
           }
           .loader:after {
@@ -1652,10 +1653,10 @@ ${log.payload || ''}
             <div className="loader"></div>
           </div>
           
-          <h2 className="text-xl font-heading font-black tracking-widest text-slate-800 uppercase">
+          <h2 className="text-xl font-heading font-black tracking-widest text-white uppercase [text-shadow:0_2px_8px_rgba(30,27,75,0.55)]">
             CCRM
           </h2>
-          <p className="text-[10px] font-black text-slate-450 uppercase tracking-widest mt-3.5 animate-pulse">
+          <p className="text-[10px] font-black text-white/90 uppercase tracking-widest mt-3.5 animate-pulse [text-shadow:0_1px_5px_rgba(30,27,75,0.6)]">
             Syncing database connection...
           </p>
         </div>
