@@ -17,6 +17,7 @@ import {
     List,
     Archive as ArchiveIcon,
     Clock,
+    Trash2,
 } from "lucide-react";
 import type { Task, UserProfile, Lead } from "../types";
 import type { Language } from "../utils/translations";
@@ -674,6 +675,27 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     "Task unarchived",
                     "Archivácia úlohy zrušená",
                     "Feladat archiválása visszavonva",
+                ),
+            );
+        }
+    };
+
+    const handleDeleteTask = (task: Task) => {
+        const confirmed = window.confirm(
+            t(
+                `Permanently delete "${task.title}"? This cannot be undone.`,
+                `Natrvalo odstrániť úlohu "${task.title}"? Túto akciu nemožno vrátiť späť.`,
+                `Véglegesen törli a(z) "${task.title}" feladatot? Ez nem vonható vissza.`,
+            ),
+        );
+        if (!confirmed) return;
+        setTasks((prev) => prev.filter((t) => t.id !== task.id));
+        if (typeof (window as any).showToast === "function") {
+            (window as any).showToast(
+                t(
+                    "Task deleted",
+                    "Úloha odstránená",
+                    "Feladat törölve",
                 ),
             );
         }
@@ -1731,21 +1753,38 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                                 </div>
                                                             </div>
 
-                                                            <button
-                                                                onClick={() =>
-                                                                    handleRestoreTask(
-                                                                        task,
-                                                                    )
-                                                                }
-                                                                className="px-2.5 py-1.5 border border-indigo-255 hover:bg-indigo-50 text-indigo-650 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
-                                                            >
-                                                                <RotateCcw className="h-3 w-3 stroke-[2.5]" />
-                                                                {t(
-                                                                    "Restore",
-                                                                    "Obnoviť",
-                                                                    "Visszaállítás",
-                                                                )}
-                                                            </button>
+                                                            <div className="flex items-center gap-1.5 shrink-0">
+                                                                <button
+                                                                    onClick={() =>
+                                                                        handleRestoreTask(
+                                                                            task,
+                                                                        )
+                                                                    }
+                                                                    className="px-2.5 py-1.5 border border-indigo-255 hover:bg-indigo-50 text-indigo-650 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
+                                                                >
+                                                                    <RotateCcw className="h-3 w-3 stroke-[2.5]" />
+                                                                    {t(
+                                                                        "Restore",
+                                                                        "Obnoviť",
+                                                                        "Visszaállítás",
+                                                                    )}
+                                                                </button>
+                                                                <button
+                                                                    onClick={() =>
+                                                                        handleDeleteTask(
+                                                                            task,
+                                                                        )
+                                                                    }
+                                                                    title={t(
+                                                                        "Delete permanently",
+                                                                        "Natrvalo odstrániť",
+                                                                        "Végleges törlés",
+                                                                    )}
+                                                                    className="px-2 py-1.5 border border-rose-200 hover:bg-rose-50 text-rose-600 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
+                                                                >
+                                                                    <Trash2 className="h-3 w-3 stroke-[2.5]" />
+                                                                </button>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 );
@@ -1812,19 +1851,36 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                     </div>
                                                 </div>
                                             </div>
-                                            <button
-                                                onClick={() =>
-                                                    handleUnarchiveTask(task)
-                                                }
-                                                className="px-2.5 py-1.5 border border-indigo-255 hover:bg-indigo-50 text-indigo-650 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer shrink-0"
-                                            >
-                                                <RotateCcw className="h-3 w-3 stroke-[2.5]" />
-                                                {t(
-                                                    "Unarchive",
-                                                    "Zrušiť archiváciu",
-                                                    "Archiválás visszavonása",
-                                                )}
-                                            </button>
+                                            <div className="flex items-center gap-1.5 shrink-0">
+                                                <button
+                                                    onClick={() =>
+                                                        handleUnarchiveTask(
+                                                            task,
+                                                        )
+                                                    }
+                                                    className="px-2.5 py-1.5 border border-indigo-255 hover:bg-indigo-50 text-indigo-650 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
+                                                >
+                                                    <RotateCcw className="h-3 w-3 stroke-[2.5]" />
+                                                    {t(
+                                                        "Unarchive",
+                                                        "Zrušiť archiváciu",
+                                                        "Archiválás visszavonása",
+                                                    )}
+                                                </button>
+                                                <button
+                                                    onClick={() =>
+                                                        handleDeleteTask(task)
+                                                    }
+                                                    title={t(
+                                                        "Delete permanently",
+                                                        "Natrvalo odstrániť",
+                                                        "Végleges törlés",
+                                                    )}
+                                                    className="px-2 py-1.5 border border-rose-200 hover:bg-rose-50 text-rose-600 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
+                                                >
+                                                    <Trash2 className="h-3 w-3 stroke-[2.5]" />
+                                                </button>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
