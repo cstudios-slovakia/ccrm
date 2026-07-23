@@ -286,7 +286,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
               <div className="space-y-1.5 text-left">
                 <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider block pl-0.5">{t[lang].pass}</label>
                 <div className="relative">
-                  <Key className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-450" />
+                  <Key className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-450 z-10" />
                   <PasswordInput
                     value={pass}
                     onChange={(e) => setPass(e.target.value)}
@@ -401,7 +401,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
                     placeholder={lang === "sk" ? "Heslo" : lang === "hu" ? "Jelszó" : "Password"}
                     className="w-full pl-4 pr-11 py-3 rounded-2xl bg-white border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold"
                   />
-                  <p className="text-[9px] text-slate-450 leading-relaxed">
+                  <p className="text-xs text-slate-450 leading-relaxed">
                     {lang === "sk"
                       ? "Ak necháte polia prázdne, vytvorí sa účet admin@crm.com s náhodným heslom, ktoré sa zobrazí po inštalácii."
                       : lang === "hu"

@@ -485,7 +485,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-slate-550 uppercase tracking-wider block pl-0.5">{getTranslation(systemLanguage, "login.password")}</label>
               <div className="relative">
-                <Key className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Key className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 z-10" />
                 <PasswordInput
                   required
                   value={password}
