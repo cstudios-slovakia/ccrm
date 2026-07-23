@@ -79,6 +79,7 @@ const computePushSig = (p: {
 
 function App() {
   const activePushesRef = useRef(0);
+  const visiblePushesRef = useRef(0);
   const lastPushTimeRef = useRef(0);
   // Set when a push is rejected with 401 (session expired) so the unsaved
   // change can be replayed after the user re-authenticates.
@@ -115,10 +116,12 @@ function App() {
   // Signature of the full push payload the server last confirmed (via a successful
   // push or a fresh poll pull). A 401'd push only counts as a "lost" edit — worth
   // alarming the user about and replaying after re-login — when its content
-  // actually diverges from this. null means we have no confirmed baseline yet
-  // (e.g. before the initial sync resolves), so treat that case as "assume real".
+  // actually diverges from this. With no confirmed baseline yet (e.g. before
+  // the initial authenticated sync), there is no evidence that a rejected
+  // background push represents a user edit, so it must stay silent.
   const lastConfirmedPushSigRef = useRef<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isSyncIndicatorVisible, setIsSyncIndicatorVisible] = useState(false);
   const [isInstalled, setIsInstalled] = useState(true);
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [dbInfo, setDbInfo] = useState<{ host: string; port: string; name: string; user: string; type?: string } | null>(null);
@@ -609,14 +612,20 @@ ${log.payload || ''}
     nextUnifiedEntriesData?: Record<string, UnifiedEntryRow[]>,
     nextCustomDashboards?: CustomDashboard[],
     nextProjectTypes?: ProjectType[],
-    nextProjects?: Project[]
+    nextProjects?: Project[],
+    options?: { showIndicator?: boolean }
   ): Promise<void> => {
     if (!isInstalled) return pushChainRef.current;
+    const shouldShowIndicator = options?.showIndicator !== false;
     // Queue this push behind any in-flight one. Chaining (rather than firing in
     // parallel) guarantees the server applies saves in the order they were made,
     // so a stale settings snapshot can never land after the fresh one.
     const doPush = async () => {
     setIsSyncing(true);
+    if (shouldShowIndicator) {
+      visiblePushesRef.current++;
+      setIsSyncIndicatorVisible(true);
+    }
     activePushesRef.current++;
     lastPushTimeRef.current = Date.now();
     const payload = {
@@ -657,20 +666,19 @@ ${log.payload || ''}
       });
       if (res.status === 401) {
         setCurrentUser(null);
-        // Only treat this as a lost edit worth alarming the user about (and
-        // replaying after re-login) if the payload actually diverges from what
+        // Only treat this as a lost edit worth replaying after re-login if the
+        // payload actually diverges from what
         // the server last confirmed. Otherwise this was an automatic background
         // push (e.g. the settings-resync effect) that happened to land after the
         // session had already died — nothing was really lost, so stay quiet.
         const pushSig = computePushSig(payload);
-        const isRealUnsavedChange = lastConfirmedPushSigRef.current === null || pushSig !== lastConfirmedPushSigRef.current;
+        const isRealUnsavedChange =
+          lastConfirmedPushSigRef.current !== null &&
+          pushSig !== lastConfirmedPushSigRef.current;
         if (isRealUnsavedChange) {
           // The mutation did not persist. Remember it so it is replayed from the
           // latest state refs once the user logs back in (see onLoginSuccess).
           pendingPushRef.current = true;
-          if (typeof (window as any).showToast === "function") {
-            (window as any).showToast("Session expired. Please log in again — your last change will be re-saved.");
-          }
         }
       } else if (res.ok) {
         // The server now holds this exact payload — remember it so a later 401
@@ -710,6 +718,12 @@ ${log.payload || ''}
       activePushesRef.current = Math.max(0, activePushesRef.current - 1);
       if (activePushesRef.current === 0) {
         setIsSyncing(false);
+      }
+      if (shouldShowIndicator) {
+        visiblePushesRef.current = Math.max(0, visiblePushesRef.current - 1);
+        if (visiblePushesRef.current === 0) {
+          setIsSyncIndicatorVisible(false);
+        }
       }
     }
     };
@@ -1678,10 +1692,11 @@ ${log.payload || ''}
           if (pendingPushRef.current) {
             pendingPushRef.current = false;
             setTimeout(() => {
-              pushStateToServer();
-              if (typeof (window as any).showToast === "function") {
-                (window as any).showToast("Re-saved your last change.");
-              }
+              pushStateToServer(
+                undefined, undefined, undefined, undefined, undefined, undefined,
+                undefined, undefined, undefined, undefined, undefined,
+                { showIndicator: false }
+              );
             }, 0);
           }
           // Route the user to their chosen default landing page right after login
@@ -1702,7 +1717,7 @@ ${log.payload || ''}
       {/* Global save indicator — reassures the user their change is being saved
           and, together with the beforeunload guard, that they should not leave or
           reload the page until it disappears. */}
-      {isSyncing && (
+      {isSyncIndicatorVisible && (
         <div className="fixed bottom-5 right-5 z-[9999] flex items-center gap-2 px-3.5 py-2 rounded-full bg-slate-900/90 text-white shadow-lg backdrop-blur-sm animate-in fade-in slide-in-from-bottom duration-200 select-none">
           <span className="h-3.5 w-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" aria-hidden="true" />
           <span className="text-[11px] font-black uppercase tracking-wider">
