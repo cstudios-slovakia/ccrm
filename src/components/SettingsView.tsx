@@ -1114,17 +1114,47 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     (window as any).showToast(userLanguage === "sk" ? "Nastavenia značky boli úspešne uložené!" : userLanguage === "hu" ? "Márkajelzés beállításai sikeresen mentve!" : "Branding settings saved successfully!");
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
     if (getPermission("system_reset") !== "edit") return;
-    if (confirm(
-      userLanguage === "sk" 
-        ? "Naozaj chcete resetovať celé úložisko CRM? Toto vymaže reláciu a obnoví stavy." 
-        : userLanguage === "hu" 
-          ? "Biztosan vissza szeretné állítani a teljes CRM tárolót? Ez törli a munkamenetet és visszaállítja az állapotokat." 
-          : "Are you sure you want to reset all CRM storage? This will clear the active session and reload states."
-    )) {
-      sessionStorage.clear();
-      window.location.reload();
+    if (!confirm(
+      userLanguage === "sk"
+        ? "Obnoviť označenia fáz pipeline do jazyka zvoleného pri inštalácii? Existujúce záujemcovia sa prenesú na nové označenia. Nič iné sa nevymaže."
+        : userLanguage === "hu"
+          ? "Visszaállítja a folyamat fázisainak címkéit a telepítéskor választott nyelvre? A meglévő érdeklődők átkerülnek az új címkékre. Semmi más nem törlődik."
+          : "Reset the pipeline phase labels to the language chosen at install? Existing leads are migrated onto the new labels. Nothing else is deleted."
+    )) return;
+
+    try {
+      const res = await fetch("/api/wipe_demo.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reset_labels" })
+      });
+      const data = await res.json();
+      if (data.success) {
+        (window as any).showToast?.(
+          userLanguage === "sk"
+            ? "Označenia fáz pipeline boli obnovené do jazyka inštalácie."
+            : userLanguage === "hu"
+              ? "A folyamat fázisainak címkéi visszaálltak a telepítés nyelvére."
+              : "Pipeline phase labels were reset to the installation language."
+        );
+        // Drop local overrides so the reload pulls the freshly relabelled
+        // states (and migrated leads) from the server instead of pushing the
+        // stale local copy back over them.
+        localStorage.removeItem("crm_lead_states");
+        localStorage.removeItem("crm_lead_state_colors");
+        localStorage.removeItem("crm_lead_stage_groups");
+        localStorage.removeItem("crm_lead_state_parents");
+        localStorage.removeItem("crm_seeded_leads_v5_vibe");
+        localStorage.removeItem("crm_leads");
+        sessionStorage.clear();
+        window.location.reload();
+      } else {
+        (window as any).showToast?.(t("Reset failed: ", "Obnovenie zlyhalo: ", "A visszaállítás sikertelen: ") + (data.message || ""));
+      }
+    } catch (err) {
+      (window as any).showToast?.(t("Error resetting labels.", "Chyba pri obnove označení.", "Hiba a címkék visszaállításakor."));
     }
   };
 
