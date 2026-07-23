@@ -35,6 +35,16 @@ function ccrm_help() {
 function ccrm_update() {
     echo "Starting CCRM Update Process...\n";
 
+    // Deploy branch: defaults to `main` (what production instances pull). A
+    // non-production box (staging/demo) can temporarily track a feature branch
+    // instead by exporting CCRM_DEPLOY_BRANCH=<branch> before running update.
+    // Unset it (or set it back to `main`) to return to the production branch.
+    $branch = trim((string) getenv('CCRM_DEPLOY_BRANCH'));
+    if ($branch === '') {
+        $branch = 'main';
+    }
+    echo "Deploy branch: $branch\n";
+
     // 1. Check for local modifications blocking git pull
     echo "Checking git status...\n";
     exec("git diff --name-only", $dirtyFiles);
@@ -92,8 +102,8 @@ function ccrm_update() {
     }
 
     // 2. Pull latest code
-    echo "Pulling latest code from origin/main...\n";
-    passthru("git pull origin main", $pullResult);
+    echo "Pulling latest code from origin/$branch...\n";
+    passthru("git pull origin " . escapeshellarg($branch), $pullResult);
     if ($pullResult !== 0) {
         echo "Error: git pull failed.\n";
         exit(1);
