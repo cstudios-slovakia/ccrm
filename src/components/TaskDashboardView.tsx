@@ -1166,14 +1166,16 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         </span>
                     )}
 
-                    <span className="text-[9px] font-bold text-indigo-600 flex items-center gap-1 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100 transition-colors hover:bg-indigo-100/70">
-                        <Clock className="h-2.5 w-2.5 shrink-0 stroke-[2.5]" />
-                        <span className="uppercase tracking-wider text-indigo-400">
-                            {t("Due", "Termín", "Határidő")}
-                        </span>
-                        <span className="font-black">
-                            {formatTaskDate(task.deadline)} ·{" "}
-                            {task.deadlineTime || "23:59"}
+                    <span className="inline-flex max-w-full items-start gap-1.5 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100 text-indigo-600 transition-colors hover:bg-indigo-100/70">
+                        <Clock className="h-2.5 w-2.5 shrink-0 mt-px stroke-[2.5]" />
+                        <span className="flex min-w-0 flex-col leading-tight">
+                            <span className="text-[8px] font-bold uppercase tracking-wider text-indigo-400">
+                                {t("Due", "Termín", "Határidő")}
+                            </span>
+                            <span className="text-[9px] font-black tabular-nums break-words">
+                                {formatTaskDate(task.deadline)} ·{" "}
+                                {task.deadlineTime || "23:59"}
+                            </span>
                         </span>
                     </span>
 
