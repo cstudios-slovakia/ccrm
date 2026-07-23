@@ -1452,10 +1452,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             className={`w-full ${viewMode === "archive" ? "h-auto shrink-0" : "lg:h-[calc(100vh-8rem)] h-auto flex flex-col"} animate-in fade-in slide-in-from-top-4 duration-300`}
         >
             {/* HEADER */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 shrink-0">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-4 mb-6 shrink-0">
                 <div>
-                    <h1 className="text-2xl font-black text-slate-850 tracking-tight font-heading flex items-center gap-2">
-                        <CalendarIcon className="h-7 w-7 text-indigo-600 stroke-[2.5]" />
+                    <h1 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                        <CalendarIcon className="h-6 w-6 text-indigo-600" />
                         {viewMode === "calendar"
                             ? t(
                                   "My Calendar",
@@ -1474,7 +1474,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                   "Feladat archívum",
                               )}
                     </h1>
-                    <p className="text-xs font-medium text-slate-450 tracking-wide mt-1">
+                    <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
                         {viewMode === "calendar"
                             ? t(
                                   "Tasks assigned to you. Team tasks remain available in Global Tasks.",

@@ -790,7 +790,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       {/* Title Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-4">
         <div className="flex flex-col">
-          <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2 uppercase">
+          <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
             <BarChart3 className="h-6 w-6 text-indigo-600" /> {getTranslation(systemLanguage, "header.title.dashboard")}
           </h2>
           <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
