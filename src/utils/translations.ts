@@ -102,9 +102,9 @@ export const translations: Record<Language, Record<string, string>> = {
     "settings.email.send_test": "Send Test Envelope",
 
     // Danger Zone
-    "settings.danger.title": "Pipeline Label Reset",
-    "settings.danger.desc": "Resets the pipeline phase labels (New, Contacted, Offer sent, …) to the language chosen during installation. Existing leads are migrated onto the translated labels; your users, leads, tasks, sources and categories are all kept.",
-    "settings.danger.btn": "Reset Labels to Install Language",
+    "settings.danger.title": "System Danger Zone",
+    "settings.danger.desc": "Resetting the mockup database erases all custom leads, documents, logged history logs, pipeline status changes, and user roles. This action re-seeds fresh mockup structures and clears all local storage modifications.",
+    "settings.danger.btn": "Reset Mockup Database",
     "settings.general.system_name_desc": "This brand label updates all sidebar logo headers and page titles dynamically.",
     "settings.general.system_lang_desc": "Choose system-wide default localization profile. Updates take effect immediately.",
     "settings.general.currency": "Currency",
@@ -529,7 +529,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "settings.email.test_recipient": "Adresa príjemcu testu",
     "settings.email.send_test": "Odoslať testovaciu obálku",
 
-    "settings.danger.btn": "Obnoviť označenia podľa jazyka",
+    "settings.danger.btn": "Reset Databázy Mockupov",
     "settings.general.system_name_desc": "Tento názov značky dynamicky aktualizuje všetky hlavičky loga bočného panela a názvy stránok.",
     "settings.general.system_lang_desc": "Vyberte predvolený jazykový profil pre celý systém. Zmeny sa prejavia okamžite.",
     "settings.general.currency": "Mena",
@@ -651,8 +651,8 @@ export const translations: Record<Language, Record<string, string>> = {
     "settings.email.testing_handshake": "Testujem pripojenie...",
     "settings.email.conn_success": "✅ Pripojenie úspešne nadviazané",
     "settings.email.conn_failure": "❌ Zlyhanie prenosu",
-    "settings.danger.title": "Reset označení pipeline",
-    "settings.danger.desc": "Obnoví označenia fáz pipeline (Nový, Kontaktovaný, Ponuka odoslaná, …) do jazyka zvoleného počas inštalácie. Existujúci záujemcovia sa prenesú na preložené označenia; používatelia, záujemcovia, úlohy, zdroje a kategórie zostanú zachované.",
+    "settings.danger.title": "Nebezpečná zóna systému",
+    "settings.danger.desc": "Resetovaním databázy mockupov sa vymažú všetci vlastní záujemcovia, dokumenty, zaznamenaná história, zmeny stavov pipeline a používateľské roly. Táto akcia znova vytvorí čerstvé mockup štruktúry a vymaže všetky úpravy v lokálnom úložisku.",
 
     // Login
     "login.title": "PRACUJTE S NAMI",
@@ -957,7 +957,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "settings.email.test_recipient": "Teszt címzett e-mail címe",
     "settings.email.send_test": "Tesztlevél küldése",
 
-    "settings.danger.btn": "Címkék visszaállítása a nyelvhez",
+    "settings.danger.btn": "Mockup Adatbázis Visszaállítása",
     "settings.general.system_name_desc": "Ez a márkanév dinamikusan frissíti a menüsor fejlécét és az oldal címét.",
     "settings.general.system_lang_desc": "Válassza ki a rendszer alapértelmezett nyelvi profilját. A változások azonnal életbe lépnek.",
     "settings.general.currency": "Pénznem",
@@ -1079,8 +1079,8 @@ export const translations: Record<Language, Record<string, string>> = {
     "settings.email.testing_handshake": "Kapcsolat tesztelése...",
     "settings.email.conn_success": "✅ Kapcsolat létrejött",
     "settings.email.conn_failure": "❌ Kapcsolódási hiba",
-    "settings.danger.title": "Folyamatcímkék visszaállítása",
-    "settings.danger.desc": "Visszaállítja a folyamat fázisainak címkéit (Új, Kapcsolatfelvétel, Ajánlat elküldve, …) a telepítéskor választott nyelvre. A meglévő érdeklődők átkerülnek a lefordított címkékre; a felhasználók, érdeklődők, feladatok, források és kategóriák megmaradnak.",
+    "settings.danger.title": "Rendszer veszélyzóna",
+    "settings.danger.desc": "A mockup adatbázis visszaállítása törli az összes egyéni érdeklődőt, dokumentumot, naplózott előzményt, folyamat-állapotváltozást és felhasználói szerepkört. Ez a művelet friss mockup struktúrákat hoz létre, és törli a helyi tárhely összes módosítását.",
 
     // Login
     "login.title": "MUNKATERÜLET",

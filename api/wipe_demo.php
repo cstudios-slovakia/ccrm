@@ -15,7 +15,6 @@ ccrm_require_admin();
 
 $input = file_get_contents('php://input');
 $data = json_decode($input, true);
-$action = isset($data['action']) ? (string)$data['action'] : '';
 $keepConfigs = isset($data['keep_configs']) ? (bool)$data['keep_configs'] : true;
 
 $configFile = dirname(__DIR__) . '/config.php';
@@ -26,115 +25,6 @@ if (!file_exists($configFile)) {
 }
 
 require_once $configFile;
-
-// Non-destructive action: retranslate the default pipeline phase labels to the
-// language chosen at install and migrate existing leads onto the new labels.
-// Custom phases, users, leads and every other setting are left intact — this is
-// how the "reset pipeline labels" button repairs an install whose labels were
-// seeded in the wrong language.
-if ($action === 'reset_labels') {
-    $pipelineStagesByLanguage = [
-        'en' => ['new', 'contacted', 'offer sent', 'accepted', 'rejected'],
-        'sk' => ['nový', 'kontaktovaný', 'ponuka odoslaná', 'prijatý', 'zamietnutý'],
-        'hu' => ['új', 'kapcsolatfelvétel', 'ajánlat elküldve', 'elfogadva', 'elutasítva'],
-    ];
-    try {
-        $pdo = get_db_connection();
-
-        $systemLanguage = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'SYSTEM_LANGUAGE'")->fetchColumn();
-        if (!in_array($systemLanguage, ['en', 'sk', 'hu'], true)) {
-            $systemLanguage = 'sk';
-        }
-
-        $canonEn = $pipelineStagesByLanguage['en'];
-        $target  = $pipelineStagesByLanguage[$systemLanguage];
-
-        $rawStates = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'LEAD_STATES'")->fetchColumn();
-        $oldStates = $rawStates ? json_decode($rawStates, true) : null;
-        if (!is_array($oldStates) || empty($oldStates)) {
-            $oldStates = $canonEn;
-        }
-
-        // Only the canonical English default phases get translated; a custom
-        // phase the operator added themselves is matched by neither list and is
-        // left exactly as-is.
-        $rename = [];
-        foreach ($canonEn as $i => $en) {
-            if ($target[$i] !== $en && in_array($en, $oldStates, true)) {
-                $rename[$en] = $target[$i];
-            }
-        }
-
-        if (empty($rename)) {
-            echo json_encode(['success' => true, 'message' => 'Pipeline labels are already in the configured language.']);
-            exit;
-        }
-
-        $mapLabel = static function ($label) use ($rename) {
-            return isset($rename[$label]) ? $rename[$label] : $label;
-        };
-        $readJson = static function ($key) use ($pdo) {
-            $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = ?");
-            $stmt->execute([$key]);
-            $v = $stmt->fetchColumn();
-            return $v ? json_decode($v, true) : null;
-        };
-
-        $pdo->beginTransaction();
-
-        $writeSetting = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
-
-        // LEAD_STATES: preserve order, just relabel.
-        $writeSetting->execute(['LEAD_STATES', json_encode(array_values(array_map($mapLabel, $oldStates)))]);
-
-        // Colors and stage groups are keyed by label — remap the keys, keep the
-        // operator's custom color/group choices.
-        foreach (['LEAD_STATE_COLORS', 'LEAD_STAGE_GROUPS'] as $k) {
-            $obj = $readJson($k);
-            if (is_array($obj)) {
-                $out = [];
-                foreach ($obj as $label => $val) {
-                    $out[$mapLabel($label)] = $val;
-                }
-                $writeSetting->execute([$k, json_encode($out)]);
-            }
-        }
-
-        // Parents map child->parent, both are labels — remap keys and values.
-        $parents = $readJson('LEAD_STATE_PARENTS');
-        if (is_array($parents)) {
-            $out = [];
-            foreach ($parents as $child => $parent) {
-                $out[$mapLabel($child)] = $mapLabel($parent);
-            }
-            $writeSetting->execute(['LEAD_STATE_PARENTS', json_encode($out ?: (object)[])]);
-        }
-
-        // Migrate existing leads onto the new labels so none are orphaned.
-        $upd = $pdo->prepare("UPDATE `leads` SET `status` = ? WHERE `status` = ?");
-        foreach ($rename as $old => $new) {
-            $upd->execute([$new, $old]);
-        }
-
-        $pdo->commit();
-        echo json_encode([
-            'success'  => true,
-            'message'  => 'Pipeline labels reset to the configured language.',
-            'language' => $systemLanguage,
-        ]);
-        exit;
-    } catch (\Exception $e) {
-        if (isset($pdo) && $pdo->inTransaction()) {
-            $pdo->rollBack();
-        }
-        if (function_exists('ccrm_log_exception')) {
-            ccrm_log_exception($e);
-        }
-        http_response_code(500);
-        echo json_encode(['success' => false, 'message' => 'Failed to reset pipeline labels.']);
-        exit;
-    }
-}
 
 $generatedAdminPassword = null;
 try {
