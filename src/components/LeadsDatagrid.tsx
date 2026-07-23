@@ -1850,6 +1850,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         deadline: deadlineVal,
         deadlineTime: "23:59",
         owner: activeLead.owner || currentUser?.name || projectManagers[0] || "",
+        createdBy: currentUser?.name || "",
         assignedUsers: [activeLead.owner || currentUser?.name || projectManagers[0] || ""],
         relatedLeadId: activeLead.id,
         isLocking: false
@@ -1950,6 +1951,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       deadline: inlineTaskDeadline,
       deadlineTime: inlineTaskDeadlineTime,
       owner: activeLead.owner || currentUser?.name || projectManagers[0] || "",
+      createdBy: currentUser?.name || "",
       assignedUsers: [activeLead.owner || currentUser?.name || projectManagers[0] || ""],
       relatedLeadId: activeLead.id,
       isLocking: inlineTaskIsLocking

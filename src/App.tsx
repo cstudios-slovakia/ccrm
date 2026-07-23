@@ -530,6 +530,25 @@ ${log.payload || ''}
     
     document.title = `${viewName} | ${systemName}`;
   }, [activeTab, systemName, userLanguage, leads]);
+  const taskAccess = (() => {
+    if (!currentUser) {
+      return { view: false, create: false, edit: false, delete: false };
+    }
+    if (currentUser.role.toLowerCase() === "admin") {
+      return { view: true, create: true, edit: true, delete: true };
+    }
+    const role = roles.find((item) => item.name === currentUser.role);
+    const permissions: Partial<RolePermission["permissions"]> = role?.permissions || {};
+    const isProjectManager = currentUser.role.toLowerCase() === "project manager";
+    const allowed = (slug: string, projectManagerDefault = false) => {
+      if (Object.prototype.hasOwnProperty.call(permissions, slug)) {
+        return permissions[slug] === "edit" || permissions[slug] === "view";
+      }
+      return isProjectManager && projectManagerDefault;
+    };
+    return { view: allowed("tasks.view", true), create: allowed("tasks.create", true), edit: allowed("tasks.edit", true), delete: permissions["tasks.delete"] === "edit" };
+  })();
+
 
   // --- DYNAMICALLY DERIVED COMPATIBILITY PARAMETERS ---
   const projectManagers = users.map(u => u.name);
@@ -1474,6 +1493,7 @@ ${log.payload || ''}
           <MeetingRoomView 
             leads={leads}
             users={users}
+            currentUser={activeUser}
             systemLanguage={userLanguage}
             meetingNotes={meetingNotes}
             setMeetingNotes={updateMeetingNotesAndSync}
@@ -1496,6 +1516,7 @@ ${log.payload || ''}
             currentUser={activeUser}
             taskStates={taskStates}
             taskStateColors={taskStateColors}
+            taskAccess={taskAccess}
             autoOpenAddTask={autoOpenAddTask}
             setAutoOpenAddTask={setAutoOpenAddTask}
           />

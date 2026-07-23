@@ -118,7 +118,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `deadline` DATE NOT NULL,
               `deadline_time` VARCHAR(5) NULL COMMENT 'HH:MM deadline/overdue time',
               `status` VARCHAR(50) NOT NULL DEFAULT 'todo' COMMENT 'User-customizable task state',
-              `owner` VARCHAR(100) NOT NULL COMMENT 'Assigned Project Manager Name',
+              `owner` VARCHAR(100) NOT NULL COMMENT 'Primary assignee name; empty when unassigned',
+              `created_by` VARCHAR(100) NULL COMMENT 'Immutable task creator name; NULL for legacy rows',
               `related_lead_id` VARCHAR(50) NULL,
               `is_locking` TINYINT(1) NOT NULL DEFAULT 0,
               `archived` TINYINT(1) NOT NULL DEFAULT 0,
@@ -451,6 +452,13 @@ if (!function_exists('ccrm_schema_statements')) {
         }
         if (!ccrm_column_exists($pdo, 'tasks', 'archived')) {
             $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `archived` TINYINT(1) NOT NULL DEFAULT 0 AFTER `is_locking`");
+        }
+        if (!ccrm_column_exists($pdo, 'tasks', 'created_by')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `created_by` VARCHAR(100) NULL AFTER `owner`");
+            $pdo->exec(
+                "INSERT IGNORE INTO `task_assignees` (`task_id`, `user_name`)
+                 SELECT `id`, `owner` FROM `tasks` WHERE `owner` <> ''"
+            );
         }
     }
 

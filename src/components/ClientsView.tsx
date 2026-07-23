@@ -2186,6 +2186,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         priority: "medium",
         deadline: deadlineVal,
         owner: leadOwner,
+        createdBy: currentUser?.name || "",
         assignedUsers: [leadOwner],
         relatedLeadId: leadId,
         isLocking: false

@@ -283,7 +283,8 @@ export const EmailView: React.FC<EmailViewProps> = ({
       startDate: new Date().toISOString().split("T")[0],
       deadline: new Date(Date.now() + 86400000 * 3).toISOString().split("T")[0],
       deadlineTime: "23:59",
-      owner: "AI Assistant",
+      owner: assignedUser,
+      createdBy: currentUser?.name || "",
       assignedUsers: [assignedUser],
       relatedLeadId: matchedLead ? String(matchedLead.id) : undefined
     };

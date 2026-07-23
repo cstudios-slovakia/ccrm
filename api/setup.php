@@ -145,6 +145,7 @@ try {
         ['tasks.view', 'Inspect tasks board'],
         ['tasks.create', 'Create new checklist tasks'],
         ['tasks.edit', 'Modify tasks assignees and statuses'],
+        ['tasks.delete', 'Permanently delete task records'],
         ['timeline.log', 'Log custom timeline phone calls, emails, and notes'],
         ['calendar.view', 'Access appointment calendar slots'],
         ['calendar.create', 'Create bookings'],

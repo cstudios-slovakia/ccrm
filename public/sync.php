@@ -487,6 +487,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'deadlineTime' => $row['deadline_time'] ?? null,
             'status' => $row['status'],
             'owner' => $row['owner'],
+            'createdBy' => $row['created_by'] ?? null,
             'relatedLeadId' => $row['related_lead_id'] ?? null,
             'isLocking' => intval($row['is_locking']) === 1,
             'archived' => intval($row['archived'] ?? 0) === 1,
@@ -939,6 +940,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // newer records. Null for legacy clients → unconditional delete (old behaviour).
     $baseSyncedAt = (isset($payload['baseSyncedAt']) && is_string($payload['baseSyncedAt']) && $payload['baseSyncedAt'] !== '')
         ? $payload['baseSyncedAt'] : null;
+
+    $sessionNameStmt = $pdo->prepare("SELECT `name` FROM `users` WHERE `id` = ? LIMIT 1");
+    $sessionNameStmt->execute([$sessionUser['id']]);
+    $sessionUserName = (string)($sessionNameStmt->fetchColumn() ?: '');
 
     try {
         // Ensure dynamic unified-entry table schemas BEFORE opening the
@@ -1703,7 +1708,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingTaskIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedTaskIds = [];
 
-            $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `related_lead_id`, `is_locking`, `archived`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`)");
+            $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `is_locking`, `archived`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`)");
 
             foreach ($payload['tasks'] as $t) {
                 // Skip malformed items rather than aborting the whole sync.
@@ -1722,6 +1727,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     (isset($t['deadlineTime']) && $t['deadlineTime'] !== '') ? $t['deadlineTime'] : null,
                     $t['status'] ?? 'todo',
                     $t['owner'],
+                    $sessionUserName !== '' ? $sessionUserName : null,
                     $t['relatedLeadId'] ?? null,
                     ($t['isLocking'] ?? false) ? 1 : 0,
                     ($t['archived'] ?? false) ? 1 : 0
@@ -1740,9 +1746,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            // Perform task deletes
-            $tasksToDelete = array_diff($existingTaskIds, $processedTaskIds);
-            ccrm_delete_omitted($pdo, 'tasks', $tasksToDelete, $baseSyncedAt);
+            // Permanent task deletion uses the explicit, permission-checked task endpoint.
         }
 
         // 4.5. Synchronize Meeting Notes & meeting_tasks

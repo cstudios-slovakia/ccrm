@@ -66,6 +66,7 @@ export interface MeetingNote {
 interface MeetingRoomViewProps {
   leads: Lead[];
   users: UserProfile[];
+  currentUser: UserProfile;
   systemLanguage: "en" | "sk" | "hu";
   meetingNotes: MeetingNote[];
   setMeetingNotes: React.Dispatch<React.SetStateAction<MeetingNote[]>>;
@@ -80,6 +81,7 @@ interface MeetingRoomViewProps {
 export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
   leads,
   users,
+  currentUser,
   systemLanguage,
   meetingNotes,
   setMeetingNotes,
@@ -889,7 +891,8 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
         startDate: targetTask.startDate || new Date().toISOString().split("T")[0],
         deadline: targetTask.dueDate || new Date(Date.now() + 86400000).toISOString().split("T")[0],
         deadlineTime: "23:59",
-        owner: "AI Assistant",
+        owner: username,
+        createdBy: currentUser?.name || "",
         assignedUsers: [username],
         relatedLeadId: (viewState === "new" ? attachedLeads[0] : selectedMeeting?.leadId) || undefined
       };

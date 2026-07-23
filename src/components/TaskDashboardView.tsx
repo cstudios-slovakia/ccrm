@@ -22,6 +22,14 @@ import {
 import type { Task, UserProfile, Lead } from "../types";
 import type { Language } from "../utils/translations";
 import { CalendarPane } from "./Dashboard";
+import {
+    canDeleteTask as userCanDeleteTask,
+    canEditTask as userCanEditTask,
+    canViewTask,
+    isActiveTask,
+    isTaskAssignedTo,
+    type TaskAccess,
+} from "../utils/taskSelectors";
 
 // Reusable calendar date-range filter (item 9) — reuses the overview CalendarPane range picker
 // inside a compact popover with month navigation. Used by the Global Tasks and Archive views.
@@ -230,6 +238,7 @@ interface TaskDashboardViewProps {
     taskStateColors?: Record<string, string>;
     autoOpenAddTask?: boolean;
     setAutoOpenAddTask?: (val: boolean) => void;
+    taskAccess?: TaskAccess;
 }
 
 export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
@@ -248,6 +257,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     },
     autoOpenAddTask,
     setAutoOpenAddTask,
+    taskAccess = { view: true, create: true, edit: true, delete: true },
+
 }) => {
     const isDoneState = (status: string) => {
         return (
@@ -266,10 +277,12 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // full cross-user view in the Global Tasks / Archive tabs (canSeeAllTasks).
     const myName = currentUser?.name || defaultUserName;
     const canSeeAllTasks = (currentUser?.role || "").toLowerCase() === "admin";
-    const isMyTask = (task: Task) =>
-        task.owner === myName ||
-        (Array.isArray(task.assignedUsers) && task.assignedUsers.includes(myName));
-    const myTasks = tasks.filter(isMyTask).filter((t) => !t.archived);
+    const isMyTask = (task: Task) => isTaskAssignedTo(task, myName);
+    const mayEditTask = (task: Task) =>
+        userCanEditTask(task, currentUser, taskAccess);
+    const mayDeleteTask = (task: Task) =>
+        userCanDeleteTask(task, currentUser, taskAccess);
+    const myTasks = tasks.filter(isMyTask).filter((task) => !task.archived);
 
     // Inclusive date-range check against a YYYY-MM-DD string (item 9 calendar filters)
     const dateInRange = (dateStr: string, start: Date | null, end: Date | null) => {
@@ -379,6 +392,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // Edit Task Drawer State
     const [editingTask, setEditingTask] = useState<Task | null>(null);
     const [isClosingEditDrawer, setIsClosingEditDrawer] = useState(false);
+    const [deletingTaskIds, setDeletingTaskIds] = useState<Set<string>>(new Set());
 
     // Global view filters & user list memo
     const [globalPriorityFilter, setGlobalPriorityFilter] = useState("all");
@@ -405,8 +419,18 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
     React.useEffect(() => {
         if (autoOpenAddTask) {
-            resetNewTaskForm();
-            setIsAddDrawerOpen(true);
+            if (taskAccess.create) {
+                resetNewTaskForm();
+                setIsAddDrawerOpen(true);
+            } else if (typeof (window as any).showToast === "function") {
+                (window as any).showToast(
+                    t(
+                        "You do not have permission to create tasks.",
+                        "Nemáte oprávnenie vytvárať úlohy.",
+                        "Nincs jogosultsága feladatok létrehozására.",
+                    ),
+                );
+            }
             if (setAutoOpenAddTask) {
                 setAutoOpenAddTask(false);
             }
@@ -443,7 +467,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const [newDeadlineTime, setNewDeadlineTime] = useState("16:00");
     const [newRelatedLeadId, setNewRelatedLeadId] = useState("");
     const [newIsLocking, setNewIsLocking] = useState(false);
-    const [newAssignedUser, setNewAssignedUser] = useState("");
+    const [newAssignedUser, setNewAssignedUser] = useState(defaultUserName);
 
     // Resets the "New Task" form to fresh defaults; called every time the
     // drawer is opened so it never carries over the previously used values.
@@ -456,7 +480,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         setNewDeadlineTime("16:00");
         setNewRelatedLeadId("");
         setNewIsLocking(false);
-        setNewAssignedUser("");
+        setNewAssignedUser(defaultUserName);
     };
 
     // Helpers
@@ -547,7 +571,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             if (!isDoneState(task.status)) return false;
 
             // Item 11 — non-admins only see their own archived tasks
-            if (!canSeeAllTasks && !isMyTask(task)) return false;
+            if (!canViewTask(task, currentUser, canSeeAllTasks)) return false;
 
             // Item 9 — calendar date-range filter (by deadline/due date)
             if (!dateInRange(task.deadline, archiveDateStart, archiveDateEnd))
@@ -625,6 +649,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     }, [filteredArchivedTasks]);
 
     const handleRestoreTask = (task: Task) => {
+        if (!mayEditTask(task)) return;
         const restoredTask: Task = {
             ...task,
             status: taskStates[0] || "New",
@@ -647,6 +672,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     };
 
     const handleArchiveTask = (task: Task) => {
+        if (!mayEditTask(task)) return;
         setTasks((prev) =>
             prev.map((t) =>
                 t.id === task.id ? { ...t, archived: true } : t,
@@ -664,6 +690,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     };
 
     const handleUnarchiveTask = (task: Task) => {
+        if (!mayEditTask(task)) return;
         setTasks((prev) =>
             prev.map((t) =>
                 t.id === task.id ? { ...t, archived: false } : t,
@@ -680,7 +707,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         }
     };
 
-    const handleDeleteTask = (task: Task) => {
+    const handleDeleteTask = async (task: Task) => {
+        if (!mayDeleteTask(task) || deletingTaskIds.has(task.id)) return;
         const confirmed = window.confirm(
             t(
                 `Permanently delete "${task.title}"? This cannot be undone.`,
@@ -689,20 +717,49 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             ),
         );
         if (!confirmed) return;
-        setTasks((prev) => prev.filter((t) => t.id !== task.id));
-        if (typeof (window as any).showToast === "function") {
-            (window as any).showToast(
-                t(
-                    "Task deleted",
-                    "Úloha odstránená",
-                    "Feladat törölve",
-                ),
-            );
+        setDeletingTaskIds((prev) => new Set(prev).add(task.id));
+        try {
+            const response = await fetch("/api/task.php", {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id: task.id }),
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || result.success !== true) {
+                throw new Error(result.message || "Task deletion failed.");
+            }
+            setTasks((prev) => prev.filter((item) => item.id !== task.id));
+            if (typeof (window as any).showToast === "function") {
+                (window as any).showToast(
+                    t("Task deleted", "Úloha odstránená", "Feladat törölve"),
+                );
+            }
+        } catch (error) {
+            console.error("Task deletion failed", error);
+            if (typeof (window as any).showToast === "function") {
+                (window as any).showToast(
+                    t(
+                        "Task was not deleted. Please try again.",
+                        "Úloha nebola odstránená. Skúste to znova.",
+                        "A feladat nem lett törölve. Próbálja újra.",
+                    ),
+                );
+            }
+        } finally {
+            setDeletingTaskIds((prev) => {
+                const next = new Set(prev);
+                next.delete(task.id);
+                return next;
+            });
         }
     };
 
     const handleCreateTask = (e: React.FormEvent) => {
         e.preventDefault();
+        if (!taskAccess.create) {
+            closeAddDrawer();
+            return;
+        }
         if (!newTitle.trim()) {
             (window as any).showToast(
                 t(
@@ -723,12 +780,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             startDate: newStartDate || undefined,
             deadline: newDeadline,
             deadlineTime: newDeadlineTime,
-            owner: newAssignedUser || defaultUserName,
-            assignedUsers: newAssignedUser
-                ? [newAssignedUser]
-                : defaultUserName
-                  ? [defaultUserName]
-                  : [],
+            owner: newAssignedUser,
+            createdBy: myName,
+            assignedUsers: newAssignedUser ? [newAssignedUser] : [],
             relatedLeadId: newRelatedLeadId || undefined,
             isLocking: newRelatedLeadId ? newIsLocking : false,
         };
@@ -881,10 +935,12 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     </div>
                     <button
                         onClick={() => {
+                            if (!taskAccess.create) return;
                             resetNewTaskForm(selectedDateStr);
                             setIsAddDrawerOpen(true);
                         }}
-                        className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-[10px] uppercase tracking-wider shadow-md shadow-indigo-600/30 transition-all active:scale-95 cursor-pointer"
+                        className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-[10px] uppercase tracking-wider shadow-md shadow-indigo-600/30 transition-all active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={!taskAccess.create}
                     >
                         <Plus className="h-4 w-4 stroke-[3]" />
                         {t("Add Task", "Pridať úlohu", "Új feladat")}
@@ -997,6 +1053,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             <div className="relative shrink-0 select-none mt-0.5">
                 <select
                     value={task.status}
+                    disabled={!mayEditTask(task)}
                     onChange={(e) => {
                         const newStatus = e.target.value;
                         const now = new Date();
@@ -1022,7 +1079,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             ),
                         );
                     }}
-                    className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg border-2 cursor-pointer transition-all focus:outline-none max-w-[110px] truncate"
+                    className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg border-2 cursor-pointer transition-all focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50 max-w-[110px] truncate"
                     style={{
                         backgroundColor: `${taskStateColors[task.status] || "#64748b"}15`,
                         color: taskStateColors[task.status] || "#64748b",
@@ -1052,7 +1109,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 e.stopPropagation();
                                 handleArchiveTask(task);
                             }}
-                            className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-650 transition-colors cursor-pointer"
+                            className="p-1 hover:bg-slate-100 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 rounded-lg text-slate-400 hover:text-slate-650 transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-35"
+                            disabled={!mayEditTask(task)}
                             title={t(
                                 "Archive Task",
                                 "Archivovať úlohu",
@@ -1066,7 +1124,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 e.stopPropagation();
                                 setEditingTask(task);
                             }}
-                            className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-650 transition-colors cursor-pointer"
+                            className="p-1 hover:bg-slate-100 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 rounded-lg text-slate-400 hover:text-slate-650 transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-35"
+                            disabled={!mayEditTask(task)}
                             title={t(
                                 "Edit Task",
                                 "Upraviť úlohu",
@@ -1143,9 +1202,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
     const renderGlobalTasksView = () => {
         // Item 11: non-admins only see their own tasks/column here too
-        const activeTasks = (canSeeAllTasks ? tasks : myTasks).filter(
-            (t) => !isDoneState(t.status) && !t.archived,
-        );
+        const activeTasks = (canSeeAllTasks ? tasks : myTasks).filter((task) => isActiveTask(task, isDoneState));
         const columnUsers = canSeeAllTasks ? allUsersList : [myName];
 
         return (
@@ -1372,6 +1429,22 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     };
 
     // --- FULL CALENDAR MONTH VIEW WITH LEFT SIDEBAR (SPLIT VIEW) ---
+    if (!taskAccess.view) {
+        return (
+            <div className="w-full min-h-[360px] flex items-center justify-center animate-in fade-in slide-in-from-top-2 duration-300">
+                <div className="max-w-md rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm transition-all hover:-translate-y-1 hover:shadow-lg">
+                    <AlertCircle className="mx-auto h-9 w-9 text-slate-400" />
+                    <h1 className="mt-4 text-lg font-black text-slate-800">
+                        {t("Tasks are not available", "Úlohy nie sú dostupné", "A feladatok nem érhetők el")}
+                    </h1>
+                    <p className="mt-2 text-xs font-semibold leading-relaxed text-slate-500">
+                        {t("Your role does not have permission to view the task board.", "Vaša rola nemá oprávnenie zobraziť nástenku úloh.", "A szerepköre nem jogosult a feladattábla megtekintésére.")}
+                    </p>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div
             className={`w-full ${viewMode === "archive" ? "h-auto shrink-0" : "lg:h-[calc(100vh-8rem)] h-auto flex flex-col"} animate-in fade-in slide-in-from-top-4 duration-300`}
@@ -1383,11 +1456,17 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         <CalendarIcon className="h-7 w-7 text-indigo-600 stroke-[2.5]" />
                         {viewMode === "calendar"
                             ? t(
-                                  "Master Calendar",
-                                  "Hlavný Kalendár",
-                                  "Fő Naptár",
+                                  "My Calendar",
+                                  "Môj kalendár",
+                                  "Saját naptár",
                               )
-                            : t(
+                            : viewMode === "global"
+                              ? t(
+                                    "Global Tasks",
+                                    "Globálne úlohy",
+                                    "Globális feladatok",
+                                )
+                              : t(
                                   "Task Archive",
                                   "Archív dokončených úloh",
                                   "Feladat archívum",
@@ -1396,11 +1475,17 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     <p className="text-xs font-medium text-slate-450 tracking-wide mt-1">
                         {viewMode === "calendar"
                             ? t(
-                                  "Overview of all scheduled tasks, pipeline blocks, and timeline events.",
-                                  "Prehľad všetkých úloh, blokovaní a udalostí v čase.",
-                                  "Az összes ütemezett feladat és esemény áttekintése.",
+                                  "Tasks assigned to you. Team tasks remain available in Global Tasks.",
+                                  "Úlohy priradené vám. Tímové úlohy zostávajú v Globálnych úlohách.",
+                                  "Az Önhöz rendelt feladatok. A csapat feladatai a Globális feladatokban maradnak.",
                               )
-                            : t(
+                            : viewMode === "global"
+                              ? t(
+                                    "Active workload across the whole team.",
+                                    "Aktívne pracovné zaťaženie celého tímu.",
+                                    "Az egész csapat aktív munkaterhelése.",
+                                )
+                              : t(
                                   "History of completed tasks, logging details, and timing status.",
                                   "História dokončených úloh s informáciami o dobe omeškania.",
                                   "Befejezett feladatok előzményei és késési státuszai.",
@@ -1438,7 +1523,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
                             }`}
                         >
-                            {t("Calendar", "Kalendár", "Naptár")}
+                            {t("My Calendar", "Môj kalendár", "Saját naptár")}
                         </button>
                         <button
                             onClick={() => setViewMode("global")}
@@ -1801,7 +1886,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         const archivedList = tasks.filter(
                             (task) =>
                                 task.archived &&
-                                (canSeeAllTasks || isMyTask(task)),
+                                canViewTask(task, currentUser, canSeeAllTasks),
                         );
                         if (archivedList.length === 0) return null;
                         return (
@@ -1898,10 +1983,12 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         <div className="flex items-center gap-2">
                             <button
                                 onClick={() => {
+                                    if (!taskAccess.create) return;
                                     resetNewTaskForm();
                                     setIsAddDrawerOpen(true);
                                 }}
-                                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-indigo-600/20 transition-all active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer border-2 border-indigo-550"
+                                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-indigo-600/20 transition-all active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 flex items-center justify-center gap-2 cursor-pointer border-2 border-indigo-550 disabled:cursor-not-allowed disabled:opacity-50"
+                                disabled={!taskAccess.create}
                             >
                                 <Plus className="h-4 w-4 stroke-[3]" />
                                 {t(
@@ -2363,6 +2450,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     <form
                         onSubmit={(e) => {
                             e.preventDefault();
+                            if (!mayEditTask(currentTask)) return;
                             setTasks((prev) =>
                                 prev.map((tk) =>
                                     tk.id === currentTask.id ? currentTask : tk,
@@ -2585,7 +2673,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                         return {
                                             ...prev,
                                             assignedUsers: newUsers,
-                                            owner: e.target.value || prev.owner,
+                                            owner: e.target.value,
                                         };
                                     })
                                 }
@@ -2678,7 +2766,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
                         <button
                             type="submit"
-                            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-xs uppercase shadow-lg shadow-indigo-600/20"
+                            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 text-white rounded-xl font-black text-xs uppercase shadow-lg shadow-indigo-600/20 transition-all disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={!mayEditTask(currentTask)}
                         >
                             {t(
                                 "Save Changes",
@@ -2687,7 +2776,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             )}
                         </button>
 
-                        {currentTask.id && (
+                        {currentTask.id && mayEditTask(currentTask) && (
                             <button
                                 type="button"
                                 onClick={() => {
