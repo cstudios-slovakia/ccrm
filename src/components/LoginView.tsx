@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { LogIn, Key, Mail, Terminal, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
+import { PasswordInput } from "./PasswordInput";
 import type { UserProfile } from "../types";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
@@ -485,13 +486,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
               <label className="text-[10px] font-black text-slate-550 uppercase tracking-wider block pl-0.5">{getTranslation(systemLanguage, "login.password")}</label>
               <div className="relative">
                 <Key className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                <input
-                  type="password"
+                <PasswordInput
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full pl-11 pr-4 py-3 rounded-2xl bg-white border border-slate-250 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all font-semibold"
+                  className="w-full pl-11 pr-11 py-3 rounded-2xl bg-white border border-slate-250 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all font-semibold"
                 />
               </div>
             </div>
@@ -623,21 +623,19 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
                         <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
                           {tr("Set a new password", "Nastavte nové heslo", "Új jelszó beállítása")}
                         </p>
-                        <input
-                          type="password"
+                        <PasswordInput
                           required
                           value={newPassword}
                           onChange={(e) => setNewPassword(e.target.value)}
                           placeholder={tr("New password", "Nové heslo", "Új jelszó")}
-                          className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-250 text-xs text-slate-800 focus:outline-none focus:border-indigo-500 font-semibold"
+                          className="w-full pl-3 pr-10 py-2.5 rounded-xl bg-white border border-slate-250 text-xs text-slate-800 focus:outline-none focus:border-indigo-500 font-semibold"
                         />
-                        <input
-                          type="password"
+                        <PasswordInput
                           required
                           value={confirmPassword}
                           onChange={(e) => setConfirmPassword(e.target.value)}
                           placeholder={tr("Confirm new password", "Potvrďte nové heslo", "Új jelszó megerősítése")}
-                          className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-250 text-xs text-slate-800 focus:outline-none focus:border-indigo-500 font-semibold"
+                          className="w-full pl-3 pr-10 py-2.5 rounded-xl bg-white border border-slate-250 text-xs text-slate-800 focus:outline-none focus:border-indigo-500 font-semibold"
                         />
                         {resetError && (
                           <div className="flex items-start gap-1.5 text-[10px] font-semibold text-rose-600">

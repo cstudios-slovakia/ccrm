@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { User, Mail, Settings, Save, RefreshCw, CheckCircle2, AlertCircle, AlertOctagon } from "lucide-react";
+import { PasswordInput } from "./PasswordInput";
 import type { UserProfile } from "../types";
 import type { Language } from "../utils/translations";
 
@@ -367,12 +368,11 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
 
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">{t("New Password", "Nové heslo", "Új jelszó")}</label>
-                <input
-                  type="password"
+                <PasswordInput
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  className="w-full pl-4 pr-10 py-2.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                 />
               </div>
 
@@ -593,13 +593,12 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                             </div>
                             <div className="space-y-1">
                               <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">{t("IMAP Password", "Heslo IMAP", "IMAP jelszó")}</label>
-                              <input
-                                type="password"
+                              <PasswordInput
                                 required
                                 value={emailSettings.imapPassword}
                                 onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, imapPassword: e.target.value }))}
                                 placeholder="••••••••••••"
-                                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none"
+                                className="w-full pl-3 pr-10 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none"
                               />
                             </div>
                           </div>
@@ -661,13 +660,12 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                             </div>
                             <div className="space-y-1">
                               <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">{t("SMTP Password", "Heslo SMTP", "SMTP jelszó")}</label>
-                              <input
-                                type="password"
+                              <PasswordInput
                                 required
                                 value={emailSettings.smtpPassword}
                                 onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, smtpPassword: e.target.value }))}
                                 placeholder="••••••••••••"
-                                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none"
+                                className="w-full pl-3 pr-10 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none"
                               />
                             </div>
                           </div>

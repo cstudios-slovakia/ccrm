@@ -10,6 +10,7 @@ import type { UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { ProjectSettings } from "./ProjectSettings";
+import { PasswordInput } from "./PasswordInput";
 import { CURRENCY_OPTIONS, currencyForRegion } from "../utils/currency";
 
 // Inline "double-click / pencil to rename" field.
@@ -2689,13 +2690,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">{getTranslation(userLanguage, "settings.managers.lbl_password")}</label>
-                      <input
-                        type="password"
+                      <PasswordInput
                         required
                         value={newUserPassword}
                         onChange={(e) => setNewUserPassword(e.target.value)}
                         placeholder={getTranslation(userLanguage, "settings.managers.placeholder_new_password")}
-                        className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+                        className="w-full pl-3 pr-10 py-2 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
                       />
                     </div>
                     <div className="space-y-1">
@@ -3802,8 +3802,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                   <div className="space-y-1">
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">{getTranslation(userLanguage, "settings.ads.meta_secret")}</label>
-                    <input
-                      type="password"
+                    <PasswordInput
                       disabled={getPermission("general_config") === "view"}
                       value={metaAppSecret}
                       onChange={(e) => {
@@ -3812,7 +3811,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       }}
                       onBlur={syncAdsCredentialsToDb}
                       placeholder="••••••••••••••••••••••••••••••••"
-                      className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+                      className="w-full pl-3 pr-10 py-2 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
                     />
                   </div>
 
@@ -3877,8 +3876,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                   <div className="space-y-1">
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">{getTranslation(userLanguage, "settings.ads.google_secret")}</label>
-                    <input
-                      type="password"
+                    <PasswordInput
                       disabled={getPermission("general_config") === "view"}
                       value={googleClientSecret}
                       onChange={(e) => {
@@ -3887,7 +3885,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       }}
                       onBlur={syncAdsCredentialsToDb}
                       placeholder="GOCSPX-••••••••••••••••"
-                      className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+                      className="w-full pl-3 pr-10 py-2 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
                     />
                   </div>
 
@@ -4898,12 +4896,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </div>
                           <div className="space-y-1">
                             <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">{t("Password", "Heslo", "Jelszó")}</label>
-                            <input
-                              type="password"
+                            <PasswordInput
                               value={mariaDbPassword}
                               onChange={(e) => setMariaDbPassword(e.target.value)}
                               placeholder="••••••••"
-                              className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
+                              className="w-full pl-3.5 pr-10 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
                             />
                           </div>
                           <div className="space-y-1 md:col-span-2">
@@ -4938,12 +4935,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </div>
                           <div className="space-y-1 md:col-span-2">
                             <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">{t("API Key (Optional)", "API kľúč (Voliteľné)", "API kulcs (Opcionális)")}</label>
-                            <input
-                              type="password"
+                            <PasswordInput
                               value={qdrantApiKey}
                               onChange={(e) => setQdrantApiKey(e.target.value)}
                               placeholder={t("Leave blank if unsecured", "Ponechajte prázdne, ak je nezabezpečené", "Hagyja üresen, ha nincs védve")}
-                              className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
+                              className="w-full pl-3.5 pr-10 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
                             />
                           </div>
                         </div>
@@ -4958,12 +4954,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="space-y-1 md:col-span-2">
                             <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">{t("API Key", "API kľúč", "API kulcs")}</label>
-                            <input
-                              type="password"
+                            <PasswordInput
                               value={pineconeApiKey}
                               onChange={(e) => setPineconeApiKey(e.target.value)}
                               placeholder="pcsk_..."
-                              className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
+                              className="w-full pl-3.5 pr-10 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
                             />
                           </div>
                           <div className="space-y-1 md:col-span-2">

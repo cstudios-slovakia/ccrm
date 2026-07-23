@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Database, ShieldCheck, Server, Key, AlertCircle, CheckCircle2, Loader2, Sparkles, Languages } from "lucide-react";
+import { PasswordInput } from "./PasswordInput";
 
 interface InstallerWizardProps {
   onInstallSuccess: () => void;
@@ -286,12 +287,11 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
                 <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider block pl-0.5">{t[lang].pass}</label>
                 <div className="relative">
                   <Key className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-450" />
-                  <input
-                    type="password"
+                  <PasswordInput
                     value={pass}
                     onChange={(e) => setPass(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full pl-11 pr-4 py-3 rounded-2xl bg-white/80 border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold shadow-sm"
+                    className="w-full pl-11 pr-11 py-3 rounded-2xl bg-white/80 border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold shadow-sm"
                   />
                 </div>
               </div>
@@ -395,12 +395,11 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
                       className="w-full px-4 py-3 rounded-2xl bg-white border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold"
                     />
                   </div>
-                  <input
-                    type="password"
+                  <PasswordInput
                     value={adminPassword}
                     onChange={(e) => setAdminPassword(e.target.value)}
                     placeholder={lang === "sk" ? "Heslo" : lang === "hu" ? "Jelszó" : "Password"}
-                    className="w-full px-4 py-3 rounded-2xl bg-white border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold"
+                    className="w-full pl-4 pr-11 py-3 rounded-2xl bg-white border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold"
                   />
                   <p className="text-[9px] text-slate-450 leading-relaxed">
                     {lang === "sk"
