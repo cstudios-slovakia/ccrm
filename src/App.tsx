@@ -529,16 +529,28 @@ ${log.payload || ''}
 
   // Dynamically update browser tab document title based on the active view and language preference
   useEffect(() => {
+    // Routes carry sub-paths and query strings (e.g. "settings/branding",
+    // "meetings/new?record=true") — strip them so the base view still resolves.
+    const baseTab = activeTab.split(/[/?]/)[0];
     let viewName = "";
-    if (activeTab.startsWith("client-")) {
-      const clientName = decodeURIComponent(activeTab.replace("client-", ""));
-      viewName = clientName;
-    } else if (activeTab.startsWith("lead-")) {
-      const leadId = activeTab.replace("lead-", "");
+    if (baseTab.startsWith("client-")) {
+      viewName = decodeURIComponent(baseTab.replace("client-", ""));
+    } else if (baseTab.startsWith("lead-")) {
+      const leadId = baseTab.replace("lead-", "");
       const targetLead = leads.find(l => String(l.id) === leadId);
       viewName = targetLead ? targetLead.name : "Lead";
+    } else if (baseTab.startsWith("user-")) {
+      viewName = decodeURIComponent(baseTab.replace("user-", ""));
+    } else if (baseTab.startsWith("dash_")) {
+      const dashId = baseTab.replace("dash_", "");
+      const dash = (customDashboards || []).find(d => String(d.id) === dashId);
+      viewName = dash ? dash.name : t("Dashboard", "Nástenka", "Irányítópult");
+    } else if (baseTab.startsWith("ue_")) {
+      const ueId = baseTab.replace("ue_", "");
+      const ue = unifiedEntries.find(u => String(u.id) === ueId);
+      viewName = ue ? ue.name : t("Records", "Záznamy", "Nyilvántartás");
     } else {
-      switch (activeTab) {
+      switch (baseTab) {
         case "leads":
           viewName = getTranslation(userLanguage, "sidebar.leads");
           break;
@@ -548,17 +560,39 @@ ${log.payload || ''}
         case "files":
           viewName = getTranslation(userLanguage, "sidebar.files");
           break;
+        case "meetings":
+          viewName = getTranslation(userLanguage, "sidebar.meetings");
+          break;
         case "settings":
           viewName = getTranslation(userLanguage, "sidebar.settings");
           break;
-        default:
+        case "overview":
           viewName = getTranslation(userLanguage, "sidebar.dashboard");
+          break;
+        case "tasks":
+          viewName = t("Tasks", "Úlohy", "Feladatok");
+          break;
+        case "projects":
+          viewName = t("Projects", "Projekty", "Projektek");
+          break;
+        case "email":
+          viewName = t("Mail Client", "Pošta", "Levelezés");
+          break;
+        case "rag_ai":
+          viewName = t("RAG AI Assistant", "RAG AI Asistent", "RAG AI Asszisztens");
+          break;
+        case "personal-settings":
+          viewName = t("Personal Settings", "Osobné nastavenia", "Személyes beállítások");
+          break;
+        case "dashboard":
+        default:
+          viewName = t("Task Dashboard", "Panel úloh", "Feladat Irányítópult");
           break;
       }
     }
-    
+
     document.title = `${viewName} | ${systemName}`;
-  }, [activeTab, systemName, userLanguage, leads]);
+  }, [activeTab, systemName, userLanguage, leads, customDashboards, unifiedEntries]);
   const taskAccess = (() => {
     if (!currentUser) {
       return { view: false, create: false, edit: false, delete: false };
