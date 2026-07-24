@@ -1,0 +1,1 @@
+function e(){return new Date(Date.now()-new Date().getTimezoneOffset()*6e4)}function t(){return e().toISOString().split(`T`)[0]}function n(){return e().toISOString().replace(`T`,` `).substring(0,16)}export{t as n,n as t};

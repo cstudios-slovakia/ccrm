@@ -748,58 +748,73 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     );
   };
 
-  const handleSendTestEmail = (e: React.FormEvent) => {
+  const handleSendTestEmail = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!testRecipient.trim()) return;
 
     setIsSendingTest(true);
     setTestResult(null);
 
-    // Simulate high-fidelity network transport handshakes
-    setTimeout(() => {
-      setIsSendingTest(false);
-      if (emailProvider === "smtp") {
-        if (!smtpHost || !smtpUser || !senderEmail) {
-          setTestResult({
-            status: "error",
-            message: t(
-              "SMTP handshake failed. Missing host address, username, or sender email envelope.",
-              "SMTP spojenie zlyhalo. Chýba adresa hostiteľa, používateľské meno alebo e-mail odosielateľa.",
-              "Az SMTP kapcsolat sikertelen. Hiányzik a kiszolgáló címe, a felhasználónév vagy a feladó e-mail címe."
-            )
-          });
-        } else {
-          setTestResult({
-            status: "success",
-            message: t(
-              `SMTP envelope delivered! Successfully connected to ${smtpHost}:${smtpPort} (${smtpSecure.toUpperCase()}) and sent test envelope to ${testRecipient}.`,
-              `Testovací e-mail odoslaný! Pripojenie na ${smtpHost}:${smtpPort} (${smtpSecure.toUpperCase()}) prebehlo úspešne a správa bola doručená na ${testRecipient}.`,
-              `A teszt e-mail elküldve! Sikeres kapcsolódás a(z) ${smtpHost}:${smtpPort} (${smtpSecure.toUpperCase()}) kiszolgálóhoz, az üzenet elment ide: ${testRecipient}.`
-            )
-          });
-        }
+    // Post the settings currently in the form; the server merges any masked
+    // secret from the stored config and actually delivers the message.
+    const settings = {
+      emailProvider,
+      smtpHost,
+      smtpPort,
+      smtpSecure,
+      smtpAuth,
+      smtpUser,
+      smtpPassword,
+      senderName,
+      senderEmail,
+      exchUrl,
+      exchDomain,
+      exchAuth,
+      exchClientId,
+      exchTenantId,
+      exchClientSecret,
+      exchPassword,
+      exchMailbox
+    };
+
+    try {
+      const response = await fetch("/api/mail_broker.php?action=send_test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recipient: testRecipient.trim(), lang: userLanguage, settings })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setTestResult({
+          status: "success",
+          message: t(
+            `Test email sent to ${testRecipient}. Check the inbox (and the spam folder) to confirm delivery.`,
+            `Testovací e-mail bol odoslaný na ${testRecipient}. Skontrolujte doručenú poštu (aj priečinok spam) a potvrďte doručenie.`,
+            `A teszt e-mail elküldve ide: ${testRecipient}. Ellenőrizze a beérkezett üzeneteket (és a spam mappát) a kézbesítés megerősítéséhez.`
+          )
+        });
       } else {
-        if (exchAuth === "oauth" && (!exchClientId || !exchTenantId)) {
-          setTestResult({
-            status: "error",
-            message: t(
-              "Exchange Server authentication failed. Missing Client ID or Tenant ID for OAuth 2.0 connection workflow.",
-              "Overenie voči Exchange serveru zlyhalo. Pre OAuth 2.0 chýba Client ID alebo Tenant ID.",
-              "Az Exchange kiszolgáló hitelesítése sikertelen. Az OAuth 2.0 kapcsolathoz hiányzik a Client ID vagy a Tenant ID."
-            )
-          });
-        } else {
-          setTestResult({
-            status: "success",
-            message: t(
-              `Microsoft Exchange handshake verified! Autodiscovered OWA endpoints, completed authentication via ${exchAuth.toUpperCase()}, and pushed message to ${testRecipient} from mailbox ${exchMailbox}.`,
-              `Spojenie s Microsoft Exchange overené! Endpointy OWA boli nájdené, overenie cez ${exchAuth.toUpperCase()} prebehlo úspešne a správa bola odoslaná na ${testRecipient} zo schránky ${exchMailbox}.`,
-              `A Microsoft Exchange kapcsolat ellenőrizve! Az OWA végpontok megtalálva, a(z) ${exchAuth.toUpperCase()} hitelesítés sikeres, az üzenet elment ide: ${testRecipient} a(z) ${exchMailbox} postafiókból.`
-            )
-          });
-        }
+        setTestResult({
+          status: "error",
+          message: data.error || t(
+            "Sending the test email failed. Please verify the server settings.",
+            "Odoslanie testovacieho e-mailu zlyhalo. Skontrolujte nastavenia servera.",
+            "A teszt e-mail küldése sikertelen. Ellenőrizze a kiszolgáló beállításait."
+          )
+        });
       }
-    }, 1800);
+    } catch (err) {
+      setTestResult({
+        status: "error",
+        message: t(
+          "Network request to the mail server failed.",
+          "Sieťová požiadavka na poštový server zlyhala.",
+          "A levelezőszerverhez intézett hálózati kérés sikertelen."
+        )
+      });
+    } finally {
+      setIsSendingTest(false);
+    }
   };
 
   const fetchTrainingStats = async () => {

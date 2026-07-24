@@ -57,6 +57,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'test_credentials') {
     exit;
 }
 
+// 1b. Actually SEND a test email through the SYSTEM outbound mail server
+// (system_settings.INTEGRATIONS_CONFIG) — the profile used by password-reset
+// and notifications. Admin-only. Unlike the old client-side "simulation", this
+// really connects, authenticates and delivers, so a green result means the
+// message left the server. The operator posts the settings currently in the
+// form; masked/omitted secrets are merged from the stored config.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'send_test') {
+    ccrm_require_admin();
+
+    $input = json_decode(file_get_contents('php://input'), true);
+    $recipient = is_array($input) ? trim((string)($input['recipient'] ?? '')) : '';
+    if ($recipient === '' || !filter_var($recipient, FILTER_VALIDATE_EMAIL)) {
+        echo json_encode(['success' => false, 'error' => 'A valid recipient address is required.']);
+        exit;
+    }
+
+    $stored = ccrm_load_integrations_config($pdo);
+    $posted = (is_array($input) && isset($input['settings']) && is_array($input['settings'])) ? $input['settings'] : null;
+    $config = $posted !== null
+        ? ccrm_merge_secrets($posted, $stored, ccrm_integration_secret_keys())
+        : $stored;
+
+    $lang = (is_array($input) && in_array(($input['lang'] ?? 'en'), ['sk', 'hu', 'en'], true)) ? $input['lang'] : 'en';
+
+    try {
+        send_system_test_email($config, $recipient, $lang);
+        echo json_encode(['success' => true]);
+    } catch (Throwable $ex) {
+        echo json_encode(['success' => false, 'error' => $ex->getMessage()]);
+    }
+    exit;
+}
+
 // 2. The mailbox to operate on is ALWAYS the authenticated session user's own.
 // SECURITY: the old X-User-Email header let any logged-in user open, read, send
 // from or delete another user's mailbox just by supplying their address (IDOR).
@@ -649,6 +682,154 @@ function send_smtp_email($settings, $to, $subject, $html) {
     fgets($socket, 515);
     
     fwrite($socket, "QUIT\r\n");
+    fclose($socket);
+}
+
+/**
+ * Send a diagnostic test message through the SYSTEM outbound profile
+ * (INTEGRATIONS_CONFIG). Unlike send_smtp_email() this validates every SMTP
+ * reply code, so a rejected auth/recipient/relay surfaces as a real error
+ * instead of a silent no-op — that silent no-op is exactly why the previous
+ * front-end "simulation" reported success while nothing was ever delivered.
+ */
+function send_system_test_email(array $config, string $to, string $lang = 'en') {
+    $provider = $config['emailProvider'] ?? 'smtp';
+
+    $host    = (string)($config['smtpHost'] ?? '');
+    $port    = intval($config['smtpPort'] ?? 0);
+    $sec     = $config['smtpSecure'] ?? 'ssl';
+    $user    = (string)($config['smtpUser'] ?? '');
+    $pass    = (string)($config['smtpPassword'] ?? '');
+    $useAuth = ($config['smtpAuth'] ?? true) !== false;
+
+    if ($provider === 'exchange') {
+        // Server-side Exchange verification uses Office365 SMTP with basic auth
+        // over STARTTLS. OAuth-only mailboxes cannot be exercised from here.
+        $host    = 'smtp.office365.com';
+        $port    = 587;
+        $sec     = 'tls';
+        $useAuth = true;
+        $user    = (string)($config['exchMailbox'] ?? '');
+        $pass    = (string)($config['exchPassword'] ?? '');
+        if ($user === '' || $pass === '') {
+            throw new Exception('Exchange test send needs a mailbox address and password (basic auth). OAuth-only profiles cannot be verified by sending from the server.');
+        }
+    }
+
+    if ($host === '' || $port === 0) {
+        throw new Exception('Outgoing mail server is not configured. Save the SMTP host and port first.');
+    }
+    if ($useAuth && ($user === '' || $pass === '')) {
+        throw new Exception('SMTP authentication is enabled but the username or password is missing.');
+    }
+
+    $senderEmail = (string)($config['senderEmail'] ?? '');
+    if ($senderEmail === '') {
+        $senderEmail = $user;
+    }
+    $senderName = (string)($config['senderName'] ?? '');
+
+    $secure = ($sec === 'ssl' || $sec === true) ? 'ssl://' : '';
+    if ($port === 587 || $sec === 'tls') {
+        $secure = '';
+    }
+
+    $socket = @fsockopen($secure . $host, $port, $errno, $errstr, 10);
+    if (!$socket) {
+        throw new Exception("Could not connect to SMTP server $host:$port — $errstr ($errno)");
+    }
+    stream_set_timeout($socket, 15);
+
+    $read = function () use ($socket) {
+        $data = '';
+        while (($line = fgets($socket, 515)) !== false) {
+            $data .= $line;
+            // A multi-line reply keeps a hyphen at offset 3 ("250-...");
+            // the final line uses a space ("250 ...").
+            if (strlen($line) < 4 || $line[3] !== '-') {
+                break;
+            }
+        }
+        return $data;
+    };
+    $expect = function ($prefixes, $stage) use ($read) {
+        $resp = $read();
+        foreach ((array)$prefixes as $p) {
+            if (strncmp($resp, $p, strlen($p)) === 0) {
+                return $resp;
+            }
+        }
+        throw new Exception("SMTP $stage was rejected: " . trim($resp));
+    };
+    $send = function ($cmd) use ($socket) {
+        fwrite($socket, $cmd . "\r\n");
+    };
+
+    $serverName = $_SERVER['SERVER_NAME'] ?? ($_SERVER['HTTP_HOST'] ?? 'localhost');
+
+    $expect('220', 'greeting');
+    $send('EHLO ' . $serverName);
+    $expect('250', 'EHLO');
+
+    if ($port === 587 || $sec === 'tls') {
+        $send('STARTTLS');
+        $expect('220', 'STARTTLS');
+        if (!stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
+            throw new Exception('TLS encryption handshake negotiation failed.');
+        }
+        $send('EHLO ' . $serverName);
+        $expect('250', 'EHLO (after STARTTLS)');
+    }
+
+    if ($useAuth) {
+        $send('AUTH LOGIN');
+        $expect('334', 'AUTH LOGIN');
+        $send(base64_encode($user));
+        $expect('334', 'username');
+        $send(base64_encode($pass));
+        $expect('235', 'authentication');
+    }
+
+    $send('MAIL FROM: <' . $senderEmail . '>');
+    $expect(['250'], 'MAIL FROM');
+    $send('RCPT TO: <' . $to . '>');
+    $expect(['250', '251'], 'RCPT TO');
+    $send('DATA');
+    $expect('354', 'DATA');
+
+    if ($lang === 'sk') {
+        $subject = 'CCRM — testovací e-mail';
+        $body    = 'Toto je testovacia správa z CRM. Ak ste ju dostali, odchádzajúci e-mailový server je nastavený správne.';
+    } elseif ($lang === 'hu') {
+        $subject = 'CCRM — teszt e-mail';
+        $body    = 'Ez egy teszt üzenet a CRM-ből. Ha megkapta, a kimenő levelezőszerver helyesen van beállítva.';
+    } else {
+        $subject = 'CCRM — test email';
+        $body    = 'This is a test message from your CRM. If you received it, the outgoing mail server is configured correctly.';
+    }
+
+    $fromHeader = $senderName !== ''
+        ? '=?UTF-8?B?' . base64_encode($senderName) . '?= <' . $senderEmail . '>'
+        : '<' . $senderEmail . '>';
+
+    $html = '<div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#1e293b">'
+        . '<h2 style="font-size:18px;margin:0 0 16px">CCRM</h2>'
+        . '<p style="font-size:14px;line-height:1.5;margin:0">' . htmlspecialchars($body, ENT_QUOTES, 'UTF-8') . '</p>'
+        . '</div>';
+
+    $message  = "MIME-Version: 1.0\r\n";
+    $message .= "Content-Type: text/html; charset=UTF-8\r\n";
+    $message .= "From: " . $fromHeader . "\r\n";
+    $message .= "To: <" . $to . ">\r\n";
+    $message .= "Subject: =?UTF-8?B?" . base64_encode($subject) . "?=\r\n";
+    $message .= "Date: " . date('r') . "\r\n\r\n";
+    $message .= $html;
+    // Dot-stuff any line that begins with '.' so it is not read as end-of-data.
+    $message = preg_replace('/^\./m', '..', $message);
+
+    $send($message . "\r\n.");
+    $expect('250', 'message body');
+    $send('QUIT');
     fclose($socket);
 }
 
