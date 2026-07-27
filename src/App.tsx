@@ -22,6 +22,7 @@ import { RefreshCw, AlertOctagon, Trash2, Copy } from "lucide-react";
 import { UnifiedEntryView } from "./components/UnifiedEntryView";
 import { DynamicDashboardView } from "./components/DynamicDashboardView";
 import { ShaderGradient, ShaderGradientCanvas } from "shadergradient";
+import { UpdateNotesView } from "./components/UpdateNotesView";
 
 const ShaderGradientAny = ShaderGradient as any;
 
@@ -104,7 +105,7 @@ function App() {
     if (hashLower.startsWith("client-") || hashLower.startsWith("lead-") || hashLower.startsWith("user-") || hashLower.startsWith("ue_") || hashLower.startsWith("dash_") || hashLower.startsWith("settings")) {
       return rawHash; // Keep case sensitivity and allow sub-tabs for settings
     }
-    const validTabs = ["dashboard", "overview", "leads", "clients", "tasks", "files", "personal-settings", "email", "rag_ai", "meetings", "projects"];
+    const validTabs = ["dashboard", "overview", "leads", "clients", "tasks", "files", "personal-settings", "email", "rag_ai", "meetings", "projects", "updates"];
     return validTabs.includes(hashLower) ? hashLower : "dashboard";
   };
 
@@ -567,7 +568,7 @@ ${log.payload || ''}
     nextProjectTypes?: ProjectType[],
     nextProjects?: Project[]
   ): Promise<void> => {
-    if (!isInstalled) return pushChainRef.current;
+    if (!isInstalled || !currentUser || !isInitialSyncResolved) return pushChainRef.current;
     // Queue this push behind any in-flight one. Chaining (rather than firing in
     // parallel) guarantees the server applies saves in the order they were made,
     // so a stale settings snapshot can never land after the fresh one.
@@ -1417,6 +1418,10 @@ ${log.payload || ''}
             taskStates={taskStates}
           />
         );
+      case "updates":
+        return (
+          <UpdateNotesView systemLanguage={userLanguage} />
+        );
       default:
         return (
           <TaskDashboardView 
@@ -1684,6 +1689,10 @@ ${log.payload || ''}
               setActiveTab("tasks");
               window.location.hash = "tasks";
               setAutoOpenAddTask(true);
+            }}
+            onNavigateUpdates={() => {
+              setActiveTab("updates");
+              window.location.hash = "updates";
             }}
           />
           
