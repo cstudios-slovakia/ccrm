@@ -85,6 +85,66 @@ const computePushSig = (p: {
   computeSettingsSig(p.settings),
 ]);
 
+// --- Delta sync (protocol v2) -------------------------------------------------
+// Baseline of what the server is known to hold, as id → serialised record, so a
+// push can carry just the records that actually changed plus the ids that went
+// away. Under v1 every save re-uploaded the entire dataset; on a real install
+// that is megabytes per keystroke-level edit and it is the reason a settings
+// save took ~15s on a normal office uplink.
+
+type RecordBaseline = Map<string, string>;
+
+// Serialising every record on every push would be O(dataset) main-thread work.
+// React state updates rebuild the array but leave untouched items as the SAME
+// object, so caching by identity makes the diff cost track the edit, not the
+// dataset. WeakMap so dropped records are collected with their entry.
+const recordHashCache = new WeakMap<object, string>();
+
+const hashRecord = (record: any): string => {
+  if (record === null || typeof record !== "object") return JSON.stringify(record);
+  const cached = recordHashCache.get(record);
+  if (cached !== undefined) return cached;
+  const hash = JSON.stringify(record);
+  recordHashCache.set(record, hash);
+  return hash;
+};
+
+const baselineOf = (records: any[] | undefined): RecordBaseline => {
+  const out: RecordBaseline = new Map();
+  for (const r of records ?? []) {
+    if (r && r.id != null) out.set(String(r.id), hashRecord(r));
+  }
+  return out;
+};
+
+/**
+ * Records that differ from the baseline, and ids the baseline had but the current
+ * list does not. A missing baseline means "we have never confirmed anything with
+ * the server", so everything is treated as changed and nothing as deleted — the
+ * safe direction, since inventing deletions is how data disappears.
+ */
+const diffRecords = (
+  records: any[] | undefined,
+  baseline: RecordBaseline | undefined
+): { changed: any[]; deletedIds: string[]; next: RecordBaseline } => {
+  const list = records ?? [];
+  const next = baselineOf(list);
+  if (!baseline) {
+    return { changed: list, deletedIds: [], next };
+  }
+  const changed: any[] = [];
+  for (const r of list) {
+    if (!r || r.id == null) continue;
+    const id = String(r.id);
+    if (baseline.get(id) !== next.get(id)) changed.push(r);
+  }
+  const deletedIds: string[] = [];
+  for (const id of baseline.keys()) {
+    if (!next.has(id)) deletedIds.push(id);
+  }
+  return { changed, deletedIds, next };
+};
+
 function App() {
   const activePushesRef = useRef(0);
   const visiblePushesRef = useRef(0);
@@ -132,6 +192,16 @@ function App() {
   // the initial authenticated sync), there is no evidence that a rejected
   // background push represents a user edit, so it must stay silent.
   const lastConfirmedPushSigRef = useRef<string | null>(null);
+  // Highest POST protocol the SERVER told us it understands, via the GET response.
+  // Stays at 1 until proven otherwise: sending a delta payload to a sync.php that
+  // predates protocol v2 would have it read every unsent record as deleted and
+  // empty the database, so this must never be optimistic.
+  const serverProtocolRef = useRef(1);
+  // Per-entity baseline of what the server is known to hold (see diffRecords).
+  // Rebuilt from every full pull, advanced after every accepted push. Empty means
+  // "nothing confirmed yet" and forces a full send.
+  const syncedRecordsRef = useRef<Record<string, RecordBaseline>>({});
+  const ueSyncedRecordsRef = useRef<Record<string, RecordBaseline>>({});
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSyncIndicatorVisible, setIsSyncIndicatorVisible] = useState(false);
   const [isInstalled, setIsInstalled] = useState(true);
@@ -756,18 +826,30 @@ ${log.payload || ''}
     setIsSyncing(true);
     activePushesRef.current++;
     lastPushTimeRef.current = Date.now();
-    const payload = {
+    // Everything the client currently believes, before deciding how much of it to
+    // actually transmit.
+    const liveLeads = nextLeads ?? leadsRef.current;
+    const liveTasks = nextTasks ?? tasksRef.current;
+    const liveUsers = nextUsers ?? usersRef.current;
+    const liveMeetingNotes = nextMeetingNotes ?? meetingNotesRef.current;
+    const liveUnifiedEntries = nextUnifiedEntries ?? unifiedEntriesRef.current;
+    const liveUnifiedEntriesData = nextUnifiedEntriesData ?? unifiedEntriesDataRef.current;
+    const liveCustomDashboards = nextCustomDashboards ?? customDashboardsRef.current;
+    const liveProjectTypes = nextProjectTypes ?? projectTypesRef.current;
+    const liveProjects = nextProjects ?? projectsRef.current;
+
+    const payload: any = {
       baseSyncedAt: baseSyncedAtRef.current,
-      leads: nextLeads ?? leadsRef.current,
-      tasks: nextTasks ?? tasksRef.current,
-      users: nextUsers ?? usersRef.current,
+      leads: liveLeads,
+      tasks: liveTasks,
+      users: liveUsers,
       roles: nextRoles ?? rolesRef.current,
-      meetingNotes: nextMeetingNotes ?? meetingNotesRef.current,
-      unifiedEntries: nextUnifiedEntries ?? unifiedEntriesRef.current,
-      unifiedEntriesData: nextUnifiedEntriesData ?? unifiedEntriesDataRef.current,
-      customDashboards: nextCustomDashboards ?? customDashboardsRef.current,
-      projectTypes: nextProjectTypes ?? projectTypesRef.current,
-      projects: nextProjects ?? projectsRef.current,
+      meetingNotes: liveMeetingNotes,
+      unifiedEntries: liveUnifiedEntries,
+      unifiedEntriesData: liveUnifiedEntriesData,
+      customDashboards: liveCustomDashboards,
+      projectTypes: liveProjectTypes,
+      projects: liveProjects,
       settings: {
         systemName,
         systemLanguage,
@@ -786,6 +868,47 @@ ${log.payload || ''}
         integrationsConfig: nextIntegrationsConfig ?? integrationsConfigRef.current
       }
     };
+
+    // Narrow the payload to what actually changed, but only once the server has
+    // said it speaks v2. Under v1 an omitted record means "deleted", so sending a
+    // delta to an older sync.php would wipe the database — hence the capability
+    // check rather than a version assumption.
+    const pendingBaselines: Record<string, RecordBaseline> = {};
+    const pendingUeBaselines: Record<string, RecordBaseline> = {};
+    if (serverProtocolRef.current >= 2) {
+      const deleted: Record<string, unknown> = {};
+      const narrow = (key: string, records: any[]) => {
+        const { changed, deletedIds, next } = diffRecords(records, syncedRecordsRef.current[key]);
+        payload[key] = changed;
+        if (deletedIds.length) deleted[key] = deletedIds;
+        pendingBaselines[key] = next;
+      };
+      narrow("leads", liveLeads);
+      narrow("tasks", liveTasks);
+      narrow("users", liveUsers);
+      narrow("meetingNotes", liveMeetingNotes);
+      narrow("customDashboards", liveCustomDashboards);
+      narrow("projectTypes", liveProjectTypes);
+      narrow("projects", liveProjects);
+
+      // The registry list stays whole on purpose: sync.php walks unifiedEntries to
+      // reach each entry's dynamic table, so an entry omitted here would silently
+      // stop its rows syncing. It is a handful of definitions, not user data.
+      const ueDeleted: Record<string, string[]> = {};
+      const ueChanged: Record<string, any[]> = {};
+      for (const [ueId, rows] of Object.entries(liveUnifiedEntriesData ?? {})) {
+        const { changed, deletedIds, next } = diffRecords(rows as any[], ueSyncedRecordsRef.current[ueId]);
+        ueChanged[ueId] = changed;
+        if (deletedIds.length) ueDeleted[ueId] = deletedIds;
+        pendingUeBaselines[ueId] = next;
+      }
+      payload.unifiedEntriesData = ueChanged;
+      if (Object.keys(ueDeleted).length) deleted.unifiedEntriesData = ueDeleted;
+
+      payload.syncProtocol = 2;
+      if (Object.keys(deleted).length) payload.deleted = deleted;
+    }
+
     try {
       const res = await fetch("/sync.php", {
         method: "POST",
@@ -812,6 +935,12 @@ ${log.payload || ''}
         // The server now holds this exact payload — remember it so a later 401
         // can tell a genuine unsaved edit apart from an echoed no-op push.
         lastConfirmedPushSigRef.current = computePushSig(payload);
+        // The server now holds these records, so the next push only has to carry
+        // what changes from here. Done only on a confirmed write: advancing the
+        // baseline after a failed push would make the client believe an edit was
+        // saved and never send it again.
+        Object.assign(syncedRecordsRef.current, pendingBaselines);
+        Object.assign(ueSyncedRecordsRef.current, pendingUeBaselines);
         // Advance our snapshot clock so a delete right after this edit is not
         // wrongly skipped by the server's concurrency guard.
         try {
@@ -1185,6 +1314,32 @@ ${log.payload || ''}
         // against this so applying server data never triggers an echo push.
         lastSyncedSettingsSigRef.current = computeSettingsSig(s);
       }
+      // Whether this server understands delta pushes. Read from its own response
+      // rather than assumed, so a client that is newer than the backend it happens
+      // to be talking to keeps sending full snapshots instead of silently asking
+      // it to delete everything it did not mention.
+      if (typeof data.syncProtocol === "number") {
+        serverProtocolRef.current = data.syncProtocol;
+      }
+      // Re-anchor the delta baseline on server truth. This is what makes the whole
+      // scheme self-healing: however far local bookkeeping drifted — a lost
+      // response, a rejected conflict, a record the server skipped — the next full
+      // pull restores an accurate picture of what the server actually holds.
+      syncedRecordsRef.current = {
+        leads: baselineOf(data.leads ?? leadsRef.current),
+        tasks: baselineOf(data.tasks ?? tasksRef.current),
+        users: baselineOf(data.users ?? usersRef.current),
+        meetingNotes: baselineOf(data.meetingNotes ?? meetingNotesRef.current),
+        customDashboards: baselineOf(data.customDashboards ?? customDashboardsRef.current),
+        projectTypes: baselineOf(data.projectTypes ?? projectTypesRef.current),
+        projects: baselineOf(data.projects ?? projectsRef.current),
+      };
+      const ueData = data.unifiedEntriesData ?? unifiedEntriesDataRef.current ?? {};
+      const nextUeBaselines: Record<string, RecordBaseline> = {};
+      for (const [ueId, rows] of Object.entries(ueData)) {
+        nextUeBaselines[ueId] = baselineOf(rows as any[]);
+      }
+      ueSyncedRecordsRef.current = nextUeBaselines;
       // Baseline for the "was this a real unsaved edit" check on a future 401
       // (see pushStateToServer) — local state now matches what the server holds.
       lastConfirmedPushSigRef.current = computePushSig({
