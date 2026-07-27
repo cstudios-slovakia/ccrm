@@ -1493,17 +1493,28 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const clientName = activeLead.name.trim().toLowerCase();
     const matchingLeads = leads.filter(l => l.name.trim().toLowerCase() === clientName);
     
-    const leadWithPhone = matchingLeads.find(l => l.phone) || activeLead;
-    const leadWithEmail = matchingLeads.find(l => l.email) || activeLead;
-    const leadWithAddress = matchingLeads.find(l => l.address?.street) || activeLead;
-    const leadWithCompanyId = matchingLeads.find(l => l.companyId) || activeLead;
-    const leadWithWebsite = matchingLeads.find(l => l.website) || activeLead;
+    // The lead being viewed always wins. Leads are grouped into a client by name
+    // alone, and a name is not an identity: website forms set the client name from
+    // whatever the visitor typed, so two different people (different emails) end up
+    // in the same group. Taking the first sibling that happens to have a value —
+    // as this did — showed one person's email and phone on another person's lead,
+    // i.e. the details you would call back on were the wrong ones. Siblings may
+    // only fill in fields this lead left blank.
+    const phone = activeLead.phone || matchingLeads.find(l => l.phone)?.phone || "";
+    const email = activeLead.email || matchingLeads.find(l => l.email)?.email || "";
+    const website = activeLead.website || matchingLeads.find(l => l.website)?.website || "";
+    const leadWithAddress = activeLead.address?.street
+      ? activeLead
+      : (matchingLeads.find(l => l.address?.street) || activeLead);
+    const leadWithCompanyId = activeLead.companyId
+      ? activeLead
+      : (matchingLeads.find(l => l.companyId) || activeLead);
 
     return {
       name: activeLead.name,
       clientType: activeLead.clientType || "person",
-      phone: leadWithPhone.phone || "",
-      email: leadWithEmail.email || "",
+      phone,
+      email,
       street: leadWithAddress.address?.street || "",
       city: activeLead.city || "",
       postalCode: leadWithAddress.address?.postalCode || "",
@@ -1512,7 +1523,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       taxId: leadWithCompanyId.taxId || "",
       vatId: leadWithCompanyId.vatId || "",
       contactPerson: leadWithCompanyId.contactPerson || "",
-      website: leadWithWebsite.website || ""
+      website
     };
   }, [leads, activeLead]);
 
@@ -2233,10 +2244,16 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       .filter(lead => {
         if (lead.id === "unassigned-docs") return false;
         if (lead.id && lead.id.startsWith("client-")) return false;
-        const matchesSearch = 
-          (lead.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-          (lead.city || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-          (lead.owner || "").toLowerCase().includes(searchQuery.toLowerCase());
+        // Email and phone are searchable too: leads that share a client name are
+        // otherwise indistinguishable in the list, and the contact details are the
+        // only thing that tells them apart.
+        const query = searchQuery.toLowerCase();
+        const matchesSearch =
+          (lead.name || "").toLowerCase().includes(query) ||
+          (lead.city || "").toLowerCase().includes(query) ||
+          (lead.owner || "").toLowerCase().includes(query) ||
+          (lead.email || "").toLowerCase().includes(query) ||
+          (lead.phone || "").toLowerCase().includes(query);
         const matchesState = selectedState === "all" || (lead.status || "").toLowerCase() === selectedState.toLowerCase() || leadStateParents[(lead.status || "").toLowerCase()] === selectedState.toLowerCase();
         const matchesSource = selectedSource === "all" || (lead.source || "").toLowerCase() === selectedSource.toLowerCase();
         const matchesType = selectedType === "all" || (lead.clientType || "").toLowerCase() === selectedType.toLowerCase();
