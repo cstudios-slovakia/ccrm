@@ -261,6 +261,89 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
 if (!defined('CCRM_MASS_DELETE_MIN_ROWS')) define('CCRM_MASS_DELETE_MIN_ROWS', 5);
 if (!defined('CCRM_MASS_DELETE_FRACTION')) define('CCRM_MASS_DELETE_FRACTION', 0.5);
 
+/**
+ * The write-side counterpart of ccrm_delete_omitted: true when the stored row
+ * changed AFTER the snapshot this client is pushing from, meaning the payload
+ * carries a copy of the row the client never saw.
+ *
+ * This matters because the pre-v2 client re-sends every record on every save. So
+ * a user who edits one lead also re-submits their stale copy of every other lead,
+ * and the upsert (which has no version check of its own) silently reverts any edit
+ * another user made since that client last polled. Skipping the row instead keeps
+ * the newer data; the stale client picks it up on its next poll.
+ *
+ * Resolution is one second — updated_at is a plain TIMESTAMP and $baseSyncedAt
+ * comes from NOW(), neither carrying a fractional part — matching the precision
+ * ccrm_delete_omitted already relies on. Two edits inside the same second remain
+ * last-write-wins. A null $baseSyncedAt (legacy client that never sent one) keeps
+ * the old unconditional-write behaviour.
+ */
+function ccrm_write_would_clobber(?array $dbRow, ?string $baseSyncedAt): bool {
+    if ($dbRow === null || $baseSyncedAt === null) {
+        return false;
+    }
+    $updatedAt = $dbRow['updated_at'] ?? null;
+    if (!is_string($updatedAt) || $updatedAt === '') {
+        return false;
+    }
+    $rowTime = ccrm_ts_to_micro($updatedAt);
+    $baseTime = ccrm_ts_to_micro($baseSyncedAt);
+    if ($rowTime === null || $baseTime === null) {
+        return false;
+    }
+    return $rowTime > $baseTime;
+}
+
+/**
+ * Parse a MySQL DATETIME/TIMESTAMP string to a float epoch, KEEPING the fractional
+ * part. strtotime() alone silently truncates to whole seconds, which would throw
+ * away exactly the millisecond precision the conflict guard depends on (see
+ * ccrm_migrate_updated_at_precision) and reopen the same-second clobber window.
+ *
+ * Accepts both 'Y-m-d H:i:s' (pre-migration rows, older clients' baseSyncedAt) and
+ * 'Y-m-d H:i:s.uuu' (NOW(3) and TIMESTAMP(3) columns).
+ */
+function ccrm_ts_to_micro(string $ts): ?float {
+    $ts = trim($ts);
+    if ($ts === '') {
+        return null;
+    }
+    if (!preg_match('/^(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})(?:\.(\d{1,6}))?$/', $ts, $m)) {
+        return null;
+    }
+    $seconds = strtotime(str_replace('T', ' ', $m[1]));
+    if ($seconds === false) {
+        return null;
+    }
+    return ((float) $seconds) + (isset($m[2]) ? (float) ('0.' . $m[2]) : 0.0);
+}
+
+/**
+ * Ids a protocol-v2 client explicitly asked to delete for one entity.
+ *
+ * v1 clients never reach this: their deletions are inferred from whatever is
+ * missing out of a complete snapshot, which is why a v1 payload must always carry
+ * every record and why the mass-delete circuit breaker has to exist at all. v2
+ * states deletions outright, so an absent section means "unchanged" and an empty
+ * push deletes nothing.
+ */
+function ccrm_explicit_deleted_ids(array $deleted, string $entity): array {
+    $ids = $deleted[$entity] ?? [];
+    if (!is_array($ids)) {
+        return [];
+    }
+    $out = [];
+    foreach ($ids as $id) {
+        if (is_string($id) || is_int($id)) {
+            $id = (string) $id;
+            if ($id !== '') {
+                $out[] = $id;
+            }
+        }
+    }
+    return array_values(array_unique($out));
+}
+
 function ccrm_delete_omitted(PDO $pdo, string $table, array $idsToDelete, ?string $baseSyncedAt, array $skipIds = [], bool $strict = false): void {
     if (empty($idsToDelete)) {
         return;
@@ -860,7 +943,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // next POST so the server can tell "the user deleted this" apart from "the
     // client never saw this newer row" (see ccrm_delete_omitted).
     $serverTime = null;
-    try { $serverTime = $pdo->query("SELECT NOW()")->fetchColumn(); } catch (\Throwable $e) {}
+    try { $serverTime = $pdo->query("SELECT NOW(3)")->fetchColumn(); } catch (\Throwable $e) {}
 
     // Real database connection info for the Settings "Database" panel. Admins
     // only — this is infrastructure detail (host/name/user), never the password.
@@ -881,6 +964,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     echo json_encode([
         'installed' => true,
         'demoMode' => $isDemoMode,
+        // Highest POST protocol this build understands. The client MUST see this
+        // before it may send a delta payload: an older sync.php has no idea what
+        // `deleted` means and would read every unsent record as deleted, wiping
+        // the database. Absent means v1, so the client falls back to a full
+        // snapshot, which every version has always understood.
+        'syncProtocol' => 2,
         'dataVersion' => $dataVersion,
         'serverTime' => $serverTime,
         'db_info' => $dbInfo,
@@ -958,6 +1047,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // newer records. Null for legacy clients → unconditional delete (old behaviour).
     $baseSyncedAt = (isset($payload['baseSyncedAt']) && is_string($payload['baseSyncedAt']) && $payload['baseSyncedAt'] !== '')
         ? $payload['baseSyncedAt'] : null;
+
+    // Records this push carried a stale copy of, and which were therefore left
+    // alone (see ccrm_write_would_clobber). Reported back so a delta client can
+    // tell the user its edit did not land; a full-snapshot client re-sends every
+    // record it never touched, so for those this is normal and expected traffic
+    // rather than anything worth surfacing.
+    $conflictedIds = [];
+
+    // Protocol the client is speaking. Absent/1 = full snapshot with deletions
+    // inferred from omission (every pre-1.6.27 build). 2 = delta sync: sections may
+    // be omitted entirely, only changed records are sent, and deletions are stated
+    // in `deleted`. The distinction is load-bearing — reading a v2 payload as v1
+    // would treat every unsent record as deleted.
+    $isDeltaSync = ((int) ($payload['syncProtocol'] ?? 1)) >= 2;
+    $explicitDeletes = (isset($payload['deleted']) && is_array($payload['deleted']))
+        ? $payload['deleted'] : [];
+
+    // In delta mode a deletion list is authoritative, but it is still filtered to
+    // rows that actually exist so the mass-delete circuit breaker measures real work
+    // rather than ids the server removed on an earlier push.
+    $deletionsFor = function (string $entity, array $existingIds) use ($explicitDeletes): array {
+        return array_values(array_intersect(
+            $existingIds,
+            ccrm_explicit_deleted_ids($explicitDeletes, $entity)
+        ));
+    };
+
+    // A delta client can delete records without editing any, in which case that
+    // entity's list is absent from the payload entirely. Every section below only
+    // runs when its key is present, so materialise an empty list for anything that
+    // has deletions pending: the section then writes nothing and falls through to
+    // its delete step. (Harmless in delta mode — an empty list means "no edits"
+    // here, never "delete the rest", which is only how v1 reads it.)
+    if ($isDeltaSync) {
+        foreach (['leads', 'meetingNotes', 'users', 'customDashboards', 'projects', 'projectTypes'] as $entity) {
+            if (!isset($payload[$entity]) && ccrm_explicit_deleted_ids($explicitDeletes, $entity)) {
+                $payload[$entity] = [];
+            }
+        }
+    }
 
     $sessionNameStmt = $pdo->prepare("SELECT `name` FROM `users` WHERE `id` = ? LIMIT 1");
     $sessionNameStmt->execute([$sessionUser['id']]);
@@ -1319,7 +1448,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Admin-only: a non-admin's payload only ever "processes" their own
             // record, so running this for them would delete every other user.
             if ($isAdmin) {
-                $usersToDelete = array_diff($existingUserIds, $processedUserIds);
+                $usersToDelete = $isDeltaSync
+                    ? $deletionsFor('users', $existingUserIds)
+                    : array_diff($existingUserIds, $processedUserIds);
                 if (!empty($usersToDelete)) {
                     ccrm_delete_omitted($pdo, 'users', $usersToDelete, $baseSyncedAt, [$sessionUser['id']], true);
                     ccrm_audit_log($pdo, $sessionUser, 'user.delete', 'Removed users: ' . implode(', ', $usersToDelete));
@@ -1350,7 +1481,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $processedPtIds[] = $pt['id'];
             }
             // Deletion of Project Types
-            $ptToDelete = array_diff($existingPtIds, $processedPtIds);
+            $ptToDelete = $isDeltaSync
+                ? $deletionsFor('projectTypes', $existingPtIds)
+                : array_diff($existingPtIds, $processedPtIds);
             if (!empty($ptToDelete)) {
                 $delPt = $pdo->prepare("DELETE FROM `project_types` WHERE `id` = ?");
                 foreach ($ptToDelete as $ptId) {
@@ -1485,7 +1618,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             // Deletion of Projects
-            $projToDelete = array_diff($existingProjIds, $processedProjIds);
+            $projToDelete = $isDeltaSync
+                ? $deletionsFor('projects', $existingProjIds)
+                : array_diff($existingProjIds, $processedProjIds);
             if (!empty($projToDelete)) {
                 $delProj = $pdo->prepare("DELETE FROM `projects` WHERE `id` = ?");
                 foreach ($projToDelete as $pid) {
@@ -1562,6 +1697,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 // Optimization: Skip if the lead is identical to what we have in the DB
                 if (isset($dbLeads[$leadId]) && ccrm_leads_are_identical($l, $dbLeads[$leadId], $defaultOwner)) {
+                    continue;
+                }
+
+                // Conflict guard: the stored lead moved on after this client's snapshot,
+                // so what we hold is newer than what is being pushed. Keep the newer row.
+                // $processedLeadIds already lists this id, so skipping the write here can
+                // never make the lead look omitted and get deleted below.
+                if (ccrm_write_would_clobber($dbLeads[$leadId] ?? null, $baseSyncedAt)) {
+                    $conflictedIds['leads'][] = $leadId;
                     continue;
                 }
 
@@ -1716,14 +1860,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             // Perform deletions for removed leads
-            $leadsToDelete = array_diff($existingLeadIds, $processedLeadIds);
+            $leadsToDelete = $isDeltaSync
+                ? $deletionsFor('leads', $existingLeadIds)
+                : array_diff($existingLeadIds, $processedLeadIds);
             ccrm_delete_omitted($pdo, 'leads', $leadsToDelete, $baseSyncedAt);
         }
 
         // 4.4. Synchronize Tasks
         if (isset($payload['tasks']) && is_array($payload['tasks'])) {
-            $stmt = $pdo->query("SELECT `id` FROM `tasks`");
-            $existingTaskIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            // updated_at comes along so the conflict guard below can tell a stale
+            // re-send apart from a genuine edit.
+            $dbTasks = [];
+            $stmt = $pdo->query("SELECT `id`, `updated_at` FROM `tasks`");
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $dbTasks[$row['id']] = $row;
+            }
+            $existingTaskIds = array_keys($dbTasks);
             $processedTaskIds = [];
 
             $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `is_locking`, `archived`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`)");
@@ -1734,6 +1886,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     continue;
                 }
                 $taskId = $t['id'];
+
+                // Conflict guard: keep the newer stored row rather than letting a stale
+                // re-send revert it. The id must be marked processed before skipping,
+                // otherwise the task looks omitted and gets deleted further down.
+                if (ccrm_write_would_clobber($dbTasks[$taskId] ?? null, $baseSyncedAt)) {
+                    $processedTaskIds[] = $taskId;
+                    $conflictedIds['tasks'][] = $taskId;
+                    continue;
+                }
 
                 $insTask->execute([
                     $taskId,
@@ -1772,14 +1933,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // 4.5. Synchronize Meeting Notes & meeting_tasks
         if (isset($payload['meetingNotes']) && is_array($payload['meetingNotes'])) {
             // Fetch existing ids to delete
-            $stmt = $pdo->query("SELECT `id` FROM `meeting_notes`");
-            $existingMeetingIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            // updated_at comes along so the conflict guard below can tell a stale
+            // re-send apart from a genuine edit.
+            $dbMeetings = [];
+            $stmt = $pdo->query("SELECT `id`, `updated_at` FROM `meeting_notes`");
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $dbMeetings[$row['id']] = $row;
+            }
+            $existingMeetingIds = array_keys($dbMeetings);
             $processedMeetingIds = [];
 
             $insMeeting = $pdo->prepare("INSERT INTO `meeting_notes` (`id`, `title`, `date`, `lead_id`, `lead_name`, `duration`, `notes`, `ai_summary_json`, `summary_generated`, `attached_leads_json`, `attached_clients_json`, `attached_users_json`, `archived`, `audio_file`, `transcription`, `automated_notes`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `date` = VALUES(`date`), `lead_id` = VALUES(`lead_id`), `lead_name` = VALUES(`lead_name`), `duration` = VALUES(`duration`), `notes` = VALUES(`notes`), `ai_summary_json` = VALUES(`ai_summary_json`), `summary_generated` = VALUES(`summary_generated`), `attached_leads_json` = VALUES(`attached_leads_json`), `attached_clients_json` = VALUES(`attached_clients_json`), `attached_users_json` = VALUES(`attached_users_json`), `archived` = VALUES(`archived`), `audio_file` = VALUES(`audio_file`), `transcription` = VALUES(`transcription`), `automated_notes` = VALUES(`automated_notes`)");
 
             foreach ($payload['meetingNotes'] as $mn) {
                 $meetingId = $mn['id'];
+
+                // Conflict guard: keep the newer stored row rather than letting a stale
+                // re-send revert it. The id must be marked processed before skipping,
+                // otherwise the note looks omitted and gets deleted further down.
+                if (ccrm_write_would_clobber($dbMeetings[$meetingId] ?? null, $baseSyncedAt)) {
+                    $processedMeetingIds[] = $meetingId;
+                    $conflictedIds['meetingNotes'][] = $meetingId;
+                    continue;
+                }
+
                 $insMeeting->execute([
                     $meetingId,
                     $mn['title'] ?? '',
@@ -1823,7 +2000,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             // Delete any meeting notes not present in payload
-            $meetingsToDelete = array_diff($existingMeetingIds, $processedMeetingIds);
+            $meetingsToDelete = $isDeltaSync
+                ? $deletionsFor('meetingNotes', $existingMeetingIds)
+                : array_diff($existingMeetingIds, $processedMeetingIds);
             ccrm_delete_omitted($pdo, 'meeting_notes', $meetingsToDelete, $baseSyncedAt);
         }
 
@@ -1991,7 +2170,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     // Delete rows that are not in the payload (guarded against
                     // deleting rows a concurrent client added after this snapshot).
-                    $rowsToDelete = array_diff($existingRowIds, $processedRowIds);
+                    // Row deletions for a dynamic entry table are nested one level:
+                    // deleted.unifiedEntriesData = { "<entryId>": ["<rowId>", ...] }.
+                    $rowsToDelete = $isDeltaSync
+                        ? array_values(array_intersect($existingRowIds, ccrm_explicit_deleted_ids(
+                            (isset($explicitDeletes['unifiedEntriesData']) && is_array($explicitDeletes['unifiedEntriesData']))
+                                ? $explicitDeletes['unifiedEntriesData'] : [],
+                            $ueId
+                        )))
+                        : array_diff($existingRowIds, $processedRowIds);
                     ccrm_delete_omitted($pdo, $tableName, $rowsToDelete, $baseSyncedAt);
                 }
             }
@@ -2022,7 +2209,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $processedDashIds[] = $dashId;
             }
 
-            $dashesToDelete = array_diff($existingDashIds, $processedDashIds);
+            $dashesToDelete = $isDeltaSync
+                ? $deletionsFor('customDashboards', $existingDashIds)
+                : array_diff($existingDashIds, $processedDashIds);
             if (!empty($dashesToDelete)) {
                 ccrm_delete_omitted($pdo, 'custom_dashboards', $dashesToDelete, null);
             }
@@ -2038,8 +2227,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // baseSyncedAt and can safely delete rows it just created/edited on a
         // later sync.
         $serverTime = null;
-        try { $serverTime = $pdo->query("SELECT NOW()")->fetchColumn(); } catch (\Throwable $e) {}
-        echo json_encode(['success' => true, 'message' => 'CCRM Database Synced Successfully!', 'dataVersion' => ccrm_compute_data_version($pdo), 'serverTime' => $serverTime]);
+        try { $serverTime = $pdo->query("SELECT NOW(3)")->fetchColumn(); } catch (\Throwable $e) {}
+        echo json_encode([
+            'success' => true,
+            'message' => 'CCRM Database Synced Successfully!',
+            'dataVersion' => ccrm_compute_data_version($pdo),
+            'serverTime' => $serverTime,
+            // Ids whose stored row was newer than this client's snapshot and were
+            // therefore left as-is. Always reported; only a delta client can treat
+            // them as a real conflict (see ccrm_write_would_clobber).
+            'conflicts' => (object) $conflictedIds,
+        ]);
     } catch (\Throwable $e) {
         if (isset($pdo) && $pdo->inTransaction()) {
             $pdo->rollBack();

@@ -463,7 +463,46 @@ if (!function_exists('ccrm_schema_statements')) {
                  SELECT `id`, `owner` FROM `tasks` WHERE `owner` <> ''"
             );
         }
+        ccrm_migrate_updated_at_precision($pdo);
         ccrm_migrate_task_states($pdo);
+    }
+
+    /**
+     * Give `updated_at` millisecond precision on the tables sync.php version-checks.
+     *
+     * sync.php compares a row's updated_at against the client's baseSyncedAt to
+     * decide whether an incoming write would revert an edit it never saw. At whole-
+     * second precision — the MySQL default — two users saving inside the same second
+     * produce identical timestamps, the check cannot tell them apart, and the later
+     * push silently overwrites the earlier one. Milliseconds shrink that blind spot
+     * from one second to roughly one millisecond.
+     *
+     * Cheap and non-destructive: TIMESTAMP → TIMESTAMP(3) only widens the stored
+     * value, existing rows keep their time with .000 appended.
+     */
+    function ccrm_migrate_updated_at_precision(PDO $pdo): void {
+        foreach (['leads', 'tasks', 'meeting_notes'] as $table) {
+            try {
+                $row = $pdo->query(
+                    "SELECT `DATETIME_PRECISION` FROM `information_schema`.`COLUMNS`
+                     WHERE `TABLE_SCHEMA` = DATABASE()
+                       AND `TABLE_NAME` = " . $pdo->quote($table) . "
+                       AND `COLUMN_NAME` = 'updated_at'"
+                )->fetch(PDO::FETCH_ASSOC);
+                if (!$row || (int) ($row['DATETIME_PRECISION'] ?? 0) >= 3) {
+                    continue;
+                }
+                $pdo->exec(
+                    "ALTER TABLE `{$table}` MODIFY `updated_at`
+                     TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)"
+                );
+            } catch (\Throwable $e) {
+                // A server too old for fractional seconds keeps whole-second
+                // precision; sync.php's guard still works, just with the wider
+                // same-second window. Never block the sync over this.
+                if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+            }
+        }
     }
 
     /**
