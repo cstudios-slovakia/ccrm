@@ -140,13 +140,13 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     <div className="space-y-6 text-left">
       
       {/* Top Header Section */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 select-none">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-100 pb-4 select-none">
         <div className="flex flex-col">
-          <h2 className="font-heading font-black text-slate-800 text-xl uppercase tracking-widest flex items-center gap-2">
-            <span className="h-2.5 w-2.5 rounded-full bg-purple-500" />
+          <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+            <Briefcase className="h-6 w-6 text-purple-600" />
             {t("Project Management", "Manažment projektov", "Projektmenedzsment")}
           </h2>
-          <p className="text-[10px] font-black text-slate-450 uppercase tracking-widest mt-0.5">
+          <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
             {t("Track deliverables, roadmaps, and client workflows", "Sledovanie dodávok, plánov a klientskych procesov", "Szállítások, útemtervek és ügyfélfolyamatok nyomon követése")}
           </p>
         </div>

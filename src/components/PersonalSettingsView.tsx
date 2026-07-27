@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { User, Mail, Settings, Save, RefreshCw, CheckCircle2, AlertCircle, AlertOctagon } from "lucide-react";
+import { PasswordInput } from "./PasswordInput";
 import type { UserProfile } from "../types";
 import type { Language } from "../utils/translations";
 
@@ -267,9 +268,9 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
   return (
     <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16">
       {/* Title */}
-      <div className="flex flex-col">
+      <div className="flex flex-col border-b border-slate-100 pb-4">
         <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-          <Settings className="h-6 w-6 text-pink-500 animate-spin-slow" /> {t("Personal Settings", "Osobné Nastavenia", "Személyes beállítások")}
+          <Settings className="h-6 w-6 text-pink-500" /> {t("Personal Settings", "Osobné nastavenia", "Személyes beállítások")}
         </h2>
         <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
           {t(
@@ -367,12 +368,11 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
 
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">{t("New Password", "Nové heslo", "Új jelszó")}</label>
-                <input
-                  type="password"
+                <PasswordInput
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  className="w-full pl-4 pr-10 py-2.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                 />
               </div>
 
@@ -528,7 +528,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                             required
                             value={emailSettings.username}
                             onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, username: e.target.value }))}
-                            placeholder="e.g. user@domain.sk"
+                            placeholder={t("e.g. user@domain.sk", "napr. user@domain.sk", "pl. user@domain.sk")}
                             className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none focus:bg-white"
                           />
                         </div>
@@ -593,13 +593,12 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                             </div>
                             <div className="space-y-1">
                               <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">{t("IMAP Password", "Heslo IMAP", "IMAP jelszó")}</label>
-                              <input
-                                type="password"
+                              <PasswordInput
                                 required
                                 value={emailSettings.imapPassword}
                                 onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, imapPassword: e.target.value }))}
                                 placeholder="••••••••••••"
-                                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none"
+                                className="w-full pl-3 pr-10 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none"
                               />
                             </div>
                           </div>
@@ -661,13 +660,12 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                             </div>
                             <div className="space-y-1">
                               <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">{t("SMTP Password", "Heslo SMTP", "SMTP jelszó")}</label>
-                              <input
-                                type="password"
+                              <PasswordInput
                                 required
                                 value={emailSettings.smtpPassword}
                                 onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, smtpPassword: e.target.value }))}
                                 placeholder="••••••••••••"
-                                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none"
+                                className="w-full pl-3 pr-10 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none"
                               />
                             </div>
                           </div>

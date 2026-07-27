@@ -111,6 +111,16 @@ function ccrm_sanitize_db_text($str, $maxBytes) {
     return $str;
 }
 
+// Narrow a client-supplied date to the `Y-m-d` form a MySQL DATE column accepts.
+// Older/other clients may send a full ISO timestamp ("2026-05-15T00:00:00.000Z");
+// binding that raises SQLSTATE 22007 and rolls back the entire sync transaction,
+// so every later push fails too until the offending record is repaired.
+function ccrm_date_only($val) {
+    if ($val === null || $val === '') return null;
+    if (!is_string($val)) $val = (string) $val;
+    return preg_match('/^(\d{4}-\d{2}-\d{2})/', $val, $m) ? $m[1] : null;
+}
+
 // Helper to check if an incoming lead payload is identical to its database record
 function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
     if (!$db) return false;
@@ -150,7 +160,7 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
         // 'financial_summary' is deliberately excluded: it is server-owned, so a
         // lead whose only difference is the server-generated report still counts
         // as identical and is skipped (no rewrite, no needless report re-spawn).
-        'created_at' => $inc['createdAt'] ?? null
+        'created_at' => ccrm_date_only($inc['createdAt'] ?? null)
     ];
     
     foreach ($fields as $col => $val) {
@@ -551,18 +561,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         ];
     }
 
-    // Reconstruct settings from system_settings DB table
-    $leadStates = isset($settings['LEAD_STATES']) ? json_decode($settings['LEAD_STATES'], true) : ["new", "contacted", "offer sent", "accepted", "rejected"];
-    $leadSources = isset($settings['LEAD_SOURCES']) ? json_decode($settings['LEAD_SOURCES'], true) : ["showroom", "facebook", "instagram", "website"];
-    $leadCategories = isset($settings['LEAD_CATEGORIES']) ? json_decode($settings['LEAD_CATEGORIES'], true) : ["Kitchen Countertops", "Flooring Tiles", "Bathroom Renovation", "Granite Slabs", "Plumbing Services", "Custom Masonry"];
+    // Reconstruct settings from system_settings DB table. Anything not stored yet
+    // falls back to the defaults for the installation language, so an unseeded
+    // list never shows up as English in a Slovak/Hungarian workspace.
+    $defaultLists = ccrm_default_lists($settings['SYSTEM_LANGUAGE'] ?? 'sk');
+    $leadStates = isset($settings['LEAD_STATES']) ? json_decode($settings['LEAD_STATES'], true) : $defaultLists['leadStates'];
+    $leadSources = isset($settings['LEAD_SOURCES']) ? json_decode($settings['LEAD_SOURCES'], true) : $defaultLists['leadSources'];
+    $leadCategories = isset($settings['LEAD_CATEGORIES']) ? json_decode($settings['LEAD_CATEGORIES'], true) : $defaultLists['leadCategories'];
     $leadStateColors = isset($settings['LEAD_STATE_COLORS']) ? json_decode($settings['LEAD_STATE_COLORS'], true) : [];
     $leadSourceColors = isset($settings['LEAD_SOURCE_COLORS']) ? json_decode($settings['LEAD_SOURCE_COLORS'], true) : [];
     $leadCategoryColors = isset($settings['LEAD_CATEGORY_COLORS']) ? json_decode($settings['LEAD_CATEGORY_COLORS'], true) : [];
     $leadStageGroups = isset($settings['LEAD_STAGE_GROUPS']) ? json_decode($settings['LEAD_STAGE_GROUPS'], true) : [];
     $leadStateParents = isset($settings['LEAD_STATE_PARENTS']) ? json_decode($settings['LEAD_STATE_PARENTS'], true) : (object)[];
     $leadStateFollowUp = isset($settings['LEAD_STATE_FOLLOWUP']) ? json_decode($settings['LEAD_STATE_FOLLOWUP'], true) : (object)[];
-    $taskStates = isset($settings['TASK_STATES']) ? json_decode($settings['TASK_STATES'], true) : ["New", "In progress", "Blocked", "Done"];
+    $taskStates = isset($settings['TASK_STATES']) ? json_decode($settings['TASK_STATES'], true) : $defaultLists['taskStates'];
     $taskStateColors = isset($settings['TASK_STATE_COLORS']) ? json_decode($settings['TASK_STATE_COLORS'], true) : [];
+    // An empty colour map would make every task state render in the same grey.
+    // Fall back to the workflow palette keyed by whatever states are configured.
+    if (!is_array($taskStateColors) || !$taskStateColors) {
+        $taskStateColors = ccrm_default_task_state_colors(is_array($taskStates) ? $taskStates : []);
+    }
     $integrationsConfig = isset($settings['INTEGRATIONS_CONFIG']) ? json_decode($settings['INTEGRATIONS_CONFIG'], true) : (object)[];
     // SECURITY: never send real secret values to the browser — mask them. The
     // frontend only needs to know a secret is set (e.g. "OpenAI configured");
@@ -1583,7 +1601,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $l['district'] ?? null,
                     $l['financialSummary'] ?? null,
                     isset($l['vatValidationResult']) ? json_encode($l['vatValidationResult']) : null,
-                    $l['createdAt'] ?? date('Y-m-d H:i:s'),
+                    ccrm_date_only($l['createdAt'] ?? null) ?? date('Y-m-d'),
                     (isset($l['followUps']) && !empty($l['followUps'])) ? json_encode($l['followUps']) : null
                 ]);
 

@@ -13,6 +13,78 @@ import {
 import type { Lead, TimelineEvent, Task, UserProfile, Project, ProjectType } from "../types";
 import { cn } from "../utils/cn";
 
+// Named preset deadline times offered in the gate quick-add picker, mirroring the
+// task dashboard's Add-task drawer. A "Custom" option reveals a free time input so
+// any specific time can be entered instead of the fixed presets.
+const GATE_DEADLINE_TIME_PRESETS = ["10:00", "12:00", "16:00", "19:00"];
+
+// Deadline-time picker for the phase-gate quick-add form. Offers the named presets
+// plus a "Custom" option that reveals a native time input. Defined at module scope
+// (stable identity) so its internal state survives parent re-renders and the custom
+// <input> keeps focus while typing.
+const InlineDeadlineTimePicker: React.FC<{
+  value: string;
+  onChange: (val: string) => void;
+  systemLanguage: Language;
+}> = ({ value, onChange, systemLanguage }) => {
+  const currentValue = value || "";
+  const isPreset = GATE_DEADLINE_TIME_PRESETS.includes(currentValue);
+  // Custom mode is active when the value isn't a named preset (e.g. a legacy 23:59
+  // or a hand-typed time) or once the user explicitly opens the custom input.
+  const [customOpen, setCustomOpen] = useState(!isPreset && currentValue !== "");
+  const showCustom = customOpen || (!isPreset && currentValue !== "");
+
+  const presetLabel = (p: string) => {
+    switch (p) {
+      case "10:00":
+        return systemLanguage === "sk" ? "Ráno (10:00)" : systemLanguage === "hu" ? "Reggel (10:00)" : "Morning (10:00)";
+      case "12:00":
+        return systemLanguage === "sk" ? "Poludnie (12:00)" : systemLanguage === "hu" ? "Dél (12:00)" : "Noon (12:00)";
+      case "16:00":
+        return systemLanguage === "sk" ? "Popoludnie (16:00)" : systemLanguage === "hu" ? "Délután (16:00)" : "Afternoon (16:00)";
+      case "19:00":
+        return systemLanguage === "sk" ? "Večer (19:00)" : systemLanguage === "hu" ? "Este (19:00)" : "Evening (19:00)";
+      default:
+        return p;
+    }
+  };
+
+  return (
+    <div className="space-y-1.5">
+      <select
+        value={showCustom ? "custom" : currentValue}
+        onChange={(e) => {
+          if (e.target.value === "custom") {
+            setCustomOpen(true);
+            if (!GATE_DEADLINE_TIME_PRESETS.includes(currentValue)) onChange("12:00");
+          } else {
+            setCustomOpen(false);
+            onChange(e.target.value);
+          }
+        }}
+        className="w-full px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:outline-none font-bold text-[10px]"
+      >
+        {GATE_DEADLINE_TIME_PRESETS.map((p) => (
+          <option key={p} value={p}>
+            {presetLabel(p)}
+          </option>
+        ))}
+        <option value="custom">
+          {systemLanguage === "sk" ? "Vlastný čas…" : systemLanguage === "hu" ? "Egyéni időpont…" : "Custom…"}
+        </option>
+      </select>
+      {showCustom && (
+        <input
+          type="time"
+          value={currentValue}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:outline-none font-bold text-[10px]"
+        />
+      )}
+    </div>
+  );
+};
+
 // Searchable lead/referral picker (item 6): a select whose options are filtered by a fulltext
 // search box at the top of the dropdown. Reused by the new-lead popup and the lead detail panel.
 const SearchableLeadSelect: React.FC<{
@@ -94,6 +166,7 @@ import { BlockEditor } from "./BlockEditor";
 import type { EditorBlock } from "./BlockEditor";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
+import { todayLocal } from "../utils/localTime";
 import { formatMoney } from "../utils/currency";
 
 const CalendarPane: React.FC<{
@@ -1459,8 +1532,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
   // Explicit Event Date/Time
   const [logDate, setLogDate] = useState(() => {
-    const tzOffset = (new Date()).getTimezoneOffset() * 60000;
-    return (new Date(Date.now() - tzOffset)).toISOString().split("T")[0];
+    return todayLocal();
   });
   const [logTimeOfEvent, setLogTimeOfEvent] = useState(() => {
     const d = new Date();
@@ -1474,7 +1546,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     d.setDate(d.getDate() + 3);
     return d.toISOString().split("T")[0];
   });
-  const [inlineTaskDeadlineTime, setInlineTaskDeadlineTime] = useState("23:59");
+  const [inlineTaskDeadlineTime, setInlineTaskDeadlineTime] = useState("16:00");
   const [inlineTaskIsLocking, setInlineTaskIsLocking] = useState(true);
 
   // Retrieve current user session to authenticate API requests to mail_broker.php
@@ -1692,8 +1764,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     setLeads(prev => prev.map(l => {
       if (l.id === activeLead.id) {
-        const timePart = l.createdAt && l.createdAt.includes("T") ? l.createdAt.slice(10) : "T00:00:00.000Z";
-        const newCreatedAt = leadCreatedAt ? `${leadCreatedAt}${timePart}` : l.createdAt;
+        // `leads.created_at` is a plain DATE column server-side. Appending a
+        // time part (especially a `Z`-suffixed ISO timestamp) makes MySQL reject
+        // the whole sync payload with SQLSTATE 22007, which silently blocks
+        // every later push too. Keep it date-only.
+        const newCreatedAt = leadCreatedAt ? leadCreatedAt.slice(0, 10) : (l.createdAt || "").slice(0, 10);
         return {
           ...l,
           name: leadName.trim(),
@@ -1877,8 +1952,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     if ((window as any)._latestTranscription) delete (window as any)._latestTranscription;
     
     // Reset date/time to now
-    const tzOffset = (new Date()).getTimezoneOffset() * 60000;
-    setLogDate((new Date(Date.now() - tzOffset)).toISOString().split("T")[0]);
+    setLogDate(todayLocal());
     setLogTimeOfEvent(new Date().toTimeString().substring(0, 5));
   };
 
@@ -1962,7 +2036,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const d = new Date();
     d.setDate(d.getDate() + 3);
     setInlineTaskDeadline(d.toISOString().split("T")[0]);
-    setInlineTaskDeadlineTime("23:59");
+    setInlineTaskDeadlineTime("16:00");
     setInlineTaskIsLocking(true);
   };
 
@@ -2128,7 +2202,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       source: newLeadSource || leadSources[0] || "website",
       owner: newLeadOwner || "",
       value: valNum,
-      createdAt: new Date().toISOString(),
+      // Date-only and in LOCAL time: `leads.created_at` is a DATE column, and a
+      // UTC-derived date files leads created after midnight under the previous day.
+      createdAt: todayLocal(),
       rating: newLeadRating,
       categories: newLeadCategories,
       referralLeadId: newLeadReferralId || undefined
@@ -2270,7 +2346,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
       rawGrouped = [
         {
-          state: "All Leads",
+          state: t("All Leads", "Všetky leady", "Összes lead"),
           colorOverride: "#6366f1",
           leads: sorted
         }
@@ -2731,8 +2807,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                           <span 
                             className="text-[10px] font-black uppercase tracking-wider px-1 truncate"
                             style={{ 
-                              fontSize: "10px", 
-                              lineHeight: "10px",
+                              fontSize: "10px",
+                              // Room for the accents on uppercase Slovak/Hungarian
+                              // labels (Ý, Á, Ô, Ő) — `truncate` clips whatever
+                              // grows past the line box.
+                              lineHeight: "14px",
                               color: textColor
                             }}
                           >
@@ -3226,17 +3305,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                       className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:outline-none font-bold text-[10px]"
                     />
                     
-                    <select
+                    <InlineDeadlineTimePicker
                       value={inlineTaskDeadlineTime}
-                      onChange={(e) => setInlineTaskDeadlineTime(e.target.value)}
-                      className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:outline-none font-bold text-[10px]"
-                    >
-                      <option value="10:00">{systemLanguage === "sk" ? "Ráno (10:00)" : systemLanguage === "hu" ? "Reggel (10:00)" : "Morning (10:00)"}</option>
-                      <option value="12:00">{systemLanguage === "sk" ? "Poludnie (12:00)" : systemLanguage === "hu" ? "Dél (12:00)" : "Noon (12:00)"}</option>
-                      <option value="16:00">{systemLanguage === "sk" ? "Popoludnie (16:00)" : systemLanguage === "hu" ? "Délután (16:00)" : "Afternoon (16:00)"}</option>
-                      <option value="19:00">{systemLanguage === "sk" ? "Večer (19:00)" : systemLanguage === "hu" ? "Este (19:00)" : "Evening (19:00)"}</option>
-                      <option value="23:59">{systemLanguage === "sk" ? "Koniec dňa (23:59)" : systemLanguage === "hu" ? "Nap végén (23:59)" : "End of day (23:59)"}</option>
-                    </select>
+                      onChange={setInlineTaskDeadlineTime}
+                      systemLanguage={systemLanguage}
+                    />
+
                   </div>
                   
                   <div>
@@ -4002,6 +4076,16 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
   return (
     <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
+      {/* 0. Title header */}
+      <div className="flex flex-col border-b border-slate-100 pb-4">
+        <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+          <Layers className="h-6 w-6 text-blue-600" /> {getTranslation(systemLanguage, "leads.title")}
+        </h2>
+        <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
+          {getTranslation(systemLanguage, "leads.subtitle")}
+        </p>
+      </div>
+
       {/* 1. Sleek Minimalist Stage Counter Statistics Strip */}
       <div className="glass-panel px-6 py-4 rounded-[26px] border border-blue-50 bg-white/85 shadow-glass flex flex-col lg:flex-row lg:items-center justify-between gap-4 select-none">
         <div className="flex items-center gap-3">
@@ -5088,8 +5172,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                               <span 
                                                 className="text-[10px] font-black uppercase tracking-wider px-1 truncate"
                                                 style={{ 
-                                                  fontSize: "10px", 
-                                                  lineHeight: "10px",
+                                                  fontSize: "10px",
+                                                  // Room for the accents on uppercase Slovak/Hungarian
+                                                  // labels (Ý, Á, Ô, Ő) — `truncate` clips whatever
+                                                  // grows past the line box.
+                                                  lineHeight: "14px",
                                                   color: textColor
                                                 }}
                                               >

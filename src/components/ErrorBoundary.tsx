@@ -1,4 +1,12 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { getStoredLanguage } from "../utils/translations";
+
+// The boundary wraps <App/>, so it cannot read the language from React state —
+// it falls back to the language App mirrored into localStorage.
+const t = (en: string, sk: string, hu: string): string => {
+  const lang = getStoredLanguage();
+  return lang === "sk" ? sk : lang === "hu" ? hu : en;
+};
 
 interface Props {
   children: ReactNode;
@@ -64,9 +72,13 @@ ${this.state.errorInfo?.componentStack || "No Stack Trace"}
               <div className="flex items-center gap-4">
                 <span className="text-4xl select-none">⚠️</span>
                 <div>
-                  <h1 className="text-xl font-black uppercase tracking-wider">Application Runtime Exception</h1>
+                  <h1 className="text-xl font-black uppercase tracking-wider">{t("Application Runtime Exception", "Chyba behu aplikácie", "Alkalmazás futásidejű hibája")}</h1>
                   <p className="text-xs text-rose-100 mt-1 font-semibold uppercase tracking-wide">
-                    An error has crashed the client-side state. Let's inspect it together.
+                    {t(
+                      "An error has crashed the client-side state. Let's inspect it together.",
+                      "Chyba zhodila stav aplikácie v prehliadači. Pozrime sa na ňu spoločne.",
+                      "Egy hiba összeomlasztotta az alkalmazás állapotát a böngészőben. Nézzük meg együtt."
+                    )}
                   </p>
                 </div>
               </div>
@@ -75,7 +87,7 @@ ${this.state.errorInfo?.componentStack || "No Stack Trace"}
             <div className="p-8">
               {/* Error Message Details */}
               <div className="mb-6">
-                <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider mb-2.5">Error Message:</h3>
+                <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider mb-2.5">{t("Error Message:", "Chybová správa:", "Hibaüzenet:")}</h3>
                 <div className="bg-rose-50/50 border border-rose-100 rounded-2xl p-4 shadow-inner">
                   <pre className="text-xs font-mono font-bold text-rose-600 overflow-x-auto whitespace-pre-wrap select-all">
                     {this.state.error?.toString()}
@@ -86,7 +98,7 @@ ${this.state.errorInfo?.componentStack || "No Stack Trace"}
               {/* Component Stack Trace */}
               {this.state.errorInfo && (
                 <div className="mb-8">
-                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider mb-2.5">Stack Trace:</h3>
+                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider mb-2.5">{t("Stack Trace:", "Výpis zásobníka:", "Hívási verem:")}</h3>
                   <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4.5 shadow-md">
                     <pre className="text-[10px] font-mono text-emerald-400 bg-slate-950/70 p-3 rounded-xl overflow-x-auto overflow-y-auto max-h-60 whitespace-pre select-all leading-relaxed">
                       {this.state.errorInfo.componentStack}
@@ -105,13 +117,15 @@ ${this.state.errorInfo?.componentStack || "No Stack Trace"}
                       : "bg-blue-600 hover:bg-blue-700 text-white"
                   }`}
                 >
-                  {this.state.copied ? "✅ Copied Error Details!" : "📋 Copy Error Details"}
+                  {this.state.copied
+                    ? t("✅ Copied Error Details!", "✅ Detaily chyby skopírované!", "✅ A hiba részletei kimásolva!")
+                    : t("📋 Copy Error Details", "📋 Kopírovať detaily chyby", "📋 Hiba részleteinek másolása")}
                 </button>
                 <button
                   onClick={() => window.location.reload()}
                   className="px-6 py-3 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow active:scale-95 flex items-center gap-2"
                 >
-                  🔄 Just Reload Page
+                  {t("🔄 Just Reload Page", "🔄 Len obnoviť stránku", "🔄 Csak töltse újra az oldalt")}
                 </button>
                 <button
                   onClick={() => {
@@ -120,7 +134,7 @@ ${this.state.errorInfo?.componentStack || "No Stack Trace"}
                   }}
                   className="px-6 py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md active:scale-95 flex items-center gap-2"
                 >
-                  🧹 Clear active session cache & reload
+                  {t("🧹 Clear active session cache & reload", "🧹 Vymazať cache relácie a obnoviť", "🧹 Munkamenet gyorsítótárának törlése és újratöltés")}
                 </button>
               </div>
             </div>

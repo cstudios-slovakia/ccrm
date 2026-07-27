@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import type { Lead, Task, UserProfile } from "../types";
 import { formatBytes } from "../utils/formatBytes";
+import { nowLocalStamp } from "../utils/localTime";
 
 interface EmailViewProps {
   currentUser: any;
@@ -205,7 +206,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
           const newEvent = {
             id: eventId,
             type: "offer" as const,
-            timestamp: new Date().toISOString().replace("T", " ").substring(0, 16),
+            timestamp: nowLocalStamp(),
             title: t("Email Attachment Saved", "Príloha e-mailu uložená", "E-mail melléklet mentve"),
             content: data.extractedText ? `${t("Saved email attachment:", "Uložená príloha e-mailu:", "Mentett e-mail melléklet:")} ${data.fileName}\n\n--- ${t("Document Content", "Obsah dokumentu", "Dokumentum tartalma")} ---\n${data.extractedText}` : `${t("Saved email attachment:", "Uložená príloha e-mailu:", "Mentett e-mail melléklet:")} ${data.fileName}`,
             amount: undefined,
@@ -753,7 +754,18 @@ export const EmailView: React.FC<EmailViewProps> = ({
   }, [emails, isThreadedMode, isOpenAiKeySet, threadedEmails, filteredIndividualEmails]);
 
   return (
-    <div className={`grid grid-cols-1 lg:grid-cols-12 gap-5 select-none h-[calc(100vh-220px)] items-stretch overflow-hidden animate-slide-up email-view-root ${isLargeFont ? 'email-view-large' : ''}`}>
+    <div className="space-y-6 select-none animate-fade-in text-slate-800">
+    {/* Title header */}
+    <div className="flex flex-col border-b border-slate-100 pb-4">
+      <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+        <Mail className="h-6 w-6 text-pink-600" /> {t("Email Inbox", "Emailová schránka", "E-mail postafiók")}
+      </h2>
+      <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
+        {t("Unified SMTP / IMAP inbox connected to your CRM contacts", "Jednotná SMTP / IMAP schránka prepojená s kontaktmi CRM", "Egységes SMTP / IMAP postafiók a CRM kapcsolatokhoz")}
+      </p>
+    </div>
+
+    <div className={`grid grid-cols-1 lg:grid-cols-12 gap-5 select-none h-[calc(100vh-300px)] items-stretch overflow-hidden animate-slide-up email-view-root ${isLargeFont ? 'email-view-large' : ''}`}>
       <style>{`
         .email-view-large .text-\\[9px\\] { font-size: 12px !important; }
         .email-view-large .text-\\[8px\\] { font-size: 11px !important; }
@@ -1453,7 +1465,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                   <div className="text-left">
                     <h3 className="text-sm font-heading font-black text-slate-900 uppercase tracking-tight">{selectedEmail.subject || t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)")}</h3>
                     <p className="text-[10px] text-slate-500 font-bold mt-1">
-                      From: <strong className="text-slate-800">{selectedEmail.from.name || selectedEmail.from.address}</strong> &lt;{selectedEmail.from.address}&gt;
+                      {t("From:", "Od:", "Feladó:")} <strong className="text-slate-800">{selectedEmail.from.name || selectedEmail.from.address}</strong> &lt;{selectedEmail.from.address}&gt;
                     </p>
                   </div>
                   <div className="flex gap-2">
@@ -1987,6 +1999,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 };

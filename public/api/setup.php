@@ -175,28 +175,13 @@ try {
         }
     }
 
-    // Pipeline labels are persisted values, so seed them in the language chosen.
-    $pipelineStagesByLanguage = [
-        'en' => ['new', 'contacted', 'offer sent', 'accepted', 'rejected'],
-        'sk' => ['nový', 'kontaktovaný', 'ponuka odoslaná', 'prijatý', 'zamietnutý'],
-        'hu' => ['új', 'kapcsolatfelvétel', 'ajánlat elküldve', 'elfogadva', 'elutasítva'],
-    ];
-    $leadStates = $pipelineStagesByLanguage[$systemLanguage];
-    $leadStageGroups = array_combine($leadStates, ['new', 'in_progress', 'in_progress', 'closed', 'closed']);
-    $leadStateColors = array_combine($leadStates, ['#3b82f6', '#0ea5e9', '#6366f1', '#10b981', '#ef4444']);
+    // Pipeline stages, lead categories and task states are persisted values, so
+    // seed them in the language chosen (see ccrm_default_lists in schema.php).
+    $defaultLists = ccrm_default_lists($systemLanguage);
+    $leadStates = $defaultLists['leadStates'];
+    $leadCategories = $defaultLists['leadCategories'];
 
-    $baseSettings = [
-        'SYSTEM_NAME' => 'CCRM',
-        'SYSTEM_LANGUAGE' => $systemLanguage,
-        'LEAD_STATES' => json_encode($leadStates),
-        'LEAD_SOURCES' => json_encode(["showroom", "facebook", "instagram", "website"]),
-        'LEAD_CATEGORIES' => json_encode(["Kitchen Countertops", "Flooring Tiles", "Bathroom Renovation", "Granite Slabs", "Plumbing Services", "Custom Masonry"]),
-        'LEAD_STATE_COLORS' => json_encode($leadStateColors),
-        'LEAD_SOURCE_COLORS' => json_encode(["showroom" => "#10b981", "facebook" => "#3b82f6", "instagram" => "#ec4899", "website" => "#8b5cf6"]),
-        'LEAD_CATEGORY_COLORS' => json_encode(["Kitchen Countertops" => "#f59e0b", "Flooring Tiles" => "#10b981", "Bathroom Renovation" => "#3b82f6", "Granite Slabs" => "#6366f1", "Plumbing Services" => "#0ea5e9", "Custom Masonry" => "#ec4899"]),
-        'LEAD_STAGE_GROUPS' => json_encode($leadStageGroups),
-        'LEAD_STATE_PARENTS' => json_encode((object)[]),
-    ];
+    $baseSettings = ccrm_default_settings_for_language($systemLanguage);
 
     $insSet = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
 
@@ -224,11 +209,67 @@ try {
             $insUser->execute([$userId($u[1]), $u[0], $u[1], password_hash($u[2], PASSWORD_DEFAULT), $u[3], $u[4], $u[5]]);
         }
 
+        // Demo copy follows the installation language too — a Slovak demo that
+        // opens on English sample records looks like a broken translation.
+        $demoTextByLanguage = [
+            'en' => [
+                'ev1_title' => 'Discovery Call Logged',
+                'ev1_body' => 'Discussed interior stone cladding options for the main showroom. Client is highly interested in thin porcelain slate slabs.',
+                'ev2_title' => 'Sent Digital Catalog & Pricing',
+                'ev2_body' => 'Emailed complete porcelain slate stone catalog and basic thickness pricing guidelines.',
+                'ev3_title' => 'Showroom Meeting Bratislava',
+                'ev3_body' => 'Met at our main showroom. Selected grey marble slab variants. Sam compiled official technical logistics requirements.',
+                'ev4_title' => 'Official Price Offer Sent',
+                'ev4_body' => 'Drafted and emailed formal budget quote detailing complete slabs cutting & assembly pricing.',
+                'task1_title' => 'Draft SLA contract for wholesale partner',
+                'task1_body' => 'Prepare standard wholesale SLA layout including slab delivery timelines.',
+                'task2_title' => 'Onsite laser measurement for kitchen countertop',
+                'task2_body' => 'Visit the property in Trnava to take precise Proliner measurements for Calacatta Quartz.',
+                'task3_title' => 'Slab delivery coordination from Italy',
+                'task3_body' => 'Coordinate with logistics for the 12mm thickness slabs arriving from Fiorano Modenese.',
+            ],
+            'sk' => [
+                'ev1_title' => 'Zaznamenaný úvodný hovor',
+                'ev1_body' => 'Prebrali sme možnosti interiérového kamenného obkladu pre hlavný showroom. Klient má veľký záujem o tenké porcelánové bridlicové dosky.',
+                'ev2_title' => 'Odoslaný digitálny katalóg a cenník',
+                'ev2_body' => 'E-mailom sme poslali kompletný katalóg porcelánového kameňa a základný cenník podľa hrúbky.',
+                'ev3_title' => 'Stretnutie v showroome Bratislava',
+                'ev3_body' => 'Stretli sme sa v našom hlavnom showroome. Klient si vybral sivé mramorové dosky. Sam spísal technické a logistické požiadavky.',
+                'ev4_title' => 'Odoslaná oficiálna cenová ponuka',
+                'ev4_body' => 'Pripravili a e-mailom odoslali formálnu cenovú ponuku vrátane rezania a montáže dosiek.',
+                'task1_title' => 'Pripraviť SLA zmluvu pre veľkoobchodného partnera',
+                'task1_body' => 'Pripraviť štandardnú veľkoobchodnú SLA vrátane termínov dodania dosiek.',
+                'task2_title' => 'Laserové zameranie kuchynskej dosky u klienta',
+                'task2_body' => 'Navštíviť nehnuteľnosť v Trnave a presne zamerať Prolinerom dosku Calacatta Quartz.',
+                'task3_title' => 'Koordinácia dodávky dosiek z Talianska',
+                'task3_body' => 'Dohodnúť s logistikou dodanie 12 mm dosiek prichádzajúcich z Fiorano Modenese.',
+            ],
+            'hu' => [
+                'ev1_title' => 'Rögzített bemutatkozó hívás',
+                'ev1_body' => 'Átbeszéltük a fő bemutatóterem belső kőburkolati lehetőségeit. Az ügyfelet erősen érdeklik a vékony porcelán palalapok.',
+                'ev2_title' => 'Digitális katalógus és árlista elküldve',
+                'ev2_body' => 'E-mailben elküldtük a teljes porcelán kő katalógust és a vastagság szerinti alapárakat.',
+                'ev3_title' => 'Találkozó a pozsonyi bemutatóteremben',
+                'ev3_body' => 'A fő bemutatóteremben találkoztunk. Az ügyfél szürke márványlapokat választott. Sam összeállította a műszaki és logisztikai követelményeket.',
+                'ev4_title' => 'Hivatalos árajánlat elküldve',
+                'ev4_body' => 'Elkészítettük és e-mailben elküldtük a hivatalos árajánlatot a lapok vágásával és szerelésével együtt.',
+                'task1_title' => 'SLA szerződés előkészítése a nagykereskedelmi partnernek',
+                'task1_body' => 'Készítsd elő a szokásos nagykereskedelmi SLA-t a lapok szállítási határidőivel együtt.',
+                'task2_title' => 'Helyszíni lézeres felmérés a konyhapulthoz',
+                'task2_body' => 'Látogasd meg a nagyszombati ingatlant, és mérd fel Prolinerrel a Calacatta Quartz pultot.',
+                'task3_title' => 'Lapszállítás egyeztetése Olaszországból',
+                'task3_body' => 'Egyeztess a logisztikával a Fiorano Modenese-ből érkező 12 mm-es lapokról.',
+            ],
+        ];
+        $demoText = $demoTextByLanguage[$systemLanguage];
+        $leadSources = $defaultLists['leadSources'];
+        $taskStates = $defaultLists['taskStates'];
+
         // Seed default leads
         $leads = [
-            ['lead-1', 'Ján Novák', 'Bratislava', 'business', $leadStates[0], 'website', 'Sam', 12500, 5, '+421 905 123 456', 'novak@example.com', '36123456', '2021234567', 'SK2021234567', 'Ing. Ján Novák', 'https://example.com', 'Mlynské Nivy 42', '821 09', 'Slovakia', '2026-05-15'],
-            ['lead-2', 'Martina Kováčová', 'Trnava', 'person', $leadStates[1], 'instagram', 'Jordan', 8400, 4, '+421 911 987 654', 'm.kovacova@example.com', null, null, null, null, null, 'Kukučínova 15', '917 01', 'Slovakia', '2026-05-18'],
-            ['lead-3', 'Thomas Müller', 'Košice', 'partner', $leadStates[2], 'showroom', 'Alex', 45000, 3, '+49 172 888 999', 't.mueller@example.de', 'DE98765432', '115/908/332', null, 'Thomas Müller', 'https://example.de', 'Hauptstrasse 102', '040 01', 'Germany', '2026-05-10'],
+            ['lead-1', 'Ján Novák', 'Bratislava', 'business', $leadStates[0], $leadSources[3], 'Sam', 12500, 5, '+421 905 123 456', 'novak@example.com', '36123456', '2021234567', 'SK2021234567', 'Ing. Ján Novák', 'https://example.com', 'Mlynské Nivy 42', '821 09', 'Slovakia', '2026-05-15'],
+            ['lead-2', 'Martina Kováčová', 'Trnava', 'person', $leadStates[1], $leadSources[2], 'Jordan', 8400, 4, '+421 911 987 654', 'm.kovacova@example.com', null, null, null, null, null, 'Kukučínova 15', '917 01', 'Slovakia', '2026-05-18'],
+            ['lead-3', 'Thomas Müller', 'Košice', 'partner', $leadStates[2], $leadSources[0], 'Alex', 45000, 3, '+49 172 888 999', 't.mueller@example.de', 'DE98765432', '115/908/332', null, 'Thomas Müller', 'https://example.de', 'Hauptstrasse 102', '040 01', 'Germany', '2026-05-10'],
         ];
         $insLead = $pdo->prepare("INSERT INTO `leads` (`id`, `name`, `city`, `client_type`, `status`, `source`, `owner`, `value`, `rating`, `phone`, `email`, `company_id`, `tax_id`, `vat_id`, `contact_person`, `website`, `street`, `postal_code`, `country`, `created_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
         foreach ($leads as $l) {
@@ -236,10 +277,10 @@ try {
         }
 
         $leadCats = [
-            ['lead-1', 'Kitchen Countertops'],
-            ['lead-1', 'Flooring Tiles'],
-            ['lead-2', 'Bathroom Renovation'],
-            ['lead-3', 'Granite Slabs'],
+            ['lead-1', $leadCategories[0]],
+            ['lead-1', $leadCategories[1]],
+            ['lead-2', $leadCategories[1]],
+            ['lead-3', $leadCategories[0]],
         ];
         $insLeadCat = $pdo->prepare("INSERT INTO `lead_categories` (`lead_id`, `category_name`) VALUES (?, ?)");
         foreach ($leadCats as $lc) {
@@ -247,10 +288,10 @@ try {
         }
 
         $timelineEvents = [
-            ['ev-1', 'lead-1', 'phone', '2026-05-15 10:00', 'Discovery Call Logged', 'Discussed interior stone cladding options for the main showroom. Client is highly interested in thin porcelain slate slabs.', null, null, null, null, null],
-            ['ev-2', 'lead-1', 'email', '2026-05-16 11:30', 'Sent Digital Catalog & Pricing', 'Emailed complete porcelain slate stone catalog and basic thickness pricing guidelines.', null, null, null, null, null],
-            ['ev-3', 'lead-1', 'appointment', '2026-05-20 14:00', 'Showroom Meeting Bratislava', 'Met at our main showroom. Selected grey marble slab variants. Sam compiled official technical logistics requirements.', null, null, null, null, '14:00'],
-            ['ev-4', 'lead-1', 'offer', '2026-05-22 15:45', 'Official Price Offer Sent', 'Drafted and emailed formal budget quote detailing complete slabs cutting & assembly pricing.', 12500.00, 'novak_slabs_proposal.pdf', '1.45 MB', 'offer', null],
+            ['ev-1', 'lead-1', 'phone', '2026-05-15 10:00', $demoText['ev1_title'], $demoText['ev1_body'], null, null, null, null, null],
+            ['ev-2', 'lead-1', 'email', '2026-05-16 11:30', $demoText['ev2_title'], $demoText['ev2_body'], null, null, null, null, null],
+            ['ev-3', 'lead-1', 'appointment', '2026-05-20 14:00', $demoText['ev3_title'], $demoText['ev3_body'], null, null, null, null, '14:00'],
+            ['ev-4', 'lead-1', 'offer', '2026-05-22 15:45', $demoText['ev4_title'], $demoText['ev4_body'], 12500.00, 'novak_slabs_proposal.pdf', '1.45 MB', 'offer', null],
         ];
         $insTimeline = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`, `amount`, `file_name`, `file_size`, `file_type`, `extra_time`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
         foreach ($timelineEvents as $te) {
@@ -258,9 +299,9 @@ try {
         }
 
         $tasks = [
-            ['task-1', 'Draft SLA contract for wholesale partner', 'Prepare standard wholesale SLA layout including slab delivery timelines.', 'high', '2026-05-30', 'in_progress', 'Alex', 'lead-3', 1],
-            ['task-2', 'Onsite laser measurement for kitchen countertop', 'Visit the property in Trnava to take precise Proliner measurements for Calacatta Quartz.', 'high', '2026-05-31', 'todo', 'Sam', 'lead-2', 1],
-            ['task-3', 'Slab delivery coordination from Italy', 'Coordinate with logistics for the 12mm thickness slabs arriving from Fiorano Modenese.', 'medium', '2026-06-02', 'todo', 'Jordan', 'lead-1', 0],
+            ['task-1', $demoText['task1_title'], $demoText['task1_body'], 'high', '2026-05-30', $taskStates[1], 'Alex', 'lead-3', 1],
+            ['task-2', $demoText['task2_title'], $demoText['task2_body'], 'high', '2026-05-31', $taskStates[0], 'Sam', 'lead-2', 1],
+            ['task-3', $demoText['task3_title'], $demoText['task3_body'], 'medium', '2026-06-02', $taskStates[0], 'Jordan', 'lead-1', 0],
         ];
         $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `deadline`, `status`, `owner`, `related_lead_id`, `is_locking`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
         foreach ($tasks as $t) {

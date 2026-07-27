@@ -503,7 +503,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       let totalProcessed = 0;
 
       const dataPoints: { xRatio: number; revenue: number; won: number; conversion: number; leadName: string }[] = [
-        { xRatio: 0, revenue: 0, won: 0, conversion: 0, leadName: "Interval Start" }
+        { xRatio: 0, revenue: 0, won: 0, conversion: 0, leadName: t("Interval Start", "Začiatok intervalu", "Intervallum kezdete") }
       ];
 
       sortedPmLeads.forEach(l => {
@@ -532,7 +532,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         dataPoints.push({
           ...last,
           xRatio: 1,
-          leadName: "Interval End"
+          leadName: t("Interval End", "Koniec intervalu", "Intervallum vége")
         });
       } else {
         dataPoints.push({
@@ -540,7 +540,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           revenue: 0,
           won: 0,
           conversion: 0,
-          leadName: "Interval End"
+          leadName: t("Interval End", "Koniec intervalu", "Intervallum vége")
         });
       }
 
@@ -790,7 +790,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       {/* Title Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-4">
         <div className="flex flex-col">
-          <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2 uppercase">
+          <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
             <BarChart3 className="h-6 w-6 text-indigo-600" /> {getTranslation(systemLanguage, "header.title.dashboard")}
           </h2>
           <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
@@ -1327,8 +1327,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
               <div className="space-y-4 pt-2">
                 {[
-                  { name: "Meta Campaigns (FB/IG)", spent: metaSpent, won: metaWonValue, roi: metaRoi, badge: "bg-blue-50 text-blue-700 border-blue-200" },
-                  { name: "Google Campaigns (Search/Web)", spent: googleSpent, won: googleWonValue, roi: googleRoi, badge: "bg-amber-50 text-amber-700 border-amber-200" }
+                  { name: t("Meta Campaigns (FB/IG)", "Kampane Meta (FB/IG)", "Meta kampányok (FB/IG)"), spent: metaSpent, won: metaWonValue, roi: metaRoi, badge: "bg-blue-50 text-blue-700 border-blue-200" },
+                  { name: t("Google Campaigns (Search/Web)", "Kampane Google (Vyhľadávanie/Web)", "Google kampányok (Keresés/Web)"), spent: googleSpent, won: googleWonValue, roi: googleRoi, badge: "bg-amber-50 text-amber-700 border-amber-200" }
                 ].map(channel => (
                   <div key={channel.name} className="p-3.5 rounded-2xl border border-slate-100 space-y-2">
                     <div className="flex justify-between items-center">

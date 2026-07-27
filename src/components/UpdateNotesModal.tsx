@@ -130,7 +130,7 @@ export const UpdateNotesModal: React.FC<UpdateNotesModalProps> = ({
                   <div key={idx} className="rounded-2xl overflow-hidden border border-slate-200/80 shadow-md">
                     <img 
                       src={img.url} 
-                      alt={img.title || "Update Image"} 
+                      alt={img.title || t("Update Image", "Obrázok novinky", "Frissítés képe")} 
                       className="w-full h-auto object-cover max-h-[350px]"
                     />
                   </div>
@@ -149,7 +149,7 @@ export const UpdateNotesModal: React.FC<UpdateNotesModalProps> = ({
                       <div className="w-full md:w-1/2 rounded-2xl overflow-hidden border border-slate-200/80 shadow-sm shrink-0">
                         <img 
                           src={img.url} 
-                          alt={img.title || "Update Image"} 
+                          alt={img.title || t("Update Image", "Obrázok novinky", "Frissítés képe")} 
                           className="w-full h-auto object-cover max-h-[220px]"
                         />
                       </div>
