@@ -121,6 +121,10 @@ function App() {
   // run" flag is not enough: the first run is often consumed by the pre-session
   // 401 bootstrap, before the real settings even arrive.)
   const lastSyncedSettingsSigRef = useRef<string | null>(null);
+  // Pending debounced settings push (see the settings-sync effect). Non-null means a
+  // settings edit is on screen but not yet on its way to the server, which the
+  // beforeunload guard has to treat exactly like an in-flight save.
+  const settingsPushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Signature of the full push payload the server last confirmed (via a successful
   // push or a fresh poll pull). A 401'd push only counts as a "lost" edit — worth
   // alarming the user about and replaying after re-login — when its content
@@ -1039,7 +1043,9 @@ ${log.payload || ''}
   // (or any edit) is never lost by reloading/closing before it reaches the server.
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
-      if (isSyncing) {
+      // A debounced settings edit has not left the browser yet, so it counts as
+      // unsaved just as much as a request already in flight.
+      if (isSyncing || settingsPushTimerRef.current !== null) {
         e.preventDefault();
         e.returnValue = "";
       }
@@ -1068,7 +1074,20 @@ ${log.payload || ''}
     if (lastSyncedSettingsSigRef.current === currentSig) return;
     // A real divergence → persist it, and remember the new baseline.
     lastSyncedSettingsSigRef.current = currentSig;
-    pushStateToServer();
+    // Coalesce bursts before pushing. Every settings edit sends the WHOLE dataset
+    // (all leads, tasks, unified rows — multi-MB on a real install), and an
+    // <input type="color"> fires onChange for every step the user drags through the
+    // picker. Undebounced, one drag queued dozens of full pushes that then drained
+    // one-by-one through the serialized push chain: the save did complete, but
+    // "Ukladá sa…" stayed up ~15s and the unload guard blocked a reload the whole time.
+    if (settingsPushTimerRef.current) clearTimeout(settingsPushTimerRef.current);
+    settingsPushTimerRef.current = setTimeout(() => {
+      settingsPushTimerRef.current = null;
+      // Safe to read from this closure: the effect re-runs on every settings change and
+      // resets the timer, so the run that survives to fire is the one holding the
+      // newest values.
+      pushStateToServer();
+    }, 700);
   }, [leadStates, leadSources, leadCategories, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, taskStates, taskStateColors, isInitialSyncResolved]);
 
   // Layout Hash change listener
