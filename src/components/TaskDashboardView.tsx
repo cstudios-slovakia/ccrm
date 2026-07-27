@@ -299,6 +299,20 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         return en;
     };
 
+    // Locale for native date/time display — driven by the language/region setting.
+    const locale = systemLanguage === "sk" ? "sk-SK" : systemLanguage === "hu" ? "hu-HU" : "en-US";
+
+    // Formats a stored "HH:MM" string as a regional time (24h for sk/hu, AM/PM for en-US).
+    const formatTimeDisplay = (timeStr?: string) => {
+        if (!timeStr) return "";
+        const [h, min] = timeStr.split(":").map(Number);
+        if (isNaN(h) || isNaN(min)) return timeStr;
+        return new Date(2000, 0, 1, h, min).toLocaleTimeString(locale, {
+            hour: "2-digit",
+            minute: "2-digit",
+        });
+    };
+
     // Calendar weekday headers (Mon-first), localized.
     const weekdayNames =
         systemLanguage === "sk"
@@ -1174,7 +1188,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             </span>
                             <span className="text-[9px] font-black tabular-nums break-words">
                                 {formatTaskDate(task.deadline)} ·{" "}
-                                {task.deadlineTime || "23:59"}
+                                {formatTimeDisplay(task.deadlineTime || "23:59")}
                             </span>
                         </span>
                     </span>
