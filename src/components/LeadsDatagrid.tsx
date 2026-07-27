@@ -13,6 +13,78 @@ import {
 import type { Lead, TimelineEvent, Task, UserProfile, Project, ProjectType } from "../types";
 import { cn } from "../utils/cn";
 
+// Named preset deadline times offered in the gate quick-add picker, mirroring the
+// task dashboard's Add-task drawer. A "Custom" option reveals a free time input so
+// any specific time can be entered instead of the fixed presets.
+const GATE_DEADLINE_TIME_PRESETS = ["10:00", "12:00", "16:00", "19:00"];
+
+// Deadline-time picker for the phase-gate quick-add form. Offers the named presets
+// plus a "Custom" option that reveals a native time input. Defined at module scope
+// (stable identity) so its internal state survives parent re-renders and the custom
+// <input> keeps focus while typing.
+const InlineDeadlineTimePicker: React.FC<{
+  value: string;
+  onChange: (val: string) => void;
+  systemLanguage: Language;
+}> = ({ value, onChange, systemLanguage }) => {
+  const currentValue = value || "";
+  const isPreset = GATE_DEADLINE_TIME_PRESETS.includes(currentValue);
+  // Custom mode is active when the value isn't a named preset (e.g. a legacy 23:59
+  // or a hand-typed time) or once the user explicitly opens the custom input.
+  const [customOpen, setCustomOpen] = useState(!isPreset && currentValue !== "");
+  const showCustom = customOpen || (!isPreset && currentValue !== "");
+
+  const presetLabel = (p: string) => {
+    switch (p) {
+      case "10:00":
+        return systemLanguage === "sk" ? "Ráno (10:00)" : systemLanguage === "hu" ? "Reggel (10:00)" : "Morning (10:00)";
+      case "12:00":
+        return systemLanguage === "sk" ? "Poludnie (12:00)" : systemLanguage === "hu" ? "Dél (12:00)" : "Noon (12:00)";
+      case "16:00":
+        return systemLanguage === "sk" ? "Popoludnie (16:00)" : systemLanguage === "hu" ? "Délután (16:00)" : "Afternoon (16:00)";
+      case "19:00":
+        return systemLanguage === "sk" ? "Večer (19:00)" : systemLanguage === "hu" ? "Este (19:00)" : "Evening (19:00)";
+      default:
+        return p;
+    }
+  };
+
+  return (
+    <div className="space-y-1.5">
+      <select
+        value={showCustom ? "custom" : currentValue}
+        onChange={(e) => {
+          if (e.target.value === "custom") {
+            setCustomOpen(true);
+            if (!GATE_DEADLINE_TIME_PRESETS.includes(currentValue)) onChange("12:00");
+          } else {
+            setCustomOpen(false);
+            onChange(e.target.value);
+          }
+        }}
+        className="w-full px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:outline-none font-bold text-[10px]"
+      >
+        {GATE_DEADLINE_TIME_PRESETS.map((p) => (
+          <option key={p} value={p}>
+            {presetLabel(p)}
+          </option>
+        ))}
+        <option value="custom">
+          {systemLanguage === "sk" ? "Vlastný čas…" : systemLanguage === "hu" ? "Egyéni időpont…" : "Custom…"}
+        </option>
+      </select>
+      {showCustom && (
+        <input
+          type="time"
+          value={currentValue}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:outline-none font-bold text-[10px]"
+        />
+      )}
+    </div>
+  );
+};
+
 // Searchable lead/referral picker (item 6): a select whose options are filtered by a fulltext
 // search box at the top of the dropdown. Reused by the new-lead popup and the lead detail panel.
 const SearchableLeadSelect: React.FC<{
@@ -94,6 +166,8 @@ import { BlockEditor } from "./BlockEditor";
 import type { EditorBlock } from "./BlockEditor";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
+import { todayLocal } from "../utils/localTime";
+import { formatMoney } from "../utils/currency";
 
 const CalendarPane: React.FC<{
   title: string;
@@ -240,7 +314,11 @@ const getPresetTranslationKey = (name: string) => {
   }
 };
 
-const generateAiSummary = (lead: Lead, lang: Language): string => {
+const generateAiSummary = (
+  lead: Lead,
+  lang: Language,
+  formatAmount: (value: number) => string = (v) => `€${v.toLocaleString()}`
+): string => {
   const typeText = lead.clientType === "person" 
     ? (lang === "sk" ? "Súkromná osoba" : lang === "hu" ? "Magánszemély" : "Private person")
     : lead.clientType === "business"
@@ -301,7 +379,7 @@ const generateAiSummary = (lead: Lead, lang: Language): string => {
     }
     if (statusLower === "offer sent") {
       let desc = `Vypracovaná a odoslaná cenová ponuka`;
-      if (lead.value > 0) desc += ` v hodnote €${lead.value.toLocaleString()}`;
+      if (lead.value > 0) desc += ` v hodnote ${formatAmount(lead.value)}`;
       if (categoriesText) desc += ` na ${categoriesText}`;
       desc += `. Čaká sa na spätnú väzbu od zákazníka.`;
       if (latestEventStr) desc += ` Posledná komunikácia: ${latestEventStr}.`;
@@ -309,7 +387,7 @@ const generateAiSummary = (lead: Lead, lang: Language): string => {
     }
     if (statusLower === "accepted") {
       let desc = `Úspešný obchod. Ponuka bola schválená klientom`;
-      if (lead.value > 0) desc += ` v celkovej hodnote €${lead.value.toLocaleString()}`;
+      if (lead.value > 0) desc += ` v celkovej hodnote ${formatAmount(lead.value)}`;
       desc += `. Projekt prechádza do realizačnej fázy`;
       if (ownerText) desc += ` pod vedením manažéra ${ownerText}`;
       return desc;
@@ -336,7 +414,7 @@ const generateAiSummary = (lead: Lead, lang: Language): string => {
     }
     if (statusLower === "offer sent") {
       let desc = `Árajánlat kiküldve`;
-      if (lead.value > 0) desc += ` €${lead.value.toLocaleString()} értékben`;
+      if (lead.value > 0) desc += ` ${formatAmount(lead.value)} értékben`;
       if (categoriesText) desc += ` (${categoriesText})`;
       desc += `. Vevői visszajelzésre vár.`;
       if (latestEventStr) desc += ` Utolsó egyeztetés: ${latestEventStr}.`;
@@ -344,7 +422,7 @@ const generateAiSummary = (lead: Lead, lang: Language): string => {
     }
     if (statusLower === "accepted") {
       let desc = `Sikeres üzlet. Az ajánlatot elfogadta az ügyfél`;
-      if (lead.value > 0) desc += ` €${lead.value.toLocaleString()} összértékben`;
+      if (lead.value > 0) desc += ` ${formatAmount(lead.value)} összértékben`;
       desc += `. Projekt átadva megvalósításra`;
       if (ownerText) desc += `, projektmenedzser: ${ownerText}`;
       return desc;
@@ -371,7 +449,7 @@ const generateAiSummary = (lead: Lead, lang: Language): string => {
     }
     if (statusLower === "offer sent") {
       let desc = `Price proposal sent`;
-      if (lead.value > 0) desc += ` in the amount of €${lead.value.toLocaleString()}`;
+      if (lead.value > 0) desc += ` in the amount of ${formatAmount(lead.value)}`;
       if (categoriesText) desc += ` for ${categoriesText}`;
       desc += `. Awaiting feedback from client.`;
       if (latestEventStr) desc += ` Last activity: ${latestEventStr}.`;
@@ -379,7 +457,7 @@ const generateAiSummary = (lead: Lead, lang: Language): string => {
     }
     if (statusLower === "accepted") {
       let desc = `Won deal. Offer was approved by client`;
-      if (lead.value > 0) desc += ` for a total value of €${lead.value.toLocaleString()}`;
+      if (lead.value > 0) desc += ` for a total value of ${formatAmount(lead.value)}`;
       desc += `. Moving to execution phase`;
       if (ownerText) desc += ` managed by ${ownerText}`;
       return desc;
@@ -419,6 +497,7 @@ interface LeadsDatagridProps {
   setProjects?: React.Dispatch<React.SetStateAction<Project[]>>;
   setActiveTab?: (tab: string) => void;
   leadStateFollowUp?: Record<string, boolean>;
+  currencyCode?: string | null;
 }
 
 export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
@@ -451,9 +530,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
   projectTypes = [],
   setProjects,
   setActiveTab,
-  leadStateFollowUp = {}
+  leadStateFollowUp = {},
+  currencyCode
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
+  const money = (value: number, opts?: Intl.NumberFormatOptions) => formatMoney(value, currencyCode, systemLanguage, opts);
 
   // Lead states flagged as "follow-up" in Settings, in the configured order.
   // Each becomes its own checkbox on the lead so several follow-up rounds can be
@@ -1008,7 +1089,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
               type="button"
               disabled={isTranscribing || isUploadingAudio || !uploadedAudioFile}
               onClick={handleTranscribeMeeting}
-              className="px-2.5 py-1 bg-indigo-650 hover:bg-indigo-600 disabled:bg-slate-200 text-white text-[9px] font-black uppercase tracking-wider rounded-lg cursor-pointer flex items-center gap-1.5"
+              className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white text-[9px] font-black uppercase tracking-wider rounded-lg cursor-pointer flex items-center gap-1.5"
             >
               {isTranscribing ? (
                 <Loader2 className="h-3 w-3 animate-spin" />
@@ -1451,8 +1532,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
   // Explicit Event Date/Time
   const [logDate, setLogDate] = useState(() => {
-    const tzOffset = (new Date()).getTimezoneOffset() * 60000;
-    return (new Date(Date.now() - tzOffset)).toISOString().split("T")[0];
+    return todayLocal();
   });
   const [logTimeOfEvent, setLogTimeOfEvent] = useState(() => {
     const d = new Date();
@@ -1466,7 +1546,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     d.setDate(d.getDate() + 3);
     return d.toISOString().split("T")[0];
   });
-  const [inlineTaskDeadlineTime, setInlineTaskDeadlineTime] = useState("23:59");
+  const [inlineTaskDeadlineTime, setInlineTaskDeadlineTime] = useState("16:00");
   const [inlineTaskIsLocking, setInlineTaskIsLocking] = useState(true);
 
   // Retrieve current user session to authenticate API requests to mail_broker.php
@@ -1684,8 +1764,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     setLeads(prev => prev.map(l => {
       if (l.id === activeLead.id) {
-        const timePart = l.createdAt && l.createdAt.includes("T") ? l.createdAt.slice(10) : "T00:00:00.000Z";
-        const newCreatedAt = leadCreatedAt ? `${leadCreatedAt}${timePart}` : l.createdAt;
+        // `leads.created_at` is a plain DATE column server-side. Appending a
+        // time part (especially a `Z`-suffixed ISO timestamp) makes MySQL reject
+        // the whole sync payload with SQLSTATE 22007, which silently blocks
+        // every later push too. Keep it date-only.
+        const newCreatedAt = leadCreatedAt ? leadCreatedAt.slice(0, 10) : (l.createdAt || "").slice(0, 10);
         return {
           ...l,
           name: leadName.trim(),
@@ -1744,8 +1827,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         (window as any).showToast(t("Offer amount must be a positive number!", "Suma ponuky musí byť kladné číslo!", "Az ajánlat összegének pozitív számnak kell lennie!"));
         return;
       }
-      titleString = `${t("Commercial Proposal Sent", "Cenová ponuka odoslaná", "Kereskedelmi ajánlat elküldve")} (€ ${amt.toLocaleString()})`;
-      if (!contentString) contentString = `${t("Submitted commercial proposal of", "Odoslaná cenová ponuka vo výške", "Benyújtott kereskedelmi ajánlat összege")} € ${amt.toLocaleString()} ${t("to client.", "klientovi.", "az ügyfélnek.")}`;
+      titleString = `${t("Commercial Proposal Sent", "Cenová ponuka odoslaná", "Kereskedelmi ajánlat elküldve")} (${money(amt)})`;
+      if (!contentString) contentString = `${t("Submitted commercial proposal of", "Odoslaná cenová ponuka vo výške", "Benyújtott kereskedelmi ajánlat összege")} ${money(amt)} ${t("to client.", "klientovi.", "az ügyfélnek.")}`;
     }
 
     const eventId = "evt_" + Math.random().toString(36).substr(2, 9);
@@ -1842,6 +1925,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         deadline: deadlineVal,
         deadlineTime: "23:59",
         owner: activeLead.owner || currentUser?.name || projectManagers[0] || "",
+        createdBy: currentUser?.name || "",
         assignedUsers: [activeLead.owner || currentUser?.name || projectManagers[0] || ""],
         relatedLeadId: activeLead.id,
         isLocking: false
@@ -1868,8 +1952,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     if ((window as any)._latestTranscription) delete (window as any)._latestTranscription;
     
     // Reset date/time to now
-    const tzOffset = (new Date()).getTimezoneOffset() * 60000;
-    setLogDate((new Date(Date.now() - tzOffset)).toISOString().split("T")[0]);
+    setLogDate(todayLocal());
     setLogTimeOfEvent(new Date().toTimeString().substring(0, 5));
   };
 
@@ -1942,6 +2025,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       deadline: inlineTaskDeadline,
       deadlineTime: inlineTaskDeadlineTime,
       owner: activeLead.owner || currentUser?.name || projectManagers[0] || "",
+      createdBy: currentUser?.name || "",
       assignedUsers: [activeLead.owner || currentUser?.name || projectManagers[0] || ""],
       relatedLeadId: activeLead.id,
       isLocking: inlineTaskIsLocking
@@ -1952,7 +2036,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const d = new Date();
     d.setDate(d.getDate() + 3);
     setInlineTaskDeadline(d.toISOString().split("T")[0]);
-    setInlineTaskDeadlineTime("23:59");
+    setInlineTaskDeadlineTime("16:00");
     setInlineTaskIsLocking(true);
   };
 
@@ -2118,7 +2202,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       source: newLeadSource || leadSources[0] || "website",
       owner: newLeadOwner || "",
       value: valNum,
-      createdAt: new Date().toISOString(),
+      // Date-only and in LOCAL time: `leads.created_at` is a DATE column, and a
+      // UTC-derived date files leads created after midnight under the previous day.
+      createdAt: todayLocal(),
       rating: newLeadRating,
       categories: newLeadCategories,
       referralLeadId: newLeadReferralId || undefined
@@ -2260,7 +2346,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
       rawGrouped = [
         {
-          state: "All Leads",
+          state: t("All Leads", "Všetky leady", "Összes lead"),
           colorOverride: "#6366f1",
           leads: sorted
         }
@@ -2508,7 +2594,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             )}
 
             <span className="text-xs font-black uppercase tracking-widest text-blue-800 bg-blue-100 border-2 border-blue-300 px-4 py-2 rounded-2xl shadow-inner">
-              {getTranslation(systemLanguage, "common.lead_value")}: &euro; {activeLead.value.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              {getTranslation(systemLanguage, "common.lead_value")}: {money(activeLead.value, { minimumFractionDigits: 2 })}
             </span>
           </div>
         </div>
@@ -2721,8 +2807,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                           <span 
                             className="text-[10px] font-black uppercase tracking-wider px-1 truncate"
                             style={{ 
-                              fontSize: "10px", 
-                              lineHeight: "10px",
+                              fontSize: "10px",
+                              // Room for the accents on uppercase Slovak/Hungarian
+                              // labels (Ý, Á, Ô, Ő) — `truncate` clips whatever
+                              // grows past the line box.
+                              lineHeight: "14px",
                               color: textColor
                             }}
                           >
@@ -3216,17 +3305,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                       className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:outline-none font-bold text-[10px]"
                     />
                     
-                    <select
+                    <InlineDeadlineTimePicker
                       value={inlineTaskDeadlineTime}
-                      onChange={(e) => setInlineTaskDeadlineTime(e.target.value)}
-                      className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:outline-none font-bold text-[10px]"
-                    >
-                      <option value="10:00">{systemLanguage === "sk" ? "Ráno (10:00)" : systemLanguage === "hu" ? "Reggel (10:00)" : "Morning (10:00)"}</option>
-                      <option value="12:00">{systemLanguage === "sk" ? "Poludnie (12:00)" : systemLanguage === "hu" ? "Dél (12:00)" : "Noon (12:00)"}</option>
-                      <option value="16:00">{systemLanguage === "sk" ? "Popoludnie (16:00)" : systemLanguage === "hu" ? "Délután (16:00)" : "Afternoon (16:00)"}</option>
-                      <option value="19:00">{systemLanguage === "sk" ? "Večer (19:00)" : systemLanguage === "hu" ? "Este (19:00)" : "Evening (19:00)"}</option>
-                      <option value="23:59">{systemLanguage === "sk" ? "Koniec dňa (23:59)" : systemLanguage === "hu" ? "Nap végén (23:59)" : "End of day (23:59)"}</option>
-                    </select>
+                      onChange={setInlineTaskDeadlineTime}
+                      systemLanguage={systemLanguage}
+                    />
+
                   </div>
                   
                   <div>
@@ -3402,7 +3486,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                       onClick={() => setLogFileType(type)}
                                       className={`py-1.5 rounded-lg font-black text-[9px] uppercase tracking-wider transition-all text-center flex items-center justify-center gap-1.5 ${
                                         logFileType === type 
-                                          ? "bg-amber-750 text-white border border-amber-800 shadow" 
+                                          ? "bg-amber-700 text-white border border-amber-800 shadow"
                                           : "text-slate-550 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
                                       }`}
                                     >
@@ -3992,6 +4076,16 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
   return (
     <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
+      {/* 0. Title header */}
+      <div className="flex flex-col border-b border-slate-100 pb-4">
+        <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+          <Layers className="h-6 w-6 text-blue-600" /> {getTranslation(systemLanguage, "leads.title")}
+        </h2>
+        <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
+          {getTranslation(systemLanguage, "leads.subtitle")}
+        </p>
+      </div>
+
       {/* 1. Sleek Minimalist Stage Counter Statistics Strip */}
       <div className="glass-panel px-6 py-4 rounded-[26px] border border-blue-50 bg-white/85 shadow-glass flex flex-col lg:flex-row lg:items-center justify-between gap-4 select-none">
         <div className="flex items-center gap-3">
@@ -4509,7 +4603,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                           <button 
                             type="button"
                             onClick={() => setIsOfferDatePickerOpen(false)}
-                            className="px-3 py-1 bg-purple-650 hover:bg-purple-700 text-white rounded-lg font-black uppercase tracking-wider transition-colors cursor-pointer shadow-md shadow-purple-600/10"
+                            className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-black uppercase tracking-wider transition-colors cursor-pointer shadow-md shadow-purple-600/10"
                           >
                             {getTranslation(systemLanguage, "dashboard.picker.apply")}
                           </button>
@@ -4618,7 +4712,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                   className="text-[10px] font-heading font-black tracking-wide shrink-0"
                                   style={{ color: stateColor }}
                                 >
-                                  {orderingMode === "pm" ? t("MANAGER VALUE", "HODNOTA MANAŽÉRA", "MENEDZSER ÉRTÉK") : t("STAGE VALUE", "HODNOTA FÁZY", "FÁZIS ÉRTÉK")}: &euro; {stageTotalValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                  {orderingMode === "pm" ? t("MANAGER VALUE", "HODNOTA MANAŽÉRA", "MENEDZSER ÉRTÉK") : t("STAGE VALUE", "HODNOTA FÁZY", "FÁZIS ÉRTÉK")}: {money(stageTotalValue, { minimumFractionDigits: 2 })}
                                 </span>
                               </div>
                             </td>
@@ -4871,8 +4965,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 ) : (
                                   <div className="flex items-center gap-1">
                                     <span className="text-[9px] font-black text-slate-400 lg:hidden uppercase tracking-wider">{t("Val:", "Hodn.:", "Érték:")}</span>
-                                    <span className="border-b border-transparent hover:border-blue-400/50 transition-all font-black text-blue-700">
-                                      &euro; {lead.value.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    <span className="border-b border-transparent hover:border-blue-400/50 transition-all font-black text-blue-700 whitespace-nowrap">
+                                      {money(lead.value, { minimumFractionDigits: 2 })}
                                     </span>
                                   </div>
                                 )}
@@ -5078,8 +5172,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                               <span 
                                                 className="text-[10px] font-black uppercase tracking-wider px-1 truncate"
                                                 style={{ 
-                                                  fontSize: "10px", 
-                                                  lineHeight: "10px",
+                                                  fontSize: "10px",
+                                                  // Room for the accents on uppercase Slovak/Hungarian
+                                                  // labels (Ý, Á, Ô, Ő) — `truncate` clips whatever
+                                                  // grows past the line box.
+                                                  lineHeight: "14px",
                                                   color: textColor
                                                 }}
                                               >
@@ -5109,7 +5206,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                               >
                                 <td colSpan={9} className="px-6 pb-3 pt-1 text-[10px] font-medium text-purple-650 tracking-wide text-left block lg:table-cell">
                                   <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="italic" style={{ color: "#7c3aed" }}>{generateAiSummary(lead, systemLanguage)}</span>
+                                    <span className="italic" style={{ color: "#7c3aed" }}>{generateAiSummary(lead, systemLanguage, (v) => money(v))}</span>
                                   </div>
                                 </td>
                               </tr>
@@ -5194,7 +5291,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         {group.leads.length}
                       </span>
                       <span className="text-[10px] font-extrabold text-indigo-700">
-                        &euro;{totalVal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        {money(totalVal, { maximumFractionDigits: 0 })}
                       </span>
                     </div>
                   </div>
@@ -5294,7 +5391,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             <div className={`flex items-center justify-between border-t border-slate-100 shrink-0 ${compactMode ? "pt-1.5 mt-0.5" : "pt-2.5 mt-1"}`}>
                               {/* Price Tag */}
                               <span className="text-xs font-black text-slate-900 leading-none">
-                                &euro;{lead.value.toLocaleString(undefined, { minimumFractionDigits: 0 })}
+                                {money(lead.value, { minimumFractionDigits: 0 })}
                               </span>
 
                               {/* PM Avatar & Source */}
@@ -5777,7 +5874,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">{t("Registered inflow:", "Registrovaný prílev:", "Regisztrált beérkezés:")} {(lead.createdAt || "").slice(0, 10)}</span>
                       </div>
                       <div className="flex flex-col items-end">
-                        <span className="font-black text-emerald-700">&euro; {lead.value.toLocaleString()}</span>
+                        <span className="font-black text-emerald-700">{money(lead.value)}</span>
                         <div className="mt-1 select-none">
                           <StatusSelector 
                             status={lead.status} 

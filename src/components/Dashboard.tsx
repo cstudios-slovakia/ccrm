@@ -6,6 +6,7 @@ import {
 import type { Lead } from "../types";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
+import { resolveCurrencySymbol, resolveCurrencyPosition, formatMoney } from "../utils/currency";
 
 interface DashboardProps {
   systemName: string;
@@ -18,6 +19,7 @@ interface DashboardProps {
   systemLanguage: Language;
   leadStateParents?: Record<string, string>;
   campaigns?: Campaign[];
+  currencyCode?: string | null;
 }
 
 interface Campaign {
@@ -243,10 +245,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
   leadStateColors = {},
   systemLanguage,
   leadStateParents = {},
-  campaigns: propCampaigns
+  campaigns: propCampaigns,
+  currencyCode
 }) => {
   // Inline translation helper for short UI strings
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
+  const currencySymbol = resolveCurrencySymbol(currencyCode, systemLanguage);
+  const currencyPosition = resolveCurrencyPosition(currencyCode, systemLanguage);
+  const money = (value: number, opts?: Intl.NumberFormatOptions) => formatMoney(value, currencyCode, systemLanguage, opts);
 
   // Sub-tabs active status inside Dashboard
   const [activeTab, setActiveTab] = useState<"overview" | "campaigns" | "crm" | "clients">("overview");
@@ -283,9 +289,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // Project manager color map following brand guidelines
   const getPMColor = (name: string, idx: number) => {
     const pmColors: Record<string, string> = {
-      "Erik": "#10b981", // Emerald Green
-      "Tomi": "#6366f1", // Indigo
-      "Roli": "#f59e0b"  // Amber
+      "Alex": "#10b981", // Emerald Green
+      "Sam": "#6366f1", // Indigo
+      "Jordan": "#f59e0b"  // Amber
     };
     if (pmColors[name]) return pmColors[name];
     const defaultColors = ["#3b82f6", "#f43f5e", "#8b5cf6", "#ec4899"];
@@ -497,7 +503,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       let totalProcessed = 0;
 
       const dataPoints: { xRatio: number; revenue: number; won: number; conversion: number; leadName: string }[] = [
-        { xRatio: 0, revenue: 0, won: 0, conversion: 0, leadName: "Interval Start" }
+        { xRatio: 0, revenue: 0, won: 0, conversion: 0, leadName: t("Interval Start", "Začiatok intervalu", "Intervallum kezdete") }
       ];
 
       sortedPmLeads.forEach(l => {
@@ -526,7 +532,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         dataPoints.push({
           ...last,
           xRatio: 1,
-          leadName: "Interval End"
+          leadName: t("Interval End", "Koniec intervalu", "Intervallum vége")
         });
       } else {
         dataPoints.push({
@@ -534,7 +540,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           revenue: 0,
           won: 0,
           conversion: 0,
-          leadName: "Interval End"
+          leadName: t("Interval End", "Koniec intervalu", "Intervallum vége")
         });
       }
 
@@ -632,6 +638,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
     return Object.entries(cities).sort((a, b) => b[1] - a[1]).slice(0, 5);
   }, [filteredLeads]);
 
+  // Currency goes on whichever side (prefix/suffix) its own convention dictates
+  // (see resolveCurrencyPosition) — e.g. "$1,000" vs "1 000 €".
+  const currencyValuePrefix = currencyPosition === "suffix" ? "" : currencySymbol;
+  const currencyValueSuffix = currencyPosition === "suffix" ? ` ${currencySymbol}` : "";
+
   const handleInspectChart = (type: "revenue" | "pipeline" | "leads" | "conversion" | "pm", pmName?: string) => {
     let title = "";
     let color = "";
@@ -642,7 +653,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
     if (type === "revenue") {
       title = t("Total Revenue Chronological Trend", "Chronologický vývoj celkových tržieb", "Teljes bevétel kronologikus trendje");
       color = "#10b981";
-      valuePrefix = "$";
+      valuePrefix = currencyValuePrefix;
+      valueSuffix = currencyValueSuffix;
       let sum = 0;
       details = sortedLeads
         .filter(l => {
@@ -661,7 +673,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
     } else if (type === "pipeline") {
       title = t("Active Pipeline Chronological Trend", "Chronologický vývoj aktívneho pipeline", "Aktív pipeline kronologikus trendje");
       color = "#6366f1";
-      valuePrefix = "$";
+      valuePrefix = currencyValuePrefix;
+      valueSuffix = currencyValueSuffix;
       let sum = 0;
       details = sortedLeads
         .filter(l => {
@@ -716,7 +729,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
     } else if (type === "pm" && pmName) {
       title = `${pmName} - ${t("Sales Performance Trend", "Vývoj predajnej výkonnosti", "Értékesítési teljesítmény trendje")}`;
       color = "#f59e0b";
-      valuePrefix = "$";
+      valuePrefix = currencyValuePrefix;
+      valueSuffix = currencyValueSuffix;
       let sum = 0;
       details = sortedLeads
         .filter(l => {
@@ -776,7 +790,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       {/* Title Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-4">
         <div className="flex flex-col">
-          <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2 uppercase">
+          <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
             <BarChart3 className="h-6 w-6 text-indigo-600" /> {getTranslation(systemLanguage, "header.title.dashboard")}
           </h2>
           <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
@@ -965,7 +979,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     <button 
                       type="button"
                       onClick={() => setIsDatePickerOpen(false)}
-                      className="px-3.5 py-1.5 bg-purple-650 hover:bg-purple-700 text-white rounded-xl font-black uppercase tracking-wider transition-colors cursor-pointer shadow-md shadow-purple-600/10"
+                      className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-black uppercase tracking-wider transition-colors cursor-pointer shadow-md shadow-purple-600/10"
                     >
                       {getTranslation(systemLanguage, "dashboard.picker.apply")}
                     </button>
@@ -1040,7 +1054,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
               <div className="flex flex-col relative z-20">
                 <span className="text-[10px] text-emerald-700 font-extrabold uppercase tracking-wider">{getTranslation(systemLanguage, "dashboard.kpi.revenue")}</span>
-                <span className="text-2xl font-black tracking-tight text-slate-900">${totalRevenue.toLocaleString()}</span>
+                <span className="text-2xl font-black tracking-tight text-slate-900">{money(totalRevenue)}</span>
                 <span className="text-[9px] text-emerald-600 font-bold flex items-center gap-0.5 mt-0.5">
                   {t("Won Deals Only", "Iba uzavreté obchody", "Csak megnyert üzletek")}
                 </span>
@@ -1057,7 +1071,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
               <div className="flex flex-col relative z-20">
                 <span className="text-[10px] text-indigo-700 font-extrabold uppercase tracking-wider">{t("Active Pipeline", "Aktívny pipeline", "Aktív pipeline")}</span>
-                <span className="text-2xl font-black tracking-tight text-slate-900">${activePipelineValue.toLocaleString()}</span>
+                <span className="text-2xl font-black tracking-tight text-slate-900">{money(activePipelineValue)}</span>
                 <span className="text-[9px] text-indigo-600 font-bold flex items-center gap-0.5 mt-0.5">
                   {activePipelineLeads.length} {t("Ongoing Deals", "Prebiehajúce obchody", "Folyamatban lévő üzletek")}
                 </span>
@@ -1130,7 +1144,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           : "text-slate-500 hover:text-slate-800 hover:bg-slate-100/50"
                       }`}
                     >
-                      {t("Value ($)", "Hodnota ($)", "Érték ($)")}
+                      {t("Value", "Hodnota", "Érték")} ({currencySymbol})
                     </button>
                   </div>
                   <span className="text-[9px] font-black text-indigo-600 bg-indigo-100/60 px-2.5 py-1.5 rounded-xl border border-indigo-200 uppercase tracking-wider shrink-0">
@@ -1232,7 +1246,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         key={stage.name} 
                         className="cursor-pointer transition-all duration-300 hover:opacity-90 active:scale-[0.99]"
                       >
-                        <title>{`${stage.name.toUpperCase()} - ${t("Count", "Počet", "Darab")}: ${stage.count} - ${t("Value", "Hodnota", "Érték")}: $${stage.value.toLocaleString()}`}</title>
+                        <title>{`${stage.name.toUpperCase()} - ${t("Count", "Počet", "Darab")}: ${stage.count} - ${t("Value", "Hodnota", "Érték")}: ${money(stage.value)}`}</title>
                         <polygon 
                           points={pointsStr} 
                           fill={stage.color}
@@ -1258,7 +1272,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           className="text-[12px] font-black select-none"
                           style={{ fill: "#ffffff", fontWeight: 900 }}
                         >
-                          {funnelMetric === "count" ? stage.count : `$${stage.value.toLocaleString()}`}
+                          {funnelMetric === "count" ? stage.count : money(stage.value)}
                         </text>
                         {/* Percentage */}
                         {isTall && (
@@ -1293,7 +1307,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             <div key={stage.name} className="flex items-center gap-2">
                               <span className="h-3.5 w-3.5 rounded-full border border-white shadow-sm" style={{ backgroundColor: stage.color }} />
                               <span className="text-[10px] font-black uppercase text-slate-600 tracking-wider">
-                                {stage.name}: <strong className="text-slate-800">{funnelMetric === "count" ? `${stage.count} ${t("leads", "záujemcov", "érdeklődő")}` : `$${stage.value.toLocaleString()}`}</strong> ({displayPercent.toFixed(1)}%)
+                                {stage.name}: <strong className="text-slate-800">{funnelMetric === "count" ? `${stage.count} ${t("leads", "záujemcov", "érdeklődő")}` : money(stage.value)}</strong> ({displayPercent.toFixed(1)}%)
                               </span>
                             </div>
                           );
@@ -1313,8 +1327,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
               <div className="space-y-4 pt-2">
                 {[
-                  { name: "Meta Campaigns (FB/IG)", spent: metaSpent, won: metaWonValue, roi: metaRoi, badge: "bg-blue-50 text-blue-700 border-blue-200" },
-                  { name: "Google Campaigns (Search/Web)", spent: googleSpent, won: googleWonValue, roi: googleRoi, badge: "bg-amber-50 text-amber-700 border-amber-200" }
+                  { name: t("Meta Campaigns (FB/IG)", "Kampane Meta (FB/IG)", "Meta kampányok (FB/IG)"), spent: metaSpent, won: metaWonValue, roi: metaRoi, badge: "bg-blue-50 text-blue-700 border-blue-200" },
+                  { name: t("Google Campaigns (Search/Web)", "Kampane Google (Vyhľadávanie/Web)", "Google kampányok (Keresés/Web)"), spent: googleSpent, won: googleWonValue, roi: googleRoi, badge: "bg-amber-50 text-amber-700 border-amber-200" }
                 ].map(channel => (
                   <div key={channel.name} className="p-3.5 rounded-2xl border border-slate-100 space-y-2">
                     <div className="flex justify-between items-center">
@@ -1324,8 +1338,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       </span>
                     </div>
                     <div className="grid grid-cols-2 gap-2 text-[11px] font-semibold text-slate-500">
-                      <div>{t("Spent", "Minuté", "Elköltött")}: <strong className="text-slate-800">${channel.spent.toLocaleString()}</strong></div>
-                      <div>{t("Sales Value", "Hodnota predaja", "Értékesítési érték")}: <strong className="text-slate-800">${channel.won.toLocaleString()}</strong></div>
+                      <div>{t("Spent", "Minuté", "Elköltött")}: <strong className="text-slate-800">{money(channel.spent)}</strong></div>
+                      <div>{t("Sales Value", "Hodnota predaja", "Értékesítési érték")}: <strong className="text-slate-800">{money(channel.won)}</strong></div>
                     </div>
                   </div>
                 ))}
@@ -1347,7 +1361,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               
               <div className="bg-indigo-50/50 border border-indigo-100/50 rounded-2xl px-4 py-2 flex items-center gap-2.5 shrink-0 select-none">
                 <span className="text-[9px] font-black uppercase text-indigo-700 tracking-wider">{t("Total Portfolio Valuation", "Celková hodnota portfólia", "Teljes portfólió értéke")}:</span>
-                <span className="text-sm font-black text-indigo-900">${totalProjectsSum.toLocaleString()}</span>
+                <span className="text-sm font-black text-indigo-900">{money(totalProjectsSum)}</span>
               </div>
             </div>
 
@@ -1438,7 +1452,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             })()}
                           </td>
                           <td className="px-4 py-3 text-[10px] font-black text-slate-600">{p.owner}</td>
-                          <td className="px-4 py-3 text-xs font-black text-slate-900 text-right">${p.value.toLocaleString()}</td>
+                          <td className="px-4 py-3 text-xs font-black text-slate-900 text-right">{money(p.value)}</td>
                           <td className="px-4 py-3 text-right">
                             <span className="text-[10px] font-black text-indigo-700">{sharePercent.toFixed(1)}%</span>
                           </td>
@@ -1464,11 +1478,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
               <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
                 <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">{t("Total Campaign Spent", "Celkové výdavky na kampane", "Teljes kampányköltés")}</span>
-                <span className="text-lg font-black text-slate-800 block mt-1">${totalSpent.toLocaleString(undefined, { maximumFractionDigits: 1 })}</span>
+                <span className="text-lg font-black text-slate-800 block mt-1">{money(totalSpent, { maximumFractionDigits: 1 })}</span>
               </div>
               <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
                 <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">{t("Won Leads Value", "Hodnota získaných záujemcov", "Megnyert érdeklődők értéke")}</span>
-                <span className="text-lg font-black text-slate-800 block mt-1">${totalWonValue.toLocaleString()}</span>
+                <span className="text-lg font-black text-slate-800 block mt-1">{money(totalWonValue)}</span>
               </div>
               <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
                 <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">{t("Total Platform ROI", "Celkové ROI platformy", "Teljes platform ROI")}</span>
@@ -1499,16 +1513,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div className="p-3 bg-white rounded-2xl border border-slate-100">
                   <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">{t("Total Spent", "Celkové výdavky", "Összes költés")}</span>
-                  <span className="text-base font-black text-slate-800 block mt-1">${metaSpent.toFixed(2)}</span>
+                  <span className="text-base font-black text-slate-800 block mt-1">{money(metaSpent, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 <div className="p-3 bg-white rounded-2xl border border-slate-100">
                   <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">{t("CRM Won Value", "Získaná hodnota v CRM", "CRM megnyert érték")}</span>
-                  <span className="text-base font-black text-slate-800 block mt-1">${metaWonValue.toLocaleString()}</span>
+                  <span className="text-base font-black text-slate-800 block mt-1">{money(metaWonValue)}</span>
                 </div>
                 <div className="p-3 bg-white rounded-2xl border border-slate-100">
                   <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">{t("Cost per Lead", "Cena za záujemcu", "Költség érdeklődőnként")}</span>
                   <span className="text-base font-black text-emerald-600 block mt-1">
-                    ${(metaSpent / (leads.filter(l => (l.source === "facebook" || l.source === "instagram")).length || 1)).toFixed(1)}
+                    {money(metaSpent / (leads.filter(l => (l.source === "facebook" || l.source === "instagram")).length || 1), { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
                   </span>
                 </div>
               </div>
@@ -1532,16 +1546,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div className="p-3 bg-white rounded-2xl border border-slate-100">
                   <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">{t("Total Spent", "Celkové výdavky", "Összes költés")}</span>
-                  <span className="text-base font-black text-slate-800 block mt-1">${googleSpent.toFixed(2)}</span>
+                  <span className="text-base font-black text-slate-800 block mt-1">{money(googleSpent, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 <div className="p-3 bg-white rounded-2xl border border-slate-100">
                   <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">{t("CRM Won Value", "Získaná hodnota v CRM", "CRM megnyert érték")}</span>
-                  <span className="text-base font-black text-slate-800 block mt-1">${googleWonValue.toLocaleString()}</span>
+                  <span className="text-base font-black text-slate-800 block mt-1">{money(googleWonValue)}</span>
                 </div>
                 <div className="p-3 bg-white rounded-2xl border border-slate-100">
                   <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">{t("Cost per Lead", "Cena za záujemcu", "Költség érdeklődőnként")}</span>
                   <span className="text-base font-black text-emerald-600 block mt-1">
-                    ${(googleSpent / (leads.filter(l => l.source === "website").length || 1)).toFixed(1)}
+                    {money(googleSpent / (leads.filter(l => l.source === "website").length || 1), { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
                   </span>
                 </div>
               </div>
@@ -1575,7 +1589,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           </span>
                         </div>
                         <div className="grid grid-cols-4 gap-2 text-[10px] font-semibold text-slate-500 pt-2 border-t border-slate-100">
-                          <div>{t("Spent", "Minuté", "Elköltött")}: <strong className="text-slate-800 block mt-0.5">${c.spent}</strong></div>
+                          <div>{t("Spent", "Minuté", "Elköltött")}: <strong className="text-slate-800 block mt-0.5">{money(c.spent)}</strong></div>
                           <div>{t("Clicks", "Kliknutia", "Kattintások")}: <strong className="text-slate-800 block mt-0.5">{c.clicks}</strong></div>
                           <div>CTR: <strong className="text-indigo-600 block mt-0.5">{ctr}%</strong></div>
                           <div>{t("Leads", "Záujemcovia", "Érdeklődők")}: <strong className="text-emerald-600 block mt-0.5">{c.leads}</strong></div>
@@ -1606,7 +1620,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           </span>
                         </div>
                         <div className="grid grid-cols-4 gap-2 text-[10px] font-semibold text-slate-500 pt-2 border-t border-slate-100">
-                          <div>{t("Spent", "Minuté", "Elköltött")}: <strong className="text-slate-800 block mt-0.5">${c.spent}</strong></div>
+                          <div>{t("Spent", "Minuté", "Elköltött")}: <strong className="text-slate-800 block mt-0.5">{money(c.spent)}</strong></div>
                           <div>{t("Clicks", "Kliknutia", "Kattintások")}: <strong className="text-slate-800 block mt-0.5">{c.clicks}</strong></div>
                           <div>CTR: <strong className="text-indigo-600 block mt-0.5">{ctr}%</strong></div>
                           <div>{t("Leads", "Záujemcovia", "Érdeklődők")}: <strong className="text-emerald-600 block mt-0.5">{c.leads}</strong></div>
@@ -1632,7 +1646,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-center">
               <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
                 <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">{t("Average Deal Value", "Priemerná hodnota obchodu", "Átlagos üzletérték")}</span>
-                <span className="text-lg font-black text-slate-800 block mt-1">${averageDealValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                <span className="text-lg font-black text-slate-800 block mt-1">{money(averageDealValue, { maximumFractionDigits: 0 })}</span>
               </div>
               <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
                 <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">{t("Active Deals in Funnel", "Aktívne obchody v lieviku", "Aktív üzletek a tölcsérben")}</span>
@@ -1724,7 +1738,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           </div>
                           
                           <div className="flex flex-col items-end shrink-0">
-                            <span className="text-xs font-black text-slate-900">${pm.revenue.toLocaleString()}</span>
+                            <span className="text-xs font-black text-slate-900">{money(pm.revenue)}</span>
                             <div className="flex items-center gap-1 text-[9px] font-bold">
                               {isHighConversion && <Flame className="h-3 w-3 text-orange-500 animate-pulse" />}
                               <span className={isHighConversion ? "text-orange-650" : "text-emerald-600"}>
@@ -1822,9 +1836,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             <g key={ratio} className="opacity-30">
                               <line x1={paddingX} y1={y} x2={width - paddingX} y2={y} stroke="#cbd5e1" strokeWidth="1" strokeDasharray="4 4" />
                               <text x={5} y={y + 3} fill="#64748b" fontSize="8" fontWeight="bold">
-                                {compareAspect === "revenue" ? "$" : ""}
-                                {Math.round(gridVal).toLocaleString()}
-                                {compareAspect === "conversion" ? "%" : ""}
+                                {compareAspect === "revenue"
+                                  ? money(Math.round(gridVal))
+                                  : `${Math.round(gridVal).toLocaleString()}${compareAspect === "conversion" ? "%" : ""}`}
                               </text>
                             </g>
                           );
@@ -1888,7 +1902,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           const series = pmRacingChartData.series.find(s => s.name === pm.name);
                           const color = series ? series.color : "#cbd5e1";
                           let finalLabel = "";
-                          if (compareAspect === "revenue") finalLabel = `$${pm.revenue.toLocaleString()}`;
+                          if (compareAspect === "revenue") finalLabel = money(pm.revenue);
                           else if (compareAspect === "won") finalLabel = `${pm.wonCount} ${t("won", "vyhraných", "megnyert")}`;
                           else finalLabel = `${pm.conversionRate.toFixed(0)}%`;
 
@@ -1924,7 +1938,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     <div className="grid grid-cols-3 gap-4 text-center sm:text-right">
                       <div>
                         <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">{t("Revenue", "Tržby", "Bevétel")}</span>
-                        <strong className="text-xs font-black text-slate-800 block mt-0.5">${trend.revenue.toLocaleString()}</strong>
+                        <strong className="text-xs font-black text-slate-800 block mt-0.5">{money(trend.revenue)}</strong>
                       </div>
                       <div>
                         <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">{t("Clients", "Klienti", "Ügyfelek")}</span>
@@ -1932,7 +1946,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       </div>
                       <div>
                         <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">{t("Rev/Client", "Tržby/klient", "Bevétel/ügyfél")}</span>
-                        <strong className="text-xs font-black text-emerald-600 block mt-0.5">${trend.revPerClient.toFixed(0)}</strong>
+                        <strong className="text-xs font-black text-emerald-600 block mt-0.5">{money(trend.revPerClient, { maximumFractionDigits: 0 })}</strong>
                       </div>
                     </div>
                   </div>
@@ -2266,7 +2280,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 {/* Background glow decoration */}
                 <div className="absolute -bottom-10 -right-10 w-32 h-32 rounded-full bg-white/10 blur-2xl pointer-events-none" />
                 <span className="text-[9px] font-black text-indigo-100 uppercase tracking-widest block">{t("Estimated Deal Worth", "Odhadovaná hodnota obchodu", "Becsült üzletérték")}</span>
-                <span className="text-3xl font-black block leading-none">${selectedLeadForDrawer.value.toLocaleString()}</span>
+                <span className="text-3xl font-black block leading-none">{money(selectedLeadForDrawer.value)}</span>
                 
                 <div className="flex items-center gap-2 border-t border-white/20 pt-2.5 mt-1 text-[10px] font-bold text-indigo-150">
                   <Compass className="h-3.5 w-3.5" />

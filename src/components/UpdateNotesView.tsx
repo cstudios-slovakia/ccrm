@@ -140,7 +140,7 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({ systemLanguage
         <div className="relative z-10">
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full bg-white/20 text-white font-black text-[9px] tracking-wider uppercase backdrop-blur-md">
-              CCRM Changelog
+              {t("CCRM Changelog", "Zoznam zmien CCRM", "CCRM változásnapló")}
             </span>
           </div>
           <h1 className="font-heading font-extrabold text-2xl md:text-3xl mt-3 leading-tight">
@@ -241,7 +241,7 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({ systemLanguage
                       <div key={idx} className="rounded-2xl overflow-hidden border border-slate-200/80 shadow-md">
                         <img
                           src={img.url}
-                          alt={img.title || "Update Image"}
+                          alt={img.title || t("Update Image", "Obrázok novinky", "Frissítés képe")}
                           className="w-full h-auto object-cover max-h-[350px]"
                         />
                       </div>
@@ -260,7 +260,7 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({ systemLanguage
                           <div className="w-full md:w-1/2 rounded-2xl overflow-hidden border border-slate-200/80 shadow-sm shrink-0">
                             <img
                               src={img.url}
-                              alt={img.title || "Update Image"}
+                              alt={img.title || t("Update Image", "Obrázok novinky", "Frissítés képe")}
                               className="w-full h-auto object-cover max-h-[220px]"
                             />
                           </div>

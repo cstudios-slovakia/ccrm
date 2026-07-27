@@ -117,10 +117,12 @@ if (!function_exists('ccrm_schema_statements')) {
               `start_date` DATE NULL,
               `deadline` DATE NOT NULL,
               `deadline_time` VARCHAR(5) NULL COMMENT 'HH:MM deadline/overdue time',
-              `status` ENUM('todo', 'in_progress', 'blocked', 'done') NOT NULL DEFAULT 'todo',
-              `owner` VARCHAR(100) NOT NULL COMMENT 'Assigned Project Manager Name',
+              `status` VARCHAR(50) NOT NULL DEFAULT 'todo' COMMENT 'User-customizable task state',
+              `owner` VARCHAR(100) NOT NULL COMMENT 'Primary assignee name; empty when unassigned',
+              `created_by` VARCHAR(100) NULL COMMENT 'Immutable task creator name; NULL for legacy rows',
               `related_lead_id` VARCHAR(50) NULL,
               `is_locking` TINYINT(1) NOT NULL DEFAULT 0,
+              `archived` TINYINT(1) NOT NULL DEFAULT 0,
               `metadata_json` TEXT NULL COMMENT 'Plugin support',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -435,6 +437,163 @@ if (!function_exists('ccrm_schema_statements')) {
         if (!ccrm_column_exists($pdo, 'leads', 'follow_ups')) {
             $pdo->exec("ALTER TABLE `leads` ADD COLUMN `follow_ups` TEXT NULL");
         }
+        // `tasks`.`status` was originally a fixed ENUM, but task states are
+        // user-customizable free text (see Settings > task states / taskStates
+        // in App.tsx), same as `leads`.`status`. A custom state name that
+        // doesn't match the old enum list (e.g. default "New") gets silently
+        // truncated by MySQL, which errors out under strict mode. Widen it to
+        // match the leads.status pattern.
+        $statusType = $pdo->query(
+            "SELECT DATA_TYPE FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tasks' AND COLUMN_NAME = 'status'"
+        )->fetchColumn();
+        if ($statusType === 'enum') {
+            $pdo->exec("ALTER TABLE `tasks` MODIFY COLUMN `status` VARCHAR(50) NOT NULL DEFAULT 'todo'");
+        }
+        if (!ccrm_column_exists($pdo, 'tasks', 'archived')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `archived` TINYINT(1) NOT NULL DEFAULT 0 AFTER `is_locking`");
+        }
+        if (!ccrm_column_exists($pdo, 'tasks', 'created_by')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `created_by` VARCHAR(100) NULL AFTER `owner`");
+            // Before created_by existed, owner represented the assigned PM. Preserve
+            // that responsibility in the junction table without pretending it was
+            // reliable creator history.
+            $pdo->exec(
+                "INSERT IGNORE INTO `task_assignees` (`task_id`, `user_name`)
+                 SELECT `id`, `owner` FROM `tasks` WHERE `owner` <> ''"
+            );
+        }
+        ccrm_migrate_task_states($pdo);
+    }
+
+    /**
+     * Task states used to exist only as hardcoded English defaults in the
+     * frontend — they were never seeded, so an installation in Slovak/Hungarian
+     * still showed "New / In progress / Blocked / Done" in grey. Seed them once,
+     * in the language the CRM was installed in, and carry existing task records
+     * over to the localised labels so nothing loses its column on the board.
+     */
+    function ccrm_migrate_task_states(PDO $pdo): void {
+        try {
+            $existing = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'TASK_STATES'")->fetchColumn();
+        } catch (\Throwable $e) {
+            return; // system_settings not provisioned yet — nothing to migrate.
+        }
+        $decoded = is_string($existing) ? json_decode($existing, true) : null;
+        if (is_array($decoded) && $decoded) {
+            return; // Already configured by the operator; never touch their labels.
+        }
+
+        $language = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'SYSTEM_LANGUAGE'")->fetchColumn();
+        $lists = ccrm_default_lists(is_string($language) ? $language : 'sk');
+        $taskStates = $lists['taskStates'];
+
+        $insSet = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
+        $insSet->execute(['TASK_STATES', json_encode($taskStates, JSON_UNESCAPED_UNICODE)]);
+        $insSet->execute(['TASK_STATE_COLORS', json_encode(ccrm_default_task_state_colors($taskStates), JSON_UNESCAPED_UNICODE)]);
+
+        // Every label a task could be carrying before this migration: the English
+        // defaults the frontend shipped with, plus the legacy pre-1.0 slugs.
+        $legacyByPosition = [
+            0 => ['New', 'todo'],
+            1 => ['In progress', 'in_progress'],
+            2 => ['Blocked', 'blocked'],
+            3 => ['Done', 'done'],
+        ];
+        $rename = $pdo->prepare("UPDATE `tasks` SET `status` = ? WHERE `status` = ?");
+        foreach ($legacyByPosition as $index => $legacyLabels) {
+            if (!isset($taskStates[$index])) continue;
+            foreach ($legacyLabels as $legacy) {
+                if ($legacy === $taskStates[$index]) continue;
+                $rename->execute([$taskStates[$index], $legacy]);
+            }
+        }
+    }
+
+    /**
+     * Default, language-aware seed values for the customisable lists in
+     * `system_settings`.
+     *
+     * These are PERSISTED values — they end up stored on lead and task records as
+     * plain strings — so they must be written in the language chosen during
+     * installation rather than translated at render time.
+     */
+    function ccrm_default_lists(string $language): array {
+        if (!in_array($language, ['en', 'sk', 'hu'], true)) {
+            $language = 'sk';
+        }
+
+        $byLanguage = [
+            'en' => [
+                'leadStates' => ['new', 'contacted', 'offer sent', 'accepted', 'rejected'],
+                'leadSources' => ['showroom', 'facebook', 'instagram', 'website'],
+                'leadCategories' => ['Products', 'Services'],
+                'taskStates' => ['New', 'In progress', 'Blocked', 'Done'],
+            ],
+            'sk' => [
+                'leadStates' => ['nový', 'kontaktovaný', 'ponuka odoslaná', 'prijatý', 'zamietnutý'],
+                'leadSources' => ['showroom', 'facebook', 'instagram', 'web'],
+                'leadCategories' => ['Produkty', 'Služby'],
+                'taskStates' => ['Nový', 'Prebieha', 'Blokovaný', 'Hotovo'],
+            ],
+            'hu' => [
+                'leadStates' => ['új', 'kapcsolatfelvétel', 'ajánlat elküldve', 'elfogadva', 'elutasítva'],
+                'leadSources' => ['bemutatóterem', 'facebook', 'instagram', 'weboldal'],
+                'leadCategories' => ['Termékek', 'Szolgáltatások'],
+                'taskStates' => ['Új', 'Folyamatban', 'Blokkolva', 'Kész'],
+            ],
+        ];
+
+        return $byLanguage[$language];
+    }
+
+    /**
+     * Colour map for task states. Blue → amber → red → green reads as a natural
+     * workflow; states beyond the fourth cycle through the same palette.
+     */
+    function ccrm_default_task_state_colors(array $taskStates): array {
+        $palette = ['#3b82f6', '#f59e0b', '#ef4444', '#10b981', '#8b5cf6', '#0ea5e9', '#ec4899', '#14b8a6'];
+        $colors = [];
+        foreach (array_values($taskStates) as $i => $state) {
+            $colors[(string)$state] = $palette[$i % count($palette)];
+        }
+        return $colors;
+    }
+
+    /**
+     * The full set of `system_settings` rows a fresh installation starts with,
+     * seeded in the installation language. Shared by the setup wizard and the
+     * "wipe demo data + reset configuration" reset so the two can never drift.
+     */
+    function ccrm_default_settings_for_language(string $language): array {
+        if (!in_array($language, ['en', 'sk', 'hu'], true)) {
+            $language = 'sk';
+        }
+        $lists = ccrm_default_lists($language);
+
+        $leadStates = $lists['leadStates'];
+        $leadSources = $lists['leadSources'];
+        $leadCategories = $lists['leadCategories'];
+        $taskStates = $lists['taskStates'];
+
+        $enc = static function ($value): string {
+            return json_encode($value, JSON_UNESCAPED_UNICODE);
+        };
+
+        return [
+            'SYSTEM_NAME' => 'CCRM',
+            'SYSTEM_LANGUAGE' => $language,
+            'LEAD_STATES' => $enc($leadStates),
+            'LEAD_SOURCES' => $enc($leadSources),
+            'LEAD_CATEGORIES' => $enc($leadCategories),
+            'LEAD_STATE_COLORS' => $enc(array_combine($leadStates, ['#3b82f6', '#0ea5e9', '#6366f1', '#10b981', '#ef4444'])),
+            'LEAD_SOURCE_COLORS' => $enc(array_combine($leadSources, ['#10b981', '#3b82f6', '#ec4899', '#8b5cf6'])),
+            'LEAD_CATEGORY_COLORS' => $enc(array_combine($leadCategories, ['#f59e0b', '#10b981'])),
+            'LEAD_STAGE_GROUPS' => $enc(array_combine($leadStates, ['new', 'in_progress', 'in_progress', 'closed', 'closed'])),
+            'LEAD_STATE_PARENTS' => $enc((object)[]),
+            'TASK_STATES' => $enc($taskStates),
+            'TASK_STATE_COLORS' => $enc(ccrm_default_task_state_colors($taskStates)),
+        ];
     }
 
     /**

@@ -7,6 +7,7 @@ import { cn } from "../utils/cn";
 import { BlockEditor } from "./BlockEditor";
 import type { EditorBlock } from "./BlockEditor";
 import { Markdown } from "../utils/markdown";
+import { todayLocal } from "../utils/localTime";
 
 const parseNotesToBlocks = (notes: string): EditorBlock[] => {
   if (notes.trim().startsWith("[")) {
@@ -66,6 +67,7 @@ export interface MeetingNote {
 interface MeetingRoomViewProps {
   leads: Lead[];
   users: UserProfile[];
+  currentUser: UserProfile;
   systemLanguage: "en" | "sk" | "hu";
   meetingNotes: MeetingNote[];
   setMeetingNotes: React.Dispatch<React.SetStateAction<MeetingNote[]>>;
@@ -80,6 +82,7 @@ interface MeetingRoomViewProps {
 export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
   leads,
   users,
+  currentUser,
   systemLanguage,
   meetingNotes,
   setMeetingNotes,
@@ -108,7 +111,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
   const [attachedLeads, setAttachedLeads] = useState<string[]>([]);
   const [attachedClients, setAttachedClients] = useState<string[]>([]);
   const [attachedUsers, setAttachedUsers] = useState<string[]>([]);
-  const [newDate, setNewDate] = useState(new Date().toISOString().split("T")[0]);
+  const [newDate, setNewDate] = useState(todayLocal());
   const [newBlocks, setNewBlocks] = useState<EditorBlock[]>([
     { id: "b-1", type: "paragraph", content: "" }
   ]);
@@ -430,7 +433,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
           title: title,
           description: `Extracted from meeting action items: ${title}`,
           assignedUser: "",
-          startDate: new Date().toISOString().split("T")[0],
+          startDate: todayLocal(),
           dueDate: new Date(Date.now() + 86400000 * 3).toISOString().split("T")[0],
           priority: "medium",
           status: "todo"
@@ -451,7 +454,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
           const finalTitle = newTitle.trim() || t("Untitled Note", "Nepomenovaný zápis", "Névtelen jegyzet");
           let primaryLeadId = "";
-          let primaryLeadName = "General Contact";
+          let primaryLeadName = t("General Contact", "Všeobecný kontakt", "Általános kapcsolat");
           if (attachedClients.length > 0) {
             const firstClient = leads.find((l) => String(l.id) === attachedClients[0]);
             if (firstClient) {
@@ -886,10 +889,11 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
         description: targetTask.description || `AI extracted suggestion from meeting notes`,
         status: mapMeetingTaskStatusToCrmStatus(targetTask.status),
         priority: targetTask.priority || "medium",
-        startDate: targetTask.startDate || new Date().toISOString().split("T")[0],
+        startDate: targetTask.startDate || todayLocal(),
         deadline: targetTask.dueDate || new Date(Date.now() + 86400000).toISOString().split("T")[0],
         deadlineTime: "23:59",
-        owner: "AI Assistant",
+        owner: username,
+        createdBy: currentUser?.name || "",
         assignedUsers: [username],
         relatedLeadId: (viewState === "new" ? attachedLeads[0] : selectedMeeting?.leadId) || undefined
       };
@@ -972,7 +976,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
           title: title,
           description: `Extracted from meeting action items: ${title}`,
           assignedUser: "",
-          startDate: new Date().toISOString().split("T")[0],
+          startDate: todayLocal(),
           dueDate: new Date(Date.now() + 86400000 * 3).toISOString().split("T")[0],
           priority: "medium",
           status: "todo"
@@ -1060,7 +1064,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
       // Final fallback if the document is totally empty of content
       if (localSuggestions.length === 0) {
-        localSuggestions.push("Follow up on topics discussed in meeting");
+        localSuggestions.push(t("Follow up on topics discussed in meeting", "Nadviazať na témy prebrané na stretnutí", "Utánkövetés a megbeszélésen érintett témákhoz"));
       }
 
       const finalSuggestions = localSuggestions.slice(0, 4);
@@ -1070,7 +1074,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
         title: title,
         description: `Suggested action item: ${title}`,
         assignedUser: "",
-        startDate: new Date().toISOString().split("T")[0],
+        startDate: todayLocal(),
         dueDate: new Date(Date.now() + 86400000 * 3).toISOString().split("T")[0],
         priority: "medium",
         status: "todo"
@@ -1085,7 +1089,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
         aiSummary: {
           summary: localSummary,
           sentiment: "neutral" as const,
-          topics: ["Meeting Note"],
+          topics: [t("Meeting Note", "Poznámka zo stretnutia", "Találkozó jegyzet")],
           actionItems: finalSuggestions
         }
       };
@@ -1166,30 +1170,37 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
       sentiment = "negative";
     }
 
-    const topics = ["Budget & Pricing", "Project Timeline"];
+    const topics = [
+      t("Budget & Pricing", "Rozpočet a ceny", "Költségvetés és árazás"),
+      t("Project Timeline", "Harmonogram projektu", "Projekt ütemterve")
+    ];
     if (textToAnalyze.includes("color") || textToAnalyze.includes("design") || textToAnalyze.includes("aesthetic")) {
-      topics.push("Design System");
+      topics.push(t("Design System", "Dizajn a vzhľad", "Dizájnrendszer"));
     }
     if (textToAnalyze.includes("contract") || textToAnalyze.includes("sign")) {
-      topics.push("Legal & Contracts");
+      topics.push(t("Legal & Contracts", "Právo a zmluvy", "Jog és szerződések"));
     }
     if (textToAnalyze.includes("technical") || textToAnalyze.includes("api") || textToAnalyze.includes("code")) {
-      topics.push("Technical Spec");
+      topics.push(t("Technical Spec", "Technická špecifikácia", "Műszaki specifikáció"));
     }
 
     const actionItems = [
-      "Send follow-up email with updated project metrics",
-      "Update contract details as discussed in the call"
+      t("Send follow-up email with updated project metrics", "Poslať nadväzujúci e-mail s aktualizovanými údajmi projektu", "Utánkövető e-mail küldése a frissített projektadatokkal"),
+      t("Update contract details as discussed in the call", "Aktualizovať detaily zmluvy podľa dohody z hovoru", "A szerződés részleteinek frissítése a hívásban egyeztetettek szerint")
     ];
     if (textToAnalyze.includes("call") || textToAnalyze.includes("phone")) {
-      actionItems.push("Schedule next progress call next Tuesday");
+      actionItems.push(t("Schedule next progress call next Tuesday", "Naplánovať ďalší kontrolný hovor na budúci utorok", "A következő státuszhívás ütemezése jövő keddre"));
     }
     if (textToAnalyze.includes("design") || textToAnalyze.includes("mock")) {
-      actionItems.push("Review UI design mocks internally");
+      actionItems.push(t("Review UI design mocks internally", "Interne prejsť návrhy používateľského rozhrania", "A UI dizájntervek belső átnézése"));
     }
 
     const aiSummary = newSummaryGenerated && newAiSummary ? newAiSummary : {
-      summary: `This meeting focused on clarifying primary requirements. The client discussed their budget parameters and established critical milestone dates. ${plainTextNotes.substring(0, 120)}...`,
+      summary: `${t(
+        "This meeting focused on clarifying primary requirements. The client discussed their budget parameters and established critical milestone dates.",
+        "Stretnutie sa sústredilo na vyjasnenie hlavných požiadaviek. Klient prebral rozpočet a stanovili sa kľúčové termíny.",
+        "A megbeszélés a fő követelmények tisztázásáról szólt. Az ügyfél átbeszélte a költségkeretet, és rögzítettük a fő határidőket."
+      )} ${plainTextNotes.substring(0, 120)}...`,
       actionItems,
       sentiment,
       topics
@@ -1284,7 +1295,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
       title: newTitle.trim() || t("Untitled Note", "Nepomenovaný zápis", "Névtelen jegyzet"),
       date: newDate,
       leadId: attachedLeads[0] || "",
-      leadName: leads.find(l => String(l.id) === attachedLeads[0])?.name || "General Contact",
+      leadName: leads.find(l => String(l.id) === attachedLeads[0])?.name || t("General Contact", "Všeobecný kontakt", "Általános kapcsolat"),
       duration: 0,
       notes: JSON.stringify(newBlocks),
       attachedLeads,
@@ -1323,7 +1334,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
             type="button"
             disabled={isGeneratingDetailSummary || !integrationsConfig?.openAiKey || integrationsConfig.openAiKey.trim() === ""}
             onClick={() => handleGenerateSummary(meeting)}
-            className="w-full py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-250 disabled:text-slate-400 text-white font-heading font-black text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/20"
+            className="w-full py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-200 disabled:text-slate-400 text-white font-heading font-black text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/20"
           >
             <Sparkles className="h-4 w-4" />
             {isGeneratingDetailSummary ? t("Generating...", "Generuje sa...", "Generálás...") : t("Make AI Summary", "Vytvoriť AI zhrnutie", "AI összefoglaló készítése")}
@@ -1516,15 +1527,15 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* HEADER SECTION */}
       {viewState !== "new" && (
-        <div className="flex flex-row items-center justify-between gap-4 bg-white/40 backdrop-blur-md p-6 rounded-3xl border border-white/60 shadow-sm">
+        <div className="flex flex-row items-center justify-between gap-4 border-b border-slate-100 pb-4">
           {viewState === "list" ? (
             <>
-              <div>
-                <h2 className="text-xl font-heading font-extrabold text-[#0b1329] flex items-center gap-2">
-                  <Sparkles className="h-5 w-5 text-indigo-500 animate-pulse" />
-                  {systemLanguage === "sk" ? "AI Zasadačka & Analýza Stretnutí" : systemLanguage === "hu" ? "AI Tárgyaló & Megbeszélés Elemzés" : "AI Meeting Room & Note Summarizer"}
+              <div className="flex flex-col">
+                <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                  <Sparkles className="h-6 w-6 text-indigo-500" />
+                  {systemLanguage === "sk" ? "AI Zasadačka a analýza stretnutí" : systemLanguage === "hu" ? "AI Tárgyaló és megbeszélés elemzés" : "AI Meeting Room & Note Summarizer"}
                 </h2>
-                <p className="text-xs text-slate-500 font-medium mt-1">
+                <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
                   {systemLanguage === "sk" 
                     ? "Nahrávajte stretnutia, sledujte prepisy a nechajte umelú inteligenciu vygenerovať zhrnutia a úlohy." 
                     : systemLanguage === "hu" 
@@ -2564,7 +2575,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               <button
                 type="button"
                 onClick={() => handleSaveTaskDetails(activeTaskForEdit)}
-                className="flex-1 py-2.5 bg-indigo-650 hover:bg-indigo-600 hover:text-white rounded-xl text-xs font-heading font-black uppercase tracking-wider transition-colors cursor-pointer animate-none"
+                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 hover:text-white rounded-xl text-xs font-heading font-black uppercase tracking-wider transition-colors cursor-pointer animate-none"
               >
                 {t("Save Changes", "Uložiť zmeny", "Módosítások mentése")}
               </button>

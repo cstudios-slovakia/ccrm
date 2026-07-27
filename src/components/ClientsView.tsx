@@ -15,6 +15,8 @@ import { BlockEditor } from "./BlockEditor";
 import type { EditorBlock } from "./BlockEditor";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
+import { resolveCurrencySymbol, formatMoney } from "../utils/currency";
+import { todayLocal, nowLocalStamp } from "../utils/localTime";
 
 interface ClientsViewProps {
   leads: Lead[];
@@ -30,6 +32,7 @@ interface ClientsViewProps {
   integrationsConfig?: any;
   taskStates: string[];
   systemName?: string;
+  currencyCode?: string | null;
 }
 
 
@@ -333,9 +336,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   leadCategories,
   integrationsConfig,
   taskStates,
-  systemName = "CCRM"
+  systemName = "CCRM",
+  currencyCode
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
+  const currencySymbol = resolveCurrencySymbol(currencyCode, systemLanguage);
+  const money = (value: number, opts?: Intl.NumberFormatOptions) => formatMoney(value, currencyCode, systemLanguage, opts);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState("all");
   const [showFilterDrawer, setShowFilterDrawer] = useState(false);
@@ -882,7 +888,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       source: "website",
       owner: newClientOwner || projectManagers[0] || currentUser?.name || "",
       value: parseFloat(newClientValue) || 0,
-      createdAt: new Date().toISOString(),
+      // `leads.created_at` is a DATE column: a full ISO timestamp makes MySQL
+      // reject the whole sync payload. Local date so a client registered just
+      // after midnight is not filed under the previous day.
+      createdAt: todayLocal(),
       rating: 5,
       phone: newClientPhone.trim() || undefined,
       email: newClientEmail.trim() || undefined,
@@ -912,9 +921,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         {
           id: `ev-${Date.now()}`,
           type: "note",
-          timestamp: new Date().toISOString().replace("T", " ").substring(0, 16),
-          title: "Client Registered",
-          content: "Client profile successfully registered inside CRM system."
+          timestamp: nowLocalStamp(),
+          title: t("Client Registered", "Klient zaregistrovaný", "Ügyfél regisztrálva"),
+          content: t(
+            "Client profile successfully registered inside CRM system.",
+            "Profil klienta bol úspešne zaregistrovaný v CRM systéme.",
+            "Az ügyfélprofil sikeresen regisztrálva a CRM rendszerben."
+          )
         }
       ]
     };
@@ -1198,8 +1211,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             id: `email-${folderPrefix}-${mail.uid}`,
             type: "email" as const,
             timestamp: mail.date.substring(0, 16),
-            title: mail.subject || "(No Subject)",
-            content: `From: ${mail.from.name || mail.from.address} <${mail.from.address}>\n\nTo view this email or reply, please open the Mail Client.`,
+            title: mail.subject || t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)"),
+            content: `${t("From:", "Od:", "Feladó:")} ${mail.from.name || mail.from.address} <${mail.from.address}>\n\n${t(
+              "To view this email or reply, please open the Mail Client.",
+              "Ak si chcete e-mail zobraziť alebo naň odpovedať, otvorte poštového klienta.",
+              "Az e-mail megtekintéséhez vagy megválaszolásához nyissa meg a levelezőt."
+            )}`,
             seen: mail.seen,
             isOutgoing: isOutgoing
           };
@@ -1639,7 +1656,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           // Append transcription to block editor
           setNoteBlocks(prev => [
             ...prev,
-            { id: `b-trans-${Date.now()}`, type: "paragraph", content: `<strong>Transcription:</strong> ${data.transcription}` }
+            { id: `b-trans-${Date.now()}`, type: "paragraph", content: `<strong>${t("Transcription:", "Prepis:", "Átirat:")}</strong> ${data.transcription}` }
           ]);
           setEditorKey(prev => prev + 1);
         }
@@ -1861,7 +1878,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               type="button"
               disabled={isTranscribing || isUploadingAudio || !uploadedAudioFile}
               onClick={handleTranscribeMeeting}
-              className="px-2.5 py-1 bg-indigo-650 hover:bg-indigo-600 disabled:bg-slate-200 text-white text-[9px] font-black uppercase tracking-wider rounded-lg cursor-pointer flex items-center gap-1.5"
+              className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white text-[9px] font-black uppercase tracking-wider rounded-lg cursor-pointer flex items-center gap-1.5"
             >
               {isTranscribing ? (
                 <Loader2 className="h-3 w-3 animate-spin" />
@@ -1919,7 +1936,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         setTimelineEmailDetailBody({
           uid,
           html: "",
-          text: event.content || "No message content."
+          text: event.content || t("No message content.", "Správa nemá obsah.", "Az üzenetnek nincs tartalma.")
         });
       }
     } catch (e) {
@@ -1927,7 +1944,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       setTimelineEmailDetailBody({
         uid: event.id,
         html: "",
-        text: event.content || "No message content."
+        text: event.content || t("No message content.", "Správa nemá obsah.", "Az üzenetnek nincs tartalma.")
       });
     } finally {
       setIsLoadingEmailDetail(false);
@@ -2054,13 +2071,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     const timestampStr = `${logDate} ${logTimeOfEvent}`;
 
     if (logType === "phone") {
-      titleString = "Phone Call Logged";
-      if (!contentString) contentString = "Completed voice call with customer regarding updates.";
+      titleString = t("Phone Call Logged", "Zaznamenaný telefonát", "Rögzített telefonhívás");
+      if (!contentString) contentString = t("Completed voice call with customer regarding updates.", "Uskutočnený telefonát so zákazníkom ohľadom noviniek.", "Telefonhívás az ügyféllel a fejleményekről.");
     } else if (logType === "email") {
-      titleString = "Email Logged";
-      if (!contentString) contentString = "Outbound email correspondence successfully transmitted.";
+      titleString = t("Email Logged", "Zaznamenaný e-mail", "Rögzített e-mail");
+      if (!contentString) contentString = t("Outbound email correspondence successfully transmitted.", "Odchádzajúca e-mailová komunikácia bola úspešne odoslaná.", "A kimenő e-mail sikeresen elküldve.");
     } else if (logType === "note") {
-      titleString = "Internal Note Added";
+      titleString = t("Internal Note Added", "Pridaná interná poznámka", "Belső jegyzet hozzáadva");
       // Note type is rich: saved as JSON stringified blocks
       const hasContent = noteBlocks.some(b => b.content.trim().length > 0);
       if (!hasContent && !uploadedAudioFile) {
@@ -2069,21 +2086,21 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       }
       contentString = JSON.stringify(noteBlocks);
     } else if (logType === "appointment") {
-      titleString = "Meeting Scheduled";
+      titleString = t("Meeting Scheduled", "Naplánované stretnutie", "Találkozó ütemezve");
       if (!logTime.trim()) {
         (window as any).showToast(t("Please select appointment time!", "Vyberte prosím čas stretnutia!", "Kérjük, válassza ki a találkozó időpontját!"));
         return;
       }
-      if (!contentString) contentString = `Client appointment set for ${logTime.trim()}`;
+      if (!contentString) contentString = `${t("Client appointment set for", "Stretnutie s klientom naplánované na", "Ügyféltalálkozó időpontja")} ${logTime.trim()}`;
     } else if (logType === "offer") {
-      titleString = "Formal Offer Submitted";
+      titleString = t("Formal Offer Submitted", "Odoslaná oficiálna ponuka", "Hivatalos ajánlat elküldve");
       const amt = parseFloat(logAmount);
       if (isNaN(amt) || amt <= 0) {
         (window as any).showToast(t("Offer amount must be a positive number!", "Suma ponuky musí byť kladné číslo!", "Az ajánlat összegének pozitív számnak kell lennie!"));
         return;
       }
-      titleString = `Commercial Proposal Sent (€ ${amt.toLocaleString()})`;
-      if (!contentString) contentString = `Submitted commercial proposal of € ${amt.toLocaleString()} to client.`;
+      titleString = `Commercial Proposal Sent (${money(amt)})`;
+      if (!contentString) contentString = `Submitted commercial proposal of ${money(amt)} to client.`;
     }
 
     const eventId = `ev-${Date.now()}`;
@@ -2176,11 +2193,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       const autoPMTask: Task = {
         id: `task-${Date.now()}`,
         title: taskTitle,
-        description: logType === "note" ? "Meeting Note Added" : (contentString || `Scheduled for ${logDate} ${logTimeOfEvent}`),
+        description: logType === "note"
+          ? t("Meeting Note Added", "Pridaná poznámka zo stretnutia", "Találkozó jegyzet hozzáadva")
+          : (contentString || `${t("Scheduled for", "Naplánované na", "Ütemezve erre")} ${logDate} ${logTimeOfEvent}`),
         status: taskStates[0] || "todo",
         priority: "medium",
         deadline: deadlineVal,
         owner: leadOwner,
+        createdBy: currentUser?.name || "",
         assignedUsers: [leadOwner],
         relatedLeadId: leadId,
         isLocking: false
@@ -2247,7 +2267,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     const newEvent: TimelineEvent = {
       id: eventId,
       type: "offer",
-      timestamp: new Date().toISOString().replace("T", " ").substring(0, 16),
+      timestamp: nowLocalStamp(),
       title: `Document Attached: ${uploadFileName}`,
       content: uploadDescription.trim() || `Attached document for category ${uploadFileType}.`,
       fileName: uploadFileName,
@@ -2447,7 +2467,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             ) : null}
 
             <span className="text-xs font-black uppercase tracking-widest text-emerald-800 bg-emerald-100 border-2 border-emerald-300 px-4 py-2 rounded-2xl shadow-inner">
-              {getTranslation(systemLanguage, "common.client_value")}: &euro; {activeClient.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              {getTranslation(systemLanguage, "common.client_value")}: {money(activeClient.totalValue, { minimumFractionDigits: 2 })}
             </span>
           </div>
         </div>
@@ -2597,7 +2617,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     type="text"
                     required
                     readOnly={!isEditingProfile}
-                    placeholder="e.g. +421 905..."
+                    placeholder={t("e.g. +421 905...", "napr. +421 905...", "pl. +421 905...")}
                     value={profilePhone}
                     onChange={(e) => setProfilePhone(e.target.value)}
                     className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all ${
@@ -2613,7 +2633,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     type="email"
                     required
                     readOnly={!isEditingProfile}
-                    placeholder="e.g. client@email.com"
+                    placeholder={t("e.g. client@email.com", "napr. client@email.com", "pl. client@email.com")}
                     value={profileEmail}
                     onChange={(e) => setProfileEmail(e.target.value)}
                     className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all ${
@@ -2651,7 +2671,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       <input
                         type="text"
                         readOnly={!isEditingProfile}
-                        placeholder={isEditingProfile ? "e.g. Bratislava" : ""}
+                        placeholder={isEditingProfile ? t("e.g. Bratislava", "napr. Bratislava", "pl. Pozsony") : ""}
                         value={profileCity}
                         onChange={(e) => setProfileCity(e.target.value)}
                         className={`w-full px-3 py-1.5 rounded-lg focus:outline-none ${
@@ -2666,7 +2686,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       <input
                         type="text"
                         readOnly={!isEditingProfile}
-                        placeholder={isEditingProfile ? "e.g. 821 09" : ""}
+                        placeholder={isEditingProfile ? t("e.g. 821 09", "napr. 821 09", "pl. 821 09") : ""}
                         value={profilePostalCode}
                         onChange={(e) => setProfilePostalCode(e.target.value)}
                         className={`w-full px-3 py-1.5 rounded-lg focus:outline-none ${
@@ -2796,7 +2816,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         <input
                           type="text"
                           readOnly={!isEditingProfile}
-                          placeholder={isEditingProfile ? "e.g. www.company.sk" : ""}
+                          placeholder={isEditingProfile ? t("e.g. www.company.sk", "napr. www.firma.sk", "pl. www.cegnev.hu") : ""}
                           value={profileWebsite}
                           onChange={(e) => setProfileWebsite(e.target.value)}
                           className={`w-full px-3 py-1.5 rounded-lg focus:outline-none ${
@@ -3148,7 +3168,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                     type="number"
                                     required
                                     min="0"
-                                    placeholder="e.g. 15000"
+                                    placeholder={t("e.g. 15000", "napr. 15000", "pl. 15000")}
                                     value={logAmount}
                                     onChange={(e) => setLogAmount(e.target.value)}
                                     className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:outline-none font-bold text-xs"
@@ -3432,7 +3452,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                   {/* Extra values */}
                                   {event.type === "offer" && event.amount !== undefined && (
                                     <div className="mt-3 pl-3 border-l-4 border-emerald-500 flex items-center gap-1 text-[10px] font-black text-emerald-700 uppercase tracking-wider">
-                                      <TrendingUp className="h-4 w-4" /> {t("BUDGET WORTH OFFERED:", "PONÚKNUTÝ ROZPOČET:", "FELAJÁNLOTT KÖLTSÉGVETÉS:")} &euro; {event.amount.toLocaleString()}
+                                      <TrendingUp className="h-4 w-4" /> {t("BUDGET WORTH OFFERED:", "PONÚKNUTÝ ROZPOČET:", "FELAJÁNLOTT KÖLTSÉGVETÉS:")} {money(event.amount)}
                                     </div>
                                   )}
 
@@ -3625,7 +3645,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                   {/* Extra values */}
                                   {event.type === "offer" && event.amount !== undefined && (
                                     <div className="mt-3 pl-3 border-l-4 border-emerald-500 flex items-center gap-1 text-[10px] font-black text-emerald-700 uppercase tracking-wider">
-                                      <TrendingUp className="h-4 w-4" /> {t("BUDGET WORTH OFFERED:", "PONÚKNUTÝ ROZPOČET:", "FELAJÁNLOTT KÖLTSÉGVETÉS:")} &euro; {event.amount.toLocaleString()}
+                                      <TrendingUp className="h-4 w-4" /> {t("BUDGET WORTH OFFERED:", "PONÚKNUTÝ ROZPOČET:", "FELAJÁNLOTT KÖLTSÉGVETÉS:")} {money(event.amount)}
                                     </div>
                                   )}
 
@@ -3909,7 +3929,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                               <div className="min-w-0">
                                 <h4 className="font-heading font-black text-xs uppercase text-slate-800 tracking-tight truncate max-w-[280px]">{lead.name || t("Untitled Lead", "Lead bez názvu", "Cím nélküli lead")}</h4>
                                 <div className="flex flex-wrap items-center gap-2 mt-1.5 text-[9px] font-black uppercase text-slate-450 tracking-wider">
-                                  <span>{t("Worth", "Hodnota", "Érték")}: <strong className="text-emerald-700 font-extrabold">&euro; {lead.value.toLocaleString()}</strong></span>
+                                  <span>{t("Worth", "Hodnota", "Érték")}: <strong className="text-emerald-700 font-extrabold">{money(lead.value)}</strong></span>
                                   <span>&bull;</span>
                                   <span>PM: <strong className="text-slate-600 font-extrabold">{lead.owner || t("Unassigned", "Nepriradené", "Nincs hozzárendelve")}</strong></span>
                                 </div>
@@ -4074,7 +4094,17 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   // ----------------------------------------------------
   return (
     <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
-      
+
+      {/* 1. Title header */}
+      <div className="flex flex-col border-b border-slate-100 pb-4">
+        <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+          <Users className="h-6 w-6 text-emerald-600" /> {getTranslation(systemLanguage, "clients.title")}
+        </h2>
+        <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
+          {getTranslation(systemLanguage, "clients.subtitle")}
+        </p>
+      </div>
+
       {/* 2. Control search & filter bar */}
       <div className="glass-panel p-6 rounded-[28px] border-2 border-emerald-450 bg-white shadow-lg space-y-4">
         <div className="flex flex-col sm:flex-row items-center gap-3 w-full">
@@ -4311,7 +4341,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       <div className="flex items-center gap-1.5">
                         <span className="text-[9px] font-black text-slate-400 lg:hidden uppercase tracking-wider">{t("Worth", "Hodnota", "Érték")}:</span>
                         <span className="font-heading font-black text-emerald-700 text-sm">
-                          &euro; {client.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          {money(client.totalValue, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                       </div>
                     </td>
@@ -4633,7 +4663,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   
                   <div className="md:col-span-1 space-y-1">
                     <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
-                      {systemLanguage === "sk" ? "Odhadovaná hodnota (€)" : systemLanguage === "hu" ? "Becsült érték (€)" : "Estimated Worth (€)"}
+                      {systemLanguage === "sk" ? `Odhadovaná hodnota (${currencySymbol})` : systemLanguage === "hu" ? `Becsült érték (${currencySymbol})` : `Estimated Worth (${currencySymbol})`}
                     </label>
                     <input
                       type="number"
@@ -4789,7 +4819,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           type="text"
                           value={newClientCompanyId}
                           onChange={handleCompanyIdChange}
-                          placeholder="e.g. 36123456"
+                          placeholder={t("e.g. 36123456", "napr. 36123456", "pl. 36123456")}
                           className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold pr-9"
                         />
                         {isLoadingSuggestions && activeSuggestionInput === "companyId" && (
@@ -4829,7 +4859,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         type="text"
                         value={newClientTaxId}
                         onChange={(e) => setNewClientTaxId(e.target.value)}
-                        placeholder="e.g. 2021234567"
+                        placeholder={t("e.g. 2021234567", "napr. 2021234567", "pl. 2021234567")}
                         className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold"
                       />
                     </div>
@@ -4843,7 +4873,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         value={newClientVatId}
                         onChange={(e) => setNewClientVatId(e.target.value)}
                         onBlur={() => validateVatCode(newClientVatId, false)}
-                        placeholder="e.g. SK2021234567"
+                        placeholder={t("e.g. SK2021234567", "napr. SK2021234567", "pl. SK2021234567")}
                         className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold"
                       />
                       {renderVatValidation(newClientVatStatus, newClientVatResult)}

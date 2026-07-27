@@ -10,6 +10,8 @@ import type { UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { ProjectSettings } from "./ProjectSettings";
+import { PasswordInput } from "./PasswordInput";
+import { CURRENCY_OPTIONS, currencyForRegion } from "../utils/currency";
 
 // Inline "double-click / pencil to rename" field.
 //
@@ -100,6 +102,8 @@ interface SettingsViewProps {
 
   systemLanguage: Language;
   setSystemLanguage: (lang: Language) => void;
+  systemCurrency: string;
+  setSystemCurrency: (currency: string) => void;
   userLanguage: Language;
   initialSelectedUserName?: string;
   leadStateParents: Record<string, string>;
@@ -140,6 +144,27 @@ const ALL_LUCIDE_ICONS = Object.keys(Icons).filter(key => {
          key !== 'Icon';
 });
 
+// Every settings category, with the permission that unlocks it. The sidebar and
+// the "fall back to a permitted category" effect both read this one list. While
+// the effect kept its own shorter copy, standing on a category missing from that
+// copy (Projects, Unified records, Email, API, Ads, AI, Errors) bounced the user
+// back to Branding every time a background sync produced a new `roles` array.
+const SETTINGS_TABS = [
+  { id: "branding", permKey: "general_config" },
+  { id: "projects", permKey: "general_config" },
+  { id: "unified", permKey: "general_config" },
+  { id: "sources", permKey: "traffic_sources" },
+  { id: "states", permKey: "pipeline_stages" },
+  { id: "managers", permKey: "pm_managers" },
+  { id: "rbac", permKey: "pm_managers" },
+  { id: "email", permKey: "general_config" },
+  { id: "api", permKey: "general_config" },
+  { id: "ads", permKey: "general_config" },
+  { id: "ai", permKey: "ai_config" },
+  { id: "errors", permKey: "general_config" },
+  { id: "danger", permKey: "system_reset" }
+] as const;
+
 export const SettingsView: React.FC<SettingsViewProps> = ({
   systemName,
   setSystemName,
@@ -168,6 +193,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setLeadStateFollowUp,
   systemLanguage,
   setSystemLanguage,
+  systemCurrency,
+  setSystemCurrency,
   userLanguage,
   leadStateParents,
   setLeadStateParents,
@@ -721,42 +748,73 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     );
   };
 
-  const handleSendTestEmail = (e: React.FormEvent) => {
+  const handleSendTestEmail = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!testRecipient.trim()) return;
 
     setIsSendingTest(true);
     setTestResult(null);
 
-    // Simulate high-fidelity network transport handshakes
-    setTimeout(() => {
-      setIsSendingTest(false);
-      if (emailProvider === "smtp") {
-        if (!smtpHost || !smtpUser || !senderEmail) {
-          setTestResult({
-            status: "error",
-            message: "SMTP handshake failed. Missing host address, username, or sender email envelope."
-          });
-        } else {
-          setTestResult({
-            status: "success",
-            message: `SMTP envelope delivered! Successfully connected to ${smtpHost}:${smtpPort} (${smtpSecure.toUpperCase()}) and sent test envelope to ${testRecipient}.`
-          });
-        }
+    // Post the settings currently in the form; the server merges any masked
+    // secret from the stored config and actually delivers the message.
+    const settings = {
+      emailProvider,
+      smtpHost,
+      smtpPort,
+      smtpSecure,
+      smtpAuth,
+      smtpUser,
+      smtpPassword,
+      senderName,
+      senderEmail,
+      exchUrl,
+      exchDomain,
+      exchAuth,
+      exchClientId,
+      exchTenantId,
+      exchClientSecret,
+      exchPassword,
+      exchMailbox
+    };
+
+    try {
+      const response = await fetch("/api/mail_broker.php?action=send_test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recipient: testRecipient.trim(), lang: userLanguage, settings })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setTestResult({
+          status: "success",
+          message: t(
+            `Test email sent to ${testRecipient}. Check the inbox (and the spam folder) to confirm delivery.`,
+            `Testovací e-mail bol odoslaný na ${testRecipient}. Skontrolujte doručenú poštu (aj priečinok spam) a potvrďte doručenie.`,
+            `A teszt e-mail elküldve ide: ${testRecipient}. Ellenőrizze a beérkezett üzeneteket (és a spam mappát) a kézbesítés megerősítéséhez.`
+          )
+        });
       } else {
-        if (exchAuth === "oauth" && (!exchClientId || !exchTenantId)) {
-          setTestResult({
-            status: "error",
-            message: "Exchange Server authentication failed. Missing Client ID or Tenant ID for OAuth 2.0 connection workflow."
-          });
-        } else {
-          setTestResult({
-            status: "success",
-            message: `Microsoft Exchange handshake verified! Autodiscovered OWA endpoints, completed authentication via ${exchAuth.toUpperCase()}, and pushed message to ${testRecipient} from mailbox ${exchMailbox}.`
-          });
-        }
+        setTestResult({
+          status: "error",
+          message: data.error || t(
+            "Sending the test email failed. Please verify the server settings.",
+            "Odoslanie testovacieho e-mailu zlyhalo. Skontrolujte nastavenia servera.",
+            "A teszt e-mail küldése sikertelen. Ellenőrizze a kiszolgáló beállításait."
+          )
+        });
       }
-    }, 1800);
+    } catch (err) {
+      setTestResult({
+        status: "error",
+        message: t(
+          "Network request to the mail server failed.",
+          "Sieťová požiadavka na poštový server zlyhala.",
+          "A levelezőszerverhez intézett hálózati kérés sikertelen."
+        )
+      });
+    } finally {
+      setIsSendingTest(false);
+    }
   };
 
   const fetchTrainingStats = async () => {
@@ -825,7 +883,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setIsValidating(false);
       setValidationResult({
         success: false,
-        message: "Failed to communicate with vector DB validation API."
+        message: t(
+          "Failed to communicate with vector DB validation API.",
+          "Nepodarilo sa spojiť s validačným API vektorovej databázy.",
+          "Nem sikerült kapcsolódni a vektoradatbázis ellenőrző API-jához."
+        )
       });
       setVectorDbValidated(false);
     }
@@ -1084,17 +1146,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   // Set default initial tab if permissions changed
   React.useEffect(() => {
-    const tabs = [
-      { id: "branding", key: "general_config" as const },
-      { id: "ads", key: "general_config" as const },
-      { id: "managers", key: "pm_managers" as const },
-      { id: "rbac", key: "pm_managers" as const },
-      { id: "states", key: "pipeline_stages" as const },
-      { id: "sources", key: "traffic_sources" as const },
-      { id: "danger", key: "system_reset" as const }
-    ];
-    const allowed = tabs.find(t => getPermission(t.key) !== "nothing");
-    if (allowed && !tabs.find(t => t.id === activeSubTab && getPermission(t.key) !== "nothing")) {
+    const tabs = SETTINGS_TABS;
+    const allowed = tabs.find(t => getPermission(t.permKey) !== "nothing");
+    if (allowed && !tabs.find(t => t.id === activeSubTab && getPermission(t.permKey) !== "nothing")) {
       setActiveSubTab(allowed.id as any);
       window.location.hash = "settings/" + allowed.id;
     }
@@ -1383,11 +1437,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     const newUser: UserProfile = {
       name: nameVal,
       email: emailVal,
-      password: pwdVal || "password",
+      // The form marks the password field `required`, so this is never blank —
+      // the old `|| "password"` fallback advertised a default the UI would not
+      // let anyone actually use.
+      password: pwdVal,
       role: newUserRole,
       color: "#3b82f6", // default blue preset
       activityLog: [
-        { id: "log_" + Date.now(), action: "Account provisioned", timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16), details: "User account provisioned inside secure Settings Console", type: "system" }
+        { id: "log_" + Date.now(), action: "Account provisioned", timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16), details: t("User account provisioned inside secure Settings Console", "Používateľské konto bolo vytvorené v zabezpečenej konzole nastavení", "A felhasználói fiók a biztonságos beállítási konzolban jött létre"), type: "system" }
       ]
     };
 
@@ -1446,7 +1503,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const handleUpdateUser = (updated: UserProfile) => {
-    setUsers(prev => prev.map(u => u.email === updated.email ? updated : u));
+    // Match on the identity the record had before this edit — matching on
+    // updated.email loses the change whenever the email itself is what changed.
+    const previousEmail = selectedUser?.email ?? updated.email;
+    setUsers(prev => prev.map(u => u.email === previousEmail ? updated : u));
     setSelectedUser(updated);
   };
 
@@ -1643,21 +1703,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   // Filter allowed tabs based on permissions
-  const allowedTabs = ([
-    { id: "branding", label: "⚙️ General Config", permKey: "general_config" as const },
-    { id: "projects", label: "💼 Project Settings", permKey: "general_config" as const },
-    { id: "unified", label: "🗂️ Unified Entries", permKey: "general_config" as const },
-    { id: "sources", label: "🚀 Traffic & Categories", permKey: "traffic_sources" as const },
-    { id: "states", label: "🏷️ Pipeline Stages", permKey: "pipeline_stages" as const },
-    { id: "managers", label: "👥 Users & PMs", permKey: "pm_managers" as const },
-    { id: "rbac", label: "🛡️ Roles & RBAC", permKey: "pm_managers" as const },
-    { id: "email", label: "📧 Email Server", permKey: "general_config" as const },
-    { id: "api", label: "🔌 Public API", permKey: "general_config" as const },
-    { id: "ads", label: "📢 Ads APIs & Campaigns", permKey: "general_config" as const },
-    { id: "ai", label: "🧠 AI Integrations", permKey: "ai_config" as const },
-    { id: "errors", label: "⚠️ Error Logs", permKey: "general_config" as const },
-    { id: "danger", label: "⚠️ System Reset", permKey: "system_reset" as const }
-  ] as const).filter(tab => getPermission(tab.permKey) !== "nothing");
+  const allowedTabs = SETTINGS_TABS
+    .map(tab => ({ ...tab, label: getTranslation(userLanguage, `settings.tab.${tab.id}`) }))
+    .filter(tab => getPermission(tab.permKey) !== "nothing");
   // Read-only alert component
   const renderReadOnlyBanner = (permKey: keyof RolePermission["permissions"]) => {
     const isReadOnly = getPermission(permKey) === "view";
@@ -1673,9 +1721,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   return (
     <div className="space-y-8 select-none text-slate-800 animate-fade-in">
       {/* Title Header */}
-      <div className="flex flex-col">
+      <div className="flex flex-col border-b border-slate-100 pb-4">
         <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-          <Settings className="h-6 w-6 text-indigo-600 animate-spin-slow" /> {getTranslation(userLanguage, "header.title.settings")}
+          <Settings className="h-6 w-6 text-indigo-600" /> {getTranslation(userLanguage, "header.title.settings")}
         </h2>
         <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
           {userLanguage === "sk" 
@@ -2006,7 +2054,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           onClick={() => {
                             window.location.hash = "settings/unified/new";
                           }}
-                          className="px-3.5 py-2 rounded-xl bg-indigo-650 hover:bg-indigo-700 text-white text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md shadow-indigo-600/20 cursor-pointer"
+                          className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md shadow-indigo-600/20 cursor-pointer"
                         >
                           <Plus className="h-4 w-4" />
                           {t("New Entry", "Nový záznam", "Új bejegyzés")}
@@ -2141,7 +2189,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     value={tempName}
                     onChange={(e) => setTempName(e.target.value)}
                     className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-heading font-bold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:bg-slate-50 disabled:text-slate-400"
-                    placeholder="e.g. CCRM"
+                    placeholder={t("e.g. CCRM", "napr. CCRM", "pl. CCRM")}
                   />
                   <p className="text-[10px] text-slate-400">
                     {getTranslation(userLanguage, "settings.general.system_name_desc")}
@@ -2164,6 +2212,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </select>
                   <p className="text-[10px] text-slate-400">
                     {getTranslation(userLanguage, "settings.general.system_lang_desc")}
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider">
+                    {getTranslation(userLanguage, "settings.general.currency")}
+                  </label>
+                  <select
+                    disabled={getPermission("general_config") === "view"}
+                    value={systemCurrency || ""}
+                    onChange={(e) => setSystemCurrency(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-855 font-heading font-bold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:bg-slate-50 disabled:text-slate-400"
+                  >
+                    <option value="">
+                      {getTranslation(userLanguage, "settings.general.currency_auto")} ({currencyForRegion(systemLanguage)})
+                    </option>
+                    {CURRENCY_OPTIONS.map((c) => (
+                      <option key={c.code} value={c.code}>{c.label}</option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-slate-400">
+                    {getTranslation(userLanguage, "settings.general.currency_desc")}
                   </p>
                 </div>
 
@@ -2321,7 +2391,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               >
                                 <Eye className="h-3 w-3" /> {getTranslation(userLanguage, "settings.managers.th_actions")}
                               </button>
-                              {getPermission("pm_managers") === "edit" && u.name.toLowerCase() !== "erik" && (
+                              {getPermission("pm_managers") === "edit" && u.name.toLowerCase() !== currentUser.name.toLowerCase() && (
                                 <button
                                   type="button"
                                   onClick={() => handleRemoveUser(u.name)}
@@ -2386,7 +2456,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           <label className="text-[9px] font-black text-slate-450 uppercase tracking-wider block">{getTranslation(userLanguage, "settings.managers.lbl_fullname")}</label>
                           <input
                             type="text"
-                            disabled={getPermission("pm_managers") === "view" || selectedUser.name.toLowerCase() === "erik"}
+                            disabled={getPermission("pm_managers") === "view"}
                             value={selectedUser.name}
                             onChange={(e) => {
                               const updated = { ...selectedUser, name: e.target.value };
@@ -2401,7 +2471,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">{getTranslation(userLanguage, "settings.managers.lbl_email")}</label>
                           <input
                             type="email"
-                            disabled={getPermission("pm_managers") === "view" || selectedUser.name.toLowerCase() === "erik"}
+                            disabled={getPermission("pm_managers") === "view"}
                             value={selectedUser.email}
                             onChange={(e) => {
                               const updated = { ...selectedUser, email: e.target.value };
@@ -2430,7 +2500,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         {/* Security Access Level Role */}
                         <div className="space-y-1">
                           <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">{getTranslation(userLanguage, "settings.managers.lbl_access")}</label>
-                          {getPermission("pm_managers") === "edit" && selectedUser.name.toLowerCase() !== "erik" ? (
+                          {getPermission("pm_managers") === "edit" ? (
                             <select
                               value={selectedUser.role}
                               onChange={(e) => {
@@ -2616,7 +2686,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         </div>
                         <button
                           type="submit"
-                          className="w-full py-2.5 rounded-xl bg-slate-850 hover:bg-slate-750 text-white text-[10px] font-black uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                          className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-[10px] font-black uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center justify-center gap-1.5"
                         >
                           <Plus className="h-3.5 w-3.5" /> {getTranslation(userLanguage, "settings.managers.sim_btn")}
                         </button>
@@ -2642,7 +2712,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         required
                         value={newManager}
                         onChange={(e) => setNewManager(e.target.value)}
-                        placeholder="e.g. Sara Nováková"
+                        placeholder={t("e.g. Sara Nováková", "napr. Sara Nováková", "pl. Sara Nováková")}
                         className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
                       />
                     </div>
@@ -2653,7 +2723,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         required
                         value={newUserEmail}
                         onChange={(e) => setNewUserEmail(e.target.value)}
-                        placeholder="e.g. sara@crm.com"
+                        placeholder={t("e.g. sara@crm.com", "napr. sara@crm.com", "pl. sara@crm.com")}
                         className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
                       />
                     </div>
@@ -2662,13 +2732,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">{getTranslation(userLanguage, "settings.managers.lbl_password")}</label>
-                      <input
-                        type="password"
+                      <PasswordInput
                         required
                         value={newUserPassword}
                         onChange={(e) => setNewUserPassword(e.target.value)}
                         placeholder={getTranslation(userLanguage, "settings.managers.placeholder_new_password")}
-                        className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+                        className="w-full pl-3 pr-10 py-2 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
                       />
                     </div>
                     <div className="space-y-1">
@@ -3709,7 +3778,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         type="text"
                         value={newTaskState}
                         onChange={(e) => setNewTaskState(e.target.value)}
-                        placeholder="e.g. Pending review"
+                        placeholder={t("e.g. Pending review", "napr. Čaká na kontrolu", "pl. Ellenőrzésre vár")}
                         className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:outline-none font-bold text-xs"
                       />
                     </div>
@@ -3768,15 +3837,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         localStorage.setItem("ads_meta_app_id", e.target.value);
                       }}
                       onBlur={syncAdsCredentialsToDb}
-                      placeholder="e.g. 8493029104928"
+                      placeholder={t("e.g. 8493029104928", "napr. 8493029104928", "pl. 8493029104928")}
                       className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
                     />
                   </div>
 
                   <div className="space-y-1">
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">{getTranslation(userLanguage, "settings.ads.meta_secret")}</label>
-                    <input
-                      type="password"
+                    <PasswordInput
                       disabled={getPermission("general_config") === "view"}
                       value={metaAppSecret}
                       onChange={(e) => {
@@ -3785,7 +3853,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       }}
                       onBlur={syncAdsCredentialsToDb}
                       placeholder="••••••••••••••••••••••••••••••••"
-                      className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+                      className="w-full pl-3 pr-10 py-2 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
                     />
                   </div>
 
@@ -3826,7 +3894,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           localStorage.setItem("ads_google_dev_token", e.target.value);
                         }}
                         onBlur={syncAdsCredentialsToDb}
-                        placeholder="e.g. AbC12D34E5..."
+                        placeholder={t("e.g. AbC12D34E5...", "napr. AbC12D34E5...", "pl. AbC12D34E5...")}
                         className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
                       />
                     </div>
@@ -3850,8 +3918,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                   <div className="space-y-1">
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">{getTranslation(userLanguage, "settings.ads.google_secret")}</label>
-                    <input
-                      type="password"
+                    <PasswordInput
                       disabled={getPermission("general_config") === "view"}
                       value={googleClientSecret}
                       onChange={(e) => {
@@ -3860,7 +3927,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       }}
                       onBlur={syncAdsCredentialsToDb}
                       placeholder="GOCSPX-••••••••••••••••"
-                      className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+                      className="w-full pl-3 pr-10 py-2 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
                     />
                   </div>
 
@@ -4575,7 +4642,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <button
                       type="submit"
                       disabled={isSendingTest || !testRecipient}
-                      className="w-full py-3 bg-slate-850 hover:bg-slate-750 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-55"
+                      className="w-full py-3 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-55"
                     >
                       {isSendingTest ? (
                         <>
@@ -4622,10 +4689,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     </div>
                     <div>
                       <h3 className="text-sm font-heading font-extrabold text-slate-900 uppercase tracking-wider">
-                        Vector Database Connected
+                        {t("Vector Database Connected", "Vektorová databáza pripojená", "Vektoradatbázis csatlakoztatva")}
                       </h3>
                       <p className="text-[10px] text-slate-500 font-semibold mt-0.5">
-                        Your RAG pipeline backend is successfully configured and active.
+                        {t(
+                          "Your RAG pipeline backend is successfully configured and active.",
+                          "Backend vašej RAG pipeline je úspešne nakonfigurovaný a aktívny.",
+                          "A RAG folyamat háttérrendszere sikeresen be van állítva és aktív."
+                        )}
                       </p>
                     </div>
                   </div>
@@ -4845,7 +4916,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               type="text"
                               value={mariaDbHost}
                               onChange={(e) => setMariaDbHost(e.target.value)}
-                              placeholder="e.g. localhost or vector_db"
+                              placeholder={t("e.g. localhost or vector_db", "napr. localhost alebo vector_db", "pl. localhost vagy vector_db")}
                               className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
                             />
                           </div>
@@ -4855,7 +4926,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               type="text"
                               value={mariaDbPort}
                               onChange={(e) => setMariaDbPort(e.target.value)}
-                              placeholder="3306 or 3307"
+                              placeholder={t("3306 or 3307", "3306 alebo 3307", "3306 vagy 3307")}
                               className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
                             />
                           </div>
@@ -4865,18 +4936,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               type="text"
                               value={mariaDbUser}
                               onChange={(e) => setMariaDbUser(e.target.value)}
-                              placeholder="e.g. vector_user"
+                              placeholder={t("e.g. vector_user", "napr. vector_user", "pl. vector_user")}
                               className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
                             />
                           </div>
                           <div className="space-y-1">
                             <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">{t("Password", "Heslo", "Jelszó")}</label>
-                            <input
-                              type="password"
+                            <PasswordInput
                               value={mariaDbPassword}
                               onChange={(e) => setMariaDbPassword(e.target.value)}
                               placeholder="••••••••"
-                              className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
+                              className="w-full pl-3.5 pr-10 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
                             />
                           </div>
                           <div className="space-y-1 md:col-span-2">
@@ -4885,7 +4955,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               type="text"
                               value={mariaDbName}
                               onChange={(e) => setMariaDbName(e.target.value)}
-                              placeholder="e.g. vector_db"
+                              placeholder={t("e.g. vector_db", "napr. vector_db", "pl. vector_db")}
                               className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
                             />
                           </div>
@@ -4905,18 +4975,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               type="text"
                               value={qdrantUrl}
                               onChange={(e) => setQdrantUrl(e.target.value)}
-                              placeholder="e.g. http://localhost:6333"
+                              placeholder={t("e.g. http://localhost:6333", "napr. http://localhost:6333", "pl. http://localhost:6333")}
                               className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
                             />
                           </div>
                           <div className="space-y-1 md:col-span-2">
                             <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">{t("API Key (Optional)", "API kľúč (Voliteľné)", "API kulcs (Opcionális)")}</label>
-                            <input
-                              type="password"
+                            <PasswordInput
                               value={qdrantApiKey}
                               onChange={(e) => setQdrantApiKey(e.target.value)}
                               placeholder={t("Leave blank if unsecured", "Ponechajte prázdne, ak je nezabezpečené", "Hagyja üresen, ha nincs védve")}
-                              className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
+                              className="w-full pl-3.5 pr-10 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
                             />
                           </div>
                         </div>
@@ -4931,12 +5000,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="space-y-1 md:col-span-2">
                             <label className="text-[9px] font-bold text-slate-550 uppercase tracking-wider block">{t("API Key", "API kľúč", "API kulcs")}</label>
-                            <input
-                              type="password"
+                            <PasswordInput
                               value={pineconeApiKey}
                               onChange={(e) => setPineconeApiKey(e.target.value)}
                               placeholder="pcsk_..."
-                              className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
+                              className="w-full pl-3.5 pr-10 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
                             />
                           </div>
                           <div className="space-y-1 md:col-span-2">
@@ -4945,7 +5013,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               type="text"
                               value={pineconeIndex}
                               onChange={(e) => setPineconeIndex(e.target.value)}
-                              placeholder="e.g. laminam-kb"
+                              placeholder={t("e.g. laminam-kb", "napr. laminam-kb", "pl. laminam-kb")}
                               className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
                             />
                           </div>
@@ -4990,7 +5058,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div className="flex justify-end pt-3">
                     <button
                       type="submit"
-                      className="px-6 py-3 bg-indigo-650 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-lg shadow-indigo-650/20 active:scale-95 transition-all cursor-pointer flex items-center gap-2"
+                      className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-lg shadow-indigo-600/20 active:scale-95 transition-all cursor-pointer flex items-center gap-2"
                     >
                       <Save className="h-4 w-4" /> {t("Save AI Configuration", "Uložiť konfiguráciu AI", "AI konfiguráció mentése")}
                     </button>

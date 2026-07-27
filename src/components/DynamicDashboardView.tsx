@@ -2,20 +2,26 @@ import React, { useState, useEffect, useRef } from "react";
 import { Sparkles, Save, Edit, RefreshCw, Send, AlertCircle, LayoutDashboard, FileText, HelpCircle, X, Info } from "lucide-react";
 import type { CustomDashboard } from "../types";
 import { cn } from "../utils/cn";
+import type { Language } from "../utils/translations";
+import { formatMoney } from "../utils/currency";
 
 interface DynamicDashboardViewProps {
   dashboard: CustomDashboard;
   onSaveDashboard: (updated: CustomDashboard) => void;
   systemLanguage: string;
+  currencyCode?: string | null;
 }
 
 export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   dashboard,
   onSaveDashboard,
-  systemLanguage
+  systemLanguage,
+  currencyCode
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
+  const money = (value: number, opts?: Intl.NumberFormatOptions) =>
+    formatMoney(value, currencyCode, (systemLanguage as Language) || "en", opts);
 
   const [isEditMode, setIsEditMode] = useState(dashboard.layout.widgets.length === 0);
   const [promptText, setPromptText] = useState("");
@@ -106,10 +112,10 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
         setPromptText("");
         setIsSaved(false);
       } else {
-        setErrorMsg(json.message || "Failed to generate dashboard layout.");
+        setErrorMsg(json.message || t("Failed to generate dashboard layout.", "Vygenerovanie rozloženia nástenky zlyhalo.", "Az irányítópult elrendezésének létrehozása sikertelen."));
       }
     } catch (err: any) {
-      setErrorMsg(err.message || "Connection to AI agent failed.");
+      setErrorMsg(err.message || t("Connection to AI agent failed.", "Pripojenie k AI agentovi zlyhalo.", "Az AI ügynökhöz való kapcsolódás sikertelen."));
     } finally {
       setIsGenerating(false);
     }
@@ -275,7 +281,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 <button
                   type="submit"
                   disabled={isGenerating || !promptText.trim()}
-                  className="flex items-center gap-1.5 px-6 py-3 bg-indigo-600 hover:bg-indigo-750 disabled:bg-slate-200 text-white disabled:text-slate-400 rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-indigo-600/10 cursor-pointer shrink-0"
+                  className="flex items-center gap-1.5 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white disabled:text-slate-400 rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-indigo-600/10 cursor-pointer shrink-0"
                 >
                   {isGenerating ? (
                     <>
@@ -359,7 +365,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                                 titleLower.includes("revenue");
 
                               if (isCurrency && !isNaN(Number(val))) {
-                                return `€${Number(val).toLocaleString()}`;
+                                return money(Number(val));
                               }
                               return typeof val === "number" ? val.toLocaleString() : String(val);
                             }
@@ -368,7 +374,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                         }
                         if (typeof data === "object") {
                           if (data.count !== undefined) return data.count;
-                          if (data.value !== undefined) return `€${Number(data.value).toLocaleString()}`;
+                          if (data.value !== undefined) return money(Number(data.value));
                           return JSON.stringify(data);
                         }
                         return String(data);
@@ -381,7 +387,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                   )}
 
                   {w.type === "table" && (
-                    <DashboardTable widget={w} data={widgetData[w.id]} t={t} />
+                    <DashboardTable widget={w} data={widgetData[w.id]} t={t} formatCurrency={money} />
                   )}
                 </div>
               </div>
@@ -438,7 +444,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
             <button
               type="submit"
               disabled={isGenerating || !promptText.trim()}
-              className="flex items-center justify-center h-9 px-4 bg-indigo-600 hover:bg-indigo-750 disabled:bg-slate-200 text-white disabled:text-slate-400 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer shrink-0"
+              className="flex items-center justify-center h-9 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white disabled:text-slate-400 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer shrink-0"
             >
               {isGenerating ? (
                 <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -548,7 +554,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 {/* Metric Card */}
                 <div className="p-4 border border-slate-150 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
                   <div className="p-2.5 rounded-xl bg-white border border-slate-200 flex flex-col justify-between shrink-0 shadow-sm w-24 h-16">
-                    <span className="text-[7px] font-bold text-slate-400 uppercase tracking-wide truncate">Total Leads</span>
+                    <span className="text-[7px] font-bold text-slate-400 uppercase tracking-wide truncate">{t("Total Leads", "Počet leadov", "Leadek száma")}</span>
                     <span className="text-base font-black text-slate-850">142</span>
                   </div>
                   <div>
@@ -636,7 +642,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 {/* Tabs */}
                 <div className="p-4 border border-slate-150 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
                   <div className="w-24 h-16 rounded-xl bg-white border border-slate-200 p-2 flex gap-1.5 items-start shrink-0 shadow-sm justify-center">
-                    <div className="px-1.5 py-0.5 rounded bg-indigo-550 text-[6px] font-bold text-white">Tab A</div>
+                    <div className="px-1.5 py-0.5 rounded bg-indigo-600 text-[6px] font-bold text-white">Tab A</div>
                     <div className="px-1.5 py-0.5 rounded bg-slate-50 text-[6px] font-bold text-slate-500">Tab B</div>
                   </div>
                   <div>
@@ -653,7 +659,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                     <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                       <div className="h-full bg-emerald-500 w-3/4 rounded-full" />
                     </div>
-                    <span className="text-[8px] font-black text-emerald-600 text-center">75% Goal</span>
+                    <span className="text-[8px] font-black text-emerald-600 text-center">{t("75% Goal", "75 % cieľa", "75% cél")}</span>
                   </div>
                   <div>
                     <h5 className="text-xs font-bold text-slate-800">{t("Progress & Goals", "Ukazovatele pokroku (Gauge)", "Célok és Folyamatjelzők")}</h5>
@@ -892,16 +898,17 @@ interface DashboardTableProps {
   widget: any;
   data: any;
   t: (en: string, sk: string, hu: string) => string;
+  formatCurrency?: (value: number) => string;
 }
 
-const DashboardTable: React.FC<DashboardTableProps> = ({ widget, data, t }) => {
+const DashboardTable: React.FC<DashboardTableProps> = ({ widget, data, t, formatCurrency = (v) => `€${v.toLocaleString()}` }) => {
   const dataList = Array.isArray(data) ? data : [];
   const columns = widget.columns || [];
 
   const formatCell = (val: any, format: string) => {
     if (val === null || val === undefined) return "-";
     if (format === "currency") {
-      return `€${Number(val).toLocaleString()}`;
+      return formatCurrency(Number(val));
     }
     if (format === "date") {
       return new Date(val).toLocaleDateString();

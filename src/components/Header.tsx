@@ -20,8 +20,8 @@ interface HeaderProps {
   onNavigateUpdates?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ 
-  activeTab, 
+export const Header: React.FC<HeaderProps> = ({
+  activeTab,
   systemName,
   currentUser,
   onLogout,
@@ -302,23 +302,6 @@ export const Header: React.FC<HeaderProps> = ({
     }
   };
 
-  const getPageTitle = (tab: string) => {
-    if (tab.startsWith("client-")) {
-      return getTranslation(systemLanguage, "header.title.clients");
-    }
-    if (tab.startsWith("lead-")) {
-      return getTranslation(systemLanguage, "header.title.leads");
-    }
-    switch (tab) {
-      case "dashboard": return getTranslation(systemLanguage, "header.title.dashboard");
-      case "leads": return getTranslation(systemLanguage, "header.title.leads");
-      case "clients": return getTranslation(systemLanguage, "header.title.clients");
-      case "files": return getTranslation(systemLanguage, "header.title.files");
-      case "settings": return getTranslation(systemLanguage, "header.title.settings");
-      default: return systemName;
-    }
-  };
-
   return (
     <header className="h-20 border-b border-white/40 bg-white/25 backdrop-blur-md px-4 md:px-6 flex items-center justify-between sticky top-0 z-50 select-none">
       <style>{`
@@ -331,14 +314,11 @@ export const Header: React.FC<HeaderProps> = ({
         }
       `}</style>
 
-      {/* View Title */}
+      {/* Brand Title */}
       <div className="flex flex-col">
         <h1 className="text-xl font-heading font-extrabold text-slate-900 tracking-tight leading-none uppercase">
-          {getPageTitle(activeTab)}
+          {systemName}
         </h1>
-        <p className="text-[10px] text-slate-500 font-bold tracking-wider mt-1.5 uppercase">
-          {systemName} &bull; {getTranslation(systemLanguage, "header.active_node")}
-        </p>
       </div>
 
       {/* Universal Search bar in the center */}
@@ -445,7 +425,7 @@ export const Header: React.FC<HeaderProps> = ({
             className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 border border-amber-600 text-white text-[10px] font-black uppercase tracking-wider shadow-md shadow-amber-500/25 transition-all flex items-center gap-1 hover:scale-[1.02] shrink-0"
           >
             <span className="h-2 w-2 rounded-full bg-white animate-pulse" />
-            DEMO MODE
+            {t("DEMO MODE", "DEMO REŽIM", "DEMÓ MÓD")}
           </a>
         )}
 

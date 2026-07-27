@@ -16,12 +16,17 @@ export const translations: Record<Language, Record<string, string>> = {
 
     // Header Titles
     "header.active_node": "Active Node",
-    "header.title.dashboard": "Performance Dashboard 2026",
+    "header.title.dashboard": "Performance Dashboard",
     "header.title.leads": "Sales Pipeline & Leads",
     "header.title.clients": "Clients Registry & Directory",
     "header.title.files": "Document Vault & File Registry",
     "header.title.meetings": "Meeting Room & Notes",
     "header.title.settings": "System Preferences & Config",
+    "header.title.tasks": "Tasks & Calendar",
+    "header.title.projects": "Project Management",
+    "header.title.email": "Email Inbox",
+    "header.title.rag_ai": "AI Agents & Knowledge Base",
+    "header.title.personal": "Personal Settings",
     "header.search_placeholder": "Search leads, clients, docs...",
     "header.drawer_preferences": "Select preferences",
     "header.drawer_title": "Select System Language",
@@ -107,6 +112,9 @@ export const translations: Record<Language, Record<string, string>> = {
     "settings.danger.btn": "Reset Mockup Database",
     "settings.general.system_name_desc": "This brand label updates all sidebar logo headers and page titles dynamically.",
     "settings.general.system_lang_desc": "Choose system-wide default localization profile. Updates take effect immediately.",
+    "settings.general.currency": "Currency",
+    "settings.general.currency_auto": "Auto (follow region)",
+    "settings.general.currency_desc": "Currency symbol shown across dashboards, leads, and clients. Defaults to the region's currency but can be set independently.",
     "settings.general.db_title": "Database Integrations",
     "settings.general.db_host": "Database Host:",
     "settings.general.db_port": "Port Node:",
@@ -147,7 +155,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "settings.managers.sim_btn": "Log Simulated Event Details",
     "settings.managers.sim_details_prefix": "Action simulated manually in System Console under profile ",
     "settings.managers.form_title": "Provision New User Account",
-    "settings.managers.placeholder_new_password": "•••••••• (Default: password)",
+    "settings.managers.placeholder_new_password": "•••••••• (required)",
     "settings.managers.lbl_role_assignment": "Access Role Assignment",
     "settings.managers.btn_provision": "Provision Account",
     "settings.rbac.title": "Roles & Security Permissions Matrix (RBAC)",
@@ -259,6 +267,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "files.btn_client": "Client Sheet",
     "files.btn_view": "View File",
     "files.footer_note": "Files are categorized and synchronized from client pipeline histories",
+    "files.showing": "Showing",
     "files.showing_docs": "indexed documents",
 
     // Dashboard
@@ -399,6 +408,8 @@ export const translations: Record<Language, Record<string, string>> = {
     "profile.none_added": "None added",
     "logger.event_type": "Event type Selection",
     "logger.offer_amount": "Offer Amount (€) *",
+    "logger.event_date": "Event Date",
+    "logger.event_time": "Event Time",
     "logger.attach_doc": "Attach Document / Sheet",
     "logger.choose_file": "Choose File",
     "logger.no_file": "No file chosen",
@@ -441,12 +452,17 @@ export const translations: Record<Language, Record<string, string>> = {
 
     // Header Titles
     "header.active_node": "Aktívny uzol",
-    "header.title.dashboard": "Výkonnostný prehľad 2026",
+    "header.title.dashboard": "Výkonnostný prehľad",
     "header.title.leads": "Obchodná pipeline a leady",
     "header.title.clients": "Register a adresár klientov",
     "header.title.files": "Trezor dokumentov a súborov",
     "header.title.meetings": "Zasadačka a poznámky",
     "header.title.settings": "Systémové nastavenia a konfigurácia",
+    "header.title.tasks": "Úlohy a kalendár",
+    "header.title.projects": "Manažment projektov",
+    "header.title.email": "Emailová schránka",
+    "header.title.rag_ai": "AI agenti a znalostná báza",
+    "header.title.personal": "Osobné nastavenia",
     "header.search_placeholder": "Hľadať leady, klientov, dokumenty...",
     "header.drawer_preferences": "Vyberte predvoľby",
     "header.drawer_title": "Vyberte jazyk systému",
@@ -529,6 +545,9 @@ export const translations: Record<Language, Record<string, string>> = {
     "settings.danger.btn": "Reset Databázy Mockupov",
     "settings.general.system_name_desc": "Tento názov značky dynamicky aktualizuje všetky hlavičky loga bočného panela a názvy stránok.",
     "settings.general.system_lang_desc": "Vyberte predvolený jazykový profil pre celý systém. Zmeny sa prejavia okamžite.",
+    "settings.general.currency": "Mena",
+    "settings.general.currency_auto": "Automaticky (podľa regiónu)",
+    "settings.general.currency_desc": "Symbol meny zobrazovaný v prehľadoch, dopytoch a klientoch. Predvolene podľa regiónu, ale dá sa nastaviť samostatne.",
     "settings.general.db_title": "Databázové integrácie",
     "settings.general.db_host": "Hostiteľ databázy:",
     "settings.general.db_port": "Port uzla:",
@@ -569,7 +588,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "settings.managers.sim_btn": "Zaznamenať detaily simulovanej udalosti",
     "settings.managers.sim_details_prefix": "Akcia simulovaná manuálne v systémovej konzole pod profilom ",
     "settings.managers.form_title": "Vytvoriť nový používateľský účet",
-    "settings.managers.placeholder_new_password": "•••••••• (Predvolené: password)",
+    "settings.managers.placeholder_new_password": "•••••••• (povinné)",
     "settings.managers.lbl_role_assignment": "Priradenie prístupovej roly",
     "settings.managers.btn_provision": "Vytvoriť účet",
     "settings.rbac.title": "Matrica rolí a bezpečnostných oprávnení (RBAC)",
@@ -824,6 +843,8 @@ export const translations: Record<Language, Record<string, string>> = {
     "profile.none_added": "Nepridané",
     "logger.event_type": "Výber typu udalosti",
     "logger.offer_amount": "Suma ponuky (€) *",
+    "logger.event_date": "Dátum udalosti",
+    "logger.event_time": "Čas udalosti",
     "logger.attach_doc": "Priložiť dokument / list",
     "logger.choose_file": "Vybrať súbor",
     "logger.no_file": "Žiadny vybraný súbor",
@@ -866,12 +887,17 @@ export const translations: Record<Language, Record<string, string>> = {
 
     // Header Titles
     "header.active_node": "Aktív csomópont",
-    "header.title.dashboard": "Teljesítmény vezérlőpult 2026",
+    "header.title.dashboard": "Teljesítmény vezérlőpult",
     "header.title.leads": "Értékesítési folyamatok és lead-ek",
     "header.title.clients": "Ügyfelek regisztere és címtára",
     "header.title.files": "Biztonságos dokumentum- és fájltár",
     "header.title.meetings": "Tárgyaló és jegyzetek",
     "header.title.settings": "Rendszerbeállítások és konfiguráció",
+    "header.title.tasks": "Feladatok és naptár",
+    "header.title.projects": "Projektmenedzsment",
+    "header.title.email": "E-mail postafiók",
+    "header.title.rag_ai": "AI ügynökök és tudásbázis",
+    "header.title.personal": "Személyes beállítások",
     "header.search_placeholder": "Keresés a leadek, ügyfelek és dokumentumok között...",
     "header.drawer_preferences": "Válasszon beállításokat",
     "header.drawer_title": "Válasszon rendszer nyelvet",
@@ -954,6 +980,9 @@ export const translations: Record<Language, Record<string, string>> = {
     "settings.danger.btn": "Mockup Adatbázis Visszaállítása",
     "settings.general.system_name_desc": "Ez a márkanév dinamikusan frissíti a menüsor fejlécét és az oldal címét.",
     "settings.general.system_lang_desc": "Válassza ki a rendszer alapértelmezett nyelvi profilját. A változások azonnal életbe lépnek.",
+    "settings.general.currency": "Pénznem",
+    "settings.general.currency_auto": "Automatikus (régió szerint)",
+    "settings.general.currency_desc": "A műszerfalakon, érdeklődőknél és ügyfeleknél megjelenő pénznem jele. Alapértelmezetten a régió alapján, de külön is beállítható.",
     "settings.general.db_title": "Adatbázis integrációk",
     "settings.general.db_host": "Adatbázis kiszolgáló:",
     "settings.general.db_port": "Port:",
@@ -994,7 +1023,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "settings.managers.sim_btn": "Szimulált esemény rögzítése",
     "settings.managers.sim_details_prefix": "Manuálisan szimulált művelet a rendszerkonzolon a következő profil alatt: ",
     "settings.managers.form_title": "Új felhasználói fiók létrehozása",
-    "settings.managers.placeholder_new_password": "•••••••• (Alapértelmezett: password)",
+    "settings.managers.placeholder_new_password": "•••••••• (kötelező)",
     "settings.managers.lbl_role_assignment": "Hozzáférési szerepkör kiosztása",
     "settings.managers.btn_provision": "Fiók létrehozása",
     "settings.rbac.title": "Szerepkörök és biztonsági jogosultságok mátrixa (RBAC)",
@@ -1249,6 +1278,8 @@ export const translations: Record<Language, Record<string, string>> = {
     "profile.none_added": "Nincs megadva",
     "logger.event_type": "Eseménytípus kiválasztása",
     "logger.offer_amount": "Ajánlat összege (€) *",
+    "logger.event_date": "Esemény dátuma",
+    "logger.event_time": "Esemény időpontja",
     "logger.attach_doc": "Dokumentum / lap csatolása",
     "logger.choose_file": "Fájl kiválasztása",
     "logger.no_file": "Nincs kiválasztott fájl",
@@ -1280,4 +1311,21 @@ export const translations: Record<Language, Record<string, string>> = {
 
 export const getTranslation = (lang: Language, key: string): string => {
   return translations[lang]?.[key] || translations["en"]?.[key] || key;
+};
+
+/**
+ * Active UI language for the few components that cannot receive it as a prop:
+ * the ErrorBoundary (it wraps <App/>, so it is outside every provider) and
+ * leaf inputs reused across unrelated trees. App mirrors the language into
+ * localStorage on every change; the browser locale covers the first render.
+ */
+export const getStoredLanguage = (): Language => {
+  try {
+    const stored = localStorage.getItem("crm_language");
+    if (stored === "en" || stored === "sk" || stored === "hu") return stored;
+  } catch (e) {
+    // localStorage throws in private mode — fall through to the browser locale.
+  }
+  const locale = (typeof navigator !== "undefined" ? navigator.language || "" : "").slice(0, 2).toLowerCase();
+  return locale === "sk" ? "sk" : locale === "hu" ? "hu" : "en";
 };
