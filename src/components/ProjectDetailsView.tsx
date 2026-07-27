@@ -3,6 +3,7 @@ import * as Icons from "lucide-react";
 import { Plus, Trash2, Upload, FileText, ArrowLeft, Mail, Phone } from "lucide-react";
 import type { Project, ProjectType, Lead, UserProfile, ProjectTimelineEvent, ProjectGanttRow } from "../types";
 import type { Language } from "../utils/translations";
+import { nowLocalStamp } from "../utils/localTime";
 
 const SearchableClientSelect: React.FC<{
   leads: Lead[];
@@ -263,7 +264,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       id: "pte-" + Date.now(),
       type: isCustom ? "custom" : newTeType,
       eventType: isCustom ? newTeType : undefined,
-      timestamp: newTeTime || new Date().toISOString().slice(0, 16).replace("T", " "),
+      timestamp: newTeTime || nowLocalStamp(),
       title: newTeTitle.trim(),
       content: newTeContent.trim(),
       data: timelineEventData
@@ -835,7 +836,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     <input
                       value={newTeTitle}
                       onChange={e => setNewTeTitle(e.target.value)}
-                      placeholder="e.g. Site survey completed"
+                      placeholder={t("e.g. Site survey completed", "napr. Zameranie dokončené", "pl. Helyszíni felmérés kész")}
                       className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white"
                     />
                   </div>
@@ -1206,7 +1207,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     <input
                       value={newGeTitle}
                       onChange={e => setNewGeTitle(e.target.value)}
-                      placeholder="e.g. Slab fabrication"
+                      placeholder={t("e.g. Slab fabrication", "napr. Výroba dosiek", "pl. Lapok gyártása")}
                       className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white font-bold text-slate-800"
                     />
                   </div>
@@ -1316,7 +1317,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                     setGantt(prev => prev.map(r => r.id === row.id ? { ...r, title: val } : r));
                                   }}
                                   className="bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-indigo-500/30 rounded px-1.5 py-0.5 flex-1 min-w-0 truncate text-slate-800 font-bold"
-                                  placeholder="Task name"
+                                  placeholder={t("Task name", "Názov úlohy", "Feladat neve")}
                                 />
                               </div>
                               <div className="flex items-center gap-1 shrink-0 ml-2">
@@ -1476,7 +1477,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                   <div className="absolute h-full flex items-center left-3">
                                     <div className="h-2 w-2 rounded-full bg-amber-400 shrink-0 animate-pulse" />
                                     {initials && (
-                                      <div className="h-5 w-5 rounded-full bg-slate-350 shrink-0 flex items-center justify-center text-[8.5px] font-black text-white ml-2 shadow-sm">
+                                      <div className="h-5 w-5 rounded-full bg-slate-500 shrink-0 flex items-center justify-center text-[8.5px] font-black text-white ml-2 shadow-sm">
                                         {initials}
                                       </div>
                                     )}

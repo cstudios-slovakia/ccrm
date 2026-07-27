@@ -17,6 +17,8 @@ Stores user profile information and credentials.
 * `avatar` VARCHAR(255)
 * `created_at` TIMESTAMP
 * `updated_at` TIMESTAMP
+
+Fresh and demo installations seed SYSTEM_LANGUAGE, LEAD_STATES, LEAD_STATE_COLORS, and LEAD_STAGE_GROUPS together. Pipeline-stage labels use the language selected in the installer (en, sk, or hu).
 * `metadata_json` LONGTEXT (e.g., user preferences, email connection status)
 
 ### `permissions`
@@ -110,16 +112,21 @@ General system and operational tasks.
 * `priority` VARCHAR(20) (low, medium, high)
 * `start_date` DATE
 * `deadline` DATE
-* `owner` VARCHAR(100) (creator/assigner)
+* `deadline_time` VARCHAR(5) (HH:MM)
+* `owner` VARCHAR(100) (primary assignee; empty when unassigned)
+* `created_by` VARCHAR(100) (immutable creator name; nullable for legacy rows)
 * `related_lead_id` VARCHAR(50)
+* `is_locking` TINYINT(1)
+* `archived` TINYINT(1)
 * `created_at` TIMESTAMP
 * `updated_at` TIMESTAMP
 
 ### `task_assignees`
 Junction table mapping users to tasks.
 * `task_id` VARCHAR(50)
-* `user_email` VARCHAR(255)
-* Primary Key: (`task_id`, `user_email`)
+* `user_name` VARCHAR(100)
+* Primary Key: (`task_id`, `user_name`)
+* `task_id` references `tasks.id` with cascading deletion.
 
 ---
 

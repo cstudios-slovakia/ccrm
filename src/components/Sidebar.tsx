@@ -142,12 +142,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const handleCreateDashboard = () => {
     if (!dashName.trim()) {
-      alert("Name is required");
+      alert(t("Name is required", "Názov je povinný", "A név megadása kötelező"));
       return;
     }
     const safeId = dashName.toLowerCase().replace(/[^a-z0-9]/g, "_").replace(/^[^a-z]+/, "") || "dash_" + Date.now();
     if ((customDashboards || []).some(d => d.id === safeId)) {
-      alert("A dashboard with this name/id already exists.");
+      alert(t("A dashboard with this name/id already exists.", "Nástenka s týmto názvom/ID už existuje.", "Ilyen nevű/azonosítójú irányítópult már létezik."));
       return;
     }
 
@@ -446,7 +446,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
             {!isCollapsed && (
               <div className="flex flex-col animate-in fade-in duration-300">
-                <span className="font-heading font-bold text-sm leading-none bg-gradient-to-r from-slate-800 to-slate-950 bg-clip-text text-transparent truncate max-w-[150px]">
+                {/* leading-snug, not leading-none: `truncate` clips anything
+                    growing past the line box, which eats accents (Laminám) */}
+                <span className="font-heading font-bold text-sm leading-snug bg-gradient-to-r from-slate-800 to-slate-950 bg-clip-text text-transparent truncate max-w-[150px]">
                   {systemName}
                 </span>
                 <span className="text-[10px] text-slate-400 tracking-wider font-semibold uppercase mt-0.5">
@@ -1088,7 +1090,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <button
                 type="button"
                 onClick={handleCreateDashboard}
-                className="flex-1 px-4 py-3 bg-indigo-600 hover:bg-indigo-750 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-md shadow-indigo-600/10 cursor-pointer"
+                className="flex-1 px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-md shadow-indigo-600/10 cursor-pointer"
               >
                 {t("Create", "Vytvoriť", "Létrehozás")}
               </button>

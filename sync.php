@@ -111,6 +111,16 @@ function ccrm_sanitize_db_text($str, $maxBytes) {
     return $str;
 }
 
+// Narrow a client-supplied date to the `Y-m-d` form a MySQL DATE column accepts.
+// Older/other clients may send a full ISO timestamp ("2026-05-15T00:00:00.000Z");
+// binding that raises SQLSTATE 22007 and rolls back the entire sync transaction,
+// so every later push fails too until the offending record is repaired.
+function ccrm_date_only($val) {
+    if ($val === null || $val === '') return null;
+    if (!is_string($val)) $val = (string) $val;
+    return preg_match('/^(\d{4}-\d{2}-\d{2})/', $val, $m) ? $m[1] : null;
+}
+
 // Helper to check if an incoming lead payload is identical to its database record
 function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
     if (!$db) return false;
@@ -150,7 +160,7 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
         // 'financial_summary' is deliberately excluded: it is server-owned, so a
         // lead whose only difference is the server-generated report still counts
         // as identical and is skipped (no rewrite, no needless report re-spawn).
-        'created_at' => $inc['createdAt'] ?? null
+        'created_at' => ccrm_date_only($inc['createdAt'] ?? null)
     ];
     
     foreach ($fields as $col => $val) {
@@ -357,6 +367,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'settings' => [
                     'systemName' => $settings['SYSTEM_NAME'] ?? 'CCRM',
                     'systemLanguage' => $settings['SYSTEM_LANGUAGE'] ?? 'sk',
+                    'systemCurrency' => $settings['SYSTEM_CURRENCY'] ?? '',
                 ]
             ]);
             exit;
@@ -486,8 +497,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'deadlineTime' => $row['deadline_time'] ?? null,
             'status' => $row['status'],
             'owner' => $row['owner'],
+            'createdBy' => $row['created_by'] ?? null,
             'relatedLeadId' => $row['related_lead_id'] ?? null,
             'isLocking' => intval($row['is_locking']) === 1,
+            'archived' => intval($row['archived'] ?? 0) === 1,
             'assignedUsers' => $assignedUsers
         ];
     }
@@ -548,18 +561,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         ];
     }
 
-    // Reconstruct settings from system_settings DB table
-    $leadStates = isset($settings['LEAD_STATES']) ? json_decode($settings['LEAD_STATES'], true) : ["new", "contacted", "offer sent", "accepted", "rejected"];
-    $leadSources = isset($settings['LEAD_SOURCES']) ? json_decode($settings['LEAD_SOURCES'], true) : ["showroom", "facebook", "instagram", "website"];
-    $leadCategories = isset($settings['LEAD_CATEGORIES']) ? json_decode($settings['LEAD_CATEGORIES'], true) : ["Kitchen Countertops", "Flooring Tiles", "Bathroom Renovation", "Granite Slabs", "Plumbing Services", "Custom Masonry"];
+    // Reconstruct settings from system_settings DB table. Anything not stored yet
+    // falls back to the defaults for the installation language, so an unseeded
+    // list never shows up as English in a Slovak/Hungarian workspace.
+    $defaultLists = ccrm_default_lists($settings['SYSTEM_LANGUAGE'] ?? 'sk');
+    $leadStates = isset($settings['LEAD_STATES']) ? json_decode($settings['LEAD_STATES'], true) : $defaultLists['leadStates'];
+    $leadSources = isset($settings['LEAD_SOURCES']) ? json_decode($settings['LEAD_SOURCES'], true) : $defaultLists['leadSources'];
+    $leadCategories = isset($settings['LEAD_CATEGORIES']) ? json_decode($settings['LEAD_CATEGORIES'], true) : $defaultLists['leadCategories'];
     $leadStateColors = isset($settings['LEAD_STATE_COLORS']) ? json_decode($settings['LEAD_STATE_COLORS'], true) : [];
     $leadSourceColors = isset($settings['LEAD_SOURCE_COLORS']) ? json_decode($settings['LEAD_SOURCE_COLORS'], true) : [];
     $leadCategoryColors = isset($settings['LEAD_CATEGORY_COLORS']) ? json_decode($settings['LEAD_CATEGORY_COLORS'], true) : [];
     $leadStageGroups = isset($settings['LEAD_STAGE_GROUPS']) ? json_decode($settings['LEAD_STAGE_GROUPS'], true) : [];
     $leadStateParents = isset($settings['LEAD_STATE_PARENTS']) ? json_decode($settings['LEAD_STATE_PARENTS'], true) : (object)[];
     $leadStateFollowUp = isset($settings['LEAD_STATE_FOLLOWUP']) ? json_decode($settings['LEAD_STATE_FOLLOWUP'], true) : (object)[];
-    $taskStates = isset($settings['TASK_STATES']) ? json_decode($settings['TASK_STATES'], true) : ["New", "In progress", "Blocked", "Done"];
+    $taskStates = isset($settings['TASK_STATES']) ? json_decode($settings['TASK_STATES'], true) : $defaultLists['taskStates'];
     $taskStateColors = isset($settings['TASK_STATE_COLORS']) ? json_decode($settings['TASK_STATE_COLORS'], true) : [];
+    // An empty colour map would make every task state render in the same grey.
+    // Fall back to the workflow palette keyed by whatever states are configured.
+    if (!is_array($taskStateColors) || !$taskStateColors) {
+        $taskStateColors = ccrm_default_task_state_colors(is_array($taskStates) ? $taskStates : []);
+    }
     $integrationsConfig = isset($settings['INTEGRATIONS_CONFIG']) ? json_decode($settings['INTEGRATIONS_CONFIG'], true) : (object)[];
     // SECURITY: never send real secret values to the browser — mask them. The
     // frontend only needs to know a secret is set (e.g. "OpenAI configured");
@@ -876,6 +897,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'settings' => [
             'systemName' => $settings['SYSTEM_NAME'] ?? 'CCRM',
             'systemLanguage' => $settings['SYSTEM_LANGUAGE'] ?? 'sk',
+            'systemCurrency' => $settings['SYSTEM_CURRENCY'] ?? '',
             'leadStates' => $leadStates,
             'leadSources' => $leadSources,
             'leadCategories' => $leadCategories,
@@ -936,6 +958,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // newer records. Null for legacy clients → unconditional delete (old behaviour).
     $baseSyncedAt = (isset($payload['baseSyncedAt']) && is_string($payload['baseSyncedAt']) && $payload['baseSyncedAt'] !== '')
         ? $payload['baseSyncedAt'] : null;
+
+    $sessionNameStmt = $pdo->prepare("SELECT `name` FROM `users` WHERE `id` = ? LIMIT 1");
+    $sessionNameStmt->execute([$sessionUser['id']]);
+    $sessionUserName = (string)($sessionNameStmt->fetchColumn() ?: '');
 
     try {
         // Ensure dynamic unified-entry table schemas BEFORE opening the
@@ -1164,6 +1190,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $settingsList = [
                 'SYSTEM_NAME' => $s['systemName'] ?? 'CCRM',
                 'SYSTEM_LANGUAGE' => $s['systemLanguage'] ?? 'sk',
+                'SYSTEM_CURRENCY' => $s['systemCurrency'] ?? '',
                 'LEAD_STATES' => json_encode($s['leadStates'] ?? []),
                 'LEAD_SOURCES' => json_encode($s['leadSources'] ?? []),
                 'LEAD_CATEGORIES' => json_encode($s['leadCategories'] ?? []),
@@ -1574,7 +1601,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $l['district'] ?? null,
                     $l['financialSummary'] ?? null,
                     isset($l['vatValidationResult']) ? json_encode($l['vatValidationResult']) : null,
-                    $l['createdAt'] ?? date('Y-m-d H:i:s'),
+                    ccrm_date_only($l['createdAt'] ?? null) ?? date('Y-m-d'),
                     (isset($l['followUps']) && !empty($l['followUps'])) ? json_encode($l['followUps']) : null
                 ]);
 
@@ -1699,7 +1726,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingTaskIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedTaskIds = [];
 
-            $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `related_lead_id`, `is_locking`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `is_locking` = VALUES(`is_locking`)");
+            $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `is_locking`, `archived`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`)");
 
             foreach ($payload['tasks'] as $t) {
                 // Skip malformed items rather than aborting the whole sync.
@@ -1718,8 +1745,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     (isset($t['deadlineTime']) && $t['deadlineTime'] !== '') ? $t['deadlineTime'] : null,
                     $t['status'] ?? 'todo',
                     $t['owner'],
+                    $sessionUserName !== '' ? $sessionUserName : null,
                     $t['relatedLeadId'] ?? null,
-                    ($t['isLocking'] ?? false) ? 1 : 0
+                    ($t['isLocking'] ?? false) ? 1 : 0,
+                    ($t['archived'] ?? false) ? 1 : 0
                 ]);
                 $processedTaskIds[] = $taskId;
 
@@ -1735,9 +1764,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            // Perform task deletes
-            $tasksToDelete = array_diff($existingTaskIds, $processedTaskIds);
-            ccrm_delete_omitted($pdo, 'tasks', $tasksToDelete, $baseSyncedAt);
+            // Task deletion is intentionally not inferred from an omitted snapshot.
+            // It uses api/task.php so permission checks and server confirmation
+            // cannot be bypassed by a stale or incomplete client payload.
         }
 
         // 4.5. Synchronize Meeting Notes & meeting_tasks

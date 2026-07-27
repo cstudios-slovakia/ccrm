@@ -1,27 +1,34 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, lazy, Suspense } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
-import { Dashboard } from "./components/Dashboard";
-import { SettingsView } from "./components/SettingsView";
-import { LeadsDatagrid } from "./components/LeadsDatagrid";
-import { ClientsView } from "./components/ClientsView";
-import { FilesView } from "./components/FilesView";
 import { LoginView } from "./components/LoginView";
 import { TaskDashboardView } from "./components/TaskDashboardView";
-import { PersonalSettingsView } from "./components/PersonalSettingsView";
-import { EmailView } from "./components/EmailView";
-import { RagAiView } from "./components/RagAiView";
-import { ProjectsView } from "./components/ProjectsView";
 import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project } from "./types";
 import { VERSION } from "./utils/version";
-import { MeetingRoomView } from "./components/MeetingRoomView";
 import type { MeetingNote } from "./components/MeetingRoomView";
 import { getTranslation } from "./utils/translations";
+import { orderLeadStates } from "./utils/leadStates";
 import { InstallerWizard } from "./components/InstallerWizard";
 import { RefreshCw, AlertOctagon, Trash2, Copy } from "lucide-react";
-import { UnifiedEntryView } from "./components/UnifiedEntryView";
-import { DynamicDashboardView } from "./components/DynamicDashboardView";
 import { ShaderGradient, ShaderGradientCanvas } from "shadergradient";
+
+// Lazy-loaded: each is only needed once the user navigates to that specific
+// tab, so keeping them out of the eager import graph shrinks both the
+// production entry chunk and (more noticeably) Vite dev's cold-start
+// transform graph — TaskDashboardView (the default landing tab) and LoginView
+// stay eager since they're needed immediately.
+const Dashboard = lazy(() => import("./components/Dashboard").then(m => ({ default: m.Dashboard })));
+const SettingsView = lazy(() => import("./components/SettingsView").then(m => ({ default: m.SettingsView })));
+const LeadsDatagrid = lazy(() => import("./components/LeadsDatagrid").then(m => ({ default: m.LeadsDatagrid })));
+const ClientsView = lazy(() => import("./components/ClientsView").then(m => ({ default: m.ClientsView })));
+const FilesView = lazy(() => import("./components/FilesView").then(m => ({ default: m.FilesView })));
+const PersonalSettingsView = lazy(() => import("./components/PersonalSettingsView").then(m => ({ default: m.PersonalSettingsView })));
+const EmailView = lazy(() => import("./components/EmailView").then(m => ({ default: m.EmailView })));
+const RagAiView = lazy(() => import("./components/RagAiView").then(m => ({ default: m.RagAiView })));
+const ProjectsView = lazy(() => import("./components/ProjectsView").then(m => ({ default: m.ProjectsView })));
+const MeetingRoomView = lazy(() => import("./components/MeetingRoomView").then(m => ({ default: m.MeetingRoomView })));
+const UnifiedEntryView = lazy(() => import("./components/UnifiedEntryView").then(m => ({ default: m.UnifiedEntryView })));
+const DynamicDashboardView = lazy(() => import("./components/DynamicDashboardView").then(m => ({ default: m.DynamicDashboardView })));
 
 const ShaderGradientAny = ShaderGradient as any;
 
@@ -47,6 +54,13 @@ const computeSettingsSig = (o: any): string => JSON.stringify([
   normSettingVal(o?.leadCategories),
   o?.systemName ?? null,
   o?.systemLanguage ?? null,
+  // Empty string and "field absent" must hash identically: the server omits
+  // systemCurrency entirely, while local state defaults it to "". With `?? null`
+  // those differ ("" vs null), so the settings-sync effect saw a phantom diff and
+  // fired a push on every load — which 401'd on a dead session and produced the
+  // spurious "Re-saved your last change" toast. `|| null` collapses ""/null/absent
+  // to the same value so an unset currency never looks like an edit.
+  o?.systemCurrency || null,
   normSettingVal(o?.leadStateColors),
   normSettingVal(o?.leadSourceColors),
   normSettingVal(o?.leadCategoryColors),
@@ -56,9 +70,23 @@ const computeSettingsSig = (o: any): string => JSON.stringify([
   normSettingVal(o?.taskStates),
   normSettingVal(o?.taskStateColors),
 ]);
+// Signature of an entire sync.php push payload (minus baseSyncedAt, which is
+// just a concurrency token and changes on every request regardless of content).
+// Used to tell a genuine unsaved edit apart from an automatic background push
+// (e.g. the settings-resync effect) that happens to land after the session died.
+const computePushSig = (p: {
+  leads: unknown; tasks: unknown; users: unknown; roles: unknown;
+  meetingNotes: unknown; unifiedEntries: unknown; unifiedEntriesData: unknown;
+  customDashboards: unknown; projectTypes: unknown; projects: unknown; settings: any;
+}): string => JSON.stringify([
+  p.leads, p.tasks, p.users, p.roles, p.meetingNotes, p.unifiedEntries,
+  p.unifiedEntriesData, p.customDashboards, p.projectTypes, p.projects,
+  computeSettingsSig(p.settings),
+]);
 
 function App() {
   const activePushesRef = useRef(0);
+  const visiblePushesRef = useRef(0);
   const lastPushTimeRef = useRef(0);
   // Set when a push is rejected with 401 (session expired) so the unsaved
   // change can be replayed after the user re-authenticates.
@@ -92,7 +120,15 @@ function App() {
   // run" flag is not enough: the first run is often consumed by the pre-session
   // 401 bootstrap, before the real settings even arrive.)
   const lastSyncedSettingsSigRef = useRef<string | null>(null);
+  // Signature of the full push payload the server last confirmed (via a successful
+  // push or a fresh poll pull). A 401'd push only counts as a "lost" edit — worth
+  // alarming the user about and replaying after re-login — when its content
+  // actually diverges from this. With no confirmed baseline yet (e.g. before
+  // the initial authenticated sync), there is no evidence that a rejected
+  // background push represents a user edit, so it must stay silent.
+  const lastConfirmedPushSigRef = useRef<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isSyncIndicatorVisible, setIsSyncIndicatorVisible] = useState(false);
   const [isInstalled, setIsInstalled] = useState(true);
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [dbInfo, setDbInfo] = useState<{ host: string; port: string; name: string; user: string; type?: string } | null>(null);
@@ -134,6 +170,11 @@ function App() {
   const [systemName, setSystemName] = useState("CCRM");
   const [systemLanguage, setSystemLanguage] = useState<"en" | "sk" | "hu">("sk");
   const [userLanguage, setUserLanguage] = useState<"en" | "sk" | "hu">("sk");
+  // Same three-language shorthand every view uses for one-off copy that has no
+  // entry in translations.ts.
+  const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
+  // Empty string means "auto" — follow the region's currency (see currencyForRegion) until an admin overrides it.
+  const [systemCurrency, setSystemCurrency] = useState<string>("");
 
   // Meeting Room state
   const [meetingsAction, setMeetingsAction] = useState<"list" | "new">("list");
@@ -262,8 +303,10 @@ function App() {
     "showroom", "facebook", "instagram", "website"
   ]);
 
+  // Placeholders only — the real, language-aware lists are seeded at install
+  // (see ccrm_default_lists in api/schema.php) and arrive with the first sync.
   const [leadCategories, setLeadCategories] = useState<string[]>([
-    "Kitchen Countertops", "Flooring Tiles", "Bathroom Renovation", "Granite Slabs", "Plumbing Services", "Custom Masonry"
+    "Products", "Services"
   ]);
 
   const [leadStateColors, setLeadStateColors] = useState<Record<string, string>>({
@@ -282,12 +325,8 @@ function App() {
   });
 
   const [leadCategoryColors, setLeadCategoryColors] = useState<Record<string, string>>({
-    "Kitchen Countertops": "#f59e0b",
-    "Flooring Tiles": "#10b981",
-    "Bathroom Renovation": "#3b82f6",
-    "Granite Slabs": "#6366f1",
-    "Plumbing Services": "#0ea5e9",
-    "Custom Masonry": "#ec4899"
+    "Products": "#f59e0b",
+    "Services": "#10b981"
   });
 
   const [leadStageGroups, setLeadStageGroups] = useState<Record<string, "new" | "in_progress" | "closed">>({
@@ -299,6 +338,13 @@ function App() {
   });
 
   const [leadStateParents, setLeadStateParents] = useState<Record<string, string>>({});
+
+  // Pipeline order shown everywhere in the app — the raw `leadStates` array keeps
+  // insertion order, so it has to be sorted the way Settings lists the stages.
+  const orderedLeadStates = useMemo(
+    () => orderLeadStates(leadStates, leadStageGroups, leadStateParents),
+    [leadStates, leadStageGroups, leadStateParents],
+  );
 
   // Per-state flag: which lead states show a "Follow-up done" checkbox on the lead.
   // Keyed by lowercased state name (admin-configurable in Settings). Robust to
@@ -377,7 +423,7 @@ function App() {
   };
 
   const clearErrorLogs = async () => {
-    if (!confirm(userLanguage === "sk" ? "Naozaj chcete vymazať všetky chybové záznamy?" : "Are you sure you want to clear all error logs?")) {
+    if (!confirm(t("Are you sure you want to clear all error logs?", "Naozaj chcete vymazať všetky chybové záznamy?", "Biztosan törli az összes hibanaplót?"))) {
       return;
     }
     try {
@@ -386,7 +432,7 @@ function App() {
       if (data.success) {
         setErrorLogs([]);
         if (typeof (window as any).showToast === "function") {
-          (window as any).showToast(userLanguage === "sk" ? "Chybové záznamy boli vymazané." : "Error logs cleared.");
+          (window as any).showToast(t("Error logs cleared.", "Chybové záznamy boli vymazané.", "A hibanaplók törölve."));
         }
       }
     } catch (e) {
@@ -413,7 +459,7 @@ ${log.payload || ''}
 `;
     navigator.clipboard.writeText(text).then(() => {
       if (typeof (window as any).showToast === "function") {
-        (window as any).showToast(userLanguage === "sk" ? "Detaily boli skopírované!" : "Error details copied!");
+        (window as any).showToast(t("Error details copied!", "Detaily boli skopírované!", "A hiba részletei kimásolva!"));
       }
     });
   };
@@ -448,6 +494,17 @@ ${log.payload || ''}
     setUserLanguage(getUserLanguage(currentUser) || systemLanguage);
   }, [currentUser, systemLanguage]);
 
+  // Mirror the active language into localStorage. Components that render OUTSIDE
+  // the App tree — the ErrorBoundary that wraps it — have no other way to know
+  // which language to crash in.
+  useEffect(() => {
+    try {
+      localStorage.setItem("crm_language", userLanguage);
+    } catch (e) {
+      // Private-mode / quota failures must never break rendering.
+    }
+  }, [userLanguage]);
+
   // Change the active UI language and persist it as the user's personal preference in
   // their DB-backed metadata, so it survives refreshes, re-logins and other devices.
   // Falls back to just updating local state when no user is logged in (e.g. login screen).
@@ -472,16 +529,28 @@ ${log.payload || ''}
 
   // Dynamically update browser tab document title based on the active view and language preference
   useEffect(() => {
+    // Routes carry sub-paths and query strings (e.g. "settings/branding",
+    // "meetings/new?record=true") — strip them so the base view still resolves.
+    const baseTab = activeTab.split(/[/?]/)[0];
     let viewName = "";
-    if (activeTab.startsWith("client-")) {
-      const clientName = decodeURIComponent(activeTab.replace("client-", ""));
-      viewName = clientName;
-    } else if (activeTab.startsWith("lead-")) {
-      const leadId = activeTab.replace("lead-", "");
+    if (baseTab.startsWith("client-")) {
+      viewName = decodeURIComponent(baseTab.replace("client-", ""));
+    } else if (baseTab.startsWith("lead-")) {
+      const leadId = baseTab.replace("lead-", "");
       const targetLead = leads.find(l => String(l.id) === leadId);
       viewName = targetLead ? targetLead.name : "Lead";
+    } else if (baseTab.startsWith("user-")) {
+      viewName = decodeURIComponent(baseTab.replace("user-", ""));
+    } else if (baseTab.startsWith("dash_")) {
+      const dashId = baseTab.replace("dash_", "");
+      const dash = (customDashboards || []).find(d => String(d.id) === dashId);
+      viewName = dash ? dash.name : t("Dashboard", "Nástenka", "Irányítópult");
+    } else if (baseTab.startsWith("ue_")) {
+      const ueId = baseTab.replace("ue_", "");
+      const ue = unifiedEntries.find(u => String(u.id) === ueId);
+      viewName = ue ? ue.name : t("Records", "Záznamy", "Nyilvántartás");
     } else {
-      switch (activeTab) {
+      switch (baseTab) {
         case "leads":
           viewName = getTranslation(userLanguage, "sidebar.leads");
           break;
@@ -491,17 +560,58 @@ ${log.payload || ''}
         case "files":
           viewName = getTranslation(userLanguage, "sidebar.files");
           break;
+        case "meetings":
+          viewName = getTranslation(userLanguage, "sidebar.meetings");
+          break;
         case "settings":
           viewName = getTranslation(userLanguage, "sidebar.settings");
           break;
-        default:
+        case "overview":
           viewName = getTranslation(userLanguage, "sidebar.dashboard");
+          break;
+        case "tasks":
+          viewName = t("Tasks", "Úlohy", "Feladatok");
+          break;
+        case "projects":
+          viewName = t("Projects", "Projekty", "Projektek");
+          break;
+        case "email":
+          viewName = t("Mail Client", "Pošta", "Levelezés");
+          break;
+        case "rag_ai":
+          viewName = t("RAG AI Assistant", "RAG AI Asistent", "RAG AI Asszisztens");
+          break;
+        case "personal-settings":
+          viewName = t("Personal Settings", "Osobné nastavenia", "Személyes beállítások");
+          break;
+        case "dashboard":
+        default:
+          viewName = t("Task Dashboard", "Panel úloh", "Feladat Irányítópult");
           break;
       }
     }
-    
+
     document.title = `${viewName} | ${systemName}`;
-  }, [activeTab, systemName, userLanguage, leads]);
+  }, [activeTab, systemName, userLanguage, leads, customDashboards, unifiedEntries]);
+  const taskAccess = (() => {
+    if (!currentUser) {
+      return { view: false, create: false, edit: false, delete: false };
+    }
+    if (currentUser.role.toLowerCase() === "admin") {
+      return { view: true, create: true, edit: true, delete: true };
+    }
+    const role = roles.find((item) => item.name === currentUser.role);
+    const permissions: Partial<RolePermission["permissions"]> = role?.permissions || {};
+    const isProjectManager = currentUser.role.toLowerCase() === "project manager";
+    const allowed = (slug: string, projectManagerDefault = false) => {
+      if (Object.prototype.hasOwnProperty.call(permissions, slug)) {
+        return permissions[slug] === "edit" || permissions[slug] === "view";
+      }
+      return isProjectManager && projectManagerDefault;
+    };
+    return { view: allowed("tasks.view", true), create: allowed("tasks.create", true), edit: allowed("tasks.edit", true), delete: permissions["tasks.delete"] === "edit" };
+  })();
+
 
   // --- DYNAMICALLY DERIVED COMPATIBILITY PARAMETERS ---
   const projectManagers = users.map(u => u.name);
@@ -562,14 +672,20 @@ ${log.payload || ''}
     nextUnifiedEntriesData?: Record<string, UnifiedEntryRow[]>,
     nextCustomDashboards?: CustomDashboard[],
     nextProjectTypes?: ProjectType[],
-    nextProjects?: Project[]
+    nextProjects?: Project[],
+    options?: { showIndicator?: boolean }
   ): Promise<void> => {
     if (!isInstalled) return pushChainRef.current;
+    const shouldShowIndicator = options?.showIndicator !== false;
     // Queue this push behind any in-flight one. Chaining (rather than firing in
     // parallel) guarantees the server applies saves in the order they were made,
     // so a stale settings snapshot can never land after the fresh one.
     const doPush = async () => {
     setIsSyncing(true);
+    if (shouldShowIndicator) {
+      visiblePushesRef.current++;
+      setIsSyncIndicatorVisible(true);
+    }
     activePushesRef.current++;
     lastPushTimeRef.current = Date.now();
     const payload = {
@@ -587,6 +703,7 @@ ${log.payload || ''}
       settings: {
         systemName,
         systemLanguage,
+        systemCurrency,
         leadStates,
         leadSources,
         leadCategories,
@@ -608,14 +725,25 @@ ${log.payload || ''}
         body: JSON.stringify(payload)
       });
       if (res.status === 401) {
-        // The mutation did not persist. Remember it so it is replayed from the
-        // latest state refs once the user logs back in (see onLoginSuccess).
-        pendingPushRef.current = true;
         setCurrentUser(null);
-        if (typeof (window as any).showToast === "function") {
-          (window as any).showToast("Session expired. Please log in again — your last change will be re-saved.");
+        // Only treat this as a lost edit worth replaying after re-login if the
+        // payload actually diverges from what
+        // the server last confirmed. Otherwise this was an automatic background
+        // push (e.g. the settings-resync effect) that happened to land after the
+        // session had already died — nothing was really lost, so stay quiet.
+        const pushSig = computePushSig(payload);
+        const isRealUnsavedChange =
+          lastConfirmedPushSigRef.current !== null &&
+          pushSig !== lastConfirmedPushSigRef.current;
+        if (isRealUnsavedChange) {
+          // The mutation did not persist. Remember it so it is replayed from the
+          // latest state refs once the user logs back in (see onLoginSuccess).
+          pendingPushRef.current = true;
         }
       } else if (res.ok) {
+        // The server now holds this exact payload — remember it so a later 401
+        // can tell a genuine unsaved edit apart from an echoed no-op push.
+        lastConfirmedPushSigRef.current = computePushSig(payload);
         // Advance our snapshot clock so a delete right after this edit is not
         // wrongly skipped by the server's concurrency guard.
         try {
@@ -644,12 +772,22 @@ ${log.payload || ''}
     } catch (err) {
       console.warn("Failed immediate push to sync.php", err);
       if (typeof (window as any).showToast === "function") {
-        (window as any).showToast("Change not saved — network error. Please check your connection and try again.");
+        (window as any).showToast(t(
+          "Change not saved — network error. Please check your connection and try again.",
+          "Zmena sa neuložila — chyba siete. Skontrolujte pripojenie a skúste to znova.",
+          "A módosítás nem mentődött el — hálózati hiba. Ellenőrizze a kapcsolatot, és próbálja újra."
+        ));
       }
     } finally {
       activePushesRef.current = Math.max(0, activePushesRef.current - 1);
       if (activePushesRef.current === 0) {
         setIsSyncing(false);
+      }
+      if (shouldShowIndicator) {
+        visiblePushesRef.current = Math.max(0, visiblePushesRef.current - 1);
+        if (visiblePushesRef.current === 0) {
+          setIsSyncIndicatorVisible(false);
+        }
       }
     }
     };
@@ -824,7 +962,7 @@ ${log.payload || ''}
       return u;
     }));
     if (typeof (window as any).showToast === "function") {
-      (window as any).showToast(userLanguage === "sk" ? "Predvolená úvodná stránka nastavená." : "Default landing page set.");
+      (window as any).showToast(t("Default landing page set.", "Predvolená úvodná stránka nastavená.", "Az alapértelmezett kezdőoldal beállítva."));
     }
   };
 
@@ -850,7 +988,7 @@ ${log.payload || ''}
   useEffect(() => {
     if (!isInstalled || !isInitialSyncResolved) return;
     const currentSig = computeSettingsSig({
-      leadStates, leadSources, leadCategories, systemName, systemLanguage,
+      leadStates, leadSources, leadCategories, systemName, systemLanguage, systemCurrency,
       leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups,
       leadStateParents, leadStateFollowUp, taskStates, taskStateColors,
     });
@@ -867,7 +1005,7 @@ ${log.payload || ''}
     // A real divergence → persist it, and remember the new baseline.
     lastSyncedSettingsSigRef.current = currentSig;
     pushStateToServer();
-  }, [leadStates, leadSources, leadCategories, systemName, systemLanguage, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, taskStates, taskStateColors, isInitialSyncResolved]);
+  }, [leadStates, leadSources, leadCategories, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, taskStates, taskStateColors, isInitialSyncResolved]);
 
   // Layout Hash change listener
   useEffect(() => {
@@ -947,6 +1085,7 @@ ${log.payload || ''}
         const s = data.settings;
         if (s.systemName && s.systemName !== systemName) setSystemName(s.systemName);
         if (s.systemLanguage && s.systemLanguage !== systemLanguage) setSystemLanguage(s.systemLanguage);
+        if (s.systemCurrency !== undefined && s.systemCurrency !== systemCurrency) setSystemCurrency(s.systemCurrency || "");
         setLeadStates((prev) => s.leadStates && JSON.stringify(s.leadStates) !== JSON.stringify(prev) ? s.leadStates : prev);
         setLeadSources((prev) => s.leadSources && JSON.stringify(s.leadSources) !== JSON.stringify(prev) ? s.leadSources : prev);
         setLeadCategories((prev) => s.leadCategories && JSON.stringify(s.leadCategories) !== JSON.stringify(prev) ? s.leadCategories : prev);
@@ -963,6 +1102,21 @@ ${log.payload || ''}
         // against this so applying server data never triggers an echo push.
         lastSyncedSettingsSigRef.current = computeSettingsSig(s);
       }
+      // Baseline for the "was this a real unsaved edit" check on a future 401
+      // (see pushStateToServer) — local state now matches what the server holds.
+      lastConfirmedPushSigRef.current = computePushSig({
+        leads: data.leads ?? leadsRef.current,
+        tasks: data.tasks ?? tasksRef.current,
+        users: data.users ?? usersRef.current,
+        roles: data.roles ?? rolesRef.current,
+        meetingNotes: data.meetingNotes ?? meetingNotesRef.current,
+        unifiedEntries: data.unifiedEntries ?? unifiedEntriesRef.current,
+        unifiedEntriesData: data.unifiedEntriesData ?? unifiedEntriesDataRef.current,
+        customDashboards: data.customDashboards ?? customDashboardsRef.current,
+        projectTypes: data.projectTypes ?? projectTypesRef.current,
+        projects: data.projects ?? projectsRef.current,
+        settings: data.settings ?? {},
+      });
     };
 
     const fetchFull = async () => {
@@ -1081,9 +1235,13 @@ ${log.payload || ''}
 
   // View router
   const renderWorkspaceView = () => {
+    // Raw currency code (or "" for "auto, follow region") — passed down so each
+    // view can resolve the symbol AND its correct prefix/suffix position using
+    // its own display language (see src/utils/currency.ts).
+    const currencyCode = systemCurrency || null;
     const activeUser = currentUser || users[0] || {
       id: "guest",
-      name: "Guest User",
+      name: t("Guest User", "Hosť", "Vendég"),
       email: "guest@example.com",
       role: "Viewer",
       color: "#6366f1",
@@ -1098,12 +1256,12 @@ ${log.payload || ''}
         <SettingsView 
           systemName={systemName} 
           setSystemName={setSystemName} 
-          leadStates={leadStates}
+          leadStates={orderedLeadStates}
           setLeadStates={setLeadStates}
           leadSources={leadSources}
           setLeadSources={setLeadSources}
           users={users}
-          setUsers={setUsers}
+          setUsers={updateUsersAndSync}
           roles={roles}
           setRoles={updateRolesAndSync}
           getPermission={getPermission}
@@ -1122,6 +1280,8 @@ ${log.payload || ''}
           setLeadStateFollowUp={setLeadStateFollowUp}
           systemLanguage={systemLanguage}
           setSystemLanguage={setSystemLanguage}
+          systemCurrency={systemCurrency}
+          setSystemCurrency={setSystemCurrency}
           userLanguage={userLanguage}
           initialSelectedUserName={username}
           leadStateParents={leadStateParents}
@@ -1151,6 +1311,7 @@ ${log.payload || ''}
               );
             }}
             systemLanguage={userLanguage}
+            currencyCode={currencyCode}
           />
         );
       }
@@ -1191,6 +1352,7 @@ ${log.payload || ''}
           integrationsConfig={integrationsConfig}
           taskStates={taskStates}
           systemName={systemName}
+          currencyCode={currencyCode}
         />
       );
     }
@@ -1202,7 +1364,7 @@ ${log.payload || ''}
           systemName={systemName}
           leads={leads}
           setLeads={updateLeadsAndSync}
-          leadStates={leadStates}
+          leadStates={orderedLeadStates}
           leadSources={leadSources}
           projectManagers={projectManagers}
           leadStateColors={leadStateColors}
@@ -1224,6 +1386,7 @@ ${log.payload || ''}
           setProjects={updateProjectsAndSync}
           setActiveTab={setActiveTab}
           leadStateFollowUp={leadStateFollowUp}
+          currencyCode={currencyCode}
         />
       );
     }
@@ -1236,7 +1399,7 @@ ${log.payload || ''}
         <SettingsView 
           systemName={systemName} 
           setSystemName={setSystemName} 
-          leadStates={leadStates}
+          leadStates={orderedLeadStates}
           setLeadStates={setLeadStates}
           leadSources={leadSources}
           setLeadSources={setLeadSources}
@@ -1260,6 +1423,8 @@ ${log.payload || ''}
           setLeadStateFollowUp={setLeadStateFollowUp}
           systemLanguage={systemLanguage}
           setSystemLanguage={setSystemLanguage}
+          systemCurrency={systemCurrency}
+          setSystemCurrency={setSystemCurrency}
           userLanguage={userLanguage}
           leadStateParents={leadStateParents}
           setLeadStateParents={setLeadStateParents}
@@ -1292,7 +1457,7 @@ ${log.payload || ''}
             systemName={systemName}
             leads={leads}
             setLeads={updateLeadsAndSync}
-            leadStates={leadStates}
+            leadStates={orderedLeadStates}
             leadSources={leadSources}
             projectManagers={projectManagers}
             leadStateColors={leadStateColors}
@@ -1313,6 +1478,7 @@ ${log.payload || ''}
             setProjects={updateProjectsAndSync}
             setActiveTab={setActiveTab}
             leadStateFollowUp={leadStateFollowUp}
+            currencyCode={currencyCode}
           />
         );
       case "projects":
@@ -1343,11 +1509,12 @@ ${log.payload || ''}
             taskStates={taskStates}
             integrationsConfig={integrationsConfig}
             systemName={systemName}
+            currencyCode={currencyCode}
           />
         );
       case "files":
         return (
-          <FilesView leads={leads} setLeads={updateLeadsAndSync} systemLanguage={userLanguage} />
+          <FilesView leads={leads} setLeads={updateLeadsAndSync} systemLanguage={userLanguage} currencyCode={currencyCode} />
         );
       case "personal-settings":
         return (
@@ -1387,11 +1554,12 @@ ${log.payload || ''}
             leadSourceColors={leadSourceColors}
             leadCategoryColors={leadCategoryColors}
             leadStageGroups={leadStageGroups}
-            leadStates={leadStates}
+            leadStates={orderedLeadStates}
             leadStateColors={leadStateColors}
             systemLanguage={userLanguage}
             leadStateParents={leadStateParents}
             campaigns={integrationsConfig.campaigns}
+            currencyCode={currencyCode}
           />
         );
       case "rag_ai":
@@ -1403,6 +1571,7 @@ ${log.payload || ''}
           <MeetingRoomView 
             leads={leads}
             users={users}
+            currentUser={activeUser}
             systemLanguage={userLanguage}
             meetingNotes={meetingNotes}
             setMeetingNotes={updateMeetingNotesAndSync}
@@ -1425,6 +1594,7 @@ ${log.payload || ''}
             currentUser={activeUser}
             taskStates={taskStates}
             taskStateColors={taskStateColors}
+            taskAccess={taskAccess}
             autoOpenAddTask={autoOpenAddTask}
             setAutoOpenAddTask={setAutoOpenAddTask}
           />
@@ -1460,7 +1630,8 @@ ${log.payload || ''}
             content: "";
             position: absolute;
             border-radius: 50px;
-            box-shadow: 0 0 0 3px inset #6366f1;
+            box-shadow: 0 0 0 3px inset rgba(255,255,255,0.95);
+            filter: drop-shadow(0 1px 4px rgba(30,27,75,0.45));
             animation: l4 2.5s infinite;
           }
           .loader:after {
@@ -1540,11 +1711,11 @@ ${log.payload || ''}
             <div className="loader"></div>
           </div>
           
-          <h2 className="text-xl font-heading font-black tracking-widest text-slate-800 uppercase">
+          <h2 className="text-xl font-heading font-black tracking-widest text-white uppercase [text-shadow:0_2px_8px_rgba(30,27,75,0.55)]">
             CCRM
           </h2>
-          <p className="text-[10px] font-black text-slate-450 uppercase tracking-widest mt-3.5 animate-pulse">
-            Syncing database connection...
+          <p className="text-[10px] font-black text-white/90 uppercase tracking-widest mt-3.5 animate-pulse [text-shadow:0_1px_5px_rgba(30,27,75,0.6)]">
+            {t("Syncing database connection...", "Pripájam sa k databáze...", "Kapcsolódás az adatbázishoz...")}
           </p>
         </div>
       </div>
@@ -1553,7 +1724,7 @@ ${log.payload || ''}
 
   const displayUser = currentUser || users[0] || {
     id: "guest",
-    name: "Guest User",
+    name: t("Guest User", "Hosť", "Vendég"),
     email: "guest@example.com",
     role: "Viewer",
     color: "#6366f1",
@@ -1586,10 +1757,11 @@ ${log.payload || ''}
           if (pendingPushRef.current) {
             pendingPushRef.current = false;
             setTimeout(() => {
-              pushStateToServer();
-              if (typeof (window as any).showToast === "function") {
-                (window as any).showToast("Re-saved your last change.");
-              }
+              pushStateToServer(
+                undefined, undefined, undefined, undefined, undefined, undefined,
+                undefined, undefined, undefined, undefined, undefined,
+                { showIndicator: false }
+              );
             }, 0);
           }
           // Route the user to their chosen default landing page right after login
@@ -1610,7 +1782,7 @@ ${log.payload || ''}
       {/* Global save indicator — reassures the user their change is being saved
           and, together with the beforeunload guard, that they should not leave or
           reload the page until it disappears. */}
-      {isSyncing && (
+      {isSyncIndicatorVisible && (
         <div className="fixed bottom-5 right-5 z-[9999] flex items-center gap-2 px-3.5 py-2 rounded-full bg-slate-900/90 text-white shadow-lg backdrop-blur-sm animate-in fade-in slide-in-from-bottom duration-200 select-none">
           <span className="h-3.5 w-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" aria-hidden="true" />
           <span className="text-[11px] font-black uppercase tracking-wider">
@@ -1686,7 +1858,9 @@ ${log.payload || ''}
           
           <main className="flex-1 p-4 md:p-6 overflow-y-auto max-w-[1600px] mx-auto w-full relative flex flex-col justify-between">
             <div className="shrink-0 w-full">
-              {renderWorkspaceView()}
+              <Suspense fallback={<div className="w-full flex items-center justify-center py-24"><RefreshCw className="w-6 h-6 text-indigo-400 animate-spin" /></div>}>
+                {renderWorkspaceView()}
+              </Suspense>
             </div>
             <footer className="mt-12 pt-4 border-t border-slate-200/50 flex justify-between items-center text-[10px] text-slate-400 select-none font-semibold uppercase tracking-wider">
               <span>{systemName} CRM &bull; Active Node</span>
@@ -1734,7 +1908,7 @@ ${log.payload || ''}
             {/* Header */}
             <div className="flex items-center justify-between border-b border-slate-150 pb-3 shrink-0">
               <div className="min-w-0 pr-4">
-                <span className="text-[10px] font-black uppercase text-amber-700 tracking-wider">File Preview</span>
+                <span className="text-[10px] font-black uppercase text-amber-700 tracking-wider">{t("File Preview", "Náhľad súboru", "Fájl előnézet")}</span>
                 <h3 className="text-sm font-heading font-black uppercase tracking-tight truncate">{previewFile.name}</h3>
               </div>
               <div className="flex items-center gap-2">
@@ -1743,7 +1917,7 @@ ${log.payload || ''}
                   download={previewFile.name}
                   className="px-3 py-1.5 rounded-xl bg-amber-700 hover:bg-amber-600 border border-amber-800 text-white text-[10px] font-black uppercase flex items-center gap-1 transition-all"
                 >
-                  Download
+                  {t("Download", "Stiahnuť", "Letöltés")}
                 </a>
                 <button
                   type="button"
@@ -1785,8 +1959,8 @@ ${log.payload || ''}
                 return (
                   <div className="text-center p-8 text-slate-500">
                     <p className="text-3xl mb-2">📄</p>
-                    <p className="text-xs font-bold uppercase tracking-wider">Preview not supported for this file format.</p>
-                    <p className="text-[10px] text-slate-400 mt-1">Please use the Download button above to view it offline.</p>
+                    <p className="text-xs font-bold uppercase tracking-wider">{t("Preview not supported for this file format.", "Náhľad nie je podporovaný pre tento formát súboru.", "Ehhez a fájlformátumhoz nem érhető el előnézet.")}</p>
+                    <p className="text-[10px] text-slate-400 mt-1">{t("Please use the Download button above to view it offline.", "Použite tlačidlo Stiahnuť vyššie a otvorte súbor offline.", "A fenti Letöltés gombbal nyithatja meg offline.")}</p>
                   </div>
                 );
               })()}
@@ -1802,7 +1976,7 @@ ${log.payload || ''}
             <div className="flex items-center gap-1.5 text-red-650">
               <AlertOctagon className="h-4.5 w-4.5 text-red-550 animate-pulse" />
               <span className="font-heading font-extrabold text-slate-900 uppercase tracking-wider text-[10.5px]">
-                {userLanguage === "sk" ? "Chyby na pozadí" : "Background Errors"}
+                {t("Background Errors", "Chyby na pozadí", "Háttérhibák")}
               </span>
             </div>
             <div className="flex items-center gap-1">
@@ -1810,7 +1984,7 @@ ${log.payload || ''}
                 type="button"
                 onClick={fetchErrorLogs}
                 className="p-1.5 hover:bg-slate-200 text-slate-500 hover:text-slate-850 rounded-xl transition-all cursor-pointer"
-                title="Refresh"
+                title={t("Refresh", "Obnoviť", "Frissítés")}
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${isLoadingLogs ? 'animate-spin' : ''}`} />
               </button>
@@ -1818,7 +1992,7 @@ ${log.payload || ''}
                 type="button"
                 onClick={clearErrorLogs}
                 className="p-1.5 hover:bg-red-50 text-red-650 hover:text-red-800 rounded-xl transition-all cursor-pointer"
-                title="Clear All"
+                title={t("Clear All", "Vymazať všetko", "Összes törlése")}
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
@@ -1832,7 +2006,7 @@ ${log.payload || ''}
               </div>
             ) : errorLogs.length === 0 ? (
               <div className="text-center py-12 text-slate-400 font-bold text-[10.5px]">
-                {userLanguage === "sk" ? "Žiadne chyby na pozadí" : "No background errors"}
+                {t("No background errors", "Žiadne chyby na pozadí", "Nincsenek háttérhibák")}
               </div>
             ) : (
               errorLogs.map((log: any) => (
@@ -1870,7 +2044,7 @@ ${log.payload || ''}
               <div className="flex items-center gap-2 text-red-650">
                 <AlertOctagon className="h-5 w-5 shrink-0" />
                 <h3 className="font-heading font-extrabold text-slate-900 uppercase tracking-wider text-xs">
-                  {userLanguage === "sk" ? "Detail výnimky / chyby" : "Exception / Error Details"}
+                  {t("Exception / Error Details", "Detail výnimky / chyby", "Kivétel / hiba részletei")}
                 </h3>
               </div>
               <div className="flex items-center gap-2">
@@ -1880,7 +2054,7 @@ ${log.payload || ''}
                   className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 font-bold"
                 >
                   <Copy className="h-3.5 w-3.5" />
-                  {userLanguage === "sk" ? "Kopírovať" : "Copy"}
+                  {t("Copy", "Kopírovať", "Másolás")}
                 </button>
                 <button
                   type="button"
@@ -1894,21 +2068,21 @@ ${log.payload || ''}
             <div className="p-6 overflow-y-auto space-y-4 font-medium text-slate-750 text-xs">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-b border-slate-100 pb-4">
                 <div>
-                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{userLanguage === "sk" ? "Dátum a čas" : "Date & Time"}</span>
+                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Date & Time", "Dátum a čas", "Dátum és idő")}</span>
                   <span className="font-mono text-[10.5px] text-slate-700 font-bold">{selectedLog.created_at}</span>
                 </div>
                 <div>
-                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{userLanguage === "sk" ? "Metóda & URI" : "Method & URI"}</span>
+                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Method & URI", "Metóda a URI", "Metódus és URI")}</span>
                   <span className="font-mono text-[10.5px] text-slate-750 font-bold">{selectedLog.request_method} {selectedLog.request_uri}</span>
                 </div>
                 <div>
-                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{userLanguage === "sk" ? "Súbor a riadok" : "File & Line"}</span>
+                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("File & Line", "Súbor a riadok", "Fájl és sor")}</span>
                   <span className="font-mono text-[10.5px] text-slate-700 font-bold">{selectedLog.file ? `${selectedLog.file.split('/').pop()}:${selectedLog.line}` : 'N/A'}</span>
                 </div>
               </div>
 
               <div className="space-y-1">
-                <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{userLanguage === "sk" ? "Chybová správa" : "Error Message"}</span>
+                <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Error Message", "Chybová správa", "Hibaüzenet")}</span>
                 <div className="p-3 bg-red-50 text-red-800 rounded-xl font-mono text-[11px] font-bold border border-red-100 whitespace-pre-wrap leading-relaxed">
                   {selectedLog.message}
                 </div>
@@ -1916,7 +2090,7 @@ ${log.payload || ''}
 
               {selectedLog.file && (
                 <div className="space-y-1">
-                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{userLanguage === "sk" ? "Úplná cesta k súboru" : "Full File Path"}</span>
+                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Full File Path", "Úplná cesta k súboru", "Teljes fájlútvonal")}</span>
                   <div className="p-2.5 bg-slate-50 text-slate-600 rounded-xl font-mono text-[10.5px] border border-slate-150">
                     {selectedLog.file} (Line {selectedLog.line})
                   </div>
@@ -1925,7 +2099,7 @@ ${log.payload || ''}
 
               {selectedLog.trace && (
                 <div className="space-y-1">
-                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">Stack Trace</span>
+                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Stack Trace", "Výpis zásobníka", "Hívási verem")}</span>
                   <pre className="p-4 bg-slate-900 text-slate-100 rounded-2xl font-mono text-[10px] overflow-x-auto whitespace-pre leading-relaxed border border-slate-800 max-h-64">
                     {selectedLog.trace}
                   </pre>
@@ -1934,7 +2108,7 @@ ${log.payload || ''}
 
               {selectedLog.payload && (
                 <div className="space-y-1">
-                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">Request Payload</span>
+                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Request Payload", "Telo požiadavky", "Kérés tartalma")}</span>
                   <pre className="p-4 bg-slate-900 text-slate-100 rounded-2xl font-mono text-[10px] overflow-x-auto whitespace-pre leading-relaxed border border-slate-800 max-h-48">
                     {selectedLog.payload}
                   </pre>

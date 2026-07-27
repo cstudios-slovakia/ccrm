@@ -7,6 +7,8 @@ import type { Lead } from "../types";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { formatBytes } from "../utils/formatBytes";
+import { formatMoney } from "../utils/currency";
+import { nowLocalStamp } from "../utils/localTime";
 
 interface QueuedFile {
   id: string;
@@ -21,10 +23,12 @@ interface FilesViewProps {
   leads: Lead[];
   setLeads: (updater: Lead[] | ((prev: Lead[]) => Lead[])) => void;
   systemLanguage: Language;
+  currencyCode?: string | null;
 }
 
-export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLanguage }) => {
+export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLanguage, currencyCode }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
+  const money = (value: number, opts?: Intl.NumberFormatOptions) => formatMoney(value, currencyCode, systemLanguage, opts);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<"all" | "offer" | "contract" | "invoice">("all");
   const [selectedClientFilter, setSelectedClientFilter] = useState("all");
@@ -244,7 +248,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
             return {
               id: eventId,
               type: "offer" as const,
-              timestamp: new Date().toISOString().replace("T", " ").substring(0, 16),
+              timestamp: nowLocalStamp(),
               title: eventTitle,
               content: finalContent,
               amount: isNaN(valNum) ? undefined : valNum,
@@ -275,7 +279,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
     } catch (err: any) {
       console.error(err);
       if (typeof (window as any).showToast === "function") {
-        (window as any).showToast(err.message || "Failed to upload files.");
+        (window as any).showToast(err.message || t("Failed to upload files.", "Nahranie súborov zlyhalo.", "A fájlok feltöltése sikertelen."));
       }
     } finally {
       setIsUploading(false);
@@ -326,7 +330,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
     } catch (err: any) {
       console.error(err);
       if (typeof (window as any).showToast === "function") {
-        (window as any).showToast(err.message || "Failed to delete file.");
+        (window as any).showToast(err.message || t("Failed to delete file.", "Vymazanie súboru zlyhalo.", "A fájl törlése sikertelen."));
       }
     }
   };
@@ -419,15 +423,12 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
     <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
       
       {/* Title Header */}
-      <div className="flex items-center justify-between border-b-2 border-slate-150 pb-4">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-amber-600 to-amber-700 text-white flex items-center justify-center shadow-lg shadow-amber-600/35 shrink-0 border-2 border-amber-800">
-            <FolderOpen className="h-5 w-5 animate-pulse" />
-          </div>
-          <div>
-            <h2 className="text-lg font-heading font-black text-slate-900 uppercase tracking-tight">{getTranslation(systemLanguage, "files.title")}</h2>
-            <p className="text-[10px] text-slate-400 font-extrabold uppercase mt-0.5">{getTranslation(systemLanguage, "files.subtitle")}</p>
-          </div>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-4">
+        <div className="flex flex-col">
+          <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+            <FolderOpen className="h-6 w-6 text-amber-600" /> {getTranslation(systemLanguage, "files.title")}
+          </h2>
+          <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">{getTranslation(systemLanguage, "files.subtitle")}</p>
         </div>
 
         {/* Upload Documents Trigger Button */}
@@ -465,10 +466,18 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
                     : "text-slate-550 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
                 }`}
               >
-                {type === "all" && <FolderOpen className="h-3.5 w-3.5" />}
-                {type === "offer" && <Euro className="h-3.5 w-3.5 text-emerald-500" />}
-                {type === "contract" && <Handshake className="h-3.5 w-3.5 text-blue-500" />}
-                {type === "invoice" && <Receipt className="h-3.5 w-3.5 text-rose-500" />}
+                {type === "all" && (
+                  <FolderOpen className={`h-3.5 w-3.5 ${selectedTypeFilter === type ? "text-white" : "text-slate-650"}`} />
+                )}
+                {type === "offer" && (
+                  <Euro className={`h-3.5 w-3.5 ${selectedTypeFilter === type ? "text-white" : "text-emerald-500"}`} />
+                )}
+                {type === "contract" && (
+                  <Handshake className={`h-3.5 w-3.5 ${selectedTypeFilter === type ? "text-white" : "text-blue-500"}`} />
+                )}
+                {type === "invoice" && (
+                  <Receipt className={`h-3.5 w-3.5 ${selectedTypeFilter === type ? "text-white" : "text-rose-500"}`} />
+                )}
                 <span>
                   {type === "all" && getTranslation(systemLanguage, "files.all")}
                   {type === "offer" && getTranslation(systemLanguage, "files.offers")}
@@ -593,7 +602,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
                       {/* Offer Value */}
                       <td className="py-3.5 px-4 font-heading font-black text-amber-800 text-xs">
                         {file.offerValue > 0 ? (
-                          <span>&euro; {file.offerValue.toLocaleString()}</span>
+                          <span>{money(file.offerValue)}</span>
                         ) : (
                           <span className="text-slate-350 italic">{t("None", "Žiadna", "Nincs")}</span>
                         )}
@@ -891,7 +900,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
                                 value={item.amount}
                                 onChange={(e) => handleQueueChange(item.id, "amount", e.target.value)}
                                 className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-[10px] font-bold focus:outline-none focus:border-amber-700"
-                                placeholder="e.g. 5200"
+                                placeholder={t("e.g. 5200", "napr. 5200", "pl. 5200")}
                               />
                             </div>
                           </div>
