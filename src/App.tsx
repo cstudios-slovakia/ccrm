@@ -147,25 +147,85 @@ function App() {
 
   const [activeTab, setActiveTab] = useState(getTabFromHash);
   const [isInitialSyncResolved, setIsInitialSyncResolved] = useState(false);
-  const [toast, setToast] = useState<{
+  type ToastPayload = {
+    // Identity, not the message text: two saves in a row raise the same wording,
+    // and matching on the text let the first toast's timer close the second one early.
+    id: number;
     message: string;
+    variant: "info" | "error" | "warning";
     action?: { label: string; onClick: () => void };
-  } | null>(null);
+  };
+  const [toast, setToast] = useState<ToastPayload | null>(null);
   const [previewFile, setPreviewFile] = useState<{ url: string; name: string } | null>(null);
+  const toastIdRef = useRef(0);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // A toast raised while a save is still in flight waits here instead of going on
+  // screen next to the "Saving…" pill — the two contradict each other, and users
+  // read "Ukladá sa…" and "…bol úspešne uložený!" side by side as a broken app.
+  // It is released the moment the save lands (see the flush effect below).
+  const pendingToastRef = useRef<ToastPayload | null>(null);
+  const pendingToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Puts a toast on screen and (re)arms its auto-dismiss timer. Only touches refs
+  // and setState, so the copy captured by the window.showToast installer stays valid.
+  const displayToast = (next: ToastPayload) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = null;
+    setToast(next);
+    // Toasts carrying an action stay until the user acts on them or dismisses them.
+    if (!next.action) {
+      toastTimerRef.current = setTimeout(() => {
+        toastTimerRef.current = null;
+        setToast(curr => (curr?.id === next.id ? null : curr));
+      }, 5000);
+    }
+  };
+
+  const flushPendingToast = () => {
+    const held = pendingToastRef.current;
+    if (pendingToastTimerRef.current) clearTimeout(pendingToastTimerRef.current);
+    pendingToastTimerRef.current = null;
+    if (!held) return;
+    pendingToastRef.current = null;
+    displayToast(held);
+  };
+  const flushPendingToastRef = useRef(flushPendingToast);
+  flushPendingToastRef.current = flushPendingToast;
+
+  // Release the held toast as soon as the save that suppressed it finishes, so the
+  // user reads one banner at a time: "Ukladá sa…" first, then "…bol úspešne uložený!".
+  useEffect(() => {
+    if (isSyncIndicatorVisible) return;
+    flushPendingToastRef.current();
+  }, [isSyncIndicatorVisible]);
 
   useEffect(() => {
     (window as any).previewFile = (url: string, name: string) => {
       setPreviewFile({ url, name });
     };
 
-    (window as any).showToast = (message: string, action?: { label: string; onClick: () => void }) => {
-      setToast({ message, action });
-      // Auto close after 5 seconds if no action is provided
-      if (!action) {
-        setTimeout(() => {
-          setToast(curr => curr?.message === message ? null : curr);
-        }, 5000);
+    (window as any).showToast = (
+      message: string,
+      actionOrVariant?: { label: string; onClick: () => void } | "error" | "warning"
+    ) => {
+      // A dozen call sites put a severity string in the second slot instead of an
+      // action. Taken literally that produced a toast with an empty action button
+      // that never auto-dismissed, so normalise the two shapes here.
+      const action = actionOrVariant && typeof actionOrVariant === "object" ? actionOrVariant : undefined;
+      const variant: ToastPayload["variant"] =
+        actionOrVariant === "error" || actionOrVariant === "warning" ? actionOrVariant : "info";
+      const next: ToastPayload = { id: ++toastIdRef.current, message, variant, action };
+      // visiblePushesRef is bumped the moment a save is queued (not when the request
+      // actually starts), because callers fire their success toast synchronously right
+      // after asking for the push — this check would otherwise always miss.
+      if (visiblePushesRef.current > 0) {
+        pendingToastRef.current = next;
+        if (pendingToastTimerRef.current) clearTimeout(pendingToastTimerRef.current);
+        // Safety valve: a stalled or very slow push must never swallow the message.
+        pendingToastTimerRef.current = setTimeout(() => flushPendingToastRef.current(), 4000);
+        return;
       }
+      displayToast(next);
     };
   }, []);
   const [systemName, setSystemName] = useState("CCRM");
@@ -678,15 +738,18 @@ ${log.payload || ''}
   ): Promise<void> => {
     if (!isInstalled || !currentUser || !isInitialSyncResolved) return pushChainRef.current;
     const shouldShowIndicator = options?.showIndicator !== false;
+    if (shouldShowIndicator) {
+      // Counted here rather than inside doPush: the change is already unsaved the
+      // instant it is queued, and showToast reads this counter synchronously to hold
+      // "…saved!" messages back until the save really lands.
+      visiblePushesRef.current++;
+      setIsSyncIndicatorVisible(true);
+    }
     // Queue this push behind any in-flight one. Chaining (rather than firing in
     // parallel) guarantees the server applies saves in the order they were made,
     // so a stale settings snapshot can never land after the fresh one.
     const doPush = async () => {
     setIsSyncing(true);
-    if (shouldShowIndicator) {
-      visiblePushesRef.current++;
-      setIsSyncIndicatorVisible(true);
-    }
     activePushesRef.current++;
     lastPushTimeRef.current = Date.now();
     const payload = {
@@ -1784,18 +1847,6 @@ ${log.payload || ''}
   return (
     <div className="flex h-screen overflow-hidden relative font-sans antialiased text-slate-800 bg-slate-50/50">
 
-      {/* Global save indicator — reassures the user their change is being saved
-          and, together with the beforeunload guard, that they should not leave or
-          reload the page until it disappears. */}
-      {isSyncIndicatorVisible && (
-        <div className="fixed bottom-5 right-5 z-[9999] flex items-center gap-2 px-3.5 py-2 rounded-full bg-slate-900/90 text-white shadow-lg backdrop-blur-sm animate-in fade-in slide-in-from-bottom duration-200 select-none">
-          <span className="h-3.5 w-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" aria-hidden="true" />
-          <span className="text-[11px] font-black uppercase tracking-wider">
-            {userLanguage === "sk" ? "Ukladá sa…" : userLanguage === "hu" ? "Mentés…" : "Saving…"}
-          </span>
-        </div>
-      )}
-
       {/* Blurred application background layout if not logged in */}
       <div className={`flex flex-1 overflow-hidden transition-all duration-500 ${!currentUser ? "filter blur-md pointer-events-none select-none" : ""}`}>
         {/* Sidebar navigation with role-gated settings visibility */}
@@ -1881,31 +1932,49 @@ ${log.payload || ''}
       
 
 
-      {/* Toast Notification Container */}
-      {toast && (
-        <div className="fixed bottom-6 right-6 z-[100] animate-in slide-in-from-bottom duration-300">
-          <div className="bg-slate-900 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-4 text-xs font-black uppercase tracking-wider border border-slate-800">
-            <span>{toast.message}</span>
-            {toast.action && (
-              <button
-                onClick={() => {
-                  toast.action?.onClick();
-                  setToast(null);
-                }}
-                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold cursor-pointer transition-all active:scale-95 text-[10px]"
-              >
-                {toast.action.label}
-              </button>
-            )}
-            <button 
-              onClick={() => setToast(null)}
-              className="text-slate-400 hover:text-white font-black ml-2 cursor-pointer"
-            >
-              ✕
-            </button>
+      {/* Bottom-right notification stack. The save indicator and the toast share one
+          column so they can never land on top of each other — they used to be two
+          independently positioned "fixed" banners 4px apart, which read as a single
+          garbled banner whenever both were up. */}
+      <div className="fixed bottom-6 right-6 z-[9999] flex flex-col items-end gap-2 pointer-events-none">
+        {/* Global save indicator — reassures the user their change is being saved
+            and, together with the beforeunload guard, that they should not leave or
+            reload the page until it disappears. */}
+        {isSyncIndicatorVisible && (
+          <div className="pointer-events-auto flex items-center gap-2 px-3.5 py-2 rounded-full bg-slate-900/90 text-white shadow-lg backdrop-blur-sm animate-in fade-in slide-in-from-bottom duration-200 select-none">
+            <span className="h-3.5 w-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" aria-hidden="true" />
+            <span className="text-[11px] font-black uppercase tracking-wider">
+              {userLanguage === "sk" ? "Ukladá sa…" : userLanguage === "hu" ? "Mentés…" : "Saving…"}
+            </span>
           </div>
-        </div>
-      )}
+        )}
+        {toast && (
+          <div className="pointer-events-auto animate-in slide-in-from-bottom duration-300">
+            <div className={`bg-slate-900 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-4 text-xs font-black uppercase tracking-wider border ${
+              toast.variant === "error" ? "border-rose-500/70" : toast.variant === "warning" ? "border-amber-500/70" : "border-slate-800"
+            }`}>
+              <span>{toast.message}</span>
+              {toast.action && (
+                <button
+                  onClick={() => {
+                    toast.action?.onClick();
+                    setToast(null);
+                  }}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold cursor-pointer transition-all active:scale-95 text-[10px]"
+                >
+                  {toast.action.label}
+                </button>
+              )}
+              <button
+                onClick={() => setToast(null)}
+                className="text-slate-400 hover:text-white font-black ml-2 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
       {/* Global File Preview Modal overlay */}
       {previewFile && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-300">
