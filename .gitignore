@@ -17,6 +17,7 @@ node_modules
 # index.html lives in dist/ and overwrites the root copy at publish time.
 # Everything else under dist/ (PHP copied from public/) and the published root /assets/
 # are regenerated locally and stay out of git.
+/.docs/
 /dist/*
 !/dist/index.html
 !/dist/assets/
