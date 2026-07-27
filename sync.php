@@ -2024,10 +2024,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $dashesToDelete = array_diff($existingDashIds, $processedDashIds);
             if (!empty($dashesToDelete)) {
-                $delDash = $pdo->prepare("DELETE FROM `custom_dashboards` WHERE `id` = ?");
-                foreach ($dashesToDelete as $did) {
-                    $delDash->execute([$did]);
-                }
+                ccrm_delete_omitted($pdo, 'custom_dashboards', $dashesToDelete, null);
             }
         }
 

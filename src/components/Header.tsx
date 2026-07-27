@@ -4,7 +4,6 @@ import { User, PencilLine, Mic, Plus, List, CheckSquare, Search, Mail, Database,
 import type { UserProfile } from "../types";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
-import { UpdateNotesModal } from "./UpdateNotesModal";
 import type { UpdateEntry } from "./UpdateNotesModal";
 
 interface HeaderProps {
@@ -18,9 +17,11 @@ interface HeaderProps {
   onOpenPersonalSettings: () => void;
   onNavigateMeetings?: (action: "list" | "new") => void;
   onAddTask?: () => void;
+  onNavigateUpdates?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
+  activeTab,
   systemName,
   currentUser,
   onLogout,
@@ -29,7 +30,8 @@ export const Header: React.FC<HeaderProps> = ({
   isDemoMode,
   onOpenPersonalSettings,
   onNavigateMeetings,
-  onAddTask
+  onAddTask,
+  onNavigateUpdates
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
   const [isProfileOpen, setIsProfileOpen] = React.useState(false);
@@ -39,7 +41,6 @@ export const Header: React.FC<HeaderProps> = ({
   const meetingsDropdownRef = React.useRef<HTMLDivElement>(null);
 
   // Update notes states
-  const [isUpdatesOpen, setIsUpdatesOpen] = useState(false);
   const [updatesList, setUpdatesList] = useState<UpdateEntry[]>([]);
   const [hasNewUpdate, setHasNewUpdate] = useState(false);
 
@@ -57,7 +58,7 @@ export const Header: React.FC<HeaderProps> = ({
               contentMatrix {
                 __typename
                 ... on textblock_Entry {
-                  text
+                  text { html }
                 }
                 ... on image_Entry {
                   image {
@@ -66,7 +67,7 @@ export const Header: React.FC<HeaderProps> = ({
                   }
                 }
                 ... on imageWithText_Entry {
-                  text
+                  text { html }
                   image {
                     url
                     title
@@ -79,7 +80,7 @@ export const Header: React.FC<HeaderProps> = ({
         }
       `;
       try {
-        const res = await fetch("https://ccrm.softwaresolutions.sk/api", {
+        const res = await fetch("https://ccrm.softwaresolutions.sk/index.php?action=graphql/api", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -128,7 +129,9 @@ export const Header: React.FC<HeaderProps> = ({
   }, [systemLanguage]);
 
   const handleOpenUpdates = () => {
-    setIsUpdatesOpen(true);
+    if (onNavigateUpdates) {
+      onNavigateUpdates();
+    }
     if (updatesList.length > 0) {
       localStorage.setItem("ccrm_seen_update_id", updatesList[0].id);
       setHasNewUpdate(false);
@@ -517,16 +520,16 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={handleOpenUpdates}
               className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-colors shadow-sm cursor-pointer relative ${
-                isUpdatesOpen 
+                activeTab === "updates" 
                   ? "bg-[#0b1329] border-[#0b1329] text-white" 
                   : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-350 hover:bg-slate-50"
               }`}
               title={systemLanguage === "sk" ? "Aktualizácie a novinky" : systemLanguage === "hu" ? "Frissítések és hírek" : "Updates & News"}
             >
-              <Sparkles className={`h-5 w-5 ${isUpdatesOpen ? "text-white" : "text-amber-500"}`} />
+              <Sparkles className="h-5 w-5 text-amber-500" />
               {hasNewUpdate && (
                 <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-450 bg-rose-400 opacity-75"></span>
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
                 </span>
               )}
@@ -534,13 +537,6 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         )}
 
-        {/* Update Notes Modal */}
-        <UpdateNotesModal
-          isOpen={isUpdatesOpen}
-          onClose={() => setIsUpdatesOpen(false)}
-          updates={updatesList}
-          systemLanguage={systemLanguage}
-        />
 
         {/* User Account Trigger Button */}
         <div>

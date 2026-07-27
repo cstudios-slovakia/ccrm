@@ -29,6 +29,7 @@ const ProjectsView = lazy(() => import("./components/ProjectsView").then(m => ({
 const MeetingRoomView = lazy(() => import("./components/MeetingRoomView").then(m => ({ default: m.MeetingRoomView })));
 const UnifiedEntryView = lazy(() => import("./components/UnifiedEntryView").then(m => ({ default: m.UnifiedEntryView })));
 const DynamicDashboardView = lazy(() => import("./components/DynamicDashboardView").then(m => ({ default: m.DynamicDashboardView })));
+const UpdateNotesView = lazy(() => import("./components/UpdateNotesView").then(m => ({ default: m.UpdateNotesView })));
 
 const ShaderGradientAny = ShaderGradient as any;
 
@@ -140,7 +141,7 @@ function App() {
     if (hashLower.startsWith("client-") || hashLower.startsWith("lead-") || hashLower.startsWith("user-") || hashLower.startsWith("ue_") || hashLower.startsWith("dash_") || hashLower.startsWith("settings")) {
       return rawHash; // Keep case sensitivity and allow sub-tabs for settings
     }
-    const validTabs = ["dashboard", "overview", "leads", "clients", "tasks", "files", "personal-settings", "email", "rag_ai", "meetings", "projects"];
+    const validTabs = ["dashboard", "overview", "leads", "clients", "tasks", "files", "personal-settings", "email", "rag_ai", "meetings", "projects", "updates"];
     return validTabs.includes(hashLower) ? hashLower : "dashboard";
   };
 
@@ -675,7 +676,7 @@ ${log.payload || ''}
     nextProjects?: Project[],
     options?: { showIndicator?: boolean }
   ): Promise<void> => {
-    if (!isInstalled) return pushChainRef.current;
+    if (!isInstalled || !currentUser || !isInitialSyncResolved) return pushChainRef.current;
     const shouldShowIndicator = options?.showIndicator !== false;
     // Queue this push behind any in-flight one. Chaining (rather than firing in
     // parallel) guarantees the server applies saves in the order they were made,
@@ -1583,6 +1584,10 @@ ${log.payload || ''}
             taskStates={taskStates}
           />
         );
+      case "updates":
+        return (
+          <UpdateNotesView systemLanguage={userLanguage} />
+        );
       default:
         return (
           <TaskDashboardView 
@@ -1853,6 +1858,10 @@ ${log.payload || ''}
               setActiveTab("tasks");
               window.location.hash = "tasks";
               setAutoOpenAddTask(true);
+            }}
+            onNavigateUpdates={() => {
+              setActiveTab("updates");
+              window.location.hash = "updates";
             }}
           />
           
