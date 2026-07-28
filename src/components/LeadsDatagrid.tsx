@@ -9,7 +9,7 @@ import {
   ArrowLeft, PencilLine, Phone, Mail, Globe,
   Calendar, FolderOpen, FileText, Minimize2, CheckSquare, Lock,
   CornerDownLeft, CornerLeftDown, Loader2, Brain, Mic, Play, Pause, Square, Sparkles, ChevronDown,
-  ClipboardList, Receipt, ReceiptText, Wallet, Truck
+  ClipboardList, Receipt, ReceiptText, Wallet, Truck, Flag, Star
 } from "lucide-react";
 import type { Lead, TimelineEvent, LeadEventType, TimelineAttachment, Task, UserProfile, Project, ProjectType } from "../types";
 import { DOCUMENT_EVENT_TYPES } from "../types";
@@ -5992,7 +5992,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             <form onSubmit={handleCreateLead} className="space-y-4">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Client Selection *", "Výber klienta *", "Ügyfél kiválasztása *")}</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <User className="h-3.5 w-3.5 text-blue-500" /> {t("Client Selection *", "Výber klienta *", "Ügyfél kiválasztása *")}
+                  </label>
                   <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200">
                     <button
                       type="button"
@@ -6063,7 +6065,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("City", "Mesto", "Város")}</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <MapPin className="h-3.5 w-3.5 text-blue-500" /> {t("City", "Mesto", "Város")}
+                  </label>
                   <input
                     type="text"
                     value={newLeadCity}
@@ -6073,7 +6077,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Client Type *", "Typ klienta *", "Ügyféltípus *")}</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <Briefcase className="h-3.5 w-3.5 text-blue-500" /> {t("Client Type *", "Typ klienta *", "Ügyféltípus *")}
+                  </label>
                   <select
                     value={newLeadType}
                     onChange={(e) => setNewLeadType(e.target.value as any)}
@@ -6117,7 +6123,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Lead Value *", "Hodnota leadu *", "Lead értéke *")}</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <Euro className="h-3.5 w-3.5 text-blue-500" /> {t("Lead Value *", "Hodnota leadu *", "Lead értéke *")}
+                  </label>
                   <input
                     type="number"
                     required
@@ -6130,7 +6138,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Project Manager", "Projektový manažér", "Projektmenedzser")}</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <UserCheck className="h-3.5 w-3.5 text-blue-500" /> {t("Project Manager", "Projektový manažér", "Projektmenedzser")}
+                  </label>
                   <select
                     value={newLeadOwner}
                     onChange={(e) => setNewLeadOwner(e.target.value)}
@@ -6145,7 +6155,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider">{t("Lead State", "Stav leadu", "Lead állapota")}</label>
+                  <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider flex items-center gap-1.5">
+                    <Flag className="h-3.5 w-3.5 text-blue-500" /> {t("Lead State", "Stav leadu", "Lead állapota")}
+                  </label>
                   <div className="pt-1 select-none">
                     <StatusSelector 
                       status={newLeadStatus} 
@@ -6154,7 +6166,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                   </div>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Lead Source", "Zdroj leadu", "Lead forrása")}</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <Globe className="h-3.5 w-3.5 text-blue-500" /> {t("Lead Source", "Zdroj leadu", "Lead forrása")}
+                  </label>
                   <select
                     value={newLeadSource}
                     onChange={(e) => setNewLeadSource(e.target.value)}
@@ -6226,7 +6240,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Lead Referral (Referred by Client)", "Odporúčanie leadu (Odporúčané klientom)", "Lead ajánlás (Ügyfél által ajánlott)")}</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <Share2 className="h-3.5 w-3.5 text-blue-500" /> {t("Lead Referral (Referred by Client)", "Odporúčanie leadu (Odporúčané klientom)", "Lead ajánlás (Ügyfél által ajánlott)")}
+                </label>
                 <SearchableLeadSelect
                   leads={leads}
                   value={newLeadReferralId}
@@ -6236,7 +6252,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Lead Priority Rating", "Hodnotenie priority leadu", "Lead prioritás értékelése")}</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <Star className="h-3.5 w-3.5 text-blue-500" /> {t("Lead Priority Rating", "Hodnotenie priority leadu", "Lead prioritás értékelése")}
+                </label>
                 <div className="flex items-center gap-1 bg-slate-50 p-2 rounded-xl border border-slate-150 w-fit">
                   {renderStars(newLeadRating, setNewLeadRating)}
                 </div>
