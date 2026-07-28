@@ -214,6 +214,11 @@ if ($action === 'request') {
             `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             INDEX `idx_pwreset_ip_time` (`ip`, `created_at`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+        // Prune expired throttle rows; nothing else ever removed them.
+        if (random_int(1, 20) === 1) {
+            $pdo->exec("DELETE FROM `password_reset_attempts` WHERE `created_at` < (NOW() - INTERVAL 1 DAY)");
+            $pdo->exec("DELETE FROM `password_resets` WHERE `expires_at` < (NOW() - INTERVAL 1 DAY)");
+        }
         $rl = $pdo->prepare("SELECT COUNT(*) FROM `password_reset_attempts` WHERE `ip` = ? AND `created_at` > (NOW() - INTERVAL 15 MINUTE)");
         $rl->execute([$clientIp]);
         if ((int)$rl->fetchColumn() >= 5) {

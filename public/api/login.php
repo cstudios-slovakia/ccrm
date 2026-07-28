@@ -61,6 +61,13 @@ try {
         `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX `idx_ip_time` (`ip`, `created_at`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+    // Prune rows older than the throttle window. Nothing ever deleted these
+    // except a successful login from the same IP, so on an instance that gets
+    // scanned the table grew without bound and made the COUNT below slower over
+    // time. Runs occasionally rather than on every attempt.
+    if (random_int(1, 20) === 1) {
+        $pdo->exec("DELETE FROM `login_attempts` WHERE `created_at` < (NOW() - INTERVAL 1 DAY)");
+    }
     $cntStmt = $pdo->prepare("SELECT COUNT(*) FROM `login_attempts` WHERE `ip` = ? AND `created_at` > (NOW() - INTERVAL 15 MINUTE)");
     $cntStmt->execute([$clientIp]);
     if ((int)$cntStmt->fetchColumn() >= 20) {
