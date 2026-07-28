@@ -2,8 +2,10 @@
 /**
  * Live state sync endpoint.
  *
- * GET  — public read of CRM state used to bootstrap the SPA. It NEVER returns
- *        password material (see "Fetch Users" below).
+ * GET  — read of CRM state used to bootstrap the SPA. Requires an authenticated
+ *        session (the only exception is DEMO_MODE, which returns just the user
+ *        list for the demo login picker). It NEVER returns password material
+ *        (see "Fetch Users" below).
  * POST — mutating sync; requires an authenticated session (see api/login.php).
  *
  * Schema/migrations come from the shared api/schema.php (single source of truth).
@@ -344,6 +346,64 @@ function ccrm_explicit_deleted_ids(array $deleted, string $entity): array {
     return array_values(array_unique($out));
 }
 
+/**
+ * The mass-deletion circuit breaker, on its own so every delete-by-omission site
+ * can use it — not just ccrm_delete_omitted().
+ *
+ * Returns the ids that may safely be deleted: either the full list, or an empty
+ * one when the request looks like an empty/stale client push. Tables whose
+ * deletion is irreversible (project_types DROPs its dynamic data tables) pass
+ * $strict so even an N-1 wipe is refused.
+ */
+function ccrm_filter_mass_delete(PDO $pdo, string $table, array $toDelete, bool $strict = false): array {
+    if (empty($toDelete)) {
+        return [];
+    }
+
+    // Refuse to delete-by-omission a large share of a table in one request. An
+    // empty/stale client push makes array_diff() mark most or all rows for
+    // deletion; without this guard that silently wipes the table (leads cascade
+    // to categories + timeline). Ordinary small deletions — the real use case —
+    // stay below the threshold and pass through untouched. When tripped we keep
+    // the data and log instead of destroying it; the client re-pulls the rows on
+    // its next GET.
+    $deleteCount = count($toDelete);
+    try {
+        $serverTotal = (int) $pdo->query("SELECT COUNT(*) FROM `{$table}`")->fetchColumn();
+    } catch (\Throwable $e) {
+        // Cannot size the table, so cannot prove the delete is safe. Keep the data.
+        error_log('[ccrm] BLOCKED delete-by-omission on `' . $table . '`: row count failed — ' . $e->getMessage());
+        return [];
+    }
+
+    // (a) Never delete EVERY remaining row of a table by omission — that is only
+    //     ever an empty/stale push, never a legitimate edit. Applies to every
+    //     table regardless of size, so even a 1- or 2-row table can't be emptied.
+    $wouldEmptyTable = ($serverTotal > 0 && $deleteCount >= $serverTotal);
+
+    // (b) Refuse to delete a large FRACTION of a table in one request. Ordinary
+    //     data tables keep a small absolute-row floor so everyday little
+    //     deletions still pass. In $strict mode — access-critical or irreversible
+    //     tables such as `users` and `project_types`, where the sync may keep the
+    //     calling account so a full wipe tops out at N-1 rows and never reaches
+    //     100% — the floor drops to 1, so the 4-of-5 users wipe that slipped under
+    //     the row floor is now caught.
+    $minRows = $strict ? 1 : CCRM_MASS_DELETE_MIN_ROWS;
+    $massFraction = ($serverTotal > 0
+        && $deleteCount >= $minRows
+        && ($deleteCount / $serverTotal) >= CCRM_MASS_DELETE_FRACTION);
+
+    if ($wouldEmptyTable || $massFraction) {
+        error_log(sprintf(
+            '[ccrm] BLOCKED delete-by-omission on `%s`: %d of %d rows (%.0f%%%s) — likely an empty/stale client push; no rows deleted.',
+            $table, $deleteCount, $serverTotal, 100 * $deleteCount / max(1, $serverTotal), $strict ? ', strict' : ''
+        ));
+        return [];
+    }
+
+    return $toDelete;
+}
+
 function ccrm_delete_omitted(PDO $pdo, string $table, array $idsToDelete, ?string $baseSyncedAt, array $skipIds = [], bool $strict = false): void {
     if (empty($idsToDelete)) {
         return;
@@ -357,41 +417,9 @@ function ccrm_delete_omitted(PDO $pdo, string $table, array $idsToDelete, ?strin
             $toDelete[] = $id;
         }
     }
+
+    $toDelete = ccrm_filter_mass_delete($pdo, $table, $toDelete, $strict);
     if (empty($toDelete)) {
-        return;
-    }
-
-    // Circuit breaker: refuse to delete-by-omission a large share of a table in
-    // one request. An empty/stale client push makes array_diff() mark most or
-    // all rows for deletion; without this guard that silently wipes the table
-    // (leads cascade to categories + timeline). Ordinary small deletions — the
-    // real use case — stay below the threshold and pass through untouched. When
-    // tripped we keep the data and log instead of destroying it; the client
-    // re-pulls the rows on its next GET.
-    $deleteCount = count($toDelete);
-    $serverTotal = (int) $pdo->query("SELECT COUNT(*) FROM `{$table}`")->fetchColumn();
-
-    // (a) Never delete EVERY remaining row of a table by omission — that is only
-    //     ever an empty/stale push, never a legitimate edit. Applies to every
-    //     table regardless of size, so even a 1- or 2-row table can't be emptied.
-    $wouldEmptyTable = ($serverTotal > 0 && $deleteCount >= $serverTotal);
-
-    // (b) Refuse to delete a large FRACTION of a table in one request. Ordinary
-    //     data tables keep a small absolute-row floor so everyday little
-    //     deletions still pass. In $strict mode — access-critical tables such as
-    //     `users`, where the sync always keeps the calling account so a full wipe
-    //     tops out at N-1 rows and never reaches 100% — the floor drops to 1, so
-    //     the 4-of-5 users wipe that slipped under the row floor is now caught.
-    $minRows = $strict ? 1 : CCRM_MASS_DELETE_MIN_ROWS;
-    $massFraction = ($serverTotal > 0
-        && $deleteCount >= $minRows
-        && ($deleteCount / $serverTotal) >= CCRM_MASS_DELETE_FRACTION);
-
-    if ($wouldEmptyTable || $massFraction) {
-        error_log(sprintf(
-            '[ccrm] BLOCKED delete-by-omission on `%s`: %d of %d rows (%.0f%%%s) — likely an empty/stale client push; no rows deleted.',
-            $table, $deleteCount, $serverTotal, 100 * $deleteCount / max(1, $serverTotal), $strict ? ', strict' : ''
-        ));
         return;
     }
 
@@ -1096,6 +1124,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $sessionNameStmt->execute([$sessionUser['id']]);
     $sessionUserName = (string)($sessionNameStmt->fetchColumn() ?: '');
 
+    // Dynamic tables belonging to deleted project types. DDL implicitly commits in
+    // MySQL, so these are collected during the transaction and executed after it.
+    $deferredTableDrops = [];
+
     try {
         // Ensure dynamic unified-entry table schemas BEFORE opening the
         // transaction. DDL (CREATE/ALTER TABLE) triggers an implicit commit in
@@ -1484,24 +1516,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ]);
                 $processedPtIds[] = $pt['id'];
             }
-            // Deletion of Project Types
+            // Deletion of Project Types.
+            //
+            // This is the most destructive delete-by-omission in the file: removing a
+            // project type also DROPs its proj_data_/proj_timeline_/proj_gantt_ tables,
+            // which is unrecoverable. It used to run straight from array_diff() with no
+            // circuit breaker, so a v1 client that pushed before its state finished
+            // loading (projectTypes: []) would drop every project type AND every
+            // project's data tables — the same shape as the 2026-07-06 incident.
+            // Gate it on the same guard every other table uses.
             $ptToDelete = $isDeltaSync
                 ? $deletionsFor('projectTypes', $existingPtIds)
                 : array_diff($existingPtIds, $processedPtIds);
+            $ptToDelete = ccrm_filter_mass_delete($pdo, 'project_types', $ptToDelete, true);
             if (!empty($ptToDelete)) {
                 $delPt = $pdo->prepare("DELETE FROM `project_types` WHERE `id` = ?");
                 foreach ($ptToDelete as $ptId) {
                     $delPt->execute([$ptId]);
-                    // Drop dynamic tables (will implicitly commit, but that's fine if it's during deletion which is rare)
+                    // Queue the dynamic-table DROPs for AFTER the commit. Running DDL
+                    // here implicitly commits the transaction in MySQL, so the final
+                    // commit() then threw "There is no active transaction" and the whole
+                    // push reported a 500 even though the rows had been written — and
+                    // every earlier write in the request lost its rollback. Deferring
+                    // keeps the transaction intact; the tables are orphaned rather than
+                    // dropped if the transaction is rolled back, which is recoverable
+                    // (dropping them is not).
                     $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($ptId));
-                    $pdo->exec("DROP TABLE IF EXISTS `proj_data_{$safeId}`");
-                    $pdo->exec("DROP TABLE IF EXISTS `proj_timeline_{$safeId}`");
-                    $pdo->exec("DROP TABLE IF EXISTS `proj_gantt_{$safeId}`");
-                    if (isset($ragPdo) && $ragPdo) {
-                        try { $ragPdo->exec("DROP TABLE IF EXISTS `proj_data_{$safeId}`"); } catch(\Exception $e) {}
-                        try { $ragPdo->exec("DROP TABLE IF EXISTS `proj_timeline_{$safeId}`"); } catch(\Exception $e) {}
-                        try { $ragPdo->exec("DROP TABLE IF EXISTS `proj_gantt_{$safeId}`"); } catch(\Exception $e) {}
-                    }
+                    $deferredTableDrops[] = "proj_data_{$safeId}";
+                    $deferredTableDrops[] = "proj_timeline_{$safeId}";
+                    $deferredTableDrops[] = "proj_gantt_{$safeId}";
                 }
             }
         }
@@ -1511,14 +1554,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $processedProjIds = [];
 
             $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `lead_id`, `client_id`, `status`) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`)");
-            
-            $pdo->exec("DELETE FROM `project_managers`"); // Simple sync: wipe and insert
+
+            // Manager assignments are replaced per project, never globally. The old
+            // unconditional `DELETE FROM project_managers` assumed every push carried
+            // a complete snapshot of every project — which stopped being true when the
+            // delta protocol landed. A v2 client sends only the projects that changed
+            // (and an empty list when none did), so that statement silently dropped the
+            // managers of every project the payload did not happen to mention. Verified
+            // reproducible before this change.
+            $delMgr = $pdo->prepare("DELETE FROM `project_managers` WHERE `project_id` = ?");
             $insMgr = $pdo->prepare("INSERT IGNORE INTO `project_managers` (`project_id`, `user_id`) VALUES (?, ?)");
 
             foreach ($payload['projects'] as $p) {
                 if (!isset($p['id']) || !isset($p['projectTypeId'])) continue;
                 $projId = $p['id'];
-                
+
                 $insProj->execute([
                     $projId,
                     $p['projectTypeId'],
@@ -1526,9 +1576,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     empty($p['clientId']) ? null : $p['clientId'],
                     $p['status'] ?? 'active'
                 ]);
-                
-                foreach ($p['managers'] ?? [] as $uid) {
-                    $insMgr->execute([$projId, $uid]);
+
+                // Only rewrite this project's managers when the payload actually carries
+                // the list. An omitted `managers` key means "unchanged", not "none".
+                if (array_key_exists('managers', $p) && is_array($p['managers'])) {
+                    $delMgr->execute([$projId]);
+                    foreach ($p['managers'] as $uid) {
+                        $insMgr->execute([$projId, $uid]);
+                    }
                 }
 
                 $processedProjIds[] = $projId;
@@ -1621,10 +1676,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            // Deletion of Projects
+            // Deletion of Projects. Cascades to every proj_data_/proj_timeline_/
+            // proj_gantt_ row for the project, so it gets the same circuit breaker
+            // as the other tables rather than deleting straight from array_diff().
             $projToDelete = $isDeltaSync
                 ? $deletionsFor('projects', $existingProjIds)
                 : array_diff($existingProjIds, $processedProjIds);
+            $projToDelete = ccrm_filter_mass_delete($pdo, 'projects', $projToDelete);
             if (!empty($projToDelete)) {
                 $delProj = $pdo->prepare("DELETE FROM `projects` WHERE `id` = ?");
                 foreach ($projToDelete as $pid) {
@@ -2223,6 +2281,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $pdo->commit();
 
+        // Now that the transaction is closed, drop the dynamic tables of any project
+        // type this push deleted. Best-effort: an orphaned table is harmless, and a
+        // failure here must not turn a committed sync into an error for the client.
+        foreach ($deferredTableDrops as $dropTable) {
+            try { $pdo->exec("DROP TABLE IF EXISTS `{$dropTable}`"); } catch (\Throwable $e) {
+                error_log('[ccrm sync] could not drop `' . $dropTable . '`: ' . $e->getMessage());
+            }
+            if (isset($ragPdo) && $ragPdo) {
+                try { $ragPdo->exec("DROP TABLE IF EXISTS `{$dropTable}`"); } catch (\Throwable $e) {}
+            }
+        }
+
         // Report the post-commit content version so the client can immediately
         // sync its local `dataVersion` and avoid an extra full pull on the next
         // probe. Computed after commit so it reflects what we just wrote.
@@ -2250,7 +2320,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ccrm_log_exception($e);
         }
         http_response_code(500);
-        echo json_encode(['success' => false, 'message' => 'Failed database synchronization: ' . $e->getMessage()]);
+        // The raw PDO message names tables, columns and sometimes the offending
+        // value. It is captured in error_logs (admin-only) above; the client gets
+        // a generic message.
+        echo json_encode(['success' => false, 'message' => 'Failed database synchronization.']);
     }
     exit;
 }
