@@ -612,6 +612,15 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         return a.title.localeCompare(b.title);
     };
 
+    // Same chronological rule across more than one day: earliest date first,
+    // then the time within that day. Used by every list that mixes dates (the
+    // overdue/upcoming buckets and the Global Tasks columns).
+    const byDeadline = (a: Task, b: Task) => {
+        const dateComp = a.deadline.localeCompare(b.deadline);
+        if (dateComp !== 0) return dateComp;
+        return byDeadlineTime(a, b);
+    };
+
     // Item 12: the dashboard calendar shows ONLY tasks (no lead timeline events).
     // Item 11: only the logged-in user's tasks.
     const getItemsForDate = (dateStr: string) => {
@@ -1192,15 +1201,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     };
 
     const tomorrowStr = toLocalDateStr(new Date(today.getTime() + 86400000));
-    const overdueTasks = myTasks
-        .filter((t) => isTaskOverdue(t))
-        .sort((a, b) => {
-            const dateComp = a.deadline.localeCompare(b.deadline);
-            if (dateComp !== 0) return dateComp;
-            return (a.deadlineTime || "23:59").localeCompare(
-                b.deadlineTime || "23:59",
-            );
-        });
+    const overdueTasks = myTasks.filter((t) => isTaskOverdue(t)).sort(byDeadline);
     const todayTasks = myTasks
         .filter(
             (t) =>
@@ -1214,13 +1215,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         .sort(byDeadlineTime);
     const futureTasks = myTasks
         .filter((t) => t.deadline > tomorrowStr && !isDoneState(t.status))
-        .sort((a, b) => {
-            const dateComp = a.deadline.localeCompare(b.deadline);
-            if (dateComp !== 0) return dateComp;
-            return (a.deadlineTime || "23:59").localeCompare(
-                b.deadlineTime || "23:59",
-            );
-        });
+        .sort(byDeadline);
 
     const renderTaskCard = (task: Task) => (
         <div
@@ -1486,32 +1481,37 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 <div className="flex-1 overflow-x-auto pb-4">
                     <div className="flex gap-6 min-w-max h-full items-start">
                         {columnUsers.map((userName) => {
-                            const userTasks = activeTasks.filter((t) => {
-                                const isAssigned =
-                                    t.assignedUsers &&
-                                    t.assignedUsers.includes(userName);
-                                if (!isAssigned) return false;
+                            // Each column reads top-to-bottom in deadline order
+                            // (date, then time within the day), matching the
+                            // calendar rather than the raw task-array order.
+                            const userTasks = activeTasks
+                                .filter((t) => {
+                                    const isAssigned =
+                                        t.assignedUsers &&
+                                        t.assignedUsers.includes(userName);
+                                    if (!isAssigned) return false;
 
-                                if (
-                                    globalPriorityFilter !== "all" &&
-                                    t.priority !== globalPriorityFilter
-                                )
-                                    return false;
-                                if (
-                                    globalStateFilter !== "all" &&
-                                    t.status !== globalStateFilter
-                                )
-                                    return false;
-                                if (
-                                    !dateInRange(
-                                        t.deadline,
-                                        globalDateStart,
-                                        globalDateEnd,
+                                    if (
+                                        globalPriorityFilter !== "all" &&
+                                        t.priority !== globalPriorityFilter
                                     )
-                                )
-                                    return false;
-                                return true;
-                            });
+                                        return false;
+                                    if (
+                                        globalStateFilter !== "all" &&
+                                        t.status !== globalStateFilter
+                                    )
+                                        return false;
+                                    if (
+                                        !dateInRange(
+                                            t.deadline,
+                                            globalDateStart,
+                                            globalDateEnd,
+                                        )
+                                    )
+                                        return false;
+                                    return true;
+                                })
+                                .sort(byDeadline);
 
                             return (
                                 <div
@@ -1549,32 +1549,34 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
                         {/* Unassigned column — only shown to admins (item 11) */}
                         {canSeeAllTasks && (() => {
-                            const unassignedTasks = activeTasks.filter((t) => {
-                                const hasNoAssigned =
-                                    !t.assignedUsers ||
-                                    t.assignedUsers.length === 0;
-                                if (!hasNoAssigned) return false;
+                            const unassignedTasks = activeTasks
+                                .filter((t) => {
+                                    const hasNoAssigned =
+                                        !t.assignedUsers ||
+                                        t.assignedUsers.length === 0;
+                                    if (!hasNoAssigned) return false;
 
-                                if (
-                                    globalPriorityFilter !== "all" &&
-                                    t.priority !== globalPriorityFilter
-                                )
-                                    return false;
-                                if (
-                                    globalStateFilter !== "all" &&
-                                    t.status !== globalStateFilter
-                                )
-                                    return false;
-                                if (
-                                    !dateInRange(
-                                        t.deadline,
-                                        globalDateStart,
-                                        globalDateEnd,
+                                    if (
+                                        globalPriorityFilter !== "all" &&
+                                        t.priority !== globalPriorityFilter
                                     )
-                                )
-                                    return false;
-                                return true;
-                            });
+                                        return false;
+                                    if (
+                                        globalStateFilter !== "all" &&
+                                        t.status !== globalStateFilter
+                                    )
+                                        return false;
+                                    if (
+                                        !dateInRange(
+                                            t.deadline,
+                                            globalDateStart,
+                                            globalDateEnd,
+                                        )
+                                    )
+                                        return false;
+                                    return true;
+                                })
+                                .sort(byDeadline);
 
                             if (unassignedTasks.length === 0) return null;
 
