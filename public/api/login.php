@@ -61,6 +61,13 @@ try {
         `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX `idx_ip_time` (`ip`, `created_at`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+    // Prune rows older than the throttle window. Nothing ever deleted these
+    // except a successful login from the same IP, so on an instance that gets
+    // scanned the table grew without bound and made the COUNT below slower over
+    // time. Runs occasionally rather than on every attempt.
+    if (random_int(1, 20) === 1) {
+        $pdo->exec("DELETE FROM `login_attempts` WHERE `created_at` < (NOW() - INTERVAL 1 DAY)");
+    }
     $cntStmt = $pdo->prepare("SELECT COUNT(*) FROM `login_attempts` WHERE `ip` = ? AND `created_at` > (NOW() - INTERVAL 15 MINUTE)");
     $cntStmt->execute([$clientIp]);
     if ((int)$cntStmt->fetchColumn() >= 20) {
@@ -119,6 +126,17 @@ session_regenerate_id(true);
 $_SESSION['ccrm_uid']   = $row['id'];
 $_SESSION['ccrm_role']  = $row['role'];
 $_SESSION['ccrm_email'] = $row['email'];
+// When this session was issued, so a later password change can retire it. Taken
+// from the DB clock (not PHP's) because it is compared against the DB-written
+// users.sessions_valid_from — see ccrm_current_user(). ccrm_checked_at is a local
+// monotonic-enough marker for the revalidation interval only, never compared to
+// a DB timestamp.
+try {
+    $_SESSION['ccrm_issued_at'] = $pdo->query("SELECT NOW()")->fetchColumn() ?: null;
+} catch (\Throwable $e) {
+    $_SESSION['ccrm_issued_at'] = null;
+}
+$_SESSION['ccrm_checked_at'] = time();
 
 // Persist (or clear) the non-sensitive marker cookie so later requests keep
 // the right session lifetime. This cookie is NOT a credential — auth still

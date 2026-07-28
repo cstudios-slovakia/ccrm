@@ -8,15 +8,17 @@ import {
   Edit3, Check, Layers, SlidersHorizontal,
   ArrowLeft, PencilLine, Phone, Mail, Globe,
   Calendar, FolderOpen, FileText, Minimize2, CheckSquare, Lock,
-  CornerDownLeft, CornerLeftDown, Loader2, Brain, Mic, Play, Pause, Square, Sparkles, ChevronDown
+  CornerDownLeft, CornerLeftDown, Loader2, Brain, Mic, Play, Pause, Square, Sparkles, ChevronDown,
+  ClipboardList, Receipt, ReceiptText, Wallet, Truck, Flag, Star
 } from "lucide-react";
-import type { Lead, TimelineEvent, Task, UserProfile, Project, ProjectType } from "../types";
+import type { Lead, TimelineEvent, LeadEventType, TimelineAttachment, Task, UserProfile, Project, ProjectType } from "../types";
+import { DOCUMENT_EVENT_TYPES } from "../types";
 import { cn } from "../utils/cn";
 
 // Named preset deadline times offered in the gate quick-add picker, mirroring the
 // task dashboard's Add-task drawer. A "Custom" option reveals a free time input so
 // any specific time can be entered instead of the fixed presets.
-const GATE_DEADLINE_TIME_PRESETS = ["10:00", "12:00", "16:00", "19:00"];
+const GATE_DEADLINE_TIME_PRESETS = ["09:00", "10:00", "12:00", "14:00", "16:00", "17:00", "19:00"];
 
 // Deadline-time picker for the phase-gate quick-add form. Offers the named presets
 // plus a "Custom" option that reveals a native time input. Defined at module scope
@@ -36,12 +38,18 @@ const InlineDeadlineTimePicker: React.FC<{
 
   const presetLabel = (p: string) => {
     switch (p) {
+      case "09:00":
+        return systemLanguage === "sk" ? "Skoro ráno (9:00)" : systemLanguage === "hu" ? "Kora reggel (9:00)" : "Early morning (9:00)";
       case "10:00":
         return systemLanguage === "sk" ? "Ráno (10:00)" : systemLanguage === "hu" ? "Reggel (10:00)" : "Morning (10:00)";
       case "12:00":
         return systemLanguage === "sk" ? "Poludnie (12:00)" : systemLanguage === "hu" ? "Dél (12:00)" : "Noon (12:00)";
+      case "14:00":
+        return systemLanguage === "sk" ? "Skoré popoludnie (14:00)" : systemLanguage === "hu" ? "Kora délután (14:00)" : "Early afternoon (14:00)";
       case "16:00":
         return systemLanguage === "sk" ? "Popoludnie (16:00)" : systemLanguage === "hu" ? "Délután (16:00)" : "Afternoon (16:00)";
+      case "17:00":
+        return systemLanguage === "sk" ? "Koniec pracovného dňa (17:00)" : systemLanguage === "hu" ? "Munkanap vége (17:00)" : "End of workday (17:00)";
       case "19:00":
         return systemLanguage === "sk" ? "Večer (19:00)" : systemLanguage === "hu" ? "Este (19:00)" : "Evening (19:00)";
       default:
@@ -1334,19 +1342,26 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
   const [newLeadRating, setNewLeadRating] = useState(3);
   const [newLeadCategories, setNewLeadCategories] = useState<string[]>([]);
   const [newLeadReferralId, setNewLeadReferralId] = useState("");
+  // Basic contact details + what the client actually wants. These used to be
+  // reachable only after the lead had been created and reopened for editing.
+  const [newLeadPhone, setNewLeadPhone] = useState("");
+  const [newLeadEmail, setNewLeadEmail] = useState("");
+  const [newLeadInterestNote, setNewLeadInterestNote] = useState("");
 
   const [clientMode, setClientMode] = useState<"existing" | "new">("new");
   const [selectedExistingClient, setSelectedExistingClient] = useState("");
 
   const existingClients = useMemo(() => {
-    const profiles: Record<string, { name: string; city: string; clientType: "person" | "business" | "partner" }> = {};
+    const profiles: Record<string, { name: string; city: string; clientType: "person" | "business" | "partner"; phone: string; email: string }> = {};
     leads.forEach(lead => {
       const key = lead.name.trim().toLowerCase();
       if (key && !profiles[key]) {
         profiles[key] = {
           name: lead.name.trim(),
           city: lead.city || "",
-          clientType: lead.clientType || "person"
+          clientType: lead.clientType || "person",
+          phone: lead.phone || "",
+          email: lead.email || ""
         };
       }
     });
@@ -1360,6 +1375,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       setNewLeadName(found.name);
       setNewLeadCity(found.city);
       setNewLeadType(found.clientType);
+      // Carry over the contact details already on file so a second lead for the
+      // same client does not start with empty phone/e-mail fields.
+      setNewLeadPhone(found.phone);
+      setNewLeadEmail(found.email);
     }
   };
 
@@ -1451,6 +1470,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
   const [leadSelectedCategories, setLeadSelectedCategories] = useState<string[]>([]);
   const [leadReferralId, setLeadReferralId] = useState("");
   const [leadCreatedAt, setLeadCreatedAt] = useState("");
+  const [leadInterestNote, setLeadInterestNote] = useState("");
 
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [localSummary, setLocalSummary] = useState<string | undefined>(undefined);
@@ -1559,6 +1579,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       setLeadSelectedCategories(activeLead.categories || []);
       setLeadReferralId(activeLead.referralLeadId || "");
       setLeadCreatedAt((activeLead.createdAt || "").slice(0, 10));
+      setLeadInterestNote(activeLead.interestNote || "");
     }
   }, [activeLead, isEditingLead]);
 
@@ -1603,7 +1624,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
   }, [leads, activeLead]);
 
   // Event Logging states
-  const [logType, setLogType] = useState<"phone" | "email" | "note" | "offer" | "appointment" | null>(null);
+  const [logType, setLogType] = useState<LeadEventType | null>(null);
   const [logContent, setLogContent] = useState("");
   const [logAmount, setLogAmount] = useState("");
   const [logTime, setLogTime] = useState("");
@@ -1611,6 +1632,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
   const [logFileSize, setLogFileSize] = useState("");
   const [logFileType, setLogFileType] = useState<"offer" | "contract" | "invoice">("offer");
   const [logFileObject, setLogFileObject] = useState<File | null>(null);
+  // Documents attached to a business-document event. Several PDFs can be filed
+  // under one event (e.g. a batch of advance invoices).
+  const [logDocumentFiles, setLogDocumentFiles] = useState<File[]>([]);
+  const [isUploadingDocuments, setIsUploadingDocuments] = useState(false);
 
   // Inline edit/delete of an already-logged timeline event
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
@@ -1819,6 +1844,18 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         return { dotBg: "bg-emerald-600 border-emerald-700 text-white shadow-md shadow-emerald-500/20", badgeBg: "bg-emerald-55 text-emerald-700 border-emerald-200" };
       case "appointment":
         return { dotBg: "bg-purple-600 border-purple-700 text-white shadow-md shadow-purple-500/20", badgeBg: "bg-purple-50 text-purple-700 border-purple-200" };
+      // Business documents — one hue family (teal → rose) so they read as a
+      // related group but stay distinguishable from each other.
+      case "order":
+        return { dotBg: "bg-teal-600 border-teal-700 text-white shadow-md shadow-teal-500/20", badgeBg: "bg-teal-50 text-teal-700 border-teal-200" };
+      case "proforma_invoice":
+        return { dotBg: "bg-cyan-600 border-cyan-700 text-white shadow-md shadow-cyan-500/20", badgeBg: "bg-cyan-50 text-cyan-700 border-cyan-200" };
+      case "advance_receipt":
+        return { dotBg: "bg-sky-600 border-sky-700 text-white shadow-md shadow-sky-500/20", badgeBg: "bg-sky-50 text-sky-700 border-sky-200" };
+      case "invoice":
+        return { dotBg: "bg-rose-600 border-rose-700 text-white shadow-md shadow-rose-500/20", badgeBg: "bg-rose-50 text-rose-700 border-rose-200" };
+      case "delivery_note":
+        return { dotBg: "bg-orange-600 border-orange-700 text-white shadow-md shadow-orange-500/20", badgeBg: "bg-orange-50 text-orange-700 border-orange-200" };
       default:
         return { dotBg: "bg-blue-600 border-blue-700 text-white shadow-md shadow-blue-500/20", badgeBg: "bg-blue-50 text-blue-700 border-blue-200" };
     }
@@ -1831,8 +1868,115 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       case "note": return <FileText className="h-3.5 w-3.5 stroke-[2.5]" />;
       case "offer": return <Euro className="h-3.5 w-3.5 stroke-[2.5]" />;
       case "appointment": return <Calendar className="h-3.5 w-3.5 stroke-[2.5]" />;
+      case "order": return <ClipboardList className="h-3.5 w-3.5 stroke-[2.5]" />;
+      case "proforma_invoice": return <ReceiptText className="h-3.5 w-3.5 stroke-[2.5]" />;
+      case "advance_receipt": return <Wallet className="h-3.5 w-3.5 stroke-[2.5]" />;
+      case "invoice": return <Receipt className="h-3.5 w-3.5 stroke-[2.5]" />;
+      case "delivery_note": return <Truck className="h-3.5 w-3.5 stroke-[2.5]" />;
       default: return <Clock className="h-3.5 w-3.5 stroke-[2.5]" />;
     }
+  };
+
+  // Short label used on the event-type switcher buttons.
+  const eventTypeLabel = (type: string) => {
+    switch (type) {
+      case "phone": return t("Call", "Hovor", "Hívás");
+      case "email": return t("Email", "E-mail", "E-mail");
+      case "note": return t("Note", "Poznámka", "Jegyzet");
+      case "offer": return t("Offer", "Ponuka", "Ajánlat");
+      case "appointment": return t("Meet", "Meet", "Találkozó");
+      case "order": return t("Order", "Objednávka", "Megrendelés");
+      case "proforma_invoice": return t("Proforma", "Zálohová faktúra", "Előlegszámla");
+      case "advance_receipt": return t("Advance receipt", "Doklad o preddavku", "Előlegbizonylat");
+      case "invoice": return t("Invoice", "Faktúra", "Számla");
+      case "delivery_note": return t("Delivery note", "Dodací list", "Szállítólevél");
+      default: return type;
+    }
+  };
+
+  // Timeline entry title written when a business-document event is logged.
+  const documentEventTitle = (type: string) => {
+    switch (type) {
+      case "order": return t("Order filed", "Objednávka zaevidovaná", "Megrendelés rögzítve");
+      case "proforma_invoice": return t("Proforma invoice filed", "Zálohová faktúra zaevidovaná", "Előlegszámla rögzítve");
+      case "advance_receipt": return t("Advance payment receipt filed", "Doklad o prijatom preddavku zaevidovaný", "Előlegbizonylat rögzítve");
+      case "invoice": return t("Invoice filed", "Faktúra zaevidovaná", "Számla rögzítve");
+      case "delivery_note": return t("Delivery note filed", "Dodací list zaevidovaný", "Szállítólevél rögzítve");
+      default: return t("Document filed", "Dokument zaevidovaný", "Dokumentum rögzítve");
+    }
+  };
+
+  // True for event types that carry attached paperwork.
+  const isDocumentEventType = (type: string | null): boolean =>
+    !!type && (DOCUMENT_EVENT_TYPES as readonly string[]).includes(type);
+
+  // Every document attached to an event, newest format first. Events written
+  // before multi-file support only have the single fileName/filePath pair, so
+  // that is folded into the same shape rather than rendered separately.
+  const getEventAttachments = (event: TimelineEvent): TimelineAttachment[] => {
+    if (event.attachments && event.attachments.length > 0) return event.attachments;
+    if (event.fileName) {
+      return [{
+        name: event.fileName,
+        size: event.fileSize,
+        path: event.filePath || `/uploads/${event.id}_${event.fileName}`
+      }];
+    }
+    return [];
+  };
+
+  // Clickable badges for an event's attached documents.
+  const renderEventAttachments = (event: TimelineEvent) => {
+    const attachments = getEventAttachments(event);
+    if (attachments.length === 0) return null;
+
+    return (
+      <div className="mt-3.5 pt-3 border-t border-slate-100 space-y-1.5 animate-in slide-in-from-top-1">
+        {attachments.length > 1 && (
+          <span className="block text-[8px] font-black uppercase tracking-widest text-slate-400">
+            {t("Attached documents", "Priložené dokumenty", "Csatolt dokumentumok")} ({attachments.length})
+          </span>
+        )}
+        {attachments.map((att, idx) => (
+          <div
+            key={`${event.id}-att-${idx}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              const path = att.path || `/uploads/${event.id}_${att.name}`;
+              if ((window as any).previewFile) {
+                (window as any).previewFile(path, att.name);
+              }
+            }}
+            className="flex items-center justify-between gap-2 bg-slate-50/50 p-2.5 rounded-xl border border-slate-150 hover:bg-slate-100/80 cursor-pointer transition-colors"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-[13px] shrink-0">
+                {event.fileType === "invoice" || event.type === "invoice" ? "💰"
+                  : event.fileType === "contract" ? "🤝"
+                  : event.type === "delivery_note" ? "🚚"
+                  : event.type === "order" ? "🧾"
+                  : "📄"}
+              </span>
+              <div className="flex flex-col min-w-0">
+                <span className="text-[9px] font-black uppercase text-amber-800">
+                  {event.type === "offer" ? (event.fileType || "offer") : eventTypeLabel(event.type)}{" "}
+                  {getTranslation(systemLanguage, "timeline.doc_suffix")}{" "}
+                  {t("(Click to View)", "(Kliknite pre zobrazenie)", "(Kattintson a megtekintéshez)")}
+                </span>
+                <span className="text-[10px] font-extrabold text-slate-700 truncate max-w-[220px]">
+                  {att.name}
+                </span>
+              </div>
+            </div>
+            {att.size && (
+              <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-[8.5px] border border-amber-250 font-black shrink-0">
+                {att.size}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+    );
   };
 
   const handleUpdateLeadProfile = (e: React.FormEvent) => {
@@ -1867,6 +2011,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
           rating: leadRating,
           categories: leadSelectedCategories,
           referralLeadId: leadReferralId || undefined,
+          interestNote: leadInterestNote.trim() || undefined,
           createdAt: newCreatedAt
         };
       }
@@ -1915,12 +2060,22 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       }
       titleString = `${t("Commercial Proposal Sent", "Cenová ponuka odoslaná", "Kereskedelmi ajánlat elküldve")} (${money(amt)})`;
       if (!contentString) contentString = `${t("Submitted commercial proposal of", "Odoslaná cenová ponuka vo výške", "Benyújtott kereskedelmi ajánlat összege")} ${money(amt)} ${t("to client.", "klientovi.", "az ügyfélnek.")}`;
+    } else if (isDocumentEventType(logType)) {
+      titleString = documentEventTitle(logType);
+      if (logDocumentFiles.length === 0) {
+        (window as any).showToast(t("Please attach at least one document!", "Priložte aspoň jeden dokument!", "Csatoljon legalább egy dokumentumot!"));
+        return;
+      }
+      if (!contentString) {
+        contentString = `${eventTypeLabel(logType)}: ${logDocumentFiles.map(f => f.name).join(", ")}`;
+      }
     }
 
     const eventId = "evt_" + Math.random().toString(36).substr(2, 9);
     let finalFileName = logType === "offer" && logFileName ? logFileName : undefined;
     let finalFileSize = logType === "offer" && logFileSize ? logFileSize : undefined;
     let finalFilePath: string | undefined;
+    let finalAttachments: TimelineAttachment[] | undefined;
 
     // Handle physical file upload to backend if present
     if (logType === "offer" && logFileObject) {
@@ -1957,6 +2112,61 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       }
     }
 
+    // Business-document events can carry several files. They are uploaded one by
+    // one under a per-file id prefix so two documents with the same name cannot
+    // overwrite each other on disk.
+    if (isDocumentEventType(logType) && logDocumentFiles.length > 0) {
+      setIsUploadingDocuments(true);
+      try {
+        const uploaded: TimelineAttachment[] = [];
+        for (let i = 0; i < logDocumentFiles.length; i++) {
+          const file = logDocumentFiles[i];
+          const formData = new FormData();
+          formData.append("file", file);
+          formData.append("eventId", `${eventId}-${i + 1}`);
+
+          const uploadRes = await fetch("/upload.php", {
+            method: "POST",
+            body: formData
+          });
+
+          if (!uploadRes.ok) {
+            const errData = await uploadRes.json().catch(() => ({}));
+            throw new Error(
+              `${file.name}: ${errData.error || t("Failed to upload file", "Nahranie súboru zlyhalo", "A fájl feltöltése sikertelen")}`
+            );
+          }
+
+          const uploadData = await uploadRes.json();
+          if (!uploadData.success) {
+            throw new Error(`${file.name}: ${uploadData.error || t("Failed to upload file", "Nahranie súboru zlyhalo", "A fájl feltöltése sikertelen")}`);
+          }
+
+          uploaded.push({
+            name: uploadData.fileName || file.name,
+            size: (file.size / 1024 / 1024).toFixed(2) + " MB",
+            path: uploadData.filePath
+          });
+
+          if (uploadData.extractedText) {
+            contentString = `${contentString}\n\n--- ${uploadData.fileName || file.name} ---\n${uploadData.extractedText}`;
+          }
+        }
+        finalAttachments = uploaded;
+        // Mirror the first document onto the legacy single-file fields so older
+        // readers (and the existing file_name/file_size DB columns) still work.
+        finalFileName = uploaded[0]?.name;
+        finalFileSize = uploaded[0]?.size;
+        finalFilePath = uploaded[0]?.path;
+      } catch (err: any) {
+        console.error(err);
+        (window as any).showToast(err.message || t("Failed to upload document file!", "Nahranie dokumentu zlyhalo!", "A dokumentum feltöltése sikertelen!"));
+        return;
+      } finally {
+        setIsUploadingDocuments(false);
+      }
+    }
+
     const newEvent: TimelineEvent = {
       id: eventId,
       type: logType,
@@ -1968,6 +2178,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       fileName: finalFileName,
       fileSize: finalFileSize,
       filePath: finalFilePath,
+      attachments: finalAttachments,
       fileType: logType === "offer" && finalFileName ? logFileType : undefined,
       audioFile: logType === "note" && uploadedAudioFile ? uploadedAudioFile : undefined,
       transcription: logType === "note" && (window as any)._latestTranscription ? (window as any)._latestTranscription : undefined
@@ -2027,6 +2238,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     setLogFileName("");
     setLogFileSize("");
     setLogFileObject(null);
+    setLogDocumentFiles([]);
     setLogType(null);
     
     // Reset audio and note editor states
@@ -2293,7 +2505,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       createdAt: todayLocal(),
       rating: newLeadRating,
       categories: newLeadCategories,
-      referralLeadId: newLeadReferralId || undefined
+      referralLeadId: newLeadReferralId || undefined,
+      phone: newLeadPhone.trim() || undefined,
+      email: newLeadEmail.trim() || undefined,
+      interestNote: newLeadInterestNote.trim() || undefined
     };
 
     setLeads(prev => [newLead, ...prev]);
@@ -2309,6 +2524,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     setNewLeadRating(3);
     setNewLeadCategories([]);
     setNewLeadReferralId("");
+    setNewLeadPhone("");
+    setNewLeadEmail("");
+    setNewLeadInterestNote("");
     setClientMode("new");
     setSelectedExistingClient("");
   };
@@ -3153,6 +3371,34 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                   )}
                 </div>
 
+                {/* Client's interest / problem to solve */}
+                <div className="space-y-2 border-t-2 border-slate-100 pt-3 text-left">
+                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <PencilLine className="h-3.5 w-3.5 text-blue-500" /> {t("Client's Interest / Problem to Solve", "Záujem klienta / Problém na riešenie", "Ügyfél érdeklődése / Megoldandó probléma")}
+                  </label>
+                  {isEditingLead ? (
+                    <textarea
+                      rows={3}
+                      value={leadInterestNote}
+                      onChange={(e) => setLeadInterestNote(e.target.value)}
+                      placeholder={t(
+                        "What does the client need? What problem are we solving for them?",
+                        "Čo klient potrebuje? Aký problém mu riešime?",
+                        "Mire van szüksége az ügyfélnek? Milyen problémát oldunk meg neki?",
+                      )}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:outline-none text-xs font-bold text-slate-700 resize-none"
+                    />
+                  ) : (
+                    <div className="pt-1 text-[11px] font-bold text-slate-600 whitespace-pre-wrap">
+                      {leadInterestNote || (
+                        <span className="text-slate-400 italic uppercase tracking-wider text-[10px]">
+                          {t("Not filled in", "Nevyplnené", "Nincs kitöltve")}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 {/* Lead Referral Selection & Display */}
                 <div className="space-y-2 border-t-2 border-slate-100 pt-3 text-left">
                   <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
@@ -3343,7 +3589,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             <div className="flex items-center gap-1.5 flex-wrap">
                               {/* Locking badge */}
                               {task.isLocking && (
-                                <span className="inline-flex items-center gap-0.5 text-[7.5px] font-black text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded-md uppercase border border-rose-150">
+                                <span
+                                  title={t(
+                                    "LOCKING: the lead cannot move to the next pipeline stage until this task is done.",
+                                    "BLOKUJE: lead sa nedá posunúť do ďalšej fázy, kým nie je táto úloha dokončená.",
+                                    "BLOKKOL: a lead nem léphet a következő fázisba, amíg ez a feladat el nem készül.",
+                                  )}
+                                  className="inline-flex items-center gap-0.5 text-[7.5px] font-black text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded-md uppercase border border-rose-150 cursor-help"
+                                >
                                   <Lock className="h-2 w-2 text-rose-500" />
                                   {systemLanguage === "sk" ? "Zámok" : systemLanguage === "hu" ? "Kapu" : "Lock"}
                                 </span>
@@ -3405,19 +3658,44 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                   </div>
                   
-                  <div>
-                    {/* Locking switch */}
+                  <div className="space-y-1.5">
+                    {/* Locking switch — the label alone ("BLOKUJE" / "VOĽNÁ") did
+                        not tell anyone what the two states actually do, so the
+                        meaning of the currently selected one is spelled out
+                        underneath the button. */}
                     <button
                       type="button"
                       onClick={() => setInlineTaskIsLocking(!inlineTaskIsLocking)}
                       className={`w-full px-3 py-1.5 rounded-xl border font-black text-[9px] uppercase tracking-wider transition-all flex items-center justify-center gap-1 ${
-                        inlineTaskIsLocking 
-                          ? "bg-rose-50 border-rose-250 text-rose-700 font-extrabold" 
+                        inlineTaskIsLocking
+                          ? "bg-rose-50 border-rose-250 text-rose-700 font-extrabold"
                           : "bg-slate-50 border-slate-200 text-slate-550"
                       }`}
                     >
                       <Lock className="h-3 w-3" />
                       <span>{inlineTaskIsLocking ? (systemLanguage === "sk" ? "BLOKUJE" : systemLanguage === "hu" ? "BLOKKOL" : "LOCKING") : (systemLanguage === "sk" ? "VOĽNÁ" : systemLanguage === "hu" ? "SZABAD" : "NORMAL")}</span>
+                    </button>
+                    <p className={`text-[8.5px] font-bold leading-snug px-1 ${inlineTaskIsLocking ? "text-rose-600" : "text-slate-500"}`}>
+                      {inlineTaskIsLocking
+                        ? t(
+                            "LOCKING: the lead cannot move to the next pipeline stage until this task is done.",
+                            "BLOKUJE: lead sa nedá posunúť do ďalšej fázy, kým nie je táto úloha dokončená.",
+                            "BLOKKOL: a lead nem léphet a következő fázisba, amíg ez a feladat el nem készül.",
+                          )
+                        : t(
+                            "NORMAL: an ordinary task — the lead can move to the next pipeline stage even while it is open.",
+                            "VOĽNÁ: bežná úloha — lead sa môže posunúť do ďalšej fázy, aj keď nie je dokončená.",
+                            "SZABAD: normál feladat — a lead akkor is továbbléphet, ha ez még nyitva van.",
+                          )}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setInlineTaskIsLocking(!inlineTaskIsLocking)}
+                      className="text-[8.5px] font-black uppercase tracking-wider text-violet-600 hover:text-violet-800 transition-colors px-1"
+                    >
+                      {inlineTaskIsLocking
+                        ? t("Switch to NORMAL", "Prepnúť na VOĽNÚ", "Váltás SZABAD-ra")
+                        : t("Switch to LOCKING", "Prepnúť na BLOKUJE", "Váltás BLOKKOL-ra")}
                     </button>
                   </div>
                 </div>
@@ -3448,31 +3726,55 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                   {/* Switcher */}
                   <div className="space-y-1">
                     <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">{getTranslation(systemLanguage, "logger.event_type")}</label>
-                    <div className="grid grid-cols-5 gap-1.5 bg-slate-100 p-1.5 rounded-xl border-2 border-slate-200">
-                      {(["phone", "email", "note", "offer", "appointment"] as const).map(type => {
-                        const colors = getEventColors(type);
-                        return (
-                          <button
-                            key={type}
-                            type="button"
-                            onClick={() => setLogType(type)}
-                            className={`py-2 rounded-lg font-black text-[9px] uppercase tracking-wider transition-all text-center flex items-center justify-center gap-1 ${
-                              logType === type 
-                                ? `${colors.dotBg} border-2 shadow` 
-                                : "text-slate-550 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
-                            }`}
-                          >
-                            {renderEventIcon(type)}
-                            <span>
-                              {type === "phone" && (systemLanguage === "sk" ? "Hovor" : systemLanguage === "hu" ? "Hívás" : "Call")}
-                              {type === "email" && (systemLanguage === "sk" ? "E-mail" : systemLanguage === "hu" ? "E-mail" : "Email")}
-                              {type === "note" && (systemLanguage === "sk" ? "Poznámka" : systemLanguage === "hu" ? "Jegyzet" : "Note")}
-                              {type === "offer" && (systemLanguage === "sk" ? "Ponuka" : systemLanguage === "hu" ? "Ajánlat" : "Offer")}
-                              {type === "appointment" && (systemLanguage === "sk" ? "Meet" : systemLanguage === "hu" ? "Találkozó" : "Meet")}
-                            </span>
-                          </button>
-                        );
-                      })}
+                    <div className="space-y-1.5 bg-slate-100 p-1.5 rounded-xl border-2 border-slate-200">
+                      {/* Communication events */}
+                      <div className="grid grid-cols-5 gap-1.5">
+                        {(["phone", "email", "note", "offer", "appointment"] as const).map(type => {
+                          const colors = getEventColors(type);
+                          return (
+                            <button
+                              key={type}
+                              type="button"
+                              onClick={() => setLogType(type)}
+                              className={`py-2 rounded-lg font-black text-[9px] uppercase tracking-wider transition-all text-center flex items-center justify-center gap-1 ${
+                                logType === type
+                                  ? `${colors.dotBg} border-2 shadow`
+                                  : "text-slate-550 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
+                              }`}
+                            >
+                              {renderEventIcon(type)}
+                              <span>{eventTypeLabel(type)}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Business documents — each one accepts several PDFs. */}
+                      <div className="pt-1.5 border-t border-slate-200">
+                        <span className="block px-1 pb-1 text-[7.5px] font-black text-slate-400 uppercase tracking-widest">
+                          {t("Business documents", "Obchodné doklady", "Üzleti dokumentumok")}
+                        </span>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                          {DOCUMENT_EVENT_TYPES.map(type => {
+                            const colors = getEventColors(type);
+                            return (
+                              <button
+                                key={type}
+                                type="button"
+                                onClick={() => setLogType(type)}
+                                className={`py-2 px-1 rounded-lg font-black text-[8.5px] uppercase tracking-wider transition-all text-center flex items-center justify-center gap-1 ${
+                                  logType === type
+                                    ? `${colors.dotBg} border-2 shadow`
+                                    : "text-slate-550 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
+                                }`}
+                              >
+                                {renderEventIcon(type)}
+                                <span className="truncate">{eventTypeLabel(type)}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -3595,6 +3897,78 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                           </>
                         )}
 
+                        {/* Business documents: several files per event. */}
+                        {isDocumentEventType(logType) && (
+                          <div className="md:col-span-2 space-y-2 animate-in slide-in-from-left duration-200">
+                            <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">
+                              {t("Attach documents (PDF, several allowed)", "Priložiť dokumenty (PDF, viacero naraz)", "Dokumentumok csatolása (PDF, több is)")}
+                            </label>
+                            <label className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100/80 text-amber-800 border-2 border-amber-300 transition-all cursor-pointer text-[10px] font-black uppercase shadow-sm select-none w-fit">
+                              <FolderOpen className="h-4 w-4" />
+                              <span>{getTranslation(systemLanguage, "logger.choose_file")}</span>
+                              <input
+                                type="file"
+                                multiple
+                                accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const picked = Array.from(e.target.files || []);
+                                  if (picked.length === 0) return;
+                                  const MAX_MB = 64;
+                                  const tooBig = picked.filter(f => f.size > MAX_MB * 1024 * 1024);
+                                  if (tooBig.length > 0) {
+                                    (window as any).showToast?.(t(
+                                      `File is too large (max ${MAX_MB} MB): ${tooBig.map(f => f.name).join(", ")}`,
+                                      `Súbor je príliš veľký (max ${MAX_MB} MB): ${tooBig.map(f => f.name).join(", ")}`,
+                                      `A fájl túl nagy (max ${MAX_MB} MB): ${tooBig.map(f => f.name).join(", ")}`,
+                                    ));
+                                  }
+                                  const accepted = picked.filter(f => f.size <= MAX_MB * 1024 * 1024);
+                                  // Appending (rather than replacing) lets documents be
+                                  // picked in several passes from different folders.
+                                  setLogDocumentFiles(prev => [
+                                    ...prev,
+                                    ...accepted.filter(f => !prev.some(p => p.name === f.name && p.size === f.size))
+                                  ]);
+                                  e.target.value = "";
+                                }}
+                              />
+                            </label>
+
+                            {logDocumentFiles.length === 0 ? (
+                              <p className="text-[10px] font-bold text-slate-400 italic">
+                                {getTranslation(systemLanguage, "logger.no_file")}
+                              </p>
+                            ) : (
+                              <ul className="space-y-1.5">
+                                {logDocumentFiles.map((file, idx) => (
+                                  <li
+                                    key={`${file.name}-${file.size}-${idx}`}
+                                    className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 animate-in fade-in"
+                                  >
+                                    <span className="flex items-center gap-2 min-w-0">
+                                      <FileText className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                                      <span className="text-[10px] font-extrabold text-slate-700 truncate">{file.name}</span>
+                                    </span>
+                                    <span className="flex items-center gap-1.5 shrink-0">
+                                      <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[8.5px] border border-slate-200 font-black">
+                                        {(file.size / 1024 / 1024).toFixed(2)} MB
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => setLogDocumentFiles(prev => prev.filter((_, i) => i !== idx))}
+                                        className="p-1 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                                      >
+                                        <X className="h-3.5 w-3.5" />
+                                      </button>
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        )}
+
                         {logType === "appointment" && (
                           <div className="space-y-1 animate-in slide-in-from-left duration-200">
                             <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">{getTranslation(systemLanguage, "logger.appt_time")}</label>
@@ -3634,7 +4008,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                           </div>
                         ) : (
                           <textarea
-                            required={!!logType}
+                            // Document events describe themselves from the attached
+                            // file names, so a written note is optional there.
+                            required={!!logType && !isDocumentEventType(logType)}
                             rows={3}
                             placeholder={logType ? getTranslation(systemLanguage, "logger.details_placeholder_log") : getTranslation(systemLanguage, "logger.details_placeholder_generic")}
                             value={logContent}
@@ -3646,9 +4022,19 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                       <button
                         type="submit"
-                        className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 active:scale-95 shadow-lg w-fit ml-auto border-2 border-blue-700"
+                        disabled={isUploadingDocuments}
+                        className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 active:scale-95 shadow-lg w-fit ml-auto border-2 border-blue-700 disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100"
                       >
-                        <Plus className="h-4.5 w-4.5 stroke-[2.5]" /> {getTranslation(systemLanguage, "logger.btn_log")}
+                        {isUploadingDocuments ? (
+                          <>
+                            <Loader2 className="h-4.5 w-4.5 stroke-[2.5] animate-spin" />
+                            {t("Uploading...", "Nahrávanie...", "Feltöltés...")}
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="h-4.5 w-4.5 stroke-[2.5]" /> {getTranslation(systemLanguage, "logger.btn_log")}
+                          </>
+                        )}
                       </button>
 
                     </div>
@@ -3821,6 +4207,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 </p>
                               );
                             })()}
+
+                            {renderEventAttachments(event)}
                           </div>
 
                         </div>
@@ -3902,10 +4290,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                               ) : (
                                 <div className="flex items-center gap-1.5 shrink-0">
                                   <span className={`px-2.5 py-0.5 rounded-full text-[8.5px] font-extrabold uppercase border ${colors.badgeBg}`}>
-                                    {event.type === "phone" && getTranslation(systemLanguage, "timeline.badge.phone")}
-                                    {event.type === "note" && getTranslation(systemLanguage, "timeline.badge.note")}
-                                    {event.type === "offer" && getTranslation(systemLanguage, "timeline.badge.offer")}
-                                    {event.type === "appointment" && getTranslation(systemLanguage, "timeline.badge.appointment")}
+                                    {getTranslation(systemLanguage, `timeline.badge.${event.type}`)}
                                   </span>
                                   {editingEventId !== event.id && (
                                     <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -4031,35 +4416,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                               );
                             })()}
 
-                            {/* Offer details & document badges */}
-                            {event.type === "offer" && event.fileName && (
-                              <div 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if ((window as any).previewFile) {
-                                    (window as any).previewFile(event.filePath || `/uploads/${event.id}_${event.fileName}`, event.fileName);
-                                  }
-                                }}
-                                className="mt-3.5 pt-3 border-t border-slate-100 flex items-center justify-between gap-2 bg-slate-50/50 p-2.5 rounded-xl border border-slate-150 animate-in slide-in-from-top-1 hover:bg-slate-100/80 cursor-pointer transition-colors"
-                              >
-                                <div className="flex items-center gap-2">
-                                  <span className="text-[13px]">
-                                    {event.fileType === "invoice" ? "💰" : event.fileType === "contract" ? "🤝" : "📄"}
-                                  </span>
-                                  <div className="flex flex-col">
-                                    <span className="text-[9px] font-black uppercase text-amber-800">
-                                      {event.fileType || "offer"} {getTranslation(systemLanguage, "timeline.doc_suffix")} {t("(Click to View)", "(Kliknite pre zobrazenie)", "(Kattintson a megtekintéshez)")}
-                                    </span>
-                                    <span className="text-[10px] font-extrabold text-slate-700 truncate max-w-[200px]">
-                                      {event.fileName}
-                                    </span>
-                                  </div>
-                                </div>
-                                <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-[8.5px] border border-amber-250 font-black">
-                                  {event.fileSize || "1.0 MB"}
-                                </span>
-                              </div>
-                            )}
+                            {/* Attached documents. Events logged before multi-file
+                                support carry a single fileName/filePath pair, so
+                                fall back to that when `attachments` is absent. */}
+                            {renderEventAttachments(event)}
 
                           </div>
 
@@ -5632,7 +5992,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             <form onSubmit={handleCreateLead} className="space-y-4">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Client Selection *", "Výber klienta *", "Ügyfél kiválasztása *")}</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <User className="h-3.5 w-3.5 text-blue-500" /> {t("Client Selection *", "Výber klienta *", "Ügyfél kiválasztása *")}
+                  </label>
                   <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200">
                     <button
                       type="button"
@@ -5641,6 +6003,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         setNewLeadName("");
                         setNewLeadCity("");
                         setNewLeadType("person");
+                        setNewLeadPhone("");
+                        setNewLeadEmail("");
                         setSelectedExistingClient("");
                       }}
                       className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${
@@ -5658,6 +6022,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         setNewLeadName("");
                         setNewLeadCity("");
                         setNewLeadType("person");
+                        setNewLeadPhone("");
+                        setNewLeadEmail("");
                         setSelectedExistingClient("");
                       }}
                       className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${
@@ -5699,7 +6065,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("City", "Mesto", "Város")}</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <MapPin className="h-3.5 w-3.5 text-blue-500" /> {t("City", "Mesto", "Város")}
+                  </label>
                   <input
                     type="text"
                     value={newLeadCity}
@@ -5709,7 +6077,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Client Type *", "Typ klienta *", "Ügyféltípus *")}</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <Briefcase className="h-3.5 w-3.5 text-blue-500" /> {t("Client Type *", "Typ klienta *", "Ügyféltípus *")}
+                  </label>
                   <select
                     value={newLeadType}
                     onChange={(e) => setNewLeadType(e.target.value as any)}
@@ -5722,9 +6092,40 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 </div>
               </div>
 
+              {/* Contact details — captured up front instead of only being
+                  reachable after the lead has been created and reopened. */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Lead Value *", "Hodnota leadu *", "Lead értéke *")}</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <Phone className="h-3.5 w-3.5 text-blue-500" /> {t("Phone Number", "Telefónne číslo", "Telefonszám")}
+                  </label>
+                  <input
+                    type="tel"
+                    value={newLeadPhone}
+                    onChange={(e) => setNewLeadPhone(e.target.value)}
+                    placeholder={t("e.g. +421 900 123 456", "napr. +421 900 123 456", "pl. +421 900 123 456")}
+                    className="w-full px-4 py-2.5 rounded-xl bg-blue-50/10 border border-blue-100 text-xs text-slate-800 focus:outline-none focus:bg-white focus:border-blue-500"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <Mail className="h-3.5 w-3.5 text-blue-500" /> {t("Email Address", "E-mailová adresa", "E-mail cím")}
+                  </label>
+                  <input
+                    type="email"
+                    value={newLeadEmail}
+                    onChange={(e) => setNewLeadEmail(e.target.value)}
+                    placeholder={t("e.g. client@company.com", "napr. klient@firma.sk", "pl. ugyfel@ceg.hu")}
+                    className="w-full px-4 py-2.5 rounded-xl bg-blue-50/10 border border-blue-100 text-xs text-slate-800 focus:outline-none focus:bg-white focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <Euro className="h-3.5 w-3.5 text-blue-500" /> {t("Lead Value *", "Hodnota leadu *", "Lead értéke *")}
+                  </label>
                   <input
                     type="number"
                     required
@@ -5737,7 +6138,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Project Manager", "Projektový manažér", "Projektmenedzser")}</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <UserCheck className="h-3.5 w-3.5 text-blue-500" /> {t("Project Manager", "Projektový manažér", "Projektmenedzser")}
+                  </label>
                   <select
                     value={newLeadOwner}
                     onChange={(e) => setNewLeadOwner(e.target.value)}
@@ -5752,7 +6155,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider">{t("Lead State", "Stav leadu", "Lead állapota")}</label>
+                  <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider flex items-center gap-1.5">
+                    <Flag className="h-3.5 w-3.5 text-blue-500" /> {t("Lead State", "Stav leadu", "Lead állapota")}
+                  </label>
                   <div className="pt-1 select-none">
                     <StatusSelector 
                       status={newLeadStatus} 
@@ -5761,7 +6166,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                   </div>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Lead Source", "Zdroj leadu", "Lead forrása")}</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <Globe className="h-3.5 w-3.5 text-blue-500" /> {t("Lead Source", "Zdroj leadu", "Lead forrása")}
+                  </label>
                   <select
                     value={newLeadSource}
                     onChange={(e) => setNewLeadSource(e.target.value)}
@@ -5812,8 +6219,30 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 </div>
               </div>
 
+              {/* What the client actually wants — free text, so the person who
+                  takes the call can record the problem instead of squeezing it
+                  into the fixed category checkboxes. */}
+              <div className="space-y-1 border-t border-slate-100 pt-3">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <PencilLine className="h-3.5 w-3.5 text-blue-500" /> {t("Client's Interest / Problem to Solve", "Záujem klienta / Problém na riešenie", "Ügyfél érdeklődése / Megoldandó probléma")}
+                </label>
+                <textarea
+                  rows={3}
+                  value={newLeadInterestNote}
+                  onChange={(e) => setNewLeadInterestNote(e.target.value)}
+                  placeholder={t(
+                    "What does the client need? What problem are we solving for them?",
+                    "Čo klient potrebuje? Aký problém mu riešime?",
+                    "Mire van szüksége az ügyfélnek? Milyen problémát oldunk meg neki?",
+                  )}
+                  className="w-full px-4 py-2.5 rounded-xl bg-blue-50/10 border border-blue-100 text-xs text-slate-800 focus:outline-none focus:bg-white focus:border-blue-500 resize-none"
+                />
+              </div>
+
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Lead Referral (Referred by Client)", "Odporúčanie leadu (Odporúčané klientom)", "Lead ajánlás (Ügyfél által ajánlott)")}</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <Share2 className="h-3.5 w-3.5 text-blue-500" /> {t("Lead Referral (Referred by Client)", "Odporúčanie leadu (Odporúčané klientom)", "Lead ajánlás (Ügyfél által ajánlott)")}
+                </label>
                 <SearchableLeadSelect
                   leads={leads}
                   value={newLeadReferralId}
@@ -5823,7 +6252,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Lead Priority Rating", "Hodnotenie priority leadu", "Lead prioritás értékelése")}</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <Star className="h-3.5 w-3.5 text-blue-500" /> {t("Lead Priority Rating", "Hodnotenie priority leadu", "Lead prioritás értékelése")}
+                </label>
                 <div className="flex items-center gap-1 bg-slate-50 p-2 rounded-xl border border-slate-150 w-fit">
                   {renderStars(newLeadRating, setNewLeadRating)}
                 </div>

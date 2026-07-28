@@ -85,6 +85,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'send_test') {
         send_system_test_email($config, $recipient, $lang);
         echo json_encode(['success' => true]);
     } catch (Throwable $ex) {
+        // Deliberate exception: this action is admin-only and its whole purpose is
+        // diagnosing outbound mail, so the SMTP server's own message ("535
+        // authentication failed", "connection refused") is the useful answer.
+        if (function_exists('ccrm_log_exception')) {
+            ccrm_log_exception($ex);
+        }
         echo json_encode(['success' => false, 'error' => $ex->getMessage()]);
     }
     exit;
@@ -202,7 +208,18 @@ try {
     }
 } catch (Throwable $ex) {
     http_response_code(500);
-    echo json_encode(['success' => false, 'error' => $ex->getMessage()]);
+    // The deliberate `throw new Exception(...)` calls in this file carry messages
+    // meant for the user about their OWN mailbox ("IMAP connection failed",
+    // "message no longer in this folder"), so those are worth showing. Anything
+    // else is an internal PHP error whose message leaks file paths and internals.
+    $isUserFacing = ($ex instanceof Exception) && !($ex instanceof \ErrorException);
+    if (function_exists('ccrm_log_exception')) {
+        ccrm_log_exception($ex);
+    }
+    echo json_encode([
+        'success' => false,
+        'error'   => $isUserFacing ? $ex->getMessage() : 'The mail server request failed.',
+    ]);
 }
 
 function safe_utf8($str) {
@@ -229,23 +246,29 @@ function get_smtp_credentials($settings) {
 function get_imap_mailbox_string($settings, $folder = '') {
     $host = $settings['imapHost'];
     $port = $settings['imapPort'];
-    
+
+    // Validate the server certificate by default. Every connection used to carry
+    // /novalidate-cert, so anyone on the network path could present their own cert
+    // and collect the mailbox password plus the whole mailbox. Operators running an
+    // internal server with a self-signed cert can opt out per mailbox.
+    $certOpt = !empty($settings['imapAllowSelfSigned']) ? '/novalidate-cert' : '/validate-cert';
+
     $sec = isset($settings['imapSecure']) ? $settings['imapSecure'] : 'ssl';
-    $ssl = '/novalidate-cert';
+    $ssl = $certOpt;
     if ($sec === 'ssl' || $sec === true) {
-        $ssl = '/ssl/novalidate-cert';
+        $ssl = '/ssl' . $certOpt;
     } elseif ($sec === 'tls') {
-        $ssl = '/tls/novalidate-cert';
+        $ssl = '/tls' . $certOpt;
     }
-    
+
     // Autodetect MS Exchange URL or custom Exchange setup if provider is Exchange
     if ($settings['provider'] === 'exchange') {
         // Exchange autodiscover fallback configuration
         $host = !empty($settings['imapHost']) ? $settings['imapHost'] : 'outlook.office365.com';
         $port = '993';
-        $ssl = '/ssl/novalidate-cert';
+        $ssl = '/ssl' . $certOpt;
     }
-    
+
     return "{" . "$host:$port/imap$ssl" . "}$folder";
 }
 
@@ -1051,6 +1074,16 @@ function fetch_email_body_text($imapStream, $msgNo) {
 }
 
 function save_imap_attachment_to_uploads($settings, $folder, $uid, $partNum, $name, $eventId) {
+    // The attachment name is caller-supplied (?name=) and the bytes come from an
+    // email anyone can send. Writing that pair into the web-served uploads/ folder
+    // without an extension check let an authenticated user drop an executable
+    // .php file into the docroot — remote code execution. Validate BEFORE any
+    // IMAP work so a rejected name costs nothing.
+    $safeName = ccrm_safe_upload_name((string)$name);
+    if ($safeName === null) {
+        return ['success' => false, 'error' => 'This attachment type cannot be saved to documents.'];
+    }
+
     $mailbox = get_imap_mailbox_string($settings, $folder);
     list($imapUser, $imapPass) = get_imap_credentials($settings);
     $imapStream = @imap_open($mailbox, $imapUser, $imapPass, 0, 1, ['DISABLE_AUTHENTICATOR' => 'GSSAPI']);
@@ -1077,15 +1110,12 @@ function save_imap_attachment_to_uploads($settings, $folder, $uid, $partNum, $na
     
     @imap_close($imapStream);
     
-    $uploadDir = dirname(__DIR__) . '/uploads/';
-    if (!is_dir($uploadDir)) {
-        mkdir($uploadDir, 0775, true);
-    }
-    
-    $targetPath = $uploadDir . $eventId . '_' . basename($name);
+    $uploadDir = ccrm_uploads_dir();
+
+    $targetPath = $uploadDir . $eventId . '_' . $safeName;
     if (@file_put_contents($targetPath, $data) !== false) {
         $extractedText = '';
-        $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+        $ext = strtolower(pathinfo($safeName, PATHINFO_EXTENSION));
         if ($ext === 'txt') {
             $extractedText = $data;
         } elseif ($ext === 'docx') {
@@ -1136,10 +1166,13 @@ function save_imap_attachment_to_uploads($settings, $folder, $uid, $partNum, $na
 
         return [
             'success' => true,
-            'fileName' => basename($name),
+            // Report the name actually written, not the requested one, so the
+            // client's stored filePath matches what is on disk.
+            'fileName' => $safeName,
+            'filePath' => '/uploads/' . $eventId . '_' . $safeName,
             'extractedText' => $extractedText
         ];
     }
-    
+
     return ['success' => false, 'error' => 'Failed to save file on server.'];
 }

@@ -9,6 +9,7 @@ import type { MeetingNote } from "./components/MeetingRoomView";
 import { getTranslation } from "./utils/translations";
 import { orderLeadStates } from "./utils/leadStates";
 import { InstallerWizard } from "./components/InstallerWizard";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { RefreshCw, AlertOctagon, Trash2, Copy } from "lucide-react";
 import { ShaderGradient, ShaderGradientCanvas } from "shadergradient";
 
@@ -1264,6 +1265,23 @@ ${log.payload || ''}
     const applyServerData = (data: any) => {
       setIsInstalled(true);
       setIsDemoMode(data.demoMode === true);
+      // Not a real read: with DEMO_MODE on, an unauthenticated GET answers 200
+      // with just the login picker instead of a 401, so a session that dies
+      // mid-use lands here rather than in the 401 branch. Everything below would
+      // treat that as "the server holds nothing" — blanking the dataset on screen
+      // and re-anchoring the delta baseline to empty. Take only what the login
+      // screen needs and stop.
+      if (data.authenticated === false) {
+        if (Array.isArray(data.users)) setUsers(data.users);
+        const s = data.settings;
+        if (s) {
+          if (s.systemName && s.systemName !== systemName) setSystemName(s.systemName);
+          if (s.systemLanguage && s.systemLanguage !== systemLanguage) setSystemLanguage(s.systemLanguage);
+          if (s.systemCurrency !== undefined && s.systemCurrency !== systemCurrency) setSystemCurrency(s.systemCurrency || "");
+        }
+        setCurrentUser(null);
+        return;
+      }
       if (typeof data.serverTime === "string") {
         baseSyncedAtRef.current = data.serverTime;
       }
@@ -1429,6 +1447,14 @@ ${log.payload || ''}
           }
           if (!probeRes.ok) return;
           const probe = await probeRes.json();
+          // Under DEMO_MODE a dead session answers 200, not 401 (see
+          // applyServerData). Without this the logout only surfaces on the next
+          // forced full pull, up to a minute later.
+          if (probe && probe.authenticated === false) {
+            setIsInstalled(true);
+            setCurrentUser(null);
+            return;
+          }
           if (activePushesRef.current > 0 || pollStartTime < lastPushTimeRef.current || Date.now() - lastPushTimeRef.current < 4000) {
             return;
           }
@@ -2111,9 +2137,16 @@ ${log.payload || ''}
           
           <main className="flex-1 p-4 md:p-6 overflow-y-auto max-w-[1600px] mx-auto w-full relative flex flex-col justify-between">
             <div className="shrink-0 w-full">
-              <Suspense fallback={<div className="w-full flex items-center justify-center py-24"><RefreshCw className="w-6 h-6 text-indigo-400 animate-spin" /></div>}>
-                {renderWorkspaceView()}
-              </Suspense>
+              {/* Per-view boundary: a render error in one module (a single CRM tab)
+                  used to escape to the root boundary and take the whole app down,
+                  leaving a reload as the only way back. Contained here, the sidebar,
+                  header and every other tab keep working, and switching tabs clears
+                  the error via resetKey. */}
+              <ErrorBoundary contained resetKey={activeTab}>
+                <Suspense fallback={<div className="w-full flex items-center justify-center py-24"><RefreshCw className="w-6 h-6 text-indigo-400 animate-spin" /></div>}>
+                  {renderWorkspaceView()}
+                </Suspense>
+              </ErrorBoundary>
             </div>
             <footer className="mt-12 pt-4 border-t border-slate-200/50 flex justify-between items-center text-[10px] text-slate-400 select-none font-semibold uppercase tracking-wider">
               <span>{systemName} CRM &bull; Active Node</span>

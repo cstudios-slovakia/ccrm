@@ -45,11 +45,7 @@ if (!in_array($ext, $allowedExtensions, true)) {
     exit;
 }
 
-// Ensure uploads directory exists
-$uploadDir = dirname(__DIR__) . '/uploads/';
-if (!is_dir($uploadDir)) {
-    mkdir($uploadDir, 0775, true);
-}
+$uploadDir = ccrm_uploads_dir();
 
 // Name file consistently: meeting_audio_{meetingId}.{ext}
 $targetFileName = 'meeting_audio_' . $meetingId . '.' . $ext;
@@ -60,18 +56,35 @@ if (file_exists($configFile)) {
     require_once $configFile;
 }
 
+// The recording is written under an id the CALLER chose, so without this check any
+// authenticated user could overwrite another meeting's audio just by naming its id.
+// Only an existing note (which the caller may edit) or a brand-new id is accepted;
+// the DB is the authority on which of the two it is.
+$pdo = null;
+$meetingExists = false;
+try {
+    if (function_exists('get_db_connection')) {
+        $pdo = get_db_connection();
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM `meeting_notes` WHERE `id` = ?");
+        $stmt->execute([$meetingId]);
+        $meetingExists = (int)$stmt->fetchColumn() > 0;
+    }
+} catch (\Throwable $e) {
+    ccrm_log_exception($e);
+    http_response_code(500);
+    echo json_encode(['success' => false, 'message' => 'Could not verify the meeting before saving the recording.']);
+    exit;
+}
+
 if (move_uploaded_file($file['tmp_name'], $targetPath)) {
     $filePath = '/uploads/' . $targetFileName;
-    
-    // Save/update the database directly to prevent sync latency issues
+
+    // Save/update the database directly to prevent sync latency issues. A failure
+    // here used to be swallowed, so the client was told the recording was saved
+    // while the note had no reference to it and the audio was effectively lost.
     try {
-        if (function_exists('get_db_connection')) {
-            $pdo = get_db_connection();
-            $stmt = $pdo->prepare("SELECT COUNT(*) FROM `meeting_notes` WHERE `id` = ?");
-            $stmt->execute([$meetingId]);
-            $exists = $stmt->fetchColumn() > 0;
-            
-            if ($exists) {
+        if ($pdo !== null) {
+            if ($meetingExists) {
                 $stmt = $pdo->prepare("UPDATE `meeting_notes` SET `audio_file` = ? WHERE `id` = ?");
                 $stmt->execute([$filePath, $meetingId]);
             } else {
@@ -86,8 +99,12 @@ if (move_uploaded_file($file['tmp_name'], $targetPath)) {
                 ]);
             }
         }
-    } catch (\Exception $e) {
-        // Silently log or ignore db error during direct save
+    } catch (\Throwable $e) {
+        ccrm_log_exception($e);
+        @unlink($targetPath);
+        http_response_code(500);
+        echo json_encode(['success' => false, 'message' => 'The recording could not be attached to the meeting note.']);
+        exit;
     }
 
     echo json_encode([

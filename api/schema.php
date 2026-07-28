@@ -22,6 +22,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `name` VARCHAR(100) NOT NULL,
               `email` VARCHAR(150) NOT NULL UNIQUE,
               `password_hash` VARCHAR(255) NOT NULL,
+              `sessions_valid_from` DATETIME NULL COMMENT 'Sessions issued before this are rejected (set on password change)',
               `role` ENUM('admin', 'project_manager', 'viewer') NOT NULL DEFAULT 'viewer',
               `avatar` VARCHAR(255) NULL,
               `color` VARCHAR(20) NULL,
@@ -70,6 +71,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `country` VARCHAR(100) NULL DEFAULT 'Slovakia',
               `ai_summary` TEXT NULL,
               `ai_summary_fingerprint` TEXT NULL,
+              `interest_note` TEXT NULL COMMENT 'What the client is interested in / the problem to solve',
+              `referral_lead_id` VARCHAR(50) NULL COMMENT 'Lead/client who referred this one. Deliberately NOT a foreign key: a sync payload can carry the referring lead after this one, and deleting the referrer must not delete or block this lead',
               `metadata_json` TEXT NULL COMMENT 'Plugin support',
               `vat_validation_result` TEXT NULL,
               `follow_ups` TEXT NULL COMMENT 'JSON map: {stateKey: YYYY-MM-DD} of completed follow-ups',
@@ -93,7 +96,7 @@ if (!function_exists('ccrm_schema_statements')) {
             "CREATE TABLE IF NOT EXISTS `timeline_events` (
               `id` VARCHAR(50) NOT NULL,
               `lead_id` VARCHAR(50) NOT NULL,
-              `type` ENUM('phone', 'email', 'note', 'offer', 'appointment') NOT NULL DEFAULT 'note',
+              `type` ENUM('phone', 'email', 'note', 'offer', 'appointment', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note') NOT NULL DEFAULT 'note',
               `timestamp` DATETIME NOT NULL,
               `title` VARCHAR(255) NOT NULL,
               `content` TEXT NULL,
@@ -101,6 +104,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `file_name` VARCHAR(255) NULL,
               `file_size` VARCHAR(50) NULL,
               `file_type` ENUM('offer', 'contract', 'invoice') NULL,
+              `attachments_json` TEXT NULL COMMENT 'JSON array of {name,size,path} — an event can carry several documents',
               `extra_time` VARCHAR(10) NULL,
               PRIMARY KEY (`id`),
               FOREIGN KEY (`lead_id`) REFERENCES `leads` (`id`) ON DELETE CASCADE,
@@ -352,6 +356,12 @@ if (!function_exists('ccrm_schema_statements')) {
      * run on every install/update without relying on try/catch swallowing.
      */
     function ccrm_apply_migrations(PDO $pdo): void {
+        // Sessions established before this timestamp are rejected, so a password
+        // change can retire every session the old password could reach. NULL means
+        // "no password change recorded yet" and lets existing sessions continue.
+        if (!ccrm_column_exists($pdo, 'users', 'sessions_valid_from')) {
+            $pdo->exec("ALTER TABLE `users` ADD COLUMN `sessions_valid_from` DATETIME NULL AFTER `password_hash`");
+        }
         // `archived` was added to meeting_notes after the initial release.
         if (!ccrm_column_exists($pdo, 'meeting_notes', 'archived')) {
             $pdo->exec("ALTER TABLE `meeting_notes` ADD COLUMN `archived` TINYINT(1) NOT NULL DEFAULT 0");
@@ -437,6 +447,26 @@ if (!function_exists('ccrm_schema_statements')) {
         if (!ccrm_column_exists($pdo, 'leads', 'follow_ups')) {
             $pdo->exec("ALTER TABLE `leads` ADD COLUMN `follow_ups` TEXT NULL");
         }
+        // Free-text "what does the client want / what problem are we solving"
+        // captured when the lead is created.
+        if (!ccrm_column_exists($pdo, 'leads', 'interest_note')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `interest_note` TEXT NULL AFTER `ai_summary_fingerprint`");
+        }
+        // Which lead/client referred this one. The picker has existed in the UI
+        // since the interest note shipped, but there was no column behind it, so
+        // every referral looked saved and then vanished on the next poll.
+        if (!ccrm_column_exists($pdo, 'leads', 'referral_lead_id')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `referral_lead_id` VARCHAR(50) NULL AFTER `interest_note`");
+        }
+        // Business-document timeline events (order, proforma invoice, advance
+        // receipt, invoice, delivery note). MySQL silently truncates an unknown
+        // ENUM value to '' (and errors out under strict mode), so the column has
+        // to learn the new names before the client can push them.
+        ccrm_migrate_timeline_event_types($pdo);
+        // Several documents per timeline event (e.g. a batch of advance invoices).
+        if (!ccrm_column_exists($pdo, 'timeline_events', 'attachments_json')) {
+            $pdo->exec("ALTER TABLE `timeline_events` ADD COLUMN `attachments_json` TEXT NULL AFTER `file_type`");
+        }
         // `tasks`.`status` was originally a fixed ENUM, but task states are
         // user-customizable free text (see Settings > task states / taskStates
         // in App.tsx), same as `leads`.`status`. A custom state name that
@@ -465,6 +495,32 @@ if (!function_exists('ccrm_schema_statements')) {
         }
         ccrm_migrate_updated_at_precision($pdo);
         ccrm_migrate_task_states($pdo);
+    }
+
+    /**
+     * Widen `timeline_events`.`type` so it accepts the business-document event
+     * types added after the initial release. Idempotent: the ALTER only runs
+     * when one of the new names is missing from the live ENUM definition.
+     */
+    function ccrm_migrate_timeline_event_types(PDO $pdo): void {
+        $columnType = $pdo->query(
+            "SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'timeline_events' AND COLUMN_NAME = 'type'"
+        )->fetchColumn();
+        if ($columnType === false || $columnType === null) {
+            return; // timeline_events not provisioned yet — CREATE TABLE covers it.
+        }
+        $required = ['order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note'];
+        foreach ($required as $value) {
+            if (strpos($columnType, "'" . $value . "'") === false) {
+                $pdo->exec(
+                    "ALTER TABLE `timeline_events` MODIFY COLUMN `type`
+                     ENUM('phone', 'email', 'note', 'offer', 'appointment', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note')
+                     NOT NULL DEFAULT 'note'"
+                );
+                return;
+            }
+        }
     }
 
     /**

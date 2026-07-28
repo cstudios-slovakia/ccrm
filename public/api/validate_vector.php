@@ -90,7 +90,7 @@ if ($vectorDb === 'mariadb') {
     } catch (\Exception $e) {
         echo json_encode([
             'success' => false,
-            'message' => "MariaDB connection error: " . $e->getMessage()
+            'message' => "MariaDB connection error."
         ]);
     }
     exit;
