@@ -77,16 +77,133 @@ if (!function_exists('ccrm_send_cors')) {
         @session_start();
     }
 
+    /** How often (seconds) a live session re-checks its role against the database. */
+    if (!defined('CCRM_SESSION_REVALIDATE_SECONDS')) {
+        define('CCRM_SESSION_REVALIDATE_SECONDS', 60);
+    }
+
+    /**
+     * Best-effort PDO for the auth helpers themselves, without forcing every
+     * caller to have already required config.php.
+     */
+    function ccrm_auth_pdo(): ?\PDO {
+        // config.php assigns $pdo/$db_connection_error at top level and
+        // get_db_connection() reads them via `global`. Including it from inside a
+        // function without these declarations would bind them to THIS function's
+        // scope, and because the include is require_once, the later top-level
+        // include in the calling endpoint becomes a no-op — leaving the global
+        // $pdo null and every subsequent get_db_connection() throwing.
+        global $pdo, $db_connection_error;
+
+        if (!function_exists('get_db_connection')) {
+            $configFile = dirname(__DIR__) . '/config.php';
+            if (!file_exists($configFile)) {
+                $configFile = dirname(__DIR__) . '/public/config.php';
+            }
+            if (!file_exists($configFile)) {
+                return null;
+            }
+            require_once $configFile;
+        }
+        if (!function_exists('get_db_connection')) {
+            return null;
+        }
+        try {
+            return get_db_connection();
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /** Drop the current session entirely (used when it is no longer valid). */
+    function ccrm_destroy_session(): void {
+        $_SESSION = [];
+        if (ini_get('session.use_cookies')) {
+            $p = session_get_cookie_params();
+            setcookie(session_name(), '', time() - 42000, $p['path'], $p['domain'], $p['secure'], $p['httponly']);
+        }
+        @session_destroy();
+    }
+
     function ccrm_current_user(): ?array {
         ccrm_start_session();
         if (empty($_SESSION['ccrm_uid'])) {
             return null;
         }
+
+        // The role was copied into the session at login and never re-read, so a
+        // demotion or a deleted account only took effect once the user happened to
+        // log out — up to 30 days later with "remember me". Re-check periodically
+        // against the database, which is the authority.
+        $now = time();
+        $lastCheck = (int)($_SESSION['ccrm_checked_at'] ?? 0);
+        if ($now - $lastCheck >= CCRM_SESSION_REVALIDATE_SECONDS) {
+            $pdo = ccrm_auth_pdo();
+            if ($pdo !== null) {
+                try {
+                    // A password change (self-service reset or an admin setting a new
+                    // one) stamps sessions_valid_from, which retires every session
+                    // established before it. Without this, whoever prompted the reset
+                    // by compromising the account kept their session afterwards.
+                    //
+                    // The comparison is done BY THE DATABASE against the session's
+                    // stored issue time, which is itself a DB-clock value captured at
+                    // login. Comparing a MySQL DATETIME against PHP's time() silently
+                    // comes out wrong whenever the two disagree on timezone (PHP is
+                    // pinned to Europe/Bratislava here, MySQL runs UTC), which is the
+                    // same one-clock rule sync.php's baseSyncedAt already follows.
+                    // A session with no recorded issue time (established before this
+                    // field existed) counts as too old: a password change must never
+                    // leave a session standing just because we cannot date it.
+                    $issuedAt = $_SESSION['ccrm_issued_at'] ?? null;
+                    $stmt = $pdo->prepare(
+                        "SELECT `role`, `email`,
+                                (`sessions_valid_from` IS NOT NULL
+                                 AND (? IS NULL OR `sessions_valid_from` > ?)) AS `session_retired`
+                           FROM `users` WHERE `id` = ? LIMIT 1"
+                    );
+                    $stmt->execute([$issuedAt, $issuedAt, $_SESSION['ccrm_uid']]);
+                    $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+                    if (!$row) {
+                        // Account deleted — the session must not outlive it.
+                        ccrm_destroy_session();
+                        return null;
+                    }
+                    if (!empty($row['session_retired'])) {
+                        ccrm_destroy_session();
+                        return null;
+                    }
+
+                    $_SESSION['ccrm_role']  = $row['role'];
+                    $_SESSION['ccrm_email'] = $row['email'];
+                    $_SESSION['ccrm_checked_at'] = $now;
+                } catch (\Throwable $e) {
+                    // Fail open on an infrastructure error rather than logging
+                    // everyone out; the next request retries the check.
+                    error_log('[ccrm auth] session revalidation failed: ' . $e->getMessage());
+                }
+            }
+        }
+
         return [
             'id'    => $_SESSION['ccrm_uid'],
             'role'  => $_SESSION['ccrm_role'] ?? 'viewer',
             'email' => $_SESSION['ccrm_email'] ?? '',
         ];
+    }
+
+    /**
+     * Retire every session issued before now for a user — call after any password
+     * change. Safe to call when the column is missing on an un-migrated database.
+     */
+    function ccrm_invalidate_user_sessions(\PDO $pdo, string $userId): void {
+        try {
+            $pdo->prepare("UPDATE `users` SET `sessions_valid_from` = NOW() WHERE `id` = ?")
+                ->execute([$userId]);
+        } catch (\Throwable $e) {
+            error_log('[ccrm auth] could not invalidate sessions for ' . $userId . ': ' . $e->getMessage());
+        }
     }
 
     /**
@@ -302,6 +419,10 @@ HTACCESS
      * Log a PHP exception/error to the error_logs database table.
      */
     function ccrm_log_exception(\Throwable $e): void {
+        // See ccrm_auth_pdo(): config.php must be included into global scope or the
+        // caller's own require_once of it silently becomes a no-op.
+        global $pdo, $db_connection_error;
+
         try {
             if (!function_exists('get_db_connection')) {
                 $configFile = dirname(__DIR__) . '/config.php';

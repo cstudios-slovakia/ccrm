@@ -1458,8 +1458,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 //  - brand-new users with no password get an unusable random hash
                 //    (admin must set one) rather than a predictable default.
                 $incoming = isset($u['password']) ? trim((string)$u['password']) : '';
+                $passwordChanged = false;
                 if ($incoming !== '') {
                     $hash = ccrm_hash_password($incoming);
+                    // Only a genuinely new password counts: the client may echo back
+                    // the stored hash unchanged, and that must not log anyone out.
+                    $passwordChanged = isset($existingHashes[$userId])
+                        && $existingHashes[$userId] !== ''
+                        && $hash !== $existingHashes[$userId]
+                        && !ccrm_is_hash($incoming);
                 } elseif (isset($existingHashes[$userId]) && $existingHashes[$userId] !== '') {
                     $hash = $existingHashes[$userId];
                 } else {
@@ -1476,6 +1483,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $u['color'] ?? '#3b82f6',
                     $metaJson
                 ]);
+
+                // A new password retires every session that the old one could reach,
+                // except the one making this change (which just proved it knows the
+                // new password by setting it).
+                if ($passwordChanged && $userId !== ($sessionUser['id'] ?? '')) {
+                    ccrm_invalidate_user_sessions($pdo, $userId);
+                    ccrm_audit_log($pdo, $sessionUser, 'user.password_change', (string)$u['email']);
+                }
+
                 $processedUserIds[] = $userId;
             }
 

@@ -81,6 +81,27 @@ function ccrm_pwreset_find_sender(PDO $pdo): ?array {
     return $best;
 }
 
+/**
+ * Ensure `users.sessions_valid_from` exists. This endpoint does not pull in
+ * schema.php, and it must be able to retire existing sessions even on an install
+ * that has not yet run a sync (which is what normally applies migrations).
+ */
+function ccrm_pwreset_ensure_session_column(PDO $pdo): void {
+    try {
+        $has = $pdo->query(
+            "SELECT COUNT(*) FROM `information_schema`.`COLUMNS`
+              WHERE `TABLE_SCHEMA` = DATABASE()
+                AND `TABLE_NAME` = 'users'
+                AND `COLUMN_NAME` = 'sessions_valid_from'"
+        )->fetchColumn();
+        if ((int)$has === 0) {
+            $pdo->exec("ALTER TABLE `users` ADD COLUMN `sessions_valid_from` DATETIME NULL AFTER `password_hash`");
+        }
+    } catch (\Throwable $e) {
+        error_log('[ccrm password_reset] session column check failed: ' . $e->getMessage());
+    }
+}
+
 /** Ensure the reset-token table exists (self-migrating, independent of setup). */
 function ccrm_pwreset_ensure_table(PDO $pdo): void {
     $pdo->exec(
@@ -308,8 +329,14 @@ if ($action === 'reset') {
     }
 
     $hash = ccrm_hash_password($password);
+    // DDL implicitly commits in MySQL, so this runs before the transaction opens.
+    ccrm_pwreset_ensure_session_column($pdo);
     $pdo->beginTransaction();
-    $pdo->prepare("UPDATE `users` SET `password_hash` = ? WHERE `id` = ?")->execute([$hash, $row['user_id']]);
+    // Stamping sessions_valid_from retires every session issued before now, so a
+    // reset actually locks out whoever was already signed in with the old
+    // password — previously their session survived the reset untouched.
+    $pdo->prepare("UPDATE `users` SET `password_hash` = ?, `sessions_valid_from` = NOW() WHERE `id` = ?")
+        ->execute([$hash, $row['user_id']]);
     // Burn the token (and any siblings) so it cannot be reused.
     $pdo->prepare("DELETE FROM `password_resets` WHERE `user_id` = ?")->execute([$row['user_id']]);
     $pdo->commit();

@@ -22,6 +22,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `name` VARCHAR(100) NOT NULL,
               `email` VARCHAR(150) NOT NULL UNIQUE,
               `password_hash` VARCHAR(255) NOT NULL,
+              `sessions_valid_from` DATETIME NULL COMMENT 'Sessions issued before this are rejected (set on password change)',
               `role` ENUM('admin', 'project_manager', 'viewer') NOT NULL DEFAULT 'viewer',
               `avatar` VARCHAR(255) NULL,
               `color` VARCHAR(20) NULL,
@@ -352,6 +353,12 @@ if (!function_exists('ccrm_schema_statements')) {
      * run on every install/update without relying on try/catch swallowing.
      */
     function ccrm_apply_migrations(PDO $pdo): void {
+        // Sessions established before this timestamp are rejected, so a password
+        // change can retire every session the old password could reach. NULL means
+        // "no password change recorded yet" and lets existing sessions continue.
+        if (!ccrm_column_exists($pdo, 'users', 'sessions_valid_from')) {
+            $pdo->exec("ALTER TABLE `users` ADD COLUMN `sessions_valid_from` DATETIME NULL AFTER `password_hash`");
+        }
         // `archived` was added to meeting_notes after the initial release.
         if (!ccrm_column_exists($pdo, 'meeting_notes', 'archived')) {
             $pdo->exec("ALTER TABLE `meeting_notes` ADD COLUMN `archived` TINYINT(1) NOT NULL DEFAULT 0");

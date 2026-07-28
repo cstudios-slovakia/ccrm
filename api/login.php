@@ -119,6 +119,17 @@ session_regenerate_id(true);
 $_SESSION['ccrm_uid']   = $row['id'];
 $_SESSION['ccrm_role']  = $row['role'];
 $_SESSION['ccrm_email'] = $row['email'];
+// When this session was issued, so a later password change can retire it. Taken
+// from the DB clock (not PHP's) because it is compared against the DB-written
+// users.sessions_valid_from — see ccrm_current_user(). ccrm_checked_at is a local
+// monotonic-enough marker for the revalidation interval only, never compared to
+// a DB timestamp.
+try {
+    $_SESSION['ccrm_issued_at'] = $pdo->query("SELECT NOW()")->fetchColumn() ?: null;
+} catch (\Throwable $e) {
+    $_SESSION['ccrm_issued_at'] = null;
+}
+$_SESSION['ccrm_checked_at'] = time();
 
 // Persist (or clear) the non-sensitive marker cookie so later requests keep
 // the right session lifetime. This cookie is NOT a credential — auth still
