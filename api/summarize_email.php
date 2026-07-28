@@ -63,17 +63,20 @@ function get_imap_credentials_helper($settings) {
 function get_imap_mailbox_string_helper($settings, $folder = '') {
     $host = $settings['imapHost'];
     $port = $settings['imapPort'];
+    // Validate the certificate by default; opt out per mailbox for an internal
+    // server with a self-signed cert. Mirrors mail_broker.php.
+    $certOpt = !empty($settings['imapAllowSelfSigned']) ? '/novalidate-cert' : '/validate-cert';
     $sec = isset($settings['imapSecure']) ? $settings['imapSecure'] : 'ssl';
-    $ssl = '/novalidate-cert';
+    $ssl = $certOpt;
     if ($sec === 'ssl' || $sec === true) {
-        $ssl = '/ssl/novalidate-cert';
+        $ssl = '/ssl' . $certOpt;
     } elseif ($sec === 'tls') {
-        $ssl = '/tls/novalidate-cert';
+        $ssl = '/tls' . $certOpt;
     }
     if ($settings['provider'] === 'exchange') {
         $host = !empty($settings['imapHost']) ? $settings['imapHost'] : 'outlook.office365.com';
         $port = '993';
-        $ssl = '/ssl/novalidate-cert';
+        $ssl = '/ssl' . $certOpt;
     }
     return "{" . "$host:$port/imap$ssl" . "}$folder";
 }
@@ -272,8 +275,8 @@ for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_TIMEOUT, 15);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
     curl_setopt($ch, CURLOPT_HTTPHEADER, $openAiHeaders);
     curl_setopt($ch, CURLOPT_POSTFIELDS, $jsonPayload);
     $response = curl_exec($ch);

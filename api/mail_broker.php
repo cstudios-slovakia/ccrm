@@ -229,23 +229,29 @@ function get_smtp_credentials($settings) {
 function get_imap_mailbox_string($settings, $folder = '') {
     $host = $settings['imapHost'];
     $port = $settings['imapPort'];
-    
+
+    // Validate the server certificate by default. Every connection used to carry
+    // /novalidate-cert, so anyone on the network path could present their own cert
+    // and collect the mailbox password plus the whole mailbox. Operators running an
+    // internal server with a self-signed cert can opt out per mailbox.
+    $certOpt = !empty($settings['imapAllowSelfSigned']) ? '/novalidate-cert' : '/validate-cert';
+
     $sec = isset($settings['imapSecure']) ? $settings['imapSecure'] : 'ssl';
-    $ssl = '/novalidate-cert';
+    $ssl = $certOpt;
     if ($sec === 'ssl' || $sec === true) {
-        $ssl = '/ssl/novalidate-cert';
+        $ssl = '/ssl' . $certOpt;
     } elseif ($sec === 'tls') {
-        $ssl = '/tls/novalidate-cert';
+        $ssl = '/tls' . $certOpt;
     }
-    
+
     // Autodetect MS Exchange URL or custom Exchange setup if provider is Exchange
     if ($settings['provider'] === 'exchange') {
         // Exchange autodiscover fallback configuration
         $host = !empty($settings['imapHost']) ? $settings['imapHost'] : 'outlook.office365.com';
         $port = '993';
-        $ssl = '/ssl/novalidate-cert';
+        $ssl = '/ssl' . $certOpt;
     }
-    
+
     return "{" . "$host:$port/imap$ssl" . "}$folder";
 }
 
