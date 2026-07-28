@@ -72,6 +72,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `ai_summary` TEXT NULL,
               `ai_summary_fingerprint` TEXT NULL,
               `interest_note` TEXT NULL COMMENT 'What the client is interested in / the problem to solve',
+              `referral_lead_id` VARCHAR(50) NULL COMMENT 'Lead/client who referred this one. Deliberately NOT a foreign key: a sync payload can carry the referring lead after this one, and deleting the referrer must not delete or block this lead',
               `metadata_json` TEXT NULL COMMENT 'Plugin support',
               `vat_validation_result` TEXT NULL,
               `follow_ups` TEXT NULL COMMENT 'JSON map: {stateKey: YYYY-MM-DD} of completed follow-ups',
@@ -450,6 +451,12 @@ if (!function_exists('ccrm_schema_statements')) {
         // captured when the lead is created.
         if (!ccrm_column_exists($pdo, 'leads', 'interest_note')) {
             $pdo->exec("ALTER TABLE `leads` ADD COLUMN `interest_note` TEXT NULL AFTER `ai_summary_fingerprint`");
+        }
+        // Which lead/client referred this one. The picker has existed in the UI
+        // since the interest note shipped, but there was no column behind it, so
+        // every referral looked saved and then vanished on the next poll.
+        if (!ccrm_column_exists($pdo, 'leads', 'referral_lead_id')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `referral_lead_id` VARCHAR(50) NULL AFTER `interest_note`");
         }
         // Business-document timeline events (order, proforma invoice, advance
         // receipt, invoice, delivery note). MySQL silently truncates an unknown

@@ -178,6 +178,7 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
         'ai_summary' => $inc['aiSummary'] ?? null,
         'ai_summary_fingerprint' => $inc['aiSummaryFingerprint'] ?? null,
         'interest_note' => $inc['interestNote'] ?? null,
+        'referral_lead_id' => $inc['referralLeadId'] ?? null,
         'establishment_date' => $inc['establishmentDate'] ?? null,
         'legal_form' => $inc['legalForm'] ?? null,
         'sk_nace' => $inc['skNace'] ?? null,
@@ -491,20 +492,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'avatar' => $row['avatar'] ?? null,
                 ];
             }
+            // Only what the login screen itself needs: the demo user picker and
+            // enough branding to render it.
+            //
+            // This response used to also carry `leads`, `tasks`, `roles` and every
+            // other collection as an empty array. That is indistinguishable from
+            // "the database is empty" to a client that is already logged in and
+            // holding real data: when a session died mid-session, this 200 (not a
+            // 401) flowed straight into applyServerData and blanked the dataset on
+            // screen, then re-anchored the delta baseline to empty so the next push
+            // would have listed every record as deleted. Sending no collection at
+            // all is the safe shape — every consumer skips a key that isn't there.
             echo json_encode([
                 'installed' => true,
+                'authenticated' => false,
                 'demoMode' => true,
                 'dataVersion' => $dataVersion,
                 'users' => $users,
-                'leads' => [],
-                'tasks' => [],
-                'roles' => [],
-                'meetingNotes' => [],
-                'unifiedEntries' => [],
-                'unifiedEntriesData' => [],
-                'customDashboards' => [],
-                'projectTypes' => [],
-                'projects' => [],
                 'settings' => [
                     'systemName' => $settings['SYSTEM_NAME'] ?? 'CCRM',
                     'systemLanguage' => $settings['SYSTEM_LANGUAGE'] ?? 'sk',
@@ -612,6 +616,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'aiSummary' => $row['ai_summary'] ?? '',
             'aiSummaryFingerprint' => $row['ai_summary_fingerprint'] ?? '',
             'interestNote' => $row['interest_note'] ?? '',
+            'referralLeadId' => $row['referral_lead_id'] ?? '',
             'establishmentDate' => $row['establishment_date'] ?? '',
             'legalForm' => $row['legal_form'] ?? '',
             'skNace' => $row['sk_nace'] ?? '',
@@ -1036,6 +1041,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
     echo json_encode([
         'installed' => true,
+        // Lets the client tell a real read apart from the unauthenticated
+        // demo-login payload above, which carries no CRM data.
+        'authenticated' => true,
         'demoMode' => $isDemoMode,
         // Highest POST protocol this build understands. The client MUST see this
         // before it may send a delta payload: an older sync.php has no idea what
@@ -1788,14 +1796,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $insLead = $pdo->prepare("INSERT INTO `leads` (
               `id`, `name`, `city`, `client_type`, `status`, `source`, `owner`, `value`, `rating`, `phone`, `email`, 
               `company_id`, `tax_id`, `vat_id`, `contact_person`, `website`, `street`, `postal_code`, `country`, 
-              `ai_summary`, `ai_summary_fingerprint`, `interest_note`,
+              `ai_summary`, `ai_summary_fingerprint`, `interest_note`, `referral_lead_id`,
               `establishment_date`, `legal_form`, `sk_nace`, `organization_size`, `ownership_type`, `data_source`, `dissolution_date`, `region`, `district`, `financial_summary`,
               `vat_validation_result`,
               `created_at`,
               `follow_ups`
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
-              `name` = VALUES(`name`), `city` = VALUES(`city`), `client_type` = VALUES(`client_type`), `status` = VALUES(`status`), `source` = VALUES(`source`), `owner` = VALUES(`owner`), `value` = VALUES(`value`), `rating` = VALUES(`rating`), `phone` = VALUES(`phone`), `email` = VALUES(`email`), `company_id` = VALUES(`company_id`), `tax_id` = VALUES(`tax_id`), `vat_id` = VALUES(`vat_id`), `contact_person` = VALUES(`contact_person`), `website` = VALUES(`website`), `street` = VALUES(`street`), `postal_code` = VALUES(`postal_code`), `country` = VALUES(`country`), `ai_summary` = VALUES(`ai_summary`), `ai_summary_fingerprint` = VALUES(`ai_summary_fingerprint`), `interest_note` = VALUES(`interest_note`),
+              `name` = VALUES(`name`), `city` = VALUES(`city`), `client_type` = VALUES(`client_type`), `status` = VALUES(`status`), `source` = VALUES(`source`), `owner` = VALUES(`owner`), `value` = VALUES(`value`), `rating` = VALUES(`rating`), `phone` = VALUES(`phone`), `email` = VALUES(`email`), `company_id` = VALUES(`company_id`), `tax_id` = VALUES(`tax_id`), `vat_id` = VALUES(`vat_id`), `contact_person` = VALUES(`contact_person`), `website` = VALUES(`website`), `street` = VALUES(`street`), `postal_code` = VALUES(`postal_code`), `country` = VALUES(`country`), `ai_summary` = VALUES(`ai_summary`), `ai_summary_fingerprint` = VALUES(`ai_summary_fingerprint`), `interest_note` = VALUES(`interest_note`), `referral_lead_id` = VALUES(`referral_lead_id`),
               `establishment_date` = VALUES(`establishment_date`), `legal_form` = VALUES(`legal_form`), `sk_nace` = VALUES(`sk_nace`), `organization_size` = VALUES(`organization_size`), `ownership_type` = VALUES(`ownership_type`), `data_source` = VALUES(`data_source`), `dissolution_date` = VALUES(`dissolution_date`), `region` = VALUES(`region`), `district` = VALUES(`district`),
               `vat_validation_result` = VALUES(`vat_validation_result`),
               `follow_ups` = VALUES(`follow_ups`)");
@@ -1854,6 +1862,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $l['aiSummary'] ?? null,
                     $l['aiSummaryFingerprint'] ?? null,
                     $l['interestNote'] ?? null,
+                    $l['referralLeadId'] ?? null,
                     $l['establishmentDate'] ?? null,
                     $l['legalForm'] ?? null,
                     $l['skNace'] ?? null,
