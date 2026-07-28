@@ -317,10 +317,14 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
         throw new Exception('IMAP Connection failed: ' . imap_last_error());
     }
     
+    // NOTE: always search with SE_UID. Without it IMAP returns message sequence
+    // numbers, which shift every time a message is deleted, while the overview
+    // below is keyed by the stable UID - the two stop matching and messages get
+    // silently dropped from the listing.
     $uids = [];
     if (!empty($searchEmail)) {
-        $uidsFrom = imap_search($imapStream, 'FROM "' . $searchEmail . '"', SE_FREE);
-        $uidsTo = imap_search($imapStream, 'TO "' . $searchEmail . '"', SE_FREE);
+        $uidsFrom = imap_search($imapStream, 'FROM "' . $searchEmail . '"', SE_UID);
+        $uidsTo = imap_search($imapStream, 'TO "' . $searchEmail . '"', SE_UID);
         $uidsCombined = [];
         if (is_array($uidsFrom)) {
             $uidsCombined = array_merge($uidsCombined, $uidsFrom);
@@ -334,7 +338,7 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
         if ($filter === 'unread') {
             $criteria = 'UNSEEN';
         }
-        $uids = imap_search($imapStream, $criteria, SE_FREE);
+        $uids = imap_search($imapStream, $criteria, SE_UID);
     }
     $emails = [];
     $total = 0;
@@ -347,14 +351,19 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
     }
     
     if ($uids) {
+        $uids = array_map('intval', $uids);
         $total = count($uids);
-        rsort($uids); // Newest first
-        
+        rsort($uids, SORT_NUMERIC); // Newest first
+
         $startIdx = ($page - 1) * $limit;
         $sliceUids = array_slice($uids, $startIdx, $limit);
-        
+
         if (!empty($sliceUids)) {
-            $overview = imap_fetch_overview($imapStream, implode(',', $sliceUids), 0);
+            // FT_UID: the sequence above is a list of UIDs, not sequence numbers
+            $overview = imap_fetch_overview($imapStream, implode(',', $sliceUids), FT_UID);
+            if (!is_array($overview)) {
+                $overview = [];
+            }
             
             // Map headers to structured entities
             $emailsMap = [];
@@ -457,11 +466,13 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                     // Check if already in main DB's rag_emails
                     $checkRag = $mPdo->prepare("SELECT 1 FROM `rag_emails` WHERE `user_email` = ? AND `folder` = ? AND `email_uid` = ?");
                     $checkRag->execute([$uEmail, $folder, $o->uid]);
-                    if (!$checkRag->fetchColumn()) {
+                    // Skip caching when the UID no longer resolves rather than
+                    // risk storing another message's body under this UID
+                    $ragMsgNo = @imap_msgno($imapStream, $o->uid);
+                    if (!$checkRag->fetchColumn() && $ragMsgNo) {
                         // Fetch the body
-                        $msgNo = @imap_msgno($imapStream, $o->uid) ?: $o->uid;
-                        $bodyText = safe_utf8(fetch_email_body_text($imapStream, $msgNo));
-                        
+                        $bodyText = safe_utf8(fetch_email_body_text($imapStream, $ragMsgNo));
+
                         $subject = isset($o->subject) ? safe_utf8(imap_utf8($o->subject)) : '(No Subject)';
                         $sender = safe_utf8($fromHeader);
                         $recipient = safe_utf8($toHeader);
@@ -490,11 +501,16 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                 }
             }
             
-            // Retain sorting
+            // Retain sorting (newest first), then append anything the requested
+            // order did not cover so a key mismatch can never hide a message
             foreach ($sliceUids as $uid) {
                 if (isset($emailsMap[$uid])) {
                     $emails[] = $emailsMap[$uid];
+                    unset($emailsMap[$uid]);
                 }
+            }
+            foreach ($emailsMap as $leftover) {
+                $emails[] = $leftover;
             }
         }
     }
@@ -521,11 +537,14 @@ function fetch_imap_email_detail($settings, $folder, $uid) {
         throw new Exception('IMAP Detail Connection failed: ' . imap_last_error());
     }
     
+    // Never fall back to treating the UID as a sequence number - that silently
+    // opens a different message once the mailbox has had a deletion.
     $msgNo = @imap_msgno($imapStream, $uid);
     if (!$msgNo) {
-        $msgNo = $uid;
+        @imap_close($imapStream);
+        throw new Exception('This message is no longer in ' . $folder . ' (it may have been moved or deleted).');
     }
-    
+
     // Fetch body parts
     $html = '';
     $text = '';
@@ -912,9 +931,10 @@ function serve_imap_attachment($settings, $folder, $uid, $partNum, $name) {
     
     $msgNo = @imap_msgno($imapStream, $uid);
     if (!$msgNo) {
-        $msgNo = $uid;
+        @imap_close($imapStream);
+        throw new Exception('This message is no longer in ' . $folder . ' (it may have been moved or deleted).');
     }
-    
+
     $structure = imap_fetchstructure($imapStream, $msgNo);
     // Find the part encoding
     $encoding = 0;
@@ -1020,9 +1040,10 @@ function save_imap_attachment_to_uploads($settings, $folder, $uid, $partNum, $na
     
     $msgNo = @imap_msgno($imapStream, $uid);
     if (!$msgNo) {
-        $msgNo = $uid;
+        @imap_close($imapStream);
+        return ['success' => false, 'error' => 'This message is no longer in ' . $folder . ' (it may have been moved or deleted).'];
     }
-    
+
     $structure = @imap_fetchstructure($imapStream, $msgNo);
     $encoding = 0;
     
