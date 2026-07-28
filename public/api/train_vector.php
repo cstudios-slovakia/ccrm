@@ -24,7 +24,7 @@ try {
     $pdo = get_db_connection();
 } catch (\Exception $e) {
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'DB Connection failed: ' . $e->getMessage()]);
+    echo json_encode(['success' => false, 'message' => 'Database connection failed.']);
     exit;
 }
 
@@ -86,7 +86,8 @@ if ($action === 'stats') {
         ]);
     } catch (\Exception $e) {
         http_response_code(500);
-        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        if (function_exists('ccrm_log_exception')) { ccrm_log_exception(); }
+        echo json_encode(['success' => false, 'message' => 'The request failed. See the error log for details.']);
     }
     exit;
 }
@@ -326,7 +327,8 @@ if ($action === 'train') {
         
     } catch (\Exception $e) {
         http_response_code(500);
-        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        if (function_exists('ccrm_log_exception')) { ccrm_log_exception(); }
+        echo json_encode(['success' => false, 'message' => 'The request failed. See the error log for details.']);
     }
     exit;
 }

@@ -85,6 +85,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'send_test') {
         send_system_test_email($config, $recipient, $lang);
         echo json_encode(['success' => true]);
     } catch (Throwable $ex) {
+        // Deliberate exception: this action is admin-only and its whole purpose is
+        // diagnosing outbound mail, so the SMTP server's own message ("535
+        // authentication failed", "connection refused") is the useful answer.
+        if (function_exists('ccrm_log_exception')) {
+            ccrm_log_exception($ex);
+        }
         echo json_encode(['success' => false, 'error' => $ex->getMessage()]);
     }
     exit;
@@ -202,7 +208,18 @@ try {
     }
 } catch (Throwable $ex) {
     http_response_code(500);
-    echo json_encode(['success' => false, 'error' => $ex->getMessage()]);
+    // The deliberate `throw new Exception(...)` calls in this file carry messages
+    // meant for the user about their OWN mailbox ("IMAP connection failed",
+    // "message no longer in this folder"), so those are worth showing. Anything
+    // else is an internal PHP error whose message leaks file paths and internals.
+    $isUserFacing = ($ex instanceof Exception) && !($ex instanceof \ErrorException);
+    if (function_exists('ccrm_log_exception')) {
+        ccrm_log_exception($ex);
+    }
+    echo json_encode([
+        'success' => false,
+        'error'   => $isUserFacing ? $ex->getMessage() : 'The mail server request failed.',
+    ]);
 }
 
 function safe_utf8($str) {

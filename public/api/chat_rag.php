@@ -13,7 +13,7 @@ try {
     $pdo = get_db_connection();
 } catch (\Exception $e) {
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'DB Connection failed: ' . $e->getMessage()]);
+    echo json_encode(['success' => false, 'message' => 'Database connection failed.']);
     exit;
 }
 
@@ -92,7 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $delStmt = $ragPdo->prepare("DELETE FROM `chat_history` WHERE `user_id` = ? AND `agent_id` = ?");
                 $delStmt->execute([$userId, $agentId]);
             } catch (\Exception $e) {
-                echo json_encode(['success' => false, 'message' => 'Failed to wipe history: ' . $e->getMessage()]);
+                echo json_encode(['success' => false, 'message' => 'Failed to clear the chat history.']);
                 exit;
             }
         }
@@ -123,7 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $insStmt->execute([$name, $position, $color, $skillContent, $isAutonomous]);
             echo json_encode(['success' => true, 'message' => 'Agent created successfully']);
         } catch (\Exception $e) {
-            echo json_encode(['success' => false, 'message' => 'Failed to save agent: ' . $e->getMessage()]);
+            echo json_encode(['success' => false, 'message' => 'Failed to save the agent.']);
         }
         exit;
     }
@@ -152,7 +152,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $updStmt->execute([$name, $position, $color, $skillContent, $isAutonomous, $id]);
             echo json_encode(['success' => true, 'message' => 'Agent updated successfully']);
         } catch (\Exception $e) {
-            echo json_encode(['success' => false, 'message' => 'Failed to update agent: ' . $e->getMessage()]);
+            echo json_encode(['success' => false, 'message' => 'Failed to update the agent.']);
         }
         exit;
     }
@@ -180,7 +180,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             echo json_encode(['success' => true, 'message' => 'Agent deleted successfully']);
         } catch (\Exception $e) {
-            echo json_encode(['success' => false, 'message' => 'Failed to delete agent: ' . $e->getMessage()]);
+            echo json_encode(['success' => false, 'message' => 'Failed to delete the agent.']);
         }
         exit;
     }

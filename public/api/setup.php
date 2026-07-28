@@ -51,10 +51,21 @@ if (empty($host) || empty($dbname) || empty($user)) {
 
 // Once installed, the wizard is closed. Reconfiguration must be done by editing
 // config.php on the server — an anonymous request can no longer overwrite it.
-if ($installType !== 'test_only' && file_exists($configFile) && @filesize($configFile) > 100) {
-    http_response_code(403);
-    echo json_encode(['success' => false, 'message' => 'CRM is already installed. Setup is disabled.']);
-    exit;
+//
+// `test_only` was exempt from this, which left an unauthenticated endpoint on
+// every installed instance that opens a MySQL connection to any host:port the
+// caller names — a network probe into whatever the server can reach, and an
+// oracle for guessing database credentials. It is still allowed before install
+// (the wizard needs it) and for admins afterwards.
+$isInstalled = file_exists($configFile) && @filesize($configFile) > 100;
+if ($isInstalled) {
+    if ($installType !== 'test_only') {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'CRM is already installed. Setup is disabled.']);
+        exit;
+    }
+    require_once $configFile;
+    ccrm_require_admin();
 }
 
 // 1. Attempt connection test via PDO
