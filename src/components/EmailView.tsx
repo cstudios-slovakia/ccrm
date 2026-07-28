@@ -238,10 +238,21 @@ export const EmailView: React.FC<EmailViewProps> = ({
     return !!(integrationsConfig?.openAiKey && integrationsConfig.openAiKey.trim() !== "");
   }, [integrationsConfig]);
 
+  // Parse into an INERT document rather than assigning to a live element's
+  // innerHTML. The old version built a detached <div> and set innerHTML on it,
+  // which still resolves resource URLs — so a mail containing
+  // `<img src=x onerror=...>` executed script in the app's origin the moment the
+  // body was summarized. DOMParser produces a document that never loads anything
+  // and never runs handlers.
   const stripHtml = (html: string) => {
-    const tmp = document.createElement("DIV");
-    tmp.innerHTML = html;
-    return tmp.textContent || tmp.innerText || "";
+    if (!html) return "";
+    try {
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      return doc.body?.textContent?.trim() || "";
+    } catch {
+      // Last resort: strip tags textually rather than touching the live DOM.
+      return html.replace(/<[^>]*>/g, "").trim();
+    }
   };
 
   const fetchSummary = async (emailUid: string, folder: string, subject: string, body: string, isThread: boolean = false) => {

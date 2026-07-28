@@ -10,6 +10,15 @@ const t = (en: string, sk: string, hu: string): string => {
 
 interface Props {
   children: ReactNode;
+  /**
+   * When this value changes the boundary clears its error and re-renders its
+   * children. Used by the per-view boundary so navigating to another tab
+   * recovers from a crash instead of leaving the workspace stuck on the
+   * fallback until a full reload.
+   */
+  resetKey?: string;
+  /** Render the contained fallback (keeps chrome usable) instead of the full-page one. */
+  contained?: boolean;
 }
 
 interface State {
@@ -29,6 +38,12 @@ export class ErrorBoundary extends Component<Props, State> {
 
   public static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error, errorInfo: null, copied: false };
+  }
+
+  public componentDidUpdate(prevProps: Props) {
+    if (this.state.hasError && prevProps.resetKey !== this.props.resetKey) {
+      this.setState({ hasError: false, error: null, errorInfo: null, copied: false });
+    }
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
@@ -63,6 +78,58 @@ ${this.state.errorInfo?.componentStack || "No Stack Trace"}
   };
 
   public render() {
+    if (this.state.hasError && this.props.contained) {
+      // A single workspace view crashed. Keep the sidebar, header and every other
+      // tab usable — before this, any render error in one module took the whole
+      // app down to the full-page fallback and only a reload got it back.
+      return (
+        <div className="w-full py-16 flex items-center justify-center font-sans">
+          <div className="w-full max-w-2xl bg-white rounded-[28px] border border-rose-100 shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="bg-gradient-to-r from-rose-500 to-red-600 p-6 text-white flex items-center gap-3.5">
+              <span className="text-3xl select-none">⚠️</span>
+              <div>
+                <h2 className="text-base font-black uppercase tracking-wider">
+                  {t("This section could not be displayed", "Túto sekciu sa nepodarilo zobraziť", "Ezt a szakaszt nem sikerült megjeleníteni")}
+                </h2>
+                <p className="text-[11px] text-rose-100 mt-0.5 font-semibold uppercase tracking-wide">
+                  {t(
+                    "The rest of the CRM is still working — switch to another tab or retry.",
+                    "Zvyšok CRM funguje ďalej — prepnite na inú záložku alebo to skúste znova.",
+                    "A CRM többi része továbbra is működik — váltson másik fülre, vagy próbálja újra."
+                  )}
+                </p>
+              </div>
+            </div>
+            <div className="p-6">
+              <pre className="text-[11px] font-mono font-bold text-rose-600 bg-rose-50/50 border border-rose-100 rounded-xl p-3.5 overflow-x-auto whitespace-pre-wrap select-all">
+                {this.state.error?.toString()}
+              </pre>
+              <div className="flex flex-wrap items-center gap-3 mt-5">
+                <button
+                  onClick={() => this.setState({ hasError: false, error: null, errorInfo: null })}
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[11px] font-black uppercase tracking-wider transition-all shadow active:scale-95"
+                >
+                  {t("🔄 Retry", "🔄 Skúsiť znova", "🔄 Újra")}
+                </button>
+                <button
+                  onClick={this.handleCopy}
+                  className={`px-5 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all shadow active:scale-95 ${
+                    this.state.copied
+                      ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                      : "bg-slate-800 hover:bg-slate-900 text-white"
+                  }`}
+                >
+                  {this.state.copied
+                    ? t("✅ Copied!", "✅ Skopírované!", "✅ Kimásolva!")
+                    : t("📋 Copy details", "📋 Kopírovať detaily", "📋 Részletek másolása")}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-slate-550 flex items-center justify-center p-6 font-sans">
