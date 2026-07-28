@@ -561,7 +561,7 @@ function fetch_imap_email_detail($settings, $folder, $uid) {
                     foreach ($part->parts as $nestedPartNo => $nestedPart) {
                         $partStr = ($partNo + 1) . '.' . ($nestedPartNo + 1);
                         $body = imap_fetchbody($imapStream, $msgNo, $partStr);
-                        $body = decode_imap_body($body, $nestedPart->encoding);
+                        $body = decode_imap_body($body, $nestedPart->encoding, get_part_charset($nestedPart));
                         if (isset($nestedPart->subtype) && $nestedPart->subtype === 'HTML') {
                             $html = $body;
                         } elseif (isset($nestedPart->subtype) && $nestedPart->subtype === 'PLAIN') {
@@ -570,7 +570,7 @@ function fetch_imap_email_detail($settings, $folder, $uid) {
                     }
                 } else {
                     $body = imap_fetchbody($imapStream, $msgNo, (string)($partNo + 1));
-                    $body = decode_imap_body($body, $part->encoding);
+                    $body = decode_imap_body($body, $part->encoding, get_part_charset($part));
                     if (isset($part->subtype) && $part->subtype === 'HTML') {
                         $html = $body;
                     } elseif (isset($part->subtype) && $part->subtype === 'PLAIN') {
@@ -581,7 +581,7 @@ function fetch_imap_email_detail($settings, $folder, $uid) {
         } else {
             // Simple structure
             $body = imap_body($imapStream, $msgNo);
-            $body = decode_imap_body($body, $structure->encoding);
+            $body = decode_imap_body($body, $structure->encoding, get_part_charset($structure));
             if (isset($structure->subtype) && $structure->subtype === 'HTML') {
                 $html = $body;
             } else {
@@ -603,11 +603,31 @@ function fetch_imap_email_detail($settings, $folder, $uid) {
     ];
 }
 
-function decode_imap_body($body, $encoding) {
+function get_part_charset($part) {
+    if (isset($part->ifparameters) && $part->ifparameters && isset($part->parameters)) {
+        foreach ($part->parameters as $object) {
+            if (isset($object->attribute) && strcasecmp($object->attribute, 'charset') === 0) {
+                return $object->value;
+            }
+        }
+    }
+    return null;
+}
+
+function decode_imap_body($body, $encoding, $charset = null) {
     if ($encoding == 3) { // BASE64
-        return base64_decode($body);
+        $body = base64_decode($body);
     } elseif ($encoding == 4) { // QUOTED-PRINTABLE
-        return quoted_printable_decode($body);
+        $body = quoted_printable_decode($body);
+    }
+    if ($charset && strcasecmp($charset, 'UTF-8') !== 0 && strcasecmp($charset, 'US-ASCII') !== 0) {
+        $converted = @iconv($charset, 'UTF-8//IGNORE', $body);
+        if ($converted === false) {
+            $converted = @mb_convert_encoding($body, 'UTF-8', $charset);
+        }
+        if ($converted !== false) {
+            return $converted;
+        }
     }
     return $body;
 }
@@ -993,7 +1013,7 @@ function fetch_email_body_text($imapStream, $msgNo) {
                     foreach ($part->parts as $nestedPartNo => $nestedPart) {
                         $partStr = ($partNo + 1) . '.' . ($nestedPartNo + 1);
                         $body = @imap_fetchbody($imapStream, $msgNo, $partStr);
-                        $body = decode_imap_body($body, $nestedPart->encoding);
+                        $body = decode_imap_body($body, $nestedPart->encoding, get_part_charset($nestedPart));
                         if (isset($nestedPart->subtype) && $nestedPart->subtype === 'HTML') {
                             $html = $body;
                         } elseif (isset($nestedPart->subtype) && $nestedPart->subtype === 'PLAIN') {
@@ -1002,7 +1022,7 @@ function fetch_email_body_text($imapStream, $msgNo) {
                     }
                 } else {
                     $body = @imap_fetchbody($imapStream, $msgNo, (string)($partNo + 1));
-                    $body = decode_imap_body($body, $part->encoding);
+                    $body = decode_imap_body($body, $part->encoding, get_part_charset($part));
                     if (isset($part->subtype) && $part->subtype === 'HTML') {
                         $html = $body;
                     } elseif (isset($part->subtype) && $part->subtype === 'PLAIN') {
@@ -1012,7 +1032,7 @@ function fetch_email_body_text($imapStream, $msgNo) {
             }
         } else {
             $body = @imap_body($imapStream, $msgNo);
-            $body = decode_imap_body($body, $structure->encoding);
+            $body = decode_imap_body($body, $structure->encoding, get_part_charset($structure));
             if (isset($structure->subtype) && $structure->subtype === 'HTML') {
                 $html = $body;
             } else {
