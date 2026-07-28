@@ -1099,12 +1099,15 @@ ${log.payload || ''}
     setUsers(prev => {
       const nextUsers = typeof newUsers === "function" ? newUsers(prev) : newUsers;
       pushStateToServer(undefined, undefined, undefined, undefined, nextUsers);
-      if (currentUser) {
-        const updatedMe = nextUsers.find(u => u.email === currentUser.email);
-        if (updatedMe) {
-          setCurrentUser(updatedMe);
-        }
-      }
+      // Keep the logged-in profile in step, but hand out a new object only when
+      // its own row actually changed — an unrelated user's edit must not reset
+      // everything that keys off the currentUser identity.
+      setCurrentUser(me => {
+        if (!me) return me;
+        const updatedMe = nextUsers.find(u => u.email === me.email);
+        if (!updatedMe || JSON.stringify(updatedMe) === JSON.stringify(me)) return me;
+        return updatedMe;
+      });
       return nextUsers;
     });
   };
@@ -1262,12 +1265,18 @@ ${log.payload || ''}
       }
       if (data.users && Array.isArray(data.users)) {
         setUsers((prev) => JSON.stringify(prev) === JSON.stringify(data.users) ? prev : data.users);
-        if (currentUser) {
-          const updatedMe = data.users.find((u: UserProfile) => u.email === currentUser.email);
-          if (updatedMe && JSON.stringify(updatedMe) !== JSON.stringify(currentUser)) {
-            setCurrentUser(updatedMe);
-          }
-        }
+        // Compare against the CURRENT user via the updater, not the one captured
+        // in this closure: the closure is only refreshed when the logged-in email
+        // changes, so comparing against it kept reporting "changed" and handed
+        // out a new object on every single pull. Anything keyed on the currentUser
+        // identity (personal settings, the language effect, the mail poller) then
+        // reset itself every few seconds — which wiped forms while typing.
+        setCurrentUser((prev) => {
+          if (!prev) return prev;
+          const updatedMe = data.users.find((u: UserProfile) => u.email === prev.email);
+          if (!updatedMe || JSON.stringify(updatedMe) === JSON.stringify(prev)) return prev;
+          return updatedMe;
+        });
       }
       if (data.db_info) {
         setDbInfo(data.db_info);
