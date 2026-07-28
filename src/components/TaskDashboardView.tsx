@@ -170,11 +170,18 @@ const DeadlineTimePicker: React.FC<{
     t: (en: string, sk: string, hu: string) => string;
 }> = ({ value, onChange, t }) => {
     const currentValue = value || "";
+    // Tasks stored before deadline times existed (and the demo seed) have no time at
+    // all. That empty value matches no <option>, and React then silently marks the
+    // FIRST option as selected — the picker showed "Morning (10:00)" while the task
+    // still had no time, so re-picking 10:00 fired no change event and the card kept
+    // rendering the 23:59 fallback. An explicit placeholder option keeps the empty
+    // state addressable so any real choice registers as a change.
+    const isUnset = currentValue === "";
     const isPreset = DEADLINE_TIME_PRESETS.includes(currentValue);
     // Custom mode is active when the value isn't a named preset (e.g. a legacy 23:59
     // or a hand-typed time) or once the user explicitly opens the custom input.
-    const [customOpen, setCustomOpen] = useState(!isPreset && currentValue !== "");
-    const showCustom = customOpen || (!isPreset && currentValue !== "");
+    const [customOpen, setCustomOpen] = useState(!isPreset && !isUnset);
+    const showCustom = customOpen || (!isPreset && !isUnset);
 
     const presetLabel = (p: string) => {
         switch (p) {
@@ -206,6 +213,15 @@ const DeadlineTimePicker: React.FC<{
                 }}
                 className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none bg-white font-bold"
             >
+                {isUnset && !showCustom && (
+                    <option value="">
+                        {t(
+                            "Not set — end of day (23:59)",
+                            "Nenastavené — koniec dňa (23:59)",
+                            "Nincs megadva — nap vége (23:59)",
+                        )}
+                    </option>
+                )}
                 {DEADLINE_TIME_PRESETS.map((p) => (
                     <option key={p} value={p}>
                         {presetLabel(p)}

@@ -309,12 +309,14 @@ try {
             $insTimeline->execute($te);
         }
 
+        // Demo tasks carry an explicit deadline_time; leaving it NULL made every
+        // seeded task render with the 23:59 end-of-day fallback.
         $tasks = [
-            ['task-1', $demoText['task1_title'], $demoText['task1_body'], 'high', '2026-05-30', $taskStates[1], 'Alex', 'lead-3', 1],
-            ['task-2', $demoText['task2_title'], $demoText['task2_body'], 'high', '2026-05-31', $taskStates[0], 'Sam', 'lead-2', 1],
-            ['task-3', $demoText['task3_title'], $demoText['task3_body'], 'medium', '2026-06-02', $taskStates[0], 'Jordan', 'lead-1', 0],
+            ['task-1', $demoText['task1_title'], $demoText['task1_body'], 'high', '2026-05-30', '16:00', $taskStates[1], 'Alex', 'lead-3', 1],
+            ['task-2', $demoText['task2_title'], $demoText['task2_body'], 'high', '2026-05-31', '10:00', $taskStates[0], 'Sam', 'lead-2', 1],
+            ['task-3', $demoText['task3_title'], $demoText['task3_body'], 'medium', '2026-06-02', '12:00', $taskStates[0], 'Jordan', 'lead-1', 0],
         ];
-        $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `deadline`, `status`, `owner`, `related_lead_id`, `is_locking`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `deadline`, `deadline_time`, `status`, `owner`, `related_lead_id`, `is_locking`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
         foreach ($tasks as $t) {
             $insTask->execute($t);
         }
