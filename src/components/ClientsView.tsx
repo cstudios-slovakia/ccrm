@@ -1441,6 +1441,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
+  // Object URL of the freshly recorded blob, kept so it can be revoked once the
+  // player switches over to the uploaded server file.
+  const localAudioUrlRef = React.useRef<string | null>(null);
+  // True while we force a seek past the end to make the browser compute the real
+  // duration of a MediaRecorder blob (those report Infinity until fully scanned).
+  const durationProbeRef = React.useRef(false);
   
   // Blocks state for note logger
   const [noteBlocks, setNoteBlocks] = useState<EditorBlock[]>([
@@ -1543,6 +1549,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         const ext = mimeType.split("/")[1] || "webm";
         const blob = new Blob(chunks, { type: mimeType });
         const localUrl = URL.createObjectURL(blob);
+        localAudioUrlRef.current = localUrl;
         setAudioUrl(localUrl);
 
         const tempId = `note_event_${Date.now()}`;
@@ -1559,6 +1566,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           const data = await res.json();
           if (res.ok && data.success) {
             setUploadedAudioFile(data.filePath);
+            // Play back the stored file instead of the raw recorder blob: it is the
+            // same source the saved note uses, so playback works right after recording.
+            setAudioUrl(data.filePath);
             if (typeof (window as any).showToast === "function") {
               (window as any).showToast(t("Audio recording saved successfully!", "Hlasová nahrávka bola úspešne uložená!", "A hangfelvétel sikeresen mentve!"));
             }
@@ -1627,9 +1637,58 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   };
 
   const formatDuration = (sec: number): string => {
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
+    // Media elements report Infinity/NaN for streams without duration metadata.
+    const total = Number.isFinite(sec) && sec > 0 ? Math.floor(sec) : 0;
+    const m = Math.floor(total / 60);
+    const s = total % 60;
     return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  };
+
+  // Reset the player whenever the source changes (new recording, or swapping the
+  // local blob for the uploaded file) and drop the stale blob URL.
+  useEffect(() => {
+    durationProbeRef.current = false;
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setAudioDuration(0);
+    if (audioRef.current) {
+      audioRef.current.load();
+    }
+    if (localAudioUrlRef.current && localAudioUrlRef.current !== audioUrl) {
+      URL.revokeObjectURL(localAudioUrlRef.current);
+      localAudioUrlRef.current = null;
+    }
+  }, [audioUrl]);
+
+  useEffect(() => () => {
+    if (localAudioUrlRef.current) {
+      URL.revokeObjectURL(localAudioUrlRef.current);
+      localAudioUrlRef.current = null;
+    }
+  }, []);
+
+  const handleAudioDurationChange = () => {
+    const el = audioRef.current;
+    if (!el) return;
+    if (!Number.isFinite(el.duration)) {
+      // Chrome reports Infinity for MediaRecorder output; seeking far past the end
+      // makes it scan the stream and fire durationchange again with the real value.
+      if (!durationProbeRef.current) {
+        durationProbeRef.current = true;
+        try {
+          el.currentTime = 1e101;
+        } catch {
+          durationProbeRef.current = false;
+        }
+      }
+      return;
+    }
+    if (durationProbeRef.current) {
+      durationProbeRef.current = false;
+      el.currentTime = 0;
+      setCurrentTime(0);
+    }
+    setAudioDuration(el.duration);
   };
 
   const handleTranscribeMeeting = async () => {
@@ -1779,25 +1838,41 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             <audio
               ref={audioRef}
               src={audioUrl}
+              preload="metadata"
               onTimeUpdate={() => {
-                if (audioRef.current) setCurrentTime(audioRef.current.currentTime);
+                if (!audioRef.current || durationProbeRef.current) return;
+                setCurrentTime(audioRef.current.currentTime);
               }}
-              onDurationChange={() => {
-                if (audioRef.current) setAudioDuration(audioRef.current.duration);
-              }}
+              onDurationChange={handleAudioDurationChange}
+              onLoadedMetadata={handleAudioDurationChange}
               onPlay={() => setIsPlaying(true)}
               onPause={() => setIsPlaying(false)}
               onEnded={() => setIsPlaying(false)}
+              onError={() => {
+                setIsPlaying(false);
+                if (typeof (window as any).showToast === "function") {
+                  (window as any).showToast(t("The recording could not be loaded.", "Nahrávku sa nepodarilo načítať.", "A felvételt nem sikerült betölteni."), "error");
+                }
+              }}
               className="hidden"
             />
             <button
               type="button"
               onClick={() => {
-                if (!audioRef.current) return;
+                const el = audioRef.current;
+                if (!el) return;
                 if (isPlaying) {
-                  audioRef.current.pause();
-                } else {
-                  audioRef.current.play();
+                  el.pause();
+                  return;
+                }
+                const played = el.play();
+                if (played && typeof played.catch === "function") {
+                  played.catch((err: any) => {
+                    setIsPlaying(false);
+                    if (typeof (window as any).showToast === "function") {
+                      (window as any).showToast(t("Could not play the recording: ", "Nahrávku sa nepodarilo prehrať: ", "A felvételt nem sikerült lejátszani: ") + err.message, "error");
+                    }
+                  });
                 }
               }}
               className="p-1 rounded-full bg-slate-800 text-white flex items-center justify-center shrink-0 cursor-pointer"
