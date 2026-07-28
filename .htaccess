@@ -20,6 +20,19 @@ DirectoryIndex index.html index.php
     </FilesMatch>
 </IfModule>
 
+# Never execute anything under /uploads/. That directory holds attacker-influenced
+# bytes: browser uploads (upload.php, upload_audio.php) and IMAP attachments saved
+# by mail_broker.php. Before this rule a file written there with a .php name was
+# executed by the server — a straight remote-code-execution path for any account
+# that could reach an upload endpoint. Uploads are DATA and must always be served
+# as inert bytes, so the handler is stripped and every script extension is 403'd
+# here as well as being rejected at write time (defence in depth: this file is the
+# backstop if a future write path forgets to validate).
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^uploads/.*\.(php|phtml|php[0-9]|phps|pht|phar|cgi|pl|py|rb|asp|aspx|jsp|sh|shtml|htaccess|user\.ini)$ - [F,L,NC]
+</IfModule>
+
 # Block direct access to sensitive directories that must never be web-served:
 # the git metadata (source + credential history), throwaway maintenance scripts,
 # raw client data dumps, and dependency/tooling folders.

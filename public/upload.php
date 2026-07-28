@@ -35,22 +35,18 @@ if (php_sapi_name() !== 'cli') {
 
     // Keep hyphens so the stored name matches client-generated event ids (which contain "-").
     $eventId = preg_replace('/[^a-zA-Z0-9_\-]/', '', $_POST['eventId']);
-    $fileName = basename($file['name']);
 
-    // Reject executable / script extensions that could be run by the web server.
-    $blocked = ['php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'phps', 'pht', 'phar', 'cgi', 'pl', 'asp', 'aspx', 'jsp', 'sh', 'htaccess'];
-    $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
-    if (in_array($ext, $blocked, true)) {
+    // Reject anything the web server might execute. ccrm_safe_upload_name()
+    // inspects EVERY extension, not just the last one, so `shell.php.jpg` — which
+    // the old last-extension check happily accepted — is rejected too.
+    $fileName = ccrm_safe_upload_name((string)$file['name']);
+    if ($fileName === null) {
         http_response_code(415);
         echo json_encode(['success' => false, 'error' => 'File type not allowed.']);
         exit;
     }
 
-    // Ensure uploads directory exists
-    $uploadDir = __DIR__ . '/uploads/';
-    if (!is_dir($uploadDir)) {
-        mkdir($uploadDir, 0775, true);
-    }
+    $uploadDir = ccrm_uploads_dir();
 
     // Prefix file name with eventId to keep it unique
     $targetPath = $uploadDir . $eventId . '_' . $fileName;
