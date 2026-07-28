@@ -158,7 +158,9 @@ const toLocalDateStr = (d: Date): string => {
 
 // Named preset deadline times offered in the picker. "End of day (23:59)" was removed
 // in favour of a "Custom" option that lets the user type any specific time.
-const DEADLINE_TIME_PRESETS = ["10:00", "12:00", "16:00", "19:00"];
+// Kept in step with GATE_DEADLINE_TIME_PRESETS in LeadsDatagrid so the task drawer
+// and the pipeline-gate quick-add offer the same choices.
+const DEADLINE_TIME_PRESETS = ["09:00", "10:00", "12:00", "14:00", "16:00", "17:00", "19:00"];
 
 // Deadline-time picker shared by the Add and Edit task drawers. Offers the named
 // presets plus a "Custom" option that reveals a free time input. Defined at module
@@ -185,12 +187,18 @@ const DeadlineTimePicker: React.FC<{
 
     const presetLabel = (p: string) => {
         switch (p) {
+            case "09:00":
+                return t("Early morning (9:00)", "Skoro ráno (9:00)", "Kora reggel (9:00)");
             case "10:00":
                 return t("Morning (10:00)", "Ráno (10:00)", "Reggel (10:00)");
             case "12:00":
                 return t("Noon (12:00)", "Poludnie (12:00)", "Dél (12:00)");
+            case "14:00":
+                return t("Early afternoon (14:00)", "Skoré popoludnie (14:00)", "Kora délután (14:00)");
             case "16:00":
                 return t("Afternoon (16:00)", "Popoludnie (16:00)", "Délután (16:00)");
+            case "17:00":
+                return t("End of workday (17:00)", "Koniec pracovného dňa (17:00)", "Munkanap vége (17:00)");
             case "19:00":
                 return t("Evening (19:00)", "Večer (19:00)", "Este (19:00)");
             default:
