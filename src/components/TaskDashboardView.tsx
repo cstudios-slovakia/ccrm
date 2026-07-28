@@ -376,6 +376,12 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const [viewMode, setViewMode] = useState<"calendar" | "archive" | "global">(
         "calendar",
     );
+    // Calendar scope: the whole month, or just one week that can be paged
+    // backwards/forwards. `currentDate` anchors both — in week scope it is any
+    // day inside the displayed week.
+    const [calendarScope, setCalendarScope] = useState<"month" | "week">(
+        "month",
+    );
     const [selectedDay, setSelectedDay] = useState<Date | null>(null);
 
     // Archive filters state
@@ -508,6 +514,20 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const handleNextMonth = () =>
         setCurrentDate(new Date(currentYear, currentMonth + 1, 1));
 
+    // Week paging keeps the same weekday and shifts the anchor by 7 days, so the
+    // displayed week moves one step at a time in either direction.
+    const shiftWeek = (weeks: number) =>
+        setCurrentDate((prev) => {
+            const next = new Date(prev);
+            next.setDate(next.getDate() + weeks * 7);
+            return next;
+        });
+    const handlePrevPeriod = () =>
+        calendarScope === "week" ? shiftWeek(-1) : handlePrevMonth();
+    const handleNextPeriod = () =>
+        calendarScope === "week" ? shiftWeek(1) : handleNextMonth();
+    const handleGoToToday = () => setCurrentDate(new Date());
+
     const monthNames = [
         t("January", "Január", "Január"),
         t("February", "Február", "Február"),
@@ -538,12 +558,50 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         return (firstDay + 6) % 7;
     }, [currentYear, currentMonth]);
 
+    // The seven days of the week `currentDate` falls into, Monday-first to match
+    // the weekday header used by the month grid.
+    const daysInWeek = useMemo(() => {
+        const monday = new Date(
+            currentDate.getFullYear(),
+            currentDate.getMonth(),
+            currentDate.getDate(),
+        );
+        monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+        return Array.from({ length: 7 }, (_, i) => {
+            const d = new Date(monday);
+            d.setDate(monday.getDate() + i);
+            return d;
+        });
+    }, [currentDate]);
+
+    // Header label for the paged week, e.g. "24 – 30 Aug 2026".
+    const weekRangeLabel = useMemo(() => {
+        const first = daysInWeek[0];
+        const last = daysInWeek[6];
+        const short = (d: Date) =>
+            d.toLocaleDateString(dateLocale, { day: "numeric", month: "short" });
+        return `${short(first)} – ${short(last)} ${last.getFullYear()}`;
+    }, [daysInWeek, dateLocale]);
+
+    // Chronological order for a single day: earliest deadline time first, so a
+    // 10:00 task always sits above a 12:00 one and the evening ones land last.
+    // Tasks with no explicit time keep the 23:59 default used by the overdue
+    // logic, which parks them at the end of the day; ties fall back to the title
+    // so the order stays stable between renders.
+    const byDeadlineTime = (a: Task, b: Task) => {
+        const timeComp = (a.deadlineTime || "23:59").localeCompare(
+            b.deadlineTime || "23:59",
+        );
+        if (timeComp !== 0) return timeComp;
+        return a.title.localeCompare(b.title);
+    };
+
     // Item 12: the dashboard calendar shows ONLY tasks (no lead timeline events).
     // Item 11: only the logged-in user's tasks.
     const getItemsForDate = (dateStr: string) => {
-        const dayTasks = myTasks.filter(
-            (t) => t.deadline === dateStr && !isDoneState(t.status),
-        );
+        const dayTasks = myTasks
+            .filter((t) => t.deadline === dateStr && !isDoneState(t.status))
+            .sort(byDeadlineTime);
         return { dayTasks };
     };
 
@@ -909,6 +967,99 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         );
     };
 
+    // Week scope: the same seven weekday columns as the month grid, but showing a
+    // single paged week so every task of that week is readable without opening a
+    // day. Each column lists its tasks in chronological order.
+    const renderWeekGrid = () => {
+        return (
+            <div className="flex flex-col h-full bg-white animate-in fade-in zoom-in-95 duration-200">
+                {/* Days Header */}
+                <div className="grid grid-cols-7 bg-slate-50 border-b border-slate-200 shrink-0">
+                    {daysInWeek.map((date, idx) => {
+                        const dateStr = toLocalDateStr(date);
+                        const isToday = dateStr === todayStr;
+                        return (
+                            <div
+                                key={dateStr}
+                                className={`py-2 text-center border-r border-slate-100 last:border-0 ${
+                                    isToday ? "bg-indigo-50/60" : ""
+                                }`}
+                            >
+                                <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                                    {weekdayNames[idx]}
+                                </div>
+                                <div
+                                    className={`mt-1 mx-auto text-[11px] font-black w-6 h-6 flex items-center justify-center rounded-full ${
+                                        isToday
+                                            ? "bg-indigo-600 text-white shadow-sm"
+                                            : "text-slate-600"
+                                    }`}
+                                >
+                                    {date.getDate()}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+
+                {/* Day Columns */}
+                <div className="flex-1 grid grid-cols-7 lg:overflow-y-auto overflow-visible">
+                    {daysInWeek.map((date) => {
+                        const dateStr = toLocalDateStr(date);
+                        const isToday = dateStr === todayStr;
+                        const isPast = dateStr < todayStr;
+                        const { dayTasks } = getItemsForDate(dateStr);
+
+                        return (
+                            <div
+                                key={dateStr}
+                                onClick={() => setSelectedDay(date)}
+                                className={`min-h-[220px] border-r border-slate-100 last:border-0 p-1.5 flex flex-col gap-1.5 transition-all cursor-pointer hover:bg-slate-50 ${
+                                    isToday
+                                        ? "bg-indigo-50/30"
+                                        : isPast
+                                          ? "bg-slate-50/70"
+                                          : "bg-white"
+                                }`}
+                            >
+                                {dayTasks.length === 0 ? (
+                                    <span className="text-[8px] font-bold text-slate-300 uppercase tracking-wider text-center mt-2">
+                                        —
+                                    </span>
+                                ) : (
+                                    dayTasks.map((tk) => (
+                                        <div
+                                            key={tk.id}
+                                            className={`text-[8.5px] font-bold px-1.5 py-1 rounded-lg border shadow-[0_1px_2px_rgba(0,0,0,0.02)] ${
+                                                tk.priority === "high"
+                                                    ? "bg-rose-50 text-rose-700 border-rose-200"
+                                                    : tk.priority === "medium"
+                                                      ? "bg-amber-50 text-amber-700 border-amber-200"
+                                                      : "bg-slate-50 text-slate-700 border-slate-200"
+                                            }`}
+                                        >
+                                            <span className="block font-black tabular-nums opacity-70">
+                                                {formatTimeDisplay(
+                                                    tk.deadlineTime || "23:59",
+                                                )}
+                                            </span>
+                                            <span className="block truncate">
+                                                {tk.isLocking && (
+                                                    <Lock className="inline h-2 w-2 mr-0.5 -mt-0.5 text-rose-500" />
+                                                )}
+                                                {tk.title}
+                                            </span>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        );
+    };
+
     const renderDayView = () => {
         if (!selectedDay) return null;
 
@@ -924,11 +1075,17 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             className="flex items-center gap-1.5 text-indigo-600 hover:text-indigo-800 font-black text-[10px] uppercase tracking-wider transition-colors cursor-pointer mb-2"
                         >
                             <ChevronLeft className="h-4 w-4" />
-                            {t(
-                                "Back to Month Calendar",
-                                "Späť na mesačný kalendár",
-                                "Vissza a havi naptárhoz",
-                            )}
+                            {calendarScope === "week"
+                                ? t(
+                                      "Back to Week Calendar",
+                                      "Späť na týždenný kalendár",
+                                      "Vissza a heti naptárhoz",
+                                  )
+                                : t(
+                                      "Back to Month Calendar",
+                                      "Späť na mesačný kalendár",
+                                      "Vissza a havi naptárhoz",
+                                  )}
                         </button>
                         <h2 className="text-2xl font-black text-slate-850 tracking-tight flex items-center gap-2">
                             <CalendarIcon className="h-6 w-6 text-indigo-600 stroke-[2.5]" />
@@ -961,8 +1118,12 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     </button>
                 </div>
 
-                <div className="flex-1 lg:overflow-y-auto overflow-visible p-6 space-y-6 bg-slate-50/30">
-                    {/* Item 13: tasks for the selected day, grouped by status */}
+                <div className="flex-1 lg:overflow-y-auto overflow-visible p-6 space-y-3 bg-slate-50/30">
+                    {/* The day reads as a timeline: tasks run strictly from the
+                        earliest deadline time at the top to the latest at the
+                        bottom. They used to be bucketed by status, which pushed a
+                        10:00 task below an evening one whenever their states
+                        differed. The status stays visible on each card. */}
                     {dayTasks.length === 0 ? (
                         <div className="p-6 border-2 border-dashed border-slate-200 rounded-2xl text-center bg-white">
                             <span className="text-xs font-bold text-slate-400">
@@ -974,30 +1135,18 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             </span>
                         </div>
                     ) : (
-                        taskStates.map((st) => {
-                            const groupTasks = dayTasks.filter(
-                                (tk) => tk.status === st,
-                            );
-                            if (groupTasks.length === 0) return null;
-                            const color = taskStateColors[st] || "#64748b";
-                            return (
-                                <div key={st} className="space-y-3">
-                                    <h3
-                                        className="text-xs font-black uppercase tracking-widest flex items-center gap-2"
-                                        style={{ color }}
-                                    >
-                                        <span
-                                            className="h-2.5 w-2.5 rounded-full"
-                                            style={{ backgroundColor: color }}
-                                        />
-                                        {stateLabel(st)} ({groupTasks.length})
-                                    </h3>
-                                    <div className="space-y-3">
-                                        {groupTasks.map(renderTaskCard)}
-                                    </div>
+                        dayTasks.map((tk) => (
+                            <div key={tk.id} className="flex items-start gap-3">
+                                <span className="shrink-0 mt-4 w-[52px] text-right text-[10px] font-black tabular-nums text-indigo-500">
+                                    {formatTimeDisplay(
+                                        tk.deadlineTime || "23:59",
+                                    )}
+                                </span>
+                                <div className="flex-1 min-w-0">
+                                    {renderTaskCard(tk)}
                                 </div>
-                            );
-                        })
+                            </div>
+                        ))
                     )}
                 </div>
             </div>
@@ -1036,15 +1185,17 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 b.deadlineTime || "23:59",
             );
         });
-    const todayTasks = myTasks.filter(
-        (t) =>
-            t.deadline === todayStr &&
-            !isTaskOverdue(t) &&
-            !isDoneState(t.status),
-    );
-    const tomorrowTasks = myTasks.filter(
-        (t) => t.deadline === tomorrowStr && !isDoneState(t.status),
-    );
+    const todayTasks = myTasks
+        .filter(
+            (t) =>
+                t.deadline === todayStr &&
+                !isTaskOverdue(t) &&
+                !isDoneState(t.status),
+        )
+        .sort(byDeadlineTime);
+    const tomorrowTasks = myTasks
+        .filter((t) => t.deadline === tomorrowStr && !isDoneState(t.status))
+        .sort(byDeadlineTime);
     const futureTasks = myTasks
         .filter((t) => t.deadline > tomorrowStr && !isDoneState(t.status))
         .sort((a, b) => {
@@ -1511,22 +1662,83 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
                 <div className="flex items-center gap-4">
                     {viewMode === "calendar" && (
-                        <div className="flex items-center bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
-                            <button
-                                onClick={handlePrevMonth}
-                                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 cursor-pointer"
-                            >
-                                <ChevronLeft className="h-5 w-5" />
-                            </button>
-                            <span className="px-4 text-sm font-black text-indigo-950 min-w-[140px] text-center tracking-wider uppercase">
-                                {monthNames[currentMonth]} {currentYear}
-                            </span>
-                            <button
-                                onClick={handleNextMonth}
-                                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 cursor-pointer"
-                            >
-                                <ChevronRight className="h-5 w-5" />
-                            </button>
+                        <div className="flex items-center gap-2 flex-wrap">
+                            {/* Month/Week scope switch — week scope narrows the
+                                calendar to a single week that can be paged. */}
+                            <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-sm gap-1">
+                                {(["month", "week"] as const).map((scope) => (
+                                    <button
+                                        key={scope}
+                                        onClick={() => {
+                                            setCalendarScope(scope);
+                                            setSelectedDay(null);
+                                        }}
+                                        className={`px-3 py-1.5 rounded-lg font-black text-[10px] uppercase tracking-wider transition-all cursor-pointer ${
+                                            calendarScope === scope
+                                                ? "bg-white text-indigo-650 shadow-sm border border-slate-200/50"
+                                                : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
+                                        }`}
+                                    >
+                                        {scope === "month"
+                                            ? t("Month", "Mesiac", "Hónap")
+                                            : t("Week", "Týždeň", "Hét")}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <div className="flex items-center bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
+                                <button
+                                    onClick={handlePrevPeriod}
+                                    title={
+                                        calendarScope === "week"
+                                            ? t(
+                                                  "Previous week",
+                                                  "Predchádzajúci týždeň",
+                                                  "Előző hét",
+                                              )
+                                            : t(
+                                                  "Previous month",
+                                                  "Predchádzajúci mesiac",
+                                                  "Előző hónap",
+                                              )
+                                    }
+                                    className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 cursor-pointer transition-colors active:scale-95"
+                                >
+                                    <ChevronLeft className="h-5 w-5" />
+                                </button>
+                                <button
+                                    onClick={handleGoToToday}
+                                    title={t(
+                                        "Jump to today",
+                                        "Prejsť na dnešok",
+                                        "Ugrás a mai napra",
+                                    )}
+                                    className="px-4 text-sm font-black text-indigo-950 min-w-[160px] text-center tracking-wider uppercase hover:text-indigo-600 cursor-pointer transition-colors"
+                                >
+                                    {calendarScope === "week"
+                                        ? weekRangeLabel
+                                        : `${monthNames[currentMonth]} ${currentYear}`}
+                                </button>
+                                <button
+                                    onClick={handleNextPeriod}
+                                    title={
+                                        calendarScope === "week"
+                                            ? t(
+                                                  "Next week",
+                                                  "Nasledujúci týždeň",
+                                                  "Következő hét",
+                                              )
+                                            : t(
+                                                  "Next month",
+                                                  "Nasledujúci mesiac",
+                                                  "Következő hónap",
+                                              )
+                                    }
+                                    className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 cursor-pointer transition-colors active:scale-95"
+                                >
+                                    <ChevronRight className="h-5 w-5" />
+                                </button>
+                            </div>
                         </div>
                     )}
 
@@ -2174,7 +2386,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
                     {/* RIGHT COLUMN: CALENDAR OR DAY VIEW */}
                     <div className="flex flex-col lg:h-full h-auto bg-white rounded-3xl border border-slate-200 shadow-[0_4px_24px_rgba(0,0,0,0.02)] lg:overflow-hidden overflow-visible">
-                        {selectedDay ? renderDayView() : renderMonthGrid()}
+                        {selectedDay
+                            ? renderDayView()
+                            : calendarScope === "week"
+                              ? renderWeekGrid()
+                              : renderMonthGrid()}
                     </div>
                 </div>
             )}

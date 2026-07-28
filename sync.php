@@ -124,6 +124,34 @@ function ccrm_date_only($val) {
 }
 
 // Helper to check if an incoming lead payload is identical to its database record
+/**
+ * Timeline event types that can carry attached documents: the original `offer`
+ * plus the business-document types (order, proforma invoice, advance receipt,
+ * invoice, delivery note).
+ */
+function ccrm_document_event_types() {
+    return ['offer', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note'];
+}
+
+/**
+ * Normalize an event's attachment list to a compact, comparable JSON string
+ * (or null when there is nothing attached), so the identity check and the write
+ * path agree on what "unchanged" means.
+ */
+function ccrm_encode_attachments($attachments) {
+    if (!is_array($attachments) || !$attachments) return null;
+    $clean = [];
+    foreach ($attachments as $a) {
+        if (!is_array($a) || !isset($a['name']) || $a['name'] === '') continue;
+        $clean[] = [
+            'name' => (string)$a['name'],
+            'size' => isset($a['size']) ? (string)$a['size'] : '',
+            'path' => isset($a['path']) ? (string)$a['path'] : '',
+        ];
+    }
+    return $clean ? json_encode($clean, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE) : null;
+}
+
 function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
     if (!$db) return false;
     
@@ -149,6 +177,7 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
         'country' => $inc['address']['country'] ?? 'Slovakia',
         'ai_summary' => $inc['aiSummary'] ?? null,
         'ai_summary_fingerprint' => $inc['aiSummaryFingerprint'] ?? null,
+        'interest_note' => $inc['interestNote'] ?? null,
         'establishment_date' => $inc['establishmentDate'] ?? null,
         'legal_form' => $inc['legalForm'] ?? null,
         'sk_nace' => $inc['skNace'] ?? null,
@@ -216,6 +245,7 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
             'file_name' => $te['fileName'] ?? null,
             'file_size' => $te['fileSize'] ?? null,
             'file_type' => $te['fileType'] ?? null,
+            'attachments_json' => ccrm_encode_attachments($te['attachments'] ?? null),
             'extra_time' => $te['extraTime'] ?? $te['extra_time'] ?? null
         ];
         
@@ -525,9 +555,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         ];
         if ($te['type'] === 'offer') {
             $event['amount'] = floatval($te['amount']);
+        }
+        // Offers and the business-document types (order, proforma invoice,
+        // advance receipt, invoice, delivery note) all carry paperwork.
+        if (in_array($te['type'], ccrm_document_event_types(), true)) {
             $event['fileName'] = $te['file_name'];
             $event['fileSize'] = $te['file_size'];
             $event['fileType'] = $te['file_type'];
+            $attachments = (isset($te['attachments_json']) && $te['attachments_json'] !== '' && $te['attachments_json'] !== null)
+                ? json_decode($te['attachments_json'], true)
+                : null;
+            if (is_array($attachments) && $attachments) {
+                $event['attachments'] = $attachments;
+            }
         }
         if ($te['type'] === 'appointment') {
             $event['extraTime'] = $te['extra_time'];
@@ -571,6 +611,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'timeline' => $timeline,
             'aiSummary' => $row['ai_summary'] ?? '',
             'aiSummaryFingerprint' => $row['ai_summary_fingerprint'] ?? '',
+            'interestNote' => $row['interest_note'] ?? '',
             'establishmentDate' => $row['establishment_date'] ?? '',
             'legalForm' => $row['legal_form'] ?? '',
             'skNace' => $row['sk_nace'] ?? '',
@@ -1747,14 +1788,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $insLead = $pdo->prepare("INSERT INTO `leads` (
               `id`, `name`, `city`, `client_type`, `status`, `source`, `owner`, `value`, `rating`, `phone`, `email`, 
               `company_id`, `tax_id`, `vat_id`, `contact_person`, `website`, `street`, `postal_code`, `country`, 
-              `ai_summary`, `ai_summary_fingerprint`, 
+              `ai_summary`, `ai_summary_fingerprint`, `interest_note`,
               `establishment_date`, `legal_form`, `sk_nace`, `organization_size`, `ownership_type`, `data_source`, `dissolution_date`, `region`, `district`, `financial_summary`,
               `vat_validation_result`,
               `created_at`,
               `follow_ups`
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
-              `name` = VALUES(`name`), `city` = VALUES(`city`), `client_type` = VALUES(`client_type`), `status` = VALUES(`status`), `source` = VALUES(`source`), `owner` = VALUES(`owner`), `value` = VALUES(`value`), `rating` = VALUES(`rating`), `phone` = VALUES(`phone`), `email` = VALUES(`email`), `company_id` = VALUES(`company_id`), `tax_id` = VALUES(`tax_id`), `vat_id` = VALUES(`vat_id`), `contact_person` = VALUES(`contact_person`), `website` = VALUES(`website`), `street` = VALUES(`street`), `postal_code` = VALUES(`postal_code`), `country` = VALUES(`country`), `ai_summary` = VALUES(`ai_summary`), `ai_summary_fingerprint` = VALUES(`ai_summary_fingerprint`),
+              `name` = VALUES(`name`), `city` = VALUES(`city`), `client_type` = VALUES(`client_type`), `status` = VALUES(`status`), `source` = VALUES(`source`), `owner` = VALUES(`owner`), `value` = VALUES(`value`), `rating` = VALUES(`rating`), `phone` = VALUES(`phone`), `email` = VALUES(`email`), `company_id` = VALUES(`company_id`), `tax_id` = VALUES(`tax_id`), `vat_id` = VALUES(`vat_id`), `contact_person` = VALUES(`contact_person`), `website` = VALUES(`website`), `street` = VALUES(`street`), `postal_code` = VALUES(`postal_code`), `country` = VALUES(`country`), `ai_summary` = VALUES(`ai_summary`), `ai_summary_fingerprint` = VALUES(`ai_summary_fingerprint`), `interest_note` = VALUES(`interest_note`),
               `establishment_date` = VALUES(`establishment_date`), `legal_form` = VALUES(`legal_form`), `sk_nace` = VALUES(`sk_nace`), `organization_size` = VALUES(`organization_size`), `ownership_type` = VALUES(`ownership_type`), `data_source` = VALUES(`data_source`), `dissolution_date` = VALUES(`dissolution_date`), `region` = VALUES(`region`), `district` = VALUES(`district`),
               `vat_validation_result` = VALUES(`vat_validation_result`),
               `follow_ups` = VALUES(`follow_ups`)");
@@ -1812,6 +1853,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $address['country'] ?? 'Slovakia',
                     $l['aiSummary'] ?? null,
                     $l['aiSummaryFingerprint'] ?? null,
+                    $l['interestNote'] ?? null,
                     $l['establishmentDate'] ?? null,
                     $l['legalForm'] ?? null,
                     $l['skNace'] ?? null,
@@ -1876,7 +1918,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $delTimeline->execute([$leadId]);
 
                 if (isset($l['timeline']) && is_array($l['timeline'])) {
-                    $insTimeline = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`, `amount`, `file_name`, `file_size`, `file_type`, `extra_time`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                    $insTimeline = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`, `amount`, `file_name`, `file_size`, `file_type`, `attachments_json`, `extra_time`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                    $allowedEventTypes = ['phone', 'email', 'note', 'offer', 'appointment', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note'];
                     foreach ($l['timeline'] as $te) {
                         $teId = $te['id'] ?? ('ev-' . uniqid());
                         if (strpos($teId, 'email-') === 0) {
@@ -1900,10 +1943,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         if (function_exists('mb_substr')) { $teTitle = mb_substr($teTitle, 0, 255, 'UTF-8'); }
                         $teContent = ccrm_sanitize_db_text($te['content'] ?? null, 63000);
 
+                        // An unknown type would be truncated to '' by MySQL (or abort
+                        // the whole transaction under strict mode), so anything not in
+                        // the ENUM is filed as a plain note rather than killing the sync.
+                        $teType = $te['type'] ?? 'note';
+                        if (!in_array($teType, $allowedEventTypes, true)) {
+                            $teType = 'note';
+                        }
+
                         $teParams = [
                             $teId,
                             $leadId,
-                            $te['type'] ?? 'note',
+                            $teType,
                             $timestamp,
                             $teTitle,
                             $teContent,
@@ -1911,6 +1962,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $te['fileName'] ?? null,
                             $te['fileSize'] ?? null,
                             $te['fileType'] ?? null,
+                            ccrm_encode_attachments($te['attachments'] ?? null),
                             $te['extraTime'] ?? $te['extra_time'] ?? null
                         ];
 

@@ -8,6 +8,7 @@ import {
 import type { Lead, Task, UserProfile } from "../types";
 import { formatBytes } from "../utils/formatBytes";
 import { nowLocalStamp } from "../utils/localTime";
+import { getTranslation } from "../utils/translations";
 
 interface EmailViewProps {
   currentUser: any;
@@ -1905,7 +1906,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                     : event.type === "note" ? t("Timeline Note", "Poznámka na časovej osi", "Idővonal jegyzet")
                                     : event.type === "offer" ? t("Proposal", "Cenová ponuka", "Ajánlat")
                                     : event.type === "appointment" ? t("Meeting Log", "Záznam stretnutia", "Találkozó napló")
-                                    : event.type}
+                                    : getTranslation(systemLanguage, `timeline.badge.${event.type}`)}
                                 </span>
                               )}
                             </div>
