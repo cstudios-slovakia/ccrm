@@ -208,6 +208,10 @@ export interface UserActivityLog {
 }
 
 export interface UserProfile {
+  // Server-assigned row id (a hash of the e-mail). Absent on records created in
+  // the browser until they have been synced back; the delta sync relies on it to
+  // tell an edited row from an untouched one.
+  id?: string;
   name: string;
   email: string;
   password?: string;

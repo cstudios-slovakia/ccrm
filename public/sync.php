@@ -595,6 +595,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $users = [];
     while ($row = $usersStmt->fetch()) {
         $users[] = [
+            // Sent so the client's delta sync can track user rows like every other
+            // collection (it keys its baseline by id). Not a secret: the id is a
+            // deterministic hash of the e-mail address, which clients already see.
+            'id' => $row['id'],
             'name' => $row['name'],
             'email' => $row['email'],
             'role' => ccrm_role_label($row['role']),

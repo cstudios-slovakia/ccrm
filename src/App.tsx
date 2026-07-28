@@ -134,7 +134,17 @@ const diffRecords = (
   }
   const changed: any[] = [];
   for (const r of list) {
-    if (!r || r.id == null) continue;
+    if (!r) continue;
+    // A record with no id cannot be held in the baseline (which is keyed by id),
+    // so there is no way to tell whether it changed — it must always be sent.
+    // Skipping it, as this used to, silently dropped whole collections: user rows
+    // carry no id, so every profile edit (name, password, mailbox credentials, a
+    // newly added user) was diffed down to an empty array and never reached the
+    // server, while the UI happily showed it as saved until the next reload.
+    if (r.id == null) {
+      changed.push(r);
+      continue;
+    }
     const id = String(r.id);
     if (baseline.get(id) !== next.get(id)) changed.push(r);
   }
