@@ -4,6 +4,7 @@ import type { CustomDashboard } from "../types";
 import { cn } from "../utils/cn";
 import type { Language } from "../utils/translations";
 import { formatMoney } from "../utils/currency";
+import { localeCodeFor } from "../utils/localTime";
 
 interface DynamicDashboardViewProps {
   dashboard: CustomDashboard;
@@ -387,7 +388,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                   )}
 
                   {w.type === "table" && (
-                    <DashboardTable widget={w} data={widgetData[w.id]} t={t} formatCurrency={money} />
+                    <DashboardTable widget={w} data={widgetData[w.id]} t={t} formatCurrency={money} systemLanguage={systemLanguage as Language} />
                   )}
                 </div>
               </div>
@@ -899,9 +900,10 @@ interface DashboardTableProps {
   data: any;
   t: (en: string, sk: string, hu: string) => string;
   formatCurrency?: (value: number) => string;
+  systemLanguage: Language;
 }
 
-const DashboardTable: React.FC<DashboardTableProps> = ({ widget, data, t, formatCurrency = (v) => `€${v.toLocaleString()}` }) => {
+const DashboardTable: React.FC<DashboardTableProps> = ({ widget, data, t, formatCurrency = (v) => `€${v.toLocaleString()}`, systemLanguage }) => {
   const dataList = Array.isArray(data) ? data : [];
   const columns = widget.columns || [];
 
@@ -911,7 +913,7 @@ const DashboardTable: React.FC<DashboardTableProps> = ({ widget, data, t, format
       return formatCurrency(Number(val));
     }
     if (format === "date") {
-      return new Date(val).toLocaleDateString();
+      return new Date(val).toLocaleDateString(localeCodeFor(systemLanguage));
     }
     return String(val);
   };

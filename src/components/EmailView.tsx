@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import type { Lead, Task, UserProfile } from "../types";
 import { formatBytes } from "../utils/formatBytes";
-import { nowLocalStamp } from "../utils/localTime";
+import { nowLocalStamp, localeCodeFor, formatTimestampLocalized } from "../utils/localTime";
 import { getTranslation } from "../utils/translations";
 
 interface EmailViewProps {
@@ -965,7 +965,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                           {thread.emails.length} msg
                         </span>
                         <span className="text-[8.5px] text-slate-400 font-semibold">
-                          {new Date(thread.date).toLocaleDateString()}
+                          {new Date(thread.date).toLocaleDateString(localeCodeFor(systemLanguage))}
                         </span>
                       </div>
                     </div>
@@ -1033,7 +1033,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                         )}
                       </span>
                       <span className="text-[9px] text-slate-400 font-medium shrink-0">
-                        {new Date(email.date).toLocaleDateString()}
+                        {new Date(email.date).toLocaleDateString(localeCodeFor(systemLanguage))}
                       </span>
                     </div>
 
@@ -1910,7 +1910,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                 </span>
                               )}
                             </div>
-                            <span className="text-[8px] text-slate-400 font-extrabold">{event.timestamp}</span>
+                            <span className="text-[8px] text-slate-400 font-extrabold">{formatTimestampLocalized(event.timestamp, systemLanguage)}</span>
                           </div>
                           {(() => {
                             const lines = event.content.split("\n");

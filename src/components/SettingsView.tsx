@@ -12,6 +12,7 @@ import type { Language } from "../utils/translations";
 import { ProjectSettings } from "./ProjectSettings";
 import { PasswordInput } from "./PasswordInput";
 import { CURRENCY_OPTIONS, currencyForRegion } from "../utils/currency";
+import { formatTimestampLocalized } from "../utils/localTime";
 
 // Inline "double-click / pencil to rename" field.
 //
@@ -2622,7 +2623,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                   <div className="absolute -left-[5px] top-[12px] w-2.5 h-2.5 bg-white border-l border-b border-slate-200 transform rotate-45"></div>
                                   <div className="flex flex-wrap items-center justify-between gap-2">
                                     <span className="font-extrabold text-xs text-slate-800 leading-tight block">{log.action}</span>
-                                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider shrink-0">{log.timestamp}</span>
+                                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider shrink-0">{formatTimestampLocalized(log.timestamp, userLanguage)}</span>
                                   </div>
                                   {log.details && (
                                     <p className="text-[10px] text-slate-500 font-semibold mt-1 leading-relaxed">{log.details}</p>
