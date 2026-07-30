@@ -983,7 +983,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       totalValue: number;
       leadsCount: number;
       associatedLeads: Lead[];
-      
+      createdAt: string;
+
       // Extended Metadata fields
       phone: string;
       email: string;
@@ -1030,7 +1031,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           totalValue: 0,
           leadsCount: 0,
           associatedLeads: [],
-          
+          createdAt: lead.createdAt || "",
+
           phone: lead.phone || "",
           email: lead.email || "",
           street: lead.address?.street || "",
@@ -1067,6 +1069,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         }
         if (lead.vatValidationResult && !profilesMap[clientKey].vatValidationResult) {
           profilesMap[clientKey].vatValidationResult = lead.vatValidationResult;
+        }
+        if (lead.createdAt && (!profilesMap[clientKey].createdAt || lead.createdAt < profilesMap[clientKey].createdAt)) {
+          profilesMap[clientKey].createdAt = lead.createdAt;
         }
       }
       profilesMap[clientKey].totalValue += lead.value;
@@ -2719,6 +2724,16 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   />
                 </div>
               </div>
+
+              {/* Date Added (read-only, derived from earliest associated lead) */}
+              {activeClient?.createdAt && (
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1"><Calendar className="h-3 w-3 text-emerald-500" /> {getTranslation(systemLanguage, "profile.created_at")}</label>
+                  <div className="pt-2 pl-0 text-slate-900 text-sm font-black cursor-default select-all">
+                    {activeClient.createdAt}
+                  </div>
+                </div>
+              )}
 
               {/* Address details */}
               <div className="border-t-2 border-slate-100 pt-4 space-y-3">
