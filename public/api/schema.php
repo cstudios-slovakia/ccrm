@@ -497,8 +497,7 @@ if (!function_exists('ccrm_schema_statements')) {
         }
         // Completion attribution. Both fields used to live only in client memory, so
         // every sync round-trip dropped them and the archive rendered "Unknown" with
-        // the deadline standing in for the completion time. Legacy rows stay NULL —
-        // that history was never persisted and must not be back-filled with a guess.
+        // the deadline standing in for the completion time.
         if (!ccrm_column_exists($pdo, 'tasks', 'completed_by')) {
             $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `completed_by` VARCHAR(100) NULL AFTER `archived`");
         }
@@ -507,6 +506,7 @@ if (!function_exists('ccrm_schema_statements')) {
         }
         ccrm_migrate_updated_at_precision($pdo);
         ccrm_migrate_task_states($pdo);
+        ccrm_backfill_task_completion_attribution($pdo);
     }
 
     /**
@@ -614,6 +614,62 @@ if (!function_exists('ccrm_schema_statements')) {
                 if ($legacy === $taskStates[$index]) continue;
                 $rename->execute([$taskStates[$index], $legacy]);
             }
+        }
+    }
+
+    /**
+     * One-time, best-effort attribution for tasks completed before `completed_by`
+     * was persisted (everything archived up to 1.6.41 shows "Unknown").
+     *
+     * The real completer was never recorded, so this is an ESTIMATE, not history.
+     * It picks the most defensible name available, in order:
+     *   1. `created_by` — who opened the task (NULL on pre-1.5 rows, which is why
+     *      it cannot be the only source).
+     *   2. `owner` — the primary assignee.
+     *   3. any row in `task_assignees` — a secondary assignee.
+     * Rows with none of the three keep NULL and go on rendering the neutral label.
+     *
+     * `completed_at` is deliberately NOT invented. That leaves backfilled rows as
+     * the only ones with a completer but no timestamp, which is the signal the
+     * archive uses to mark the name as estimated rather than recorded.
+     *
+     * Guarded by a settings marker so it runs exactly once: a task legitimately
+     * reopened and left unfinished must not be re-stamped on the next sync.
+     */
+    function ccrm_backfill_task_completion_attribution(PDO $pdo): void {
+        try {
+            $done = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'TASK_COMPLETED_BY_BACKFILL'")->fetchColumn();
+            if ($done !== false) {
+                return; // Already run on this install.
+            }
+
+            // "Done" mirrors the frontend's isDoneState(): the literal 'done', or
+            // whatever the operator named the last state in their own list.
+            $statesRaw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'TASK_STATES'")->fetchColumn();
+            $states = is_string($statesRaw) ? json_decode($statesRaw, true) : null;
+            $lastState = (is_array($states) && $states) ? (string)end($states) : null;
+
+            // COALESCE over the three candidate names; NULLIF keeps empty strings
+            // from winning over a populated lower-priority column.
+            $candidate = "COALESCE(NULLIF(t.`created_by`, ''), NULLIF(t.`owner`, ''), NULLIF(a.`user_name`, ''))";
+            $sql =
+                "UPDATE `tasks` t
+                 LEFT JOIN (
+                     SELECT `task_id`, MIN(`user_name`) AS `user_name`
+                     FROM `task_assignees` GROUP BY `task_id`
+                 ) a ON a.`task_id` = t.`id`
+                 SET t.`completed_by` = $candidate
+                 WHERE t.`completed_by` IS NULL
+                   AND (LOWER(t.`status`) = 'done'" . ($lastState !== null ? " OR t.`status` = ?" : "") . ")
+                   AND $candidate IS NOT NULL";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($lastState !== null ? [$lastState] : []);
+
+            $mark = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
+            $mark->execute(['TASK_COMPLETED_BY_BACKFILL', (string)$stmt->rowCount()]);
+        } catch (\Throwable $e) {
+            // Never block a sync over a cosmetic backfill.
+            error_log('[ccrm schema] completed_by backfill skipped: ' . $e->getMessage());
         }
     }
 

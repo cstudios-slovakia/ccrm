@@ -328,6 +328,19 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // misattribute the completion to whoever happens to be looking at the archive.
     const unknownCompletedBy = t("Unknown", "Neznámy", "Ismeretlen");
 
+    // Tasks completed before completedBy was persisted got a best-effort name
+    // back-filled server-side (creator, else assignee). Those rows are exactly the
+    // ones carrying a name but no completedAt — a real completion always writes
+    // both together — so the archive can show the guess in a muted italic and say
+    // so on hover, rather than passing an estimate off as recorded history.
+    const isEstimatedCompleter = (task: Task) =>
+        Boolean(task.completedBy) && !task.completedAt;
+    const estimatedCompleterHint = t(
+        "Estimated: this task was completed before the app recorded who finished it, so the creator or assignee is shown.",
+        "Odhad: táto úloha bola dokončená skôr, než aplikácia zaznamenávala, kto ju dokončil, preto je zobrazený jej tvorca alebo riešiteľ.",
+        "Becslés: ezt a feladatot azelőtt fejezték be, hogy az alkalmazás rögzítette volna a befejezőt, ezért a létrehozó vagy a felelős látható.",
+    );
+
     // Locale for native date/time display — driven by the language/region setting.
     const locale = systemLanguage === "sk" ? "sk-SK" : systemLanguage === "hu" ? "hu-HU" : "en-US";
 
@@ -2071,7 +2084,16 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                         <div className="flex items-center gap-4 shrink-0 justify-between sm:justify-end">
                                                             <div className="text-right space-y-0.5">
                                                                 <div className="text-[10px] font-bold text-slate-600">
-                                                                    <span className="font-extrabold text-slate-800">
+                                                                    <span
+                                                                        className={`font-extrabold ${isEstimatedCompleter(task) ? "text-slate-500 italic" : "text-slate-800"}`}
+                                                                        title={
+                                                                            isEstimatedCompleter(
+                                                                                task,
+                                                                            )
+                                                                                ? estimatedCompleterHint
+                                                                                : undefined
+                                                                        }
+                                                                    >
                                                                         {task.completedBy ||
                                                                             unknownCompletedBy}
                                                                     </span>
