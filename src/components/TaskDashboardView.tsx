@@ -25,7 +25,6 @@ import { CalendarPane } from "./Dashboard";
 import {
     canDeleteTask as userCanDeleteTask,
     canEditTask as userCanEditTask,
-    canViewTask,
     isActiveTask,
     isTaskAssignedTo,
     type TaskAccess,
@@ -296,9 +295,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // else the first registered user. Never a hardcoded demo account.
     const defaultUserName = currentUser?.name || users[0]?.name || "";
 
-    // Item 11 — the personal dashboard (time buckets, calendar, archive) only surfaces tasks
-    // that belong to the logged-in user, so users never see each other's tasks. Admins keep a
-    // full cross-user view in the Global Tasks / Archive tabs (canSeeAllTasks).
+    // Item 11 — the personal dashboard (time buckets, calendar) only surfaces tasks
+    // that belong to the logged-in user, so users never see each other's open tasks. Admins keep a
+    // full cross-user view in the Global Tasks tab (canSeeAllTasks). The Archive tab is
+    // team-wide for everyone — completed work is shared history.
     const myName = currentUser?.name || defaultUserName;
     const canSeeAllTasks = (currentUser?.role || "").toLowerCase() === "admin";
     const isMyTask = (task: Task) => isTaskAssignedTo(task, myName);
@@ -322,6 +322,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         if (systemLanguage === "hu") return hu;
         return en;
     };
+
+    // Legacy archived tasks predate the completedBy field, so it's empty on them.
+    // Fall back to a neutral label, never to the current viewer's name — that would
+    // misattribute the completion to whoever happens to be looking at the archive.
+    const unknownCompletedBy = t("Unknown", "Neznámy", "Ismeretlen");
 
     // Locale for native date/time display — driven by the language/region setting.
     const locale = systemLanguage === "sk" ? "sk-SK" : systemLanguage === "hu" ? "hu-HU" : "en-US";
@@ -665,18 +670,26 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     };
 
     const completedUsersList = useMemo(() => {
-        const names = tasks
-            .filter((t) => isDoneState(t.status) && t.completedBy)
-            .map((t) => t.completedBy as string);
-        return Array.from(new Set(names));
-    }, [tasks]);
+        const list = users.map((u) => u.name);
+        tasks.forEach((t) => {
+            if (
+                isDoneState(t.status) &&
+                t.completedBy &&
+                !list.includes(t.completedBy)
+            ) {
+                list.push(t.completedBy);
+            }
+        });
+        return Array.from(new Set(list));
+    }, [users, tasks]);
 
     const filteredArchivedTasks = useMemo(() => {
         return tasks.filter((task) => {
             if (!isDoneState(task.status)) return false;
 
-            // Item 11 — non-admins only see their own archived tasks
-            if (!canViewTask(task, currentUser, canSeeAllTasks)) return false;
+            // The archive is a team-wide history: every user sees the completed
+            // tasks of the whole team, not just their own. Use the "Completed By"
+            // filter to narrow it down to a single person.
 
             // Item 9 — calendar date-range filter (by deadline/due date)
             if (!dateInRange(task.deadline, archiveDateStart, archiveDateEnd))
@@ -702,7 +715,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             // Completed By
             if (
                 archiveUserFilter !== "all" &&
-                (task.completedBy || defaultUserName) !== archiveUserFilter
+                (task.completedBy || unknownCompletedBy) !== archiveUserFilter
             ) {
                 return false;
             }
@@ -731,8 +744,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         archiveTimingFilter,
         archiveDateStart,
         archiveDateEnd,
-        myName,
-        canSeeAllTasks,
+        unknownCompletedBy,
     ]);
 
     const archivedTasksGroupedByDate = useMemo(() => {
@@ -1988,7 +2000,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                       "Bez termínu",
                                                       "Nincs határidő",
                                                   )
-                                                : group.date}
+                                                : formatTaskDate(group.date)}
                                         </div>
                                         <div className="space-y-2 pl-3">
                                             {group.tasks.map((task) => {
@@ -2061,12 +2073,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                                 <div className="text-[10px] font-bold text-slate-600">
                                                                     <span className="font-extrabold text-slate-800">
                                                                         {task.completedBy ||
-                                                                            defaultUserName}
+                                                                            unknownCompletedBy}
                                                                     </span>
                                                                     <span className="text-slate-400 font-bold ml-1">
                                                                         @{" "}
-                                                                        {task.completedAt ||
-                                                                            `${task.deadline} @ ${task.deadlineTime || "23:59"}`}
+                                                                        {task.completedAt
+                                                                            ? `${formatTaskDate(task.completedAt.slice(0, 10))} ${task.completedAt.slice(11, 16)}`
+                                                                            : `${formatTaskDate(task.deadline)} @ ${task.deadlineTime || "23:59"}`}
                                                                     </span>
                                                                 </div>
                                                                 <div>
@@ -2135,12 +2148,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         )}
                     </div>
 
-                    {/* Manually archived tasks — hidden from active views independent of status */}
+                    {/* Manually archived tasks — hidden from active views independent of status.
+                        Team-wide, same as the completed-task archive above. */}
                     {(() => {
                         const archivedList = tasks.filter(
-                            (task) =>
-                                task.archived &&
-                                canViewTask(task, currentUser, canSeeAllTasks),
+                            (task) => task.archived,
                         );
                         if (archivedList.length === 0) return null;
                         return (
@@ -2177,16 +2189,30 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                     }`}
                                                 />
                                                 <div className="min-w-0 flex-1">
-                                                    <span className="font-extrabold text-slate-700 truncate">
-                                                        {task.title}
-                                                    </span>
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <span className="font-extrabold text-slate-700 truncate">
+                                                            {task.title}
+                                                        </span>
+                                                        {task.assignedUsers &&
+                                                            task.assignedUsers
+                                                                .length > 0 && (
+                                                                <span className="text-[9px] font-bold text-indigo-600 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded-md truncate max-w-[120px]">
+                                                                    <span className="h-1 w-1 rounded-full bg-indigo-500 shrink-0" />
+                                                                    <span className="truncate">
+                                                                        {task.assignedUsers.join(
+                                                                            ", ",
+                                                                        )}
+                                                                    </span>
+                                                                </span>
+                                                            )}
+                                                    </div>
                                                     <div className="text-[9px] font-bold text-slate-400 mt-0.5">
                                                         {t(
                                                             "Due",
                                                             "Termín",
                                                             "Határidő",
                                                         )}
-                                                        : {task.deadline}
+                                                        : {formatTaskDate(task.deadline)}
                                                     </div>
                                                 </div>
                                             </div>

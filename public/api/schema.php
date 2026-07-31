@@ -127,6 +127,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `related_lead_id` VARCHAR(50) NULL,
               `is_locking` TINYINT(1) NOT NULL DEFAULT 0,
               `archived` TINYINT(1) NOT NULL DEFAULT 0,
+              `completed_by` VARCHAR(100) NULL COMMENT 'Name of the user who moved the task to a done state; NULL for legacy rows',
+              `completed_at` VARCHAR(16) NULL COMMENT 'YYYY-MM-DD HH:MM local completion timestamp; NULL for legacy rows',
               `metadata_json` TEXT NULL COMMENT 'Plugin support',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -492,6 +494,16 @@ if (!function_exists('ccrm_schema_statements')) {
                 "INSERT IGNORE INTO `task_assignees` (`task_id`, `user_name`)
                  SELECT `id`, `owner` FROM `tasks` WHERE `owner` <> ''"
             );
+        }
+        // Completion attribution. Both fields used to live only in client memory, so
+        // every sync round-trip dropped them and the archive rendered "Unknown" with
+        // the deadline standing in for the completion time. Legacy rows stay NULL —
+        // that history was never persisted and must not be back-filled with a guess.
+        if (!ccrm_column_exists($pdo, 'tasks', 'completed_by')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `completed_by` VARCHAR(100) NULL AFTER `archived`");
+        }
+        if (!ccrm_column_exists($pdo, 'tasks', 'completed_at')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `completed_at` VARCHAR(16) NULL AFTER `completed_by`");
         }
         ccrm_migrate_updated_at_precision($pdo);
         ccrm_migrate_task_states($pdo);
