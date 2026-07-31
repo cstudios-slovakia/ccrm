@@ -178,22 +178,59 @@ function ccrm_extract_text_from_file($filePath, $fileName) {
     if ($ext === 'pptx') {
         return ccrm_extract_pptx_text($filePath);
     }
-    
-    if (in_array($ext, ['jpg', 'jpeg', 'png'], true)) {
+
+    if ($ext === 'xlsx') {
+        return ccrm_extract_xlsx_text($filePath);
+    }
+
+    if ($ext === 'doc' || $ext === 'xls') {
+        // Legacy OLE binary formats: no reliable pure-PHP parser, so fall back to
+        // scraping printable text runs directly from the raw bytes. Noisy output
+        // (binary noise, record markers) is expected here and gets discarded by
+        // ccrm_text_is_readable() in the caller, same as the PDF stream extractor.
+        return ccrm_extract_ole_text($filePath);
+    }
+
+    if (in_array($ext, ['jpg', 'jpeg', 'png', 'heic', 'heif'], true)) {
+        $sourcePath = $filePath;
+        $convertedTmp = null;
+
+        // Tesseract can't read HEIC/HEIF (the format iPhones save photos in by
+        // default) directly, so convert to PNG first with whatever decoder the
+        // server happens to have. If none is installed, skip OCR quietly — the
+        // file itself still uploads fine.
+        if ($ext === 'heic' || $ext === 'heif') {
+            $convertedTmp = tempnam(sys_get_temp_dir(), 'heic_') . '.png';
+            if (!empty(@shell_exec('which heif-convert'))) {
+                @shell_exec('heif-convert ' . escapeshellarg($filePath) . ' ' . escapeshellarg($convertedTmp) . ' > /dev/null 2>&1');
+            } elseif (!empty(@shell_exec('which magick'))) {
+                @shell_exec('magick ' . escapeshellarg($filePath) . ' ' . escapeshellarg($convertedTmp) . ' > /dev/null 2>&1');
+            } elseif (!empty(@shell_exec('which convert'))) {
+                @shell_exec('convert ' . escapeshellarg($filePath) . ' ' . escapeshellarg($convertedTmp) . ' > /dev/null 2>&1');
+            }
+            if (!file_exists($convertedTmp) || filesize($convertedTmp) === 0) {
+                @unlink($convertedTmp);
+                return '';
+            }
+            $sourcePath = $convertedTmp;
+        }
+
         // OCR fallback: try running tesseract if available
         $tesseract = @shell_exec('which tesseract');
         if (!empty($tesseract)) {
             $outputFile = tempnam(sys_get_temp_dir(), 'ocr_');
-            @shell_exec('tesseract ' . escapeshellarg($filePath) . ' ' . escapeshellarg($outputFile) . ' --dpi 150 > /dev/null 2>&1');
+            @shell_exec('tesseract ' . escapeshellarg($sourcePath) . ' ' . escapeshellarg($outputFile) . ' --dpi 150 > /dev/null 2>&1');
             $txtPath = $outputFile . '.txt';
             if (file_exists($txtPath)) {
                 $text = @file_get_contents($txtPath) ?: '';
                 @unlink($outputFile);
                 @unlink($txtPath);
+                if ($convertedTmp) @unlink($convertedTmp);
                 return $text;
             }
             @unlink($outputFile);
         }
+        if ($convertedTmp) @unlink($convertedTmp);
     }
     
     return '';
@@ -238,6 +275,75 @@ function ccrm_extract_pptx_text($filePath) {
         return html_entity_decode(trim($text), ENT_QUOTES | ENT_HTML5, 'UTF-8');
     }
     return '';
+}
+
+/**
+ * Native Excel Workbook (.xlsx) text extractor via unzipping the shared string
+ * table plus any inline strings in the worksheets themselves.
+ */
+function ccrm_extract_xlsx_text($filePath) {
+    if (!class_exists('ZipArchive')) {
+        return '';
+    }
+    $zip = new ZipArchive();
+    if ($zip->open($filePath) !== true) {
+        return '';
+    }
+
+    $text = '';
+
+    // Cell values that repeat across the workbook are stored once here and
+    // referenced by index from the sheets, so this is where most real text lives.
+    $sharedStrings = $zip->getFromName('xl/sharedStrings.xml');
+    if ($sharedStrings) {
+        $text .= strip_tags($sharedStrings) . ' ';
+    }
+
+    // Inline strings (t="inlineStr") and raw cell values live directly in each
+    // sheet; loop through a reasonable number of sheets.
+    for ($i = 1; $i <= 50; $i++) {
+        $sheetXml = $zip->getFromName("xl/worksheets/sheet{$i}.xml");
+        if (!$sheetXml) break;
+        $text .= strip_tags($sheetXml) . ' ';
+    }
+
+    $zip->close();
+    return html_entity_decode(trim($text), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+}
+
+/**
+ * Best-effort text scraper for legacy OLE binary formats (.doc, .xls).
+ *
+ * These are Compound File Binary Format documents; parsing them properly needs
+ * a real OLE/BIFF reader we don't have here. Instead, scrape runs of printable
+ * characters directly from the raw bytes — both plain ASCII and UTF-16LE (each
+ * character followed by a NUL byte, which is how Word/Excel store Unicode text)
+ * — and let the caller's readability filter throw out whatever is just binary
+ * noise or record markers.
+ */
+function ccrm_extract_ole_text($filePath) {
+    $content = @file_get_contents($filePath);
+    if (empty($content)) {
+        return '';
+    }
+
+    $runs = [];
+
+    // UTF-16LE runs: printable ASCII char + NUL, repeated.
+    if (preg_match_all('/(?:[\x20-\x7E]\x00){4,}/', $content, $matches)) {
+        foreach ($matches[0] as $run) {
+            $runs[] = str_replace("\x00", '', $run);
+        }
+    }
+
+    // Plain single-byte printable ASCII runs.
+    if (preg_match_all('/[\x20-\x7E]{4,}/', $content, $matches)) {
+        foreach ($matches[0] as $run) {
+            $runs[] = $run;
+        }
+    }
+
+    return implode(' ', $runs);
 }
 
 /**
