@@ -26,7 +26,9 @@ import {
     canDeleteTask as userCanDeleteTask,
     canEditTask as userCanEditTask,
     isActiveTask,
+    isOnPersonalDashboard,
     isTaskAssignedTo,
+    isTaskCreatedBy,
     type TaskAccess,
 } from "../utils/taskSelectors";
 
@@ -301,7 +303,17 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // team-wide for everyone — completed work is shared history.
     const myName = currentUser?.name || defaultUserName;
     const canSeeAllTasks = (currentUser?.role || "").toLowerCase() === "admin";
-    const isMyTask = (task: Task) => isTaskAssignedTo(task, myName);
+    // A task reaches this dashboard two ways: it is assigned to you, or you are
+    // the one who created it. Assignment alone was the rule until 1.6.46, which
+    // hid every task a user opened for somebody else — above all the ones created
+    // from a lead profile, where the assignee defaults to the lead's owner. That
+    // rule left work you scheduled yourself in no calendar you could reach, and
+    // it applies to tasks already in the database, not only to new ones.
+    const isMyTask = (task: Task) => isOnPersonalDashboard(task, myName);
+    // Someone else does the work, you only opened it — worth marking on the card
+    // so a delegated task is not mistaken for your own.
+    const isDelegatedByMe = (task: Task) =>
+        !isTaskAssignedTo(task, myName) && isTaskCreatedBy(task, myName);
     const mayEditTask = (task: Task) =>
         userCanEditTask(task, currentUser, taskAccess);
     const mayDeleteTask = (task: Task) =>
@@ -1362,6 +1374,24 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     >
                         {priorityLabel(task.priority)}
                     </span>
+
+                    {/* On your calendar because you created it, not because it is
+                        yours to do — say so, and name who is on the hook. */}
+                    {isDelegatedByMe(task) && (
+                        <span
+                            title={t(
+                                "You created this task for someone else. It stays on your calendar so you can follow it up.",
+                                "Túto úlohu ste vytvorili pre niekoho iného. Vo vašom kalendári zostáva, aby ste ju mohli sledovať.",
+                                "Ezt a feladatot másnak hozta létre. A naptárában marad, hogy nyomon követhesse.",
+                            )}
+                            className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md border bg-violet-50 text-violet-600 border-violet-200 cursor-help"
+                        >
+                            {t("Delegated", "Delegované", "Delegálva")}
+                            {task.assignedUsers?.[0]
+                                ? ` · ${task.assignedUsers[0]}`
+                                : ""}
+                        </span>
+                    )}
 
                     {!isCompact && task.startDate && (
                         <span className="text-[9px] font-bold text-slate-500 flex items-center gap-1 bg-slate-100 px-2 py-1 rounded-lg transition-colors hover:bg-slate-200/70">

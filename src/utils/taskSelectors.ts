@@ -35,6 +35,19 @@ export const resolveAssigneeName = (
 export const isTaskCreatedBy = (task: Task, userName: string): boolean =>
   Boolean(task.createdBy && userName && task.createdBy === userName);
 
+/**
+ * Membership of a user's personal dashboard — the calendar and the
+ * overdue/today/upcoming buckets. A task qualifies when it is assigned to them,
+ * or when they created it for somebody else and still have to follow it up.
+ *
+ * Assignment used to be the only rule. Tasks created from a lead profile take
+ * the lead's owner as their assignee, so everything a non-owner scheduled there
+ * — a gate task, a booked appointment — landed in no calendar its author could
+ * reach, while still showing on the lead itself.
+ */
+export const isOnPersonalDashboard = (task: Task, userName: string): boolean =>
+  isTaskAssignedTo(task, userName) || isTaskCreatedBy(task, userName);
+
 export const isActiveTask = (
   task: Task,
   isDoneState: (status: string) => boolean,

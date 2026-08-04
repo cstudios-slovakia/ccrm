@@ -6,6 +6,7 @@ import {
   canEditTask,
   canViewTask,
   isActiveTask,
+  isOnPersonalDashboard,
   isTaskAssignedTo,
   resolveAssigneeName,
 } from "./taskSelectors.ts";
@@ -27,12 +28,29 @@ const task: Task = {
 const fullAccess = { view: true, create: true, edit: true, delete: true };
 const normalAccess = { view: true, create: true, edit: true, delete: false };
 
-test("assignment is the only source of personal-calendar membership", () => {
+test("assignment decides who a task belongs to", () => {
   assert.equal(isTaskAssignedTo(task, "Sam"), true);
   assert.equal(isTaskAssignedTo(task, "Alex"), false);
   assert.equal(canViewTask(task, alex, false), false);
   assert.equal(canViewTask(task, sam, false), true);
   assert.equal(canViewTask(task, admin, true), true);
+});
+
+test("the personal dashboard holds assigned tasks and ones you created", () => {
+  // Assigned to Sam, created by Alex: on both their calendars, nobody else's.
+  assert.equal(isOnPersonalDashboard(task, "Sam"), true);
+  assert.equal(isOnPersonalDashboard(task, "Alex"), true);
+  assert.equal(isOnPersonalDashboard(task, "Ada"), false);
+  // Legacy rows predate createdBy, so assignment is all there is to go on.
+  assert.equal(
+    isOnPersonalDashboard({ ...task, createdBy: undefined }, "Alex"),
+    false,
+  );
+  // An empty name must never match a task with no creator or no assignees.
+  assert.equal(
+    isOnPersonalDashboard({ ...task, createdBy: "", assignedUsers: [] }, ""),
+    false,
+  );
 });
 
 test("active tasks exclude done and manually archived tasks", () => {
