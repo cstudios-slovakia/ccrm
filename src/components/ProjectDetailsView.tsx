@@ -3,7 +3,7 @@ import * as Icons from "lucide-react";
 import { Plus, Trash2, Upload, FileText, ArrowLeft, Mail, Phone } from "lucide-react";
 import type { Project, ProjectType, Lead, UserProfile, ProjectTimelineEvent, ProjectGanttRow } from "../types";
 import type { Language } from "../utils/translations";
-import { nowLocalStamp } from "../utils/localTime";
+import { nowLocalStamp, formatTimestampLocalized, formatDateLocalized } from "../utils/localTime";
 
 const SearchableClientSelect: React.FC<{
   leads: Lead[];
@@ -1125,7 +1125,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                           </div>
                           <span className="text-[10px] text-slate-400 font-medium flex items-center gap-1">
                             <Icons.Clock className="h-3 w-3" />
-                            {event.timestamp}
+                            {formatTimestampLocalized(event.timestamp, userLanguage)}
                           </span>
                         </div>
                         {event.content && (
@@ -1449,7 +1449,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                       className="h-6 rounded-lg bg-emerald-500/20 border border-emerald-500/40 shrink-0 select-none cursor-pointer flex items-center justify-center hover:bg-emerald-500/30 transition-colors"
                                       style={{ width: pillWidth }}
                                       onClick={() => setSelectedGanttEdit(row)}
-                                      title={`${row.startDate || row.endDate} to ${row.endDate || row.startDate}`}
+                                      title={`${formatDateLocalized(row.startDate || row.endDate, userLanguage)} to ${formatDateLocalized(row.endDate || row.startDate, userLanguage)}`}
                                     />
                                     
                                     {/* Assignee initials badge */}

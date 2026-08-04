@@ -7,6 +7,7 @@ import {
   canViewTask,
   isActiveTask,
   isTaskAssignedTo,
+  resolveAssigneeName,
 } from "./taskSelectors.ts";
 
 const admin: UserProfile = { name: "Ada", email: "ada@example.com", role: "Admin", color: "#000" };
@@ -57,4 +58,19 @@ test("delete access allows admins, explicit permission, or the creator", () => {
 
 test("legacy tasks without createdBy remain deletable by their assignee", () => {
   assert.equal(canDeleteTask({ ...task, createdBy: undefined }, sam, normalAccess), true);
+});
+
+test("an assignee is resolved to a real user so a task never lands in nobody's calendar", () => {
+  const users = ["Ada", "Alex", "Sam"];
+  // A registered preference wins, whoever asked for it.
+  assert.equal(resolveAssigneeName("Sam", "Alex", users), "Sam");
+  // A lead owner who is no longer a user (renamed, removed) falls back to the
+  // creator instead of hiding the task from every calendar in the app.
+  assert.equal(resolveAssigneeName("Old Owner", "Alex", users), "Alex");
+  assert.equal(resolveAssigneeName("", "Alex", users), "Alex");
+  assert.equal(resolveAssigneeName(undefined, "Alex", users), "Alex");
+  // Nothing usable on either side: the first registered user beats an empty
+  // assignee list, which no view can surface.
+  assert.equal(resolveAssigneeName("Old Owner", "", users), "Ada");
+  assert.equal(resolveAssigneeName("Old Owner", undefined, []), "");
 });

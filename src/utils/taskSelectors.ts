@@ -14,6 +14,24 @@ export const isTaskAssignedTo = (task: Task, userName: string): boolean =>
       task.assignedUsers.includes(userName),
   );
 
+/**
+ * The assignee list is the only thing that puts a task on a calendar (see
+ * isTaskAssignedTo), so a task assigned to a name that belongs to no registered
+ * user is invisible to everyone — including the person who created it. Resolve
+ * to the closest name that is a real user: the preferred one, else whoever is
+ * creating the task.
+ */
+export const resolveAssigneeName = (
+  preferred: string | undefined,
+  currentUserName: string | undefined,
+  knownUsers: string[],
+): string => {
+  const isKnown = (name?: string) => Boolean(name && knownUsers.includes(name));
+  if (isKnown(preferred)) return preferred as string;
+  if (isKnown(currentUserName)) return currentUserName as string;
+  return currentUserName || knownUsers[0] || "";
+};
+
 export const isTaskCreatedBy = (task: Task, userName: string): boolean =>
   Boolean(task.createdBy && userName && task.createdBy === userName);
 

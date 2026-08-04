@@ -6,6 +6,7 @@ import {
   UploadCloud, Search, Briefcase, Users
 } from "lucide-react";
 import type { UnifiedEntryRegistry, UnifiedEntryRow } from "../types";
+import { formatDateLocalized } from "../utils/localTime";
 
 interface UnifiedEntryViewProps {
   registry: UnifiedEntryRegistry;
@@ -1075,7 +1076,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                           {rowModules.includes("due_date") && row.dueDate ? (
                             <div className={`flex items-center gap-1.5 ${dueDateClass}`}>
                               <Calendar className="h-3.5 w-3.5" />
-                              <span>{row.dueDate}</span>
+                              <span>{formatDateLocalized(row.dueDate, systemLanguage)}</span>
                             </div>
                           ) : (
                             <span className="text-slate-300">-</span>

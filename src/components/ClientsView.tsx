@@ -16,7 +16,8 @@ import type { EditorBlock } from "./BlockEditor";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { resolveCurrencySymbol, formatMoney } from "../utils/currency";
-import { todayLocal, nowLocalStamp } from "../utils/localTime";
+import { resolveAssigneeName } from "../utils/taskSelectors";
+import { todayLocal, nowLocalStamp, formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
 
 interface ClientsViewProps {
   leads: Lead[];
@@ -983,7 +984,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       totalValue: number;
       leadsCount: number;
       associatedLeads: Lead[];
-      
+      createdAt: string;
+
       // Extended Metadata fields
       phone: string;
       email: string;
@@ -1030,7 +1032,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           totalValue: 0,
           leadsCount: 0,
           associatedLeads: [],
-          
+          createdAt: lead.createdAt || "",
+
           phone: lead.phone || "",
           email: lead.email || "",
           street: lead.address?.street || "",
@@ -1067,6 +1070,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         }
         if (lead.vatValidationResult && !profilesMap[clientKey].vatValidationResult) {
           profilesMap[clientKey].vatValidationResult = lead.vatValidationResult;
+        }
+        if (lead.createdAt && (!profilesMap[clientKey].createdAt || lead.createdAt < profilesMap[clientKey].createdAt)) {
+          profilesMap[clientKey].createdAt = lead.createdAt;
         }
       }
       profilesMap[clientKey].totalValue += lead.value;
@@ -2256,7 +2262,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
       // Find original lead from activeClient
       const matchedLead = leads.find(l => l.name.trim().toLowerCase() === activeClient.name.trim().toLowerCase());
-      const leadOwner = matchedLead?.owner || currentUser?.name || projectManagers[0] || "";
+      // The owner drives the task, but the assignee list is what puts it on a
+      // calendar — so the person who logged the event is always on it too, and a
+      // stale owner name that is no longer a user can never orphan the task.
+      const leadOwner = resolveAssigneeName(matchedLead?.owner, currentUser?.name, projectManagers);
+      const loggerName = resolveAssigneeName(currentUser?.name, currentUser?.name, projectManagers);
+      const taskAssignees = Array.from(new Set([leadOwner, loggerName].filter(Boolean)));
       const leadId = matchedLead?.id;
 
       const taskTitle = systemLanguage === "sk" 
@@ -2274,9 +2285,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         status: taskStates[0] || "todo",
         priority: "medium",
         deadline: deadlineVal,
+        // The event's own time, so a 14:00 appointment lands at 14:00 in the
+        // calendar instead of the end-of-day default.
+        deadlineTime: logTimeOfEvent || "23:59",
         owner: leadOwner,
         createdBy: currentUser?.name || "",
-        assignedUsers: [leadOwner],
+        assignedUsers: taskAssignees,
         relatedLeadId: leadId,
         isLocking: false
       };
@@ -2719,6 +2733,16 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   />
                 </div>
               </div>
+
+              {/* Date Added (read-only, derived from earliest associated lead) */}
+              {activeClient?.createdAt && (
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1"><Calendar className="h-3 w-3 text-emerald-500" /> {getTranslation(systemLanguage, "profile.created_at")}</label>
+                  <div className="pt-2 pl-0 text-slate-900 text-sm font-black cursor-default select-all">
+                    {formatDateLocalized(activeClient.createdAt, systemLanguage)}
+                  </div>
+                </div>
+              )}
 
               {/* Address details */}
               <div className="border-t-2 border-slate-100 pt-4 space-y-3">
@@ -3416,7 +3440,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                               {/* Left Date / Time part */}
                               <div className="hidden md:block w-[100px] text-right pt-1.5 shrink-0 select-text">
                                 <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider block">
-                                  {event.timestamp.substring(0, 10)}
+                                  {formatDateLocalized(event.timestamp, systemLanguage)}
                                 </span>
                                 <span className="text-[9px] font-extrabold text-slate-400 block mt-0.5">
                                   {event.timestamp.substring(11, 16)}
@@ -3449,7 +3473,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                       </span>
                                     </div>
                                     <span className="block md:hidden text-[9px] font-black text-slate-450 uppercase tracking-wider">
-                                      {event.timestamp}
+                                      {formatTimestampLocalized(event.timestamp, systemLanguage)}
                                     </span>
                                   </div>
 
@@ -3588,7 +3612,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                               {/* Left Date / Time part */}
                               <div className="hidden md:block w-[100px] text-right pt-1.5 shrink-0 select-text">
                                 <span className="text-[10px] font-black text-slate-550 uppercase tracking-wider block">
-                                  {event.timestamp.substring(0, 10)}
+                                  {formatDateLocalized(event.timestamp, systemLanguage)}
                                 </span>
                                 <span className="text-[9px] font-extrabold text-slate-400 block mt-0.5">
                                   {event.timestamp.substring(11, 16)}
@@ -3642,7 +3666,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                       )}
                                     </div>
                                     <span className="block md:hidden text-[9px] font-black text-slate-400 uppercase tracking-wider">
-                                      {event.timestamp}
+                                      {formatTimestampLocalized(event.timestamp, systemLanguage)}
                                     </span>
                                   </div>
 
@@ -3910,7 +3934,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                     }`}>
                                       {file.fileType || t("document", "dokument", "dokumentum")}
                                     </span>
-                                    &bull; {file.fileSize || t("Unknown size", "Neznáma veľkosť", "Ismeretlen méret")} &bull; {file.timestamp.substring(0, 10)}
+                                    &bull; {file.fileSize || t("Unknown size", "Neznáma veľkosť", "Ismeretlen méret")} &bull; {formatDateLocalized(file.timestamp, systemLanguage)}
                                   </span>
                                   <p className="text-[10px] text-slate-505 font-bold mt-1 leading-normal italic line-clamp-1">
                                     "{file.content}"
@@ -4551,7 +4575,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       {t("Subject", "Predmet", "Tárgy")}: <strong className="text-slate-800">{selectedTimelineEmail.title}</strong>
                     </p>
                     <p className="text-[10px] text-slate-550 font-bold mt-1">
-                      {t("Date", "Dátum", "Dátum")}: <span className="text-slate-700">{selectedTimelineEmail.timestamp}</span>
+                      {t("Date", "Dátum", "Dátum")}: <span className="text-slate-700">{formatTimestampLocalized(selectedTimelineEmail.timestamp, systemLanguage)}</span>
                     </p>
                   </div>
                   <div className="flex-1 min-h-[300px]">
