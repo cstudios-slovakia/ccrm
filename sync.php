@@ -595,6 +595,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $users = [];
     while ($row = $usersStmt->fetch()) {
         $users[] = [
+            'id' => $row['id'],
             'name' => $row['name'],
             'email' => $row['email'],
             'role' => ccrm_role_label($row['role']),
@@ -670,6 +671,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // the backend uses the real values server-side. Saving a masked field is a
     // no-op (see the POST merge below).
     if (is_array($integrationsConfig)) {
+        $integrationsConfig = ccrm_decrypt_config_secrets($integrationsConfig, ccrm_integration_secret_keys());
         $integrationsConfig = ccrm_mask_secrets($integrationsConfig, ccrm_integration_secret_keys());
     }
 
@@ -1377,27 +1379,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (isset($payload['users']) && is_array($payload['users'])) {
             // Existing rows with their current password hashes so we can preserve
             // a user's password when the client does not send a new one.
-            $existingHashes = $pdo->query("SELECT `id`, `password_hash` FROM `users`")->fetchAll(PDO::FETCH_KEY_PAIR);
-            // Stored metadata so masked email passwords are preserved on save.
-            $existingMeta = $pdo->query("SELECT `id`, `metadata_json` FROM `users`")->fetchAll(PDO::FETCH_KEY_PAIR);
+            $emailToUser = [];
+            $userRows = $pdo->query("SELECT * FROM `users`")->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($userRows as $r) {
+                $emailToUser[strtolower(trim($r['email']))] = $r;
+            }
+
+            $existingHashes = [];
+            $existingMeta = [];
+            $existingRoles = [];
+            foreach ($userRows as $r) {
+                $existingHashes[$r['id']] = $r['password_hash'];
+                $existingMeta[$r['id']] = $r['metadata_json'];
+                $existingRoles[$r['id']] = $r['role'];
+            }
+
             $existingUserIds = array_keys($existingHashes);
             $processedUserIds = [];
 
             $insUser = $pdo->prepare("INSERT INTO `users` (`id`, `name`, `email`, `password_hash`, `role`, `avatar`, `color`, `metadata_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `email` = VALUES(`email`), `password_hash` = VALUES(`password_hash`), `role` = VALUES(`role`), `avatar` = VALUES(`avatar`), `color` = VALUES(`color`), `metadata_json` = VALUES(`metadata_json`)");
 
-            // Existing roles so a non-admin's own role cannot be changed and so
-            // we can audit privilege changes.
-            $existingRoles = $pdo->query("SELECT `id`, `role` FROM `users`")->fetchAll(PDO::FETCH_KEY_PAIR);
-
             foreach ($payload['users'] as $u) {
                 if (empty($u['email'])) {
                     continue;
                 }
-                $userId = 'u-' . md5(strtolower(trim($u['email'])));
+                $uEmail = strtolower(trim($u['email']));
+                $existingRecord = $emailToUser[$uEmail] ?? null;
+                $userId = $existingRecord ? $existingRecord['id'] : ($u['id'] ?? ('u-' . md5($uEmail)));
+
+                $isSelf = ($sessionUser !== null) && (
+                    strtolower(trim($sessionUser['email'] ?? '')) === $uEmail ||
+                    ($sessionUser['id'] ?? '') === $userId
+                );
 
                 // SECURITY: a non-admin may only modify their OWN record and can
                 // never change their role (prevents self-promotion to admin).
-                if (!$isAdmin && $userId !== ($sessionUser['id'] ?? '')) {
+                if (!$isAdmin && !$isSelf) {
                     continue;
                 }
                 if ($isAdmin) {
@@ -1412,7 +1429,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $u['email'] . ': ' . $existingRoles[$userId] . ' -> ' . $role);
                 }
 
-                $metaJson = isset($u['metadata_json']) ? (is_array($u['metadata_json']) ? json_encode($u['metadata_json']) : $u['metadata_json']) : (isset($u['metadata']) ? json_encode($u['metadata']) : null);
+                $metaJson = isset($u['metadata_json']) ? (is_array($u['metadata_json']) ? json_encode($u['metadata_json']) : $u['metadata_json']) : (isset($u['metadata']) ? (is_array($u['metadata']) ? json_encode($u['metadata']) : $u['metadata']) : null);
                 // Keep the stored IMAP/SMTP password when the client sent it masked.
                 $metaJson = ccrm_merge_user_metadata($metaJson, $existingMeta[$userId] ?? null);
 
@@ -1711,7 +1728,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $address = $l['address'] ?? [];
 
-                // Write standard Opportunity Lead parameters
+                $isNew = !isset($dbLeads[$leadId]);
+                $oldStatus = $isNew ? null : ($dbLeads[$leadId]['status'] ?? null);
+
                 $insLead->execute([
                     $leadId,
                     $l['name'],
@@ -1748,6 +1767,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ccrm_date_only($l['createdAt'] ?? null) ?? date('Y-m-d'),
                     (isset($l['followUps']) && !empty($l['followUps'])) ? json_encode($l['followUps']) : null
                 ]);
+
+                // Workflow Triggers
+                require_once __DIR__ . '/api/workflows_engine.php';
+                if ($isNew) {
+                    ccrm_trigger_workflow('lead_created', $l, $pdo);
+                    if (($l['clientType'] ?? 'person') !== 'person') {
+                        ccrm_trigger_workflow('client_created', $l, $pdo);
+                    }
+                } else {
+                    $newStatus = $l['status'] ?? null;
+                    if ($oldStatus !== null && $newStatus !== null && $oldStatus !== $newStatus) {
+                        $triggerPayload = array_merge($l, [
+                            'oldStatus' => $oldStatus,
+                            'newStatus' => $newStatus
+                        ]);
+                        ccrm_trigger_workflow('lead_status_changed', $triggerPayload, $pdo);
+                    }
+                }
 
                 // Check if we need to generate financial report in the background
                 $companyId = $l['companyId'] ?? null;
@@ -1836,8 +1873,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $te['extraTime'] ?? $te['extra_time'] ?? null
                         ];
 
+                        $isNewTe = true;
+                        if (isset($dbLeads[$leadId]['timeline']) && is_array($dbLeads[$leadId]['timeline'])) {
+                            foreach ($dbLeads[$leadId]['timeline'] as $oldTe) {
+                                if ($oldTe['id'] === $teId) {
+                                    $isNewTe = false;
+                                    break;
+                                }
+                            }
+                        }
+
                         try {
                             $insTimeline->execute($teParams);
+                            if ($isNewTe) {
+                                require_once __DIR__ . '/api/workflows_engine.php';
+                                ccrm_trigger_workflow('lead_timeline_event', array_merge($te, ['lead_id' => $leadId]), $pdo);
+                            }
                         } catch (\PDOException $pdoEx) {
                             // If duplicate key (SQLSTATE 23000 / error 1062), regenerate ID and retry
                             if ($pdoEx->getCode() == 23000 || strpos($pdoEx->getMessage(), '1062') !== false) {
@@ -1896,6 +1947,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     continue;
                 }
 
+                $isNewTask = !isset($dbTasks[$taskId]);
+                $oldTaskStatus = null;
+                if (!$isNewTask) {
+                    $oldStatusStmt = $pdo->prepare("SELECT `status` FROM `tasks` WHERE `id` = ? LIMIT 1");
+                    $oldStatusStmt->execute([$taskId]);
+                    $oldTaskStatus = $oldStatusStmt->fetchColumn() ?: null;
+                }
+
                 $insTask->execute([
                     $taskId,
                     $t['title'],
@@ -1912,6 +1971,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ($t['archived'] ?? false) ? 1 : 0
                 ]);
                 $processedTaskIds[] = $taskId;
+
+                // Workflow Triggers
+                require_once __DIR__ . '/api/workflows_engine.php';
+                if ($isNewTask) {
+                    ccrm_trigger_workflow('task_created', $t, $pdo);
+                } else {
+                    $newTaskStatus = $t['status'] ?? null;
+                    if ($oldTaskStatus !== null && $newTaskStatus !== null && $oldTaskStatus !== $newTaskStatus) {
+                        $triggerPayload = array_merge($t, [
+                            'oldStatus' => $oldTaskStatus,
+                            'newStatus' => $newTaskStatus
+                        ]);
+                        ccrm_trigger_workflow('task_status_changed', $triggerPayload, $pdo);
+                    }
+                }
 
                 // Sync assignees (Delete & Insert list)
                 $delAss = $pdo->prepare("DELETE FROM `task_assignees` WHERE `task_id` = ?");
@@ -1957,6 +2031,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     continue;
                 }
 
+                $isNewMeeting = !isset($dbMeetings[$meetingId]);
+
                 $insMeeting->execute([
                     $meetingId,
                     $mn['title'] ?? '',
@@ -1976,6 +2052,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $mn['automatedNotes'] ?? null
                 ]);
                 $processedMeetingIds[] = $meetingId;
+
+                // Workflow Triggers
+                require_once __DIR__ . '/api/workflows_engine.php';
+                if ($isNewMeeting) {
+                    ccrm_trigger_workflow('note_created', $mn, $pdo);
+                } else {
+                    ccrm_trigger_workflow('note_updated', $mn, $pdo);
+                }
 
                 // Sync meeting_tasks (Delete & Insert list)
                 $delTasks = $pdo->prepare("DELETE FROM `meeting_tasks` WHERE `meeting_id` = ?");
@@ -2218,6 +2302,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $pdo->commit();
+
+        // Immediately process pending workflow queue items
+        try {
+            require_once __DIR__ . '/api/workflows_engine.php';
+            ccrm_process_workflow_queue($pdo);
+        } catch (\Throwable $e) {
+            if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+        }
 
         // Report the post-commit content version so the client can immediately
         // sync its local `dataVersion` and avoid an extra full pull on the next

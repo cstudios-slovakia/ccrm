@@ -160,6 +160,7 @@ const SETTINGS_TABS = [
   { id: "email", permKey: "general_config" },
   { id: "api", permKey: "general_config" },
   { id: "ads", permKey: "general_config" },
+  { id: "social", permKey: "general_config" },
   { id: "ai", permKey: "ai_config" },
   { id: "errors", permKey: "general_config" },
   { id: "danger", permKey: "system_reset" }
@@ -501,7 +502,163 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // Role creation states
   const [newRoleName, setNewRoleName] = React.useState("");
 
-  const [activeSubTab, setActiveSubTab] = React.useState<"branding" | "managers" | "rbac" | "states" | "sources" | "danger" | "ads" | "api" | "email" | "ai" | "unified" | "errors" | "projects">((initialSubTab as any) || "branding");
+  const [activeSubTab, setActiveSubTab] = React.useState<"branding" | "managers" | "rbac" | "states" | "sources" | "danger" | "ads" | "social" | "api" | "email" | "ai" | "unified" | "errors" | "projects">((initialSubTab as any) || "branding");
+
+  // Zernio Social Media Integration State
+  const [zernioApiKey, setZernioApiKey] = React.useState<string>(integrationsConfig?.zernioApiKey || "");
+  const [showZernioKey, setShowZernioKey] = React.useState<boolean>(true);
+  const [isTestingZernio, setIsTestingZernio] = React.useState<boolean>(false);
+  const [zernioTestResult, setZernioTestResult] = React.useState<{ success: boolean; message: string; accounts?: any[]; count?: number } | null>(
+    integrationsConfig?.zernioConnected ? { success: true, message: "Zernio is connected", accounts: integrationsConfig?.zernioAccounts || [], count: (integrationsConfig?.zernioAccounts || []).length } : null
+  );
+
+  // 1-Click Device Auth State
+  const [isEditingZernioKey, setIsEditingZernioKey] = React.useState<boolean>(false);
+  const [isInitiatingDeviceAuth, setIsInitiatingDeviceAuth] = React.useState<boolean>(false);
+  const [deviceAuthInfo, setDeviceAuthInfo] = React.useState<{ userCode: string; browserUrl: string; deviceCode: string; expiresAt: string; interval: number } | null>(null);
+  const [isPollingDeviceAuth, setIsPollingDeviceAuth] = React.useState<boolean>(false);
+
+  React.useEffect(() => {
+    if (integrationsConfig?.zernioApiKey !== undefined) {
+      setZernioApiKey(integrationsConfig.zernioApiKey);
+    }
+    if (integrationsConfig?.zernioConnected) {
+      setZernioTestResult({
+        success: true,
+        message: "Zernio is connected",
+        accounts: integrationsConfig?.zernioAccounts || [],
+        count: (integrationsConfig?.zernioAccounts || []).length
+      });
+    }
+  }, [integrationsConfig?.zernioApiKey, integrationsConfig?.zernioConnected, integrationsConfig?.zernioAccounts]);
+
+  // Clean up polling timer on unmount
+  const pollTimerRef = React.useRef<any>(null);
+  React.useEffect(() => {
+    return () => {
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    };
+  }, []);
+
+  const handleTestZernio = async (keyToTest?: string) => {
+    const key = keyToTest || zernioApiKey;
+    if (!key) {
+      (window as any).showToast(t("Please enter a Zernio API key first.", "Prosím zadajte najprv Zernio API kľúč.", "Kérjük, először adja meg a Zernio API kulcsot."), "warning");
+      return;
+    }
+    setIsTestingZernio(true);
+    setZernioTestResult(null);
+    try {
+      const res = await fetch("/api/zernio.php?action=validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ zernioApiKey: key })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setZernioTestResult(data);
+        setIsEditingZernioKey(false);
+        if (updateIntegrationsConfig) {
+          updateIntegrationsConfig({
+            ...integrationsConfig,
+            zernioApiKey: key,
+            zernioConnected: true,
+            zernioAccounts: data.accounts || []
+          });
+        }
+        (window as any).showToast(t("Zernio connection successful!", "Pripojenie k Zernio bolo úspešné!", "Sikeres csatlakozás a Zernióhoz!"));
+      } else {
+        setZernioTestResult({ success: false, message: data.message || "Failed to connect to Zernio." });
+        (window as any).showToast(data.message || t("Failed to connect to Zernio", "Pripojenie k Zernio zlyhalo", "Nem sikerült csatlakozni a Zernióhoz"), "error");
+      }
+    } catch (err: any) {
+      setZernioTestResult({ success: false, message: err.message || "Network error" });
+      (window as any).showToast(t("Network error connecting to Zernio API backend.", "Sieťová chyba pri pripájaní k Zernio API backendu.", "Hálózati hiba a Zernio API háttérrendszerhez való csatlakozáskor."), "error");
+    } finally {
+      setIsTestingZernio(false);
+    }
+  };
+
+  const handleSaveZernio = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setIsEditingZernioKey(false);
+    if (updateIntegrationsConfig) {
+      updateIntegrationsConfig({
+        ...integrationsConfig,
+        zernioApiKey
+      });
+      (window as any).showToast(t("Zernio settings saved!", "Nastavenia Zernio boli uložené!", "Zernio beállítások elmentve!"));
+    }
+  };
+
+  const handleResetZernioKey = () => {
+    if (!confirm(t("Are you sure you want to reset your Zernio API Key & connection?", "Naozaj chcete resetovať Zernio API kľúč a pripojenie?", "Biztosan visszaállítja a Zernio API kulcsot és a kapcsolatot?"))) {
+      return;
+    }
+    setZernioApiKey("");
+    setZernioTestResult(null);
+    setIsEditingZernioKey(true);
+    if (updateIntegrationsConfig) {
+      updateIntegrationsConfig({
+        ...integrationsConfig,
+        zernioApiKey: "",
+        zernioConnected: false,
+        zernioAccounts: []
+      });
+    }
+    (window as any).showToast(t("Zernio configuration reset.", "Konfigurácia Zernio bola resetovaná.", "Zernio konfiguráció visszaállítva."), "info");
+  };
+
+  const handleStartDeviceAuth = async () => {
+    setIsInitiatingDeviceAuth(true);
+    try {
+      const res = await fetch("/api/zernio.php?action=initiate_device_auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      const data = await res.json();
+      if (data.success && data.deviceCode) {
+        setDeviceAuthInfo(data);
+        setIsPollingDeviceAuth(true);
+        window.open(data.browserUrl, "_blank");
+
+        if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+        const pollIntervalMs = (data.interval || 5) * 1000;
+        
+        pollTimerRef.current = setInterval(async () => {
+          try {
+            const pollRes = await fetch("/api/zernio.php?action=poll_device_auth", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ deviceCode: data.deviceCode })
+            });
+            const pollData = await pollRes.json();
+            if (pollData.success && pollData.status === "authorized" && pollData.apiKey) {
+              clearInterval(pollTimerRef.current);
+              pollTimerRef.current = null;
+              setIsPollingDeviceAuth(false);
+              setZernioApiKey(pollData.apiKey);
+              (window as any).showToast(t("Authorized by Zernio!", "Autorizované cez Zernio!", "Zernio által engedélyezve!"));
+              handleTestZernio(pollData.apiKey);
+            } else if (pollData.status === "expired" || pollData.status === "denied" || !pollData.success) {
+              clearInterval(pollTimerRef.current);
+              pollTimerRef.current = null;
+              setIsPollingDeviceAuth(false);
+              (window as any).showToast(pollData.message || t("Authorization expired or denied.", "Autorizácia vypršala alebo bola zamietnutá.", "Az engedélyezés lejárt vagy megtagadva."), "warning");
+            }
+          } catch (e) {
+            // retry
+          }
+        }, pollIntervalMs);
+      } else {
+        (window as any).showToast(data.message || t("Could not initiate Zernio device auth.", "Nepadarilo sa spustiť Zernio autorizáciu.", "Nem sikerült elindítani a Zernio eszköz hitelesítést."), "error");
+      }
+    } catch (err: any) {
+      (window as any).showToast(err.message || "Failed to initiate device authorization", "error");
+    } finally {
+      setIsInitiatingDeviceAuth(false);
+    }
+  };
 
   // Exception Tracking State
   const [errorLogs, setErrorLogs] = React.useState<any[]>([]);
@@ -5066,6 +5223,306 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 )}
               </form>
             )}
+          </div>
+        )}
+
+        {/* TAB: Social Media (Zernio) Integration */}
+        {activeSubTab === "social" && getPermission("general_config") !== "nothing" && (
+          <div className="lg:col-span-12 space-y-6 animate-fade-in">
+            {renderReadOnlyBanner("general_config")}
+
+            {/* Header Hero Card */}
+            <div className="glass-panel p-6 sm:p-8 rounded-3xl space-y-6 border border-rose-200/40 bg-gradient-to-br from-slate-900 via-slate-900 to-rose-950 text-white shadow-2xl relative overflow-hidden">
+              <div className="absolute -right-12 -top-12 w-64 h-64 bg-rose-500/10 rounded-full blur-3xl pointer-events-none"></div>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 relative z-10">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-rose-500 to-orange-600 flex items-center justify-center text-white shadow-lg shadow-rose-500/30 shrink-0 font-bold text-2xl">
+                    Z
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <h2 className="text-xl font-heading font-black tracking-tight text-white">
+                        Zernio Social Media Engine
+                      </h2>
+                      <span className="bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full">
+                        15+ Platforms & AI Ready
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-300 mt-1 max-w-xl leading-relaxed">
+                      {t(
+                        "Connect your CRM to Zernio REST API & AI Agents infrastructure for unified social media scheduling, multi-platform publishing, and inbox engagement across Twitter/X, Instagram, TikTok, LinkedIn, YouTube, Facebook, Threads, Bluesky, and more.",
+                        "Pripojte vaše CRM k Zernio REST API a AI agentom pre unifikované plánovanie sociálnych sietí, publikovanie na 15+ platformách (Twitter/X, Instagram, TikTok, LinkedIn, YouTube, Facebook, Threads, Bluesky).",
+                        "Csatlakoztassa CRM-jét a Zernio REST API-hoz az egységes közösségi média ütemezéshez 15+ platformon."
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Connection Status & Control Buttons */}
+                <div className="shrink-0 flex items-center gap-3">
+                  <div className="flex items-center gap-2.5 bg-white/10 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-white/10">
+                    <div className={`w-3 h-3 rounded-full ${zernioTestResult?.success || integrationsConfig?.zernioConnected ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`}></div>
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">{t("Status", "Stav", "Állapot")}</span>
+                      <span className="text-xs font-extrabold text-white">
+                        {zernioTestResult?.success || integrationsConfig?.zernioConnected 
+                          ? (userLanguage === "sk" ? "Pripojené & Aktívne" : userLanguage === "hu" ? "Csatlakoztatva & Aktív" : "Connected & Active")
+                          : (userLanguage === "sk" ? "Čaká na API Kľúč" : userLanguage === "hu" ? "API Kulcsra vár" : "Awaiting API Key")}
+                      </span>
+                    </div>
+                  </div>
+
+                  {(zernioTestResult?.success || integrationsConfig?.zernioConnected || zernioApiKey) && (
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingZernioKey(!isEditingZernioKey)}
+                      className="px-4 py-2.5 bg-white/15 hover:bg-white/25 text-white rounded-2xl text-xs font-extrabold border border-white/20 transition-all cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      {isEditingZernioKey
+                        ? t("Hide Configuration", "Skryť konfiguráciu", "Konfiguráció elrejtése")
+                        : t("Configure Key", "Upraviť kľúč", "Kulcs szerkesztése")}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Supported Platforms Pills */}
+              <div className="pt-4 border-t border-white/10 flex flex-wrap gap-2 items-center text-[10.5px] font-bold text-slate-300">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 mr-1">{t("Supported Platforms:", "Podporované platformy:", "Támogatott platformok:")}</span>
+                {["Twitter / X", "Instagram", "TikTok", "LinkedIn", "YouTube", "Facebook", "Threads", "Bluesky", "Pinterest", "Reddit", "WhatsApp", "Google Business"].map((plat) => (
+                  <span key={plat} className="px-2.5 py-1 rounded-xl bg-white/5 border border-white/10 text-slate-200">
+                    {plat}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* CONNECTED VIEW: Clean status & connected accounts card (Hidden while editing) */}
+            {(zernioTestResult?.success || integrationsConfig?.zernioConnected) && !isEditingZernioKey && (
+              <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-emerald-200/80 bg-white/95 shadow-glass space-y-6 animate-fade-in">
+                <div className="flex items-center justify-between border-b border-slate-150 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 rounded-2xl bg-emerald-100 text-emerald-700">
+                      <ShieldCheck className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-heading font-extrabold text-slate-900 uppercase tracking-wider">
+                        {t("Zernio API Connection Active", "Zernio API pripojenie je aktívne", "Zernio API kapcsolat aktív")}
+                      </h3>
+                      <p className="text-xs font-semibold text-slate-500 mt-0.5">
+                        {t("Your CRM is successfully connected to Zernio API backend.", "Vaše CRM je úspešne pripojené k Zernio API backendu.", "A CRM sikeresen csatlakozik a Zernio API-hoz.")}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleTestZernio()}
+                      disabled={isTestingZernio}
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200 cursor-pointer flex items-center gap-2"
+                    >
+                      <Icons.RefreshCw className={`h-3.5 w-3.5 ${isTestingZernio ? "animate-spin text-indigo-600" : "text-slate-500"}`} />
+                      {t("Refresh Accounts", "Obnoviť účty", "Fiókok frissítése")}
+                    </button>
+                    {getPermission("general_config") === "edit" && (
+                      <button
+                        type="button"
+                        onClick={handleResetZernioKey}
+                        className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 hover:text-rose-800 border border-rose-200 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-rose-600" />
+                        {t("Reset Key", "Resetovať kľúč", "Kulcs visszaállítása")}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-extrabold text-slate-700 uppercase tracking-wider">
+                      {t("Connected Social Accounts:", "Pripojené účty sociálnych sietí:", "Csatlakoztatott közösségi fiókok:")} ({zernioTestResult?.count || integrationsConfig?.zernioAccounts?.length || 0})
+                    </span>
+                  </div>
+
+                  {(!zernioTestResult?.accounts || zernioTestResult.accounts.length === 0) && (!integrationsConfig?.zernioAccounts || integrationsConfig.zernioAccounts.length === 0) ? (
+                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600 flex items-center justify-between flex-wrap gap-3">
+                      <span>
+                        {t(
+                          "No connected social accounts found on this Zernio key yet. You can connect your social accounts in the Zernio dashboard.",
+                          "Na tomto Zernio kľúči zatiaľ neboli nájdené žiadne pripojené účty. Účty môžete pripojiť v dashboarde na Zernio.",
+                          "Még nincsenek csatlakoztatott fiókok ezen a Zernio kulcson."
+                        )}
+                      </span>
+                      <a
+                        href="https://zernio.com"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
+                      >
+                        zernio.com <Icons.ExternalLink className="h-3 w-3" />
+                      </a>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                      {(zernioTestResult?.accounts || integrationsConfig?.zernioAccounts || []).map((acc: any, i: number) => (
+                        <div key={acc.id || i} className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 shadow-sm flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center font-black text-xs uppercase shrink-0">
+                            {(acc.platform || "SOC").substring(0, 3)}
+                          </div>
+                          <div className="truncate min-w-0">
+                            <span className="text-xs font-black text-slate-900 truncate block">{acc.name || acc.username || acc.platform}</span>
+                            <span className="text-[10px] text-slate-500 font-mono capitalize block">{acc.platform} • {acc.id || "Active"}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* SETUP & EDIT VIEW: Show 1-Click Auth + API Key form only when not connected OR editing */}
+            {(!integrationsConfig?.zernioConnected && !zernioTestResult?.success) || isEditingZernioKey ? (
+              <>
+                {/* Option 1: 1-Click Device Authorization */}
+                <div className="glass-panel p-6 sm:p-8 rounded-3xl space-y-5 border border-white/60 bg-white/95 shadow-glass">
+                  <div className="flex items-center justify-between border-b border-slate-150 pb-4">
+                    <div>
+                      <h3 className="text-sm font-heading font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                        <Icons.Zap className="h-4.5 w-4.5 text-rose-600" /> {t("1-Click Agent Device Authorization", "1-Click Autorizácia zariadenia agenta", "1-Kattintásos eszköz hitelesítés")}
+                      </h3>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        {t(
+                          "Authorize your CRM instance instantly with Zernio via browser authentication flow.",
+                          "Autorizujte vašu CRM inštanciu okamžite so Zernio cez bezpečné prehliadačové overenie.",
+                          "Hitelesítse CRM-jét azonnal a Zernióval böngészős hitelesítéssel."
+                        )}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleStartDeviceAuth}
+                      disabled={isInitiatingDeviceAuth || getPermission("general_config") === "view"}
+                      className="px-5 py-2.5 bg-gradient-to-r from-rose-600 to-orange-600 hover:from-rose-500 hover:to-orange-500 text-white rounded-2xl text-xs font-black uppercase tracking-wider shadow-lg shadow-rose-500/20 active:scale-95 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {isInitiatingDeviceAuth ? (
+                        <Icons.RefreshCw className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Icons.ExternalLink className="h-4 w-4" />
+                      )}
+                      {t("Connect via Zernio", "Pripojiť cez Zernio", "Csatlakozás Zernióval")}
+                    </button>
+                  </div>
+
+                  {deviceAuthInfo && (
+                    <div className="p-5 rounded-2xl bg-rose-50/60 border border-rose-200/80 space-y-4 animate-fade-in">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                        <div>
+                          <span className="text-[10px] font-black text-rose-800 uppercase tracking-widest block">{t("Authorization Code:", "Autorizačný kód:", "Hitelesítési kód:")}</span>
+                          <span className="text-2xl font-mono font-black text-rose-900 tracking-widest">{deviceAuthInfo.userCode}</span>
+                        </div>
+                        <a
+                          href={deviceAuthInfo.browserUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow flex items-center gap-1.5"
+                        >
+                          {t("Open Zernio Auth Page", "Otvoriť Zernio overenie", "Zernio hitelesítési oldal megnyitása")} <Icons.ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      </div>
+                      {isPollingDeviceAuth && (
+                        <div className="flex items-center gap-2 text-xs font-bold text-rose-700">
+                          <Icons.RefreshCw className="h-4 w-4 animate-spin text-rose-600" />
+                          {t("Waiting for browser authorization... (Auto-polling active)", "Čakám na schválenie v prehliadači... (Automatické overovanie aktívne)", "Várakozás a böngésző hitelesítésre...")}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Option 2: API Key Configuration Form */}
+                <form onSubmit={handleSaveZernio} className="glass-panel p-6 sm:p-8 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
+                  <h3 className="text-sm font-heading font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-2 border-b border-slate-150 pb-3">
+                    <Lock className="h-4.5 w-4.5 text-indigo-500" /> {t("Zernio API Key", "Zernio API Kľúč", "Zernio API Kulcs")}
+                  </h3>
+
+                  <div className="space-y-2">
+                    <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider">
+                      {t("Zernio API Secret Key", "Zernio API Tajný Kľúč", "Zernio API Titkos Kulcs")}
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showZernioKey ? "text" : "password"}
+                        value={zernioApiKey}
+                        onChange={(e) => setZernioApiKey(e.target.value)}
+                        placeholder="sk_live_..."
+                        readOnly={getPermission("general_config") === "view"}
+                        className="w-full pl-4 pr-12 py-3 rounded-2xl bg-slate-50 border border-slate-200 text-xs font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition-all"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowZernioKey(!showZernioKey)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1.5 cursor-pointer"
+                      >
+                        {showZernioKey ? <Minus className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      {t(
+                        "Obtain your Zernio API key from your Zernio Dashboard at https://zernio.com or via 1-click device auth above.",
+                        "Získajte váš Zernio API kľúč z prehľadu na https://zernio.com alebo cez 1-click autorizáciu vyššie.",
+                        "Szerezze be Zernio API kulcsát a zernio.com oldalról."
+                      )}
+                    </p>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-slate-150">
+                    <button
+                      type="button"
+                      onClick={() => handleTestZernio()}
+                      disabled={isTestingZernio || !zernioApiKey}
+                      className="px-5 py-3 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-2xl text-xs font-black uppercase tracking-wider transition-all border border-slate-200 cursor-pointer active:scale-95 disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {isTestingZernio ? (
+                        <Icons.RefreshCw className="h-4 w-4 animate-spin text-slate-600" />
+                      ) : (
+                        <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                      )}
+                      {t("Test Connection", "Testovať pripojenie", "Kapcsolat tesztelése")}
+                    </button>
+
+                    {getPermission("general_config") === "edit" && (
+                      <button
+                        type="submit"
+                        className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider shadow-lg shadow-indigo-600/20 active:scale-95 transition-all cursor-pointer flex items-center gap-2"
+                      >
+                        <Save className="h-4 w-4" /> {t("Save Social Settings", "Uložiť nastavenia sociálnych sietí", "Közösségi beállítások mentése")}
+                      </button>
+                    )}
+                  </div>
+                </form>
+
+                {/* Show failure message if test failed */}
+                {zernioTestResult && !zernioTestResult.success && (
+                  <div className="glass-panel p-6 rounded-3xl border border-rose-200/80 bg-rose-50/30 space-y-4 animate-fade-in">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-2xl bg-rose-100 text-rose-700">
+                        <Icons.AlertCircle className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-heading font-extrabold uppercase tracking-wider text-rose-900">
+                          {userLanguage === "sk" ? "Chyba overenia Zernio API" : userLanguage === "hu" ? "Zernio API ellenőrzési hiba" : "Zernio Verification Error"}
+                        </h4>
+                        <p className="text-xs font-medium text-slate-600 mt-0.5">{zernioTestResult.message}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : null}
           </div>
         )}
 

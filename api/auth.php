@@ -227,6 +227,21 @@ if (!function_exists('ccrm_send_cors')) {
      * DB-only compromise cannot decrypt the stored secrets.
      */
     function ccrm_secret_key(): string {
+        if (!defined('DB_PASS') && !defined('CCRM_SECRET_KEY')) {
+            $possibleConfigs = [
+                __DIR__ . '/../config.php',
+                __DIR__ . '/../../config.php',
+                dirname(__DIR__) . '/config.php',
+                dirname(dirname(__DIR__)) . '/config.php',
+                '/var/www/html/config.php'
+            ];
+            foreach ($possibleConfigs as $cfgFile) {
+                if (file_exists($cfgFile)) {
+                    @require_once $cfgFile;
+                    break;
+                }
+            }
+        }
         if (defined('CCRM_SECRET_KEY') && CCRM_SECRET_KEY !== '') {
             return hash('sha256', (string)CCRM_SECRET_KEY, true);
         }

@@ -11,25 +11,50 @@ import { orderLeadStates } from "./utils/leadStates";
 import { InstallerWizard } from "./components/InstallerWizard";
 import { RefreshCw, AlertOctagon, Trash2, Copy } from "lucide-react";
 import { ShaderGradient, ShaderGradientCanvas } from "shadergradient";
+import { getStoredTheme, applyTheme } from "./utils/theme";
 
-// Lazy-loaded: each is only needed once the user navigates to that specific
-// tab, so keeping them out of the eager import graph shrinks both the
-// production entry chunk and (more noticeably) Vite dev's cold-start
-// transform graph — TaskDashboardView (the default landing tab) and LoginView
-// stay eager since they're needed immediately.
-const Dashboard = lazy(() => import("./components/Dashboard").then(m => ({ default: m.Dashboard })));
-const SettingsView = lazy(() => import("./components/SettingsView").then(m => ({ default: m.SettingsView })));
-const LeadsDatagrid = lazy(() => import("./components/LeadsDatagrid").then(m => ({ default: m.LeadsDatagrid })));
-const ClientsView = lazy(() => import("./components/ClientsView").then(m => ({ default: m.ClientsView })));
-const FilesView = lazy(() => import("./components/FilesView").then(m => ({ default: m.FilesView })));
-const PersonalSettingsView = lazy(() => import("./components/PersonalSettingsView").then(m => ({ default: m.PersonalSettingsView })));
-const EmailView = lazy(() => import("./components/EmailView").then(m => ({ default: m.EmailView })));
-const RagAiView = lazy(() => import("./components/RagAiView").then(m => ({ default: m.RagAiView })));
-const ProjectsView = lazy(() => import("./components/ProjectsView").then(m => ({ default: m.ProjectsView })));
-const MeetingRoomView = lazy(() => import("./components/MeetingRoomView").then(m => ({ default: m.MeetingRoomView })));
-const UnifiedEntryView = lazy(() => import("./components/UnifiedEntryView").then(m => ({ default: m.UnifiedEntryView })));
-const DynamicDashboardView = lazy(() => import("./components/DynamicDashboardView").then(m => ({ default: m.DynamicDashboardView })));
-const UpdateNotesView = lazy(() => import("./components/UpdateNotesView").then(m => ({ default: m.UpdateNotesView })));
+// Helper for resilient lazy loading: automatically reloads page if a build update changed chunk hash filenames
+const safeLazy = (importFn: () => Promise<any>) =>
+  lazy(async () => {
+    try {
+      return await importFn();
+    } catch (error: any) {
+      const isChunkError = error && (
+        error.name === "ChunkLoadError" ||
+        (error.message && (
+          error.message.includes("Failed to fetch dynamically imported module") ||
+          error.message.includes("Importing a module script failed") ||
+          error.message.includes("Loading chunk")
+        ))
+      );
+      if (isChunkError) {
+        const reloadKey = "ccrm_chunk_reload";
+        const lastReload = sessionStorage.getItem(reloadKey);
+        const now = Date.now();
+        if (!lastReload || now - parseInt(lastReload, 10) > 10000) {
+          sessionStorage.setItem(reloadKey, now.toString());
+          window.location.reload();
+        }
+      }
+      throw error;
+    }
+  });
+
+const Dashboard = safeLazy(() => import("./components/Dashboard").then(m => ({ default: m.Dashboard })));
+const SettingsView = safeLazy(() => import("./components/SettingsView").then(m => ({ default: m.SettingsView })));
+const LeadsDatagrid = safeLazy(() => import("./components/LeadsDatagrid").then(m => ({ default: m.LeadsDatagrid })));
+const ClientsView = safeLazy(() => import("./components/ClientsView").then(m => ({ default: m.ClientsView })));
+const FilesView = safeLazy(() => import("./components/FilesView").then(m => ({ default: m.FilesView })));
+const PersonalSettingsView = safeLazy(() => import("./components/PersonalSettingsView").then(m => ({ default: m.PersonalSettingsView })));
+const EmailView = safeLazy(() => import("./components/EmailView").then(m => ({ default: m.EmailView })));
+const RagAiView = safeLazy(() => import("./components/RagAiView").then(m => ({ default: m.RagAiView })));
+const ProjectsView = safeLazy(() => import("./components/ProjectsView").then(m => ({ default: m.ProjectsView })));
+const MeetingRoomView = safeLazy(() => import("./components/MeetingRoomView").then(m => ({ default: m.MeetingRoomView })));
+const UnifiedEntryView = safeLazy(() => import("./components/UnifiedEntryView").then(m => ({ default: m.UnifiedEntryView })));
+const DynamicDashboardView = safeLazy(() => import("./components/DynamicDashboardView").then(m => ({ default: m.DynamicDashboardView })));
+const UpdateNotesView = safeLazy(() => import("./components/UpdateNotesView").then(m => ({ default: m.UpdateNotesView })));
+const AutomationView = safeLazy(() => import("./components/AutomationView").then(m => ({ default: m.AutomationView })));
+const SocialMediaView = safeLazy(() => import("./components/SocialMediaView").then(m => ({ default: m.SocialMediaView })));
 
 const ShaderGradientAny = ShaderGradient as any;
 
@@ -215,8 +240,8 @@ function App() {
     if (hashLower.startsWith("client-") || hashLower.startsWith("lead-") || hashLower.startsWith("user-") || hashLower.startsWith("ue_") || hashLower.startsWith("dash_") || hashLower.startsWith("settings")) {
       return rawHash; // Keep case sensitivity and allow sub-tabs for settings
     }
-    const validTabs = ["dashboard", "overview", "leads", "clients", "tasks", "files", "personal-settings", "email", "rag_ai", "meetings", "projects", "updates"];
-    return validTabs.includes(hashLower) ? hashLower : "dashboard";
+    const validTabs = ["dashboard", "overview", "leads", "clients", "tasks", "files", "personal-settings", "email", "rag_ai", "automation", "meetings", "projects", "updates", "social_media"];
+    return validTabs.includes(hashLower) ? rawHash : "dashboard";
   };
 
   const [activeTab, setActiveTab] = useState(getTabFromHash);
@@ -305,6 +330,12 @@ function App() {
   const [systemName, setSystemName] = useState("CCRM");
   const [systemLanguage, setSystemLanguage] = useState<"en" | "sk" | "hu">("sk");
   const [userLanguage, setUserLanguage] = useState<"en" | "sk" | "hu">("sk");
+  const [userTheme, setUserTheme] = useState<string>(getStoredTheme);
+
+  useEffect(() => {
+    applyTheme(userTheme);
+  }, [userTheme]);
+
   // Same three-language shorthand every view uses for one-off copy that has no
   // entry in translations.ts.
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
@@ -512,7 +543,10 @@ function App() {
     googleClientSecret: "",
     googleRefreshToken: "",
     adsConnected: false,
-    campaigns: []
+    campaigns: [],
+    zernioApiKey: "",
+    zernioConnected: false,
+    zernioAccounts: []
   });
 
 
@@ -715,6 +749,9 @@ ${log.payload || ''}
           break;
         case "rag_ai":
           viewName = t("RAG AI Assistant", "RAG AI Asistent", "RAG AI Asszisztens");
+          break;
+        case "automation":
+          viewName = t("Automation", "Automatizácia", "Automatizálás");
           break;
         case "personal-settings":
           viewName = t("Personal Settings", "Osobné nastavenia", "Személyes beállítások");
@@ -1264,8 +1301,18 @@ ${log.payload || ''}
         setUsers((prev) => JSON.stringify(prev) === JSON.stringify(data.users) ? prev : data.users);
         if (currentUser) {
           const updatedMe = data.users.find((u: UserProfile) => u.email === currentUser.email);
-          if (updatedMe && JSON.stringify(updatedMe) !== JSON.stringify(currentUser)) {
-            setCurrentUser(updatedMe);
+          if (updatedMe) {
+            const getNormUser = (u: UserProfile) => {
+              const meta = typeof u.metadata_json === "string"
+                ? JSON.parse(u.metadata_json || "{}")
+                : (u.metadata_json || {});
+              return { ...u, metadata_json: meta };
+            };
+            const normUpdatedMe = getNormUser(updatedMe);
+            const normCurrentUser = getNormUser(currentUser);
+            if (JSON.stringify(normUpdatedMe) !== JSON.stringify(normCurrentUser)) {
+              setCurrentUser(updatedMe);
+            }
           }
         }
       }
@@ -1543,7 +1590,7 @@ ${log.payload || ''}
         return (
           <DynamicDashboardView
             dashboard={dashboard}
-            onSaveDashboard={(updated) => {
+            onSaveDashboard={(updated: CustomDashboard) => {
               updateCustomDashboardsAndSync((prev) =>
                 prev.map((d) => (d.id === updated.id ? updated : d))
               );
@@ -1565,7 +1612,7 @@ ${log.payload || ''}
           <UnifiedEntryView
             registry={ueRegistry}
             rows={unifiedEntriesData[ueId] || []}
-            setRows={(updater) => updateUnifiedEntriesDataAndSync(ueId, updater)}
+            setRows={(updater: any) => updateUnifiedEntriesDataAndSync(ueId, updater)}
             systemLanguage={userLanguage}
             leads={leads}
             subPath={subPath}
@@ -1688,7 +1735,8 @@ ${log.payload || ''}
       );
     }
 
-    switch (activeTab) {
+    const baseTab = activeTab.split(/[/?]/)[0];
+    switch (baseTab) {
       case "leads":
         return (
           <LeadsDatagrid 
@@ -1763,6 +1811,8 @@ ${log.payload || ''}
             systemLanguage={systemLanguage}
             userLanguage={userLanguage}
             setUserLanguage={changeUserLanguage}
+            userTheme={userTheme}
+            setUserTheme={setUserTheme}
             onSync={() => {}}
             errorSidebarEnabled={errorSidebarEnabled}
             setErrorSidebarEnabled={setErrorSidebarEnabled}
@@ -1820,6 +1870,21 @@ ${log.payload || ''}
             setTasks={updateTasksAndSync}
             taskStates={taskStates}
           />
+        );
+      case "automation":
+        return (
+          <AutomationView
+            systemLanguage={userLanguage}
+            users={users}
+            leads={leads}
+            taskStates={taskStates}
+            leadStates={orderedLeadStates}
+            leadSources={leadSources}
+          />
+        );
+      case "social_media":
+        return (
+          <SocialMediaView systemLanguage={userLanguage} integrationsConfig={integrationsConfig} isDemoMode={isDemoMode} />
         );
       case "updates":
         return (
@@ -2098,7 +2163,7 @@ ${log.payload || ''}
             </div>
             <footer className="mt-12 pt-4 border-t border-slate-200/50 flex justify-between items-center text-[10px] text-slate-400 select-none font-semibold uppercase tracking-wider">
               <span>{systemName} CRM &bull; Active Node</span>
-              <span>v{VERSION} "Grapefruit"</span>
+              <span>v{VERSION} "Huckleberry"</span>
             </footer>
           </main>
         </div>

@@ -24,6 +24,12 @@ main feature is an event manager like n8n or make.com which will allow to create
  - new email received (add filter for sender (client or not assigned or not assigned but already got email from the address)
  - new email sent (filter on email addresses)
 
+ ## timer
+ - trigger every X minutes or every x-th day for a week or month, or every x-th month... etc.
+
+ ## manual button
+ - this will add a button (customize with color and icon, and button style (full, sceleton, icon only)) this will appear in a toolbox on the top. When the toolbox is clicked it will show the array of created manual triggers.
+
 # Tools
  - we need a tool which splits the events, so it will trigger one by one
  - AI Agent Processor - receives the JSON from the previous nodes, sends it to the set up AI Agent (AI agent can be created in the editor settings using skills and must be set up. It can be basic chatbots which returns a JSON but also full pledget AI agents). When this agent is set it will check the next node what data is expected and it will send those instructions to the AI to know what form is required from him. Also it gets prompt what to do.
@@ -36,3 +42,6 @@ main feature is an event manager like n8n or make.com which will allow to create
  - Send SMS
  - Create document 
  - Create client
+
+
+ in the menu add a small node icon with deep purple theme. 

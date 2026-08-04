@@ -330,6 +330,50 @@ if (!function_exists('ccrm_schema_statements')) {
               `email` VARCHAR(255) NULL,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               INDEX `idx_pwreset_ip_time` (`ip`, `created_at`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Workflow Definitions
+            "CREATE TABLE IF NOT EXISTS `workflows` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `name` VARCHAR(150) NOT NULL,
+              `description` TEXT NULL,
+              `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+              `trigger_type` VARCHAR(50) NOT NULL,
+              `trigger_config_json` TEXT NULL,
+              `nodes_json` LONGTEXT NOT NULL,
+              `edges_json` LONGTEXT NOT NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX `idx_wf_trigger` (`trigger_type`),
+              INDEX `idx_wf_active` (`is_active`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Workflow Queue (Event Bus)
+            "CREATE TABLE IF NOT EXISTS `workflow_queue` (
+              `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+              `workflow_id` VARCHAR(50) NOT NULL,
+              `trigger_event_type` VARCHAR(50) NOT NULL,
+              `payload_json` LONGTEXT NOT NULL,
+              `status` ENUM('pending', 'processing', 'completed', 'failed') NOT NULL DEFAULT 'pending',
+              `error_message` TEXT NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `processed_at` DATETIME NULL,
+              INDEX `idx_wfq_status` (`status`),
+              INDEX `idx_wfq_workflow` (`workflow_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Workflow Execution Logs
+            "CREATE TABLE IF NOT EXISTS `workflow_logs` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `workflow_id` VARCHAR(50) NOT NULL,
+              `queue_id` BIGINT NULL,
+              `status` ENUM('success', 'failed', 'running') NOT NULL DEFAULT 'running',
+              `execution_time_ms` INT NOT NULL DEFAULT 0,
+              `trigger_event` VARCHAR(50) NULL,
+              `execution_log_json` LONGTEXT NOT NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              INDEX `idx_wfl_workflow` (`workflow_id`),
+              INDEX `idx_wfl_created` (`created_at`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
         ];
     }

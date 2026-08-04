@@ -76,50 +76,87 @@
   }
 }
 
-:root {
-  /* Default premium light theme tokens matching the target dashboard style */
-  --background: 243 246 255;
-  --foreground: 15 23 42; /* slate-900 */
+:root,
+[data-theme="basic"] {
+  /* Softened classic light theme tokens with restrained, elegant slate-blue and warm coral accents */
+  --background: 245 247 252;
+  --foreground: 30 41 59; /* slate-800 for gentler contrast */
 
   --card: 255 255 255;
-  --card-foreground: 15 23 42;
+  --card-foreground: 30 41 59;
 
   --popover: 255 255 255;
-  --popover-foreground: 15 23 42;
+  --popover-foreground: 30 41 59;
 
-  --primary: 37 99 235; /* Vibrant blue-600 */
+  --primary: 79 110 219; /* Softened slate-indigo #4f6edb */
   --primary-foreground: 255 255 255;
 
-  --secondary: 249 115 22; /* Coral orange-500 */
+  --secondary: 234 138 76; /* Soft terracotta coral #ea8a4c */
   --secondary-foreground: 255 255 255;
 
-  --muted: 241 245 249; /* slate-100 */
-  --muted-foreground: 100 116 139; /* slate-500 */
+  --muted: 241 245 249;
+  --muted-foreground: 100 116 139;
 
-  --accent: 139 92 246; /* purple-500 */
+  --accent: 147 122 235; /* Soft pastel violet #937aeb */
   --accent-foreground: 255 255 255;
 
-  --border: 226 232 240; /* slate-200 */
+  --border: 226 232 240;
   --input: 226 232 240;
-  --ring: 37 99 235;
+  --ring: 79 110 219;
 
   --sidebar: 255 255 255;
   --sidebar-foreground: 71 85 105;
 
-  --radius: 1.75rem; /* Generous round corners like the source */
+  --radius: 1.5rem; /* Softer, natural rounded corners */
+}
+
+/* Herb Theme: Sezame (Warm Light, Toned-Down Soft Colors & Feather-Soft Readability) */
+[data-theme="sezame"] {
+  --background: 250 247 242; /* Feather-soft warm cream #faf7f2 */
+  --foreground: 51 47 43;    /* Restrained, soft warm charcoal #332f2b */
+
+  --card: 253 250 244;       /* Softer warm card surface #fdfaf4 */
+  --card-foreground: 51 47 43;
+
+  --popover: 253 250 244;
+  --popover-foreground: 51 47 43;
+
+  --primary: 194 120 3;      /* Desaturated, soft toasted amber #c27803 */
+  --primary-foreground: 255 255 255;
+
+  --secondary: 91 147 11;    /* Soft, muted herbal sage green #5b930b */
+  --secondary-foreground: 255 255 255;
+
+  --muted: 244 239 231;      /* Ultra-soft parchment muted #f4efe7 */
+  --muted-foreground: 125 116 107; /* Restrained taupe #7d746b */
+
+  --accent: 217 165 42;      /* Muted honey gold #d9a52a */
+  --accent-foreground: 51 47 43;
+
+  --border: 236 228 213;     /* Delicate, feather-light warm border #ece4d5 */
+  --input: 236 228 213;
+  --ring: 194 120 3;
+
+  --sidebar: 252 248 241;
+  --sidebar-foreground: 85 77 70;
 }
 
 * {
-  border-color: rgb(var(--border) / 0.5);
-  outline-color: rgb(var(--ring) / 0.5);
+  border-color: rgb(var(--border) / 0.4);
+  outline-color: rgb(var(--ring) / 0.4);
 }
 
 body {
-  background: linear-gradient(135deg, #e3eeff 0%, #ebebfb 50%, #fef0e7 100%);
+  background: linear-gradient(135deg, #f2f6fc 0%, #f0f2fa 50%, #faf5f0 100%);
   color: rgb(var(--foreground));
   font-family: "Google Sans", "Product Sans", sans-serif;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   min-height: 100vh;
+  transition: background 0.5s ease, color 0.5s ease;
+}
+
+[data-theme="sezame"] body {
+  background: linear-gradient(135deg, #faf7f2 0%, #f5f1e8 50%, #ece5d8 100%);
 }
 
 /* Custom Scrollbar */
@@ -131,20 +168,33 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgb(var(--muted) / 0.8);
+  background: rgb(var(--muted) / 0.6);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgb(var(--primary) / 0.5);
+  background: rgb(var(--primary) / 0.4);
 }
 
-/* Premium Light Glassmorphism Helper */
+/* Softer Glassmorphism Helpers */
 .glass-panel {
-  background: rgba(255, 255, 255, 0.75);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  box-shadow: var(--shadow-glass);
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(16px) saturate(120%);
+  -webkit-backdrop-filter: blur(16px) saturate(120%);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 8px 30px -10px rgba(79, 70, 229, 0.05), 0 2px 10px -2px rgba(0, 0, 0, 0.02);
+}
+
+[data-theme="sezame"] .glass-panel {
+  background: rgba(253, 250, 244, 0.88);
+  backdrop-filter: blur(16px) saturate(110%);
+  -webkit-backdrop-filter: blur(16px) saturate(110%);
+  border: 1px solid rgba(194, 120, 3, 0.10);
+  box-shadow: 0 8px 24px -6px rgba(140, 100, 30, 0.05), 0 2px 8px -2px rgba(0, 0, 0, 0.02);
+}
+
+[data-theme="sezame"] ::selection {
+  background-color: #fef08a !important;
+  color: #713f12 !important;
 }
 
 /* Glow decoration styles for light mode */

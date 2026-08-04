@@ -62,6 +62,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "settings.tab.api": "🔌 Public API",
     "settings.tab.ads": "📢 Ads APIs & Campaigns",
     "settings.tab.ai": "🧠 AI Integrations",
+    "settings.tab.social": "📱 Social Media (Zernio)",
     "settings.tab.danger": "⚠️ System Reset",
     "settings.tab.errors": "⚠️ Error Logs",
 
@@ -498,6 +499,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "settings.tab.api": "🔌 Verejné API",
     "settings.tab.ads": "📢 Reklamné API a kampane",
     "settings.tab.ai": "🧠 AI Integrácie",
+    "settings.tab.social": "📱 Sociálne siete (Zernio)",
     "settings.tab.danger": "⚠️ Reset systému",
     "settings.tab.errors": "⚠️ Chybové záznamy",
 
@@ -933,6 +935,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "settings.tab.api": "🔌 Nyilvános API",
     "settings.tab.ads": "📢 Hirdetési API-k és kampányok",
     "settings.tab.ai": "🧠 AI Integráció",
+    "settings.tab.social": "📱 Közösségi média (Zernio)",
     "settings.tab.danger": "⚠️ Rendszer visszaállítása",
     "settings.tab.errors": "⚠️ Hiba naplók",
 

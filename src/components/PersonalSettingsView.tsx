@@ -1,8 +1,9 @@
 import React, { useState } from "react";
-import { User, Mail, Settings, Save, RefreshCw, CheckCircle2, AlertCircle, AlertOctagon } from "lucide-react";
+import { User, Mail, Settings, Save, RefreshCw, CheckCircle2, AlertCircle, AlertOctagon, Palette } from "lucide-react";
 import { PasswordInput } from "./PasswordInput";
 import type { UserProfile } from "../types";
 import type { Language } from "../utils/translations";
+import { HERB_THEMES, getStoredTheme, applyTheme } from "../utils/theme";
 
 interface PersonalSettingsViewProps {
   currentUser: UserProfile;
@@ -11,6 +12,8 @@ interface PersonalSettingsViewProps {
   systemLanguage: Language;
   userLanguage: Language;
   setUserLanguage: (lang: Language) => void;
+  userTheme?: string;
+  setUserTheme?: (theme: string) => void;
   onSync: () => void;
   errorSidebarEnabled: boolean;
   setErrorSidebarEnabled: (enabled: boolean) => void;
@@ -23,11 +26,16 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
   systemLanguage,
   userLanguage,
   setUserLanguage,
+  userTheme,
+  setUserTheme,
   onSync,
   errorSidebarEnabled,
   setErrorSidebarEnabled
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
+
+  const currentThemeId = userTheme || getStoredTheme();
+  const currentThemeObj = HERB_THEMES.find((th) => th.id === currentThemeId) || HERB_THEMES[0];
 
   const [activeSubTab, setActiveSubTab] = useState<"profile" | "email" | "errors">("profile");
   const [errorLogs, setErrorLogs] = useState<any[]>([]);
@@ -387,6 +395,61 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                   <option value="en">🇬🇧 English</option>
                   <option value="hu">🇭🇺 Magyar</option>
                 </select>
+              </div>
+
+              {/* Herb Themes Dropdown */}
+              <div className="space-y-2 pt-3 border-t border-slate-200/80">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+                    <Palette className="h-3.5 w-3.5 text-amber-600" />
+                    {t("UI Theme (Herb Collection)", "Téma rozhrania (Bylinky)", "Felület témája (Fűszernövények)")}
+                  </label>
+                  {currentThemeObj && (
+                    <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-[10px] font-bold text-amber-900 shadow-xs">
+                      <span>{currentThemeObj.icon}</span>
+                      <span>{currentThemeObj.name[systemLanguage] || currentThemeObj.name.en}</span>
+                    </div>
+                  )}
+                </div>
+
+                <select
+                  value={currentThemeId}
+                  onChange={(e) => {
+                    const newTheme = e.target.value;
+                    if (setUserTheme) {
+                      setUserTheme(newTheme);
+                    } else {
+                      applyTheme(newTheme);
+                    }
+                  }}
+                  className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all cursor-pointer"
+                >
+                  {HERB_THEMES.map((theme) => (
+                    <option key={theme.id} value={theme.id}>
+                      {theme.icon} {theme.name[systemLanguage] || theme.name.en}
+                    </option>
+                  ))}
+                </select>
+
+                {currentThemeObj && (
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2 text-xs">
+                    <p className="text-[11px] text-slate-600 font-medium leading-relaxed">
+                      {currentThemeObj.description[systemLanguage] || currentThemeObj.description.en}
+                    </p>
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-200/60">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                        {t("Theme Palette:", "Paleta témy:", "Téma paletta:")}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-4 h-4 rounded-full border border-slate-300 shadow-xs" style={{ backgroundColor: currentThemeObj.preview.bg }} title={t("Background", "Pozadie", "Háttér")} />
+                        <div className="w-4 h-4 rounded-full border border-slate-300 shadow-xs" style={{ backgroundColor: currentThemeObj.preview.card }} title={t("Card", "Karta", "Kártya")} />
+                        <div className="w-4 h-4 rounded-full border border-slate-300 shadow-xs" style={{ backgroundColor: currentThemeObj.preview.primary }} title={t("Primary", "Hlavná", "Elsődleges")} />
+                        <div className="w-4 h-4 rounded-full border border-slate-300 shadow-xs" style={{ backgroundColor: currentThemeObj.preview.secondary }} title={t("Secondary", "Sekundárna", "Másodlagos")} />
+                        <div className="w-4 h-4 rounded-full border border-slate-300 shadow-xs" style={{ backgroundColor: currentThemeObj.preview.text }} title={t("Text", "Text", "Szöveg")} />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end pt-2">

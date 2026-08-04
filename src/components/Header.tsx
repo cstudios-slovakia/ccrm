@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { User, PencilLine, Mic, Plus, List, CheckSquare, Search, Mail, Database, FileText, Loader2, X, Sparkles } from "lucide-react";
+import { User, PencilLine, Mic, Plus, List, CheckSquare, Search, Mail, Database, FileText, Loader2, X, Sparkles, Workflow, Play } from "lucide-react";
+import * as Icons from "lucide-react";
 import type { UserProfile } from "../types";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
@@ -39,6 +40,36 @@ export const Header: React.FC<HeaderProps> = ({
   const [isMeetingsOpen, setIsMeetingsOpen] = React.useState(false);
   const dropdownRef = React.useRef<HTMLDivElement>(null);
   const meetingsDropdownRef = React.useRef<HTMLDivElement>(null);
+
+  // Automation Toolbox States
+  const [manualWorkflows, setManualWorkflows] = React.useState<any[]>([]);
+  const [isToolboxOpen, setIsToolboxOpen] = React.useState(false);
+  const [runningWfId, setRunningWfId] = React.useState<string | null>(null);
+  const toolboxDropdownRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (isToolboxOpen) {
+      fetch("/api/workflows.php?action=list")
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            const manualOnly = (data.workflows || []).filter((w: any) => w.trigger_type === 'manual' && w.is_active === 1);
+            setManualWorkflows(manualOnly);
+          }
+        })
+        .catch(err => console.error("Error loading manual triggers", err));
+    }
+  }, [isToolboxOpen]);
+
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (toolboxDropdownRef.current && !toolboxDropdownRef.current.contains(event.target as Node)) {
+        setIsToolboxOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // Update notes states
   const [updatesList, setUpdatesList] = useState<UpdateEntry[]>([]);
@@ -135,6 +166,32 @@ export const Header: React.FC<HeaderProps> = ({
     if (updatesList.length > 0) {
       localStorage.setItem("ccrm_seen_update_id", updatesList[0].id);
       setHasNewUpdate(false);
+    }
+  };
+
+  const handleRunWorkflow = async (wf: any) => {
+    setRunningWfId(wf.id);
+    try {
+      const res = await fetch("/api/workflows.php?action=trigger_manual", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: wf.id })
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (typeof (window as any).showToast === "function") {
+          (window as any).showToast(t("Automation executed successfully!", "Automatizácia prebehla úspešne!", "Az automatizálás sikeresen lefutott!"));
+        }
+      } else {
+        if (typeof (window as any).showToast === "function") {
+          (window as any).showToast(data.message || "Execution failed", "error");
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setRunningWfId(null);
+      setIsToolboxOpen(false);
     }
   };
 
@@ -510,6 +567,81 @@ export const Header: React.FC<HeaderProps> = ({
                 <List className="h-4 w-4 text-slate-400 group-hover:text-[#0b1329]" />
                 <span>{systemLanguage === "sk" ? "Zobraziť stretnutia" : systemLanguage === "hu" ? "Megbeszélések mutatása" : "Show Meetings"}</span>
               </button>
+            </div>
+          )}
+        </div>
+
+        {/* Automation Toolbox Popover */}
+        <div className="relative" ref={toolboxDropdownRef}>
+          <button
+            onClick={() => setIsToolboxOpen(!isToolboxOpen)}
+            className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-colors shadow-sm cursor-pointer ${
+              isToolboxOpen 
+                ? "bg-[#0b1329] border-[#0b1329] text-white" 
+                : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-350 hover:bg-slate-50"
+            }`}
+            title={t("Automation Toolbox", "Automatizačný panel", "Automatizálási eszköztár")}
+          >
+            <Workflow className="h-5 w-5 text-purple-700" />
+          </button>
+
+          {isToolboxOpen && (
+            <div className="absolute right-0 mt-2.5 w-64 bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-2xl rounded-2xl p-3.5 z-50 flex flex-col gap-2 select-none animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="px-1.5 pb-2 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 mb-1 flex items-center justify-between">
+                <span>{t("Manual Triggers", "Manuálne spúšťače", "Kézi indítók")}</span>
+                <Workflow className="h-3 w-3 text-purple-400" />
+              </div>
+
+              {manualWorkflows.length === 0 ? (
+                <div className="py-6 text-center text-xs text-slate-400 font-medium">
+                  {t("No active manual workflows.", "Žiadne aktívne manuálne spúšťače.", "Nincsenek aktívny kézi indítók.")}
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1.5 max-h-60 overflow-y-auto pr-0.5">
+                  {manualWorkflows.map(wf => {
+                    const cfg = wf.trigger_config || {};
+                    const btnColor = cfg.buttonColor || '#6b21a8';
+                    const btnIconName = cfg.buttonIcon || 'Play';
+                    const btnStyle = cfg.buttonStyle || 'full';
+                    
+                    const IconComponent = (Icons as any)[btnIconName] || Play;
+                    
+                    let buttonClass = "";
+                    let inlineStyle: React.CSSProperties = {};
+                    
+                    if (btnStyle === 'skeleton') {
+                      buttonClass = "w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border-2 text-xs font-bold transition-all hover:scale-[1.01] active:scale-[0.99]";
+                      inlineStyle = { borderColor: btnColor, color: btnColor };
+                    } else if (btnStyle === 'icon_only') {
+                      buttonClass = "w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-slate-100 text-xs font-bold transition-all hover:bg-slate-50 hover:scale-[1.01] active:scale-[0.99]";
+                      inlineStyle = { color: btnColor };
+                    } else { // 'full'
+                      buttonClass = "w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-white text-xs font-bold transition-all hover:opacity-90 hover:scale-[1.01] active:scale-[0.99]";
+                      inlineStyle = { backgroundColor: btnColor };
+                    }
+
+                    return (
+                      <button
+                        key={wf.id}
+                        onClick={() => handleRunWorkflow(wf)}
+                        disabled={runningWfId === wf.id}
+                        className={buttonClass}
+                        style={inlineStyle}
+                        title={wf.description}
+                      >
+                        {runningWfId === wf.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <IconComponent className="h-4 w-4 shrink-0" />
+                        )}
+                        {btnStyle !== 'icon_only' && (
+                          <span className="truncate">{wf.name}</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>

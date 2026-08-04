@@ -231,6 +231,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
       ...dynamicDashItems.map(item => item.id),
       "files", 
       "email",
+      "automation",
+      "social_media",
       "updates"
     ];
   }, [dynamicUeItems, dynamicDashItems]);
@@ -400,6 +402,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
       ...dynamicDashItems,
       { id: "files", label: getTranslation(systemLanguage, "sidebar.files"), icon: FolderOpen, color: "#b45309" },
       { id: "email", label: systemLanguage === "sk" ? "Pošta" : systemLanguage === "hu" ? "Levelezés" : "Mail Client", icon: Mail, color: "#db2777" },
+      { id: "automation", label: systemLanguage === "sk" ? "Automatizácia" : systemLanguage === "hu" ? "Automatizálás" : "Automation", icon: Icons.Workflow || Icons.Network || Icons.GitFork || FolderOpen, color: "#6b21a8", isPurple: true },
+      { id: "social_media", label: systemLanguage === "sk" ? "Sociálne siete" : systemLanguage === "hu" ? "Közösségi média" : "Social Media", icon: Icons.Share2 || Icons.Globe, color: "#f43f5e", isRose: true },
       { id: "updates", label: systemLanguage === "sk" ? "Novinky" : systemLanguage === "hu" ? "Újdonságok" : "Updates", icon: Sparkles, color: "#d97706" }
     ];
   }, [systemLanguage, dynamicUeItems, dynamicDashItems]);
@@ -465,7 +469,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <nav className="flex-1 px-4 py-4 overflow-y-auto space-y-2 scrollbar-thin">
           {menuItems.map((item: any, idx: number) => {
             const Icon = item.icon;
-            const isActive = activeTab === item.id || (item.id === "clients" && activeTab.startsWith("client-"));
+            const isActive =
+              activeTab === item.id ||
+              activeTab.startsWith(item.id + "/") ||
+              activeTab.startsWith(item.id + "?") ||
+              (item.id === "clients" && activeTab.startsWith("client-"));
             const isOver = dragOverIndex === idx;
             return (
               <React.Fragment key={item.id}>
@@ -859,7 +867,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}>
             {menuItems.map((item: any) => {
               const Icon = item.icon;
-              const isActive = activeTab === item.id || (item.id === "clients" && activeTab.startsWith("client-"));
+              const isActive =
+                activeTab === item.id ||
+                activeTab.startsWith(item.id + "/") ||
+                activeTab.startsWith(item.id + "?") ||
+                (item.id === "clients" && activeTab.startsWith("client-"));
               return (
                 <button
                   key={item.id}
