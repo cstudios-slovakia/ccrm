@@ -2229,6 +2229,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     // who wrote it (My Calendar lists a task only for its assignees).
     const [inlineTaskAssignee, setInlineTaskAssignee] = useState("");
 
+    // Task ids with a delete request in flight, so a double click cannot fire two
+    // deletes for the same row.
+    const [deletingTaskIds, setDeletingTaskIds] = useState<Set<string>>(
+        new Set(),
+    );
+
     // A task is only ever visible through its assignee list, so an assignee that
     // is not a registered user drops it out of every calendar and task bucket in
     // the app while it still shows on the lead.
@@ -3195,6 +3201,59 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 "Az esemény törölve.",
             ),
         );
+    };
+
+    // Deleting a task is a server call, not a state edit: sync.php deliberately
+    // never infers a task deletion from an omitted snapshot (permission checks
+    // live in api/task.php), so dropping the row from local state alone left it
+    // in the database and the next poll or reload brought it straight back.
+    const handleDeleteGateTask = async (task: Task) => {
+        if (deletingTaskIds.has(task.id)) return;
+        const confirmed = window.confirm(
+            t(
+                `Permanently delete "${task.title}"? This cannot be undone.`,
+                `Natrvalo odstrániť úlohu "${task.title}"? Túto akciu nemožno vrátiť späť.`,
+                `Véglegesen törli a(z) "${task.title}" feladatot? Ez nem vonható vissza.`,
+            ),
+        );
+        if (!confirmed) return;
+
+        setDeletingTaskIds((prev) => new Set(prev).add(task.id));
+        try {
+            const response = await fetch("/api/task.php", {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id: task.id }),
+            });
+            const result = await response.json().catch(() => ({}));
+            // 404 means the row is already gone — a task created moments ago whose
+            // sync has not landed yet, or one deleted from another screen. Either
+            // way the user's intent is satisfied, so drop it locally instead of
+            // reporting a failure they cannot act on.
+            if (!response.ok && response.status !== 404) {
+                throw new Error(result.message || "Task deletion failed.");
+            }
+            setTasks((prev) => prev.filter((item) => item.id !== task.id));
+            (window as any).showToast?.(
+                t("Task deleted", "Úloha odstránená", "Feladat törölve"),
+            );
+        } catch (error: any) {
+            console.error("Task deletion failed", error);
+            (window as any).showToast?.(
+                error?.message ||
+                    t(
+                        "Task was not deleted. Please try again.",
+                        "Úloha nebola odstránená. Skúste to znova.",
+                        "A feladat nem lett törölve. Próbálja újra.",
+                    ),
+            );
+        } finally {
+            setDeletingTaskIds((prev) => {
+                const next = new Set(prev);
+                next.delete(task.id);
+                return next;
+            });
+        }
     };
 
     const handleAddInlineLockingTask = (e: React.FormEvent) => {
@@ -5360,31 +5419,15 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     {/* Inline Delete Button */}
                                                     <button
                                                         type="button"
-                                                        onClick={() => {
-                                                            if (
-                                                                window.confirm(
-                                                                    systemLanguage ===
-                                                                        "sk"
-                                                                        ? "Vymazať?"
-                                                                        : systemLanguage ===
-                                                                            "hu"
-                                                                          ? "Törlés?"
-                                                                          : "Delete?",
-                                                                )
-                                                            ) {
-                                                                setTasks(
-                                                                    (prev) =>
-                                                                        prev.filter(
-                                                                            (
-                                                                                t,
-                                                                            ) =>
-                                                                                t.id !==
-                                                                                task.id,
-                                                                        ),
-                                                                );
-                                                            }
-                                                        }}
-                                                        className="text-slate-400 hover:text-rose-600 transition-colors p-1"
+                                                        onClick={() =>
+                                                            handleDeleteGateTask(
+                                                                task,
+                                                            )
+                                                        }
+                                                        disabled={deletingTaskIds.has(
+                                                            task.id,
+                                                        )}
+                                                        className="text-slate-400 hover:text-rose-600 transition-colors p-1 disabled:opacity-40 disabled:cursor-not-allowed"
                                                     >
                                                         <Trash2 className="h-3.5 w-3.5" />
                                                     </button>
