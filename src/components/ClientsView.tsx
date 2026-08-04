@@ -16,6 +16,7 @@ import type { EditorBlock } from "./BlockEditor";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { resolveCurrencySymbol, formatMoney } from "../utils/currency";
+import { resolveAssigneeName } from "../utils/taskSelectors";
 import { todayLocal, nowLocalStamp, formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
 
 interface ClientsViewProps {
@@ -2261,7 +2262,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
       // Find original lead from activeClient
       const matchedLead = leads.find(l => l.name.trim().toLowerCase() === activeClient.name.trim().toLowerCase());
-      const leadOwner = matchedLead?.owner || currentUser?.name || projectManagers[0] || "";
+      // The owner drives the task, but the assignee list is what puts it on a
+      // calendar — so the person who logged the event is always on it too, and a
+      // stale owner name that is no longer a user can never orphan the task.
+      const leadOwner = resolveAssigneeName(matchedLead?.owner, currentUser?.name, projectManagers);
+      const loggerName = resolveAssigneeName(currentUser?.name, currentUser?.name, projectManagers);
+      const taskAssignees = Array.from(new Set([leadOwner, loggerName].filter(Boolean)));
       const leadId = matchedLead?.id;
 
       const taskTitle = systemLanguage === "sk" 
@@ -2279,9 +2285,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         status: taskStates[0] || "todo",
         priority: "medium",
         deadline: deadlineVal,
+        // The event's own time, so a 14:00 appointment lands at 14:00 in the
+        // calendar instead of the end-of-day default.
+        deadlineTime: logTimeOfEvent || "23:59",
         owner: leadOwner,
         createdBy: currentUser?.name || "",
-        assignedUsers: [leadOwner],
+        assignedUsers: taskAssignees,
         relatedLeadId: leadId,
         isLocking: false
       };

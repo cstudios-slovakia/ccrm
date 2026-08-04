@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
+import { resolveAssigneeName } from "../utils/taskSelectors";
 import { createPortal } from "react-dom";
 import {
     Users,
@@ -2222,6 +2223,18 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         }
     }, []);
 
+    // Who the next gate task is created for. Empty means "resolve on use", which
+    // lands on the logged-in user — a task created here used to be handed to the
+    // lead's owner without a word, so it never reached the calendar of the person
+    // who wrote it (My Calendar lists a task only for its assignees).
+    const [inlineTaskAssignee, setInlineTaskAssignee] = useState("");
+
+    // A task is only ever visible through its assignee list, so an assignee that
+    // is not a registered user drops it out of every calendar and task bucket in
+    // the app while it still shows on the lead.
+    const resolveTaskAssignee = (preferred?: string): string =>
+        resolveAssigneeName(preferred, currentUser?.name, projectManagers);
+
     const userEmailSettings = useMemo(() => {
         try {
             if (currentUser && currentUser.metadata_json) {
@@ -3036,6 +3049,15 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                       ? `Jövőbeli esemény: ${activeLead.name} (${titleString})`
                       : `Future Event: ${activeLead.name} (${titleString})`;
 
+            const ownerAssignee = resolveTaskAssignee(activeLead.owner);
+            const eventTaskAssignees = Array.from(
+                new Set(
+                    [ownerAssignee, resolveTaskAssignee(currentUser?.name)].filter(
+                        Boolean,
+                    ),
+                ),
+            );
+
             const autoPMTask: Task = {
                 id: `task-${Date.now()}`,
                 title: taskTitle,
@@ -3051,19 +3073,15 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 status: taskStates[0] || "New",
                 priority: "medium",
                 deadline: deadlineVal,
-                deadlineTime: "23:59",
-                owner:
-                    activeLead.owner ||
-                    currentUser?.name ||
-                    projectManagers[0] ||
-                    "",
+                // The event's own time, not a blanket end-of-day: an appointment
+                // booked for 14:00 has to sit at 14:00 in the calendar.
+                deadlineTime: logTimeOfEvent || "23:59",
+                owner: ownerAssignee,
                 createdBy: currentUser?.name || "",
-                assignedUsers: [
-                    activeLead.owner ||
-                        currentUser?.name ||
-                        projectManagers[0] ||
-                        "",
-                ],
+                // Both the lead's owner and whoever logged the event: the work
+                // belongs to the owner, but the person who scheduled it must see
+                // it in their own calendar too.
+                assignedUsers: eventTaskAssignees,
                 relatedLeadId: activeLead.id,
                 isLocking: false,
             };
@@ -3193,6 +3211,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             return;
         }
 
+        // Whoever the picker names — defaulting to the logged-in user, not the
+        // lead's owner. The task shows up in this person's calendar and task
+        // buckets and nobody else's, so it must be a deliberate choice.
+        const assignee = resolveTaskAssignee(inlineTaskAssignee);
+
         const newLockingTask: Task = {
             id: `task-${Date.now()}`,
             title: inlineTaskTitle.trim(),
@@ -3206,18 +3229,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             priority: "high",
             deadline: inlineTaskDeadline,
             deadlineTime: inlineTaskDeadlineTime,
-            owner:
-                activeLead.owner ||
-                currentUser?.name ||
-                projectManagers[0] ||
-                "",
+            owner: assignee,
             createdBy: currentUser?.name || "",
-            assignedUsers: [
-                activeLead.owner ||
-                    currentUser?.name ||
-                    projectManagers[0] ||
-                    "",
-            ],
+            assignedUsers: assignee ? [assignee] : [],
             relatedLeadId: activeLead.id,
             isLocking: inlineTaskIsLocking,
         };
@@ -3229,6 +3243,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         setInlineTaskDeadline(d.toISOString().split("T")[0]);
         setInlineTaskDeadlineTime("16:00");
         setInlineTaskIsLocking(true);
+        setInlineTaskAssignee(assignee);
+        (window as any).showToast?.(
+            t(
+                `Task added to ${assignee}'s calendar.`,
+                `Úloha bola pridaná do kalendára používateľa ${assignee}.`,
+                `A feladat bekerült ${assignee} naptárába.`,
+            ),
+        );
     };
 
     const [isClosingModal, setIsClosingModal] = useState(false);
@@ -5207,6 +5229,130 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                     {task.deadlineTime ||
                                                                         "23:59"}
                                                                 </span>
+                                                                {/* Assignee — the
+                                                                    only calendar
+                                                                    this task shows
+                                                                    up in, so it is
+                                                                    spelled out
+                                                                    here instead of
+                                                                    being a guess. */}
+                                                                {(() => {
+                                                                    const assignees =
+                                                                        task.assignedUsers?.filter(
+                                                                            Boolean,
+                                                                        ) || [];
+                                                                    const isMine =
+                                                                        Boolean(
+                                                                            currentUser?.name &&
+                                                                                assignees.includes(
+                                                                                    currentUser.name,
+                                                                                ),
+                                                                        );
+                                                                    // Editable, not just shown: tasks created
+                                                                    // before the picker existed sit on the lead
+                                                                    // owner (or on nobody), and this is the only
+                                                                    // place their author can still reach them —
+                                                                    // a task that is in no one's calendar is
+                                                                    // invisible in the Tasks view by definition.
+                                                                    return (
+                                                                        <select
+                                                                            value={
+                                                                                assignees[0] ||
+                                                                                ""
+                                                                            }
+                                                                            onChange={(
+                                                                                e,
+                                                                            ) => {
+                                                                                const next =
+                                                                                    e
+                                                                                        .target
+                                                                                        .value;
+                                                                                setTasks(
+                                                                                    (
+                                                                                        prev,
+                                                                                    ) =>
+                                                                                        prev.map(
+                                                                                            (
+                                                                                                tk,
+                                                                                            ) =>
+                                                                                                tk.id ===
+                                                                                                task.id
+                                                                                                    ? {
+                                                                                                          ...tk,
+                                                                                                          owner: next,
+                                                                                                          assignedUsers:
+                                                                                                              next
+                                                                                                                  ? [
+                                                                                                                        next,
+                                                                                                                    ]
+                                                                                                                  : [],
+                                                                                                      }
+                                                                                                    : tk,
+                                                                                        ),
+                                                                                );
+                                                                            }}
+                                                                            title={t(
+                                                                                "Whose calendar this task shows in.",
+                                                                                "V koho kalendári sa táto úloha zobrazuje.",
+                                                                                "Kinek a naptárában jelenik meg ez a feladat.",
+                                                                            )}
+                                                                            className={`text-[7.5px] font-black px-1.5 py-0.5 rounded-md uppercase border cursor-pointer max-w-[120px] truncate focus:outline-none ${
+                                                                                isMine
+                                                                                    ? "text-indigo-600 bg-indigo-50 border-indigo-150"
+                                                                                    : "text-slate-500 bg-slate-100 border-slate-200"
+                                                                            }`}
+                                                                        >
+                                                                            {assignees.length ===
+                                                                                0 && (
+                                                                                <option value="">
+                                                                                    {t(
+                                                                                        "Unassigned",
+                                                                                        "Nepriradené",
+                                                                                        "Nincs hozzárendelve",
+                                                                                    )}
+                                                                                </option>
+                                                                            )}
+                                                                            {projectManagers.map(
+                                                                                (
+                                                                                    pm,
+                                                                                ) => (
+                                                                                    <option
+                                                                                        key={
+                                                                                            pm
+                                                                                        }
+                                                                                        value={
+                                                                                            pm
+                                                                                        }
+                                                                                        className="bg-white text-slate-800 font-bold"
+                                                                                    >
+                                                                                        {
+                                                                                            pm
+                                                                                        }
+                                                                                    </option>
+                                                                                ),
+                                                                            )}
+                                                                            {/* A name that is no longer a
+                                                                                registered user still has to be
+                                                                                selectable, or the select would
+                                                                                silently show the wrong person. */}
+                                                                            {assignees[0] &&
+                                                                                !projectManagers.includes(
+                                                                                    assignees[0],
+                                                                                ) && (
+                                                                                    <option
+                                                                                        value={
+                                                                                            assignees[0]
+                                                                                        }
+                                                                                        className="bg-white text-slate-800 font-bold"
+                                                                                    >
+                                                                                        {
+                                                                                            assignees[0]
+                                                                                        }
+                                                                                    </option>
+                                                                                )}
+                                                                        </select>
+                                                                    );
+                                                                })()}
                                                             </div>
                                                         </div>
                                                     </div>
@@ -5297,6 +5443,43 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             onChange={setInlineTaskDeadlineTime}
                                             systemLanguage={systemLanguage}
                                         />
+                                    </div>
+
+                                    {/* Assignee — the task appears in this
+                                        person's calendar and task list only.
+                                        Defaults to the logged-in user: before
+                                        this picker existed the task silently
+                                        went to the lead's owner, so a note you
+                                        wrote for yourself never reached your
+                                        own calendar. */}
+                                    <div className="space-y-1">
+                                        <label className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest block">
+                                            {t(
+                                                "Shows in whose calendar",
+                                                "Zobrazí sa v kalendári",
+                                                "Kinek a naptárában jelenik meg",
+                                            )}
+                                        </label>
+                                        <select
+                                            value={resolveTaskAssignee(
+                                                inlineTaskAssignee,
+                                            )}
+                                            onChange={(e) =>
+                                                setInlineTaskAssignee(
+                                                    e.target.value,
+                                                )
+                                            }
+                                            className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:outline-none font-bold text-[11px] cursor-pointer"
+                                        >
+                                            {projectManagers.map((pm) => (
+                                                <option key={pm} value={pm}>
+                                                    {pm}
+                                                    {pm === currentUser?.name
+                                                        ? ` (${t("me", "ja", "én")})`
+                                                        : ""}
+                                                </option>
+                                            ))}
+                                        </select>
                                     </div>
 
                                     <div className="space-y-1.5">
