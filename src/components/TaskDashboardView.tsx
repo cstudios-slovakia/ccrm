@@ -821,11 +821,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             ),
         );
         if (typeof (window as any).showToast === "function") {
+            // Name the consequence: archiving takes the task out of every
+            // calendar and list at once, and users were reading it as a delete.
             (window as any).showToast(
                 t(
-                    "Task archived",
-                    "Úloha archivovaná",
-                    "Feladat archiválva",
+                    "Task archived — hidden from the calendar. Find it under Archived tasks.",
+                    "Úloha archivovaná — zmizne z kalendára. Nájdete ju medzi archivovanými úlohami.",
+                    "Feladat archiválva — eltűnik a naptárból. Az archivált feladatok között találja meg.",
                 ),
             );
         }

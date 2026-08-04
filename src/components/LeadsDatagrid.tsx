@@ -8,6 +8,7 @@ import {
     Plus,
     Search,
     Trash2,
+    ArchiveRestore,
     Clock,
     User,
     Briefcase,
@@ -3451,10 +3452,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const handleUpdateLeadState = (id: string, newStatus: string) => {
         const lead = leads.find((l) => l.id === id);
         if (lead && lead.status !== newStatus) {
+            // An archived task is out of every calendar and task list, so it must
+            // not hold a lead hostage either: the block was unexplainable from any
+            // screen but this one, where archived tasks used to look active.
             const lockingTasks = tasks.filter(
                 (t) =>
                     t.relatedLeadId === id &&
                     t.isLocking &&
+                    !t.archived &&
                     !isDoneState(t.status),
             );
             if (lockingTasks.length > 0) {
@@ -5029,16 +5034,39 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                           : "PIPELINE GATE & TASKS"}
                                 </span>
 
-                                {/* Count badge */}
-                                <span className="px-2 py-0.5 rounded-full text-[8px] font-black bg-violet-50 text-violet-750 border border-violet-200">
-                                    {
-                                        tasks.filter(
-                                            (t) =>
-                                                t.relatedLeadId ===
-                                                activeLead.id,
-                                        ).length
-                                    }
-                                </span>
+                                {/* Count badge — active tasks, with archived ones
+                                    counted apart. A single total read as "you have
+                                    7 open tasks here" while most of them were
+                                    archived and therefore in nobody's calendar. */}
+                                {(() => {
+                                    const leadTasks = tasks.filter(
+                                        (t) => t.relatedLeadId === activeLead.id,
+                                    );
+                                    const archivedCount = leadTasks.filter(
+                                        (t) => t.archived,
+                                    ).length;
+                                    return (
+                                        <span className="flex items-center gap-1">
+                                            <span className="px-2 py-0.5 rounded-full text-[8px] font-black bg-violet-50 text-violet-750 border border-violet-200">
+                                                {leadTasks.length -
+                                                    archivedCount}
+                                            </span>
+                                            {archivedCount > 0 && (
+                                                <span
+                                                    title={t(
+                                                        "Archived tasks: hidden from every calendar and task list until restored.",
+                                                        "Archivované úlohy: skryté vo všetkých kalendároch a zoznamoch úloh, kým ich neobnovíte.",
+                                                        "Archivált feladatok: minden naptárból és feladatlistából rejtve, amíg vissza nem állítja őket.",
+                                                    )}
+                                                    className="px-2 py-0.5 rounded-full text-[8px] font-black bg-slate-100 text-slate-500 border border-slate-200 cursor-help"
+                                                >
+                                                    {archivedCount}{" "}
+                                                    {t("arch.", "arch.", "arch.")}
+                                                </span>
+                                            )}
+                                        </span>
+                                    );
+                                })()}
                             </div>
 
                             {/* Follow-ups — one checkbox per lead state flagged in Settings (leadStateFollowUp) */}
@@ -5148,11 +5176,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 <div
                                                     key={task.id}
                                                     className={`p-3 rounded-2xl border transition-all flex items-start justify-between gap-2.5 ${
-                                                        isCompleted
-                                                            ? "bg-emerald-50/20 border-emerald-100"
-                                                            : task.isLocking
-                                                              ? "bg-rose-50/20 border-rose-200"
-                                                              : "bg-slate-50/50 border-slate-150"
+                                                        task.archived
+                                                            ? "bg-slate-100/70 border-slate-200 opacity-70"
+                                                            : isCompleted
+                                                              ? "bg-emerald-50/20 border-emerald-100"
+                                                              : task.isLocking
+                                                                ? "bg-rose-50/20 border-rose-200"
+                                                                : "bg-slate-50/50 border-slate-150"
                                                     }`}
                                                 >
                                                     <div className="flex items-start gap-2.5">
@@ -5258,6 +5288,26 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                 {task.title}
                                                             </span>
                                                             <div className="flex items-center gap-1.5 flex-wrap">
+                                                                {/* Archived badge — this list is the only screen
+                                                                    that shows archived tasks at all, and without
+                                                                    the badge they read as ordinary open work
+                                                                    while being absent from every calendar. */}
+                                                                {task.archived && (
+                                                                    <span
+                                                                        title={t(
+                                                                            "Archived: hidden from every calendar and task list. Use the restore button to bring it back.",
+                                                                            "Archivované: skryté vo všetkých kalendároch a zoznamoch úloh. Tlačidlom obnovenia ju vrátite späť.",
+                                                                            "Archiválva: minden naptárból és feladatlistából rejtve. A visszaállítás gombbal hozhatja vissza.",
+                                                                        )}
+                                                                        className="inline-flex items-center gap-0.5 text-[7.5px] font-black text-slate-600 bg-slate-200/80 px-1.5 py-0.5 rounded-md uppercase border border-slate-300 cursor-help"
+                                                                    >
+                                                                        {t(
+                                                                            "Archived",
+                                                                            "Archivované",
+                                                                            "Archiválva",
+                                                                        )}
+                                                                    </span>
+                                                                )}
                                                                 {/* Locking badge */}
                                                                 {task.isLocking && (
                                                                     <span
@@ -5416,6 +5466,46 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                         </div>
                                                     </div>
 
+                                                    <div className="flex items-center gap-0.5 shrink-0">
+                                                    {/* Restore — the only way back for a task
+                                                        archived from the Tasks view, which is
+                                                        where it disappeared from. */}
+                                                    {task.archived && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setTasks((prev) =>
+                                                                    prev.map((tk) =>
+                                                                        tk.id ===
+                                                                        task.id
+                                                                            ? {
+                                                                                  ...tk,
+                                                                                  archived: false,
+                                                                              }
+                                                                            : tk,
+                                                                    ),
+                                                                );
+                                                                (
+                                                                    window as any
+                                                                ).showToast?.(
+                                                                    t(
+                                                                        "Task restored — it is back in the calendar.",
+                                                                        "Úloha bola obnovená — je späť v kalendári.",
+                                                                        "A feladat visszaállítva — újra látható a naptárban.",
+                                                                    ),
+                                                                );
+                                                            }}
+                                                            title={t(
+                                                                "Restore task",
+                                                                "Obnoviť úlohu",
+                                                                "Feladat visszaállítása",
+                                                            )}
+                                                            className="text-slate-400 hover:text-emerald-600 transition-colors p-1"
+                                                        >
+                                                            <ArchiveRestore className="h-3.5 w-3.5" />
+                                                        </button>
+                                                    )}
+
                                                     {/* Inline Delete Button */}
                                                     <button
                                                         type="button"
@@ -5431,6 +5521,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     >
                                                         <Trash2 className="h-3.5 w-3.5" />
                                                     </button>
+                                                    </div>
                                                 </div>
                                             );
                                         })
