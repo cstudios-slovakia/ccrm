@@ -159,6 +159,7 @@ try {
         ['tasks.create', 'Create new checklist tasks'],
         ['tasks.edit', 'Modify tasks assignees and statuses'],
         ['tasks.delete', 'Permanently delete task records'],
+        ['tasks.view_all', 'See the whole team workload in Global Tasks (on unless revoked)'],
         ['timeline.log', 'Log custom timeline phone calls, emails, and notes'],
         ['calendar.view', 'Access appointment calendar slots'],
         ['calendar.create', 'Create bookings'],

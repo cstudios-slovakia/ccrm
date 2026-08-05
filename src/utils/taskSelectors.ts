@@ -5,6 +5,31 @@ export type TaskAccess = {
   create: boolean;
   edit: boolean;
   delete: boolean;
+  /** Whether Global Tasks shows the whole team's workload or only your own. */
+  viewAll: boolean;
+};
+
+/** RBAC slug behind the team-wide Global Tasks board. */
+export const TASK_VIEW_ALL_SLUG = "tasks.view_all";
+
+/**
+ * Who may see the whole team's workload in Global Tasks.
+ *
+ * Team-wide visibility is the default for every role: a shared board is only
+ * useful when everybody can read it, and until 1.6.48 the check was hardcoded
+ * to the Admin role, so every other user opened Global Tasks and found a single
+ * column — their own. A workspace that wants the old behaviour back sets
+ * `tasks.view_all` to "nothing" for that role in Settings → Roles & RBAC; an
+ * absent value keeps the default, so existing role records need no migration.
+ */
+export const resolveTaskViewAll = (
+  permissions: Record<string, string | undefined> | undefined,
+  isAdmin: boolean,
+): boolean => {
+  if (isAdmin) return true;
+  const value = permissions?.[TASK_VIEW_ALL_SLUG];
+  if (value === undefined || value === null || value === "") return true;
+  return value === "edit" || value === "view";
 };
 
 export const isTaskAssignedTo = (task: Task, userName: string): boolean =>

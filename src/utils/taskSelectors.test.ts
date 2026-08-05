@@ -9,6 +9,7 @@ import {
   isOnPersonalDashboard,
   isTaskAssignedTo,
   resolveAssigneeName,
+  resolveTaskViewAll,
 } from "./taskSelectors.ts";
 
 const admin: UserProfile = { name: "Ada", email: "ada@example.com", role: "Admin", color: "#000" };
@@ -25,8 +26,8 @@ const task: Task = {
   createdBy: "Alex",
   assignedUsers: ["Sam"],
 };
-const fullAccess = { view: true, create: true, edit: true, delete: true };
-const normalAccess = { view: true, create: true, edit: true, delete: false };
+const fullAccess = { view: true, create: true, edit: true, delete: true, viewAll: true };
+const normalAccess = { view: true, create: true, edit: true, delete: false, viewAll: true };
 
 test("assignment decides who a task belongs to", () => {
   assert.equal(isTaskAssignedTo(task, "Sam"), true);
@@ -76,6 +77,22 @@ test("delete access allows admins, explicit permission, or the creator", () => {
 
 test("legacy tasks without createdBy remain deletable by their assignee", () => {
   assert.equal(canDeleteTask({ ...task, createdBy: undefined }, sam, normalAccess), true);
+});
+
+test("the team-wide task board is on for every role until it is revoked", () => {
+  // No RBAC record at all, or one that never mentions the slug: everyone sees
+  // the team's workload. This is the whole point of the 1.6.48 change — before
+  // it, only the Admin role did.
+  assert.equal(resolveTaskViewAll(undefined, false), true);
+  assert.equal(resolveTaskViewAll({}, false), true);
+  assert.equal(resolveTaskViewAll({ "tasks.view": "view" }, false), true);
+  // Granted explicitly, in either of the two "allowed" states.
+  assert.equal(resolveTaskViewAll({ "tasks.view_all": "view" }, false), true);
+  assert.equal(resolveTaskViewAll({ "tasks.view_all": "edit" }, false), true);
+  // Revoked: the board narrows back to the user's own tasks.
+  assert.equal(resolveTaskViewAll({ "tasks.view_all": "nothing" }, false), false);
+  // An administrator keeps the board whatever the record says.
+  assert.equal(resolveTaskViewAll({ "tasks.view_all": "nothing" }, true), true);
 });
 
 test("an assignee is resolved to a real user so a task never lands in nobody's calendar", () => {
