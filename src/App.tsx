@@ -8,6 +8,7 @@ import { VERSION } from "./utils/version";
 import type { MeetingNote } from "./components/MeetingRoomView";
 import { getTranslation } from "./utils/translations";
 import { orderLeadStates } from "./utils/leadStates";
+import { resolveTaskViewAll } from "./utils/taskSelectors";
 import { InstallerWizard } from "./components/InstallerWizard";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { RefreshCw, AlertOctagon, Trash2, Copy } from "lucide-react";
@@ -741,10 +742,10 @@ ${log.payload || ''}
   }, [activeTab, systemName, userLanguage, leads, customDashboards, unifiedEntries]);
   const taskAccess = (() => {
     if (!currentUser) {
-      return { view: false, create: false, edit: false, delete: false };
+      return { view: false, create: false, edit: false, delete: false, viewAll: false };
     }
     if (currentUser.role.toLowerCase() === "admin") {
-      return { view: true, create: true, edit: true, delete: true };
+      return { view: true, create: true, edit: true, delete: true, viewAll: true };
     }
     const role = roles.find((item) => item.name === currentUser.role);
     const permissions: Partial<RolePermission["permissions"]> = role?.permissions || {};
@@ -755,7 +756,15 @@ ${log.payload || ''}
       }
       return isProjectManager && projectManagerDefault;
     };
-    return { view: allowed("tasks.view", true), create: allowed("tasks.create", true), edit: allowed("tasks.edit", true), delete: permissions["tasks.delete"] === "edit" };
+    // Unlike the slugs above, seeing the team board is on by default and has to
+    // be revoked explicitly — see resolveTaskViewAll.
+    return {
+      view: allowed("tasks.view", true),
+      create: allowed("tasks.create", true),
+      edit: allowed("tasks.edit", true),
+      delete: permissions["tasks.delete"] === "edit",
+      viewAll: resolveTaskViewAll(permissions, false),
+    };
   })();
 
 
