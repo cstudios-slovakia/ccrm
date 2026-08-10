@@ -3,7 +3,7 @@ import {
   Play, Copy, Trash2, Plus, Settings, 
   GitFork, Brain, Database, Mail, 
   CheckCircle2, XCircle, AlertCircle, 
-  Activity, ArrowLeft, RefreshCw, Layers, Terminal, 
+  Activity, ArrowLeft, RefreshCw, Layers, Terminal, Workflow,
   ToggleLeft, ToggleRight, Eye,
   Zap, Clock, UserPlus, Users, CheckSquare, ClipboardList,
   Bot, Calendar, User, Filter, Code, MapPin, Phone, Briefcase, Globe, FileText,
@@ -410,9 +410,6 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
   const [iconSearchQuery, setIconSearchQuery] = useState("");
 
-  // UI toasts/alerts
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
-
   const t = (en: string, sk: string, hu: string) => {
     if (systemLanguage === "sk") return sk;
     if (systemLanguage === "hu") return hu;
@@ -452,9 +449,16 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
   };
 
 
+  // Every other module reports through the app-wide toast stack in the bottom-right
+  // corner. This view used to draw its own banner in the top-right, so an automation
+  // message looked like it came from a different product — route it through the
+  // shared one instead.
   const showToast = (message: string, type: "success" | "error" = "success") => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
+    if (typeof (window as any).showToast === "function") {
+      (window as any).showToast(message, type === "error" ? "error" : undefined);
+      return;
+    }
+    console.warn("[automation]", message);
   };
 
   // Fetch workflows
@@ -588,9 +592,10 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
     setTriggerType("lead_created");
     setTriggerConfig({});
     
-    // Add default trigger node
+    // Add default trigger node. y clears the floating "Add Nodes" toolbar that sits
+    // at the top-left of the canvas — at y=50 the card opened underneath it.
     const initialNodes = [
-      { id: "node-trigger", type: "trigger", name: t("Trigger Node", "Spúšťací uzol", "Indító csomópont"), data: { type: "lead_created" }, x: 250, y: 50 }
+      { id: "node-trigger", type: "trigger", name: t("Trigger Node", "Spúšťací uzol", "Indító csomópont"), data: { type: "lead_created" }, x: 250, y: 110 }
     ];
     setNodes(initialNodes);
     setEdges([]);
@@ -949,140 +954,139 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
   const cronUrl = `${window.location.origin}/api/cron.php?token=${apiKeys.cronToken || "TOKEN"}`;
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-slate-50 overflow-hidden font-sans">
-      {/* Toast Alert */}
-      {toast && (
-        <div className={`fixed top-4 right-4 flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg z-[9999] border transition-all duration-300 animate-in slide-in-from-top-4 ${
-          toast.type === "success" 
-            ? "bg-emerald-50 border-emerald-200 text-emerald-800" 
-            : "bg-rose-50 border-rose-200 text-rose-800"
-        }`}>
-          {toast.type === "success" ? <CheckCircle2 className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />}
-          <span className="text-sm font-semibold">{toast.message}</span>
-        </div>
-      )}
-
-      {/* View Header */}
-      <header className="h-20 bg-white border-b border-slate-200 flex items-center justify-between px-8 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-lg bg-purple-100 flex items-center justify-center">
-            <Layers className="h-5 w-5 text-purple-700" />
-          </div>
-          <div>
-            <h1 className="font-bold text-lg text-slate-800">
-              {t("Automated Workflows", "Automatizácia & Workflows", "Automatizált munkafolyamatok")}
-            </h1>
-            <p className="text-xs text-slate-400 font-medium">
-              {t("Manage event-driven triggers, conditional logic and AI agents", "Spravujte triggre, podmienky a AI agentov", "Triggerek, feltételek és AI ágensek kezelése")}
-            </p>
-          </div>
+    <div className="w-full space-y-6 animate-in fade-in slide-in-from-top-4 duration-300">
+      {/* HEADER SECTION — same shape as every other module: title block on the left,
+          actions on the right, hairline rule underneath. The view used to paint its
+          own full-width white bar directly under the app header, which read as a
+          second, competing header. */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-4">
+        <div className="flex flex-col">
+          <h1 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+            <Workflow className="h-6 w-6 text-purple-600" />
+            {t("Automations & Workflows", "Automatizácie a workflowy", "Automatizálás és munkafolyamatok")}
+          </h1>
+          <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
+            {t(
+              "Build event-driven triggers, branching logic and AI agents that run your CRM for you.",
+              "Vytvárajte spúšťače udalostí, vetviacu logiku a AI agentov, ktorí za vás obsluhujú CRM.",
+              "Eseményvezérelt triggerek, elágazó logika és AI ágensek, amelyek Ön helyett működtetik a CRM-et."
+            )}
+          </p>
         </div>
 
         {/* Global Action Buttons */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
           {activeTab === "list" ? (
             <>
-              <button 
+              <button
+                type="button"
                 onClick={() => setActiveTab("settings")}
-                className="flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+                className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors text-xs font-heading font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shrink-0"
               >
                 <Settings className="h-4 w-4" />
                 {t("Settings", "Nastavenia", "Beállítások")}
               </button>
-              <button 
+              <button
+                type="button"
                 onClick={handleNewWorkflow}
-                className="flex items-center gap-2 px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-lg text-sm font-bold shadow-sm transition-colors"
+                className="px-5 py-3 rounded-2xl bg-[#0b1329] text-white hover:bg-slate-900 shadow-md shadow-[#0b1329]/20 transition-all font-heading font-bold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95 shrink-0"
               >
-                <Plus className="h-4 w-4" />
+                <Plus className="h-4.5 w-4.5" />
                 {t("Create Workflow", "Vytvoriť workflow", "Új munkafolyamat")}
               </button>
             </>
           ) : (
-            <button 
+            <button
+              type="button"
               onClick={() => {
                 setActiveTab("list");
                 fetchWorkflows();
               }}
-              className="flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+              className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors text-xs font-heading font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shrink-0"
             >
               <ArrowLeft className="h-4 w-4" />
               {t("Back to list", "Späť na zoznam", "Vissza a listához")}
             </button>
           )}
         </div>
-      </header>
+      </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 overflow-auto">
-        
+      <div className="w-full">
+
         {/* TAB 1: WORKFLOW LIST */}
         {activeTab === "list" && (
-          <div className="p-8 max-w-7xl mx-auto space-y-6">
+          <div className="space-y-6">
             {loading ? (
               <div className="flex flex-col items-center justify-center py-20 gap-3">
-                <RefreshCw className="h-8 w-8 text-purple-700 animate-spin" />
-                <span className="text-sm font-medium text-slate-500">{t("Loading automations...", "Načítavam automatizácie...", "Betöltés...")}</span>
+                <RefreshCw className="h-8 w-8 text-purple-600 animate-spin" />
+                <span className="text-xs font-heading font-bold uppercase tracking-wider text-slate-400">{t("Loading automations...", "Načítavam automatizácie...", "Betöltés...")}</span>
               </div>
             ) : workflows.length === 0 ? (
-              <div className="bg-white border border-slate-200 rounded-xl p-12 text-center flex flex-col items-center justify-center shadow-sm">
-                <div className="h-16 w-16 bg-purple-50 rounded-full flex items-center justify-center mb-4">
-                  <Layers className="h-8 w-8 text-purple-700" />
+              <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-12 text-center flex flex-col items-center justify-center">
+                <div className="h-16 w-16 bg-purple-50 rounded-2xl flex items-center justify-center mb-4">
+                  <Workflow className="h-8 w-8 text-purple-600" />
                 </div>
-                <h3 className="font-bold text-slate-700 mb-1">{t("No workflows created yet", "Zatiaľ neboli vytvorené žiadne workflowy", "Még nincsenek munkafolyamatok")}</h3>
-                <p className="text-sm text-slate-400 max-w-sm mb-6">
+                <h3 className="font-heading font-extrabold text-slate-900 mb-1">{t("No workflows created yet", "Zatiaľ neboli vytvorené žiadne workflowy", "Még nincsenek munkafolyamatok")}</h3>
+                <p className="text-sm text-slate-500 max-w-sm mb-6 font-medium">
                   {t("Set up your first automation to trigger AI actions, notifications or task creation when leads/events change.", "Vytvorte si svoju prvú automatizáciu pre spúšťanie AI akcií, upozornení alebo vytváranie úloh.", "Hozzon létre egy automatizációt a feladatok automatikus indításához.")}
                 </p>
-                <button 
+                <button
+                  type="button"
                   onClick={handleNewWorkflow}
-                  className="px-6 py-2.5 bg-purple-700 hover:bg-purple-800 text-white rounded-lg text-sm font-bold shadow-sm transition-colors"
+                  className="px-5 py-3 rounded-2xl bg-[#0b1329] text-white hover:bg-slate-900 shadow-md shadow-[#0b1329]/20 transition-all font-heading font-bold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95"
                 >
+                  <Plus className="h-4.5 w-4.5" />
                   {t("Create Workflow", "Vytvoriť workflow", "Új munkafolyamat")}
                 </button>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {workflows.map(wf => (
-                  <div 
+                  <div
                     key={wf.id}
                     onClick={() => handleEditWorkflow(wf)}
-                    className="bg-white border border-slate-200/80 rounded-xl p-6 shadow-sm hover:shadow-md hover:border-purple-200 transition-all duration-300 group cursor-pointer flex flex-col relative overflow-hidden"
+                    className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-6 hover:shadow-lg hover:-translate-y-0.5 hover:border-purple-200 transition-all duration-300 group cursor-pointer flex flex-col relative overflow-hidden"
                   >
                     {/* Active State Ribbon */}
                     <div className={`absolute top-0 right-0 h-1.5 left-0 ${wf.is_active ? 'bg-purple-600' : 'bg-slate-300'}`} />
 
                     <div className="flex items-start justify-between mb-4">
-                      <div className="h-10 w-10 rounded-lg bg-slate-100 flex items-center justify-center">
+                      <div className="h-10 w-10 rounded-2xl bg-slate-100 flex items-center justify-center">
                         {getTriggerIcon(wf.trigger_type)}
                       </div>
                       <div className="flex items-center gap-1">
-                        <button 
+                        <button
+                          type="button"
                           onClick={(e) => toggleActive(wf.id, wf.is_active === 1, e)}
                           title={wf.is_active ? t("Deactivate", "Deaktivovať", "Deaktivál") : t("Activate", "Aktivovať", "Aktivál")}
-                          className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors"
+                          className="p-1.5 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors cursor-pointer"
                         >
-                          {wf.is_active ? <ToggleRight className="h-6 w-6 text-purple-700" /> : <ToggleLeft className="h-6 w-6 text-slate-400" />}
+                          {wf.is_active ? <ToggleRight className="h-6 w-6 text-purple-600" /> : <ToggleLeft className="h-6 w-6 text-slate-400" />}
                         </button>
-                        <button 
+                        <button
+                          type="button"
                           onClick={(e) => cloneWorkflow(wf.id, e)}
                           title={t("Duplicate", "Duplikovať", "Duplikál")}
-                          className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors"
+                          className="p-1.5 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors cursor-pointer"
                         >
                           <Copy className="h-4 w-4" />
                         </button>
-                        <button 
+                        <button
+                          type="button"
                           onClick={(e) => deleteWorkflow(wf.id, e)}
                           title={t("Delete", "Vymazať", "Töröl")}
-                          className="p-1.5 hover:bg-rose-50 rounded-lg text-rose-500 transition-colors"
+                          className="p-1.5 hover:bg-rose-50 rounded-xl text-rose-500 transition-colors cursor-pointer"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
                     </div>
 
-                    <h3 className="font-bold text-slate-700 group-hover:text-purple-950 transition-colors mb-1">
+                    <h3 className="font-heading font-extrabold text-slate-900 group-hover:text-purple-800 transition-colors mb-1">
                       {wf.name}
                     </h3>
-                    <p className="text-xs text-slate-400 font-medium mb-4 line-clamp-2">
+                    <p className="text-xs text-slate-500 font-medium mb-4 line-clamp-2">
                       {wf.description || t("No description added.", "Žiadny popis.", "Nincs leírás.")}
                     </p>
 
@@ -1090,27 +1094,28 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                     <div className="mt-auto border-t border-slate-100 pt-4 flex items-center justify-between">
                       <div className="flex gap-4">
                         <div className="flex flex-col">
-                          <span className="text-[10px] text-slate-400 font-bold uppercase">{t("Total Runs", "Spustenia", "Futások")}</span>
-                          <span className="text-sm font-extrabold text-slate-700">{wf.stats?.total_runs || 0}</span>
+                          <span className="text-[9.5px] text-slate-400 font-extrabold uppercase tracking-widest">{t("Total Runs", "Spustenia", "Futások")}</span>
+                          <span className="text-sm font-black text-slate-900 font-mono">{wf.stats?.total_runs || 0}</span>
                         </div>
                         <div className="flex flex-col">
-                          <span className="text-[10px] text-slate-400 font-bold uppercase">{t("Success Rate", "Úspešnosť", "Siker")}</span>
-                          <span className="text-sm font-extrabold text-emerald-600">
-                            {wf.stats?.total_runs > 0 
+                          <span className="text-[9.5px] text-slate-400 font-extrabold uppercase tracking-widest">{t("Success Rate", "Úspešnosť", "Siker")}</span>
+                          <span className="text-sm font-black text-emerald-600 font-mono">
+                            {wf.stats?.total_runs > 0
                               ? Math.round((wf.stats.success_runs / wf.stats.total_runs) * 100) + "%"
                               : "100%"
                             }
                           </span>
                         </div>
                       </div>
-                      <button 
+                      <button
+                        type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           handleViewLogs(wf);
                         }}
-                        className="text-xs font-bold text-purple-700 hover:text-purple-900 flex items-center gap-1 hover:underline"
+                        className="text-[10px] font-heading font-bold uppercase tracking-wider text-purple-700 hover:text-purple-900 flex items-center gap-1 cursor-pointer"
                       >
-                        <Eye className="h-3 w-3" />
+                        <Eye className="h-3.5 w-3.5" />
                         {t("Logs", "Záznamy", "Naplók")}
                       </button>
                     </div>
@@ -1123,9 +1128,12 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
 
         {/* TAB 2: NODE WORKFLOW EDITOR */}
         {activeTab === "editor" && (
-          <div className="h-[calc(100vh-80px)] flex overflow-hidden">
+          /* The canvas is a bounded card inside the padded workspace, not a full-bleed
+             screen — the old 100vh-80px height assumed this view drew its own header
+             and left the editor hanging past the bottom of the page. */
+          <div className="h-[calc(100vh-15rem)] min-h-[560px] flex overflow-hidden rounded-3xl border border-white/60 bg-white/95 shadow-glass">
             {/* Editor Canvas Area */}
-            <div 
+            <div
               className="flex-1 bg-slate-50 border-r border-slate-200 overflow-hidden relative select-none"
               onMouseDown={handleCanvasMouseDown}
               onMouseMove={handleCanvasMouseMove}
@@ -2364,7 +2372,10 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
             {/* Sidebar properties editor panel */}
             <div className="w-96 bg-white border-l border-slate-200 flex flex-col h-full overflow-hidden shrink-0">
               <div className="p-6 border-b border-slate-200">
-                <h3 className="font-bold text-slate-700 mb-1">{t("Workflow Properties", "Vlastnosti workflow", "Munkafolyamat tulajdonságok")}</h3>
+                <h3 className="font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                  <Sliders className="h-4.5 w-4.5 text-purple-600" />
+                  {t("Workflow Properties", "Vlastnosti workflow", "Munkafolyamat tulajdonságok")}
+                </h3>
               </div>
               <div className="flex-1 overflow-y-auto p-6 space-y-6">
                 {/* General Config */}
@@ -2416,16 +2427,18 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
               </div>
 
               {/* Editor bottom save bar */}
-              <div className="p-6 border-t border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
-                <button 
+              <div className="p-6 border-t border-slate-200 bg-slate-50/80 flex items-center justify-between gap-2 shrink-0">
+                <button
+                  type="button"
                   onClick={() => setActiveTab("list")}
-                  className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-500 hover:bg-white"
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors text-xs font-heading font-bold uppercase tracking-wider cursor-pointer"
                 >
-                  Cancel
+                  {t("Cancel", "Zrušiť", "Mégse")}
                 </button>
-                <button 
+                <button
+                  type="button"
                   onClick={saveWorkflow}
-                  className="px-5 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-lg text-sm font-bold shadow-sm"
+                  className="px-5 py-3 rounded-2xl bg-[#0b1329] text-white hover:bg-slate-900 shadow-md shadow-[#0b1329]/20 transition-all font-heading font-bold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95"
                 >
                   {t("Save Workflow", "Uložiť workflow", "Mentés")}
                 </button>
@@ -2436,23 +2449,31 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
 
         {/* TAB 3: EXECUTION LOGS & DEBUGGER */}
         {activeTab === "logs" && (
-          <div className="p-8 max-w-7xl mx-auto space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="font-bold text-slate-800 text-base">{t("Execution Logs & Runs for:", "Záznamy o spustení pre:", "Futási naplók:")} {selectedWorkflow?.name}</h2>
-                <p className="text-xs text-slate-400">{t("Track automation runs and visually debug each step payload", "Sledujte behy a debugujte JSON payload každého kroku", "Kövesse nyomon a futásokat és debugolja a lépéseket")}</p>
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="flex flex-col">
+                <h2 className="text-lg font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                  <Terminal className="h-5 w-5 text-purple-600" />
+                  {t("Execution Logs & Runs for:", "Záznamy o spustení pre:", "Futási naplók:")} {selectedWorkflow?.name}
+                </h2>
+                <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
+                  {t("Track automation runs and visually debug each step payload", "Sledujte behy a debugujte JSON payload každého kroku", "Kövesse nyomon a futásokat és debugolja a lépéseket")}
+                </p>
               </div>
-              <div className="flex items-center gap-2">
-                <button 
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
                   onClick={triggerManualRun}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg text-xs font-bold transition-colors"
+                  className="px-4 py-2.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-xs font-heading font-bold uppercase tracking-wider transition-colors flex items-center gap-1.5 cursor-pointer"
                 >
-                  <Play className="h-3.5 w-3.5" />
+                  <Play className="h-4 w-4" />
                   {t("Trigger Test Run", "Spustiť testovací beh", "Teszt futás indítása")}
                 </button>
-                <button 
+                <button
+                  type="button"
                   onClick={() => handleViewLogs(selectedWorkflow)}
-                  className="p-1.5 border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50"
+                  title={t("Refresh", "Obnoviť", "Frissítés")}
+                  className="p-2.5 border border-slate-200 bg-white rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition-colors cursor-pointer"
                 >
                   <RefreshCw className="h-4 w-4" />
                 </button>
@@ -2461,8 +2482,8 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[500px]">
               {/* Runs List */}
-              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden flex flex-col h-full shadow-sm">
-                <div className="p-4 bg-slate-50 border-b border-slate-200 font-bold text-xs text-slate-500 uppercase tracking-wider">
+              <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass overflow-hidden flex flex-col h-full">
+                <div className="p-4 bg-slate-50/80 border-b border-slate-200 font-heading font-extrabold text-[10px] text-slate-400 uppercase tracking-widest">
                   {t("Run History", "História spustení", "Futási előzmények")}
                 </div>
                 <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
@@ -2503,8 +2524,8 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
               </div>
 
               {/* Visual Execution Step Trace / Debugger */}
-              <div className="lg:col-span-2 bg-white border border-slate-200 rounded-xl overflow-hidden flex flex-col h-full shadow-sm">
-                <div className="p-4 bg-slate-50 border-b border-slate-200 font-bold text-xs text-slate-500 uppercase tracking-wider flex items-center justify-between">
+              <div className="lg:col-span-2 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass overflow-hidden flex flex-col h-full">
+                <div className="p-4 bg-slate-50/80 border-b border-slate-200 font-heading font-extrabold text-[10px] text-slate-400 uppercase tracking-widest flex items-center justify-between">
                   <span>{t("Visual Debugger Trace", "Vizualizácia behu", "Vizuális nyomkövető")}</span>
                   {selectedLog && (
                     <span className="text-[10px] font-mono text-slate-400">{selectedLog.id}</span>
@@ -2562,10 +2583,13 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
 
         {/* TAB 4: AUTOMATION MODULE CONFIG / KEYS */}
         {activeTab === "settings" && (
-          <div className="p-8 max-w-2xl mx-auto space-y-6">
-            <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
-              <h2 className="font-bold text-slate-700 mb-1 text-base">{t("Automation Integration Keys", "Integračné kľúče pre automatizácie", "Integrációs kulcsok")}</h2>
-              <p className="text-xs text-slate-400 mb-6">{t("Configure API keys for AI processors and copy background execution Cron URLs.", "Nastavte API kľúče pre AI a skopírujte Cron URL časovača.", "Konfigurálja az API kulcsokat és a Cron URL-t.")}</p>
+          <div className="max-w-2xl space-y-6">
+            <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-6 sm:p-8">
+              <h2 className="text-lg font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                <Settings className="h-5 w-5 text-purple-600" />
+                {t("Automation Integration Keys", "Integračné kľúče pre automatizácie", "Integrációs kulcsok")}
+              </h2>
+              <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1 mb-6">{t("Configure API keys for AI processors and copy background execution Cron URLs.", "Nastavte API kľúče pre AI a skopírujte Cron URL časovača.", "Konfigurálja az API kulcsokat és a Cron URL-t.")}</p>
 
               <form onSubmit={saveSettings} className="space-y-4">
                 <div>
@@ -2649,10 +2673,10 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                 </div>
 
                 <div className="pt-4 flex justify-end">
-                  <button 
+                  <button
                     type="submit"
                     disabled={savingSettings}
-                    className="px-6 py-2.5 bg-purple-700 hover:bg-purple-800 text-white rounded-lg text-sm font-bold shadow-sm transition-colors"
+                    className="px-5 py-3 rounded-2xl bg-[#0b1329] text-white hover:bg-slate-900 shadow-md shadow-[#0b1329]/20 transition-all font-heading font-bold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
                   >
                     {savingSettings ? t("Saving...", "Ukladám...", "Mentés...") : t("Save API Keys", "Uložiť API kľúče", "Kulcsok mentése")}
                   </button>
