@@ -16,7 +16,8 @@ import type { EditorBlock } from "./BlockEditor";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { resolveCurrencySymbol, formatMoney } from "../utils/currency";
-import { todayLocal, nowLocalStamp } from "../utils/localTime";
+import { resolveAssigneeName } from "../utils/taskSelectors";
+import { todayLocal, nowLocalStamp, formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
 
 interface ClientsViewProps {
   leads: Lead[];
@@ -983,7 +984,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       totalValue: number;
       leadsCount: number;
       associatedLeads: Lead[];
-      
+      createdAt: string;
+
       // Extended Metadata fields
       phone: string;
       email: string;
@@ -1030,7 +1032,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           totalValue: 0,
           leadsCount: 0,
           associatedLeads: [],
-          
+          createdAt: lead.createdAt || "",
+
           phone: lead.phone || "",
           email: lead.email || "",
           street: lead.address?.street || "",
@@ -1067,6 +1070,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         }
         if (lead.vatValidationResult && !profilesMap[clientKey].vatValidationResult) {
           profilesMap[clientKey].vatValidationResult = lead.vatValidationResult;
+        }
+        if (lead.createdAt && (!profilesMap[clientKey].createdAt || lead.createdAt < profilesMap[clientKey].createdAt)) {
+          profilesMap[clientKey].createdAt = lead.createdAt;
         }
       }
       profilesMap[clientKey].totalValue += lead.value;
@@ -1441,6 +1447,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
+  // Object URL of the freshly recorded blob, kept so it can be revoked once the
+  // player switches over to the uploaded server file.
+  const localAudioUrlRef = React.useRef<string | null>(null);
+  // True while we force a seek past the end to make the browser compute the real
+  // duration of a MediaRecorder blob (those report Infinity until fully scanned).
+  const durationProbeRef = React.useRef(false);
   
   // Blocks state for note logger
   const [noteBlocks, setNoteBlocks] = useState<EditorBlock[]>([
@@ -1543,6 +1555,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         const ext = mimeType.split("/")[1] || "webm";
         const blob = new Blob(chunks, { type: mimeType });
         const localUrl = URL.createObjectURL(blob);
+        localAudioUrlRef.current = localUrl;
         setAudioUrl(localUrl);
 
         const tempId = `note_event_${Date.now()}`;
@@ -1559,6 +1572,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           const data = await res.json();
           if (res.ok && data.success) {
             setUploadedAudioFile(data.filePath);
+            // Play back the stored file instead of the raw recorder blob: it is the
+            // same source the saved note uses, so playback works right after recording.
+            setAudioUrl(data.filePath);
             if (typeof (window as any).showToast === "function") {
               (window as any).showToast(t("Audio recording saved successfully!", "Hlasová nahrávka bola úspešne uložená!", "A hangfelvétel sikeresen mentve!"));
             }
@@ -1627,9 +1643,58 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   };
 
   const formatDuration = (sec: number): string => {
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
+    // Media elements report Infinity/NaN for streams without duration metadata.
+    const total = Number.isFinite(sec) && sec > 0 ? Math.floor(sec) : 0;
+    const m = Math.floor(total / 60);
+    const s = total % 60;
     return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  };
+
+  // Reset the player whenever the source changes (new recording, or swapping the
+  // local blob for the uploaded file) and drop the stale blob URL.
+  useEffect(() => {
+    durationProbeRef.current = false;
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setAudioDuration(0);
+    if (audioRef.current) {
+      audioRef.current.load();
+    }
+    if (localAudioUrlRef.current && localAudioUrlRef.current !== audioUrl) {
+      URL.revokeObjectURL(localAudioUrlRef.current);
+      localAudioUrlRef.current = null;
+    }
+  }, [audioUrl]);
+
+  useEffect(() => () => {
+    if (localAudioUrlRef.current) {
+      URL.revokeObjectURL(localAudioUrlRef.current);
+      localAudioUrlRef.current = null;
+    }
+  }, []);
+
+  const handleAudioDurationChange = () => {
+    const el = audioRef.current;
+    if (!el) return;
+    if (!Number.isFinite(el.duration)) {
+      // Chrome reports Infinity for MediaRecorder output; seeking far past the end
+      // makes it scan the stream and fire durationchange again with the real value.
+      if (!durationProbeRef.current) {
+        durationProbeRef.current = true;
+        try {
+          el.currentTime = 1e101;
+        } catch {
+          durationProbeRef.current = false;
+        }
+      }
+      return;
+    }
+    if (durationProbeRef.current) {
+      durationProbeRef.current = false;
+      el.currentTime = 0;
+      setCurrentTime(0);
+    }
+    setAudioDuration(el.duration);
   };
 
   const handleTranscribeMeeting = async () => {
@@ -1779,25 +1844,41 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             <audio
               ref={audioRef}
               src={audioUrl}
+              preload="metadata"
               onTimeUpdate={() => {
-                if (audioRef.current) setCurrentTime(audioRef.current.currentTime);
+                if (!audioRef.current || durationProbeRef.current) return;
+                setCurrentTime(audioRef.current.currentTime);
               }}
-              onDurationChange={() => {
-                if (audioRef.current) setAudioDuration(audioRef.current.duration);
-              }}
+              onDurationChange={handleAudioDurationChange}
+              onLoadedMetadata={handleAudioDurationChange}
               onPlay={() => setIsPlaying(true)}
               onPause={() => setIsPlaying(false)}
               onEnded={() => setIsPlaying(false)}
+              onError={() => {
+                setIsPlaying(false);
+                if (typeof (window as any).showToast === "function") {
+                  (window as any).showToast(t("The recording could not be loaded.", "Nahrávku sa nepodarilo načítať.", "A felvételt nem sikerült betölteni."), "error");
+                }
+              }}
               className="hidden"
             />
             <button
               type="button"
               onClick={() => {
-                if (!audioRef.current) return;
+                const el = audioRef.current;
+                if (!el) return;
                 if (isPlaying) {
-                  audioRef.current.pause();
-                } else {
-                  audioRef.current.play();
+                  el.pause();
+                  return;
+                }
+                const played = el.play();
+                if (played && typeof played.catch === "function") {
+                  played.catch((err: any) => {
+                    setIsPlaying(false);
+                    if (typeof (window as any).showToast === "function") {
+                      (window as any).showToast(t("Could not play the recording: ", "Nahrávku sa nepodarilo prehrať: ", "A felvételt nem sikerült lejátszani: ") + err.message, "error");
+                    }
+                  });
                 }
               }}
               className="p-1 rounded-full bg-slate-800 text-white flex items-center justify-center shrink-0 cursor-pointer"
@@ -2181,7 +2262,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
       // Find original lead from activeClient
       const matchedLead = leads.find(l => l.name.trim().toLowerCase() === activeClient.name.trim().toLowerCase());
-      const leadOwner = matchedLead?.owner || currentUser?.name || projectManagers[0] || "";
+      // The owner drives the task, but the assignee list is what puts it on a
+      // calendar — so the person who logged the event is always on it too, and a
+      // stale owner name that is no longer a user can never orphan the task.
+      const leadOwner = resolveAssigneeName(matchedLead?.owner, currentUser?.name, projectManagers);
+      const loggerName = resolveAssigneeName(currentUser?.name, currentUser?.name, projectManagers);
+      const taskAssignees = Array.from(new Set([leadOwner, loggerName].filter(Boolean)));
       const leadId = matchedLead?.id;
 
       const taskTitle = systemLanguage === "sk" 
@@ -2199,9 +2285,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         status: taskStates[0] || "todo",
         priority: "medium",
         deadline: deadlineVal,
+        // The event's own time, so a 14:00 appointment lands at 14:00 in the
+        // calendar instead of the end-of-day default.
+        deadlineTime: logTimeOfEvent || "23:59",
         owner: leadOwner,
         createdBy: currentUser?.name || "",
-        assignedUsers: [leadOwner],
+        assignedUsers: taskAssignees,
         relatedLeadId: leadId,
         isLocking: false
       };
@@ -2644,6 +2733,16 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   />
                 </div>
               </div>
+
+              {/* Date Added (read-only, derived from earliest associated lead) */}
+              {activeClient?.createdAt && (
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1"><Calendar className="h-3 w-3 text-emerald-500" /> {getTranslation(systemLanguage, "profile.created_at")}</label>
+                  <div className="pt-2 pl-0 text-slate-900 text-sm font-black cursor-default select-all">
+                    {formatDateLocalized(activeClient.createdAt, systemLanguage)}
+                  </div>
+                </div>
+              )}
 
               {/* Address details */}
               <div className="border-t-2 border-slate-100 pt-4 space-y-3">
@@ -3341,7 +3440,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                               {/* Left Date / Time part */}
                               <div className="hidden md:block w-[100px] text-right pt-1.5 shrink-0 select-text">
                                 <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider block">
-                                  {event.timestamp.substring(0, 10)}
+                                  {formatDateLocalized(event.timestamp, systemLanguage)}
                                 </span>
                                 <span className="text-[9px] font-extrabold text-slate-400 block mt-0.5">
                                   {event.timestamp.substring(11, 16)}
@@ -3374,7 +3473,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                       </span>
                                     </div>
                                     <span className="block md:hidden text-[9px] font-black text-slate-450 uppercase tracking-wider">
-                                      {event.timestamp}
+                                      {formatTimestampLocalized(event.timestamp, systemLanguage)}
                                     </span>
                                   </div>
 
@@ -3513,7 +3612,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                               {/* Left Date / Time part */}
                               <div className="hidden md:block w-[100px] text-right pt-1.5 shrink-0 select-text">
                                 <span className="text-[10px] font-black text-slate-550 uppercase tracking-wider block">
-                                  {event.timestamp.substring(0, 10)}
+                                  {formatDateLocalized(event.timestamp, systemLanguage)}
                                 </span>
                                 <span className="text-[9px] font-extrabold text-slate-400 block mt-0.5">
                                   {event.timestamp.substring(11, 16)}
@@ -3567,7 +3666,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                       )}
                                     </div>
                                     <span className="block md:hidden text-[9px] font-black text-slate-400 uppercase tracking-wider">
-                                      {event.timestamp}
+                                      {formatTimestampLocalized(event.timestamp, systemLanguage)}
                                     </span>
                                   </div>
 
@@ -3835,7 +3934,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                     }`}>
                                       {file.fileType || t("document", "dokument", "dokumentum")}
                                     </span>
-                                    &bull; {file.fileSize || t("Unknown size", "Neznáma veľkosť", "Ismeretlen méret")} &bull; {file.timestamp.substring(0, 10)}
+                                    &bull; {file.fileSize || t("Unknown size", "Neznáma veľkosť", "Ismeretlen méret")} &bull; {formatDateLocalized(file.timestamp, systemLanguage)}
                                   </span>
                                   <p className="text-[10px] text-slate-505 font-bold mt-1 leading-normal italic line-clamp-1">
                                     "{file.content}"
@@ -4476,7 +4575,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       {t("Subject", "Predmet", "Tárgy")}: <strong className="text-slate-800">{selectedTimelineEmail.title}</strong>
                     </p>
                     <p className="text-[10px] text-slate-550 font-bold mt-1">
-                      {t("Date", "Dátum", "Dátum")}: <span className="text-slate-700">{selectedTimelineEmail.timestamp}</span>
+                      {t("Date", "Dátum", "Dátum")}: <span className="text-slate-700">{formatTimestampLocalized(selectedTimelineEmail.timestamp, systemLanguage)}</span>
                     </p>
                   </div>
                   <div className="flex-1 min-h-[300px]">

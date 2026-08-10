@@ -3,11 +3,12 @@ import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { 
   Send, Trash2, Search, Mail, Plus, X, Loader2, 
   Reply, CheckCircle2, CircleAlert, Clock, Phone, FileText, Calendar, TrendingUp,
-  CornerDownLeft, CornerLeftDown, ChevronDown, ChevronUp, Brain
+  CornerDownLeft, CornerLeftDown, ChevronDown, ChevronUp, Brain, RefreshCw
 } from "lucide-react";
 import type { Lead, Task, UserProfile } from "../types";
 import { formatBytes } from "../utils/formatBytes";
-import { nowLocalStamp } from "../utils/localTime";
+import { nowLocalStamp, localeCodeFor, formatTimestampLocalized } from "../utils/localTime";
+import { getTranslation } from "../utils/translations";
 
 interface EmailViewProps {
   currentUser: any;
@@ -100,6 +101,8 @@ export const EmailView: React.FC<EmailViewProps> = ({
   
   // UI Loaders
   const [isLoadingEmails, setIsLoadingEmails] = useState(false);
+  const [isSyncingEmails, setIsSyncingEmails] = useState(false);
+  const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [isSending, setIsSending] = useState(false);
   
@@ -236,10 +239,21 @@ export const EmailView: React.FC<EmailViewProps> = ({
     return !!(integrationsConfig?.openAiKey && integrationsConfig.openAiKey.trim() !== "");
   }, [integrationsConfig]);
 
+  // Parse into an INERT document rather than assigning to a live element's
+  // innerHTML. The old version built a detached <div> and set innerHTML on it,
+  // which still resolves resource URLs — so a mail containing
+  // `<img src=x onerror=...>` executed script in the app's origin the moment the
+  // body was summarized. DOMParser produces a document that never loads anything
+  // and never runs handlers.
   const stripHtml = (html: string) => {
-    const tmp = document.createElement("DIV");
-    tmp.innerHTML = html;
-    return tmp.textContent || tmp.innerText || "";
+    if (!html) return "";
+    try {
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      return doc.body?.textContent?.trim() || "";
+    } catch {
+      // Last resort: strip tags textually rather than touching the live DOM.
+      return html.replace(/<[^>]*>/g, "").trim();
+    }
   };
 
   const fetchSummary = async (emailUid: string, folder: string, subject: string, body: string, isThread: boolean = false) => {
@@ -423,9 +437,11 @@ export const EmailView: React.FC<EmailViewProps> = ({
   };
 
   // Load Emails headers list
-  const loadEmails = async (currPage = 1, currFilter = filter) => {
+  // silent = background refresh: keep the current list visible instead of swapping it for the spinner
+  const loadEmails = async (currPage = 1, currFilter = filter, silent = false) => {
     if (!userEmailSettings) return;
-    setIsLoadingEmails(true);
+    if (!silent) setIsLoadingEmails(true);
+    setIsSyncingEmails(true);
     try {
       // Fetch Inbox folder emails
       const resInbox = await fetch(`/api/mail_broker.php?action=get_emails&folder=INBOX&page=${currPage}&filter=${currFilter}`, {
@@ -458,11 +474,19 @@ export const EmailView: React.FC<EmailViewProps> = ({
       });
 
       setEmails(combined);
+      setLastSyncAt(new Date());
     } catch (err) {
       notify(t("Mail server unreachable", "Poštový server je nedostupný", "A levelezőszerver nem elérhető"), "error");
     } finally {
       setIsLoadingEmails(false);
+      setIsSyncingEmails(false);
     }
+  };
+
+  // Manual IMAP sync triggered from the toolbar
+  const handleManualSync = async () => {
+    if (isSyncingEmails) return;
+    await loadEmails(1, filter, true);
   };
 
   // Expand Single message details
@@ -501,7 +525,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
     loadEmails(1, filter);
 
     const interval = setInterval(() => {
-      loadEmails(1, filter);
+      loadEmails(1, filter, true);
     }, 60000); // UI updates every 60 seconds
 
     return () => clearInterval(interval);
@@ -813,13 +837,36 @@ export const EmailView: React.FC<EmailViewProps> = ({
             </div>
             <button
               type="button"
+              onClick={handleManualSync}
+              disabled={isSyncingEmails}
+              title={
+                lastSyncAt
+                  ? `${t("Last synced", "Naposledy synchronizované", "Utoljára szinkronizálva")}: ${lastSyncAt.toLocaleTimeString()}`
+                  : t("Sync now", "Synchronizovať teraz", "Szinkronizálás most")
+              }
+              aria-label={t("Sync now", "Synchronizovať teraz", "Szinkronizálás most")}
+              className="py-2 px-3 bg-white hover:bg-slate-50 active:scale-95 border border-slate-200 text-slate-600 hover:text-pink-600 rounded-xl transition-all flex items-center justify-center shadow-2xs shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
+            >
+              <RefreshCw size={14} className={isSyncingEmails ? "animate-spin" : ""} />
+            </button>
+            <button
+              type="button"
               onClick={() => openNewComposer()}
-              className="py-2 px-3.5 bg-pink-600 hover:bg-pink-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow shrink-0 cursor-pointer"
+              className="py-2 px-3.5 bg-pink-600 hover:bg-pink-700 active:scale-95 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow shrink-0 cursor-pointer"
             >
               <Plus size={14} /> {t("New", "Nový", "Új")}
             </button>
           </div>
-          
+
+          <div className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-400 px-0.5">
+            <span className={`h-1.5 w-1.5 rounded-full ${isSyncingEmails ? "bg-pink-500 animate-pulse" : "bg-emerald-500"}`} />
+            {isSyncingEmails
+              ? t("Syncing with mailbox...", "Synchronizuje sa so schránkou...", "Szinkronizálás a postafiókkal...")
+              : lastSyncAt
+                ? `${t("Last synced", "Naposledy synchronizované", "Utoljára szinkronizálva")} ${lastSyncAt.toLocaleTimeString()} · ${t("auto every 60s", "automaticky každých 60 s", "automatikusan 60 mp-enként")}`
+                : t("Auto-sync every 60s", "Automatická synchronizácia každých 60 s", "Automatikus szinkronizálás 60 mp-enként")}
+          </div>
+
           <div className="flex items-center justify-between bg-slate-55 p-1 rounded-2xl border border-slate-200/40">
             <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200/50 text-[10px] font-black uppercase tracking-wider flex-1 mr-3">
               <button
@@ -918,7 +965,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                           {thread.emails.length} msg
                         </span>
                         <span className="text-[8.5px] text-slate-400 font-semibold">
-                          {new Date(thread.date).toLocaleDateString()}
+                          {new Date(thread.date).toLocaleDateString(localeCodeFor(systemLanguage))}
                         </span>
                       </div>
                     </div>
@@ -986,7 +1033,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                         )}
                       </span>
                       <span className="text-[9px] text-slate-400 font-medium shrink-0">
-                        {new Date(email.date).toLocaleDateString()}
+                        {new Date(email.date).toLocaleDateString(localeCodeFor(systemLanguage))}
                       </span>
                     </div>
 
@@ -1859,11 +1906,11 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                     : event.type === "note" ? t("Timeline Note", "Poznámka na časovej osi", "Idővonal jegyzet")
                                     : event.type === "offer" ? t("Proposal", "Cenová ponuka", "Ajánlat")
                                     : event.type === "appointment" ? t("Meeting Log", "Záznam stretnutia", "Találkozó napló")
-                                    : event.type}
+                                    : getTranslation(systemLanguage, `timeline.badge.${event.type}`)}
                                 </span>
                               )}
                             </div>
-                            <span className="text-[8px] text-slate-400 font-extrabold">{event.timestamp}</span>
+                            <span className="text-[8px] text-slate-400 font-extrabold">{formatTimestampLocalized(event.timestamp, systemLanguage)}</span>
                           </div>
                           {(() => {
                             const lines = event.content.split("\n");

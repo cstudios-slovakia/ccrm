@@ -31,7 +31,7 @@ try {
     $pdo = get_db_connection();
 } catch (\Exception $e) {
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'DB Connection failed: ' . $e->getMessage()]);
+    echo json_encode(['success' => false, 'message' => 'Database connection failed.']);
     exit;
 }
 
@@ -131,6 +131,9 @@ function get_excerpt($text, $query, $maxLen = 80) {
 }
 
 $candidates = [];
+// Sources that failed this request. Search stays best-effort across the four
+// sources, but a failure is now recorded rather than swallowed silently.
+$searchErrors = [];
 
 // 1. LEADS & CLIENTS
 try {
@@ -178,7 +181,13 @@ try {
             ];
         }
     }
-} catch (\Exception $e) {}
+} catch (\Exception $e) {
+    // One source failing must not blank the whole search, but it must not be
+    // invisible either: an empty catch here meant a broken table silently
+    // returned "no results" and nobody could tell search from an outage.
+    $searchErrors[] = $e->getMessage();
+    error_log('[ccrm universal_search] source failed: ' . $e->getMessage());
+}
 
 // 2. EMAILS
 try {
@@ -218,7 +227,13 @@ try {
             ];
         }
     }
-} catch (\Exception $e) {}
+} catch (\Exception $e) {
+    // One source failing must not blank the whole search, but it must not be
+    // invisible either: an empty catch here meant a broken table silently
+    // returned "no results" and nobody could tell search from an outage.
+    $searchErrors[] = $e->getMessage();
+    error_log('[ccrm universal_search] source failed: ' . $e->getMessage());
+}
 
 // 3. MEETINGS
 function get_meeting_notes_plain_text($notes) {
@@ -284,7 +299,13 @@ try {
             ];
         }
     }
-} catch (\Exception $e) {}
+} catch (\Exception $e) {
+    // One source failing must not blank the whole search, but it must not be
+    // invisible either: an empty catch here meant a broken table silently
+    // returned "no results" and nobody could tell search from an outage.
+    $searchErrors[] = $e->getMessage();
+    error_log('[ccrm universal_search] source failed: ' . $e->getMessage());
+}
 
 // 4. UNIFIED ENTRIES
 try {
@@ -342,7 +363,13 @@ try {
             }
         }
     }
-} catch (\Exception $e) {}
+} catch (\Exception $e) {
+    // One source failing must not blank the whole search, but it must not be
+    // invisible either: an empty catch here meant a broken table silently
+    // returned "no results" and nobody could tell search from an outage.
+    $searchErrors[] = $e->getMessage();
+    error_log('[ccrm universal_search] source failed: ' . $e->getMessage());
+}
 
 // Sort candidates by score descending
 usort($candidates, function($a, $b) {
@@ -357,6 +384,12 @@ foreach ($candidates as $c) {
     $finalResults[] = $c['item'];
     $count++;
     if ($count >= $limit) break;
+}
+
+// The response body stays a bare array (the client indexes it directly), so a
+// partial result is flagged out-of-band rather than by changing the shape.
+if (!empty($searchErrors)) {
+    header('X-CCRM-Search-Partial: ' . count($searchErrors));
 }
 
 echo json_encode($finalResults);

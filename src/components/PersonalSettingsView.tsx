@@ -108,6 +108,30 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
   const [email, setEmail] = useState(currentUser.email);
   const [password, setPassword] = useState(currentUser.password || "");
 
+  // Fill in every field, in a fixed key order, so that the form state and anything
+  // read back from the profile can be compared as plain JSON strings.
+  const normalizeEmailSettings = (s: any) => ({
+    provider: s?.provider || "smtp",
+    imapHost: s?.imapHost || "",
+    imapPort: s?.imapPort || "993",
+    imapSecure: s?.imapSecure !== undefined ? s.imapSecure : "ssl",
+    smtpHost: s?.smtpHost || "",
+    smtpPort: s?.smtpPort || "465",
+    smtpSecure: s?.smtpSecure !== undefined ? s.smtpSecure : "ssl",
+    imapUsername: s?.imapUsername || s?.username || "",
+    imapPassword: s?.imapPassword || s?.password || "",
+    smtpUsername: s?.smtpUsername || s?.username || "",
+    smtpPassword: s?.smtpPassword || s?.password || "",
+    exchangeUrl: s?.exchangeUrl || "",
+    exchangeDomain: s?.exchangeDomain || "",
+    exchangeMailbox: s?.exchangeMailbox || "",
+    username: s?.username || "",
+    password: s?.password || "",
+    // Must be carried over, otherwise reloading the stored profile drops the
+    // "already configured" flag and throws the user back into the form.
+    isValidated: s?.isValidated === true
+  });
+
   const loadEmailSettings = () => {
     try {
       if (currentUser.metadata_json) {
@@ -115,48 +139,13 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
           ? JSON.parse(currentUser.metadata_json)
           : currentUser.metadata_json;
         if (metadata.emailSettings) {
-          const s = metadata.emailSettings;
-          return {
-            provider: s.provider || "smtp",
-            imapHost: s.imapHost || "",
-            imapPort: s.imapPort || "993",
-            imapSecure: s.imapSecure !== undefined ? s.imapSecure : "ssl",
-            smtpHost: s.smtpHost || "",
-            smtpPort: s.smtpPort || "465",
-            smtpSecure: s.smtpSecure !== undefined ? s.smtpSecure : "ssl",
-            imapUsername: s.imapUsername || s.username || "",
-            imapPassword: s.imapPassword || s.password || "",
-            smtpUsername: s.smtpUsername || s.username || "",
-            smtpPassword: s.smtpPassword || s.password || "",
-            exchangeUrl: s.exchangeUrl || "",
-            exchangeDomain: s.exchangeDomain || "",
-            exchangeMailbox: s.exchangeMailbox || "",
-            username: s.username || "",
-            password: s.password || ""
-          };
+          return normalizeEmailSettings(metadata.emailSettings);
         }
       }
     } catch (e) {
       console.warn("Error parsing user metadata_json", e);
     }
-    return {
-      provider: "smtp",
-      imapHost: "",
-      imapPort: "993",
-      imapSecure: "ssl",
-      smtpHost: "",
-      smtpPort: "465",
-      smtpSecure: "ssl",
-      imapUsername: "",
-      imapPassword: "",
-      smtpUsername: "",
-      smtpPassword: "",
-      exchangeUrl: "",
-      exchangeDomain: "",
-      exchangeMailbox: "",
-      username: "",
-      password: ""
-    };
+    return normalizeEmailSettings({});
   };
 
   const [emailSettings, setEmailSettings] = useState<any>(loadEmailSettings);
@@ -164,8 +153,34 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ status: "success" | "error"; message: string } | null>(null);
 
+  // Fingerprint of the settings we last read out of (or wrote into) the profile.
+  // `currentUser` is a fresh object on every background poll, so reloading the
+  // form on its identity alone wiped whatever was being typed. We only reload
+  // when the *stored* settings actually changed — and never on top of edits in
+  // progress, so a poll landing mid-typing can no longer clear the inputs.
+  const loadedEmailSigRef = React.useRef<string | null>(null);
+
+  // Mirror of the live form state for the effect below, which must not
+  // re-subscribe on every keystroke.
+  const emailSettingsRef = React.useRef(emailSettings);
   React.useEffect(() => {
-    setEmailSettings(loadEmailSettings());
+    emailSettingsRef.current = emailSettings;
+  });
+
+  React.useEffect(() => {
+    const next = loadEmailSettings();
+    const nextSig = JSON.stringify(next);
+    if (loadedEmailSigRef.current === null) {
+      // First run: state was already initialised from this same profile.
+      loadedEmailSigRef.current = nextSig;
+      return;
+    }
+    if (nextSig === loadedEmailSigRef.current) return;
+    // Stored settings genuinely moved (another device, another tab). Adopt them
+    // only if the user has nothing unsaved in the form.
+    if (JSON.stringify(emailSettingsRef.current) !== loadedEmailSigRef.current) return;
+    loadedEmailSigRef.current = nextSig;
+    setEmailSettings(next);
   }, [currentUser]);
 
   const handleSaveProfile = (e: React.FormEvent) => {
@@ -200,12 +215,11 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
   const handleSaveEmailSettings = (e: React.FormEvent) => {
     e.preventDefault();
 
-    const isValidated = true;
-    const updatedSettings = {
-      ...emailSettings,
-      isValidated
-    };
+    const updatedSettings = normalizeEmailSettings({ ...emailSettings, isValidated: true });
     setEmailSettings(updatedSettings);
+    // These are now the stored settings, so the profile coming back from the
+    // server must not read as an external change that reloads the form.
+    loadedEmailSigRef.current = JSON.stringify(updatedSettings);
 
     setUsers(prev => prev.map(u => {
       if (u.email === currentUser.email) {
@@ -531,8 +545,9 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        const resetSettings = { ...emailSettings, isValidated: false };
+                        const resetSettings = normalizeEmailSettings({ ...emailSettings, isValidated: false });
                         setEmailSettings(resetSettings);
+                        loadedEmailSigRef.current = JSON.stringify(resetSettings);
                         setUsers((prev: any) => prev.map((u: any) => {
                           if (u.email === currentUser.email) {
                             let meta = {};

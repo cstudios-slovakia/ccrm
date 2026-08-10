@@ -85,6 +85,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'send_test') {
         send_system_test_email($config, $recipient, $lang);
         echo json_encode(['success' => true]);
     } catch (Throwable $ex) {
+        // Deliberate exception: this action is admin-only and its whole purpose is
+        // diagnosing outbound mail, so the SMTP server's own message ("535
+        // authentication failed", "connection refused") is the useful answer.
+        if (function_exists('ccrm_log_exception')) {
+            ccrm_log_exception($ex);
+        }
         echo json_encode(['success' => false, 'error' => $ex->getMessage()]);
     }
     exit;
@@ -202,7 +208,18 @@ try {
     }
 } catch (Throwable $ex) {
     http_response_code(500);
-    echo json_encode(['success' => false, 'error' => $ex->getMessage()]);
+    // The deliberate `throw new Exception(...)` calls in this file carry messages
+    // meant for the user about their OWN mailbox ("IMAP connection failed",
+    // "message no longer in this folder"), so those are worth showing. Anything
+    // else is an internal PHP error whose message leaks file paths and internals.
+    $isUserFacing = ($ex instanceof Exception) && !($ex instanceof \ErrorException);
+    if (function_exists('ccrm_log_exception')) {
+        ccrm_log_exception($ex);
+    }
+    echo json_encode([
+        'success' => false,
+        'error'   => $isUserFacing ? $ex->getMessage() : 'The mail server request failed.',
+    ]);
 }
 
 function safe_utf8($str) {
@@ -229,23 +246,29 @@ function get_smtp_credentials($settings) {
 function get_imap_mailbox_string($settings, $folder = '') {
     $host = $settings['imapHost'];
     $port = $settings['imapPort'];
-    
+
+    // Validate the server certificate by default. Every connection used to carry
+    // /novalidate-cert, so anyone on the network path could present their own cert
+    // and collect the mailbox password plus the whole mailbox. Operators running an
+    // internal server with a self-signed cert can opt out per mailbox.
+    $certOpt = !empty($settings['imapAllowSelfSigned']) ? '/novalidate-cert' : '/validate-cert';
+
     $sec = isset($settings['imapSecure']) ? $settings['imapSecure'] : 'ssl';
-    $ssl = '/novalidate-cert';
+    $ssl = $certOpt;
     if ($sec === 'ssl' || $sec === true) {
-        $ssl = '/ssl/novalidate-cert';
+        $ssl = '/ssl' . $certOpt;
     } elseif ($sec === 'tls') {
-        $ssl = '/tls/novalidate-cert';
+        $ssl = '/tls' . $certOpt;
     }
-    
+
     // Autodetect MS Exchange URL or custom Exchange setup if provider is Exchange
     if ($settings['provider'] === 'exchange') {
         // Exchange autodiscover fallback configuration
         $host = !empty($settings['imapHost']) ? $settings['imapHost'] : 'outlook.office365.com';
         $port = '993';
-        $ssl = '/ssl/novalidate-cert';
+        $ssl = '/ssl' . $certOpt;
     }
-    
+
     return "{" . "$host:$port/imap$ssl" . "}$folder";
 }
 
@@ -317,10 +340,14 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
         throw new Exception('IMAP Connection failed: ' . imap_last_error());
     }
     
+    // NOTE: always search with SE_UID. Without it IMAP returns message sequence
+    // numbers, which shift every time a message is deleted, while the overview
+    // below is keyed by the stable UID - the two stop matching and messages get
+    // silently dropped from the listing.
     $uids = [];
     if (!empty($searchEmail)) {
-        $uidsFrom = imap_search($imapStream, 'FROM "' . $searchEmail . '"', SE_FREE);
-        $uidsTo = imap_search($imapStream, 'TO "' . $searchEmail . '"', SE_FREE);
+        $uidsFrom = imap_search($imapStream, 'FROM "' . $searchEmail . '"', SE_UID);
+        $uidsTo = imap_search($imapStream, 'TO "' . $searchEmail . '"', SE_UID);
         $uidsCombined = [];
         if (is_array($uidsFrom)) {
             $uidsCombined = array_merge($uidsCombined, $uidsFrom);
@@ -334,7 +361,7 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
         if ($filter === 'unread') {
             $criteria = 'UNSEEN';
         }
-        $uids = imap_search($imapStream, $criteria, SE_FREE);
+        $uids = imap_search($imapStream, $criteria, SE_UID);
     }
     $emails = [];
     $total = 0;
@@ -347,14 +374,19 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
     }
     
     if ($uids) {
+        $uids = array_map('intval', $uids);
         $total = count($uids);
-        rsort($uids); // Newest first
-        
+        rsort($uids, SORT_NUMERIC); // Newest first
+
         $startIdx = ($page - 1) * $limit;
         $sliceUids = array_slice($uids, $startIdx, $limit);
-        
+
         if (!empty($sliceUids)) {
-            $overview = imap_fetch_overview($imapStream, implode(',', $sliceUids), 0);
+            // FT_UID: the sequence above is a list of UIDs, not sequence numbers
+            $overview = imap_fetch_overview($imapStream, implode(',', $sliceUids), FT_UID);
+            if (!is_array($overview)) {
+                $overview = [];
+            }
             
             // Map headers to structured entities
             $emailsMap = [];
@@ -457,11 +489,13 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                     // Check if already in main DB's rag_emails
                     $checkRag = $mPdo->prepare("SELECT 1 FROM `rag_emails` WHERE `user_email` = ? AND `folder` = ? AND `email_uid` = ?");
                     $checkRag->execute([$uEmail, $folder, $o->uid]);
-                    if (!$checkRag->fetchColumn()) {
+                    // Skip caching when the UID no longer resolves rather than
+                    // risk storing another message's body under this UID
+                    $ragMsgNo = @imap_msgno($imapStream, $o->uid);
+                    if (!$checkRag->fetchColumn() && $ragMsgNo) {
                         // Fetch the body
-                        $msgNo = @imap_msgno($imapStream, $o->uid) ?: $o->uid;
-                        $bodyText = safe_utf8(fetch_email_body_text($imapStream, $msgNo));
-                        
+                        $bodyText = safe_utf8(fetch_email_body_text($imapStream, $ragMsgNo));
+
                         $subject = isset($o->subject) ? safe_utf8(imap_utf8($o->subject)) : '(No Subject)';
                         $sender = safe_utf8($fromHeader);
                         $recipient = safe_utf8($toHeader);
@@ -490,11 +524,16 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                 }
             }
             
-            // Retain sorting
+            // Retain sorting (newest first), then append anything the requested
+            // order did not cover so a key mismatch can never hide a message
             foreach ($sliceUids as $uid) {
                 if (isset($emailsMap[$uid])) {
                     $emails[] = $emailsMap[$uid];
+                    unset($emailsMap[$uid]);
                 }
+            }
+            foreach ($emailsMap as $leftover) {
+                $emails[] = $leftover;
             }
         }
     }
@@ -521,11 +560,14 @@ function fetch_imap_email_detail($settings, $folder, $uid) {
         throw new Exception('IMAP Detail Connection failed: ' . imap_last_error());
     }
     
+    // Never fall back to treating the UID as a sequence number - that silently
+    // opens a different message once the mailbox has had a deletion.
     $msgNo = @imap_msgno($imapStream, $uid);
     if (!$msgNo) {
-        $msgNo = $uid;
+        @imap_close($imapStream);
+        throw new Exception('This message is no longer in ' . $folder . ' (it may have been moved or deleted).');
     }
-    
+
     // Fetch body parts
     $html = '';
     $text = '';
@@ -542,7 +584,7 @@ function fetch_imap_email_detail($settings, $folder, $uid) {
                     foreach ($part->parts as $nestedPartNo => $nestedPart) {
                         $partStr = ($partNo + 1) . '.' . ($nestedPartNo + 1);
                         $body = imap_fetchbody($imapStream, $msgNo, $partStr);
-                        $body = decode_imap_body($body, $nestedPart->encoding);
+                        $body = decode_imap_body($body, $nestedPart->encoding, get_part_charset($nestedPart));
                         if (isset($nestedPart->subtype) && $nestedPart->subtype === 'HTML') {
                             $html = $body;
                         } elseif (isset($nestedPart->subtype) && $nestedPart->subtype === 'PLAIN') {
@@ -551,7 +593,7 @@ function fetch_imap_email_detail($settings, $folder, $uid) {
                     }
                 } else {
                     $body = imap_fetchbody($imapStream, $msgNo, (string)($partNo + 1));
-                    $body = decode_imap_body($body, $part->encoding);
+                    $body = decode_imap_body($body, $part->encoding, get_part_charset($part));
                     if (isset($part->subtype) && $part->subtype === 'HTML') {
                         $html = $body;
                     } elseif (isset($part->subtype) && $part->subtype === 'PLAIN') {
@@ -562,7 +604,7 @@ function fetch_imap_email_detail($settings, $folder, $uid) {
         } else {
             // Simple structure
             $body = imap_body($imapStream, $msgNo);
-            $body = decode_imap_body($body, $structure->encoding);
+            $body = decode_imap_body($body, $structure->encoding, get_part_charset($structure));
             if (isset($structure->subtype) && $structure->subtype === 'HTML') {
                 $html = $body;
             } else {
@@ -584,11 +626,31 @@ function fetch_imap_email_detail($settings, $folder, $uid) {
     ];
 }
 
-function decode_imap_body($body, $encoding) {
+function get_part_charset($part) {
+    if (isset($part->ifparameters) && $part->ifparameters && isset($part->parameters)) {
+        foreach ($part->parameters as $object) {
+            if (isset($object->attribute) && strcasecmp($object->attribute, 'charset') === 0) {
+                return $object->value;
+            }
+        }
+    }
+    return null;
+}
+
+function decode_imap_body($body, $encoding, $charset = null) {
     if ($encoding == 3) { // BASE64
-        return base64_decode($body);
+        $body = base64_decode($body);
     } elseif ($encoding == 4) { // QUOTED-PRINTABLE
-        return quoted_printable_decode($body);
+        $body = quoted_printable_decode($body);
+    }
+    if ($charset && strcasecmp($charset, 'UTF-8') !== 0 && strcasecmp($charset, 'US-ASCII') !== 0) {
+        $converted = @iconv($charset, 'UTF-8//IGNORE', $body);
+        if ($converted === false) {
+            $converted = @mb_convert_encoding($body, 'UTF-8', $charset);
+        }
+        if ($converted !== false) {
+            return $converted;
+        }
     }
     return $body;
 }
@@ -912,9 +974,10 @@ function serve_imap_attachment($settings, $folder, $uid, $partNum, $name) {
     
     $msgNo = @imap_msgno($imapStream, $uid);
     if (!$msgNo) {
-        $msgNo = $uid;
+        @imap_close($imapStream);
+        throw new Exception('This message is no longer in ' . $folder . ' (it may have been moved or deleted).');
     }
-    
+
     $structure = imap_fetchstructure($imapStream, $msgNo);
     // Find the part encoding
     $encoding = 0;
@@ -973,7 +1036,7 @@ function fetch_email_body_text($imapStream, $msgNo) {
                     foreach ($part->parts as $nestedPartNo => $nestedPart) {
                         $partStr = ($partNo + 1) . '.' . ($nestedPartNo + 1);
                         $body = @imap_fetchbody($imapStream, $msgNo, $partStr);
-                        $body = decode_imap_body($body, $nestedPart->encoding);
+                        $body = decode_imap_body($body, $nestedPart->encoding, get_part_charset($nestedPart));
                         if (isset($nestedPart->subtype) && $nestedPart->subtype === 'HTML') {
                             $html = $body;
                         } elseif (isset($nestedPart->subtype) && $nestedPart->subtype === 'PLAIN') {
@@ -982,7 +1045,7 @@ function fetch_email_body_text($imapStream, $msgNo) {
                     }
                 } else {
                     $body = @imap_fetchbody($imapStream, $msgNo, (string)($partNo + 1));
-                    $body = decode_imap_body($body, $part->encoding);
+                    $body = decode_imap_body($body, $part->encoding, get_part_charset($part));
                     if (isset($part->subtype) && $part->subtype === 'HTML') {
                         $html = $body;
                     } elseif (isset($part->subtype) && $part->subtype === 'PLAIN') {
@@ -992,7 +1055,7 @@ function fetch_email_body_text($imapStream, $msgNo) {
             }
         } else {
             $body = @imap_body($imapStream, $msgNo);
-            $body = decode_imap_body($body, $structure->encoding);
+            $body = decode_imap_body($body, $structure->encoding, get_part_charset($structure));
             if (isset($structure->subtype) && $structure->subtype === 'HTML') {
                 $html = $body;
             } else {
@@ -1011,6 +1074,16 @@ function fetch_email_body_text($imapStream, $msgNo) {
 }
 
 function save_imap_attachment_to_uploads($settings, $folder, $uid, $partNum, $name, $eventId) {
+    // The attachment name is caller-supplied (?name=) and the bytes come from an
+    // email anyone can send. Writing that pair into the web-served uploads/ folder
+    // without an extension check let an authenticated user drop an executable
+    // .php file into the docroot — remote code execution. Validate BEFORE any
+    // IMAP work so a rejected name costs nothing.
+    $safeName = ccrm_safe_upload_name((string)$name);
+    if ($safeName === null) {
+        return ['success' => false, 'error' => 'This attachment type cannot be saved to documents.'];
+    }
+
     $mailbox = get_imap_mailbox_string($settings, $folder);
     list($imapUser, $imapPass) = get_imap_credentials($settings);
     $imapStream = @imap_open($mailbox, $imapUser, $imapPass, 0, 1, ['DISABLE_AUTHENTICATOR' => 'GSSAPI']);
@@ -1020,9 +1093,10 @@ function save_imap_attachment_to_uploads($settings, $folder, $uid, $partNum, $na
     
     $msgNo = @imap_msgno($imapStream, $uid);
     if (!$msgNo) {
-        $msgNo = $uid;
+        @imap_close($imapStream);
+        return ['success' => false, 'error' => 'This message is no longer in ' . $folder . ' (it may have been moved or deleted).'];
     }
-    
+
     $structure = @imap_fetchstructure($imapStream, $msgNo);
     $encoding = 0;
     
@@ -1036,15 +1110,12 @@ function save_imap_attachment_to_uploads($settings, $folder, $uid, $partNum, $na
     
     @imap_close($imapStream);
     
-    $uploadDir = dirname(__DIR__) . '/uploads/';
-    if (!is_dir($uploadDir)) {
-        mkdir($uploadDir, 0775, true);
-    }
-    
-    $targetPath = $uploadDir . $eventId . '_' . basename($name);
+    $uploadDir = ccrm_uploads_dir();
+
+    $targetPath = $uploadDir . $eventId . '_' . $safeName;
     if (@file_put_contents($targetPath, $data) !== false) {
         $extractedText = '';
-        $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+        $ext = strtolower(pathinfo($safeName, PATHINFO_EXTENSION));
         if ($ext === 'txt') {
             $extractedText = $data;
         } elseif ($ext === 'docx') {
@@ -1095,10 +1166,13 @@ function save_imap_attachment_to_uploads($settings, $folder, $uid, $partNum, $na
 
         return [
             'success' => true,
-            'fileName' => basename($name),
+            // Report the name actually written, not the requested one, so the
+            // client's stored filePath matches what is on disk.
+            'fileName' => $safeName,
+            'filePath' => '/uploads/' . $eventId . '_' . $safeName,
             'extractedText' => $extractedText
         ];
     }
-    
+
     return ['success' => false, 'error' => 'Failed to save file on server.'];
 }

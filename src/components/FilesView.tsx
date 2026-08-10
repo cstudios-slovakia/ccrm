@@ -8,7 +8,7 @@ import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { formatBytes } from "../utils/formatBytes";
 import { formatMoney } from "../utils/currency";
-import { nowLocalStamp } from "../utils/localTime";
+import { nowLocalStamp, formatTimestampLocalized } from "../utils/localTime";
 
 interface QueuedFile {
   id: string;
@@ -590,7 +590,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
                       <td className="py-3.5 px-4 text-slate-700 font-black">
                         <div className="flex items-center gap-1">
                           <Clock className="h-3.5 w-3.5 text-amber-700" />
-                          <span>{file.uploadedAt}</span>
+                          <span>{formatTimestampLocalized(file.uploadedAt, systemLanguage)}</span>
                         </div>
                       </td>
 

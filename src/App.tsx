@@ -8,7 +8,9 @@ import { VERSION } from "./utils/version";
 import type { MeetingNote } from "./components/MeetingRoomView";
 import { getTranslation } from "./utils/translations";
 import { orderLeadStates } from "./utils/leadStates";
+import { resolveTaskViewAll } from "./utils/taskSelectors";
 import { InstallerWizard } from "./components/InstallerWizard";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { RefreshCw, AlertOctagon, Trash2, Copy } from "lucide-react";
 import { ShaderGradient, ShaderGradientCanvas } from "shadergradient";
 import { getStoredTheme, applyTheme } from "./utils/theme";
@@ -159,7 +161,17 @@ const diffRecords = (
   }
   const changed: any[] = [];
   for (const r of list) {
-    if (!r || r.id == null) continue;
+    if (!r) continue;
+    // A record with no id cannot be held in the baseline (which is keyed by id),
+    // so there is no way to tell whether it changed — it must always be sent.
+    // Skipping it, as this used to, silently dropped whole collections: user rows
+    // carry no id, so every profile edit (name, password, mailbox credentials, a
+    // newly added user) was diffed down to an empty array and never reached the
+    // server, while the UI happily showed it as saved until the next reload.
+    if (r.id == null) {
+      changed.push(r);
+      continue;
+    }
     const id = String(r.id);
     if (baseline.get(id) !== next.get(id)) changed.push(r);
   }
@@ -767,10 +779,10 @@ ${log.payload || ''}
   }, [activeTab, systemName, userLanguage, leads, customDashboards, unifiedEntries]);
   const taskAccess = (() => {
     if (!currentUser) {
-      return { view: false, create: false, edit: false, delete: false };
+      return { view: false, create: false, edit: false, delete: false, viewAll: false };
     }
     if (currentUser.role.toLowerCase() === "admin") {
-      return { view: true, create: true, edit: true, delete: true };
+      return { view: true, create: true, edit: true, delete: true, viewAll: true };
     }
     const role = roles.find((item) => item.name === currentUser.role);
     const permissions: Partial<RolePermission["permissions"]> = role?.permissions || {};
@@ -781,7 +793,15 @@ ${log.payload || ''}
       }
       return isProjectManager && projectManagerDefault;
     };
-    return { view: allowed("tasks.view", true), create: allowed("tasks.create", true), edit: allowed("tasks.edit", true), delete: permissions["tasks.delete"] === "edit" };
+    // Unlike the slugs above, seeing the team board is on by default and has to
+    // be revoked explicitly — see resolveTaskViewAll.
+    return {
+      view: allowed("tasks.view", true),
+      create: allowed("tasks.create", true),
+      edit: allowed("tasks.edit", true),
+      delete: permissions["tasks.delete"] === "edit",
+      viewAll: resolveTaskViewAll(permissions, false),
+    };
   })();
 
 
@@ -1136,12 +1156,15 @@ ${log.payload || ''}
     setUsers(prev => {
       const nextUsers = typeof newUsers === "function" ? newUsers(prev) : newUsers;
       pushStateToServer(undefined, undefined, undefined, undefined, nextUsers);
-      if (currentUser) {
-        const updatedMe = nextUsers.find(u => u.email === currentUser.email);
-        if (updatedMe) {
-          setCurrentUser(updatedMe);
-        }
-      }
+      // Keep the logged-in profile in step, but hand out a new object only when
+      // its own row actually changed — an unrelated user's edit must not reset
+      // everything that keys off the currentUser identity.
+      setCurrentUser(me => {
+        if (!me) return me;
+        const updatedMe = nextUsers.find(u => u.email === me.email);
+        if (!updatedMe || JSON.stringify(updatedMe) === JSON.stringify(me)) return me;
+        return updatedMe;
+      });
       return nextUsers;
     });
   };
@@ -1288,6 +1311,23 @@ ${log.payload || ''}
     const applyServerData = (data: any) => {
       setIsInstalled(true);
       setIsDemoMode(data.demoMode === true);
+      // Not a real read: with DEMO_MODE on, an unauthenticated GET answers 200
+      // with just the login picker instead of a 401, so a session that dies
+      // mid-use lands here rather than in the 401 branch. Everything below would
+      // treat that as "the server holds nothing" — blanking the dataset on screen
+      // and re-anchoring the delta baseline to empty. Take only what the login
+      // screen needs and stop.
+      if (data.authenticated === false) {
+        if (Array.isArray(data.users)) setUsers(data.users);
+        const s = data.settings;
+        if (s) {
+          if (s.systemName && s.systemName !== systemName) setSystemName(s.systemName);
+          if (s.systemLanguage && s.systemLanguage !== systemLanguage) setSystemLanguage(s.systemLanguage);
+          if (s.systemCurrency !== undefined && s.systemCurrency !== systemCurrency) setSystemCurrency(s.systemCurrency || "");
+        }
+        setCurrentUser(null);
+        return;
+      }
       if (typeof data.serverTime === "string") {
         baseSyncedAtRef.current = data.serverTime;
       }
@@ -1299,22 +1339,25 @@ ${log.payload || ''}
       }
       if (data.users && Array.isArray(data.users)) {
         setUsers((prev) => JSON.stringify(prev) === JSON.stringify(data.users) ? prev : data.users);
-        if (currentUser) {
-          const updatedMe = data.users.find((u: UserProfile) => u.email === currentUser.email);
-          if (updatedMe) {
-            const getNormUser = (u: UserProfile) => {
-              const meta = typeof u.metadata_json === "string"
-                ? JSON.parse(u.metadata_json || "{}")
-                : (u.metadata_json || {});
-              return { ...u, metadata_json: meta };
-            };
-            const normUpdatedMe = getNormUser(updatedMe);
-            const normCurrentUser = getNormUser(currentUser);
-            if (JSON.stringify(normUpdatedMe) !== JSON.stringify(normCurrentUser)) {
-              setCurrentUser(updatedMe);
-            }
-          }
-        }
+        // Compare against the CURRENT user via the updater, not the one captured
+        // in this closure: the closure is only refreshed when the logged-in email
+        // changes, so comparing against it kept reporting "changed" and handed
+        // out a new object on every single pull. Anything keyed on the currentUser
+        // identity (personal settings, the language effect, the mail poller) then
+        // reset itself every few seconds — which wiped forms while typing.
+        setCurrentUser((prev) => {
+          if (!prev) return prev;
+          const updatedMe = data.users.find((u: UserProfile) => u.email === prev.email);
+          if (!updatedMe) return prev;
+          const getNormUser = (u: UserProfile) => {
+            const meta = typeof u.metadata_json === "string"
+              ? JSON.parse(u.metadata_json || "{}")
+              : (u.metadata_json || {});
+            return { ...u, metadata_json: meta };
+          };
+          if (JSON.stringify(getNormUser(updatedMe)) === JSON.stringify(getNormUser(prev))) return prev;
+          return updatedMe;
+        });
       }
       if (data.db_info) {
         setDbInfo(data.db_info);
@@ -1457,6 +1500,14 @@ ${log.payload || ''}
           }
           if (!probeRes.ok) return;
           const probe = await probeRes.json();
+          // Under DEMO_MODE a dead session answers 200, not 401 (see
+          // applyServerData). Without this the logout only surfaces on the next
+          // forced full pull, up to a minute later.
+          if (probe && probe.authenticated === false) {
+            setIsInstalled(true);
+            setCurrentUser(null);
+            return;
+          }
           if (activePushesRef.current > 0 || pollStartTime < lastPushTimeRef.current || Date.now() - lastPushTimeRef.current < 4000) {
             return;
           }
@@ -2157,9 +2208,16 @@ ${log.payload || ''}
           
           <main className="flex-1 p-4 md:p-6 overflow-y-auto max-w-[1600px] mx-auto w-full relative flex flex-col justify-between">
             <div className="shrink-0 w-full">
-              <Suspense fallback={<div className="w-full flex items-center justify-center py-24"><RefreshCw className="w-6 h-6 text-indigo-400 animate-spin" /></div>}>
-                {renderWorkspaceView()}
-              </Suspense>
+              {/* Per-view boundary: a render error in one module (a single CRM tab)
+                  used to escape to the root boundary and take the whole app down,
+                  leaving a reload as the only way back. Contained here, the sidebar,
+                  header and every other tab keep working, and switching tabs clears
+                  the error via resetKey. */}
+              <ErrorBoundary contained resetKey={activeTab}>
+                <Suspense fallback={<div className="w-full flex items-center justify-center py-24"><RefreshCw className="w-6 h-6 text-indigo-400 animate-spin" /></div>}>
+                  {renderWorkspaceView()}
+                </Suspense>
+              </ErrorBoundary>
             </div>
             <footer className="mt-12 pt-4 border-t border-slate-200/50 flex justify-between items-center text-[10px] text-slate-400 select-none font-semibold uppercase tracking-wider">
               <span>{systemName} CRM &bull; Active Node</span>

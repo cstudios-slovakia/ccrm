@@ -5,18 +5,53 @@ export interface ClientAddress {
   country: string;
 }
 
+// Business-document event types. They behave like `offer` (a note plus one or
+// more attached documents) but name the actual paperwork being filed against
+// the lead.
+export const DOCUMENT_EVENT_TYPES = [
+  "order",            // OBJEDNÁVKA
+  "proforma_invoice", // ZÁLOHOVÁ FAKTÚRA
+  "advance_receipt",  // DOKLAD O PRIJATOM PREDDAVKU
+  "invoice",          // FAKTÚRA
+  "delivery_note",    // DODACÍ LIST
+] as const;
+
+export type DocumentEventType = (typeof DOCUMENT_EVENT_TYPES)[number];
+
+// Note: `TimelineEventType` is already taken by the project-type configuration
+// entity further down, so the lead timeline's own discriminator is named
+// LeadEventType.
+export type LeadEventType =
+  | "phone"
+  | "email"
+  | "note"
+  | "offer"
+  | "appointment"
+  | DocumentEventType;
+
+// One file attached to a timeline event. Events can carry several (e.g. a batch
+// of advance invoices logged in one go).
+export interface TimelineAttachment {
+  name: string;
+  size?: string; // human readable, e.g. "1.5 MB"
+  path?: string; // server-returned path, e.g. "/uploads/ev-123_doc.pdf"
+}
+
 export interface TimelineEvent {
   id: string;
-  type: "phone" | "email" | "note" | "offer" | "appointment";
+  type: LeadEventType;
   timestamp: string; // YYYY-MM-DD HH:MM
   title: string;
   content: string;
   amount?: number; // for offers
   extraTime?: string; // for appointments
-  fileName?: string; // name of attached file
+  fileName?: string; // name of attached file — first attachment (legacy single-file field)
   fileSize?: string; // size of attached file e.g. "1.5 MB"
   fileType?: "offer" | "contract" | "invoice";
   filePath?: string; // server-returned path to the attached file, e.g. "/uploads/ev-123_doc.pdf"
+  // Every attached document. The fileName/fileSize/filePath trio above mirrors
+  // the first entry so events written before this existed still render.
+  attachments?: TimelineAttachment[];
   isOutgoing?: boolean;
   audioFile?: string; // path to audio recording file
   transcription?: string; // RAG or speech-to-text transcript
@@ -69,6 +104,10 @@ export interface Lead {
   
   // Lead Interested Categories
   categories?: string[];
+
+  // Free-text description of what the client is interested in / the problem to
+  // be solved. Captured on the "add new lead" form and editable afterwards.
+  interestNote?: string;
 
   // Lead Referral (links to another Lead/Client ID)
   referralLeadId?: string;
@@ -208,6 +247,10 @@ export interface UserActivityLog {
 }
 
 export interface UserProfile {
+  // Server-assigned row id (a hash of the e-mail). Absent on records created in
+  // the browser until they have been synced back; the delta sync relies on it to
+  // tell an edited row from an untouched one.
+  id?: string;
   name: string;
   email: string;
   password?: string;

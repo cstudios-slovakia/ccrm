@@ -2,8 +2,10 @@
 /**
  * Live state sync endpoint.
  *
- * GET  — public read of CRM state used to bootstrap the SPA. It NEVER returns
- *        password material (see "Fetch Users" below).
+ * GET  — read of CRM state used to bootstrap the SPA. Requires an authenticated
+ *        session (the only exception is DEMO_MODE, which returns just the user
+ *        list for the demo login picker). It NEVER returns password material
+ *        (see "Fetch Users" below).
  * POST — mutating sync; requires an authenticated session (see api/login.php).
  *
  * Schema/migrations come from the shared api/schema.php (single source of truth).
@@ -122,6 +124,34 @@ function ccrm_date_only($val) {
 }
 
 // Helper to check if an incoming lead payload is identical to its database record
+/**
+ * Timeline event types that can carry attached documents: the original `offer`
+ * plus the business-document types (order, proforma invoice, advance receipt,
+ * invoice, delivery note).
+ */
+function ccrm_document_event_types() {
+    return ['offer', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note'];
+}
+
+/**
+ * Normalize an event's attachment list to a compact, comparable JSON string
+ * (or null when there is nothing attached), so the identity check and the write
+ * path agree on what "unchanged" means.
+ */
+function ccrm_encode_attachments($attachments) {
+    if (!is_array($attachments) || !$attachments) return null;
+    $clean = [];
+    foreach ($attachments as $a) {
+        if (!is_array($a) || !isset($a['name']) || $a['name'] === '') continue;
+        $clean[] = [
+            'name' => (string)$a['name'],
+            'size' => isset($a['size']) ? (string)$a['size'] : '',
+            'path' => isset($a['path']) ? (string)$a['path'] : '',
+        ];
+    }
+    return $clean ? json_encode($clean, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE) : null;
+}
+
 function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
     if (!$db) return false;
     
@@ -147,6 +177,8 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
         'country' => $inc['address']['country'] ?? 'Slovakia',
         'ai_summary' => $inc['aiSummary'] ?? null,
         'ai_summary_fingerprint' => $inc['aiSummaryFingerprint'] ?? null,
+        'interest_note' => $inc['interestNote'] ?? null,
+        'referral_lead_id' => $inc['referralLeadId'] ?? null,
         'establishment_date' => $inc['establishmentDate'] ?? null,
         'legal_form' => $inc['legalForm'] ?? null,
         'sk_nace' => $inc['skNace'] ?? null,
@@ -214,6 +246,7 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
             'file_name' => $te['fileName'] ?? null,
             'file_size' => $te['fileSize'] ?? null,
             'file_type' => $te['fileType'] ?? null,
+            'attachments_json' => ccrm_encode_attachments($te['attachments'] ?? null),
             'extra_time' => $te['extraTime'] ?? $te['extra_time'] ?? null
         ];
         
@@ -344,6 +377,64 @@ function ccrm_explicit_deleted_ids(array $deleted, string $entity): array {
     return array_values(array_unique($out));
 }
 
+/**
+ * The mass-deletion circuit breaker, on its own so every delete-by-omission site
+ * can use it — not just ccrm_delete_omitted().
+ *
+ * Returns the ids that may safely be deleted: either the full list, or an empty
+ * one when the request looks like an empty/stale client push. Tables whose
+ * deletion is irreversible (project_types DROPs its dynamic data tables) pass
+ * $strict so even an N-1 wipe is refused.
+ */
+function ccrm_filter_mass_delete(PDO $pdo, string $table, array $toDelete, bool $strict = false): array {
+    if (empty($toDelete)) {
+        return [];
+    }
+
+    // Refuse to delete-by-omission a large share of a table in one request. An
+    // empty/stale client push makes array_diff() mark most or all rows for
+    // deletion; without this guard that silently wipes the table (leads cascade
+    // to categories + timeline). Ordinary small deletions — the real use case —
+    // stay below the threshold and pass through untouched. When tripped we keep
+    // the data and log instead of destroying it; the client re-pulls the rows on
+    // its next GET.
+    $deleteCount = count($toDelete);
+    try {
+        $serverTotal = (int) $pdo->query("SELECT COUNT(*) FROM `{$table}`")->fetchColumn();
+    } catch (\Throwable $e) {
+        // Cannot size the table, so cannot prove the delete is safe. Keep the data.
+        error_log('[ccrm] BLOCKED delete-by-omission on `' . $table . '`: row count failed — ' . $e->getMessage());
+        return [];
+    }
+
+    // (a) Never delete EVERY remaining row of a table by omission — that is only
+    //     ever an empty/stale push, never a legitimate edit. Applies to every
+    //     table regardless of size, so even a 1- or 2-row table can't be emptied.
+    $wouldEmptyTable = ($serverTotal > 0 && $deleteCount >= $serverTotal);
+
+    // (b) Refuse to delete a large FRACTION of a table in one request. Ordinary
+    //     data tables keep a small absolute-row floor so everyday little
+    //     deletions still pass. In $strict mode — access-critical or irreversible
+    //     tables such as `users` and `project_types`, where the sync may keep the
+    //     calling account so a full wipe tops out at N-1 rows and never reaches
+    //     100% — the floor drops to 1, so the 4-of-5 users wipe that slipped under
+    //     the row floor is now caught.
+    $minRows = $strict ? 1 : CCRM_MASS_DELETE_MIN_ROWS;
+    $massFraction = ($serverTotal > 0
+        && $deleteCount >= $minRows
+        && ($deleteCount / $serverTotal) >= CCRM_MASS_DELETE_FRACTION);
+
+    if ($wouldEmptyTable || $massFraction) {
+        error_log(sprintf(
+            '[ccrm] BLOCKED delete-by-omission on `%s`: %d of %d rows (%.0f%%%s) — likely an empty/stale client push; no rows deleted.',
+            $table, $deleteCount, $serverTotal, 100 * $deleteCount / max(1, $serverTotal), $strict ? ', strict' : ''
+        ));
+        return [];
+    }
+
+    return $toDelete;
+}
+
 function ccrm_delete_omitted(PDO $pdo, string $table, array $idsToDelete, ?string $baseSyncedAt, array $skipIds = [], bool $strict = false): void {
     if (empty($idsToDelete)) {
         return;
@@ -357,41 +448,9 @@ function ccrm_delete_omitted(PDO $pdo, string $table, array $idsToDelete, ?strin
             $toDelete[] = $id;
         }
     }
+
+    $toDelete = ccrm_filter_mass_delete($pdo, $table, $toDelete, $strict);
     if (empty($toDelete)) {
-        return;
-    }
-
-    // Circuit breaker: refuse to delete-by-omission a large share of a table in
-    // one request. An empty/stale client push makes array_diff() mark most or
-    // all rows for deletion; without this guard that silently wipes the table
-    // (leads cascade to categories + timeline). Ordinary small deletions — the
-    // real use case — stay below the threshold and pass through untouched. When
-    // tripped we keep the data and log instead of destroying it; the client
-    // re-pulls the rows on its next GET.
-    $deleteCount = count($toDelete);
-    $serverTotal = (int) $pdo->query("SELECT COUNT(*) FROM `{$table}`")->fetchColumn();
-
-    // (a) Never delete EVERY remaining row of a table by omission — that is only
-    //     ever an empty/stale push, never a legitimate edit. Applies to every
-    //     table regardless of size, so even a 1- or 2-row table can't be emptied.
-    $wouldEmptyTable = ($serverTotal > 0 && $deleteCount >= $serverTotal);
-
-    // (b) Refuse to delete a large FRACTION of a table in one request. Ordinary
-    //     data tables keep a small absolute-row floor so everyday little
-    //     deletions still pass. In $strict mode — access-critical tables such as
-    //     `users`, where the sync always keeps the calling account so a full wipe
-    //     tops out at N-1 rows and never reaches 100% — the floor drops to 1, so
-    //     the 4-of-5 users wipe that slipped under the row floor is now caught.
-    $minRows = $strict ? 1 : CCRM_MASS_DELETE_MIN_ROWS;
-    $massFraction = ($serverTotal > 0
-        && $deleteCount >= $minRows
-        && ($deleteCount / $serverTotal) >= CCRM_MASS_DELETE_FRACTION);
-
-    if ($wouldEmptyTable || $massFraction) {
-        error_log(sprintf(
-            '[ccrm] BLOCKED delete-by-omission on `%s`: %d of %d rows (%.0f%%%s) — likely an empty/stale client push; no rows deleted.',
-            $table, $deleteCount, $serverTotal, 100 * $deleteCount / max(1, $serverTotal), $strict ? ', strict' : ''
-        ));
         return;
     }
 
@@ -433,20 +492,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'avatar' => $row['avatar'] ?? null,
                 ];
             }
+            // Only what the login screen itself needs: the demo user picker and
+            // enough branding to render it.
+            //
+            // This response used to also carry `leads`, `tasks`, `roles` and every
+            // other collection as an empty array. That is indistinguishable from
+            // "the database is empty" to a client that is already logged in and
+            // holding real data: when a session died mid-session, this 200 (not a
+            // 401) flowed straight into applyServerData and blanked the dataset on
+            // screen, then re-anchored the delta baseline to empty so the next push
+            // would have listed every record as deleted. Sending no collection at
+            // all is the safe shape — every consumer skips a key that isn't there.
             echo json_encode([
                 'installed' => true,
+                'authenticated' => false,
                 'demoMode' => true,
                 'dataVersion' => $dataVersion,
                 'users' => $users,
-                'leads' => [],
-                'tasks' => [],
-                'roles' => [],
-                'meetingNotes' => [],
-                'unifiedEntries' => [],
-                'unifiedEntriesData' => [],
-                'customDashboards' => [],
-                'projectTypes' => [],
-                'projects' => [],
                 'settings' => [
                     'systemName' => $settings['SYSTEM_NAME'] ?? 'CCRM',
                     'systemLanguage' => $settings['SYSTEM_LANGUAGE'] ?? 'sk',
@@ -497,9 +559,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         ];
         if ($te['type'] === 'offer') {
             $event['amount'] = floatval($te['amount']);
+        }
+        // Offers and the business-document types (order, proforma invoice,
+        // advance receipt, invoice, delivery note) all carry paperwork.
+        if (in_array($te['type'], ccrm_document_event_types(), true)) {
             $event['fileName'] = $te['file_name'];
             $event['fileSize'] = $te['file_size'];
             $event['fileType'] = $te['file_type'];
+            $attachments = (isset($te['attachments_json']) && $te['attachments_json'] !== '' && $te['attachments_json'] !== null)
+                ? json_decode($te['attachments_json'], true)
+                : null;
+            if (is_array($attachments) && $attachments) {
+                $event['attachments'] = $attachments;
+            }
         }
         if ($te['type'] === 'appointment') {
             $event['extraTime'] = $te['extra_time'];
@@ -543,6 +615,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'timeline' => $timeline,
             'aiSummary' => $row['ai_summary'] ?? '',
             'aiSummaryFingerprint' => $row['ai_summary_fingerprint'] ?? '',
+            'interestNote' => $row['interest_note'] ?? '',
+            'referralLeadId' => $row['referral_lead_id'] ?? '',
             'establishmentDate' => $row['establishment_date'] ?? '',
             'legalForm' => $row['legal_form'] ?? '',
             'skNace' => $row['sk_nace'] ?? '',
@@ -584,6 +658,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'relatedLeadId' => $row['related_lead_id'] ?? null,
             'isLocking' => intval($row['is_locking']) === 1,
             'archived' => intval($row['archived'] ?? 0) === 1,
+            'completedBy' => $row['completed_by'] ?? null,
+            'completedAt' => $row['completed_at'] ?? null,
             'assignedUsers' => $assignedUsers
         ];
     }
@@ -595,6 +671,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $users = [];
     while ($row = $usersStmt->fetch()) {
         $users[] = [
+            // Sent so the client's delta sync can track user rows like every other
+            // collection (it keys its baseline by id). Not a secret: the id is a
+            // deterministic hash of the e-mail address, which clients already see.
             'id' => $row['id'],
             'name' => $row['name'],
             'email' => $row['email'],
@@ -964,6 +1043,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
     echo json_encode([
         'installed' => true,
+        // Lets the client tell a real read apart from the unauthenticated
+        // demo-login payload above, which carries no CRM data.
+        'authenticated' => true,
         'demoMode' => $isDemoMode,
         // Highest POST protocol this build understands. The client MUST see this
         // before it may send a delta payload: an older sync.php has no idea what
@@ -1092,6 +1174,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $sessionNameStmt = $pdo->prepare("SELECT `name` FROM `users` WHERE `id` = ? LIMIT 1");
     $sessionNameStmt->execute([$sessionUser['id']]);
     $sessionUserName = (string)($sessionNameStmt->fetchColumn() ?: '');
+
+    // Dynamic tables belonging to deleted project types. DDL implicitly commits in
+    // MySQL, so these are collected during the transaction and executed after it.
+    $deferredTableDrops = [];
 
     try {
         // Ensure dynamic unified-entry table schemas BEFORE opening the
@@ -1438,8 +1524,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 //  - brand-new users with no password get an unusable random hash
                 //    (admin must set one) rather than a predictable default.
                 $incoming = isset($u['password']) ? trim((string)$u['password']) : '';
+                $passwordChanged = false;
                 if ($incoming !== '') {
                     $hash = ccrm_hash_password($incoming);
+                    // Only a genuinely new password counts: the client may echo back
+                    // the stored hash unchanged, and that must not log anyone out.
+                    $passwordChanged = isset($existingHashes[$userId])
+                        && $existingHashes[$userId] !== ''
+                        && $hash !== $existingHashes[$userId]
+                        && !ccrm_is_hash($incoming);
                 } elseif (isset($existingHashes[$userId]) && $existingHashes[$userId] !== '') {
                     $hash = $existingHashes[$userId];
                 } else {
@@ -1456,6 +1549,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $u['color'] ?? '#3b82f6',
                     $metaJson
                 ]);
+
+                // A new password retires every session that the old one could reach,
+                // except the one making this change (which just proved it knows the
+                // new password by setting it).
+                if ($passwordChanged && $userId !== ($sessionUser['id'] ?? '')) {
+                    ccrm_invalidate_user_sessions($pdo, $userId);
+                    ccrm_audit_log($pdo, $sessionUser, 'user.password_change', (string)$u['email']);
+                }
+
                 $processedUserIds[] = $userId;
             }
 
@@ -1496,24 +1598,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ]);
                 $processedPtIds[] = $pt['id'];
             }
-            // Deletion of Project Types
+            // Deletion of Project Types.
+            //
+            // This is the most destructive delete-by-omission in the file: removing a
+            // project type also DROPs its proj_data_/proj_timeline_/proj_gantt_ tables,
+            // which is unrecoverable. It used to run straight from array_diff() with no
+            // circuit breaker, so a v1 client that pushed before its state finished
+            // loading (projectTypes: []) would drop every project type AND every
+            // project's data tables — the same shape as the 2026-07-06 incident.
+            // Gate it on the same guard every other table uses.
             $ptToDelete = $isDeltaSync
                 ? $deletionsFor('projectTypes', $existingPtIds)
                 : array_diff($existingPtIds, $processedPtIds);
+            $ptToDelete = ccrm_filter_mass_delete($pdo, 'project_types', $ptToDelete, true);
             if (!empty($ptToDelete)) {
                 $delPt = $pdo->prepare("DELETE FROM `project_types` WHERE `id` = ?");
                 foreach ($ptToDelete as $ptId) {
                     $delPt->execute([$ptId]);
-                    // Drop dynamic tables (will implicitly commit, but that's fine if it's during deletion which is rare)
+                    // Queue the dynamic-table DROPs for AFTER the commit. Running DDL
+                    // here implicitly commits the transaction in MySQL, so the final
+                    // commit() then threw "There is no active transaction" and the whole
+                    // push reported a 500 even though the rows had been written — and
+                    // every earlier write in the request lost its rollback. Deferring
+                    // keeps the transaction intact; the tables are orphaned rather than
+                    // dropped if the transaction is rolled back, which is recoverable
+                    // (dropping them is not).
                     $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($ptId));
-                    $pdo->exec("DROP TABLE IF EXISTS `proj_data_{$safeId}`");
-                    $pdo->exec("DROP TABLE IF EXISTS `proj_timeline_{$safeId}`");
-                    $pdo->exec("DROP TABLE IF EXISTS `proj_gantt_{$safeId}`");
-                    if (isset($ragPdo) && $ragPdo) {
-                        try { $ragPdo->exec("DROP TABLE IF EXISTS `proj_data_{$safeId}`"); } catch(\Exception $e) {}
-                        try { $ragPdo->exec("DROP TABLE IF EXISTS `proj_timeline_{$safeId}`"); } catch(\Exception $e) {}
-                        try { $ragPdo->exec("DROP TABLE IF EXISTS `proj_gantt_{$safeId}`"); } catch(\Exception $e) {}
-                    }
+                    $deferredTableDrops[] = "proj_data_{$safeId}";
+                    $deferredTableDrops[] = "proj_timeline_{$safeId}";
+                    $deferredTableDrops[] = "proj_gantt_{$safeId}";
                 }
             }
         }
@@ -1523,14 +1636,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $processedProjIds = [];
 
             $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `lead_id`, `client_id`, `status`) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`)");
-            
-            $pdo->exec("DELETE FROM `project_managers`"); // Simple sync: wipe and insert
+
+            // Manager assignments are replaced per project, never globally. The old
+            // unconditional `DELETE FROM project_managers` assumed every push carried
+            // a complete snapshot of every project — which stopped being true when the
+            // delta protocol landed. A v2 client sends only the projects that changed
+            // (and an empty list when none did), so that statement silently dropped the
+            // managers of every project the payload did not happen to mention. Verified
+            // reproducible before this change.
+            $delMgr = $pdo->prepare("DELETE FROM `project_managers` WHERE `project_id` = ?");
             $insMgr = $pdo->prepare("INSERT IGNORE INTO `project_managers` (`project_id`, `user_id`) VALUES (?, ?)");
 
             foreach ($payload['projects'] as $p) {
                 if (!isset($p['id']) || !isset($p['projectTypeId'])) continue;
                 $projId = $p['id'];
-                
+
                 $insProj->execute([
                     $projId,
                     $p['projectTypeId'],
@@ -1538,9 +1658,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     empty($p['clientId']) ? null : $p['clientId'],
                     $p['status'] ?? 'active'
                 ]);
-                
-                foreach ($p['managers'] ?? [] as $uid) {
-                    $insMgr->execute([$projId, $uid]);
+
+                // Only rewrite this project's managers when the payload actually carries
+                // the list. An omitted `managers` key means "unchanged", not "none".
+                if (array_key_exists('managers', $p) && is_array($p['managers'])) {
+                    $delMgr->execute([$projId]);
+                    foreach ($p['managers'] as $uid) {
+                        $insMgr->execute([$projId, $uid]);
+                    }
                 }
 
                 $processedProjIds[] = $projId;
@@ -1633,10 +1758,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            // Deletion of Projects
+            // Deletion of Projects. Cascades to every proj_data_/proj_timeline_/
+            // proj_gantt_ row for the project, so it gets the same circuit breaker
+            // as the other tables rather than deleting straight from array_diff().
             $projToDelete = $isDeltaSync
                 ? $deletionsFor('projects', $existingProjIds)
                 : array_diff($existingProjIds, $processedProjIds);
+            $projToDelete = ccrm_filter_mass_delete($pdo, 'projects', $projToDelete);
             if (!empty($projToDelete)) {
                 $delProj = $pdo->prepare("DELETE FROM `projects` WHERE `id` = ?");
                 foreach ($projToDelete as $pid) {
@@ -1685,14 +1813,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $insLead = $pdo->prepare("INSERT INTO `leads` (
               `id`, `name`, `city`, `client_type`, `status`, `source`, `owner`, `value`, `rating`, `phone`, `email`, 
               `company_id`, `tax_id`, `vat_id`, `contact_person`, `website`, `street`, `postal_code`, `country`, 
-              `ai_summary`, `ai_summary_fingerprint`, 
+              `ai_summary`, `ai_summary_fingerprint`, `interest_note`, `referral_lead_id`,
               `establishment_date`, `legal_form`, `sk_nace`, `organization_size`, `ownership_type`, `data_source`, `dissolution_date`, `region`, `district`, `financial_summary`,
               `vat_validation_result`,
               `created_at`,
               `follow_ups`
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
-              `name` = VALUES(`name`), `city` = VALUES(`city`), `client_type` = VALUES(`client_type`), `status` = VALUES(`status`), `source` = VALUES(`source`), `owner` = VALUES(`owner`), `value` = VALUES(`value`), `rating` = VALUES(`rating`), `phone` = VALUES(`phone`), `email` = VALUES(`email`), `company_id` = VALUES(`company_id`), `tax_id` = VALUES(`tax_id`), `vat_id` = VALUES(`vat_id`), `contact_person` = VALUES(`contact_person`), `website` = VALUES(`website`), `street` = VALUES(`street`), `postal_code` = VALUES(`postal_code`), `country` = VALUES(`country`), `ai_summary` = VALUES(`ai_summary`), `ai_summary_fingerprint` = VALUES(`ai_summary_fingerprint`),
+              `name` = VALUES(`name`), `city` = VALUES(`city`), `client_type` = VALUES(`client_type`), `status` = VALUES(`status`), `source` = VALUES(`source`), `owner` = VALUES(`owner`), `value` = VALUES(`value`), `rating` = VALUES(`rating`), `phone` = VALUES(`phone`), `email` = VALUES(`email`), `company_id` = VALUES(`company_id`), `tax_id` = VALUES(`tax_id`), `vat_id` = VALUES(`vat_id`), `contact_person` = VALUES(`contact_person`), `website` = VALUES(`website`), `street` = VALUES(`street`), `postal_code` = VALUES(`postal_code`), `country` = VALUES(`country`), `ai_summary` = VALUES(`ai_summary`), `ai_summary_fingerprint` = VALUES(`ai_summary_fingerprint`), `interest_note` = VALUES(`interest_note`), `referral_lead_id` = VALUES(`referral_lead_id`),
               `establishment_date` = VALUES(`establishment_date`), `legal_form` = VALUES(`legal_form`), `sk_nace` = VALUES(`sk_nace`), `organization_size` = VALUES(`organization_size`), `ownership_type` = VALUES(`ownership_type`), `data_source` = VALUES(`data_source`), `dissolution_date` = VALUES(`dissolution_date`), `region` = VALUES(`region`), `district` = VALUES(`district`),
               `vat_validation_result` = VALUES(`vat_validation_result`),
               `follow_ups` = VALUES(`follow_ups`)");
@@ -1752,6 +1880,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $address['country'] ?? 'Slovakia',
                     $l['aiSummary'] ?? null,
                     $l['aiSummaryFingerprint'] ?? null,
+                    $l['interestNote'] ?? null,
+                    $l['referralLeadId'] ?? null,
                     $l['establishmentDate'] ?? null,
                     $l['legalForm'] ?? null,
                     $l['skNace'] ?? null,
@@ -1834,7 +1964,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $delTimeline->execute([$leadId]);
 
                 if (isset($l['timeline']) && is_array($l['timeline'])) {
-                    $insTimeline = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`, `amount`, `file_name`, `file_size`, `file_type`, `extra_time`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                    $insTimeline = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`, `amount`, `file_name`, `file_size`, `file_type`, `attachments_json`, `extra_time`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                    $allowedEventTypes = ['phone', 'email', 'note', 'offer', 'appointment', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note'];
                     foreach ($l['timeline'] as $te) {
                         $teId = $te['id'] ?? ('ev-' . uniqid());
                         if (strpos($teId, 'email-') === 0) {
@@ -1858,10 +1989,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         if (function_exists('mb_substr')) { $teTitle = mb_substr($teTitle, 0, 255, 'UTF-8'); }
                         $teContent = ccrm_sanitize_db_text($te['content'] ?? null, 63000);
 
+                        // An unknown type would be truncated to '' by MySQL (or abort
+                        // the whole transaction under strict mode), so anything not in
+                        // the ENUM is filed as a plain note rather than killing the sync.
+                        $teType = $te['type'] ?? 'note';
+                        if (!in_array($teType, $allowedEventTypes, true)) {
+                            $teType = 'note';
+                        }
+
                         $teParams = [
                             $teId,
                             $leadId,
-                            $te['type'] ?? 'note',
+                            $teType,
                             $timestamp,
                             $teTitle,
                             $teContent,
@@ -1869,6 +2008,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $te['fileName'] ?? null,
                             $te['fileSize'] ?? null,
                             $te['fileType'] ?? null,
+                            ccrm_encode_attachments($te['attachments'] ?? null),
                             $te['extraTime'] ?? $te['extra_time'] ?? null
                         ];
 
@@ -1928,7 +2068,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingTaskIds = array_keys($dbTasks);
             $processedTaskIds = [];
 
-            $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `is_locking`, `archived`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`)");
+            // completed_by/completed_at are in the UPDATE list on purpose: reopening a
+            // task ("Restore" in the archive) sends them back as null and must clear
+            // the stored attribution, not keep the stale one.
+            $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `is_locking`, `archived`, `completed_by`, `completed_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`), `completed_by` = VALUES(`completed_by`), `completed_at` = VALUES(`completed_at`)");
 
             foreach ($payload['tasks'] as $t) {
                 // Skip malformed items rather than aborting the whole sync.
@@ -1967,7 +2110,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $sessionUserName !== '' ? $sessionUserName : null,
                     $t['relatedLeadId'] ?? null,
                     ($t['isLocking'] ?? false) ? 1 : 0,
-                    ($t['archived'] ?? false) ? 1 : 0
+                    ($t['archived'] ?? false) ? 1 : 0,
+                    (isset($t['completedBy']) && $t['completedBy'] !== '') ? $t['completedBy'] : null,
+                    (isset($t['completedAt']) && $t['completedAt'] !== '') ? substr($t['completedAt'], 0, 16) : null
                 ]);
                 $processedTaskIds[] = $taskId;
 
@@ -2310,6 +2455,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
         }
 
+        // Now that the transaction is closed, drop the dynamic tables of any project
+        // type this push deleted. Best-effort: an orphaned table is harmless, and a
+        // failure here must not turn a committed sync into an error for the client.
+        foreach ($deferredTableDrops as $dropTable) {
+            try { $pdo->exec("DROP TABLE IF EXISTS `{$dropTable}`"); } catch (\Throwable $e) {
+                error_log('[ccrm sync] could not drop `' . $dropTable . '`: ' . $e->getMessage());
+            }
+            if (isset($ragPdo) && $ragPdo) {
+                try { $ragPdo->exec("DROP TABLE IF EXISTS `{$dropTable}`"); } catch (\Throwable $e) {}
+            }
+        }
+
         // Report the post-commit content version so the client can immediately
         // sync its local `dataVersion` and avoid an extra full pull on the next
         // probe. Computed after commit so it reflects what we just wrote.
@@ -2337,7 +2494,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ccrm_log_exception($e);
         }
         http_response_code(500);
-        echo json_encode(['success' => false, 'message' => 'Failed database synchronization: ' . $e->getMessage()]);
+        // The raw PDO message names tables, columns and sometimes the offending
+        // value. It is captured in error_logs (admin-only) above; the client gets
+        // a generic message.
+        echo json_encode(['success' => false, 'message' => 'Failed database synchronization.']);
     }
     exit;
 }

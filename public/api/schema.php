@@ -22,6 +22,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `name` VARCHAR(100) NOT NULL,
               `email` VARCHAR(150) NOT NULL UNIQUE,
               `password_hash` VARCHAR(255) NOT NULL,
+              `sessions_valid_from` DATETIME NULL COMMENT 'Sessions issued before this are rejected (set on password change)',
               `role` ENUM('admin', 'project_manager', 'viewer') NOT NULL DEFAULT 'viewer',
               `avatar` VARCHAR(255) NULL,
               `color` VARCHAR(20) NULL,
@@ -70,6 +71,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `country` VARCHAR(100) NULL DEFAULT 'Slovakia',
               `ai_summary` TEXT NULL,
               `ai_summary_fingerprint` TEXT NULL,
+              `interest_note` TEXT NULL COMMENT 'What the client is interested in / the problem to solve',
+              `referral_lead_id` VARCHAR(50) NULL COMMENT 'Lead/client who referred this one. Deliberately NOT a foreign key: a sync payload can carry the referring lead after this one, and deleting the referrer must not delete or block this lead',
               `metadata_json` TEXT NULL COMMENT 'Plugin support',
               `vat_validation_result` TEXT NULL,
               `follow_ups` TEXT NULL COMMENT 'JSON map: {stateKey: YYYY-MM-DD} of completed follow-ups',
@@ -93,7 +96,7 @@ if (!function_exists('ccrm_schema_statements')) {
             "CREATE TABLE IF NOT EXISTS `timeline_events` (
               `id` VARCHAR(50) NOT NULL,
               `lead_id` VARCHAR(50) NOT NULL,
-              `type` ENUM('phone', 'email', 'note', 'offer', 'appointment') NOT NULL DEFAULT 'note',
+              `type` ENUM('phone', 'email', 'note', 'offer', 'appointment', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note') NOT NULL DEFAULT 'note',
               `timestamp` DATETIME NOT NULL,
               `title` VARCHAR(255) NOT NULL,
               `content` TEXT NULL,
@@ -101,6 +104,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `file_name` VARCHAR(255) NULL,
               `file_size` VARCHAR(50) NULL,
               `file_type` ENUM('offer', 'contract', 'invoice') NULL,
+              `attachments_json` TEXT NULL COMMENT 'JSON array of {name,size,path} — an event can carry several documents',
               `extra_time` VARCHAR(10) NULL,
               PRIMARY KEY (`id`),
               FOREIGN KEY (`lead_id`) REFERENCES `leads` (`id`) ON DELETE CASCADE,
@@ -123,6 +127,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `related_lead_id` VARCHAR(50) NULL,
               `is_locking` TINYINT(1) NOT NULL DEFAULT 0,
               `archived` TINYINT(1) NOT NULL DEFAULT 0,
+              `completed_by` VARCHAR(100) NULL COMMENT 'Name of the user who moved the task to a done state; NULL for legacy rows',
+              `completed_at` VARCHAR(16) NULL COMMENT 'YYYY-MM-DD HH:MM local completion timestamp; NULL for legacy rows',
               `metadata_json` TEXT NULL COMMENT 'Plugin support',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -396,6 +402,12 @@ if (!function_exists('ccrm_schema_statements')) {
      * run on every install/update without relying on try/catch swallowing.
      */
     function ccrm_apply_migrations(PDO $pdo): void {
+        // Sessions established before this timestamp are rejected, so a password
+        // change can retire every session the old password could reach. NULL means
+        // "no password change recorded yet" and lets existing sessions continue.
+        if (!ccrm_column_exists($pdo, 'users', 'sessions_valid_from')) {
+            $pdo->exec("ALTER TABLE `users` ADD COLUMN `sessions_valid_from` DATETIME NULL AFTER `password_hash`");
+        }
         // `archived` was added to meeting_notes after the initial release.
         if (!ccrm_column_exists($pdo, 'meeting_notes', 'archived')) {
             $pdo->exec("ALTER TABLE `meeting_notes` ADD COLUMN `archived` TINYINT(1) NOT NULL DEFAULT 0");
@@ -481,6 +493,26 @@ if (!function_exists('ccrm_schema_statements')) {
         if (!ccrm_column_exists($pdo, 'leads', 'follow_ups')) {
             $pdo->exec("ALTER TABLE `leads` ADD COLUMN `follow_ups` TEXT NULL");
         }
+        // Free-text "what does the client want / what problem are we solving"
+        // captured when the lead is created.
+        if (!ccrm_column_exists($pdo, 'leads', 'interest_note')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `interest_note` TEXT NULL AFTER `ai_summary_fingerprint`");
+        }
+        // Which lead/client referred this one. The picker has existed in the UI
+        // since the interest note shipped, but there was no column behind it, so
+        // every referral looked saved and then vanished on the next poll.
+        if (!ccrm_column_exists($pdo, 'leads', 'referral_lead_id')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `referral_lead_id` VARCHAR(50) NULL AFTER `interest_note`");
+        }
+        // Business-document timeline events (order, proforma invoice, advance
+        // receipt, invoice, delivery note). MySQL silently truncates an unknown
+        // ENUM value to '' (and errors out under strict mode), so the column has
+        // to learn the new names before the client can push them.
+        ccrm_migrate_timeline_event_types($pdo);
+        // Several documents per timeline event (e.g. a batch of advance invoices).
+        if (!ccrm_column_exists($pdo, 'timeline_events', 'attachments_json')) {
+            $pdo->exec("ALTER TABLE `timeline_events` ADD COLUMN `attachments_json` TEXT NULL AFTER `file_type`");
+        }
         // `tasks`.`status` was originally a fixed ENUM, but task states are
         // user-customizable free text (see Settings > task states / taskStates
         // in App.tsx), same as `leads`.`status`. A custom state name that
@@ -507,8 +539,44 @@ if (!function_exists('ccrm_schema_statements')) {
                  SELECT `id`, `owner` FROM `tasks` WHERE `owner` <> ''"
             );
         }
+        // Completion attribution. Both fields used to live only in client memory, so
+        // every sync round-trip dropped them and the archive rendered "Unknown" with
+        // the deadline standing in for the completion time.
+        if (!ccrm_column_exists($pdo, 'tasks', 'completed_by')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `completed_by` VARCHAR(100) NULL AFTER `archived`");
+        }
+        if (!ccrm_column_exists($pdo, 'tasks', 'completed_at')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `completed_at` VARCHAR(16) NULL AFTER `completed_by`");
+        }
         ccrm_migrate_updated_at_precision($pdo);
         ccrm_migrate_task_states($pdo);
+        ccrm_backfill_task_completion_attribution($pdo);
+    }
+
+    /**
+     * Widen `timeline_events`.`type` so it accepts the business-document event
+     * types added after the initial release. Idempotent: the ALTER only runs
+     * when one of the new names is missing from the live ENUM definition.
+     */
+    function ccrm_migrate_timeline_event_types(PDO $pdo): void {
+        $columnType = $pdo->query(
+            "SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'timeline_events' AND COLUMN_NAME = 'type'"
+        )->fetchColumn();
+        if ($columnType === false || $columnType === null) {
+            return; // timeline_events not provisioned yet — CREATE TABLE covers it.
+        }
+        $required = ['order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note'];
+        foreach ($required as $value) {
+            if (strpos($columnType, "'" . $value . "'") === false) {
+                $pdo->exec(
+                    "ALTER TABLE `timeline_events` MODIFY COLUMN `type`
+                     ENUM('phone', 'email', 'note', 'offer', 'appointment', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note')
+                     NOT NULL DEFAULT 'note'"
+                );
+                return;
+            }
+        }
     }
 
     /**
@@ -590,6 +658,62 @@ if (!function_exists('ccrm_schema_statements')) {
                 if ($legacy === $taskStates[$index]) continue;
                 $rename->execute([$taskStates[$index], $legacy]);
             }
+        }
+    }
+
+    /**
+     * One-time, best-effort attribution for tasks completed before `completed_by`
+     * was persisted (everything archived up to 1.6.41 shows "Unknown").
+     *
+     * The real completer was never recorded, so this is an ESTIMATE, not history.
+     * It picks the most defensible name available, in order:
+     *   1. `created_by` — who opened the task (NULL on pre-1.5 rows, which is why
+     *      it cannot be the only source).
+     *   2. `owner` — the primary assignee.
+     *   3. any row in `task_assignees` — a secondary assignee.
+     * Rows with none of the three keep NULL and go on rendering the neutral label.
+     *
+     * `completed_at` is deliberately NOT invented. That leaves backfilled rows as
+     * the only ones with a completer but no timestamp, which is the signal the
+     * archive uses to mark the name as estimated rather than recorded.
+     *
+     * Guarded by a settings marker so it runs exactly once: a task legitimately
+     * reopened and left unfinished must not be re-stamped on the next sync.
+     */
+    function ccrm_backfill_task_completion_attribution(PDO $pdo): void {
+        try {
+            $done = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'TASK_COMPLETED_BY_BACKFILL'")->fetchColumn();
+            if ($done !== false) {
+                return; // Already run on this install.
+            }
+
+            // "Done" mirrors the frontend's isDoneState(): the literal 'done', or
+            // whatever the operator named the last state in their own list.
+            $statesRaw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'TASK_STATES'")->fetchColumn();
+            $states = is_string($statesRaw) ? json_decode($statesRaw, true) : null;
+            $lastState = (is_array($states) && $states) ? (string)end($states) : null;
+
+            // COALESCE over the three candidate names; NULLIF keeps empty strings
+            // from winning over a populated lower-priority column.
+            $candidate = "COALESCE(NULLIF(t.`created_by`, ''), NULLIF(t.`owner`, ''), NULLIF(a.`user_name`, ''))";
+            $sql =
+                "UPDATE `tasks` t
+                 LEFT JOIN (
+                     SELECT `task_id`, MIN(`user_name`) AS `user_name`
+                     FROM `task_assignees` GROUP BY `task_id`
+                 ) a ON a.`task_id` = t.`id`
+                 SET t.`completed_by` = $candidate
+                 WHERE t.`completed_by` IS NULL
+                   AND (LOWER(t.`status`) = 'done'" . ($lastState !== null ? " OR t.`status` = ?" : "") . ")
+                   AND $candidate IS NOT NULL";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($lastState !== null ? [$lastState] : []);
+
+            $mark = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
+            $mark->execute(['TASK_COMPLETED_BY_BACKFILL', (string)$stmt->rowCount()]);
+        } catch (\Throwable $e) {
+            // Never block a sync over a cosmetic backfill.
+            error_log('[ccrm schema] completed_by backfill skipped: ' . $e->getMessage());
         }
     }
 

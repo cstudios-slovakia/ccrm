@@ -7,6 +7,7 @@ import type { Lead } from "../types";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { resolveCurrencySymbol, resolveCurrencyPosition, formatMoney } from "../utils/currency";
+import { formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
 
 interface DashboardProps {
   systemName: string;
@@ -2353,7 +2354,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   {/* Registered Date */}
                   <div className="bg-slate-50 border border-slate-100 p-3.5 rounded-2xl space-y-1">
                     <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">{t("System Inflow Date", "Dátum zaevidovania", "Rendszerbe kerülés dátuma")}</span>
-                    <span className="text-xs font-black text-slate-800 block mt-1">{(selectedLeadForDrawer.createdAt || "").slice(0, 10)}</span>
+                    <span className="text-xs font-black text-slate-800 block mt-1">{formatDateLocalized(selectedLeadForDrawer.createdAt, systemLanguage)}</span>
                   </div>
                 </div>
               </div>
@@ -2438,7 +2439,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           <span className="absolute -left-[31px] top-1.5 h-3.5 w-3.5 rounded-full border-2 border-white bg-indigo-600 ring-4 ring-indigo-50 shrink-0" />
                           
                           <div className="flex justify-between items-center text-[9px] font-black text-slate-400">
-                            <span className="uppercase tracking-widest">{event.timestamp}</span>
+                            <span className="uppercase tracking-widest">{formatTimestampLocalized(event.timestamp, systemLanguage)}</span>
                             <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase border tracking-wider ${eventColor}`}>
                               {getTranslation(systemLanguage, `timeline.badge.${event.type}`)}
                             </span>

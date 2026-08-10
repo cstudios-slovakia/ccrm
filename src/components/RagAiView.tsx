@@ -3,6 +3,7 @@ import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { Brain, Send, Bot, User, Sparkles, Database, Check, RotateCcw, Plus, X, FileText, Play, Clock, Trash2, Edit } from "lucide-react";
 import type { Language } from "../utils/translations";
 import { Markdown } from "../utils/markdown";
+import { localeCodeFor } from "../utils/localTime";
 import type { Lead } from "../types";
 
 interface Message {
@@ -845,7 +846,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                   <span className={`text-[8px] block mt-1.5 text-right ${
                     isAgent ? "text-slate-400" : "text-white/80"
                   }`}>
-                    {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {msg.timestamp.toLocaleTimeString(localeCodeFor(systemLanguage), { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
               </div>

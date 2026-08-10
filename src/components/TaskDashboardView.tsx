@@ -18,6 +18,7 @@ import {
     Archive as ArchiveIcon,
     Clock,
     Trash2,
+    Users,
 } from "lucide-react";
 import type { Task, UserProfile, Lead } from "../types";
 import type { Language } from "../utils/translations";
@@ -25,9 +26,10 @@ import { CalendarPane } from "./Dashboard";
 import {
     canDeleteTask as userCanDeleteTask,
     canEditTask as userCanEditTask,
-    canViewTask,
     isActiveTask,
+    isOnPersonalDashboard,
     isTaskAssignedTo,
+    isTaskCreatedBy,
     type TaskAccess,
 } from "../utils/taskSelectors";
 
@@ -156,9 +158,45 @@ const toLocalDateStr = (d: Date): string => {
     return `${y}-${m}-${day}`;
 };
 
+// Colour scheme of one time bucket in the left-hand task panel. My Calendar and
+// Global Tasks render the same bucket card through renderTaskBucket, so the two
+// panels stay identical instead of drifting apart in two copies of the markup.
+const BUCKET_TONES = {
+    rose: {
+        shell: "bg-rose-50/50 border border-rose-100",
+        title: "text-rose-600",
+        chevron: "text-rose-500 group-hover/btn:text-rose-700",
+        emptyBorder: "border-rose-200/50",
+        emptyText: "text-rose-500",
+    },
+    indigo: {
+        shell: "bg-indigo-50/30 border border-indigo-100",
+        title: "text-indigo-600",
+        chevron: "text-indigo-500 group-hover/btn:text-indigo-700",
+        emptyBorder: "border-indigo-200/50",
+        emptyText: "text-indigo-400",
+    },
+    amber: {
+        shell: "bg-amber-50/30 border border-amber-100",
+        title: "text-amber-600",
+        chevron: "text-amber-500 group-hover/btn:text-amber-700",
+        emptyBorder: "border-amber-200/50",
+        emptyText: "text-amber-550",
+    },
+    slate: {
+        shell: "bg-slate-50/50 border border-slate-200",
+        title: "text-slate-600",
+        chevron: "text-slate-500 group-hover/btn:text-slate-700",
+        emptyBorder: "border-slate-200",
+        emptyText: "text-slate-400",
+    },
+} as const;
+
 // Named preset deadline times offered in the picker. "End of day (23:59)" was removed
 // in favour of a "Custom" option that lets the user type any specific time.
-const DEADLINE_TIME_PRESETS = ["10:00", "12:00", "16:00", "19:00"];
+// Kept in step with GATE_DEADLINE_TIME_PRESETS in LeadsDatagrid so the task drawer
+// and the pipeline-gate quick-add offer the same choices.
+const DEADLINE_TIME_PRESETS = ["09:00", "10:00", "12:00", "14:00", "16:00", "17:00", "19:00"];
 
 // Deadline-time picker shared by the Add and Edit task drawers. Offers the named
 // presets plus a "Custom" option that reveals a free time input. Defined at module
@@ -170,20 +208,33 @@ const DeadlineTimePicker: React.FC<{
     t: (en: string, sk: string, hu: string) => string;
 }> = ({ value, onChange, t }) => {
     const currentValue = value || "";
+    // Tasks stored before deadline times existed (and the demo seed) have no time at
+    // all. That empty value matches no <option>, and React then silently marks the
+    // FIRST option as selected — the picker showed "Morning (10:00)" while the task
+    // still had no time, so re-picking 10:00 fired no change event and the card kept
+    // rendering the 23:59 fallback. An explicit placeholder option keeps the empty
+    // state addressable so any real choice registers as a change.
+    const isUnset = currentValue === "";
     const isPreset = DEADLINE_TIME_PRESETS.includes(currentValue);
     // Custom mode is active when the value isn't a named preset (e.g. a legacy 23:59
     // or a hand-typed time) or once the user explicitly opens the custom input.
-    const [customOpen, setCustomOpen] = useState(!isPreset && currentValue !== "");
-    const showCustom = customOpen || (!isPreset && currentValue !== "");
+    const [customOpen, setCustomOpen] = useState(!isPreset && !isUnset);
+    const showCustom = customOpen || (!isPreset && !isUnset);
 
     const presetLabel = (p: string) => {
         switch (p) {
+            case "09:00":
+                return t("Early morning (9:00)", "Skoro ráno (9:00)", "Kora reggel (9:00)");
             case "10:00":
                 return t("Morning (10:00)", "Ráno (10:00)", "Reggel (10:00)");
             case "12:00":
                 return t("Noon (12:00)", "Poludnie (12:00)", "Dél (12:00)");
+            case "14:00":
+                return t("Early afternoon (14:00)", "Skoré popoludnie (14:00)", "Kora délután (14:00)");
             case "16:00":
                 return t("Afternoon (16:00)", "Popoludnie (16:00)", "Délután (16:00)");
+            case "17:00":
+                return t("End of workday (17:00)", "Koniec pracovného dňa (17:00)", "Munkanap vége (17:00)");
             case "19:00":
                 return t("Evening (19:00)", "Večer (19:00)", "Este (19:00)");
             default:
@@ -206,6 +257,15 @@ const DeadlineTimePicker: React.FC<{
                 }}
                 className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none bg-white font-bold"
             >
+                {isUnset && !showCustom && (
+                    <option value="">
+                        {t(
+                            "Not set — end of day (23:59)",
+                            "Nenastavené — koniec dňa (23:59)",
+                            "Nincs megadva — nap vége (23:59)",
+                        )}
+                    </option>
+                )}
                 {DEADLINE_TIME_PRESETS.map((p) => (
                     <option key={p} value={p}>
                         {presetLabel(p)}
@@ -257,7 +317,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     },
     autoOpenAddTask,
     setAutoOpenAddTask,
-    taskAccess = { view: true, create: true, edit: true, delete: true },
+    taskAccess = { view: true, create: true, edit: true, delete: true, viewAll: true },
 
 }) => {
     const isDoneState = (status: string) => {
@@ -272,12 +332,27 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // else the first registered user. Never a hardcoded demo account.
     const defaultUserName = currentUser?.name || users[0]?.name || "";
 
-    // Item 11 — the personal dashboard (time buckets, calendar, archive) only surfaces tasks
-    // that belong to the logged-in user, so users never see each other's tasks. Admins keep a
-    // full cross-user view in the Global Tasks / Archive tabs (canSeeAllTasks).
+    // Item 11 — the personal dashboard (time buckets, calendar) only surfaces tasks
+    // that belong to the logged-in user, so users never see each other's open tasks on
+    // My Calendar. Global Tasks is the shared board: it is team-wide for everyone by
+    // default (canSeeAllTasks), and a role can have that taken away with the
+    // `tasks.view_all` permission in Settings → Roles & RBAC. Before 1.6.48 the board
+    // was admin-only, which left every other user looking at a single column of their
+    // own tasks. The Archive tab is team-wide for everyone — completed work is shared
+    // history.
     const myName = currentUser?.name || defaultUserName;
-    const canSeeAllTasks = (currentUser?.role || "").toLowerCase() === "admin";
-    const isMyTask = (task: Task) => isTaskAssignedTo(task, myName);
+    const canSeeAllTasks = taskAccess.viewAll;
+    // A task reaches this dashboard two ways: it is assigned to you, or you are
+    // the one who created it. Assignment alone was the rule until 1.6.46, which
+    // hid every task a user opened for somebody else — above all the ones created
+    // from a lead profile, where the assignee defaults to the lead's owner. That
+    // rule left work you scheduled yourself in no calendar you could reach, and
+    // it applies to tasks already in the database, not only to new ones.
+    const isMyTask = (task: Task) => isOnPersonalDashboard(task, myName);
+    // Someone else does the work, you only opened it — worth marking on the card
+    // so a delegated task is not mistaken for your own.
+    const isDelegatedByMe = (task: Task) =>
+        !isTaskAssignedTo(task, myName) && isTaskCreatedBy(task, myName);
     const mayEditTask = (task: Task) =>
         userCanEditTask(task, currentUser, taskAccess);
     const mayDeleteTask = (task: Task) =>
@@ -298,6 +373,24 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         if (systemLanguage === "hu") return hu;
         return en;
     };
+
+    // Legacy archived tasks predate the completedBy field, so it's empty on them.
+    // Fall back to a neutral label, never to the current viewer's name — that would
+    // misattribute the completion to whoever happens to be looking at the archive.
+    const unknownCompletedBy = t("Unknown", "Neznámy", "Ismeretlen");
+
+    // Tasks completed before completedBy was persisted got a best-effort name
+    // back-filled server-side (creator, else assignee). Those rows are exactly the
+    // ones carrying a name but no completedAt — a real completion always writes
+    // both together — so the archive can show the guess in a muted italic and say
+    // so on hover, rather than passing an estimate off as recorded history.
+    const isEstimatedCompleter = (task: Task) =>
+        Boolean(task.completedBy) && !task.completedAt;
+    const estimatedCompleterHint = t(
+        "Estimated: this task was completed before the app recorded who finished it, so the creator or assignee is shown.",
+        "Odhad: táto úloha bola dokončená skôr, než aplikácia zaznamenávala, kto ju dokončil, preto je zobrazený jej tvorca alebo riešiteľ.",
+        "Becslés: ezt a feladatot azelőtt fejezték be, hogy az alkalmazás rögzítette volna a befejezőt, ezért a létrehozó vagy a felelős látható.",
+    );
 
     // Locale for native date/time display — driven by the language/region setting.
     const locale = systemLanguage === "sk" ? "sk-SK" : systemLanguage === "hu" ? "hu-HU" : "en-US";
@@ -376,6 +469,12 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const [viewMode, setViewMode] = useState<"calendar" | "archive" | "global">(
         "calendar",
     );
+    // Calendar scope: the whole month, or just one week that can be paged
+    // backwards/forwards. `currentDate` anchors both — in week scope it is any
+    // day inside the displayed week.
+    const [calendarScope, setCalendarScope] = useState<"month" | "week">(
+        "month",
+    );
     const [selectedDay, setSelectedDay] = useState<Date | null>(null);
 
     // Archive filters state
@@ -389,6 +488,28 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // Upcoming stay collapsible.
     const [isTomorrowExpanded, setIsTomorrowExpanded] = useState(false);
     const [isFutureExpanded, setIsFutureExpanded] = useState(false);
+
+    // Global Tasks: the left panel keeps the same convention — Missed and Today
+    // are always open, Upcoming (tomorrow and later) folds away.
+    const [isGlobalUpcomingExpanded, setIsGlobalUpcomingExpanded] =
+        useState(false);
+    // Global Tasks: which member rows on the right are folded shut. Stacking the
+    // whole team vertically makes a long page, so each card can be collapsed to
+    // its header; they all start open.
+    const [collapsedMembers, setCollapsedMembers] = useState<Set<string>>(
+        () => new Set(),
+    );
+    const [isUnassignedCollapsed, setIsUnassignedCollapsed] = useState(false);
+    const toggleMemberCard = (userName: string) =>
+        setCollapsedMembers((prev) => {
+            const next = new Set(prev);
+            if (next.has(userName)) {
+                next.delete(userName);
+            } else {
+                next.add(userName);
+            }
+            return next;
+        });
 
     // Compact view toggle (item 10) — denser task cards for large lists
     const [isCompact, setIsCompact] = useState(false);
@@ -508,6 +629,20 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const handleNextMonth = () =>
         setCurrentDate(new Date(currentYear, currentMonth + 1, 1));
 
+    // Week paging keeps the same weekday and shifts the anchor by 7 days, so the
+    // displayed week moves one step at a time in either direction.
+    const shiftWeek = (weeks: number) =>
+        setCurrentDate((prev) => {
+            const next = new Date(prev);
+            next.setDate(next.getDate() + weeks * 7);
+            return next;
+        });
+    const handlePrevPeriod = () =>
+        calendarScope === "week" ? shiftWeek(-1) : handlePrevMonth();
+    const handleNextPeriod = () =>
+        calendarScope === "week" ? shiftWeek(1) : handleNextMonth();
+    const handleGoToToday = () => setCurrentDate(new Date());
+
     const monthNames = [
         t("January", "Január", "Január"),
         t("February", "Február", "Február"),
@@ -538,12 +673,59 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         return (firstDay + 6) % 7;
     }, [currentYear, currentMonth]);
 
+    // The seven days of the week `currentDate` falls into, Monday-first to match
+    // the weekday header used by the month grid.
+    const daysInWeek = useMemo(() => {
+        const monday = new Date(
+            currentDate.getFullYear(),
+            currentDate.getMonth(),
+            currentDate.getDate(),
+        );
+        monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+        return Array.from({ length: 7 }, (_, i) => {
+            const d = new Date(monday);
+            d.setDate(monday.getDate() + i);
+            return d;
+        });
+    }, [currentDate]);
+
+    // Header label for the paged week, e.g. "24 – 30 Aug 2026".
+    const weekRangeLabel = useMemo(() => {
+        const first = daysInWeek[0];
+        const last = daysInWeek[6];
+        const short = (d: Date) =>
+            d.toLocaleDateString(dateLocale, { day: "numeric", month: "short" });
+        return `${short(first)} – ${short(last)} ${last.getFullYear()}`;
+    }, [daysInWeek, dateLocale]);
+
+    // Chronological order for a single day: earliest deadline time first, so a
+    // 10:00 task always sits above a 12:00 one and the evening ones land last.
+    // Tasks with no explicit time keep the 23:59 default used by the overdue
+    // logic, which parks them at the end of the day; ties fall back to the title
+    // so the order stays stable between renders.
+    const byDeadlineTime = (a: Task, b: Task) => {
+        const timeComp = (a.deadlineTime || "23:59").localeCompare(
+            b.deadlineTime || "23:59",
+        );
+        if (timeComp !== 0) return timeComp;
+        return a.title.localeCompare(b.title);
+    };
+
+    // Same chronological rule across more than one day: earliest date first,
+    // then the time within that day. Used by every list that mixes dates (the
+    // overdue/upcoming buckets and the Global Tasks columns).
+    const byDeadline = (a: Task, b: Task) => {
+        const dateComp = a.deadline.localeCompare(b.deadline);
+        if (dateComp !== 0) return dateComp;
+        return byDeadlineTime(a, b);
+    };
+
     // Item 12: the dashboard calendar shows ONLY tasks (no lead timeline events).
     // Item 11: only the logged-in user's tasks.
     const getItemsForDate = (dateStr: string) => {
-        const dayTasks = myTasks.filter(
-            (t) => t.deadline === dateStr && !isDoneState(t.status),
-        );
+        const dayTasks = myTasks
+            .filter((t) => t.deadline === dateStr && !isDoneState(t.status))
+            .sort(byDeadlineTime);
         return { dayTasks };
     };
 
@@ -574,18 +756,26 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     };
 
     const completedUsersList = useMemo(() => {
-        const names = tasks
-            .filter((t) => isDoneState(t.status) && t.completedBy)
-            .map((t) => t.completedBy as string);
-        return Array.from(new Set(names));
-    }, [tasks]);
+        const list = users.map((u) => u.name);
+        tasks.forEach((t) => {
+            if (
+                isDoneState(t.status) &&
+                t.completedBy &&
+                !list.includes(t.completedBy)
+            ) {
+                list.push(t.completedBy);
+            }
+        });
+        return Array.from(new Set(list));
+    }, [users, tasks]);
 
     const filteredArchivedTasks = useMemo(() => {
         return tasks.filter((task) => {
             if (!isDoneState(task.status)) return false;
 
-            // Item 11 — non-admins only see their own archived tasks
-            if (!canViewTask(task, currentUser, canSeeAllTasks)) return false;
+            // The archive is a team-wide history: every user sees the completed
+            // tasks of the whole team, not just their own. Use the "Completed By"
+            // filter to narrow it down to a single person.
 
             // Item 9 — calendar date-range filter (by deadline/due date)
             if (!dateInRange(task.deadline, archiveDateStart, archiveDateEnd))
@@ -611,7 +801,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             // Completed By
             if (
                 archiveUserFilter !== "all" &&
-                (task.completedBy || defaultUserName) !== archiveUserFilter
+                (task.completedBy || unknownCompletedBy) !== archiveUserFilter
             ) {
                 return false;
             }
@@ -640,8 +830,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         archiveTimingFilter,
         archiveDateStart,
         archiveDateEnd,
-        myName,
-        canSeeAllTasks,
+        unknownCompletedBy,
     ]);
 
     const archivedTasksGroupedByDate = useMemo(() => {
@@ -693,11 +882,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             ),
         );
         if (typeof (window as any).showToast === "function") {
+            // Name the consequence: archiving takes the task out of every
+            // calendar and list at once, and users were reading it as a delete.
             (window as any).showToast(
                 t(
-                    "Task archived",
-                    "Úloha archivovaná",
-                    "Feladat archiválva",
+                    "Task archived — hidden from the calendar. Find it under Archived tasks.",
+                    "Úloha archivovaná — zmizne z kalendára. Nájdete ju medzi archivovanými úlohami.",
+                    "Feladat archiválva — eltűnik a naptárból. Az archivált feladatok között találja meg.",
                 ),
             );
         }
@@ -909,6 +1100,99 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         );
     };
 
+    // Week scope: the same seven weekday columns as the month grid, but showing a
+    // single paged week so every task of that week is readable without opening a
+    // day. Each column lists its tasks in chronological order.
+    const renderWeekGrid = () => {
+        return (
+            <div className="flex flex-col h-full bg-white animate-in fade-in zoom-in-95 duration-200">
+                {/* Days Header */}
+                <div className="grid grid-cols-7 bg-slate-50 border-b border-slate-200 shrink-0">
+                    {daysInWeek.map((date, idx) => {
+                        const dateStr = toLocalDateStr(date);
+                        const isToday = dateStr === todayStr;
+                        return (
+                            <div
+                                key={dateStr}
+                                className={`py-2 text-center border-r border-slate-100 last:border-0 ${
+                                    isToday ? "bg-indigo-50/60" : ""
+                                }`}
+                            >
+                                <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                                    {weekdayNames[idx]}
+                                </div>
+                                <div
+                                    className={`mt-1 mx-auto text-[11px] font-black w-6 h-6 flex items-center justify-center rounded-full ${
+                                        isToday
+                                            ? "bg-indigo-600 text-white shadow-sm"
+                                            : "text-slate-600"
+                                    }`}
+                                >
+                                    {date.getDate()}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+
+                {/* Day Columns */}
+                <div className="flex-1 grid grid-cols-7 lg:overflow-y-auto overflow-visible">
+                    {daysInWeek.map((date) => {
+                        const dateStr = toLocalDateStr(date);
+                        const isToday = dateStr === todayStr;
+                        const isPast = dateStr < todayStr;
+                        const { dayTasks } = getItemsForDate(dateStr);
+
+                        return (
+                            <div
+                                key={dateStr}
+                                onClick={() => setSelectedDay(date)}
+                                className={`min-h-[220px] border-r border-slate-100 last:border-0 p-1.5 flex flex-col gap-1.5 transition-all cursor-pointer hover:bg-slate-50 ${
+                                    isToday
+                                        ? "bg-indigo-50/30"
+                                        : isPast
+                                          ? "bg-slate-50/70"
+                                          : "bg-white"
+                                }`}
+                            >
+                                {dayTasks.length === 0 ? (
+                                    <span className="text-[8px] font-bold text-slate-300 uppercase tracking-wider text-center mt-2">
+                                        —
+                                    </span>
+                                ) : (
+                                    dayTasks.map((tk) => (
+                                        <div
+                                            key={tk.id}
+                                            className={`text-[8.5px] font-bold px-1.5 py-1 rounded-lg border shadow-[0_1px_2px_rgba(0,0,0,0.02)] ${
+                                                tk.priority === "high"
+                                                    ? "bg-rose-50 text-rose-700 border-rose-200"
+                                                    : tk.priority === "medium"
+                                                      ? "bg-amber-50 text-amber-700 border-amber-200"
+                                                      : "bg-slate-50 text-slate-700 border-slate-200"
+                                            }`}
+                                        >
+                                            <span className="block font-black tabular-nums opacity-70">
+                                                {formatTimeDisplay(
+                                                    tk.deadlineTime || "23:59",
+                                                )}
+                                            </span>
+                                            <span className="block truncate">
+                                                {tk.isLocking && (
+                                                    <Lock className="inline h-2 w-2 mr-0.5 -mt-0.5 text-rose-500" />
+                                                )}
+                                                {tk.title}
+                                            </span>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        );
+    };
+
     const renderDayView = () => {
         if (!selectedDay) return null;
 
@@ -924,11 +1208,17 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             className="flex items-center gap-1.5 text-indigo-600 hover:text-indigo-800 font-black text-[10px] uppercase tracking-wider transition-colors cursor-pointer mb-2"
                         >
                             <ChevronLeft className="h-4 w-4" />
-                            {t(
-                                "Back to Month Calendar",
-                                "Späť na mesačný kalendár",
-                                "Vissza a havi naptárhoz",
-                            )}
+                            {calendarScope === "week"
+                                ? t(
+                                      "Back to Week Calendar",
+                                      "Späť na týždenný kalendár",
+                                      "Vissza a heti naptárhoz",
+                                  )
+                                : t(
+                                      "Back to Month Calendar",
+                                      "Späť na mesačný kalendár",
+                                      "Vissza a havi naptárhoz",
+                                  )}
                         </button>
                         <h2 className="text-2xl font-black text-slate-850 tracking-tight flex items-center gap-2">
                             <CalendarIcon className="h-6 w-6 text-indigo-600 stroke-[2.5]" />
@@ -961,8 +1251,12 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     </button>
                 </div>
 
-                <div className="flex-1 lg:overflow-y-auto overflow-visible p-6 space-y-6 bg-slate-50/30">
-                    {/* Item 13: tasks for the selected day, grouped by status */}
+                <div className="flex-1 lg:overflow-y-auto overflow-visible p-6 space-y-3 bg-slate-50/30">
+                    {/* The day reads as a timeline: tasks run strictly from the
+                        earliest deadline time at the top to the latest at the
+                        bottom. They used to be bucketed by status, which pushed a
+                        10:00 task below an evening one whenever their states
+                        differed. The status stays visible on each card. */}
                     {dayTasks.length === 0 ? (
                         <div className="p-6 border-2 border-dashed border-slate-200 rounded-2xl text-center bg-white">
                             <span className="text-xs font-bold text-slate-400">
@@ -974,30 +1268,18 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             </span>
                         </div>
                     ) : (
-                        taskStates.map((st) => {
-                            const groupTasks = dayTasks.filter(
-                                (tk) => tk.status === st,
-                            );
-                            if (groupTasks.length === 0) return null;
-                            const color = taskStateColors[st] || "#64748b";
-                            return (
-                                <div key={st} className="space-y-3">
-                                    <h3
-                                        className="text-xs font-black uppercase tracking-widest flex items-center gap-2"
-                                        style={{ color }}
-                                    >
-                                        <span
-                                            className="h-2.5 w-2.5 rounded-full"
-                                            style={{ backgroundColor: color }}
-                                        />
-                                        {stateLabel(st)} ({groupTasks.length})
-                                    </h3>
-                                    <div className="space-y-3">
-                                        {groupTasks.map(renderTaskCard)}
-                                    </div>
+                        dayTasks.map((tk) => (
+                            <div key={tk.id} className="flex items-start gap-3">
+                                <span className="shrink-0 mt-4 w-[52px] text-right text-[10px] font-black tabular-nums text-indigo-500">
+                                    {formatTimeDisplay(
+                                        tk.deadlineTime || "23:59",
+                                    )}
+                                </span>
+                                <div className="flex-1 min-w-0">
+                                    {renderTaskCard(tk)}
                                 </div>
-                            );
-                        })
+                            </div>
+                        ))
                     )}
                 </div>
             </div>
@@ -1027,33 +1309,21 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     };
 
     const tomorrowStr = toLocalDateStr(new Date(today.getTime() + 86400000));
-    const overdueTasks = myTasks
-        .filter((t) => isTaskOverdue(t))
-        .sort((a, b) => {
-            const dateComp = a.deadline.localeCompare(b.deadline);
-            if (dateComp !== 0) return dateComp;
-            return (a.deadlineTime || "23:59").localeCompare(
-                b.deadlineTime || "23:59",
-            );
-        });
-    const todayTasks = myTasks.filter(
-        (t) =>
-            t.deadline === todayStr &&
-            !isTaskOverdue(t) &&
-            !isDoneState(t.status),
-    );
-    const tomorrowTasks = myTasks.filter(
-        (t) => t.deadline === tomorrowStr && !isDoneState(t.status),
-    );
+    const overdueTasks = myTasks.filter((t) => isTaskOverdue(t)).sort(byDeadline);
+    const todayTasks = myTasks
+        .filter(
+            (t) =>
+                t.deadline === todayStr &&
+                !isTaskOverdue(t) &&
+                !isDoneState(t.status),
+        )
+        .sort(byDeadlineTime);
+    const tomorrowTasks = myTasks
+        .filter((t) => t.deadline === tomorrowStr && !isDoneState(t.status))
+        .sort(byDeadlineTime);
     const futureTasks = myTasks
         .filter((t) => t.deadline > tomorrowStr && !isDoneState(t.status))
-        .sort((a, b) => {
-            const dateComp = a.deadline.localeCompare(b.deadline);
-            if (dateComp !== 0) return dateComp;
-            return (a.deadlineTime || "23:59").localeCompare(
-                b.deadlineTime || "23:59",
-            );
-        });
+        .sort(byDeadline);
 
     const renderTaskCard = (task: Task) => (
         <div
@@ -1168,6 +1438,24 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         {priorityLabel(task.priority)}
                     </span>
 
+                    {/* On your calendar because you created it, not because it is
+                        yours to do — say so, and name who is on the hook. */}
+                    {isDelegatedByMe(task) && (
+                        <span
+                            title={t(
+                                "You created this task for someone else. It stays on your calendar so you can follow it up.",
+                                "Túto úlohu ste vytvorili pre niekoho iného. Vo vašom kalendári zostáva, aby ste ju mohli sledovať.",
+                                "Ezt a feladatot másnak hozta létre. A naptárában marad, hogy nyomon követhesse.",
+                            )}
+                            className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md border bg-violet-50 text-violet-600 border-violet-200 cursor-help"
+                        >
+                            {t("Delegated", "Delegované", "Delegálva")}
+                            {task.assignedUsers?.[0]
+                                ? ` · ${task.assignedUsers[0]}`
+                                : ""}
+                        </span>
+                    )}
+
                     {!isCompact && task.startDate && (
                         <span className="text-[9px] font-bold text-slate-500 flex items-center gap-1 bg-slate-100 px-2 py-1 rounded-lg transition-colors hover:bg-slate-200/70">
                             <CalendarIcon className="h-2.5 w-2.5 shrink-0 stroke-[2.5]" />
@@ -1216,13 +1504,237 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         </div>
     );
 
+    // One time bucket of the left-hand task panel (Overdue / Today / Tomorrow /
+    // Upcoming). Shared by My Calendar and Global Tasks so both panels look and
+    // behave the same. Pass `expanded` to make the bucket collapsible; leave it
+    // undefined for the ones that are always open.
+    const renderTaskBucket = (opts: {
+        tone: keyof typeof BUCKET_TONES;
+        icon: React.ReactNode;
+        title: string;
+        tasks: Task[];
+        emptyLabel: string;
+        expanded?: boolean;
+        onToggle?: () => void;
+    }) => {
+        const tone = BUCKET_TONES[opts.tone];
+        const collapsible = typeof opts.expanded === "boolean";
+        const isOpen = !collapsible || opts.expanded === true;
+        const heading = (
+            <h3
+                className={`text-xs font-black uppercase tracking-widest flex items-center gap-2 select-none ${tone.title}`}
+            >
+                {opts.icon} {opts.title} ({opts.tasks.length})
+            </h3>
+        );
+
+        return (
+            <div
+                className={`${tone.shell} rounded-3xl p-5 shadow-sm transition-all`}
+            >
+                {collapsible ? (
+                    <button
+                        onClick={opts.onToggle}
+                        className="w-full flex items-center justify-between text-left focus:outline-none group/btn cursor-pointer"
+                    >
+                        {heading}
+                        <span className={`transition-colors ${tone.chevron}`}>
+                            {isOpen ? (
+                                <ChevronUp className="h-5 w-5" />
+                            ) : (
+                                <ChevronDown className="h-5 w-5" />
+                            )}
+                        </span>
+                    </button>
+                ) : (
+                    <div className="w-full flex items-center justify-between text-left">
+                        {heading}
+                    </div>
+                )}
+                {isOpen && (
+                    <div
+                        className={`mt-4 ${collapsible ? "animate-in fade-in slide-in-from-top-2 duration-200" : ""}`}
+                    >
+                        {opts.tasks.length === 0 ? (
+                            <div
+                                className={`p-4 border-2 border-dashed bg-white/50 rounded-2xl text-center ${tone.emptyBorder}`}
+                            >
+                                <span
+                                    className={`text-xs font-bold ${tone.emptyText}`}
+                                >
+                                    {opts.emptyLabel}
+                                </span>
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                {opts.tasks.map(renderTaskCard)}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     const renderGlobalTasksView = () => {
-        // Item 11: non-admins only see their own tasks/column here too
+        // Team-wide by default; a role whose `tasks.view_all` is revoked keeps the
+        // old single-column board of its own work (see resolveTaskViewAll).
         const activeTasks = (canSeeAllTasks ? tasks : myTasks).filter((task) => isActiveTask(task, isDoneState));
         const columnUsers = canSeeAllTasks ? allUsersList : [myName];
 
+        // The filter bar drives both halves of the split view, so the time
+        // buckets on the left and the per-member cards on the right always
+        // describe exactly the same set of tasks.
+        const matchesGlobalFilters = (task: Task) => {
+            if (
+                globalPriorityFilter !== "all" &&
+                task.priority !== globalPriorityFilter
+            )
+                return false;
+            if (globalStateFilter !== "all" && task.status !== globalStateFilter)
+                return false;
+            if (!dateInRange(task.deadline, globalDateStart, globalDateEnd))
+                return false;
+            return true;
+        };
+        const filteredTasks = activeTasks.filter(matchesGlobalFilters);
+
+        // Same separation as My Calendar, with Tomorrow folded into Upcoming:
+        // the team board answers "what is late / due now / still coming",
+        // and a dedicated Tomorrow bucket only splits that last group in two.
+        const globalOverdue = filteredTasks
+            .filter((task) => isTaskOverdue(task))
+            .sort(byDeadline);
+        const globalToday = filteredTasks
+            .filter(
+                (task) =>
+                    task.deadline === todayStr && !isTaskOverdue(task),
+            )
+            .sort(byDeadlineTime);
+        const globalUpcoming = filteredTasks
+            .filter((task) => task.deadline > todayStr)
+            .sort(byDeadline);
+
+        // Who a card collects. On the team-wide board that is the assignee, so a
+        // task hangs under whoever has to do it. On the restricted board there is
+        // only your own card, and it has to hold everything the buckets on the
+        // left hold — including a task you opened for somebody else, which is on
+        // your dashboard but assigned to them, and would otherwise be listed on
+        // the left with no row on the right.
+        const tasksForMember = (userName: string) =>
+            filteredTasks
+                .filter((task) =>
+                    canSeeAllTasks
+                        ? Boolean(task.assignedUsers?.includes(userName))
+                        : isOnPersonalDashboard(task, userName),
+                )
+                .sort(byDeadline);
+
+        const memberColor = (userName: string) =>
+            users.find((u) => u.name === userName)?.color || "#6366f1";
+
+        // Header of one stacked member card. Rendered on its own for members with
+        // no active tasks (a single compact line instead of an empty card body).
+        const renderMemberHeading = (userName: string) => (
+            <span className="flex items-center gap-2 min-w-0">
+                <span
+                    className="h-2.5 w-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: memberColor(userName) }}
+                />
+                <span className="font-extrabold text-slate-800 text-xs uppercase tracking-wider truncate">
+                    {userName}
+                </span>
+                {userName === myName && (
+                    <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-indigo-50 border border-indigo-100 text-[9px] font-black uppercase tracking-wider text-indigo-600">
+                        {t("You", "Vy", "Ön")}
+                    </span>
+                )}
+            </span>
+        );
+
+        const renderMemberCard = (userName: string) => {
+            const memberTasks = tasksForMember(userName);
+
+            // Nobody to show work for — keep it to one quiet line so a large
+            // team does not push the members who do have tasks off the screen.
+            if (memberTasks.length === 0) {
+                return (
+                    <div
+                        key={userName}
+                        className="shrink-0 flex items-center justify-between gap-3 rounded-2xl border border-dashed border-slate-200 bg-white/50 px-4 py-2.5"
+                    >
+                        {renderMemberHeading(userName)}
+                        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                            {t(
+                                "No active tasks",
+                                "Žiadne aktívne úlohy",
+                                "Nincs aktív feladat",
+                            )}
+                        </span>
+                    </div>
+                );
+            }
+
+            const lateCount = memberTasks.filter((task) =>
+                isTaskOverdue(task),
+            ).length;
+            const isOpen = !collapsedMembers.has(userName);
+
+            return (
+                // shrink-0 is defensive. `overflow-hidden` drops a flex item's
+                // automatic minimum size to zero, which by the spec lets these cards
+                // shrink to fit the scrolling column rather than overflow it. Chrome
+                // keeps them at their content height either way (measured), so this
+                // pins the behaviour rather than fixing a live bug.
+                <div
+                    key={userName}
+                    className="shrink-0 rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden transition-all"
+                >
+                    <button
+                        onClick={() => toggleMemberCard(userName)}
+                        className="w-full flex items-center justify-between gap-3 bg-slate-100/60 hover:bg-slate-100 px-4 py-3 text-left transition-colors cursor-pointer group/member"
+                    >
+                        {renderMemberHeading(userName)}
+                        <span className="flex items-center gap-2 shrink-0">
+                            {lateCount > 0 && (
+                                <span className="px-2 py-0.5 rounded-full bg-rose-50 border border-rose-200 text-[9px] font-black uppercase tracking-wider text-rose-600">
+                                    {lateCount}{" "}
+                                    {t("late", "po termíne", "késés")}
+                                </span>
+                            )}
+                            <span className="px-2.5 py-0.5 rounded-full bg-white border border-slate-200 text-[10px] font-black text-slate-500 shadow-sm">
+                                {memberTasks.length}
+                            </span>
+                            <span className="text-slate-400 group-hover/member:text-slate-600 transition-colors">
+                                {isOpen ? (
+                                    <ChevronUp className="h-4 w-4" />
+                                ) : (
+                                    <ChevronDown className="h-4 w-4" />
+                                )}
+                            </span>
+                        </span>
+                    </button>
+                    {isOpen && (
+                        <div className="p-4 space-y-3 animate-in fade-in duration-200">
+                            {memberTasks.map(renderTaskCard)}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const unassignedTasks = canSeeAllTasks
+            ? filteredTasks
+                  .filter(
+                      (task) =>
+                          !task.assignedUsers ||
+                          task.assignedUsers.length === 0,
+                  )
+                  .sort(byDeadline)
+            : [];
+
         return (
-            <div className="flex flex-col h-full bg-slate-50/30 rounded-3xl border border-slate-200 p-6 space-y-6 animate-in fade-in slide-in-from-top-4 duration-305">
+            <div className="flex-1 min-h-0 flex flex-col gap-6 animate-in fade-in slide-in-from-top-4 duration-300">
                 {/* FILTERS */}
                 <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-150 shadow-sm shrink-0">
                     <div className="flex items-center gap-2">
@@ -1315,129 +1827,114 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     </div>
                 </div>
 
-                {/* COLUMNS GRID */}
-                <div className="flex-1 overflow-x-auto pb-4">
-                    <div className="flex gap-6 min-w-max h-full items-start">
-                        {columnUsers.map((userName) => {
-                            const userTasks = activeTasks.filter((t) => {
-                                const isAssigned =
-                                    t.assignedUsers &&
-                                    t.assignedUsers.includes(userName);
-                                if (!isAssigned) return false;
-
-                                if (
-                                    globalPriorityFilter !== "all" &&
-                                    t.priority !== globalPriorityFilter
-                                )
-                                    return false;
-                                if (
-                                    globalStateFilter !== "all" &&
-                                    t.status !== globalStateFilter
-                                )
-                                    return false;
-                                if (
-                                    !dateInRange(
-                                        t.deadline,
-                                        globalDateStart,
-                                        globalDateEnd,
-                                    )
-                                )
-                                    return false;
-                                return true;
-                            });
-
-                            return (
-                                <div
-                                    key={userName}
-                                    className="w-[320px] shrink-0 bg-slate-100/50 rounded-2xl border border-slate-200/80 p-4 flex flex-col max-h-[600px] shadow-sm"
-                                >
-                                    <div className="flex items-center justify-between pb-3 border-b border-slate-200/80 mb-3">
-                                        <div className="flex items-center gap-2">
-                                            <span className="h-2.5 w-2.5 rounded-full bg-indigo-500 shrink-0" />
-                                            <span className="font-extrabold text-slate-800 text-xs uppercase tracking-wider">
-                                                {userName}
-                                            </span>
-                                        </div>
-                                        <span className="px-2.5 py-0.5 rounded-full bg-white border border-slate-200 text-[10px] font-black text-slate-500 shadow-sm">
-                                            {userTasks.length}
-                                        </span>
-                                    </div>
-
-                                    <div className="flex-1 overflow-y-auto space-y-3 pr-1 min-h-[150px]">
-                                        {userTasks.length === 0 ? (
-                                            <div className="py-8 text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-white/40 rounded-xl border border-dashed border-slate-200">
-                                                {t(
-                                                    "No active tasks",
-                                                    "Žiadne aktívne úlohy",
-                                                    "Nincs aktív feladat",
-                                                )}
-                                            </div>
-                                        ) : (
-                                            userTasks.map(renderTaskCard)
-                                        )}
-                                    </div>
-                                </div>
-                            );
+                {/* SPLIT VIEW — the same time buckets as My Calendar on the
+                    left, the team's workload stacked one member per row on the
+                    right. Below lg the two stack into a single column. */}
+                <div className="flex-1 min-h-0 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)] xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,480px)_minmax(0,1fr)]">
+                    {/* LEFT: MISSED / TODAY / UPCOMING */}
+                    <div className="flex flex-col min-w-0 min-h-0 h-auto space-y-6 overflow-visible lg:h-full lg:overflow-y-auto lg:pr-2 pb-2 lg:pb-0">
+                        {renderTaskBucket({
+                            tone: "rose",
+                            icon: <AlertCircle className="h-5 w-5" />,
+                            title: t("Missed", "Zmeškané", "Lejárt"),
+                            tasks: globalOverdue,
+                            emptyLabel: t(
+                                "No missed tasks!",
+                                "Žiadne zmeškané úlohy!",
+                                "Nincs lemaradás!",
+                            ),
                         })}
+                        {renderTaskBucket({
+                            tone: "indigo",
+                            icon: <CheckSquare className="h-5 w-5" />,
+                            title: t("Today", "Dnes", "Ma"),
+                            tasks: globalToday,
+                            emptyLabel: t(
+                                "Nothing due today.",
+                                "Dnes nie je nič v termíne.",
+                                "Ma nincs esedékes feladat.",
+                            ),
+                        })}
+                        {renderTaskBucket({
+                            tone: "slate",
+                            icon: <CalendarIcon className="h-5 w-5" />,
+                            title: t("Upcoming", "Nadchádzajúce", "Közelgő"),
+                            tasks: globalUpcoming,
+                            emptyLabel: t(
+                                "No upcoming tasks.",
+                                "Žiadne nadchádzajúce úlohy.",
+                                "Nincsenek közelgő feladatok.",
+                            ),
+                            expanded: isGlobalUpcomingExpanded,
+                            onToggle: () =>
+                                setIsGlobalUpcomingExpanded((open) => !open),
+                        })}
+                    </div>
 
-                        {/* Unassigned column — only shown to admins (item 11) */}
-                        {canSeeAllTasks && (() => {
-                            const unassignedTasks = activeTasks.filter((t) => {
-                                const hasNoAssigned =
-                                    !t.assignedUsers ||
-                                    t.assignedUsers.length === 0;
-                                if (!hasNoAssigned) return false;
+                    {/* RIGHT: ONE FULL-WIDTH CARD PER MEMBER, STACKED */}
+                    <div className="flex flex-col min-w-0 min-h-0 h-auto space-y-4 overflow-visible lg:h-full lg:overflow-y-auto lg:pr-2 pb-2 lg:pb-0">
+                        <div className="flex items-center justify-between gap-3 shrink-0">
+                            <h3 className="text-xs font-black text-slate-600 uppercase tracking-widest flex items-center gap-2 select-none">
+                                <Users className="h-5 w-5" />
+                                {canSeeAllTasks
+                                    ? t(
+                                          "Team workload",
+                                          "Vyťaženie tímu",
+                                          "Csapat munkaterhelése",
+                                      )
+                                    : t(
+                                          "Your workload",
+                                          "Vaše vyťaženie",
+                                          "Az Ön munkaterhelése",
+                                      )}
+                            </h3>
+                            <span className="px-2.5 py-0.5 rounded-full bg-white border border-slate-200 text-[10px] font-black text-slate-500 shadow-sm">
+                                {filteredTasks.length}
+                            </span>
+                        </div>
 
-                                if (
-                                    globalPriorityFilter !== "all" &&
-                                    t.priority !== globalPriorityFilter
-                                )
-                                    return false;
-                                if (
-                                    globalStateFilter !== "all" &&
-                                    t.status !== globalStateFilter
-                                )
-                                    return false;
-                                if (
-                                    !dateInRange(
-                                        t.deadline,
-                                        globalDateStart,
-                                        globalDateEnd,
-                                    )
-                                )
-                                    return false;
-                                return true;
-                            });
+                        {columnUsers.map(renderMemberCard)}
 
-                            if (unassignedTasks.length === 0) return null;
-
-                            return (
-                                <div
-                                    key="unassigned"
-                                    className="w-[320px] shrink-0 bg-rose-50/30 rounded-2xl border border-rose-200/50 p-4 flex flex-col max-h-[600px] shadow-sm"
+                        {/* Unassigned — nobody is on the hook for these, so the
+                            row only appears on the team-wide board. */}
+                        {unassignedTasks.length > 0 && (
+                            <div className="shrink-0 rounded-2xl border border-rose-200/60 bg-rose-50/40 shadow-sm overflow-hidden transition-all">
+                                <button
+                                    onClick={() =>
+                                        setIsUnassignedCollapsed((c) => !c)
+                                    }
+                                    className="w-full flex items-center justify-between gap-3 bg-rose-100/40 hover:bg-rose-100/70 px-4 py-3 text-left transition-colors cursor-pointer group/member"
                                 >
-                                    <div className="flex items-center justify-between pb-3 border-b border-rose-200/40 mb-3">
-                                        <div className="flex items-center gap-2">
-                                            <span className="h-2.5 w-2.5 rounded-full bg-rose-500 shrink-0" />
-                                            <span className="font-extrabold text-rose-800 text-xs uppercase tracking-wider">
-                                                {t(
-                                                    "Unassigned",
-                                                    "Nepriradené",
-                                                    "Kijelöletlen",
-                                                )}
-                                            </span>
-                                        </div>
-                                        <span className="px-2.5 py-0.5 rounded-full bg-white border border-rose-200/40 text-[10px] font-black text-rose-500 shadow-sm">
+                                    <span className="flex items-center gap-2 min-w-0">
+                                        <span className="h-2.5 w-2.5 rounded-full bg-rose-500 shrink-0" />
+                                        <span className="font-extrabold text-rose-800 text-xs uppercase tracking-wider truncate">
+                                            {t(
+                                                "Unassigned",
+                                                "Nepriradené",
+                                                "Kijelöletlen",
+                                            )}
+                                        </span>
+                                    </span>
+                                    <span className="flex items-center gap-2 shrink-0">
+                                        <span className="px-2.5 py-0.5 rounded-full bg-white border border-rose-200/60 text-[10px] font-black text-rose-500 shadow-sm">
                                             {unassignedTasks.length}
                                         </span>
-                                    </div>
-
-                                    <div className="flex-1 overflow-y-auto space-y-3 pr-1 min-h-[150px]">
+                                        <span className="text-rose-400 group-hover/member:text-rose-600 transition-colors">
+                                            {isUnassignedCollapsed ? (
+                                                <ChevronDown className="h-4 w-4" />
+                                            ) : (
+                                                <ChevronUp className="h-4 w-4" />
+                                            )}
+                                        </span>
+                                    </span>
+                                </button>
+                                {!isUnassignedCollapsed && (
+                                    <div className="p-4 space-y-3 animate-in fade-in duration-200">
                                         {unassignedTasks.map(renderTaskCard)}
                                     </div>
-                                </div>
-                            );
-                        })()}
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
@@ -1511,22 +2008,83 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
                 <div className="flex items-center gap-4">
                     {viewMode === "calendar" && (
-                        <div className="flex items-center bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
-                            <button
-                                onClick={handlePrevMonth}
-                                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 cursor-pointer"
-                            >
-                                <ChevronLeft className="h-5 w-5" />
-                            </button>
-                            <span className="px-4 text-sm font-black text-indigo-950 min-w-[140px] text-center tracking-wider uppercase">
-                                {monthNames[currentMonth]} {currentYear}
-                            </span>
-                            <button
-                                onClick={handleNextMonth}
-                                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 cursor-pointer"
-                            >
-                                <ChevronRight className="h-5 w-5" />
-                            </button>
+                        <div className="flex items-center gap-2 flex-wrap">
+                            {/* Month/Week scope switch — week scope narrows the
+                                calendar to a single week that can be paged. */}
+                            <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-sm gap-1">
+                                {(["month", "week"] as const).map((scope) => (
+                                    <button
+                                        key={scope}
+                                        onClick={() => {
+                                            setCalendarScope(scope);
+                                            setSelectedDay(null);
+                                        }}
+                                        className={`px-3 py-1.5 rounded-lg font-black text-[10px] uppercase tracking-wider transition-all cursor-pointer ${
+                                            calendarScope === scope
+                                                ? "bg-white text-indigo-650 shadow-sm border border-slate-200/50"
+                                                : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
+                                        }`}
+                                    >
+                                        {scope === "month"
+                                            ? t("Month", "Mesiac", "Hónap")
+                                            : t("Week", "Týždeň", "Hét")}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <div className="flex items-center bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
+                                <button
+                                    onClick={handlePrevPeriod}
+                                    title={
+                                        calendarScope === "week"
+                                            ? t(
+                                                  "Previous week",
+                                                  "Predchádzajúci týždeň",
+                                                  "Előző hét",
+                                              )
+                                            : t(
+                                                  "Previous month",
+                                                  "Predchádzajúci mesiac",
+                                                  "Előző hónap",
+                                              )
+                                    }
+                                    className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 cursor-pointer transition-colors active:scale-95"
+                                >
+                                    <ChevronLeft className="h-5 w-5" />
+                                </button>
+                                <button
+                                    onClick={handleGoToToday}
+                                    title={t(
+                                        "Jump to today",
+                                        "Prejsť na dnešok",
+                                        "Ugrás a mai napra",
+                                    )}
+                                    className="px-4 text-sm font-black text-indigo-950 min-w-[160px] text-center tracking-wider uppercase hover:text-indigo-600 cursor-pointer transition-colors"
+                                >
+                                    {calendarScope === "week"
+                                        ? weekRangeLabel
+                                        : `${monthNames[currentMonth]} ${currentYear}`}
+                                </button>
+                                <button
+                                    onClick={handleNextPeriod}
+                                    title={
+                                        calendarScope === "week"
+                                            ? t(
+                                                  "Next week",
+                                                  "Nasledujúci týždeň",
+                                                  "Következő hét",
+                                              )
+                                            : t(
+                                                  "Next month",
+                                                  "Nasledujúci mesiac",
+                                                  "Következő hónap",
+                                              )
+                                    }
+                                    className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 cursor-pointer transition-colors active:scale-95"
+                                >
+                                    <ChevronRight className="h-5 w-5" />
+                                </button>
+                            </div>
                         </div>
                     )}
 
@@ -1750,7 +2308,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                       "Bez termínu",
                                                       "Nincs határidő",
                                                   )
-                                                : group.date}
+                                                : formatTaskDate(group.date)}
                                         </div>
                                         <div className="space-y-2 pl-3">
                                             {group.tasks.map((task) => {
@@ -1821,14 +2379,24 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                         <div className="flex items-center gap-4 shrink-0 justify-between sm:justify-end">
                                                             <div className="text-right space-y-0.5">
                                                                 <div className="text-[10px] font-bold text-slate-600">
-                                                                    <span className="font-extrabold text-slate-800">
+                                                                    <span
+                                                                        className={`font-extrabold ${isEstimatedCompleter(task) ? "text-slate-500 italic" : "text-slate-800"}`}
+                                                                        title={
+                                                                            isEstimatedCompleter(
+                                                                                task,
+                                                                            )
+                                                                                ? estimatedCompleterHint
+                                                                                : undefined
+                                                                        }
+                                                                    >
                                                                         {task.completedBy ||
-                                                                            defaultUserName}
+                                                                            unknownCompletedBy}
                                                                     </span>
                                                                     <span className="text-slate-400 font-bold ml-1">
                                                                         @{" "}
-                                                                        {task.completedAt ||
-                                                                            `${task.deadline} @ ${task.deadlineTime || "23:59"}`}
+                                                                        {task.completedAt
+                                                                            ? `${formatTaskDate(task.completedAt.slice(0, 10))} ${task.completedAt.slice(11, 16)}`
+                                                                            : `${formatTaskDate(task.deadline)} @ ${task.deadlineTime || "23:59"}`}
                                                                     </span>
                                                                 </div>
                                                                 <div>
@@ -1897,12 +2465,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         )}
                     </div>
 
-                    {/* Manually archived tasks — hidden from active views independent of status */}
+                    {/* Manually archived tasks — hidden from active views independent of status.
+                        Team-wide, same as the completed-task archive above. */}
                     {(() => {
                         const archivedList = tasks.filter(
-                            (task) =>
-                                task.archived &&
-                                canViewTask(task, currentUser, canSeeAllTasks),
+                            (task) => task.archived,
                         );
                         if (archivedList.length === 0) return null;
                         return (
@@ -1939,16 +2506,30 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                     }`}
                                                 />
                                                 <div className="min-w-0 flex-1">
-                                                    <span className="font-extrabold text-slate-700 truncate">
-                                                        {task.title}
-                                                    </span>
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <span className="font-extrabold text-slate-700 truncate">
+                                                            {task.title}
+                                                        </span>
+                                                        {task.assignedUsers &&
+                                                            task.assignedUsers
+                                                                .length > 0 && (
+                                                                <span className="text-[9px] font-bold text-indigo-600 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded-md truncate max-w-[120px]">
+                                                                    <span className="h-1 w-1 rounded-full bg-indigo-500 shrink-0" />
+                                                                    <span className="truncate">
+                                                                        {task.assignedUsers.join(
+                                                                            ", ",
+                                                                        )}
+                                                                    </span>
+                                                                </span>
+                                                            )}
+                                                    </div>
                                                     <div className="text-[9px] font-bold text-slate-400 mt-0.5">
                                                         {t(
                                                             "Due",
                                                             "Termín",
                                                             "Határidő",
                                                         )}
-                                                        : {task.deadline}
+                                                        : {formatTaskDate(task.deadline)}
                                                     </div>
                                                 </div>
                                             </div>
@@ -2032,149 +2613,71 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         </div>
 
                         {/* Overdue / Missed — always visible, not collapsible (item 1) */}
-                        <div className="bg-rose-50/50 border border-rose-100 rounded-3xl p-5 shadow-sm transition-all">
-                            <div className="w-full flex items-center justify-between text-left">
-                                <h3 className="text-xs font-black text-rose-600 uppercase tracking-widest flex items-center gap-2 select-none">
-                                    <AlertCircle className="h-5 w-5" />{" "}
-                                    {t("Overdue", "Zmeškané", "Lejárt")} (
-                                    {overdueTasks.length})
-                                </h3>
-                            </div>
-                            <div className="mt-4">
-                                {overdueTasks.length === 0 ? (
-                                    <div className="p-4 border-2 border-dashed border-rose-200/50 bg-white/50 rounded-2xl text-center">
-                                        <span className="text-xs font-bold text-rose-500">
-                                            {t(
-                                                "No overdue tasks!",
-                                                "Žiadne zmeškané úlohy!",
-                                                "Nincs lemaradás!",
-                                            )}
-                                        </span>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-3">
-                                        {overdueTasks.map(renderTaskCard)}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
+                        {renderTaskBucket({
+                            tone: "rose",
+                            icon: <AlertCircle className="h-5 w-5" />,
+                            title: t("Overdue", "Zmeškané", "Lejárt"),
+                            tasks: overdueTasks,
+                            emptyLabel: t(
+                                "No overdue tasks!",
+                                "Žiadne zmeškané úlohy!",
+                                "Nincs lemaradás!",
+                            ),
+                        })}
 
                         {/* Today — always visible, not collapsible (item 1) */}
-                        <div className="bg-indigo-50/30 border border-indigo-100 rounded-3xl p-5 shadow-sm transition-all">
-                            <div className="w-full flex items-center justify-between text-left">
-                                <h3 className="text-xs font-black text-indigo-600 uppercase tracking-widest flex items-center gap-2 select-none">
-                                    <CheckSquare className="h-5 w-5" />{" "}
-                                    {t("Today", "Dnes", "Ma")} (
-                                    {todayTasks.length})
-                                </h3>
-                            </div>
-                            <div className="mt-4">
-                                {todayTasks.length === 0 ? (
-                                    <div className="p-4 border-2 border-dashed border-indigo-200/50 bg-white/50 rounded-2xl text-center">
-                                        <span className="text-xs font-bold text-indigo-400">
-                                            {t(
-                                                "All caught up!",
-                                                "Všetko hotové!",
-                                                "Minden kész!",
-                                            )}
-                                        </span>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-3">
-                                        {todayTasks.map(renderTaskCard)}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
+                        {renderTaskBucket({
+                            tone: "indigo",
+                            icon: <CheckSquare className="h-5 w-5" />,
+                            title: t("Today", "Dnes", "Ma"),
+                            tasks: todayTasks,
+                            emptyLabel: t(
+                                "All caught up!",
+                                "Všetko hotové!",
+                                "Minden kész!",
+                            ),
+                        })}
 
                         {/* Tomorrow */}
-                        <div className="bg-amber-50/30 border border-amber-100 rounded-3xl p-5 shadow-sm transition-all">
-                            <button
-                                onClick={() =>
-                                    setIsTomorrowExpanded(!isTomorrowExpanded)
-                                }
-                                className="w-full flex items-center justify-between text-left focus:outline-none group/btn cursor-pointer"
-                            >
-                                <h3 className="text-xs font-black text-amber-600 uppercase tracking-widest flex items-center gap-2 select-none">
-                                    <CalendarIcon className="h-5 w-5" />{" "}
-                                    {t("Tomorrow", "Zajtra", "Holnap")} (
-                                    {tomorrowTasks.length})
-                                </h3>
-                                <span className="text-amber-500 group-hover/btn:text-amber-700 transition-colors">
-                                    {isTomorrowExpanded ? (
-                                        <ChevronUp className="h-5 w-5" />
-                                    ) : (
-                                        <ChevronDown className="h-5 w-5" />
-                                    )}
-                                </span>
-                            </button>
-                            {isTomorrowExpanded && (
-                                <div className="mt-4 animate-in fade-in slide-in-from-top-2 duration-200">
-                                    {tomorrowTasks.length === 0 ? (
-                                        <div className="p-4 border-2 border-dashed border-amber-200/50 bg-white/50 rounded-2xl text-center">
-                                            <span className="text-xs font-bold text-amber-550">
-                                                {t(
-                                                    "No tasks for tomorrow.",
-                                                    "Žiadne úlohy na zajtra.",
-                                                    "Nincs feladat holnapra.",
-                                                )}
-                                            </span>
-                                        </div>
-                                    ) : (
-                                        <div className="space-y-3">
-                                            {tomorrowTasks.map(renderTaskCard)}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
+                        {renderTaskBucket({
+                            tone: "amber",
+                            icon: <CalendarIcon className="h-5 w-5" />,
+                            title: t("Tomorrow", "Zajtra", "Holnap"),
+                            tasks: tomorrowTasks,
+                            emptyLabel: t(
+                                "No tasks for tomorrow.",
+                                "Žiadne úlohy na zajtra.",
+                                "Nincs feladat holnapra.",
+                            ),
+                            expanded: isTomorrowExpanded,
+                            onToggle: () =>
+                                setIsTomorrowExpanded(!isTomorrowExpanded),
+                        })}
 
                         {/* Future */}
-                        <div className="bg-slate-50/50 border border-slate-200 rounded-3xl p-5 shadow-sm transition-all">
-                            <button
-                                onClick={() =>
-                                    setIsFutureExpanded(!isFutureExpanded)
-                                }
-                                className="w-full flex items-center justify-between text-left focus:outline-none group/btn cursor-pointer"
-                            >
-                                <h3 className="text-xs font-black text-slate-600 uppercase tracking-widest flex items-center gap-2 select-none">
-                                    <CalendarIcon className="h-5 w-5" />{" "}
-                                    {t("Upcoming", "Nadchádzajúce", "Közelgő")}{" "}
-                                    ({futureTasks.length})
-                                </h3>
-                                <span className="text-slate-500 group-hover/btn:text-slate-700 transition-colors">
-                                    {isFutureExpanded ? (
-                                        <ChevronUp className="h-5 w-5" />
-                                    ) : (
-                                        <ChevronDown className="h-5 w-5" />
-                                    )}
-                                </span>
-                            </button>
-                            {isFutureExpanded && (
-                                <div className="mt-4 animate-in fade-in slide-in-from-top-2 duration-200">
-                                    {futureTasks.length === 0 ? (
-                                        <div className="p-4 border-2 border-dashed border-slate-200 bg-white/50 rounded-2xl text-center">
-                                            <span className="text-xs font-bold text-slate-400">
-                                                {t(
-                                                    "No upcoming tasks.",
-                                                    "Žiadne nadchádzajúce úlohy.",
-                                                    "Nincsenek közelgő feladatok.",
-                                                )}
-                                            </span>
-                                        </div>
-                                    ) : (
-                                        <div className="space-y-3">
-                                            {futureTasks.map(renderTaskCard)}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
+                        {renderTaskBucket({
+                            tone: "slate",
+                            icon: <CalendarIcon className="h-5 w-5" />,
+                            title: t("Upcoming", "Nadchádzajúce", "Közelgő"),
+                            tasks: futureTasks,
+                            emptyLabel: t(
+                                "No upcoming tasks.",
+                                "Žiadne nadchádzajúce úlohy.",
+                                "Nincsenek közelgő feladatok.",
+                            ),
+                            expanded: isFutureExpanded,
+                            onToggle: () =>
+                                setIsFutureExpanded(!isFutureExpanded),
+                        })}
                     </div>
 
                     {/* RIGHT COLUMN: CALENDAR OR DAY VIEW */}
                     <div className="flex flex-col lg:h-full h-auto bg-white rounded-3xl border border-slate-200 shadow-[0_4px_24px_rgba(0,0,0,0.02)] lg:overflow-hidden overflow-visible">
-                        {selectedDay ? renderDayView() : renderMonthGrid()}
+                        {selectedDay
+                            ? renderDayView()
+                            : calendarScope === "week"
+                              ? renderWeekGrid()
+                              : renderMonthGrid()}
                     </div>
                 </div>
             )}

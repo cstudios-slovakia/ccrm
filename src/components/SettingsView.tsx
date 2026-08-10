@@ -12,6 +12,7 @@ import type { Language } from "../utils/translations";
 import { ProjectSettings } from "./ProjectSettings";
 import { PasswordInput } from "./PasswordInput";
 import { CURRENCY_OPTIONS, currencyForRegion } from "../utils/currency";
+import { formatTimestampLocalized } from "../utils/localTime";
 
 // Inline "double-click / pencil to rename" field.
 //
@@ -1242,10 +1243,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   }, [campaigns, integrationsConfig]);
 
-  // Dynamic click-to-cycle tri-state permission cell renderer
-  const renderTriStateCell = (roleName: string, section: keyof RolePermission["permissions"]) => {
+  // Dynamic click-to-cycle tri-state permission cell renderer.
+  // `defaultValue` is what an unset slug means in practice. Almost every permission
+  // is denied until it is granted ("nothing"), but a few — tasks.view_all — are on
+  // for everyone until a role revokes them, and the cell has to show the state the
+  // app actually enforces rather than an empty record.
+  const renderTriStateCell = (
+    roleName: string,
+    section: keyof RolePermission["permissions"],
+    defaultValue: "edit" | "view" | "nothing" = "nothing",
+  ) => {
     const isAdmin = roleName.toLowerCase() === "admin";
-    const currentValue = isAdmin ? "edit" : (roles.find(r => r.name === roleName)?.permissions[section] || "nothing");
+    const currentValue = isAdmin ? "edit" : (roles.find(r => r.name === roleName)?.permissions[section] || defaultValue);
     const disabled = isAdmin || getPermission("pm_managers") === "view";
 
     const getStyleAndIcon = () => {
@@ -2779,7 +2788,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                   <div className="absolute -left-[5px] top-[12px] w-2.5 h-2.5 bg-white border-l border-b border-slate-200 transform rotate-45"></div>
                                   <div className="flex flex-wrap items-center justify-between gap-2">
                                     <span className="font-extrabold text-xs text-slate-800 leading-tight block">{log.action}</span>
-                                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider shrink-0">{log.timestamp}</span>
+                                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider shrink-0">{formatTimestampLocalized(log.timestamp, userLanguage)}</span>
                                   </div>
                                   {log.details && (
                                     <p className="text-[10px] text-slate-500 font-semibold mt-1 leading-relaxed">{log.details}</p>
@@ -3024,7 +3033,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             { key: "tasks.view", label: t("View Tasks Board", "Prezeranie úloh", "Feladattábla megtekintése"), desc: t("Inspect system task cards, deadlines, and active priority boards", "Prístup k nástenke úloh, prioritám a termínom", "Feladatkártyák, határidők és aktív prioritási táblák megtekintése") },
                             { key: "tasks.create", label: t("Create Tasks", "Vytvorenie úloh", "Feladatok létrehozása"), desc: t("Generate a new task card and specify task checklists", "Možnosť vytvoriť a delegovať novú úlohu pre tím", "Új feladatkártya létrehozása és teendőlisták megadása") },
                             { key: "tasks.edit", label: t("Edit Tasks", "Úprava úloh", "Feladatok szerkesztése"), desc: t("Drag tasks across status lanes, reassign, or alter deadlines", "Presúvanie stavov úloh (Kanban), priradenie PM a termínov", "Feladatok mozgatása az állapotsávok között, újrakiosztás vagy határidők módosítása") },
-                            { key: "tasks.delete", label: t("Delete Tasks", "Odstránenie úloh", "Feladatok törlése"), desc: t("Remove task registries completely from databases", "Trvalé vymazanie checklistov a celých úloh zo systému", "Feladatok teljes eltávolítása az adatbázisból") }
+                            { key: "tasks.delete", label: t("Delete Tasks", "Odstránenie úloh", "Feladatok törlése"), desc: t("Remove task registries completely from databases", "Trvalé vymazanie checklistov a celých úloh zo systému", "Feladatok teljes eltávolítása az adatbázisból") },
+                            // On for every role unless it is revoked here — see resolveTaskViewAll.
+                            { key: "tasks.view_all", defaultValue: "view" as const, label: t("View Team Tasks", "Prezeranie úloh tímu", "Csapat feladatainak megtekintése"), desc: t("See every colleague's open tasks in the Global Tasks board. Switch to None to leave a role with only its own workload.", "Zobrazí otvorené úlohy všetkých kolegov v Globálnych úlohách. Prepnutím na Žiadne rola uvidí len svoje vlastné vyťaženie.", "Minden kolléga nyitott feladatainak megtekintése a Globális feladatok táblán. A Nincs értékre váltva a szerepkör csak a saját munkaterhelését látja.") }
                           ]
                         },
                         {
@@ -3126,7 +3137,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               {/* Tri-state cell for each role column */}
                               {roles.map((role) => (
                                 <td key={role.name} className="py-3 px-5 text-center">
-                                  {renderTriStateCell(role.name, perm.key as keyof RolePermission["permissions"])}
+                                  {renderTriStateCell(role.name, perm.key as keyof RolePermission["permissions"], (perm as { defaultValue?: "edit" | "view" | "nothing" }).defaultValue)}
                                 </td>
                               ))}
                             </tr>

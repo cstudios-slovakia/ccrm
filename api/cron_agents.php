@@ -23,7 +23,7 @@ try {
     $pdo = get_db_connection();
 } catch (\Exception $e) {
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'DB Connection failed: ' . $e->getMessage()]);
+    echo json_encode(['success' => false, 'message' => 'Database connection failed.']);
     exit;
 }
 
@@ -51,7 +51,7 @@ try {
     $aStmt = $ragPdo->query("SELECT `id`, `name`, `position`, `skill_content` FROM `rag_agents` WHERE `is_autonomous` = 1");
     $autonomousAgents = $aStmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (\Exception $e) {
-    echo json_encode(['success' => false, 'message' => 'Failed to query agents: ' . $e->getMessage()]);
+    echo json_encode(['success' => false, 'message' => 'Failed to load the agents.']);
     exit;
 }
 
@@ -80,11 +80,15 @@ foreach ($autonomousAgents as $agent) {
             'length' => strlen($reply)
         ];
     } catch (\Exception $e) {
+        // Keep the detail server-side: the raw message names tables and columns.
+        if (function_exists('ccrm_log_exception')) {
+            ccrm_log_exception($e);
+        }
         $results[] = [
             'agent_id' => $agent['id'],
             'name' => $agentName,
             'status' => 'failed_to_save',
-            'error' => $e->getMessage()
+            'error' => 'Agent run failed. See the error log for details.'
         ];
     }
 }
