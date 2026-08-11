@@ -2,6 +2,17 @@
 ini_set('display_errors', '0');
 require_once __DIR__ . '/auth.php';
 
+// This file is both the mailbox endpoint and the home of send_smtp_email(),
+// which the workflow engine includes to deliver a "Send e-mail" action. When it
+// is included rather than requested, stop before the endpoint body: it would
+// read the caller's ?action=, fail to match it, print its own JSON error and
+// exit() in the middle of the caller's response — killing the workflow run
+// before its log was ever written. The helper functions below this point are
+// bound at compile time, so they are available to the includer regardless.
+if (basename($_SERVER['SCRIPT_FILENAME'] ?? '') !== 'mail_broker.php') {
+    return;
+}
+
 header('Content-Type: application/json');
 ccrm_send_cors('GET, POST, OPTIONS, DELETE');
 

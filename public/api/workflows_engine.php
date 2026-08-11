@@ -10,14 +10,45 @@ if (file_exists($configFile)) {
 
 // Helpers
 if (!function_exists('ccrm_resolve_json_path')) {
-    function ccrm_resolve_json_path($path, $data) {
+    /**
+     * Resolve one {{$namespace.field}} path.
+     *
+     * $data is the node's own input, i.e. whatever the previous node returned;
+     * that is what `$input` (and a bare path) reads. $context carries the
+     * run-scoped namespaces the builder UI offers as pill tags — `trigger` (the
+     * payload the workflow fired with), `ai`, `condition`, `item` — so a
+     * variable means the same thing however deep in the graph it sits.
+     *
+     * Without the context, {{$trigger.name}} rendered empty behind every
+     * condition and AI node (both replace the payload with their own output),
+     * and {{$ai.result}} / {{$condition.result}} never resolved at all.
+     */
+    function ccrm_resolve_json_path($path, $data, $context = null) {
         $path = trim($path);
         if ($path === '') return $data;
         $parts = explode('.', $path);
-        if ($parts[0] === '$input' || $parts[0] === '$trigger') {
-            array_shift($parts);
-        }
+        $first = $parts[0];
         $curr = $data;
+
+        if ($first === '$input') {
+            array_shift($parts);
+        } elseif ($first !== '' && $first[0] === '$') {
+            $namespace = substr($first, 1);
+            array_shift($parts);
+            if (is_array($context) && array_key_exists($namespace, $context)) {
+                $curr = $context[$namespace];
+            } elseif ($namespace === 'trigger') {
+                // Callers that pass no context (and the trigger node itself,
+                // where input and trigger are the same thing) keep the original
+                // behaviour of reading the current payload.
+                $curr = $data;
+            } elseif (is_array($data) && array_key_exists($namespace, $data)) {
+                $curr = $data[$namespace];
+            } else {
+                return null;
+            }
+        }
+
         foreach ($parts as $p) {
             if (is_array($curr) && isset($curr[$p])) {
                 $curr = $curr[$p];
@@ -32,11 +63,11 @@ if (!function_exists('ccrm_resolve_json_path')) {
 }
 
 if (!function_exists('ccrm_interpolate_variables')) {
-    function ccrm_interpolate_variables($text, $inputData) {
+    function ccrm_interpolate_variables($text, $inputData, $context = null) {
         if (!is_string($text)) return $text;
-        return preg_replace_callback('/\{\{([a-zA-Z0-9_\.\$]+)\}\}/', function($matches) use ($inputData) {
+        return preg_replace_callback('/\{\{([a-zA-Z0-9_\.\$]+)\}\}/', function($matches) use ($inputData, $context) {
             $path = $matches[1];
-            $val = ccrm_resolve_json_path($path, $inputData);
+            $val = ccrm_resolve_json_path($path, $inputData, $context);
             if ($val === null) return '';
             if (is_array($val) || is_object($val)) {
                 return json_encode($val, JSON_UNESCAPED_UNICODE);
@@ -47,7 +78,7 @@ if (!function_exists('ccrm_interpolate_variables')) {
 }
 
 if (!function_exists('ccrm_evaluate_condition')) {
-    function ccrm_evaluate_condition($conditionJs, $inputData) {
+    function ccrm_evaluate_condition($conditionJs, $inputData, $context = null) {
         $conditionJs = trim($conditionJs);
         if ($conditionJs === '') {
             return true;
@@ -74,7 +105,7 @@ if (!function_exists('ccrm_evaluate_condition')) {
                 $op = $matches[2];
                 $rightRaw = trim($matches[3]);
                 
-                $leftVal = ccrm_resolve_json_path($leftPath, $inputData);
+                $leftVal = ccrm_resolve_json_path($leftPath, $inputData, $context);
                 
                 if ($rightRaw === 'true') {
                     $rightVal = true;
@@ -88,7 +119,7 @@ if (!function_exists('ccrm_evaluate_condition')) {
                     $rightVal = (float)$rightRaw;
                 } else {
                     if (strpos($rightRaw, '$') === 0) {
-                        $rightVal = ccrm_resolve_json_path($rightRaw, $inputData);
+                        $rightVal = ccrm_resolve_json_path($rightRaw, $inputData, $context);
                     } else {
                         $rightVal = $rightRaw;
                     }
@@ -108,7 +139,7 @@ if (!function_exists('ccrm_evaluate_condition')) {
                 $results[] = $res;
             } else {
                 if (strpos($token, '$') === 0) {
-                    $results[] = (bool)ccrm_resolve_json_path($token, $inputData);
+                    $results[] = (bool)ccrm_resolve_json_path($token, $inputData, $context);
                 } else {
                     $results[] = false;
                 }
@@ -232,6 +263,11 @@ if (!function_exists('ccrm_workflow_open_task_exists')) {
      * "Live" mirrors the frontend's isDoneState(): not archived, and neither the
      * literal 'done' nor whatever the operator named their last task state.
      * A finished follow-up is therefore allowed to be superseded by a new one.
+     *
+     * The title is part of the match so that a workflow with several create-task
+     * nodes (an onboarding kickoff *and* a document handover, say) still opens
+     * all of them for the same record — only a repeat of the same task is
+     * suppressed.
      */
     function ccrm_workflow_open_task_exists($pdo, $workflowId, $relatedLeadId, $title) {
         if ($workflowId === null || $workflowId === '') {
@@ -250,15 +286,16 @@ if (!function_exists('ccrm_workflow_open_task_exists')) {
             $params[] = $lastState;
         }
         // Scope to the record the workflow fired for. Tasks that could not be
-        // linked (the trigger payload carried no lead id) fall back to the
-        // rendered title, which already carries the client name.
+        // linked (the trigger payload carried no record id) are matched on the
+        // rendered title alone, which already carries the client name.
         if ($relatedLeadId !== null && $relatedLeadId !== '') {
             $sql .= " AND `related_lead_id` = ?";
             $params[] = $relatedLeadId;
         } else {
-            $sql .= " AND `related_lead_id` IS NULL AND `title` = ?";
-            $params[] = $title;
+            $sql .= " AND `related_lead_id` IS NULL";
         }
+        $sql .= " AND `title` = ?";
+        $params[] = $title;
 
         try {
             $stmt = $pdo->prepare($sql);
@@ -270,6 +307,25 @@ if (!function_exists('ccrm_workflow_open_task_exists')) {
             if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
             return false;
         }
+    }
+}
+
+if (!function_exists('ccrm_workflow_related_record_id')) {
+    /**
+     * The `leads` row a payload points at, or null. Leads and clients share that
+     * table and are told apart by their id prefix, so both count as a link
+     * target for a task.
+     */
+    function ccrm_workflow_related_record_id($payload) {
+        if (!is_array($payload)) {
+            return null;
+        }
+        foreach ([$payload['id'] ?? null, $payload['related_lead_id'] ?? null, $payload['relatedLeadId'] ?? null] as $candidate) {
+            if (is_string($candidate) && (strpos($candidate, 'lead-') === 0 || strpos($candidate, 'client-') === 0)) {
+                return $candidate;
+            }
+        }
+        return null;
     }
 }
 
@@ -441,13 +497,17 @@ if (!function_exists('ccrm_execute_workflow')) {
             'trigger' => $triggerPayload
         ];
         
-        // Queue for node execution: array of [nodeId, incomingPayload, visitedPath]
-        $execQueue = [[$triggerNode['id'], $triggerPayload, []]];
-        
+        // Queue for node execution: [nodeId, incomingPayload, visitedPath, context].
+        // The context holds the run-scoped variable namespaces ($trigger, $ai,
+        // $condition, $item) and travels down each branch separately, so an AI
+        // answer produced in one branch never leaks into a sibling one.
+        $rootContext = ['trigger' => is_array($triggerPayload) ? $triggerPayload : []];
+        $execQueue = [[$triggerNode['id'], $triggerPayload, [], $rootContext]];
+
         $status = 'success';
-        
+
         while (!empty($execQueue)) {
-            list($currNodeId, $incomingPayload, $path) = array_shift($execQueue);
+            list($currNodeId, $incomingPayload, $path, $context) = array_shift($execQueue);
             if (in_array($currNodeId, $path)) {
                 // Detect cycle, skip to prevent infinite loop
                 continue;
@@ -469,7 +529,7 @@ if (!function_exists('ccrm_execute_workflow')) {
                     $outputPayload = $incomingPayload;
                 } elseif ($nodeType === 'condition') {
                     $jsCode = $nodeData['js_code'] ?? '';
-                    $conditionResult = ccrm_evaluate_condition($jsCode, $incomingPayload);
+                    $conditionResult = ccrm_evaluate_condition($jsCode, $incomingPayload, $context);
                     $outputPayload = ['result' => $conditionResult];
                 } elseif ($nodeType === 'splitter') {
                     // Splitter node is hidden from the builder UI (AutomationView.tsx) until a
@@ -478,7 +538,7 @@ if (!function_exists('ccrm_execute_workflow')) {
                     // practice. Re-enable the UI once list-producing sources exist.
                     // Splits events: expects array payload
                     $arrayPath = $nodeData['array_path'] ?? '';
-                    $arrayData = ccrm_resolve_json_path($arrayPath, $incomingPayload);
+                    $arrayData = ccrm_resolve_json_path($arrayPath, $incomingPayload, $context);
                     if (is_array($arrayData)) {
                         // For splitter, we branch out for each element
                         foreach ($arrayData as $item) {
@@ -486,8 +546,10 @@ if (!function_exists('ccrm_execute_workflow')) {
                             $childEdges = array_filter($edges, function($e) use ($currNodeId) {
                                 return $e['source'] === $currNodeId;
                             });
+                            $itemContext = $context;
+                            $itemContext['item'] = ['value' => $item];
                             foreach ($childEdges as $edge) {
-                                $execQueue[] = [$edge['target'], $item, $newPath];
+                                $execQueue[] = [$edge['target'], $item, $newPath, $itemContext];
                             }
                         }
                         // Stop standard child execution because we just manual-queued it
@@ -502,7 +564,7 @@ if (!function_exists('ccrm_execute_workflow')) {
                     }
                     
                     $promptTemplate = $nodeData['prompt'] ?? '';
-                    $prompt = ccrm_interpolate_variables($promptTemplate, $incomingPayload);
+                    $prompt = ccrm_interpolate_variables($promptTemplate, $incomingPayload, $context);
                     
                     $response = ccrm_call_llm($provider, $key, $prompt);
                     
@@ -515,23 +577,28 @@ if (!function_exists('ccrm_execute_workflow')) {
                 } elseif ($nodeType === 'action') {
                     $actionType = $nodeData['type'] ?? '';
                     if ($actionType === 'create_lead' || $actionType === 'create_client') {
-                        $name = ccrm_interpolate_variables($nodeData['name'] ?? '', $incomingPayload);
-                        $city = ccrm_interpolate_variables($nodeData['city'] ?? '', $incomingPayload);
-                        $phone = ccrm_interpolate_variables($nodeData['phone'] ?? '', $incomingPayload);
-                        $email = ccrm_interpolate_variables($nodeData['email'] ?? '', $incomingPayload);
-                        $status = ccrm_interpolate_variables($nodeData['status'] ?? ($actionType === 'create_client' ? 'client' : 'new'), $incomingPayload);
-                        $value = (float)ccrm_interpolate_variables($nodeData['value'] ?? '0', $incomingPayload);
-                        $owner = ccrm_interpolate_variables($nodeData['owner'] ?? 'Alex', $incomingPayload);
+                        $name = ccrm_interpolate_variables($nodeData['name'] ?? '', $incomingPayload, $context);
+                        $city = ccrm_interpolate_variables($nodeData['city'] ?? '', $incomingPayload, $context);
+                        $phone = ccrm_interpolate_variables($nodeData['phone'] ?? '', $incomingPayload, $context);
+                        $email = ccrm_interpolate_variables($nodeData['email'] ?? '', $incomingPayload, $context);
+                        // Deliberately not called $status: that name holds the
+                        // run's own success/failed flag, and overwriting it with
+                        // a lead state made the closing workflow_logs INSERT
+                        // fail on its ENUM — every workflow that creates a lead
+                        // or a client died right after doing its work.
+                        $recordStatus = ccrm_interpolate_variables($nodeData['status'] ?? ($actionType === 'create_client' ? 'client' : 'new'), $incomingPayload, $context);
+                        $value = (float)ccrm_interpolate_variables($nodeData['value'] ?? '0', $incomingPayload, $context);
+                        $owner = ccrm_interpolate_variables($nodeData['owner'] ?? 'Alex', $incomingPayload, $context);
                         $clientType = ($actionType === 'create_client') ? ($nodeData['client_type'] ?? 'person') : 'person';
 
-                        $street = ccrm_interpolate_variables($nodeData['street'] ?? '', $incomingPayload);
-                        $postalCode = ccrm_interpolate_variables($nodeData['postal_code'] ?? '', $incomingPayload);
-                        $country = ccrm_interpolate_variables($nodeData['country'] ?? 'Slovensko', $incomingPayload);
-                        $companyId = ccrm_interpolate_variables($nodeData['company_id'] ?? ($nodeData['ico'] ?? ''), $incomingPayload);
-                        $taxId = ccrm_interpolate_variables($nodeData['tax_id'] ?? ($nodeData['dic'] ?? ''), $incomingPayload);
-                        $vatId = ccrm_interpolate_variables($nodeData['vat_id'] ?? ($nodeData['ic_dph'] ?? ''), $incomingPayload);
-                        $contactPerson = ccrm_interpolate_variables($nodeData['contact_person'] ?? '', $incomingPayload);
-                        $website = ccrm_interpolate_variables($nodeData['website'] ?? '', $incomingPayload);
+                        $street = ccrm_interpolate_variables($nodeData['street'] ?? '', $incomingPayload, $context);
+                        $postalCode = ccrm_interpolate_variables($nodeData['postal_code'] ?? '', $incomingPayload, $context);
+                        $country = ccrm_interpolate_variables($nodeData['country'] ?? 'Slovensko', $incomingPayload, $context);
+                        $companyId = ccrm_interpolate_variables($nodeData['company_id'] ?? ($nodeData['ico'] ?? ''), $incomingPayload, $context);
+                        $taxId = ccrm_interpolate_variables($nodeData['tax_id'] ?? ($nodeData['dic'] ?? ''), $incomingPayload, $context);
+                        $vatId = ccrm_interpolate_variables($nodeData['vat_id'] ?? ($nodeData['ic_dph'] ?? ''), $incomingPayload, $context);
+                        $contactPerson = ccrm_interpolate_variables($nodeData['contact_person'] ?? '', $incomingPayload, $context);
+                        $website = ccrm_interpolate_variables($nodeData['website'] ?? '', $incomingPayload, $context);
                         
                         $leadId = ($actionType === 'create_client' ? 'client-' : 'lead-') . sprintf('%04x%04x', mt_rand(0, 0xffff), mt_rand(0, 0xffff));
                         $stmt = $pdo->prepare("
@@ -543,13 +610,13 @@ if (!function_exists('ccrm_execute_workflow')) {
                             VALUES (?, ?, ?, ?, ?, 'automation', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_DATE())
                         ");
                         $stmt->execute([
-                          $leadId, $name, $city, $clientType, $status, $owner, $value, $phone, $email,
+                          $leadId, $name, $city, $clientType, $recordStatus, $owner, $value, $phone, $email,
                           $street, $postalCode, $country, $companyId, $taxId, $vatId, $contactPerson, $website
                         ]);
                         $outputPayload = [
-                          'id' => $leadId, 
-                          'name' => $name, 
-                          'status' => $status,
+                          'id' => $leadId,
+                          'name' => $name,
+                          'status' => $recordStatus,
                           'client_type' => $clientType,
                           'email' => $email,
                           'phone' => $phone,
@@ -557,9 +624,9 @@ if (!function_exists('ccrm_execute_workflow')) {
                           'company_id' => $companyId
                         ];
                     } elseif ($actionType === 'create_task') {
-                        $title = ccrm_interpolate_variables($nodeData['title'] ?? '', $incomingPayload);
-                        $desc = ccrm_interpolate_variables($nodeData['description'] ?? '', $incomingPayload);
-                        $owner = ccrm_interpolate_variables($nodeData['owner'] ?? '', $incomingPayload);
+                        $title = ccrm_interpolate_variables($nodeData['title'] ?? '', $incomingPayload, $context);
+                        $desc = ccrm_interpolate_variables($nodeData['description'] ?? '', $incomingPayload, $context);
+                        $owner = ccrm_interpolate_variables($nodeData['owner'] ?? '', $incomingPayload, $context);
                         $priority = $nodeData['priority'] ?? 'medium';
                         $deadlineDays = (int)($nodeData['deadline_days'] ?? 1);
 
@@ -573,7 +640,15 @@ if (!function_exists('ccrm_execute_workflow')) {
 
                         $taskId = 'task-' . sprintf('%04x%04x', mt_rand(0, 0xffff), mt_rand(0, 0xffff));
                         $deadline = date('Y-m-d', strtotime("+$deadlineDays days"));
-                        $relatedLeadId = (isset($incomingPayload['id']) && is_string($incomingPayload['id']) && strpos($incomingPayload['id'], 'lead-') === 0) ? $incomingPayload['id'] : null;
+
+                        // Prefer the record the previous node produced (a freshly
+                        // created lead or client), and fall back to the one the
+                        // workflow fired for — behind a condition or an AI node
+                        // the incoming payload no longer carries it.
+                        $relatedLeadId = ccrm_workflow_related_record_id($incomingPayload);
+                        if ($relatedLeadId === null) {
+                            $relatedLeadId = ccrm_workflow_related_record_id($context['trigger'] ?? null);
+                        }
 
                         // Open the task in the operator's own first state rather
                         // than a hardcoded 'todo' that matches no configured one.
@@ -614,9 +689,9 @@ if (!function_exists('ccrm_execute_workflow')) {
                         require_once __DIR__ . '/mail_broker.php';
                         $mailSettings = ccrm_load_integrations_config($pdo);
                         
-                        $to = ccrm_interpolate_variables($nodeData['to'] ?? '', $incomingPayload);
-                        $subject = ccrm_interpolate_variables($nodeData['subject'] ?? '', $incomingPayload);
-                        $body = ccrm_interpolate_variables($nodeData['body'] ?? '', $incomingPayload);
+                        $to = ccrm_interpolate_variables($nodeData['to'] ?? '', $incomingPayload, $context);
+                        $subject = ccrm_interpolate_variables($nodeData['subject'] ?? '', $incomingPayload, $context);
+                        $body = ccrm_interpolate_variables($nodeData['body'] ?? '', $incomingPayload, $context);
                         
                         if (function_exists('send_smtp_email') && !empty($mailSettings['smtpHost'])) {
                             send_smtp_email($mailSettings, $to, $subject, $body);
@@ -660,7 +735,22 @@ if (!function_exists('ccrm_execute_workflow')) {
             $childEdges = array_filter($edges, function($e) use ($currNodeId) {
                 return $e['source'] === $currNodeId;
             });
-            
+
+            // Hand the branch its own namespaces, so downstream nodes can read
+            // {{$ai.result}} / {{$condition.result}} next to {{$trigger.*}}.
+            $childContext = $context;
+            if ($nodeType === 'condition') {
+                $childContext['condition'] = ['result' => (bool)($outputPayload['result'] ?? false)];
+            } elseif ($nodeType === 'ai_agent') {
+                $aiText = (string)($outputPayload['text'] ?? '');
+                $childContext['ai'] = [
+                    'result' => $aiText,
+                    'summary' => $aiText,
+                    'text' => $aiText,
+                    'json' => $outputPayload['json'] ?? null
+                ];
+            }
+
             foreach ($childEdges as $edge) {
                 // If current node was a condition node, only travel down matching edges
                 if ($nodeType === 'condition') {
@@ -669,7 +759,7 @@ if (!function_exists('ccrm_execute_workflow')) {
                     $pathMatches = ($handle === 'true' && $evalResult) || ($handle === 'false' && !$evalResult);
                     if (!$pathMatches) continue;
                 }
-                $execQueue[] = [$edge['target'], $outputPayload, $newPath];
+                $execQueue[] = [$edge['target'], $outputPayload, $newPath, $childContext];
             }
         }
         
