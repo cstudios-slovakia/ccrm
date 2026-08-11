@@ -23,6 +23,7 @@ import {
 import type { Task, UserProfile, Lead } from "../types";
 import type { Language } from "../utils/translations";
 import { CalendarPane } from "./Dashboard";
+import { CustomSelect } from "./ui/CustomSelect";
 import {
     canDeleteTask as userCanDeleteTask,
     canEditTask as userCanEditTask,
@@ -244,37 +245,34 @@ const DeadlineTimePicker: React.FC<{
 
     return (
         <div className="space-y-1.5">
-            <select
+            <CustomSelect
                 value={showCustom ? "custom" : currentValue}
-                onChange={(e) => {
-                    if (e.target.value === "custom") {
+                onChange={(v) => {
+                    if (v === "custom") {
                         setCustomOpen(true);
                         if (!currentValue) onChange("12:00");
                     } else {
                         setCustomOpen(false);
-                        onChange(e.target.value);
+                        onChange(v);
                     }
                 }}
-                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none bg-white font-bold"
-            >
-                {isUnset && !showCustom && (
-                    <option value="">
-                        {t(
-                            "Not set — end of day (23:59)",
-                            "Nenastavené — koniec dňa (23:59)",
-                            "Nincs megadva — nap vége (23:59)",
-                        )}
-                    </option>
-                )}
-                {DEADLINE_TIME_PRESETS.map((p) => (
-                    <option key={p} value={p}>
-                        {presetLabel(p)}
-                    </option>
-                ))}
-                <option value="custom">
-                    {t("Custom…", "Vlastný čas…", "Egyéni időpont…")}
-                </option>
-            </select>
+                options={[
+                    ...(isUnset && !showCustom
+                        ? [
+                              {
+                                  value: "",
+                                  label: t(
+                                      "Not set — end of day (23:59)",
+                                      "Nenastavené — koniec dňa (23:59)",
+                                      "Nincs megadva — nap vége (23:59)",
+                                  ),
+                              },
+                          ]
+                        : []),
+                    ...DEADLINE_TIME_PRESETS.map((p) => ({ value: p, label: presetLabel(p) })),
+                    { value: "custom", label: t("Custom…", "Vlastný čas…", "Egyéni időpont…") },
+                ]}
+            />
             {showCustom && (
                 <input
                     type="time"
@@ -1334,12 +1332,21 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 <div className="absolute top-0 right-0 w-1.5 h-full bg-rose-500" />
             )}
 
-            <div className="relative shrink-0 select-none mt-0.5">
-                <select
+            <div
+                className="max-w-[110px]"
+                style={
+                    {
+                        "--task-status-bg": `${taskStateColors[task.status] || "#64748b"}15`,
+                        "--task-status-color": taskStateColors[task.status] || "#64748b",
+                        "--task-status-border": `${taskStateColors[task.status] || "#64748b"}35`,
+                    } as React.CSSProperties
+                }
+            >
+                <CustomSelect
                     value={task.status}
                     disabled={!mayEditTask(task)}
-                    onChange={(e) => {
-                        const newStatus = e.target.value;
+                    size="sm"
+                    onChange={(newStatus) => {
                         const now = new Date();
                         const completedAtStr = isDoneState(newStatus)
                             ? toLocalDateStr(now) +
@@ -1363,23 +1370,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             ),
                         );
                     }}
-                    className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg border-2 cursor-pointer transition-all focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50 max-w-[110px] truncate"
-                    style={{
-                        backgroundColor: `${taskStateColors[task.status] || "#64748b"}15`,
-                        color: taskStateColors[task.status] || "#64748b",
-                        borderColor: `${taskStateColors[task.status] || "#64748b"}35`,
-                    }}
-                >
-                    {taskStates.map((st) => (
-                        <option
-                            key={st}
-                            value={st}
-                            className="bg-white text-slate-800 font-bold uppercase"
-                        >
-                            {stateLabel(st)}
-                        </option>
-                    ))}
-                </select>
+                    className="!bg-[var(--task-status-bg)] !text-[var(--task-status-color)] !border-[var(--task-status-border)] font-black uppercase tracking-wider truncate"
+                    options={taskStates.map((st) => ({ value: st, label: stateLabel(st) }))}
+                />
             </div>
 
             <div className="flex-1 space-y-1.5 min-w-0">
@@ -1753,30 +1746,24 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             <span className="text-slate-500">
                                 {t("Priority:", "Priorita:", "Prioritás:")}
                             </span>
-                            <select
+                            <CustomSelect
                                 value={globalPriorityFilter}
-                                onChange={(e) =>
-                                    setGlobalPriorityFilter(e.target.value)
-                                }
-                                className="px-3 py-1.5 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-indigo-650 focus:outline-none text-xs font-extrabold cursor-pointer"
-                            >
-                                <option value="all">
-                                    {t(
-                                        "All Priorities",
-                                        "Všetky priority",
-                                        "Minden prioritás",
-                                    )}
-                                </option>
-                                <option value="high">
-                                    {t("High", "Vysoká", "Magas")}
-                                </option>
-                                <option value="medium">
-                                    {t("Medium", "Stredná", "Közepes")}
-                                </option>
-                                <option value="low">
-                                    {t("Low", "Nízka", "Alacsony")}
-                                </option>
-                            </select>
+                                onChange={(v) => setGlobalPriorityFilter(v)}
+                                size="sm"
+                                options={[
+                                    {
+                                        value: "all",
+                                        label: t(
+                                            "All Priorities",
+                                            "Všetky priority",
+                                            "Minden prioritás",
+                                        ),
+                                    },
+                                    { value: "high", label: t("High", "Vysoká", "Magas") },
+                                    { value: "medium", label: t("Medium", "Stredná", "Közepes") },
+                                    { value: "low", label: t("Low", "Nízka", "Alacsony") },
+                                ]}
+                            />
                         </div>
 
                         {/* State Filter */}
@@ -1784,28 +1771,24 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             <span className="text-slate-500">
                                 {t("Status:", "Stav:", "Státusz:")}
                             </span>
-                            <select
+                            <CustomSelect
                                 value={globalStateFilter}
-                                onChange={(e) =>
-                                    setGlobalStateFilter(e.target.value)
-                                }
-                                className="px-3 py-1.5 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-indigo-650 focus:outline-none text-xs font-extrabold cursor-pointer"
-                            >
-                                <option value="all">
-                                    {t(
-                                        "All Statuses",
-                                        "Všetky stavy",
-                                        "Minden státusz",
-                                    )}
-                                </option>
-                                {taskStates
-                                    .filter((st) => !isDoneState(st))
-                                    .map((st) => (
-                                        <option key={st} value={st}>
-                                            {stateLabel(st)}
-                                        </option>
-                                    ))}
-                            </select>
+                                onChange={(v) => setGlobalStateFilter(v)}
+                                size="sm"
+                                options={[
+                                    {
+                                        value: "all",
+                                        label: t(
+                                            "All Statuses",
+                                            "Všetky stavy",
+                                            "Minden státusz",
+                                        ),
+                                    },
+                                    ...taskStates
+                                        .filter((st) => !isDoneState(st))
+                                        .map((st) => ({ value: st, label: stateLabel(st) })),
+                                ]}
+                            />
                         </div>
 
                         {/* Date Filter (item 9) */}
@@ -2178,30 +2161,24 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">
                                 {t("Priority", "Priorita", "Prioritás")}
                             </label>
-                            <select
+                            <CustomSelect
                                 value={archivePriorityFilter}
-                                onChange={(e) =>
-                                    setArchivePriorityFilter(e.target.value)
-                                }
-                                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none text-xs font-bold bg-white"
-                            >
-                                <option value="all">
-                                    {t(
-                                        "All Priorities",
-                                        "Všetky priority",
-                                        "Összes prioritás",
-                                    )}
-                                </option>
-                                <option value="high">
-                                    {t("High", "Vysoká", "Magas")}
-                                </option>
-                                <option value="medium">
-                                    {t("Medium", "Stredná", "Közepes")}
-                                </option>
-                                <option value="low">
-                                    {t("Low", "Nízka", "Alacsony")}
-                                </option>
-                            </select>
+                                onChange={(v) => setArchivePriorityFilter(v)}
+                                size="sm"
+                                options={[
+                                    {
+                                        value: "all",
+                                        label: t(
+                                            "All Priorities",
+                                            "Všetky priority",
+                                            "Összes prioritás",
+                                        ),
+                                    },
+                                    { value: "high", label: t("High", "Vysoká", "Magas") },
+                                    { value: "medium", label: t("Medium", "Stredná", "Közepes") },
+                                    { value: "low", label: t("Low", "Nízka", "Alacsony") },
+                                ]}
+                            />
                         </div>
 
                         {/* Completed By */}
@@ -2209,22 +2186,18 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">
                                 {t("Completed By", "Dokončil", "Befejezte")}
                             </label>
-                            <select
+                            <CustomSelect
                                 value={archiveUserFilter}
-                                onChange={(e) =>
-                                    setArchiveUserFilter(e.target.value)
-                                }
-                                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none text-xs font-bold bg-white"
-                            >
-                                <option value="all">
-                                    {t("All Users", "Všetci", "Mindenki")}
-                                </option>
-                                {completedUsersList.map((uName) => (
-                                    <option key={uName} value={uName}>
-                                        {uName}
-                                    </option>
-                                ))}
-                            </select>
+                                onChange={(v) => setArchiveUserFilter(v)}
+                                size="sm"
+                                options={[
+                                    { value: "all", label: t("All Users", "Všetci", "Mindenki") },
+                                    ...completedUsersList.map((uName) => ({
+                                        value: uName,
+                                        label: uName,
+                                    })),
+                                ]}
+                            />
                         </div>
 
                         {/* Timing Status */}
@@ -2236,27 +2209,23 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     "Késési státusz",
                                 )}
                             </label>
-                            <select
+                            <CustomSelect
                                 value={archiveTimingFilter}
-                                onChange={(e) =>
-                                    setArchiveTimingFilter(e.target.value)
-                                }
-                                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none text-xs font-bold bg-white"
-                            >
-                                <option value="all">
-                                    {t(
-                                        "All Statuses",
-                                        "Všetky stavy",
-                                        "Összes státusz",
-                                    )}
-                                </option>
-                                <option value="on_time">
-                                    {t("On Time", "Načas", "Időben")}
-                                </option>
-                                <option value="overdue">
-                                    {t("Overdue", "Omeškané", "Lejárt")}
-                                </option>
-                            </select>
+                                onChange={(v) => setArchiveTimingFilter(v)}
+                                size="sm"
+                                options={[
+                                    {
+                                        value: "all",
+                                        label: t(
+                                            "All Statuses",
+                                            "Všetky stavy",
+                                            "Összes státusz",
+                                        ),
+                                    },
+                                    { value: "on_time", label: t("On Time", "Načas", "Időben") },
+                                    { value: "overdue", label: t("Overdue", "Omeškané", "Lejárt") },
+                                ]}
+                            />
                         </div>
 
                         {/* Date filter (item 9) */}
@@ -2833,26 +2802,24 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     "Projektmenedzser kijelölése",
                                 )}
                             </label>
-                            <select
+                            <CustomSelect
                                 value={newAssignedUser}
-                                onChange={(e) =>
-                                    setNewAssignedUser(e.target.value)
-                                }
-                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none bg-white"
-                            >
-                                <option value="">
-                                    {t(
-                                        "-- Unassigned --",
-                                        "-- Nepriradený --",
-                                        "-- Kijelöletlen --",
-                                    )}
-                                </option>
-                                {users.map((u) => (
-                                    <option key={u.name} value={u.name}>
-                                        {u.name} ({u.role})
-                                    </option>
-                                ))}
-                            </select>
+                                onChange={(v) => setNewAssignedUser(v)}
+                                options={[
+                                    {
+                                        value: "",
+                                        label: t(
+                                            "-- Unassigned --",
+                                            "-- Nepriradený --",
+                                            "-- Kijelöletlen --",
+                                        ),
+                                    },
+                                    ...users.map((u) => ({
+                                        value: u.name,
+                                        label: `${u.name} (${u.role})`,
+                                    })),
+                                ]}
+                            />
                         </div>
 
                         <div className="space-y-1">
@@ -2863,27 +2830,20 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     "Összekapcsolás ügyféllel",
                                 )}
                             </label>
-                            <select
+                            <CustomSelect
                                 value={newRelatedLeadId}
-                                onChange={(e) => {
-                                    setNewRelatedLeadId(e.target.value);
-                                    if (!e.target.value) setNewIsLocking(false);
+                                onChange={(v) => {
+                                    setNewRelatedLeadId(v);
+                                    if (!v) setNewIsLocking(false);
                                 }}
-                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none bg-white"
-                            >
-                                <option value="">
-                                    {t(
-                                        "-- None --",
-                                        "-- Žiadny --",
-                                        "-- Nincs --",
-                                    )}
-                                </option>
-                                {leads.map((l) => (
-                                    <option key={l.id} value={l.id}>
-                                        {l.name}
-                                    </option>
-                                ))}
-                            </select>
+                                options={[
+                                    {
+                                        value: "",
+                                        label: t("-- None --", "-- Žiadny --", "-- Nincs --"),
+                                    },
+                                    ...leads.map((l) => ({ value: l.id, label: l.name })),
+                                ]}
+                            />
                         </div>
 
                         {newRelatedLeadId && (
@@ -3099,10 +3059,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     "Feladat állapota",
                                 )}
                             </label>
-                            <select
+                            <CustomSelect
                                 value={currentTask.status}
-                                onChange={(e) => {
-                                    const val = e.target.value;
+                                onChange={(val) => {
                                     const now = new Date();
                                     const completedAtStr = isDoneState(val)
                                         ? toLocalDateStr(now) +
@@ -3126,14 +3085,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                             : null,
                                     );
                                 }}
-                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none bg-white font-bold"
-                            >
-                                {taskStates.map((st) => (
-                                    <option key={st} value={st}>
-                                        {stateLabel(st)}
-                                    </option>
-                                ))}
-                            </select>
+                                options={taskStates.map((st) => ({ value: st, label: stateLabel(st) }))}
+                            />
                         </div>
 
                         <div className="space-y-1.5">
@@ -3181,36 +3134,34 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     "Projektmenedzser kijelölése",
                                 )}
                             </label>
-                            <select
+                            <CustomSelect
                                 value={currentTask.assignedUsers?.[0] || ""}
-                                onChange={(e) =>
+                                onChange={(v) =>
                                     setEditingTask((prev) => {
                                         if (!prev) return null;
-                                        const newUsers = e.target.value
-                                            ? [e.target.value]
-                                            : [];
+                                        const newUsers = v ? [v] : [];
                                         return {
                                             ...prev,
                                             assignedUsers: newUsers,
-                                            owner: e.target.value,
+                                            owner: v,
                                         };
                                     })
                                 }
-                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none bg-white"
-                            >
-                                <option value="">
-                                    {t(
-                                        "-- Unassigned --",
-                                        "-- Nepriradený --",
-                                        "-- Kijelöletlen --",
-                                    )}
-                                </option>
-                                {users.map((u) => (
-                                    <option key={u.name} value={u.name}>
-                                        {u.name} ({u.role})
-                                    </option>
-                                ))}
-                            </select>
+                                options={[
+                                    {
+                                        value: "",
+                                        label: t(
+                                            "-- Unassigned --",
+                                            "-- Nepriradený --",
+                                            "-- Kijelöletlen --",
+                                        ),
+                                    },
+                                    ...users.map((u) => ({
+                                        value: u.name,
+                                        label: `${u.name} (${u.role})`,
+                                    })),
+                                ]}
+                            />
                         </div>
 
                         <div className="space-y-1">
@@ -3221,10 +3172,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     "Összekapcsolás ügyféllel",
                                 )}
                             </label>
-                            <select
+                            <CustomSelect
                                 value={currentTask.relatedLeadId || ""}
-                                onChange={(e) => {
-                                    const leadId = e.target.value || undefined;
+                                onChange={(v) => {
+                                    const leadId = v || undefined;
                                     setEditingTask((prev) =>
                                         prev
                                             ? {
@@ -3237,21 +3188,14 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                             : null,
                                     );
                                 }}
-                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none bg-white"
-                            >
-                                <option value="">
-                                    {t(
-                                        "-- None --",
-                                        "-- Žiadny --",
-                                        "-- Nincs --",
-                                    )}
-                                </option>
-                                {leads.map((l) => (
-                                    <option key={l.id} value={l.id}>
-                                        {l.name}
-                                    </option>
-                                ))}
-                            </select>
+                                options={[
+                                    {
+                                        value: "",
+                                        label: t("-- None --", "-- Žiadny --", "-- Nincs --"),
+                                    },
+                                    ...leads.map((l) => ({ value: l.id, label: l.name })),
+                                ]}
+                            />
                         </div>
 
                         {currentTask.relatedLeadId && (

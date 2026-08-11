@@ -11,6 +11,7 @@ import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { ProjectSettings } from "./ProjectSettings";
 import { PasswordInput } from "./PasswordInput";
+import { CustomSelect } from "./ui/CustomSelect";
 import { CURRENCY_OPTIONS, currencyForRegion } from "../utils/currency";
 import { formatTimestampLocalized } from "../utils/localTime";
 
@@ -794,6 +795,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setIsConnected(integrationsConfig.adsConnected === true);
       setCampaigns(integrationsConfig.campaigns || []);
       setOpenAiKey(integrationsConfig.openAiKey || "");
+      setAnthropicKey(integrationsConfig.anthropicKey || "");
+      setGeminiKey(integrationsConfig.geminiKey || "");
       setVectorDb(integrationsConfig.vectorDb || "none");
       setMariaDbHost(integrationsConfig.mariaDbHost || "");
       setMariaDbPort(integrationsConfig.mariaDbPort || "3306");
@@ -811,6 +814,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // OpenAI & Vector DB Configuration States
   const [openAiKey, setOpenAiKey] = React.useState("");
   const [showOpenAiKey, setShowOpenAiKey] = React.useState(false);
+  // Alternative LLM providers — only the Automation workflow AI nodes can pick
+  // a provider, the rest of the CRM's AI features are OpenAI-only. Kept here so
+  // every AI credential lives in one place.
+  const [anthropicKey, setAnthropicKey] = React.useState("");
+  const [showAnthropicKey, setShowAnthropicKey] = React.useState(false);
+  const [geminiKey, setGeminiKey] = React.useState("");
+  const [showGeminiKey, setShowGeminiKey] = React.useState(false);
   const [vectorDb, setVectorDb] = React.useState<"none" | "mariadb" | "qdrant" | "pinecone">("none");
   const [mariaDbHost, setMariaDbHost] = React.useState("");
   const [mariaDbPort, setMariaDbPort] = React.useState("3306");
@@ -1101,6 +1111,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       updateIntegrationsConfig({
         ...integrationsConfig,
         openAiKey,
+        anthropicKey,
+        geminiKey,
         vectorDb,
         mariaDbHost,
         mariaDbPort,
@@ -2366,16 +2378,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider">
                     {getTranslation(userLanguage, "settings.general.system_lang")}
                   </label>
-                  <select
+                  <CustomSelect
                     disabled={getPermission("general_config") === "view"}
                     value={systemLanguage}
-                    onChange={(e) => setSystemLanguage(e.target.value as Language)}
-                    className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-855 font-heading font-bold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:bg-slate-50 disabled:text-slate-400"
-                  >
-                    <option value="sk">🇸🇰 Slovenčina</option>
-                    <option value="en">🇬🇧 English</option>
-                    <option value="hu">🇭🇺 Magyar</option>
-                  </select>
+                    onChange={(v) => setSystemLanguage(v as Language)}
+                    options={[
+                      { value: "sk", label: "🇸🇰 Slovenčina" },
+                      { value: "en", label: "🇬🇧 English" },
+                      { value: "hu", label: "🇭🇺 Magyar" },
+                    ]}
+                  />
                   <p className="text-[10px] text-slate-400">
                     {getTranslation(userLanguage, "settings.general.system_lang_desc")}
                   </p>
@@ -2385,19 +2397,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider">
                     {getTranslation(userLanguage, "settings.general.currency")}
                   </label>
-                  <select
+                  <CustomSelect
                     disabled={getPermission("general_config") === "view"}
                     value={systemCurrency || ""}
-                    onChange={(e) => setSystemCurrency(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-855 font-heading font-bold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:bg-slate-50 disabled:text-slate-400"
-                  >
-                    <option value="">
-                      {getTranslation(userLanguage, "settings.general.currency_auto")} ({currencyForRegion(systemLanguage)})
-                    </option>
-                    {CURRENCY_OPTIONS.map((c) => (
-                      <option key={c.code} value={c.code}>{c.label}</option>
-                    ))}
-                  </select>
+                    onChange={(v) => setSystemCurrency(v)}
+                    options={[
+                      {
+                        value: "",
+                        label: `${getTranslation(userLanguage, "settings.general.currency_auto")} (${currencyForRegion(systemLanguage)})`,
+                      },
+                      ...CURRENCY_OPTIONS.map((c) => ({ value: c.code, label: c.label })),
+                    ]}
+                  />
                   <p className="text-[10px] text-slate-400">
                     {getTranslation(userLanguage, "settings.general.currency_desc")}
                   </p>
@@ -2667,18 +2678,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         <div className="space-y-1">
                           <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">{getTranslation(userLanguage, "settings.managers.lbl_access")}</label>
                           {getPermission("pm_managers") === "edit" ? (
-                            <select
+                            <CustomSelect
                               value={selectedUser.role}
-                              onChange={(e) => {
-                                const updated = { ...selectedUser, role: e.target.value };
+                              onChange={(v) => {
+                                const updated = { ...selectedUser, role: v };
                                 handleUpdateUser(updated);
                               }}
-                              className="w-full px-3 py-2 rounded-xl bg-slate-50/50 border border-slate-200 text-xs font-bold text-slate-700 focus:outline-none focus:bg-white focus:border-indigo-500 transition-all"
-                            >
-                              {roles.map(r => (
-                                <option key={r.name} value={r.name}>{r.name}</option>
-                              ))}
-                            </select>
+                              options={roles.map(r => ({ value: r.name, label: r.name }))}
+                            />
                           ) : (
                             <div className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 font-extrabold uppercase select-text tracking-wide w-full">
                               🛡️ {selectedUser.role}
@@ -2838,17 +2845,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             placeholder={getTranslation(userLanguage, "settings.managers.sim_placeholder")}
                             className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500 sm:col-span-8"
                           />
-                          <select
-                            value={simulatedType}
-                            onChange={(e) => setSimulatedType(e.target.value as any)}
-                            className="w-full px-2 py-2 rounded-xl bg-white border border-slate-200 text-[10px] font-extrabold uppercase tracking-wide text-slate-700 focus:outline-none focus:border-indigo-500 sm:col-span-4"
-                          >
-                            <option value="login">login</option>
-                            <option value="create">create</option>
-                            <option value="update">update</option>
-                            <option value="delete">delete</option>
-                            <option value="system">system</option>
-                          </select>
+                          <div className="sm:col-span-4">
+                            <CustomSelect
+                              size="sm"
+                              value={simulatedType}
+                              onChange={(v) => setSimulatedType(v as any)}
+                              options={["login", "create", "update", "delete", "system"]}
+                            />
+                          </div>
                         </div>
                         <button
                           type="submit"
@@ -2908,15 +2912,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     </div>
                     <div className="space-y-1">
                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">{getTranslation(userLanguage, "settings.managers.lbl_role_assignment")}</label>
-                      <select
+                      <CustomSelect
                         value={newUserRole}
-                        onChange={(e) => setNewUserRole(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500"
-                      >
-                        {roles.map(r => (
-                          <option key={r.name} value={r.name}>{r.name}</option>
-                        ))}
-                      </select>
+                        onChange={(v) => setNewUserRole(v)}
+                        options={roles.map(r => ({ value: r.name, label: r.name }))}
+                      />
                     </div>
                   </div>
 
@@ -3489,16 +3489,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     placeholder={getTranslation(userLanguage, "settings.states.placeholder")}
                     className="flex-1 min-w-[150px] px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
                   />
-                  <select
-                    value={newStateParent}
-                    onChange={(e) => setNewStateParent(e.target.value)}
-                    className="px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-700 font-bold focus:outline-none focus:border-indigo-500 cursor-pointer max-w-[150px]"
-                  >
-                    <option value="">{userLanguage === "sk" ? "-- Hlavný stav --" : userLanguage === "hu" ? "-- Fő állapot --" : "-- Major State --"}</option>
-                    {leadStates.filter(s => !leadStateParents[s.toLowerCase()]).map(s => (
-                      <option key={s} value={s.toLowerCase()}>{s.toUpperCase()}</option>
-                    ))}
-                  </select>
+                  <div className="max-w-[150px]">
+                    <CustomSelect
+                      value={newStateParent}
+                      onChange={(v) => setNewStateParent(v)}
+                      options={[
+                        { value: "", label: userLanguage === "sk" ? "-- Hlavný stav --" : userLanguage === "hu" ? "-- Fő állapot --" : "-- Major State --" },
+                        ...leadStates.filter(s => !leadStateParents[s.toLowerCase()]).map(s => ({ value: s.toLowerCase(), label: s.toUpperCase() })),
+                      ]}
+                    />
+                  </div>
                   <button
                     type="submit"
                     className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-indigo-600/10 flex items-center gap-1 shrink-0"
@@ -4251,18 +4251,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             {/* Campaign Status (Editable) */}
                             <td className="py-3 px-4 text-center">
                               {getPermission("general_config") === "edit" ? (
-                                <select
+                                <CustomSelect
+                                  size="sm"
                                   value={c.status}
-                                  onChange={(e) => {
-                                    const statusVal = e.target.value as any;
+                                  onChange={(v) => {
+                                    const statusVal = v as any;
                                     setCampaigns(prev => prev.map(item => item.id === c.id ? { ...item, status: statusVal } : item));
                                   }}
-                                  className="px-2 py-0.5 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-black text-slate-700 focus:outline-none"
-                                >
-                                  <option value="active">{userLanguage === "sk" ? "Aktívne" : userLanguage === "hu" ? "Aktív" : "Active"}</option>
-                                  <option value="paused">{userLanguage === "sk" ? "Pozastavené" : userLanguage === "hu" ? "Szüneteltetve" : "Paused"}</option>
-                                  <option value="learning">{userLanguage === "sk" ? "Učenie" : userLanguage === "hu" ? "Tanulás" : "Learning"}</option>
-                                </select>
+                                  options={[
+                                    { value: "active", label: userLanguage === "sk" ? "Aktívne" : userLanguage === "hu" ? "Aktív" : "Active" },
+                                    { value: "paused", label: userLanguage === "sk" ? "Pozastavené" : userLanguage === "hu" ? "Szüneteltetve" : "Paused" },
+                                    { value: "learning", label: userLanguage === "sk" ? "Učenie" : userLanguage === "hu" ? "Tanulás" : "Learning" },
+                                  ]}
+                                />
                               ) : (
                                 <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase border ${
                                   c.status === "active"
@@ -4540,16 +4541,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider">{getTranslation(userLanguage, "settings.email.smtp_secure")}</label>
-                      <select
+                      <CustomSelect
                         disabled={getPermission("general_config") === "view"}
                         value={smtpSecure}
-                        onChange={(e) => setSmtpSecure(e.target.value as any)}
-                        className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all cursor-pointer"
-                      >
-                        <option value="ssl">{userLanguage === "sk" ? "SSL (Implicitné - Port 465)" : userLanguage === "hu" ? "SSL (Implicit - 465-ös port)" : "SSL (Implicit - Port 465)"}</option>
-                        <option value="tls">{userLanguage === "sk" ? "TLS/STARTTLS (Explicitné - Port 587)" : userLanguage === "hu" ? "TLS/STARTTLS (Explicit - 587-es port)" : "TLS/STARTTLS (Explicit - Port 587)"}</option>
-                        <option value="none">{userLanguage === "sk" ? "Žiadne (Nezabezpečené - Port 25/80)" : userLanguage === "hu" ? "Nincs (Nem biztonságos - 25/80-as port)" : "None (Insecure - Port 25/80)"}</option>
-                      </select>
+                        onChange={(v) => setSmtpSecure(v as any)}
+                        options={[
+                          { value: "ssl", label: userLanguage === "sk" ? "SSL (Implicitné - Port 465)" : userLanguage === "hu" ? "SSL (Implicit - 465-ös port)" : "SSL (Implicit - Port 465)" },
+                          { value: "tls", label: userLanguage === "sk" ? "TLS/STARTTLS (Explicitné - Port 587)" : userLanguage === "hu" ? "TLS/STARTTLS (Explicit - 587-es port)" : "TLS/STARTTLS (Explicit - Port 587)" },
+                          { value: "none", label: userLanguage === "sk" ? "Žiadne (Nezabezpečené - Port 25/80)" : userLanguage === "hu" ? "Nincs (Nem biztonságos - 25/80-as port)" : "None (Insecure - Port 25/80)" },
+                        ]}
+                      />
                     </div>
 
                     <div className="space-y-1.5 md:col-span-2 border-t border-slate-100 pt-3 flex items-center justify-between">
@@ -4666,16 +4667,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider">{getTranslation(userLanguage, "settings.email.exch_auth")}</label>
-                      <select
+                      <CustomSelect
                         disabled={getPermission("general_config") === "view"}
                         value={exchAuth}
-                        onChange={(e) => setExchAuth(e.target.value as any)}
-                        className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all cursor-pointer"
-                      >
-                        <option value="oauth">{userLanguage === "sk" ? "OAuth 2.0 (Moderný MS Exchange Online)" : userLanguage === "hu" ? "OAuth 2.0 (Modern MS Exchange Online)" : "OAuth 2.0 (Modern MS Exchange Online)"}</option>
-                        <option value="ntlm">{userLanguage === "sk" ? "NTLM (Lokálna AD autentifikácia)" : userLanguage === "hu" ? "NTLM (Helyi AD hitelesítés)" : "NTLM (On-Premises AD Authentication)"}</option>
-                        <option value="basic">{userLanguage === "sk" ? "Basic (Zastaraná autentifikácia servera)" : userLanguage === "hu" ? "Basic (Elavult szerver hitelesítés)" : "Basic (Legacy Server Authentication)"}</option>
-                      </select>
+                        onChange={(v) => setExchAuth(v as any)}
+                        options={[
+                          { value: "oauth", label: userLanguage === "sk" ? "OAuth 2.0 (Moderný MS Exchange Online)" : userLanguage === "hu" ? "OAuth 2.0 (Modern MS Exchange Online)" : "OAuth 2.0 (Modern MS Exchange Online)" },
+                          { value: "ntlm", label: userLanguage === "sk" ? "NTLM (Lokálna AD autentifikácia)" : userLanguage === "hu" ? "NTLM (Helyi AD hitelesítés)" : "NTLM (On-Premises AD Authentication)" },
+                          { value: "basic", label: userLanguage === "sk" ? "Basic (Zastaraná autentifikácia servera)" : userLanguage === "hu" ? "Basic (Elavult szerver hitelesítés)" : "Basic (Legacy Server Authentication)" },
+                        ]}
+                      />
                     </div>
 
                     {/* OAuth specific fields */}
@@ -5050,26 +5051,83 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </div>
                 </div>
 
+                <div className="space-y-4 pt-4 border-t border-slate-100">
+                  <p className="text-[10px] text-slate-450 font-semibold leading-relaxed max-w-2xl">
+                    {t(
+                      "Optional — these providers are only used by AI agent nodes in Automations & Workflows. Every other AI feature in the CRM runs on OpenAI.",
+                      "Voliteľné — títo poskytovatelia sa používajú iba v uzloch AI agenta v Automatizáciách a workflowoch. Všetky ostatné AI funkcie v CRM bežia na OpenAI.",
+                      "Opcionális — ezeket a szolgáltatókat csak az Automatizálások és munkafolyamatok AI ügynök csomópontjai használják. A CRM összes többi AI funkciója OpenAI-t használ."
+                    )}
+                  </p>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider block">
+                      {t("Anthropic API Secret Key", "Tajný API kľúč Anthropic", "Anthropic API titkos kulcs")}
+                    </label>
+                    <div className="relative max-w-2xl">
+                      <input
+                        type={showAnthropicKey ? "text" : "password"}
+                        disabled={getPermission("ai_config") === "view"}
+                        value={anthropicKey}
+                        onChange={(e) => setAnthropicKey(e.target.value)}
+                        placeholder="sk-ant-..."
+                        className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-mono font-bold text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:bg-slate-50 disabled:text-slate-400"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowAnthropicKey(!showAnthropicKey)}
+                        className="absolute right-3.5 top-2.5 text-slate-400 hover:text-slate-650 cursor-pointer"
+                      >
+                        {showAnthropicKey ? <Minus className="h-4.5 w-4.5" /> : <Eye className="h-4.5 w-4.5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider block">
+                      {t("Google Gemini API Secret Key", "Tajný API kľúč Google Gemini", "Google Gemini API titkos kulcs")}
+                    </label>
+                    <div className="relative max-w-2xl">
+                      <input
+                        type={showGeminiKey ? "text" : "password"}
+                        disabled={getPermission("ai_config") === "view"}
+                        value={geminiKey}
+                        onChange={(e) => setGeminiKey(e.target.value)}
+                        placeholder="AIzaSy..."
+                        className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-mono font-bold text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:bg-slate-50 disabled:text-slate-400"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowGeminiKey(!showGeminiKey)}
+                        className="absolute right-3.5 top-2.5 text-slate-400 hover:text-slate-650 cursor-pointer"
+                      >
+                        {showGeminiKey ? <Minus className="h-4.5 w-4.5" /> : <Eye className="h-4.5 w-4.5" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
                 {openAiKey.trim() !== "" && (
                   <div className="space-y-4 pt-4 border-t border-slate-100 animate-slide-up">
                     <div className="space-y-2">
                       <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider block">
                         {t("Vector Database Backend", "Backend vektorovej databázy", "Vektoradatbázis backend")}
                       </label>
-                      <select
+                      <CustomSelect
                         disabled={getPermission("ai_config") === "view"}
                         value={vectorDb}
-                        onChange={(e) => {
-                          setVectorDb(e.target.value as any);
+                        onChange={(v) => {
+                          setVectorDb(v as any);
                           setValidationResult(null);
                         }}
-                        className="max-w-2xl w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-semibold text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:bg-slate-50 disabled:text-slate-400"
-                      >
-                        <option value="none">{t("Disabled", "Zakázané", "Letiltva")}</option>
-                        <option value="mariadb">{t("MariaDB (Native SQL Vectors - Recommended)", "MariaDB (Natívne SQL vektory – Odporúčané)", "MariaDB (Natív SQL vektorok – Ajánlott)")}</option>
-                        <option value="qdrant">{t("Qdrant Sidecar Container", "Qdrant Sidecar kontajner", "Qdrant Sidecar konténer")}</option>
-                        <option value="pinecone">{t("Pinecone Cloud Service", "Cloudová služba Pinecone", "Pinecone felhőszolgáltatás")}</option>
-                      </select>
+                        className="max-w-2xl"
+                        options={[
+                          { value: "none", label: t("Disabled", "Zakázané", "Letiltva") },
+                          { value: "mariadb", label: t("MariaDB (Native SQL Vectors - Recommended)", "MariaDB (Natívne SQL vektory – Odporúčané)", "MariaDB (Natív SQL vektorok – Ajánlott)") },
+                          { value: "qdrant", label: t("Qdrant Sidecar Container", "Qdrant Sidecar kontajner", "Qdrant Sidecar konténer") },
+                          { value: "pinecone", label: t("Pinecone Cloud Service", "Cloudová služba Pinecone", "Pinecone felhőszolgáltatás") },
+                        ]}
+                      />
                     </div>
 
                     {vectorDb === "mariadb" && (

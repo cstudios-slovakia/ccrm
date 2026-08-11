@@ -10,6 +10,7 @@ import {
   ChevronDown, ChevronUp, Move, Sparkles, Send, Star, Bell, Flame, Heart, Shield, Wrench, Package, Award, Target, Lock, Search, Sliders, Tag, Gift, Compass, Paperclip, Printer, Headphones, Video, Radio, Megaphone, Bookmark, DollarSign, CreditCard, TrendingUp, BarChart2, HelpCircle, Info, Smile, ThumbsUp
 } from "lucide-react";
 import type { Language } from "../utils/translations";
+import { CustomSelect } from "./ui/CustomSelect";
 
 const SYSTEM_COLORS = [
   { name: "Purple", hex: "#7e22ce" },
@@ -352,10 +353,9 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
   const [selectedWorkflow, setSelectedWorkflow] = useState<any>(null);
   
   // Settings state
+  // AI provider keys live in Settings -> INTEGRATIONS_CONFIG; this config only
+  // carries the token that authenticates the background cron endpoint.
   const [apiKeys, setApiKeys] = useState({
-    openAiKey: "",
-    anthropicKey: "",
-    geminiKey: "",
     cronToken: ""
   });
   const [savingSettings, setSavingSettings] = useState(false);
@@ -514,7 +514,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
       const res = await fetch("/api/workflows.php?action=get_settings");
       const data = await res.json();
       if (data.success) {
-        setApiKeys(data.settings);
+        setApiKeys({ cronToken: data.settings?.cronToken || "" });
       }
     } catch (err) {
       console.error("Error fetching settings", err);
@@ -1256,7 +1256,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                     }`}
                   >
                     <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                    <span>{t("Action", "Action", "Akció")}</span>
+                    <span>{t("Action", "Akcia", "Akció")}</span>
                     <ChevronDown className={`h-3 w-3 text-emerald-500 transition-transform ${activePillDropdown === "action" ? "rotate-180" : ""}`} />
                   </button>
                   {activePillDropdown === "action" && (
@@ -1517,7 +1517,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                           onClick={(e) => handleCompleteConnection(node.id, e)}
                           title={t("Connect Input", "Vstup", "Bemenet")}
                         >
-                          IN
+                          {t("IN", "VSTUP", "BE")}
                         </div>
                       )}
 
@@ -1778,14 +1778,15 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                               <div className="p-1.5 bg-slate-50 border border-slate-100 rounded-lg shrink-0 flex items-center justify-center">
                                 <Filter className="h-3.5 w-3.5 text-slate-400" />
                               </div>
-                              <select
+                              <CustomSelect
+                                size="sm"
                                 value={triggerConfig.leadSource || "any"}
-                                onChange={(e) => setTriggerConfig({ ...triggerConfig, leadSource: e.target.value === "any" ? null : e.target.value })}
-                                className="w-full px-2 py-1 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 bg-white focus:outline-none"
-                              >
-                                <option value="any">{t("Any Source", "Akýkoľvek zdroj", "Bármely forrás")}</option>
-                                {leadSources.map(src => <option key={src} value={src}>{src}</option>)}
-                              </select>
+                                onChange={(v) => setTriggerConfig({ ...triggerConfig, leadSource: v === "any" ? null : v })}
+                                options={[
+                                  { value: "any", label: t("Any Source", "Akýkoľvek zdroj", "Bármely forrás") },
+                                  ...leadSources.map(src => ({ value: src, label: src })),
+                                ]}
+                              />
                             </div>
                           </div>
                         )}
@@ -1794,35 +1795,37 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                         {triggerType === "lead_status_changed" && (
                           <div className="grid grid-cols-2 gap-1.5">
                             <div>
-                              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">From Status</label>
+                              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t("From Status", "Zo stavu", "Kiindulási állapot")}</label>
                               <div className="flex items-center gap-1.5 mt-0.5">
                                 <div className="p-1 bg-slate-50 border border-slate-100 rounded-md shrink-0 flex items-center justify-center">
                                   <Activity className="h-3 w-3 text-slate-400" />
                                 </div>
-                                <select
+                                <CustomSelect
+                                  size="sm"
                                   value={triggerConfig.fromStatus || "any"}
-                                  onChange={(e) => setTriggerConfig({ ...triggerConfig, fromStatus: e.target.value })}
-                                  className="w-full px-1.5 py-0.5 border border-slate-200 rounded-lg text-[10px] font-semibold text-slate-700 bg-white focus:outline-none"
-                                >
-                                  <option value="any">Any</option>
-                                  {leadStates.map(s => <option key={s} value={s}>{s}</option>)}
-                                </select>
+                                  onChange={(v) => setTriggerConfig({ ...triggerConfig, fromStatus: v })}
+                                  options={[
+                                    { value: "any", label: t("Any", "Akýkoľvek", "Bármely") },
+                                    ...leadStates.map(s => ({ value: s, label: s })),
+                                  ]}
+                                />
                               </div>
                             </div>
                             <div>
-                              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">To Status</label>
+                              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t("To Status", "Do stavu", "Cél állapot")}</label>
                               <div className="flex items-center gap-1.5 mt-0.5">
                                 <div className="p-1 bg-slate-50 border border-slate-100 rounded-md shrink-0 flex items-center justify-center">
                                   <Activity className="h-3 w-3 text-slate-400" />
                                 </div>
-                                <select
+                                <CustomSelect
+                                  size="sm"
                                   value={triggerConfig.toStatus || "any"}
-                                  onChange={(e) => setTriggerConfig({ ...triggerConfig, toStatus: e.target.value })}
-                                  className="w-full px-1.5 py-0.5 border border-slate-200 rounded-lg text-[10px] font-semibold text-slate-700 bg-white focus:outline-none"
-                                >
-                                  <option value="any">Any</option>
-                                  {leadStates.map(s => <option key={s} value={s}>{s}</option>)}
-                                </select>
+                                  onChange={(v) => setTriggerConfig({ ...triggerConfig, toStatus: v })}
+                                  options={[
+                                    { value: "any", label: t("Any", "Akýkoľvek", "Bármely") },
+                                    ...leadStates.map(s => ({ value: s, label: s })),
+                                  ]}
+                                />
                               </div>
                             </div>
                           </div>
@@ -1879,15 +1882,18 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                             <div className="grid grid-cols-2 gap-1.5">
                               <div>
                                 <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t("Style", "Štýl", "Stílus")}</label>
-                                <select
-                                  value={triggerConfig.buttonStyle || "full"}
-                                  onChange={(e) => setTriggerConfig({ ...triggerConfig, buttonStyle: e.target.value })}
-                                  className="w-full mt-0.5 px-2 py-1 border border-slate-200 rounded-lg text-[10px] font-semibold text-slate-700 bg-white focus:outline-none"
-                                >
-                                  <option value="full">Full</option>
-                                  <option value="skeleton">Skeleton</option>
-                                  <option value="icon_only">Icon Only</option>
-                                </select>
+                                <div className="mt-0.5">
+                                  <CustomSelect
+                                    size="sm"
+                                    value={triggerConfig.buttonStyle || "full"}
+                                    onChange={(v) => setTriggerConfig({ ...triggerConfig, buttonStyle: v })}
+                                    options={[
+                                      { value: "full", label: t("Full", "Plné", "Teljes") },
+                                      { value: "skeleton", label: t("Skeleton", "Obrys", "Váz") },
+                                      { value: "icon_only", label: t("Icon Only", "Len ikona", "Csak ikon") },
+                                    ]}
+                                  />
+                                </div>
                               </div>
 
                               {/* Rich Icon Selector with all system icons */}
@@ -2011,28 +2017,28 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                     {node.type === "ai_agent" && (
                       <div className="mt-2 space-y-2">
                         <div>
-                          <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">AI Provider</label>
+                          <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t("AI Provider", "AI poskytovateľ", "AI szolgáltató")}</label>
                           <div className="flex items-center gap-2 mt-0.5">
                             <div className="p-1.5 bg-slate-50 border border-slate-100 rounded-lg shrink-0 flex items-center justify-center">
                               <Bot className="h-3.5 w-3.5 text-slate-400" />
                             </div>
-                            <select
+                            <CustomSelect
                               value={node.data.provider || "gemini"}
-                              onChange={(e) => {
+                              onChange={(v) => {
                                 const updatedNodes = nodes.map(n => {
                                   if (n.id === node.id) {
-                                    return { ...n, data: { ...n.data, provider: e.target.value } };
+                                    return { ...n, data: { ...n.data, provider: v } };
                                   }
                                   return n;
                                 });
                                 setNodes(updatedNodes);
                               }}
-                              className="w-full px-2 py-1 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 bg-white focus:outline-none"
-                            >
-                              <option value="gemini">Gemini</option>
-                              <option value="openai">OpenAI</option>
-                              <option value="anthropic">Anthropic</option>
-                            </select>
+                              options={[
+                                { value: "gemini", label: "Gemini" },
+                                { value: "openai", label: "OpenAI" },
+                                { value: "anthropic", label: "Anthropic" },
+                              ]}
+                            />
                           </div>
                         </div>
                         <VariableInputField
@@ -2095,18 +2101,16 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                 currentNodeId={node.id}
                               />
                               <div>
-                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Status</label>
+                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t("Status", "Stav", "Állapot")}</label>
                                 <div className="flex items-center gap-2 mt-0.5">
                                   <div className="p-1.5 bg-slate-50 border border-slate-100 rounded-lg shrink-0 flex items-center justify-center">
                                     <Activity className="h-3.5 w-3.5 text-slate-400" />
                                   </div>
-                                  <select
+                                  <CustomSelect
                                     value={node.data.status || "new"}
-                                    onChange={(e) => updateActionField("status", e.target.value)}
-                                    className="w-full px-2 py-1 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 bg-white focus:outline-none"
-                                  >
-                                    {leadStates.map(s => <option key={s} value={s}>{s}</option>)}
-                                  </select>
+                                    onChange={(v) => updateActionField("status", v)}
+                                    options={leadStates.map(s => ({ value: s, label: s }))}
+                                  />
                                 </div>
                               </div>
                             </div>
@@ -2135,20 +2139,21 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                               />
                               <div className="grid grid-cols-2 gap-1.5">
                                 <div>
-                                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Priority</label>
+                                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t("Priority", "Priorita", "Prioritás")}</label>
                                   <div className="flex items-center gap-1.5 mt-0.5">
                                     <div className="p-1 bg-slate-50 border border-slate-100 rounded-md shrink-0 flex items-center justify-center">
                                       <AlertCircle className="h-3.5 w-3.5 text-slate-400" />
                                     </div>
-                                    <select
+                                    <CustomSelect
+                                      size="sm"
                                       value={node.data.priority || "medium"}
-                                      onChange={(e) => updateActionField("priority", e.target.value)}
-                                      className="w-full px-1.5 py-0.5 border border-slate-200 rounded-lg text-[10px] font-semibold text-slate-700 bg-white focus:outline-none"
-                                    >
-                                      <option value="low">Low</option>
-                                      <option value="medium">Medium</option>
-                                      <option value="high">High</option>
-                                    </select>
+                                      onChange={(v) => updateActionField("priority", v)}
+                                      options={[
+                                        { value: "low", label: t("Low", "Nízka", "Alacsony") },
+                                        { value: "medium", label: t("Medium", "Stredná", "Közepes") },
+                                        { value: "high", label: t("High", "Vysoká", "Magas") },
+                                      ]}
+                                    />
                                   </div>
                                 </div>
                                 <div>
@@ -2198,18 +2203,18 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                 <div className="flex items-center justify-between mb-0.5">
                                   <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t("Assignee", "Poverená osoba", "Felelős")}</label>
                                   {users.length > 0 && (
-                                    <select
+                                    <CustomSelect
+                                      unstyled
                                       value=""
-                                      onChange={(e) => {
-                                        if (e.target.value) {
-                                          updateActionField("owner", e.target.value);
+                                      onChange={(v) => {
+                                        if (v) {
+                                          updateActionField("owner", v);
                                         }
                                       }}
-                                      className="text-[9px] bg-slate-100 text-slate-600 font-bold px-1.5 py-0.5 rounded cursor-pointer border-none"
-                                    >
-                                      <option value="">{t("Select User...", "Vybrať používateľa...", "Kiválasztás...")}</option>
-                                      {users.map(u => <option key={u.name} value={u.name}>{u.name}</option>)}
-                                    </select>
+                                      className="text-[10px] bg-slate-100 text-slate-600 font-bold px-1.5 py-0.5 rounded-full gap-1"
+                                      placeholder={t("Select User...", "Vybrať používateľa...", "Kiválasztás...")}
+                                      options={users.map(u => ({ value: u.name, label: u.name }))}
+                                    />
                                   )}
                                 </div>
                                 <VariableInputField
@@ -2278,15 +2283,15 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                   <div className="p-1.5 bg-slate-50 border border-slate-100 rounded-lg shrink-0 flex items-center justify-center">
                                     <Users className="h-3.5 w-3.5 text-slate-400" />
                                   </div>
-                                  <select
+                                  <CustomSelect
                                     value={node.data.client_type || "business"}
-                                    onChange={(e) => updateActionField("client_type", e.target.value)}
-                                    className="w-full px-2 py-1 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 bg-white focus:outline-none"
-                                  >
-                                    <option value="business">Business / Firma</option>
-                                    <option value="person">Person / Súkromná osoba</option>
-                                    <option value="partner">Partner / Obchodný partner</option>
-                                  </select>
+                                    onChange={(v) => updateActionField("client_type", v)}
+                                    options={[
+                                      { value: "business", label: "Business / Firma" },
+                                      { value: "person", label: "Person / Súkromná osoba" },
+                                      { value: "partner", label: "Partner / Obchodný partner" },
+                                    ]}
+                                  />
                                 </div>
                               </div>
 
@@ -2400,7 +2405,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                           onClick={(e) => handleStartConnection(node.id, "true", e)}
                           title={t("True branch", "Pravda", "Igaz")}
                         >
-                          TRUE
+                          {t("TRUE", "PRAVDA", "IGAZ")}
                         </div>
                         {/* False handle */}
                         <div 
@@ -2408,7 +2413,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                           onClick={(e) => handleStartConnection(node.id, "false", e)}
                           title={t("False branch", "Nepravda", "Hamis")}
                         >
-                          FALSE
+                          {t("FALSE", "NEPRAVDA", "HAMIS")}
                         </div>
                       </>
                     ) : (
@@ -2417,7 +2422,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                         onClick={(e) => handleStartConnection(node.id, undefined, e)}
                         title={t("Connect Output", "Výstup", "Kimenet")}
                       >
-                        OUT
+                        {t("OUT", "VÝSTUP", "KI")}
                       </div>
                     )}
                   </div>
@@ -2443,7 +2448,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                       type="text" 
                       value={workflowName}
                       onChange={(e) => setWorkflowName(e.target.value)}
-                      placeholder="e.g. New Website Lead Nurture"
+                      placeholder={t("e.g. New Website Lead Nurture", "napr. Starostlivosť o nových leadov", "pl. Új weboldalas lead gondozás")}
                       className="w-full mt-1.5 px-3 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600"
                     />
                   </div>
@@ -2452,7 +2457,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                     <textarea 
                       value={workflowDesc}
                       onChange={(e) => setWorkflowDesc(e.target.value)}
-                      placeholder="What does this workflow do?"
+                      placeholder={t("What does this workflow do?", "Čo tento workflow robí?", "Mit csinál ez a munkafolyamat?")}
                       className="w-full mt-1.5 px-3 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 h-20 resize-none focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600"
                     />
                   </div>
@@ -2616,13 +2621,13 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                           </div>
                           <div className="p-4 grid grid-cols-2 gap-4 bg-slate-50/50">
                             <div>
-                              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-1">Input Data</span>
+                              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-1">{t("Input Data", "Vstupné dáta", "Bemeneti adatok")}</span>
                               <pre className="text-[10px] font-mono bg-white p-2.5 border border-slate-200 rounded-lg max-h-36 overflow-auto text-slate-600">
                                 {JSON.stringify(step.input, null, 2)}
                               </pre>
                             </div>
                             <div>
-                              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-1">Output Data</span>
+                              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-1">{t("Output Data", "Výstupné dáta", "Kimeneti adatok")}</span>
                               <pre className="text-[10px] font-mono bg-white p-2.5 border border-slate-200 rounded-lg max-h-36 overflow-auto text-slate-600">
                                 {JSON.stringify(step.output, null, 2)}
                               </pre>
@@ -2638,52 +2643,30 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
           </div>
         )}
 
-        {/* TAB 4: AUTOMATION MODULE CONFIG / KEYS */}
+        {/* TAB 4: AUTOMATION MODULE CONFIG (cron endpoint) */}
         {activeTab === "settings" && (
           <div className="max-w-2xl space-y-6">
             <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-6 sm:p-8">
               <h2 className="text-lg font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
                 <Settings className="h-5 w-5 text-purple-600" />
-                {t("Automation Integration Keys", "Integračné kľúče pre automatizácie", "Integrációs kulcsok")}
+                {t("Automation Execution Settings", "Nastavenia spúšťania automatizácií", "Automatizálás futtatási beállításai")}
               </h2>
-              <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1 mb-6">{t("Configure API keys for AI processors and copy background execution Cron URLs.", "Nastavte API kľúče pre AI a skopírujte Cron URL časovača.", "Konfigurálja az API kulcsokat és a Cron URL-t.")}</p>
+              <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1 mb-6">{t("Copy the Cron URL that runs timers and the queued workflow jobs in the background.", "Skopírujte Cron URL, ktorá na pozadí spúšťa časovače a úlohy vo fronte.", "Másolja ki a Cron URL-t, amely a háttérben futtatja az időzítőket és a sorban álló feladatokat.")}</p>
+
+              <div className="flex gap-3 bg-indigo-50 border border-indigo-100 rounded-xl p-4 mb-6">
+                <Info className="h-4 w-4 text-indigo-600 shrink-0 mt-0.5" />
+                <p className="text-xs text-slate-600 font-semibold leading-relaxed">
+                  {t(
+                    "AI agent nodes use the API keys from Settings → AI Settings & Embeddings. Make sure the key for your chosen provider (OpenAI, Anthropic or Gemini) is set there.",
+                    "Uzly AI agenta používajú API kľúče z Nastavenia → AI nastavenia a model. Uistite sa, že kľúč pre zvoleného poskytovateľa (OpenAI, Anthropic alebo Gemini) je tam nastavený.",
+                    "Az AI ügynök csomópontok a Beállítások → AI beállítások és beágyazások alatt megadott API kulcsokat használják. Győződjön meg róla, hogy a választott szolgáltató (OpenAI, Anthropic vagy Gemini) kulcsa be van állítva."
+                  )}
+                </p>
+              </div>
 
               <form onSubmit={saveSettings} className="space-y-4">
                 <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase">OpenAI API Key</label>
-                  <input 
-                    type="password" 
-                    value={apiKeys.openAiKey}
-                    onChange={(e) => setApiKeys({ ...apiKeys, openAiKey: e.target.value })}
-                    placeholder="sk-..."
-                    className="w-full mt-1.5 px-3 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 focus:outline-none focus:border-purple-600"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase">Anthropic API Key</label>
-                  <input 
-                    type="password" 
-                    value={apiKeys.anthropicKey}
-                    onChange={(e) => setApiKeys({ ...apiKeys, anthropicKey: e.target.value })}
-                    placeholder="sk-ant-..."
-                    className="w-full mt-1.5 px-3 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 focus:outline-none focus:border-purple-600"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase">Gemini API Key</label>
-                  <input 
-                    type="password" 
-                    value={apiKeys.geminiKey}
-                    onChange={(e) => setApiKeys({ ...apiKeys, geminiKey: e.target.value })}
-                    placeholder="AIzaSy..."
-                    className="w-full mt-1.5 px-3 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 focus:outline-none focus:border-purple-600"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase">Cron Endpoint Token</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{t("Cron Endpoint Token", "Token pre Cron endpoint", "Cron végpont token")}</label>
                   <div className="flex gap-2 mt-1.5">
                     <input 
                       type="text" 
@@ -2735,7 +2718,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                     disabled={savingSettings}
                     className="px-5 py-3 rounded-2xl bg-[#0b1329] text-white hover:bg-slate-900 shadow-md shadow-[#0b1329]/20 transition-all font-heading font-bold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
                   >
-                    {savingSettings ? t("Saving...", "Ukladám...", "Mentés...") : t("Save API Keys", "Uložiť API kľúče", "Kulcsok mentése")}
+                    {savingSettings ? t("Saving...", "Ukladám...", "Mentés...") : t("Save Settings", "Uložiť nastavenia", "Beállítások mentése")}
                   </button>
                 </div>
               </form>

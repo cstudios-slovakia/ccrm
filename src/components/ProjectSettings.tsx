@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import * as Icons from "lucide-react";
 import { Plus, Trash2, ArrowUp, ArrowDown, Save, X } from "lucide-react";
+import { CustomSelect } from "./ui/CustomSelect";
 import type { ProjectType, ProjectAttribute, ProjectAttributeType, TimelineEventType } from "../types";
 import type { Language } from "../utils/translations";
 
@@ -666,15 +667,11 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                                   <label className="block text-[10px] font-black text-slate-450 uppercase mb-1">
                                     {t("Type", "Typ", "Típus")}
                                   </label>
-                                  <select
+                                  <CustomSelect
                                     value={newTeAttrType}
-                                    onChange={e => setNewTeAttrType(e.target.value as ProjectAttributeType)}
-                                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white"
-                                  >
-                                    {ATTRIBUTE_TYPES.map(t => (
-                                      <option key={t.id} value={t.id}>{attributeTypeLabel(t.id)}</option>
-                                    ))}
-                                  </select>
+                                    onChange={(v) => setNewTeAttrType(v as ProjectAttributeType)}
+                                    options={ATTRIBUTE_TYPES.map(at => ({ value: at.id, label: attributeTypeLabel(at.id) }))}
+                                  />
                                 </div>
                               </div>
 
@@ -795,15 +792,11 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                     <label className="block text-[10px] font-black text-slate-450 uppercase mb-1">
                       {t("Type", "Typ", "Típus")}
                     </label>
-                    <select
+                    <CustomSelect
                       value={newAttrType}
-                      onChange={e => setNewAttrType(e.target.value as ProjectAttributeType)}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white"
-                    >
-                      {ATTRIBUTE_TYPES.map(t => (
-                        <option key={t.id} value={t.id}>{attributeTypeLabel(t.id)}</option>
-                      ))}
-                    </select>
+                      onChange={(v) => setNewAttrType(v as ProjectAttributeType)}
+                      options={ATTRIBUTE_TYPES.map(at => ({ value: at.id, label: attributeTypeLabel(at.id) }))}
+                    />
                   </div>
                 </div>
 

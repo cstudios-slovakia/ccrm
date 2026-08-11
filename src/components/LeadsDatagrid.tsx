@@ -147,33 +147,34 @@ const InlineDeadlineTimePicker: React.FC<{
 
     return (
         <div className="space-y-1.5">
-            <select
+            <CustomSelect
                 value={showCustom ? "custom" : currentValue}
-                onChange={(e) => {
-                    if (e.target.value === "custom") {
+                onChange={(v) => {
+                    if (v === "custom") {
                         setCustomOpen(true);
                         if (!GATE_DEADLINE_TIME_PRESETS.includes(currentValue))
                             onChange("12:00");
                     } else {
                         setCustomOpen(false);
-                        onChange(e.target.value);
+                        onChange(v);
                     }
                 }}
-                className="w-full px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:outline-none font-bold text-[10px]"
-            >
-                {GATE_DEADLINE_TIME_PRESETS.map((p) => (
-                    <option key={p} value={p}>
-                        {presetLabel(p)}
-                    </option>
-                ))}
-                <option value="custom">
-                    {systemLanguage === "sk"
-                        ? "Vlastný čas…"
-                        : systemLanguage === "hu"
-                          ? "Egyéni időpont…"
-                          : "Custom…"}
-                </option>
-            </select>
+                options={[
+                    ...GATE_DEADLINE_TIME_PRESETS.map((p) => ({
+                        value: p,
+                        label: presetLabel(p),
+                    })),
+                    {
+                        value: "custom",
+                        label:
+                            systemLanguage === "sk"
+                                ? "Vlastný čas…"
+                                : systemLanguage === "hu"
+                                  ? "Egyéni időpont…"
+                                  : "Custom…",
+                    },
+                ]}
+            />
             {showCustom && (
                 <input
                     type="time"
@@ -302,6 +303,7 @@ const SearchableLeadSelect: React.FC<{
         </div>
     );
 };
+import { CustomSelect } from "./ui/CustomSelect";
 import { BlockEditor } from "./BlockEditor";
 import type { EditorBlock } from "./BlockEditor";
 import { getTranslation } from "../utils/translations";
@@ -874,29 +876,26 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         return (
             <div className="flex flex-col items-center lg:items-start gap-1 justify-center">
                 {/* Main Dropdown */}
-                <select
+                <CustomSelect
+                    size="sm"
                     value={activeMain}
-                    onChange={(e) => handleMainChange(e.target.value)}
-                    className="text-[9px] font-black uppercase tracking-wider border rounded-xl px-2.5 py-1 focus:outline-none focus:ring-1 transition-all cursor-pointer shadow-sm"
+                    onChange={handleMainChange}
+                    className="!font-black !uppercase !tracking-wider !shadow-sm"
                     style={{
                         backgroundColor: `${mainColor}18`,
                         color: mainColor,
                         borderColor: `${mainColor}35`,
                     }}
-                >
-                    {majorStates.map((state) => (
-                        <option key={state} value={state.toLowerCase()}>
-                            {state}
-                        </option>
-                    ))}
-                </select>
+                    options={majorStates.map((state) => ({ value: state.toLowerCase(), label: state }))}
+                />
 
                 {/* Substate Dropdown */}
                 {hasSubstates && (
-                    <select
+                    <CustomSelect
+                        size="sm"
                         value={currentSub}
-                        onChange={(e) => handleSubChange(e.target.value)}
-                        className="text-[9px] font-black uppercase tracking-wider border rounded-xl px-2.5 py-1 focus:outline-none focus:ring-1 transition-all cursor-pointer shadow-sm"
+                        onChange={handleSubChange}
+                        className="!font-black !uppercase !tracking-wider !shadow-sm"
                         style={{
                             background: currentSub
                                 ? `linear-gradient(to right, ${mainColor}18, ${subColor}18)`
@@ -904,20 +903,19 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             color: subColor,
                             borderColor: `${subColor}30`,
                         }}
-                    >
-                        <option value="">
-                            {systemLanguage === "sk"
-                                ? "-- Žiadny podstav --"
-                                : systemLanguage === "hu"
-                                  ? "-- Nincs al-állapot --"
-                                  : "-- No Substate --"}
-                        </option>
-                        {activeSubstates.map((sub) => (
-                            <option key={sub} value={sub.toLowerCase()}>
-                                ↳ {sub}
-                            </option>
-                        ))}
-                    </select>
+                        options={[
+                            {
+                                value: "",
+                                label:
+                                    systemLanguage === "sk"
+                                        ? "-- Žiadny podstav --"
+                                        : systemLanguage === "hu"
+                                          ? "-- Nincs al-állapot --"
+                                          : "-- No Substate --",
+                            },
+                            ...activeSubstates.map((sub) => ({ value: sub.toLowerCase(), label: `↳ ${sub}` })),
+                        ]}
+                    />
                 )}
             </div>
         );
@@ -4161,44 +4159,50 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                             "Ügyféltípus",
                                                         )}
                                                     </label>
-                                                    <select
+                                                    <CustomSelect
                                                         value={leadClientType}
-                                                        onChange={(e) =>
+                                                        onChange={(v) =>
                                                             setLeadClientType(
-                                                                e.target
-                                                                    .value as any,
+                                                                v as any,
                                                             )
                                                         }
-                                                        className="px-2.5 py-1 text-[11px] rounded-lg bg-white border border-slate-200 text-slate-800 font-bold focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-                                                    >
-                                                        <option value="person">
-                                                            {systemLanguage ===
-                                                            "sk"
-                                                                ? "Súkromná osoba"
-                                                                : systemLanguage ===
-                                                                    "hu"
-                                                                  ? "Magánszemély"
-                                                                  : "Private Person"}
-                                                        </option>
-                                                        <option value="business">
-                                                            {systemLanguage ===
-                                                            "sk"
-                                                                ? "Firma / Podnikanie"
-                                                                : systemLanguage ===
-                                                                    "hu"
-                                                                  ? "Cég / Vállalkozás"
-                                                                  : "Company / Business"}
-                                                        </option>
-                                                        <option value="partner">
-                                                            {systemLanguage ===
-                                                            "sk"
-                                                                ? "Obchodný partner"
-                                                                : systemLanguage ===
-                                                                    "hu"
-                                                                  ? "Kereskedő partner"
-                                                                  : "Dealer Partner"}
-                                                        </option>
-                                                    </select>
+                                                        size="sm"
+                                                        options={[
+                                                            {
+                                                                value: "person",
+                                                                label:
+                                                                    systemLanguage ===
+                                                                    "sk"
+                                                                        ? "Súkromná osoba"
+                                                                        : systemLanguage ===
+                                                                            "hu"
+                                                                          ? "Magánszemély"
+                                                                          : "Private Person",
+                                                            },
+                                                            {
+                                                                value: "business",
+                                                                label:
+                                                                    systemLanguage ===
+                                                                    "sk"
+                                                                        ? "Firma / Podnikanie"
+                                                                        : systemLanguage ===
+                                                                            "hu"
+                                                                          ? "Cég / Vállalkozás"
+                                                                          : "Company / Business",
+                                                            },
+                                                            {
+                                                                value: "partner",
+                                                                label:
+                                                                    systemLanguage ===
+                                                                    "sk"
+                                                                        ? "Obchodný partner"
+                                                                        : systemLanguage ===
+                                                                            "hu"
+                                                                          ? "Kereskedő partner"
+                                                                          : "Dealer Partner",
+                                                            },
+                                                        ]}
+                                                    />
                                                 </div>
                                             ) : (
                                                 <span className="text-[9px] font-extrabold uppercase tracking-wide text-emerald-700">
@@ -4672,24 +4676,19 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             )}
                                         </label>
                                         {isEditingLead ? (
-                                            <select
+                                            <CustomSelect
                                                 value={leadSource}
-                                                onChange={(e) =>
-                                                    setLeadSource(
-                                                        e.target.value,
-                                                    )
+                                                onChange={(v) =>
+                                                    setLeadSource(v)
                                                 }
-                                                className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:outline-none text-slate-800 uppercase"
-                                            >
-                                                {leadSources.map((s) => (
-                                                    <option
-                                                        key={s}
-                                                        value={s.toLowerCase()}
-                                                    >
-                                                        {s}
-                                                    </option>
-                                                ))}
-                                            </select>
+                                                className="uppercase"
+                                                options={leadSources.map(
+                                                    (s) => ({
+                                                        value: s.toLowerCase(),
+                                                        label: s,
+                                                    }),
+                                                )}
+                                            />
                                         ) : (
                                             <div className="pt-2 pl-0 text-slate-900 text-sm font-black uppercase tracking-wider cursor-default select-all">
                                                 🚀 {leadSource}
@@ -4708,27 +4707,31 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             )}
                                         </label>
                                         {isEditingLead ? (
-                                            <select
+                                            <CustomSelect
                                                 value={leadOwner}
-                                                onChange={(e) =>
-                                                    setLeadOwner(e.target.value)
+                                                onChange={(v) =>
+                                                    setLeadOwner(v)
                                                 }
-                                                className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:outline-none text-slate-800"
-                                            >
-                                                <option value="">
-                                                    {systemLanguage === "sk"
-                                                        ? "Nepriradený"
-                                                        : systemLanguage ===
-                                                            "hu"
-                                                          ? "Nincs kijelölve"
-                                                          : "Unassigned"}
-                                                </option>
-                                                {projectManagers.map((pm) => (
-                                                    <option key={pm} value={pm}>
-                                                        {pm}
-                                                    </option>
-                                                ))}
-                                            </select>
+                                                options={[
+                                                    {
+                                                        value: "",
+                                                        label:
+                                                            systemLanguage ===
+                                                            "sk"
+                                                                ? "Nepriradený"
+                                                                : systemLanguage ===
+                                                                    "hu"
+                                                                  ? "Nincs kijelölve"
+                                                                  : "Unassigned",
+                                                    },
+                                                    ...projectManagers.map(
+                                                        (pm) => ({
+                                                            value: pm,
+                                                            label: pm,
+                                                        }),
+                                                    ),
+                                                ]}
+                                            />
                                         ) : (
                                             <div className="pt-2 pl-0 flex items-center">
                                                 {!leadOwner ||
@@ -5188,16 +5191,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     <div className="flex items-start gap-2.5">
                                                         {/* Dropdown status selector */}
                                                         <div className="relative shrink-0 select-none mt-0.5">
-                                                            <select
+                                                            <CustomSelect
+                                                                size="sm"
                                                                 value={
                                                                     task.status
                                                                 }
                                                                 onChange={(
-                                                                    e,
+                                                                    newStatus,
                                                                 ) => {
-                                                                    const newStatus =
-                                                                        e.target
-                                                                            .value;
                                                                     const now =
                                                                         new Date();
                                                                     const completedAtStr =
@@ -5251,7 +5252,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                             ),
                                                                     );
                                                                 }}
-                                                                className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg border-2 cursor-pointer transition-all focus:outline-none max-w-[110px] truncate"
+                                                                className="!font-black !uppercase !tracking-wider !border-2 max-w-[110px]"
                                                                 style={{
                                                                     backgroundColor: `${taskStateColors[task.status] || "#64748b"}15`,
                                                                     color:
@@ -5262,23 +5263,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                         "#64748b",
                                                                     borderColor: `${taskStateColors[task.status] || "#64748b"}35`,
                                                                 }}
-                                                            >
-                                                                {taskStates.map(
-                                                                    (st) => (
-                                                                        <option
-                                                                            key={
-                                                                                st
-                                                                            }
-                                                                            value={
-                                                                                st
-                                                                            }
-                                                                            className="bg-white text-slate-800 font-bold uppercase"
-                                                                        >
-                                                                            {st}
-                                                                        </option>
-                                                                    ),
+                                                                options={taskStates.map(
+                                                                    (st) => ({
+                                                                        value: st,
+                                                                        label: st,
+                                                                    }),
                                                                 )}
-                                                            </select>
+                                                            />
                                                         </div>
 
                                                         <div className="space-y-0.5">
@@ -5363,19 +5354,50 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                     // place their author can still reach them —
                                                                     // a task that is in no one's calendar is
                                                                     // invisible in the Tasks view by definition.
+                                                                    const assigneeOptions =
+                                                                        [
+                                                                            ...(assignees.length ===
+                                                                            0
+                                                                                ? [
+                                                                                      {
+                                                                                          value: "",
+                                                                                          label: t(
+                                                                                              "Unassigned",
+                                                                                              "Nepriradené",
+                                                                                              "Nincs hozzárendelve",
+                                                                                          ),
+                                                                                      },
+                                                                                  ]
+                                                                                : []),
+                                                                            ...projectManagers.map(
+                                                                                (
+                                                                                    pm,
+                                                                                ) => ({
+                                                                                    value: pm,
+                                                                                    label: pm,
+                                                                                }),
+                                                                            ),
+                                                                            ...(assignees[0] &&
+                                                                            !projectManagers.includes(
+                                                                                assignees[0],
+                                                                            )
+                                                                                ? [
+                                                                                      {
+                                                                                          value: assignees[0],
+                                                                                          label: assignees[0],
+                                                                                      },
+                                                                                  ]
+                                                                                : []),
+                                                                        ];
                                                                     return (
-                                                                        <select
+                                                                        <CustomSelect
                                                                             value={
                                                                                 assignees[0] ||
                                                                                 ""
                                                                             }
                                                                             onChange={(
-                                                                                e,
+                                                                                next,
                                                                             ) => {
-                                                                                const next =
-                                                                                    e
-                                                                                        .target
-                                                                                        .value;
                                                                                 setTasks(
                                                                                     (
                                                                                         prev,
@@ -5400,66 +5422,17 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                         ),
                                                                                 );
                                                                             }}
-                                                                            title={t(
-                                                                                "Whose calendar this task shows in.",
-                                                                                "V koho kalendári sa táto úloha zobrazuje.",
-                                                                                "Kinek a naptárában jelenik meg ez a feladat.",
-                                                                            )}
-                                                                            className={`text-[7.5px] font-black px-1.5 py-0.5 rounded-md uppercase border cursor-pointer max-w-[120px] truncate focus:outline-none ${
+                                                                            size="sm"
+                                                                            unstyled
+                                                                            className={`text-[7.5px] font-black px-1.5 py-0.5 rounded-md uppercase border max-w-[120px] ${
                                                                                 isMine
                                                                                     ? "text-indigo-600 bg-indigo-50 border-indigo-150"
                                                                                     : "text-slate-500 bg-slate-100 border-slate-200"
                                                                             }`}
-                                                                        >
-                                                                            {assignees.length ===
-                                                                                0 && (
-                                                                                <option value="">
-                                                                                    {t(
-                                                                                        "Unassigned",
-                                                                                        "Nepriradené",
-                                                                                        "Nincs hozzárendelve",
-                                                                                    )}
-                                                                                </option>
-                                                                            )}
-                                                                            {projectManagers.map(
-                                                                                (
-                                                                                    pm,
-                                                                                ) => (
-                                                                                    <option
-                                                                                        key={
-                                                                                            pm
-                                                                                        }
-                                                                                        value={
-                                                                                            pm
-                                                                                        }
-                                                                                        className="bg-white text-slate-800 font-bold"
-                                                                                    >
-                                                                                        {
-                                                                                            pm
-                                                                                        }
-                                                                                    </option>
-                                                                                ),
-                                                                            )}
-                                                                            {/* A name that is no longer a
-                                                                                registered user still has to be
-                                                                                selectable, or the select would
-                                                                                silently show the wrong person. */}
-                                                                            {assignees[0] &&
-                                                                                !projectManagers.includes(
-                                                                                    assignees[0],
-                                                                                ) && (
-                                                                                    <option
-                                                                                        value={
-                                                                                            assignees[0]
-                                                                                        }
-                                                                                        className="bg-white text-slate-800 font-bold"
-                                                                                    >
-                                                                                        {
-                                                                                            assignees[0]
-                                                                                        }
-                                                                                    </option>
-                                                                                )}
-                                                                        </select>
+                                                                            options={
+                                                                                assigneeOptions
+                                                                            }
+                                                                        />
                                                                     );
                                                                 })()}
                                                             </div>
@@ -5594,26 +5567,25 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 "Kinek a naptárában jelenik meg",
                                             )}
                                         </label>
-                                        <select
+                                        <CustomSelect
                                             value={resolveTaskAssignee(
                                                 inlineTaskAssignee,
                                             )}
-                                            onChange={(e) =>
-                                                setInlineTaskAssignee(
-                                                    e.target.value,
-                                                )
+                                            onChange={(v) =>
+                                                setInlineTaskAssignee(v)
                                             }
-                                            className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:outline-none font-bold text-[11px] cursor-pointer"
-                                        >
-                                            {projectManagers.map((pm) => (
-                                                <option key={pm} value={pm}>
-                                                    {pm}
-                                                    {pm === currentUser?.name
-                                                        ? ` (${t("me", "ja", "én")})`
-                                                        : ""}
-                                                </option>
-                                            ))}
-                                        </select>
+                                            options={projectManagers.map(
+                                                (pm) => ({
+                                                    value: pm,
+                                                    label:
+                                                        pm +
+                                                        (pm ===
+                                                        currentUser?.name
+                                                            ? ` (${t("me", "ja", "én")})`
+                                                            : ""),
+                                                }),
+                                            )}
+                                        />
                                     </div>
 
                                     <div className="space-y-1.5">
@@ -7601,61 +7573,69 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                           ? "Rendezés:"
                                           : "Order By:"}
                                 </span>
-                                <select
+                                <CustomSelect
                                     value={orderingMode}
-                                    onChange={(e: any) =>
-                                        setOrderingMode(e.target.value)
-                                    }
-                                    className="text-[10px] font-black uppercase tracking-wider text-slate-700 bg-transparent border-none focus:ring-0 focus:outline-none cursor-pointer pr-1 select-none"
-                                    style={{
-                                        border: "none",
-                                        outline: "none",
-                                        boxShadow: "none",
-                                    }}
-                                >
-                                    <option value="state">
-                                        {systemLanguage === "sk"
-                                            ? "Stav (Predvolené)"
-                                            : systemLanguage === "hu"
-                                              ? "Állapot"
-                                              : "State (Default)"}
-                                    </option>
-                                    <option value="pm">
-                                        {systemLanguage === "sk"
-                                            ? "Projektový Manažér"
-                                            : systemLanguage === "hu"
-                                              ? "Projektmenedzser"
-                                              : "Project Manager"}
-                                    </option>
-                                    <option value="created_newest">
-                                        {systemLanguage === "sk"
-                                            ? "Najnovšie prvé"
-                                            : systemLanguage === "hu"
-                                              ? "Legújabb elöl"
-                                              : "Created (Newest)"}
-                                    </option>
-                                    <option value="created_oldest">
-                                        {systemLanguage === "sk"
-                                            ? "Najstaršie prvé"
-                                            : systemLanguage === "hu"
-                                              ? "Legrégebbi elöl"
-                                              : "Created (Oldest)"}
-                                    </option>
-                                    <option value="size">
-                                        {systemLanguage === "sk"
-                                            ? "Odhadovaný objem"
-                                            : systemLanguage === "hu"
-                                              ? "Becsült érték"
-                                              : "Estimated Size"}
-                                    </option>
-                                    <option value="rating">
-                                        {systemLanguage === "sk"
-                                            ? "Hodnotenie"
-                                            : systemLanguage === "hu"
-                                              ? "Értékelés"
-                                              : "Rating"}
-                                    </option>
-                                </select>
+                                    onChange={(v) => setOrderingMode(v as typeof orderingMode)}
+                                    size="sm"
+                                    unstyled
+                                    className="text-[10px] font-black uppercase tracking-wider text-slate-700 pr-1"
+                                    options={[
+                                        {
+                                            value: "state",
+                                            label:
+                                                systemLanguage === "sk"
+                                                    ? "Stav (Predvolené)"
+                                                    : systemLanguage === "hu"
+                                                      ? "Állapot"
+                                                      : "State (Default)",
+                                        },
+                                        {
+                                            value: "pm",
+                                            label:
+                                                systemLanguage === "sk"
+                                                    ? "Projektový Manažér"
+                                                    : systemLanguage === "hu"
+                                                      ? "Projektmenedzser"
+                                                      : "Project Manager",
+                                        },
+                                        {
+                                            value: "created_newest",
+                                            label:
+                                                systemLanguage === "sk"
+                                                    ? "Najnovšie prvé"
+                                                    : systemLanguage === "hu"
+                                                      ? "Legújabb elöl"
+                                                      : "Created (Newest)",
+                                        },
+                                        {
+                                            value: "created_oldest",
+                                            label:
+                                                systemLanguage === "sk"
+                                                    ? "Najstaršie prvé"
+                                                    : systemLanguage === "hu"
+                                                      ? "Legrégebbi elöl"
+                                                      : "Created (Oldest)",
+                                        },
+                                        {
+                                            value: "size",
+                                            label:
+                                                systemLanguage === "sk"
+                                                    ? "Odhadovaný objem"
+                                                    : systemLanguage === "hu"
+                                                      ? "Becsült érték"
+                                                      : "Estimated Size",
+                                        },
+                                        {
+                                            value: "rating",
+                                            label:
+                                                systemLanguage === "sk"
+                                                    ? "Hodnotenie"
+                                                    : systemLanguage === "hu"
+                                                      ? "Értékelés"
+                                                      : "Rating",
+                                        },
+                                    ]}
+                                />
                             </div>
                         )}
 
@@ -7689,29 +7669,27 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 )}
                             </span>
                             <div className="flex items-center gap-1.5 bg-white border border-slate-200/70 rounded-xl px-2.5 py-1.5">
-                                <UserCheck className="h-3.5 w-3.5 text-blue-500" />
-                                <select
+                                <UserCheck className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                                <CustomSelect
                                     value={selectedOwner}
-                                    onChange={(e) =>
-                                        setSelectedOwner(e.target.value)
-                                    }
-                                    className="bg-transparent text-[11px] font-bold text-slate-700 focus:outline-none cursor-pointer uppercase tracking-wider w-full"
-                                >
-                                    <option value="all">
-                                        {getTranslation(
-                                            systemLanguage,
-                                            "leads.filter.manager",
-                                        )}
-                                    </option>
-                                    {projectManagers.map((pm) => (
-                                        <option
-                                            key={pm}
-                                            value={pm.toLowerCase()}
-                                        >
-                                            {pm}
-                                        </option>
-                                    ))}
-                                </select>
+                                    onChange={(v) => setSelectedOwner(v)}
+                                    size="sm"
+                                    unstyled
+                                    className="text-[11px] font-bold text-slate-700 uppercase tracking-wider w-full"
+                                    options={[
+                                        {
+                                            value: "all",
+                                            label: getTranslation(
+                                                systemLanguage,
+                                                "leads.filter.manager",
+                                            ),
+                                        },
+                                        ...projectManagers.map((pm) => ({
+                                            value: pm.toLowerCase(),
+                                            label: pm,
+                                        })),
+                                    ]}
+                                />
                             </div>
                         </div>
 
@@ -7724,29 +7702,27 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 )}
                             </span>
                             <div className="flex items-center gap-1.5 bg-white border border-slate-200/70 rounded-xl px-2.5 py-1.5">
-                                <MapPin className="h-3.5 w-3.5 text-blue-500" />
-                                <select
+                                <MapPin className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                                <CustomSelect
                                     value={selectedCity}
-                                    onChange={(e) =>
-                                        setSelectedCity(e.target.value)
-                                    }
-                                    className="bg-transparent text-[11px] font-bold text-slate-700 focus:outline-none cursor-pointer uppercase tracking-wider w-full"
-                                >
-                                    <option value="all">
-                                        {getTranslation(
-                                            systemLanguage,
-                                            "clients.filter.city",
-                                        )}
-                                    </option>
-                                    {uniqueCities.map((city) => (
-                                        <option
-                                            key={city}
-                                            value={city.toLowerCase()}
-                                        >
-                                            {city}
-                                        </option>
-                                    ))}
-                                </select>
+                                    onChange={(v) => setSelectedCity(v)}
+                                    size="sm"
+                                    unstyled
+                                    className="text-[11px] font-bold text-slate-700 uppercase tracking-wider w-full"
+                                    options={[
+                                        {
+                                            value: "all",
+                                            label: getTranslation(
+                                                systemLanguage,
+                                                "clients.filter.city",
+                                            ),
+                                        },
+                                        ...uniqueCities.map((city) => ({
+                                            value: city.toLowerCase(),
+                                            label: city,
+                                        })),
+                                    ]}
+                                />
                             </div>
                         </div>
 
@@ -7759,29 +7735,27 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 )}
                             </span>
                             <div className="flex items-center gap-1.5 bg-white border border-slate-200/70 rounded-xl px-2.5 py-1.5">
-                                <Share2 className="h-3.5 w-3.5 text-blue-500" />
-                                <select
+                                <Share2 className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                                <CustomSelect
                                     value={selectedSource}
-                                    onChange={(e) =>
-                                        setSelectedSource(e.target.value)
-                                    }
-                                    className="bg-transparent text-[11px] font-bold text-slate-700 focus:outline-none cursor-pointer uppercase tracking-wider w-full"
-                                >
-                                    <option value="all">
-                                        {getTranslation(
-                                            systemLanguage,
-                                            "leads.filter.source",
-                                        )}
-                                    </option>
-                                    {leadSources.map((src) => (
-                                        <option
-                                            key={src}
-                                            value={src.toLowerCase()}
-                                        >
-                                            {src}
-                                        </option>
-                                    ))}
-                                </select>
+                                    onChange={(v) => setSelectedSource(v)}
+                                    size="sm"
+                                    unstyled
+                                    className="text-[11px] font-bold text-slate-700 uppercase tracking-wider w-full"
+                                    options={[
+                                        {
+                                            value: "all",
+                                            label: getTranslation(
+                                                systemLanguage,
+                                                "leads.filter.source",
+                                            ),
+                                        },
+                                        ...leadSources.map((src) => ({
+                                            value: src.toLowerCase(),
+                                            label: src,
+                                        })),
+                                    ]}
+                                />
                             </div>
                         </div>
 
@@ -7794,42 +7768,52 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 )}
                             </span>
                             <div className="flex items-center gap-1.5 bg-white border border-slate-200/70 rounded-xl px-2.5 py-1.5">
-                                <Users className="h-3.5 w-3.5 text-blue-500" />
-                                <select
+                                <Users className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                                <CustomSelect
                                     value={selectedType}
-                                    onChange={(e) =>
-                                        setSelectedType(e.target.value as any)
+                                    onChange={(v) =>
+                                        setSelectedType(v as any)
                                     }
-                                    className="bg-transparent text-[11px] font-bold text-slate-700 focus:outline-none cursor-pointer uppercase tracking-wider w-full"
-                                >
-                                    <option value="all">
-                                        {getTranslation(
-                                            systemLanguage,
-                                            "leads.filter.type",
-                                        )}
-                                    </option>
-                                    <option value="person">
-                                        {systemLanguage === "sk"
-                                            ? "Súkromná osoba"
-                                            : systemLanguage === "hu"
-                                              ? "Magánszemély"
-                                              : "Private Person"}
-                                    </option>
-                                    <option value="business">
-                                        {systemLanguage === "sk"
-                                            ? "Firma / Podnikanie"
-                                            : systemLanguage === "hu"
-                                              ? "Cég / Vállalkozás"
-                                              : "Company / Business"}
-                                    </option>
-                                    <option value="partner">
-                                        {systemLanguage === "sk"
-                                            ? "Obchodný partner"
-                                            : systemLanguage === "hu"
-                                              ? "Kereskedő partner"
-                                              : "Dealer Partner"}
-                                    </option>
-                                </select>
+                                    size="sm"
+                                    unstyled
+                                    className="text-[11px] font-bold text-slate-700 uppercase tracking-wider w-full"
+                                    options={[
+                                        {
+                                            value: "all",
+                                            label: getTranslation(
+                                                systemLanguage,
+                                                "leads.filter.type",
+                                            ),
+                                        },
+                                        {
+                                            value: "person",
+                                            label:
+                                                systemLanguage === "sk"
+                                                    ? "Súkromná osoba"
+                                                    : systemLanguage === "hu"
+                                                      ? "Magánszemély"
+                                                      : "Private Person",
+                                        },
+                                        {
+                                            value: "business",
+                                            label:
+                                                systemLanguage === "sk"
+                                                    ? "Firma / Podnikanie"
+                                                    : systemLanguage === "hu"
+                                                      ? "Cég / Vállalkozás"
+                                                      : "Company / Business",
+                                        },
+                                        {
+                                            value: "partner",
+                                            label:
+                                                systemLanguage === "sk"
+                                                    ? "Obchodný partner"
+                                                    : systemLanguage === "hu"
+                                                      ? "Kereskedő partner"
+                                                      : "Dealer Partner",
+                                        },
+                                    ]}
+                                />
                             </div>
                         </div>
 
@@ -7842,26 +7826,27 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 )}
                             </span>
                             <div className="flex items-center gap-1.5 bg-white border border-slate-200/70 rounded-xl px-2.5 py-1.5">
-                                <Tag className="h-3.5 w-3.5 text-blue-500" />
-                                <select
+                                <Tag className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                                <CustomSelect
                                     value={selectedState}
-                                    onChange={(e) =>
-                                        setSelectedState(e.target.value)
-                                    }
-                                    className="bg-transparent text-[11px] font-bold text-slate-700 focus:outline-none cursor-pointer uppercase tracking-wider w-full"
-                                >
-                                    <option value="all">
-                                        {getTranslation(
-                                            systemLanguage,
-                                            "leads.filter.stage",
-                                        )}
-                                    </option>
-                                    {leadStates.map((s) => (
-                                        <option key={s} value={s.toLowerCase()}>
-                                            {s}
-                                        </option>
-                                    ))}
-                                </select>
+                                    onChange={(v) => setSelectedState(v)}
+                                    size="sm"
+                                    unstyled
+                                    className="text-[11px] font-bold text-slate-700 uppercase tracking-wider w-full"
+                                    options={[
+                                        {
+                                            value: "all",
+                                            label: getTranslation(
+                                                systemLanguage,
+                                                "leads.filter.stage",
+                                            ),
+                                        },
+                                        ...leadStates.map((s) => ({
+                                            value: s.toLowerCase(),
+                                            label: s,
+                                        })),
+                                    ]}
+                                />
                             </div>
                         </div>
 
@@ -8892,48 +8877,53 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                 className={`inline-flex items-center lg:table-cell px-0 lg:px-4 cursor-pointer mr-3.5 ${cellPy}`}
                                                                             >
                                                                                 {isInlineEditing ? (
-                                                                                    <select
-                                                                                        value={
-                                                                                            inlineType
-                                                                                        }
-                                                                                        onChange={(
-                                                                                            e,
-                                                                                        ) =>
-                                                                                            setInlineType(
-                                                                                                e
-                                                                                                    .target
-                                                                                                    .value as any,
-                                                                                            )
-                                                                                        }
+                                                                                    <div
                                                                                         onClick={(
                                                                                             e,
                                                                                         ) =>
                                                                                             e.stopPropagation()
                                                                                         }
-                                                                                        className="w-full px-2 py-1 rounded bg-white border border-blue-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
                                                                                     >
-                                                                                        <option value="person">
-                                                                                            {t(
-                                                                                                "Person",
-                                                                                                "Osoba",
-                                                                                                "Személy",
-                                                                                            )}
-                                                                                        </option>
-                                                                                        <option value="business">
-                                                                                            {t(
-                                                                                                "Business",
-                                                                                                "Firma",
-                                                                                                "Cég",
-                                                                                            )}
-                                                                                        </option>
-                                                                                        <option value="partner">
-                                                                                            {t(
-                                                                                                "Partner",
-                                                                                                "Partner",
-                                                                                                "Partner",
-                                                                                            )}
-                                                                                        </option>
-                                                                                    </select>
+                                                                                        <CustomSelect
+                                                                                            value={
+                                                                                                inlineType
+                                                                                            }
+                                                                                            onChange={(
+                                                                                                v,
+                                                                                            ) =>
+                                                                                                setInlineType(
+                                                                                                    v as any,
+                                                                                                )
+                                                                                            }
+                                                                                            size="sm"
+                                                                                            options={[
+                                                                                                {
+                                                                                                    value: "person",
+                                                                                                    label: t(
+                                                                                                        "Person",
+                                                                                                        "Osoba",
+                                                                                                        "Személy",
+                                                                                                    ),
+                                                                                                },
+                                                                                                {
+                                                                                                    value: "business",
+                                                                                                    label: t(
+                                                                                                        "Business",
+                                                                                                        "Firma",
+                                                                                                        "Cég",
+                                                                                                    ),
+                                                                                                },
+                                                                                                {
+                                                                                                    value: "partner",
+                                                                                                    label: t(
+                                                                                                        "Partner",
+                                                                                                        "Partner",
+                                                                                                        "Partner",
+                                                                                                    ),
+                                                                                                },
+                                                                                            ]}
+                                                                                        />
+                                                                                    </div>
                                                                                 ) : (
                                                                                     <div className="hover:opacity-85 transition-opacity">
                                                                                         {lead.clientType ===
@@ -8984,45 +8974,36 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                 className={`inline-flex items-center lg:table-cell px-0 lg:px-4 cursor-pointer mr-3.5 ${cellPy}`}
                                                                             >
                                                                                 {isInlineEditing ? (
-                                                                                    <select
-                                                                                        value={
-                                                                                            inlineSource
-                                                                                        }
-                                                                                        onChange={(
-                                                                                            e,
-                                                                                        ) =>
-                                                                                            setInlineSource(
-                                                                                                e
-                                                                                                    .target
-                                                                                                    .value,
-                                                                                            )
-                                                                                        }
+                                                                                    <div
                                                                                         onClick={(
                                                                                             e,
                                                                                         ) =>
                                                                                             e.stopPropagation()
                                                                                         }
-                                                                                        className="w-full px-2 py-1 rounded bg-white border border-blue-300 text-xs uppercase font-extrabold focus:outline-none focus:ring-1 focus:ring-blue-500"
                                                                                     >
-                                                                                        {leadSources.map(
-                                                                                            (
-                                                                                                src,
-                                                                                            ) => (
-                                                                                                <option
-                                                                                                    key={
-                                                                                                        src
-                                                                                                    }
-                                                                                                    value={
-                                                                                                        src
-                                                                                                    }
-                                                                                                >
-                                                                                                    {
-                                                                                                        src
-                                                                                                    }
-                                                                                                </option>
-                                                                                            ),
-                                                                                        )}
-                                                                                    </select>
+                                                                                        <CustomSelect
+                                                                                            value={
+                                                                                                inlineSource
+                                                                                            }
+                                                                                            onChange={(
+                                                                                                v,
+                                                                                            ) =>
+                                                                                                setInlineSource(
+                                                                                                    v,
+                                                                                                )
+                                                                                            }
+                                                                                            size="sm"
+                                                                                            className="uppercase font-extrabold"
+                                                                                            options={leadSources.map(
+                                                                                                (
+                                                                                                    src,
+                                                                                                ) => ({
+                                                                                                    value: src,
+                                                                                                    label: src,
+                                                                                                }),
+                                                                                            )}
+                                                                                        />
+                                                                                    </div>
                                                                                 ) : (
                                                                                     <span
                                                                                         className="px-2 py-0.5 rounded text-[9px] font-extrabold uppercase border select-none transition-colors"
@@ -9052,45 +9033,35 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                 className={`inline-flex items-center lg:table-cell px-0 lg:px-4 text-slate-500 font-medium cursor-pointer mr-3.5 ${cellPy}`}
                                                                             >
                                                                                 {isInlineEditing ? (
-                                                                                    <select
-                                                                                        value={
-                                                                                            inlineOwner
-                                                                                        }
-                                                                                        onChange={(
-                                                                                            e,
-                                                                                        ) =>
-                                                                                            setInlineOwner(
-                                                                                                e
-                                                                                                    .target
-                                                                                                    .value,
-                                                                                            )
-                                                                                        }
+                                                                                    <div
                                                                                         onClick={(
                                                                                             e,
                                                                                         ) =>
                                                                                             e.stopPropagation()
                                                                                         }
-                                                                                        className="w-full px-2 py-1 rounded bg-white border border-blue-300 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-blue-500"
                                                                                     >
-                                                                                        {projectManagers.map(
-                                                                                            (
-                                                                                                pm,
-                                                                                            ) => (
-                                                                                                <option
-                                                                                                    key={
-                                                                                                        pm
-                                                                                                    }
-                                                                                                    value={
-                                                                                                        pm
-                                                                                                    }
-                                                                                                >
-                                                                                                    {
-                                                                                                        pm
-                                                                                                    }
-                                                                                                </option>
-                                                                                            ),
-                                                                                        )}
-                                                                                    </select>
+                                                                                        <CustomSelect
+                                                                                            value={
+                                                                                                inlineOwner
+                                                                                            }
+                                                                                            onChange={(
+                                                                                                v,
+                                                                                            ) =>
+                                                                                                setInlineOwner(
+                                                                                                    v,
+                                                                                                )
+                                                                                            }
+                                                                                            size="sm"
+                                                                                            options={projectManagers.map(
+                                                                                                (
+                                                                                                    pm,
+                                                                                                ) => ({
+                                                                                                    value: pm,
+                                                                                                    label: pm,
+                                                                                                }),
+                                                                                            )}
+                                                                                        />
+                                                                                    </div>
                                                                                 ) : (
                                                                                     <div className="flex items-center gap-1.5">
                                                                                         <span className="text-[9px] font-black text-slate-400 lg:hidden uppercase tracking-wider">
@@ -10140,17 +10111,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                             "Al-állapot:",
                                                                                         )}
                                                                                     </span>
-                                                                                    <select
+                                                                                    <CustomSelect
+                                                                                        size="sm"
                                                                                         value={
                                                                                             currentSub
                                                                                         }
                                                                                         onChange={(
-                                                                                            e,
+                                                                                            val,
                                                                                         ) => {
-                                                                                            const val =
-                                                                                                e
-                                                                                                    .target
-                                                                                                    .value;
                                                                                             handleUpdateLeadState(
                                                                                                 lead.id,
                                                                                                 val
@@ -10158,7 +10126,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                                     : activeMain,
                                                                                             );
                                                                                         }}
-                                                                                        className="flex-1 text-[9px] font-extrabold uppercase tracking-wider border rounded-lg px-2 py-1 focus:outline-none focus:ring-1 transition-all cursor-pointer shadow-sm text-slate-650 hover:opacity-90"
+                                                                                        className="!flex-1 !font-extrabold !uppercase !tracking-wider !shadow-sm hover:!opacity-90"
                                                                                         style={{
                                                                                             background:
                                                                                                 currentSub
@@ -10167,51 +10135,41 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                             color: subColor,
                                                                                             borderColor: `${subColor}30`,
                                                                                         }}
-                                                                                    >
-                                                                                        <option
-                                                                                            value=""
-                                                                                            style={{
-                                                                                                color: "#475569",
-                                                                                                background:
-                                                                                                    "#ffffff",
-                                                                                            }}
-                                                                                        >
-                                                                                            {systemLanguage ===
-                                                                                            "sk"
-                                                                                                ? "Žiadny podstav"
-                                                                                                : systemLanguage ===
-                                                                                                    "hu"
-                                                                                                  ? "Nincs al-állapot"
-                                                                                                  : "No Substate"}
-                                                                                        </option>
-                                                                                        {activeSubstates.map(
-                                                                                            (
-                                                                                                sub,
-                                                                                            ) => {
-                                                                                                const subCol =
-                                                                                                    getSafeStateColor(
-                                                                                                        sub,
-                                                                                                    );
-                                                                                                return (
-                                                                                                    <option
-                                                                                                        key={
-                                                                                                            sub
-                                                                                                        }
-                                                                                                        value={sub.toLowerCase()}
-                                                                                                        style={{
-                                                                                                            color: subCol,
-                                                                                                            background:
-                                                                                                                "#ffffff",
-                                                                                                        }}
-                                                                                                    >
-                                                                                                        {
-                                                                                                            sub
-                                                                                                        }
-                                                                                                    </option>
-                                                                                                );
+                                                                                        options={[
+                                                                                            {
+                                                                                                value: "",
+                                                                                                label: (
+                                                                                                    <span style={{ color: "#475569" }}>
+                                                                                                        {systemLanguage ===
+                                                                                                        "sk"
+                                                                                                            ? "Žiadny podstav"
+                                                                                                            : systemLanguage ===
+                                                                                                                "hu"
+                                                                                                              ? "Nincs al-állapot"
+                                                                                                              : "No Substate"}
+                                                                                                    </span>
+                                                                                                ),
                                                                                             },
-                                                                                        )}
-                                                                                    </select>
+                                                                                            ...activeSubstates.map(
+                                                                                                (
+                                                                                                    sub,
+                                                                                                ) => {
+                                                                                                    const subCol =
+                                                                                                        getSafeStateColor(
+                                                                                                            sub,
+                                                                                                        );
+                                                                                                    return {
+                                                                                                        value: sub.toLowerCase(),
+                                                                                                        label: (
+                                                                                                            <span style={{ color: subCol }}>
+                                                                                                                {sub}
+                                                                                                            </span>
+                                                                                                        ),
+                                                                                                    };
+                                                                                                },
+                                                                                            ),
+                                                                                        ]}
+                                                                                    />
                                                                                 </div>
                                                                             );
                                                                         })()}
@@ -10390,39 +10348,30 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 </div>
 
                                 {clientMode === "existing" ? (
-                                    <select
-                                        required
+                                    <CustomSelect
                                         value={selectedExistingClient}
-                                        onChange={(e) =>
-                                            handleSelectExistingClient(
-                                                e.target.value,
-                                            )
+                                        onChange={(v) =>
+                                            handleSelectExistingClient(v)
                                         }
-                                        className="w-full px-4 py-2.5 rounded-xl bg-blue-50/10 border border-blue-100 text-xs text-slate-850 focus:outline-none focus:bg-white focus:border-blue-500"
-                                    >
-                                        <option value="">
-                                            {t(
-                                                "-- Choose Existing Client --",
-                                                "-- Vyberte existujúceho klienta --",
-                                                "-- Válasszon meglévő ügyfelet --",
-                                            )}
-                                        </option>
-                                        {existingClients.map((client) => (
-                                            <option
-                                                key={client.name}
-                                                value={client.name}
-                                            >
-                                                {client.name} (
-                                                {client.city ||
+                                        placeholder={t(
+                                            "-- Choose Existing Client --",
+                                            "-- Vyberte existujúceho klienta --",
+                                            "-- Válasszon meglévő ügyfelet --",
+                                        )}
+                                        options={existingClients.map(
+                                            (client) => ({
+                                                value: client.name,
+                                                label: `${client.name} (${
+                                                    client.city ||
                                                     t(
                                                         "No City",
                                                         "Bez mesta",
                                                         "Nincs város",
-                                                    )}
-                                                )
-                                            </option>
-                                        ))}
-                                    </select>
+                                                    )
+                                                })`,
+                                            }),
+                                        )}
+                                    />
                                 ) : (
                                     <input
                                         type="text"
@@ -10470,25 +10419,38 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             "Ügyféltípus *",
                                         )}
                                     </label>
-                                    <select
+                                    <CustomSelect
                                         value={newLeadType}
-                                        onChange={(e) =>
-                                            setNewLeadType(
-                                                e.target.value as any,
-                                            )
+                                        onChange={(v) =>
+                                            setNewLeadType(v as any)
                                         }
-                                        className="w-full px-4 py-2.5 rounded-xl bg-blue-50/10 border border-blue-100 text-xs text-slate-800 focus:outline-none"
-                                    >
-                                        <option value="person">
-                                            {t("Person", "Osoba", "Személy")}
-                                        </option>
-                                        <option value="business">
-                                            {t("Business", "Firma", "Cég")}
-                                        </option>
-                                        <option value="partner">
-                                            {t("Partner", "Partner", "Partner")}
-                                        </option>
-                                    </select>
+                                        options={[
+                                            {
+                                                value: "person",
+                                                label: t(
+                                                    "Person",
+                                                    "Osoba",
+                                                    "Személy",
+                                                ),
+                                            },
+                                            {
+                                                value: "business",
+                                                label: t(
+                                                    "Business",
+                                                    "Firma",
+                                                    "Cég",
+                                                ),
+                                            },
+                                            {
+                                                value: "partner",
+                                                label: t(
+                                                    "Partner",
+                                                    "Partner",
+                                                    "Partner",
+                                                ),
+                                            },
+                                        ]}
+                                    />
                                 </div>
                             </div>
 
@@ -10579,19 +10541,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             "Projektmenedzser",
                                         )}
                                     </label>
-                                    <select
+                                    <CustomSelect
                                         value={newLeadOwner}
-                                        onChange={(e) =>
-                                            setNewLeadOwner(e.target.value)
-                                        }
-                                        className="w-full px-4 py-2.5 rounded-xl bg-blue-50/10 border border-blue-100 text-xs text-slate-800 focus:outline-none"
-                                    >
-                                        {projectManagers.map((pm) => (
-                                            <option key={pm} value={pm}>
-                                                {pm}
-                                            </option>
-                                        ))}
-                                    </select>
+                                        onChange={(v) => setNewLeadOwner(v)}
+                                        options={projectManagers.map((pm) => ({
+                                            value: pm,
+                                            label: pm,
+                                        }))}
+                                    />
                                 </div>
                             </div>
 
@@ -10623,22 +10580,17 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             "Lead forrása",
                                         )}
                                     </label>
-                                    <select
+                                    <CustomSelect
                                         value={newLeadSource}
-                                        onChange={(e) =>
-                                            setNewLeadSource(e.target.value)
+                                        onChange={(v) =>
+                                            setNewLeadSource(v)
                                         }
-                                        className="w-full px-4 py-2.5 rounded-xl bg-blue-50/10 border border-blue-100 text-xs uppercase font-bold focus:outline-none"
-                                    >
-                                        {leadSources.map((source) => (
-                                            <option
-                                                key={source}
-                                                value={source.toLowerCase()}
-                                            >
-                                                {source}
-                                            </option>
-                                        ))}
-                                    </select>
+                                        className="uppercase font-bold"
+                                        options={leadSources.map((source) => ({
+                                            value: source.toLowerCase(),
+                                            label: source,
+                                        }))}
+                                    />
                                 </div>
                             </div>
 
@@ -10888,23 +10840,38 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         "Ügyféltípus *",
                                     )}
                                 </label>
-                                <select
+                                <CustomSelect
                                     value={editClientType}
-                                    onChange={(e) =>
-                                        setEditClientType(e.target.value as any)
+                                    onChange={(v) =>
+                                        setEditClientType(v as any)
                                     }
-                                    className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none focus:bg-white focus:border-emerald-500"
-                                >
-                                    <option value="person">
-                                        {t("Person", "Osoba", "Személy")}
-                                    </option>
-                                    <option value="business">
-                                        {t("Business", "Firma", "Cég")}
-                                    </option>
-                                    <option value="partner">
-                                        {t("Partner", "Partner", "Partner")}
-                                    </option>
-                                </select>
+                                    options={[
+                                        {
+                                            value: "person",
+                                            label: t(
+                                                "Person",
+                                                "Osoba",
+                                                "Személy",
+                                            ),
+                                        },
+                                        {
+                                            value: "business",
+                                            label: t(
+                                                "Business",
+                                                "Firma",
+                                                "Cég",
+                                            ),
+                                        },
+                                        {
+                                            value: "partner",
+                                            label: t(
+                                                "Partner",
+                                                "Partner",
+                                                "Partner",
+                                            ),
+                                        },
+                                    ]}
+                                />
                             </div>
 
                             {/* Lead Source */}
@@ -10916,19 +10883,17 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         "Marketing forráscsatorna",
                                     )}
                                 </label>
-                                <select
+                                <CustomSelect
                                     value={editClientSource}
-                                    onChange={(e) =>
-                                        setEditClientSource(e.target.value)
+                                    onChange={(v) =>
+                                        setEditClientSource(v)
                                     }
-                                    className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs uppercase font-extrabold focus:outline-none"
-                                >
-                                    {leadSources.map((source) => (
-                                        <option key={source} value={source}>
-                                            {source}
-                                        </option>
-                                    ))}
-                                </select>
+                                    className="uppercase font-extrabold"
+                                    options={leadSources.map((source) => ({
+                                        value: source,
+                                        label: source,
+                                    }))}
+                                />
                             </div>
 
                             {/* Project Manager */}
@@ -10940,19 +10905,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         "Elsődleges projektmenedzser",
                                     )}
                                 </label>
-                                <select
+                                <CustomSelect
                                     value={editClientOwner}
-                                    onChange={(e) =>
-                                        setEditClientOwner(e.target.value)
-                                    }
-                                    className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-850 font-bold focus:outline-none"
-                                >
-                                    {projectManagers.map((pm) => (
-                                        <option key={pm} value={pm}>
-                                            {pm}
-                                        </option>
-                                    ))}
-                                </select>
+                                    onChange={(v) => setEditClientOwner(v)}
+                                    options={projectManagers.map((pm) => ({
+                                        value: pm,
+                                        label: pm,
+                                    }))}
+                                />
                             </div>
 
                             {/* Nested Associated Leads checklist */}

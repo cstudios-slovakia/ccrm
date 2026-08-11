@@ -4,6 +4,7 @@ import { Plus, Trash2, Upload, FileText, ArrowLeft, Mail, Phone } from "lucide-r
 import type { Project, ProjectType, Lead, UserProfile, ProjectTimelineEvent, ProjectGanttRow } from "../types";
 import type { Language } from "../utils/translations";
 import { nowLocalStamp, formatTimestampLocalized, formatDateLocalized } from "../utils/localTime";
+import { CustomSelect } from "./ui/CustomSelect";
 
 const SearchableClientSelect: React.FC<{
   leads: Lead[];
@@ -487,16 +488,16 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             {/* Status */}
             <div>
               <label className="block text-[10px] font-black text-slate-450 uppercase mb-1">{t("Status", "Stav", "Állapot")}</label>
-              <select
+              <CustomSelect
                 value={status}
-                onChange={e => setStatus(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 bg-white"
-              >
-                <option value="active">{t("Active", "Aktívny", "Aktív")}</option>
-                <option value="completed">{t("Completed", "Dokončený", "Befejezett")}</option>
-                <option value="on_hold">{t("On Hold", "Pozastavený", "Függőben")}</option>
-                <option value="cancelled">{t("Cancelled", "Zrušený", "Törölt")}</option>
-              </select>
+                onChange={v => setStatus(v)}
+                options={[
+                  { value: "active", label: t("Active", "Aktívny", "Aktív") },
+                  { value: "completed", label: t("Completed", "Dokončený", "Befejezett") },
+                  { value: "on_hold", label: t("On Hold", "Pozastavený", "Függőben") },
+                  { value: "cancelled", label: t("Cancelled", "Zrušený", "Törölt") },
+                ]}
+              />
             </div>
 
             {/* Lead / Client Link */}
@@ -618,16 +619,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
                     {/* Select Dropdown */}
                     {attr.type === "select" && (
-                      <select
+                      <CustomSelect
                         value={val}
-                        onChange={e => updateVal(e.target.value)}
-                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-700"
-                      >
-                        <option value="">{t("Select option...", "Vybrať možnosť...", "Válasszon opciót...")}</option>
-                        {(attr.options || []).map(opt => (
-                          <option key={opt} value={opt}>{opt}</option>
-                        ))}
-                      </select>
+                        onChange={v => updateVal(v)}
+                        placeholder={t("Select option...", "Vybrať možnosť...", "Válasszon opciót...")}
+                        options={(attr.options || []).map(opt => ({ value: opt, label: opt }))}
+                      />
                     )}
 
                     {/* Checkbox (options-based or single boolean) */}
@@ -740,16 +737,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     {/* Contact Picker attribute type */}
                     {attr.type === "contact" && (
                       <div className="space-y-2">
-                        <select
+                        <CustomSelect
                           value={val}
-                          onChange={e => updateVal(e.target.value)}
-                          className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-700"
-                        >
-                          <option value="">{t("Select Contact...", "Vybrať kontakt...", "Kapcsolat választása...")}</option>
-                          {leads.map(l => (
-                            <option key={l.id} value={l.id}>{l.name} ({l.city})</option>
-                          ))}
-                        </select>
+                          onChange={v => updateVal(v)}
+                          placeholder={t("Select Contact...", "Vybrať kontakt...", "Kapcsolat választása...")}
+                          options={leads.map(l => ({ value: l.id, label: `${l.name} (${l.city})` }))}
+                        />
                         {val && (() => {
                           const contact = leads.find(l => l.id === val);
                           if (!contact) return null;
@@ -843,24 +836,20 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
                   <div>
                     <label className="block text-[9px] text-slate-400 uppercase mb-1">{t("Event Type", "Typ", "Típus")}</label>
-                    <select
+                    <CustomSelect
                       value={newTeType}
-                      onChange={e => setNewTeType(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 font-bold"
-                    >
-                      {projectType.timelineEventTypes && projectType.timelineEventTypes.length > 0 ? (
-                        projectType.timelineEventTypes.map(et => (
-                          <option key={et.id} value={et.id}>{et.name}</option>
-                        ))
-                      ) : (
-                        <>
-                          <option value="note">{t("Internal Note", "Interná poznámka", "Belső jegyzet")}</option>
-                          <option value="phone">{t("Phone Call", "Telefonát", "Telefonhívás")}</option>
-                          <option value="email">{t("Email Dispatch", "Odoslaný e-mail", "E-mail")}</option>
-                          <option value="appointment">{t("Meeting / Appointment", "Stretnutie", "Találkozó")}</option>
-                        </>
-                      )}
-                    </select>
+                      onChange={v => setNewTeType(v)}
+                      options={
+                        projectType.timelineEventTypes && projectType.timelineEventTypes.length > 0
+                          ? projectType.timelineEventTypes.map(et => ({ value: et.id, label: et.name }))
+                          : [
+                              { value: "note", label: t("Internal Note", "Interná poznámka", "Belső jegyzet") },
+                              { value: "phone", label: t("Phone Call", "Telefonát", "Telefonhívás") },
+                              { value: "email", label: t("Email Dispatch", "Odoslaný e-mail", "E-mail") },
+                              { value: "appointment", label: t("Meeting / Appointment", "Stretnutie", "Találkozó") },
+                            ]
+                      }
+                    />
                   </div>
 
                   <div>
@@ -947,28 +936,20 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                             />
                           )}
                           {attr.type === "select" && (
-                            <select
+                            <CustomSelect
                               value={val}
-                              onChange={e => updateVal(e.target.value)}
-                              className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-700"
-                            >
-                              <option value="">{t("Select...", "Vybrať...", "Kiválasztás...")}</option>
-                              {(attr.options || []).map(opt => (
-                                <option key={opt} value={opt}>{opt}</option>
-                              ))}
-                            </select>
+                              onChange={v => updateVal(v)}
+                              placeholder={t("Select...", "Vybrať...", "Kiválasztás...")}
+                              options={(attr.options || []).map(opt => ({ value: opt, label: opt }))}
+                            />
                           )}
                           {attr.type === "contact" && (
-                            <select
+                            <CustomSelect
                               value={val}
-                              onChange={e => updateVal(e.target.value)}
-                              className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-700"
-                            >
-                              <option value="">{t("Select Contact...", "Vybrať kontakt...", "Kapcsolat választása...")}</option>
-                              {leads.map(l => (
-                                <option key={l.id} value={l.id}>{l.name}</option>
-                              ))}
-                            </select>
+                              onChange={v => updateVal(v)}
+                              placeholder={t("Select Contact...", "Vybrať kontakt...", "Kapcsolat választása...")}
+                              options={leads.map(l => ({ value: l.id, label: l.name }))}
+                            />
                           )}
                           {attr.type === "checkbox" && (
                             <div className="space-y-1 py-1">
@@ -1214,16 +1195,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
                   <div>
                     <label className="block text-[9px] text-slate-400 uppercase mb-1">{t("Assignee Contact", "Kontakt", "Kapcsolat")}</label>
-                    <select
-                      value={newGeContactId}
-                      onChange={e => setNewGeContactId(e.target.value)}
-                      className="px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 font-bold min-w-[150px]"
-                    >
-                      <option value="">{t("Select Contact...", "Vybrať kontakt...", "Kapcsolat választása...")}</option>
-                      {leads.map(l => (
-                        <option key={l.id} value={l.id}>{l.name}</option>
-                      ))}
-                    </select>
+                    <div className="min-w-[150px]">
+                      <CustomSelect
+                        value={newGeContactId}
+                        onChange={v => setNewGeContactId(v)}
+                        placeholder={t("Select Contact...", "Vybrať kontakt...", "Kapcsolat választása...")}
+                        options={leads.map(l => ({ value: l.id, label: l.name }))}
+                      />
+                    </div>
                   </div>
 
                   <div>
@@ -1538,20 +1517,15 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
                   <div>
                     <label className="block text-[10px] font-black text-slate-450 uppercase mb-1">{t("Assignee Contact", "Kontakt", "Kapcsolat")}</label>
-                    <select
+                    <CustomSelect
                       value={selectedGanttEdit.contactId}
-                      onChange={e => {
-                        const val = e.target.value;
-                        setSelectedGanttEdit(prev => prev ? { ...prev, contactId: val } : null);
-                        setGantt(prev => prev.map(r => r.id === selectedGanttEdit.id ? { ...r, contactId: val } : r));
+                      onChange={v => {
+                        setSelectedGanttEdit(prev => prev ? { ...prev, contactId: v } : null);
+                        setGantt(prev => prev.map(r => r.id === selectedGanttEdit.id ? { ...r, contactId: v } : r));
                       }}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 font-bold"
-                    >
-                      <option value="">{t("Select Contact...", "Vybrať kontakt...", "Kapcsolat választása...")}</option>
-                      {leads.map(l => (
-                        <option key={l.id} value={l.id}>{l.name}</option>
-                      ))}
-                    </select>
+                      placeholder={t("Select Contact...", "Vybrať kontakt...", "Kapcsolat választása...")}
+                      options={leads.map(l => ({ value: l.id, label: l.name }))}
+                    />
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">

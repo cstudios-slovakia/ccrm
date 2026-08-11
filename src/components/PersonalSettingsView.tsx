@@ -4,6 +4,7 @@ import { PasswordInput } from "./PasswordInput";
 import type { UserProfile } from "../types";
 import type { Language } from "../utils/translations";
 import { HERB_THEMES, getStoredTheme, applyTheme } from "../utils/theme";
+import { CustomSelect } from "./ui/CustomSelect";
 
 interface PersonalSettingsViewProps {
   currentUser: UserProfile;
@@ -400,15 +401,15 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
 
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">{t("Display Language", "Jazyk rozhrania", "Megjelenítési nyelv")}</label>
-                <select
+                <CustomSelect
                   value={userLanguage}
-                  onChange={(e) => setUserLanguage(e.target.value as Language)}
-                  className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
-                >
-                  <option value="sk">🇸🇰 Slovenčina</option>
-                  <option value="en">🇬🇧 English</option>
-                  <option value="hu">🇭🇺 Magyar</option>
-                </select>
+                  onChange={(v) => setUserLanguage(v as Language)}
+                  options={[
+                    { value: "sk", label: "🇸🇰 Slovenčina" },
+                    { value: "en", label: "🇬🇧 English" },
+                    { value: "hu", label: "🇭🇺 Magyar" },
+                  ]}
+                />
               </div>
 
               {/* Herb Themes Dropdown */}
@@ -426,24 +427,20 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                   )}
                 </div>
 
-                <select
+                <CustomSelect
                   value={currentThemeId}
-                  onChange={(e) => {
-                    const newTheme = e.target.value;
+                  onChange={(newTheme) => {
                     if (setUserTheme) {
                       setUserTheme(newTheme);
                     } else {
                       applyTheme(newTheme);
                     }
                   }}
-                  className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all cursor-pointer"
-                >
-                  {HERB_THEMES.map((theme) => (
-                    <option key={theme.id} value={theme.id}>
-                      {theme.icon} {theme.name[systemLanguage] || theme.name.en}
-                    </option>
-                  ))}
-                </select>
+                  options={HERB_THEMES.map((theme) => ({
+                    value: theme.id,
+                    label: `${theme.icon} ${theme.name[systemLanguage] || theme.name.en}`,
+                  }))}
+                />
 
                 {currentThemeObj && (
                   <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2 text-xs">
@@ -589,14 +586,14 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1">
                         <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t("Integration Service", "Protokol / Služba", "Integrációs szolgáltatás")}</label>
-                        <select
+                        <CustomSelect
                           value={emailSettings.provider}
-                          onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, provider: e.target.value }))}
-                          className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none"
-                        >
-                          <option value="smtp">{t("IMAP / SMTP Server", "IMAP / SMTP server", "IMAP / SMTP szerver")}</option>
-                          <option value="exchange">MS Exchange</option>
-                        </select>
+                          onChange={(v) => setEmailSettings((prev: any) => ({ ...prev, provider: v }))}
+                          options={[
+                            { value: "smtp", label: t("IMAP / SMTP Server", "IMAP / SMTP server", "IMAP / SMTP szerver") },
+                            { value: "exchange", label: "MS Exchange" },
+                          ]}
+                        />
                       </div>
                       {emailSettings.provider === "exchange" && (
                         <div className="space-y-1">
@@ -645,15 +642,15 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                             </div>
                             <div className="space-y-1">
                               <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">{t("Connection Security", "Zabezpečenie pripojenia", "Kapcsolat biztonsága")}</label>
-                              <select
+                              <CustomSelect
                                 value={emailSettings.imapSecure}
-                                onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, imapSecure: e.target.value }))}
-                                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none font-bold"
-                              >
-                                <option value="ssl">{t("SSL / TLS (Secure)", "SSL / TLS (Zabezpečené)", "SSL / TLS (Biztonságos)")}</option>
-                                <option value="tls">STARTTLS</option>
-                                <option value="none">{t("None / Unencrypted", "Žiadne / Nešifrované", "Nincs / Titkosítatlan")}</option>
-                              </select>
+                                onChange={(v) => setEmailSettings((prev: any) => ({ ...prev, imapSecure: v }))}
+                                options={[
+                                  { value: "ssl", label: t("SSL / TLS (Secure)", "SSL / TLS (Zabezpečené)", "SSL / TLS (Biztonságos)") },
+                                  { value: "tls", label: "STARTTLS" },
+                                  { value: "none", label: t("None / Unencrypted", "Žiadne / Nešifrované", "Nincs / Titkosítatlan") },
+                                ]}
+                              />
                             </div>
                           </div>
 
@@ -712,15 +709,15 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                             </div>
                             <div className="space-y-1">
                               <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">{t("Connection Security", "Zabezpečenie pripojenia", "Kapcsolat biztonsága")}</label>
-                              <select
+                              <CustomSelect
                                 value={emailSettings.smtpSecure}
-                                onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, smtpSecure: e.target.value }))}
-                                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none font-bold"
-                              >
-                                <option value="ssl">{t("SSL / TLS (Secure)", "SSL / TLS (Zabezpečené)", "SSL / TLS (Biztonságos)")}</option>
-                                <option value="tls">STARTTLS</option>
-                                <option value="none">{t("None / Unencrypted", "Žiadne / Nešifrované", "Nincs / Titkosítatlan")}</option>
-                              </select>
+                                onChange={(v) => setEmailSettings((prev: any) => ({ ...prev, smtpSecure: v }))}
+                                options={[
+                                  { value: "ssl", label: t("SSL / TLS (Secure)", "SSL / TLS (Zabezpečené)", "SSL / TLS (Biztonságos)") },
+                                  { value: "tls", label: "STARTTLS" },
+                                  { value: "none", label: t("None / Unencrypted", "Žiadne / Nešifrované", "Nincs / Titkosítatlan") },
+                                ]}
+                              />
                             </div>
                           </div>
 

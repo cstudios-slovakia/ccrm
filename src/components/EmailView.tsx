@@ -9,6 +9,7 @@ import type { Lead, Task, UserProfile } from "../types";
 import { formatBytes } from "../utils/formatBytes";
 import { nowLocalStamp, localeCodeFor, formatTimestampLocalized } from "../utils/localTime";
 import { getTranslation } from "../utils/translations";
+import { CustomSelect } from "./ui/CustomSelect";
 
 interface EmailViewProps {
   currentUser: any;
@@ -2014,15 +2015,15 @@ export const EmailView: React.FC<EmailViewProps> = ({
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Client Type", "Typ klienta", "Ügyfél típusa")}</label>
-                    <select
+                    <CustomSelect
                       value={clientFormType}
-                      onChange={(e) => setClientFormType(e.target.value as any)}
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:bg-white font-semibold cursor-pointer"
-                    >
-                      <option value="person">{t("Person", "Osoba", "Személy")}</option>
-                      <option value="business">{t("Business", "Firma", "Cég")}</option>
-                      <option value="partner">{t("Partner", "Partner", "Partner")}</option>
-                    </select>
+                      onChange={(v) => setClientFormType(v as any)}
+                      options={[
+                        { value: "person", label: t("Person", "Osoba", "Személy") },
+                        { value: "business", label: t("Business", "Firma", "Cég") },
+                        { value: "partner", label: t("Partner", "Partner", "Partner") },
+                      ]}
+                    />
                   </div>
                 </div>
               </div>

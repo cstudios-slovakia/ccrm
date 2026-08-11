@@ -4,6 +4,7 @@ import {
   ArrowRight, Download, Handshake, Receipt, Plus, X, UploadCloud, File, Trash, Loader2, Eye
 } from "lucide-react";
 import type { Lead } from "../types";
+import { CustomSelect } from "./ui/CustomSelect";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { formatBytes } from "../utils/formatBytes";
@@ -503,18 +504,17 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
           </div>
 
           <div className="relative w-full">
-            <select
+            <CustomSelect
               value={selectedClientFilter}
-              onChange={(e) => setSelectedClientFilter(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-2xl bg-amber-50/10 border-2 border-amber-250 text-xs text-slate-850 font-bold focus:outline-none focus:bg-white focus:border-amber-700 focus:ring-1 focus:ring-amber-500 cursor-pointer"
-            >
-              <option value="all">
-                {systemLanguage === "sk" ? "Všetci klienti" : systemLanguage === "hu" ? "Minden ügyfél" : "All Clients"}
-              </option>
-              {clientNames.map(name => (
-                <option key={name} value={name}>{name}</option>
-              ))}
-            </select>
+              onChange={(v) => setSelectedClientFilter(v)}
+              options={[
+                {
+                  value: "all",
+                  label: systemLanguage === "sk" ? "Všetci klienti" : systemLanguage === "hu" ? "Minden ügyfél" : "All Clients",
+                },
+                ...clientNames.map(name => ({ value: name, label: name })),
+              ]}
+            />
           </div>
         </div>
       </div>
@@ -857,21 +857,25 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
                               <label className="text-[8px] font-black text-slate-500 uppercase tracking-wider">
                                 {systemLanguage === "sk" ? "Kategória *" : systemLanguage === "hu" ? "Kategória *" : "Category *"}
                               </label>
-                              <select
+                              <CustomSelect
+                                size="sm"
                                 value={item.category}
-                                onChange={(e) => handleQueueChange(item.id, "category", e.target.value)}
-                                className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-[10px] font-bold bg-white focus:outline-none focus:border-amber-700"
-                              >
-                                <option value="offer">
-                                  {systemLanguage === "sk" ? "Cenová ponuka" : systemLanguage === "hu" ? "Árajánlat" : "Offer Sheet"}
-                                </option>
-                                <option value="contract">
-                                  {systemLanguage === "sk" ? "Zmluva" : systemLanguage === "hu" ? "Szerződés" : "Contract"}
-                                </option>
-                                <option value="invoice">
-                                  {systemLanguage === "sk" ? "Faktúra" : systemLanguage === "hu" ? "Számla" : "Invoice"}
-                                </option>
-                              </select>
+                                onChange={(v) => handleQueueChange(item.id, "category", v)}
+                                options={[
+                                  {
+                                    value: "offer",
+                                    label: systemLanguage === "sk" ? "Cenová ponuka" : systemLanguage === "hu" ? "Árajánlat" : "Offer Sheet",
+                                  },
+                                  {
+                                    value: "contract",
+                                    label: systemLanguage === "sk" ? "Zmluva" : systemLanguage === "hu" ? "Szerződés" : "Contract",
+                                  },
+                                  {
+                                    value: "invoice",
+                                    label: systemLanguage === "sk" ? "Faktúra" : systemLanguage === "hu" ? "Számla" : "Invoice",
+                                  },
+                                ]}
+                              />
                             </div>
                           </div>
 

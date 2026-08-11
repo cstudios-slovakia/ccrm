@@ -6,6 +6,7 @@ import {
   Sparkles, Zap, X, Bookmark, ThumbsUp, Send, MoreHorizontal, Download,
   Clock, Users, Award, Activity, Filter, Check
 } from "lucide-react";
+import { CustomSelect } from "./ui/CustomSelect";
 import type { Language } from "../utils/translations";
 
 interface SocialMediaViewProps {
@@ -1334,31 +1335,29 @@ const normalizePlatformKey = (raw: string): any => {
                 <div className="flex items-center gap-2 flex-wrap">
                   {/* Platform Filter Dropdown */}
                   <div className="relative">
-                    <select
+                    <CustomSelect
                       value={analyticsPlatformFilter}
-                      onChange={(e) => setAnalyticsPlatformFilter(e.target.value)}
-                      className="px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-extrabold text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500/20 cursor-pointer pr-8 appearance-none"
-                    >
-                      <option value="all">{t("All Platforms", "Všetky platformy", "Minden platform")}</option>
-                      {Object.entries(PLATFORM_CONFIG).map(([k, v]) => (
-                        <option key={k} value={k}>{v.name}</option>
-                      ))}
-                    </select>
-                    <Filter className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+                      onChange={(v) => setAnalyticsPlatformFilter(v)}
+                      icon={<Filter className="h-3.5 w-3.5 text-slate-400" />}
+                      options={[
+                        { value: "all", label: t("All Platforms", "Všetky platformy", "Minden platform") },
+                        ...Object.entries(PLATFORM_CONFIG).map(([k, v]) => ({ value: k, label: v.name })),
+                      ]}
+                    />
                   </div>
 
                   {/* Date Range Selector */}
                   <div className="relative">
-                    <select
+                    <CustomSelect
                       value={analyticsDateRange}
-                      onChange={(e) => setAnalyticsDateRange(e.target.value)}
-                      className="px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-extrabold text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500/20 cursor-pointer pr-8 appearance-none"
-                    >
-                      <option value="7d">{t("Last 7 days", "Posledných 7 dní", "Elmúlt 7 nap")}</option>
-                      <option value="30d">{t("Last 30 days", "Posledných 30 dní", "Elmúlt 30 nap")}</option>
-                      <option value="90d">{t("Last 90 days", "Posledných 90 dní", "Elmúlt 90 nap")}</option>
-                    </select>
-                    <Calendar className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+                      onChange={(v) => setAnalyticsDateRange(v)}
+                      icon={<Calendar className="h-3.5 w-3.5 text-slate-400" />}
+                      options={[
+                        { value: "7d", label: t("Last 7 days", "Posledných 7 dní", "Elmúlt 7 nap") },
+                        { value: "30d", label: t("Last 30 days", "Posledných 30 dní", "Elmúlt 30 nap") },
+                        { value: "90d", label: t("Last 90 days", "Posledných 90 dní", "Elmúlt 90 nap") },
+                      ]}
+                    />
                   </div>
 
                   {/* Export Report Action */}

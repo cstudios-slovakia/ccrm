@@ -12,6 +12,7 @@ import {
 import type { Lead, TimelineEvent, Task } from "../types";
 import { cn } from "../utils/cn";
 import { BlockEditor } from "./BlockEditor";
+import { CustomSelect } from "./ui/CustomSelect";
 import type { EditorBlock } from "./BlockEditor";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
@@ -2679,15 +2680,15 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 <div className="space-y-1">
                   <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">{getTranslation(systemLanguage, "profile.client_type")}</label>
                   {isEditingProfile ? (
-                    <select
+                    <CustomSelect
                       value={profileType}
-                      onChange={(e) => setProfileType(e.target.value as any)}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:outline-none text-slate-800"
-                    >
-                      <option value="person">{systemLanguage === "sk" ? "Súkromná osoba" : systemLanguage === "hu" ? "Magánszemély" : "Private Person"}</option>
-                      <option value="business">{systemLanguage === "sk" ? "Firma / Podnikanie" : systemLanguage === "hu" ? "Cég / Vállalkozás" : "Company / Business"}</option>
-                      <option value="partner">{systemLanguage === "sk" ? "Obchodný partner" : systemLanguage === "hu" ? "Kereskedő partner" : "Dealer Partner"}</option>
-                    </select>
+                      onChange={(v) => setProfileType(v as any)}
+                      options={[
+                        { value: "person", label: systemLanguage === "sk" ? "Súkromná osoba" : systemLanguage === "hu" ? "Magánszemély" : "Private Person" },
+                        { value: "business", label: systemLanguage === "sk" ? "Firma / Podnikanie" : systemLanguage === "hu" ? "Cég / Vállalkozás" : "Company / Business" },
+                        { value: "partner", label: systemLanguage === "sk" ? "Obchodný partner" : systemLanguage === "hu" ? "Kereskedő partner" : "Dealer Partner" },
+                      ]}
+                    />
                   ) : (
                     <div className="pt-2 pl-0 text-slate-900 text-sm font-black uppercase tracking-wider cursor-default select-all">
                       {profileType === "business" && `🏢 ${systemLanguage === "sk" ? "Firma / Podnikanie" : systemLanguage === "hu" ? "Cég / Vállalkozás" : "Company / Business"}`}
@@ -2799,15 +2800,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   <div className="space-y-1">
                     <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">{getTranslation(systemLanguage, "profile.country")}</label>
                     {isEditingProfile ? (
-                      <select
+                      <CustomSelect
                         value={profileCountry}
-                        onChange={(e) => setProfileCountry(e.target.value)}
-                        className="w-full px-3 py-1.5 rounded-lg bg-white border-2 border-slate-200 focus:outline-none text-slate-800"
-                      >
-                        {europeanCountries.map(country => (
-                          <option key={country} value={country}>{country}</option>
-                        ))}
-                      </select>
+                        onChange={(v) => setProfileCountry(v)}
+                        options={europeanCountries.map(country => ({ value: country, label: country }))}
+                      />
                     ) : (
                       <div className="pl-0 text-slate-900 font-black cursor-default select-all">
                         🇪🇺 {profileCountry}
@@ -3050,15 +3047,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               <div className="border-t-2 border-slate-100 pt-4 space-y-1">
                 <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">{getTranslation(systemLanguage, "profile.primary_pm")}</label>
                 {isEditingProfile ? (
-                  <select
+                  <CustomSelect
                     value={profileOwner}
-                    onChange={(e) => setProfileOwner(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:outline-none text-slate-850 font-bold"
-                  >
-                    {projectManagers.map(pm => (
-                      <option key={pm} value={pm}>{pm}</option>
-                    ))}
-                  </select>
+                    onChange={(v) => setProfileOwner(v)}
+                    options={projectManagers.map(pm => ({ value: pm, label: pm }))}
+                  />
                 ) : (
                   <div className="pl-0 text-slate-900 font-black cursor-default select-all">
                     👤 {profileOwner}
@@ -4234,16 +4227,18 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           <div className="relative w-full sm:w-[180px] shrink-0">
             <div className="flex items-center gap-2 bg-slate-50 border-2 border-slate-200 text-slate-700 rounded-2xl px-4 py-3 shadow-sm hover:border-slate-300 transition-colors">
               <Users className="h-4.5 w-4.5 text-slate-400 shrink-0" />
-              <select
+              <CustomSelect
                 value={selectedType}
-                onChange={(e) => setSelectedType(e.target.value)}
-                className="bg-transparent text-[11px] font-black text-slate-700 focus:outline-none cursor-pointer uppercase tracking-wider w-full select-none"
-              >
-                <option value="all" className="bg-white text-slate-700">{t("All Types", "Všetky typy", "Minden típus")}</option>
-                <option value="person" className="bg-white text-slate-700">{t("Person", "Osoba", "Személy")}</option>
-                <option value="business" className="bg-white text-slate-700">{t("Business", "Firma", "Cég")}</option>
-                <option value="partner" className="bg-white text-slate-700">{t("Partner", "Partner", "Partner")}</option>
-              </select>
+                onChange={(v) => setSelectedType(v)}
+                unstyled
+                className="bg-transparent text-[11px] font-black text-slate-700 focus:outline-none cursor-pointer uppercase tracking-wider w-full justify-between select-none"
+                options={[
+                  { value: "all", label: t("All Types", "Všetky typy", "Minden típus") },
+                  { value: "person", label: t("Person", "Osoba", "Személy") },
+                  { value: "business", label: t("Business", "Firma", "Cég") },
+                  { value: "partner", label: t("Partner", "Partner", "Partner") },
+                ]}
+              />
             </div>
           </div>
 
@@ -4271,41 +4266,29 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               {/* City Location Filter */}
               <div className="space-y-1.5">
                 <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider pl-0.5">{t("Filter by City Location", "Filtrovať podľa mesta", "Szűrés város szerint")}</label>
-                <div className="relative">
-                  <select
-                    value={filterCity}
-                    onChange={(e) => setFilterCity(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-2xl bg-slate-50 border-2 border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 font-extrabold text-xs text-slate-700 uppercase tracking-wide cursor-pointer appearance-none"
-                  >
-                    <option value="">{getTranslation(systemLanguage, "clients.filter.city")}</option>
-                    {uniqueCities.map(city => (
-                      <option key={city} value={city}>{city}</option>
-                    ))}
-                  </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-400">
-                    ▼
-                  </div>
-                </div>
+                <CustomSelect
+                  value={filterCity}
+                  onChange={(v) => setFilterCity(v)}
+                  placeholder={getTranslation(systemLanguage, "clients.filter.city")}
+                  options={[
+                    { value: "", label: getTranslation(systemLanguage, "clients.filter.city") },
+                    ...uniqueCities.map(city => ({ value: city, label: city })),
+                  ]}
+                />
               </div>
 
               {/* Account PM Manager Filter */}
               <div className="space-y-1.5">
                 <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider pl-0.5">{t("Filter by Account Manager (PM)", "Filtrovať podľa manažéra (PM)", "Szűrés ügyfélmenedzser szerint (PM)")}</label>
-                <div className="relative">
-                  <select
-                    value={filterPM}
-                    onChange={(e) => setFilterPM(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-2xl bg-slate-50 border-2 border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 font-extrabold text-xs text-slate-700 uppercase tracking-wide cursor-pointer appearance-none"
-                  >
-                    <option value="">{getTranslation(systemLanguage, "clients.filter.pm")}</option>
-                    {projectManagers.map(pm => (
-                      <option key={pm} value={pm}>{pm}</option>
-                    ))}
-                  </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-400">
-                    ▼
-                  </div>
-                </div>
+                <CustomSelect
+                  value={filterPM}
+                  onChange={(v) => setFilterPM(v)}
+                  placeholder={getTranslation(systemLanguage, "clients.filter.pm")}
+                  options={[
+                    { value: "", label: getTranslation(systemLanguage, "clients.filter.pm") },
+                    ...projectManagers.map(pm => ({ value: pm, label: pm })),
+                  ]}
+                />
               </div>
 
             </div>
@@ -4707,15 +4690,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
                       {systemLanguage === "sk" ? "Krajina" : systemLanguage === "hu" ? "Ország" : "Country"}
                     </label>
-                    <select
+                    <CustomSelect
                       value={newClientCountry}
-                      onChange={(e) => setNewClientCountry(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold cursor-pointer"
-                    >
-                      {europeanCountries.map(country => (
-                        <option key={country} value={country}>{country}</option>
-                      ))}
-                    </select>
+                      onChange={(v) => setNewClientCountry(v)}
+                      options={europeanCountries.map(country => ({ value: country, label: country }))}
+                    />
                   </div>
                   
                   <div className="md:col-span-2 space-y-1 relative">
@@ -4805,15 +4784,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
                       {systemLanguage === "sk" ? "Priradený PM manažér" : systemLanguage === "hu" ? "Hozzárendelt PM menedzser" : "Assigned PM Manager"}
                     </label>
-                    <select
+                    <CustomSelect
                       value={newClientOwner}
-                      onChange={(e) => setNewClientOwner(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold cursor-pointer"
-                    >
-                      {projectManagers.map(pm => (
-                        <option key={pm} value={pm}>{pm}</option>
-                      ))}
-                    </select>
+                      onChange={(v) => setNewClientOwner(v)}
+                      options={projectManagers.map(pm => ({ value: pm, label: pm }))}
+                    />
                   </div>
                 </div>
               </div>

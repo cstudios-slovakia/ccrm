@@ -8,6 +8,7 @@ import { BlockEditor } from "./BlockEditor";
 import type { EditorBlock } from "./BlockEditor";
 import { Markdown } from "../utils/markdown";
 import { todayLocal } from "../utils/localTime";
+import { CustomSelect } from "./ui/CustomSelect";
 
 const parseNotesToBlocks = (notes: string): EditorBlock[] => {
   if (notes.trim().startsWith("[")) {
@@ -1717,16 +1718,14 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
             {/* Lead filter selection */}
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-slate-600 uppercase tracking-wider">{systemLanguage === "sk" ? "Klient / Lead" : systemLanguage === "hu" ? "Kapcsolódó Lead" : "Associated Lead"}</label>
-              <select
+              <CustomSelect
                 value={selectedLeadFilter}
-                onChange={(e) => setSelectedLeadFilter(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-white border border-slate-250 text-xs text-slate-700 font-medium focus:outline-none focus:border-indigo-500 cursor-pointer"
-              >
-                <option value="">{systemLanguage === "sk" ? "Všetky kontakty" : systemLanguage === "hu" ? "Összes Ügyfél" : "All Associated Contacts"}</option>
-                {leads.map((l) => (
-                  <option key={l.id} value={l.id}>{l.name}</option>
-                ))}
-              </select>
+                onChange={(v) => setSelectedLeadFilter(v)}
+                options={[
+                  { value: "", label: systemLanguage === "sk" ? "Všetky kontakty" : systemLanguage === "hu" ? "Összes Ügyfél" : "All Associated Contacts" },
+                  ...leads.map((l) => ({ value: l.id, label: l.name })),
+                ]}
+              />
             </div>
 
             {/* Date filter range selection */}
@@ -1994,23 +1993,21 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
                       {t("Client", "Klient", "Ügyfél")}
                     </label>
-                    <select
+                    <CustomSelect
                       value=""
-                      onChange={(e) => {
-                        const id = e.target.value;
+                      onChange={(v) => {
+                        const id = v;
                         if (id && !assignedClients.includes(id)) {
                           applyUpdate({ attachedClients: [...assignedClients, id] });
                         }
                       }}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 text-xs font-bold focus:outline-none cursor-pointer"
-                    >
-                      <option value="">{t("Add client...", "Pridať klienta...", "Ügyfél hozzáadása...")}</option>
-                      {leads
-                        .filter((l) => !assignedClients.includes(String(l.id)))
-                        .map((l) => (
-                          <option key={l.id} value={String(l.id)}>{l.name}</option>
-                        ))}
-                    </select>
+                      options={[
+                        { value: "", label: t("Add client...", "Pridať klienta...", "Ügyfél hozzáadása...") },
+                        ...leads
+                          .filter((l) => !assignedClients.includes(String(l.id)))
+                          .map((l) => ({ value: String(l.id), label: l.name })),
+                      ]}
+                    />
                     {assignedClients.length > 0 && (
                       <div className="flex flex-wrap gap-1.5 pt-1">
                         {assignedClients.map((id) => {
@@ -2037,23 +2034,21 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
                       {t("Project Manager", "Projektový manažér", "Projektmenedzser")}
                     </label>
-                    <select
+                    <CustomSelect
                       value=""
-                      onChange={(e) => {
-                        const name = e.target.value;
+                      onChange={(v) => {
+                        const name = v;
                         if (name && !assignedUsers.includes(name)) {
                           applyUpdate({ attachedUsers: [...assignedUsers, name] });
                         }
                       }}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 text-xs font-bold focus:outline-none cursor-pointer"
-                    >
-                      <option value="">{t("Add manager...", "Pridať manažéra...", "Menedzser hozzáadása...")}</option>
-                      {users
-                        .filter((u) => !assignedUsers.includes(u.name))
-                        .map((u) => (
-                          <option key={u.name} value={u.name}>{u.name}</option>
-                        ))}
-                    </select>
+                      options={[
+                        { value: "", label: t("Add manager...", "Pridať manažéra...", "Menedzser hozzáadása...") },
+                        ...users
+                          .filter((u) => !assignedUsers.includes(u.name))
+                          .map((u) => ({ value: u.name, label: u.name })),
+                      ]}
+                    />
                     {assignedUsers.length > 0 && (
                       <div className="flex flex-wrap gap-1.5 pt-1">
                         {assignedUsers.map((name) => (
@@ -2575,16 +2570,14 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               {/* Assigned User */}
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Assigned Team Member", "Priradený člen tímu", "Hozzárendelt csapattag")}</label>
-                <select
+                <CustomSelect
                   value={activeTaskForEdit.assignedUser}
-                  onChange={(e) => setActiveTaskForEdit(prev => prev ? { ...prev, assignedUser: e.target.value } : null)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all cursor-pointer"
-                >
-                  <option value="">{t("Unassigned", "Nepriradené", "Nincs hozzárendelve")}</option>
-                  {users.map(u => (
-                    <option key={u.name} value={u.name}>{u.name}</option>
-                  ))}
-                </select>
+                  onChange={(v) => setActiveTaskForEdit(prev => prev ? { ...prev, assignedUser: v } : null)}
+                  options={[
+                    { value: "", label: t("Unassigned", "Nepriradené", "Nincs hozzárendelve") },
+                    ...users.map(u => ({ value: u.name, label: u.name })),
+                  ]}
+                />
               </div>
 
               {/* Start Date */}
@@ -2613,28 +2606,28 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5 text-left">
                   <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Priority", "Priorita", "Prioritás")}</label>
-                  <select
+                  <CustomSelect
                      value={activeTaskForEdit.priority}
-                     onChange={(e) => setActiveTaskForEdit(prev => prev ? { ...prev, priority: e.target.value as any } : null)}
-                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all cursor-pointer"
-                  >
-                    <option value="low">{t("Low", "Nízka", "Alacsony")}</option>
-                    <option value="medium">{t("Medium", "Stredná", "Közepes")}</option>
-                    <option value="high">{t("High", "Vysoká", "Magas")}</option>
-                  </select>
+                     onChange={(v) => setActiveTaskForEdit(prev => prev ? { ...prev, priority: v as any } : null)}
+                     options={[
+                       { value: "low", label: t("Low", "Nízka", "Alacsony") },
+                       { value: "medium", label: t("Medium", "Stredná", "Közepes") },
+                       { value: "high", label: t("High", "Vysoká", "Magas") },
+                     ]}
+                  />
                 </div>
 
                 <div className="space-y-1.5 text-left">
                   <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Status", "Stav", "Állapot")}</label>
-                  <select
+                  <CustomSelect
                     value={activeTaskForEdit.status}
-                    onChange={(e) => setActiveTaskForEdit(prev => prev ? { ...prev, status: e.target.value as any } : null)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all cursor-pointer"
-                  >
-                    <option value="todo">{t("To Do", "Na vykonanie", "Teendő")}</option>
-                    <option value="in_progress">{t("In Progress", "Prebieha", "Folyamatban")}</option>
-                    <option value="done">{t("Completed", "Dokončené", "Befejezve")}</option>
-                  </select>
+                    onChange={(v) => setActiveTaskForEdit(prev => prev ? { ...prev, status: v as any } : null)}
+                    options={[
+                      { value: "todo", label: t("To Do", "Na vykonanie", "Teendő") },
+                      { value: "in_progress", label: t("In Progress", "Prebieha", "Folyamatban") },
+                      { value: "done", label: t("Completed", "Dokončené", "Befejezve") },
+                    ]}
+                  />
                 </div>
               </div>
             </div>

@@ -4,6 +4,7 @@ import { Plus, Trash2, Settings, Search, Users, Briefcase, ChevronDown } from "l
 import type { Project, ProjectType, Lead, UserProfile } from "../types";
 import { ProjectDetailsView } from "./ProjectDetailsView";
 import { ProjectSettings } from "./ProjectSettings";
+import { CustomSelect } from "./ui/CustomSelect";
 import type { Language } from "../utils/translations";
 
 interface ProjectsViewProps {
@@ -231,29 +232,27 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               </div>
 
               {/* Status Filter */}
-              <select
+              <CustomSelect
                 value={selectedStatusFilter}
-                onChange={e => setSelectedStatusFilter(e.target.value)}
-                className="px-3 py-2.5 rounded-2xl border border-slate-200 text-xs font-semibold text-slate-700 bg-white"
-              >
-                <option value="all">{t("All Statuses", "Všetky stavy", "Minden állapot")}</option>
-                <option value="active">{t("Active", "Aktívne", "Aktív")}</option>
-                <option value="completed">{t("Completed", "Dokončené", "Befejezett")}</option>
-                <option value="on_hold">{t("On Hold", "Pozastavené", "Függőben")}</option>
-                <option value="cancelled">{t("Cancelled", "Zrušené", "Törölt")}</option>
-              </select>
+                onChange={(v) => setSelectedStatusFilter(v)}
+                options={[
+                  { value: "all", label: t("All Statuses", "Všetky stavy", "Minden állapot") },
+                  { value: "active", label: t("Active", "Aktívne", "Aktív") },
+                  { value: "completed", label: t("Completed", "Dokončené", "Befejezett") },
+                  { value: "on_hold", label: t("On Hold", "Pozastavené", "Függőben") },
+                  { value: "cancelled", label: t("Cancelled", "Zrušené", "Törölt") },
+                ]}
+              />
 
               {/* Type Filter */}
-              <select
+              <CustomSelect
                 value={selectedTypeFilter}
-                onChange={e => setSelectedTypeFilter(e.target.value)}
-                className="px-3 py-2.5 rounded-2xl border border-slate-200 text-xs font-semibold text-slate-700 bg-white"
-              >
-                <option value="all">{t("All Types", "Všetky typy", "Minden típus")}</option>
-                {projectTypes.map(t => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
-                ))}
-              </select>
+                onChange={(v) => setSelectedTypeFilter(v)}
+                options={[
+                  { value: "all", label: t("All Types", "Všetky typy", "Minden típus") },
+                  ...projectTypes.map(pt => ({ value: pt.id, label: pt.name })),
+                ]}
+              />
             </div>
 
             {/* Create Project Button with Type Dropdown */}
