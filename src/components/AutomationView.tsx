@@ -2154,14 +2154,16 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                 <div>
                                   <label className="flex items-center gap-1 text-[9px] font-bold text-slate-400 uppercase tracking-wider">
                                     {t("Deadline (Days)", "Termín (dni)", "Határidő (nap)")}
-                                    <Info
-                                      className="h-2.5 w-2.5 text-slate-300 cursor-help shrink-0"
+                                    <span
+                                      className="inline-flex shrink-0 cursor-help"
                                       title={t(
                                         "The task's due date is set automatically to today + this many days",
                                         "Termín úlohy sa automaticky nastaví na dnešný deň + tento počet dní",
                                         "A feladat határideje automatikusan a mai nap + ennyi napra lesz beállítva"
                                       )}
-                                    />
+                                    >
+                                      <Info className="h-2.5 w-2.5 text-slate-300" />
+                                    </span>
                                   </label>
                                   <div className="flex items-center gap-1.5 mt-0.5">
                                     <div className="p-1 bg-slate-50 border border-slate-100 rounded-md shrink-0 flex items-center justify-center">

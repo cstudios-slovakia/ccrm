@@ -1,4 +1,4 @@
-import{Z as e,h as t,nr as n,tr as r,zn as i,zt as a}from"./index-D5hT3bXJ.js";var o=n(r(),1),s=t(),c=({systemLanguage:t})=>{let[n,r]=(0,o.useState)([]),[c,l]=(0,o.useState)(!0),[u,d]=(0,o.useState)(null),[f,p]=(0,o.useState)(0),m=(e,n,r)=>t===`sk`?n:t===`hu`?r:e;if((0,o.useEffect)(()=>{(async()=>{try{let e=await fetch(`https://ccrm.softwaresolutions.sk/index.php?action=graphql/api`,{method:`POST`,headers:{"Content-Type":`application/json`,Accept:`application/json`},body:JSON.stringify({query:`
+import{Z as e,h as t,nr as n,tr as r,zn as i,zt as a}from"./index-qQ6HVo76.js";var o=n(r(),1),s=t(),c=({systemLanguage:t})=>{let[n,r]=(0,o.useState)([]),[c,l]=(0,o.useState)(!0),[u,d]=(0,o.useState)(null),[f,p]=(0,o.useState)(0),m=(e,n,r)=>t===`sk`?n:t===`hu`?r:e;if((0,o.useEffect)(()=>{(async()=>{try{let e=await fetch(`https://ccrm.softwaresolutions.sk/index.php?action=graphql/api`,{method:`POST`,headers:{"Content-Type":`application/json`,Accept:`application/json`},body:JSON.stringify({query:`
         query GetUpdateNotes {
           entries(section: "updateNotes", site: "*") {
             id
