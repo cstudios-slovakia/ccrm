@@ -823,34 +823,31 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
   return (
     <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
       
-      {/* Header with Custom Registry Color Styling */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4 text-left">
-        <div className="flex items-center gap-3">
-          <div 
-            className="p-3 rounded-2xl text-white shadow-md"
-            style={{ backgroundColor: registry.color }}
-          >
+      {/* HEADER SECTION — same shape as every other module: title block on the left,
+          actions on the right, hairline rule underneath. The registry used to lead
+          with a filled color tile carrying its icon, which no other module does and
+          which read as a badge competing with the app header above it. The registry
+          color now lives in the inline icon and the primary action only. */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-4 text-left">
+        <div className="flex flex-col">
+          <h1 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
             {(() => {
-              const IconComponent = (Icons as any)[registry.icon] || Icons.FolderOpen;
-              return <IconComponent className="h-6 w-6" />;
+              const IconComponent = (Icons as any)[registry.icon] || Icons.KeyRound;
+              return <IconComponent className="h-6 w-6 shrink-0" style={{ color: registry.color }} />;
             })()}
-          </div>
-          <div>
-            <h2 className="text-xl font-heading font-bold text-slate-900 uppercase tracking-wider">
-              {registry.name}
-            </h2>
-            <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-0.5">
-              {t(`Manage: ${registry.name.toLowerCase()}`, `Správa: ${registry.name.toLowerCase()}`, `Kezelés: ${registry.name.toLowerCase()}`)}
-            </p>
-          </div>
+            {registry.name}
+          </h1>
+          <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
+            {t(`Manage: ${registry.name.toLowerCase()}`, `Správa: ${registry.name.toLowerCase()}`, `Kezelés: ${registry.name.toLowerCase()}`)}
+          </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
           {registry.foldersEnabled && (
             <button
               type="button"
               onClick={handleOpenCreateFolder}
-              className="px-3.5 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-650 text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+              className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors text-xs font-heading font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shrink-0"
             >
               <FolderPlus className="h-4 w-4" />
               {t("New " + folderSingularEn, "Nový " + folderSingularSk.toLowerCase(), "Új " + folderSingularHu.toLowerCase())}
@@ -859,10 +856,10 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
           <button
             type="button"
             onClick={handleOpenCreateEntry}
-            className="px-4 py-2.5 rounded-xl text-white text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
+            className="px-5 py-3 rounded-2xl text-white shadow-md transition-all font-heading font-bold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95 shrink-0"
             style={{ backgroundColor: registry.color }}
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-4.5 w-4.5" />
             {t("New " + entrySingularEn, "Nový " + entrySingularSk.toLowerCase(), "Új " + entrySingularHu.toLowerCase())}
           </button>
         </div>
