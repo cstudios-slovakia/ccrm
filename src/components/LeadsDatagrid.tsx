@@ -44,6 +44,7 @@ import {
     Square,
     Sparkles,
     ChevronDown,
+    ChevronUp,
     ClipboardList,
     Receipt,
     ReceiptText,
@@ -2193,6 +2194,22 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     // Inline edit/delete of an already-logged timeline event
     const [editingEventId, setEditingEventId] = useState<string | null>(null);
     const [editingEventDraft, setEditingEventDraft] = useState("");
+
+    // Timeline events whose truncated content the user expanded via "Show more"
+    const [expandedTimelineEventIds, setExpandedTimelineEventIds] = useState<
+        Set<string>
+    >(new Set());
+    const toggleTimelineEventExpanded = (eventId: string) => {
+        setExpandedTimelineEventIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(eventId)) {
+                next.delete(eventId);
+            } else {
+                next.add(eventId);
+            }
+            return next;
+        });
+    };
 
     // Explicit Event Date/Time
     const [logDate, setLogDate] = useState(() => {
@@ -7185,27 +7202,70 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                     event.content.split(
                                                                         "\n",
                                                                     );
-                                                                const showGradient =
+                                                                const isTruncatable =
                                                                     lines.length >
                                                                         5 ||
                                                                     event
                                                                         .content
                                                                         .length >
                                                                         250;
+                                                                const isExpanded =
+                                                                    expandedTimelineEventIds.has(
+                                                                        event.id,
+                                                                    );
+                                                                const showGradient =
+                                                                    isTruncatable &&
+                                                                    !isExpanded;
                                                                 return (
-                                                                    <div
-                                                                        className={`relative ${showGradient ? "max-h-[8.1em] overflow-hidden" : ""}`}
-                                                                        style={{
-                                                                            lineHeight: 1.35,
-                                                                        }}
-                                                                    >
-                                                                        <p className="text-[11px] text-slate-700 font-bold select-text whitespace-pre-wrap">
-                                                                            {
-                                                                                event.content
-                                                                            }
-                                                                        </p>
-                                                                        {showGradient && (
-                                                                            <div className="absolute bottom-0 left-0 right-0 pointer-events-none bg-gradient-to-t from-white via-white/70 to-transparent h-10" />
+                                                                    <div>
+                                                                        <div
+                                                                            className={`relative ${showGradient ? "max-h-[8.1em] overflow-hidden" : ""}`}
+                                                                            style={{
+                                                                                lineHeight: 1.35,
+                                                                            }}
+                                                                        >
+                                                                            <p className="text-[11px] text-slate-700 font-bold select-text whitespace-pre-wrap">
+                                                                                {
+                                                                                    event.content
+                                                                                }
+                                                                            </p>
+                                                                            {showGradient && (
+                                                                                <div className="absolute bottom-0 left-0 right-0 pointer-events-none bg-gradient-to-t from-white via-white/70 to-transparent h-10" />
+                                                                            )}
+                                                                        </div>
+                                                                        {isTruncatable && (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={(
+                                                                                    e,
+                                                                                ) => {
+                                                                                    e.stopPropagation();
+                                                                                    toggleTimelineEventExpanded(
+                                                                                        event.id,
+                                                                                    );
+                                                                                }}
+                                                                                className="mt-1.5 flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-indigo-600 hover:text-indigo-800 transition-colors"
+                                                                            >
+                                                                                {isExpanded ? (
+                                                                                    <>
+                                                                                        <ChevronUp className="h-3 w-3 stroke-[2.5]" />
+                                                                                        {t(
+                                                                                            "Show less",
+                                                                                            "Zobraziť menej",
+                                                                                            "Kevesebb megjelenítése",
+                                                                                        )}
+                                                                                    </>
+                                                                                ) : (
+                                                                                    <>
+                                                                                        <ChevronDown className="h-3 w-3 stroke-[2.5]" />
+                                                                                        {t(
+                                                                                            "Show more",
+                                                                                            "Zobraziť viac",
+                                                                                            "Több megjelenítése",
+                                                                                        )}
+                                                                                    </>
+                                                                                )}
+                                                                            </button>
                                                                         )}
                                                                     </div>
                                                                 );
