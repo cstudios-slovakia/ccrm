@@ -163,6 +163,97 @@ if (!function_exists('ccrm_load_automation_config')) {
     }
 }
 
+if (!function_exists('ccrm_workflow_task_states')) {
+    /**
+     * The operator's configured task states, in board order. Index 0 is the
+     * state a fresh task opens in and the last one counts as done — the same
+     * convention the frontend uses. A workflow-created task must use these
+     * labels: a hardcoded 'todo' matches no configured state, so the task would
+     * render grey and drop out of every state filter and board column.
+     */
+    function ccrm_workflow_task_states($pdo) {
+        static $cached = null;
+        if ($cached !== null) {
+            return $cached;
+        }
+        $states = [];
+        try {
+            $raw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'TASK_STATES'")->fetchColumn();
+            $decoded = is_string($raw) ? json_decode($raw, true) : null;
+            if (is_array($decoded)) {
+                foreach ($decoded as $state) {
+                    if (is_string($state) && trim($state) !== '') {
+                        $states[] = $state;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            // Fall through to the seeded defaults below.
+        }
+        if (!$states && function_exists('ccrm_default_lists')) {
+            try {
+                $language = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'SYSTEM_LANGUAGE'")->fetchColumn();
+                $states = ccrm_default_lists(is_string($language) ? $language : 'sk')['taskStates'] ?? [];
+            } catch (\Throwable $e) {
+                $states = [];
+            }
+        }
+        $cached = $states;
+        return $cached;
+    }
+}
+
+if (!function_exists('ccrm_workflow_open_task_exists')) {
+    /**
+     * True when this workflow already has a live task for the same record.
+     * Without it, moving a lead back and forth across the trigger status (a
+     * correction, a re-send, a drag onto the wrong column and back) stacks up a
+     * duplicate follow-up every single time.
+     *
+     * "Live" mirrors the frontend's isDoneState(): not archived, and neither the
+     * literal 'done' nor whatever the operator named their last task state.
+     * A finished follow-up is therefore allowed to be superseded by a new one.
+     */
+    function ccrm_workflow_open_task_exists($pdo, $workflowId, $relatedLeadId, $title) {
+        if ($workflowId === null || $workflowId === '') {
+            return false;
+        }
+        $states = ccrm_workflow_task_states($pdo);
+        $lastState = $states ? (string)end($states) : null;
+
+        $sql = "SELECT COUNT(*) FROM `tasks`
+                 WHERE `workflow_id` = ?
+                   AND `archived` = 0
+                   AND LOWER(`status`) <> 'done'";
+        $params = [$workflowId];
+        if ($lastState !== null && strtolower($lastState) !== 'done') {
+            $sql .= " AND `status` <> ?";
+            $params[] = $lastState;
+        }
+        // Scope to the record the workflow fired for. Tasks that could not be
+        // linked (the trigger payload carried no lead id) fall back to the
+        // rendered title, which already carries the client name.
+        if ($relatedLeadId !== null && $relatedLeadId !== '') {
+            $sql .= " AND `related_lead_id` = ?";
+            $params[] = $relatedLeadId;
+        } else {
+            $sql .= " AND `related_lead_id` IS NULL AND `title` = ?";
+            $params[] = $title;
+        }
+
+        try {
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            return (int)$stmt->fetchColumn() > 0;
+        } catch (\Throwable $e) {
+            // A failed lookup must not block the automation; creating a possible
+            // duplicate beats silently dropping the follow-up.
+            if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+            return false;
+        }
+    }
+}
+
 if (!function_exists('ccrm_call_llm')) {
     function ccrm_call_llm($provider, $key, $prompt, $options = []) {
         $ch = curl_init();
@@ -452,23 +543,53 @@ if (!function_exists('ccrm_execute_workflow')) {
                         $owner = ccrm_interpolate_variables($nodeData['owner'] ?? '', $incomingPayload);
                         $priority = $nodeData['priority'] ?? 'medium';
                         $deadlineDays = (int)($nodeData['deadline_days'] ?? 1);
-                        
+
+                        // Time of day the task is due. Without it the task lands
+                        // on the calendar with no hour and sorts ahead of every
+                        // timed entry on that day.
+                        $deadlineTime = trim((string)($nodeData['deadline_time'] ?? ''));
+                        if (!preg_match('/^([01][0-9]|2[0-3]):[0-5][0-9]$/', $deadlineTime)) {
+                            $deadlineTime = null;
+                        }
+
                         $taskId = 'task-' . sprintf('%04x%04x', mt_rand(0, 0xffff), mt_rand(0, 0xffff));
                         $deadline = date('Y-m-d', strtotime("+$deadlineDays days"));
                         $relatedLeadId = (isset($incomingPayload['id']) && is_string($incomingPayload['id']) && strpos($incomingPayload['id'], 'lead-') === 0) ? $incomingPayload['id'] : null;
-                        
-                        $stmt = $pdo->prepare("
-                            INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `deadline`, `status`, `owner`, `created_by`, `related_lead_id`, `created_at`)
-                            VALUES (?, ?, ?, ?, ?, 'todo', ?, 'Automation', ?, CURRENT_TIMESTAMP())
-                        ");
-                        $stmt->execute([$taskId, $title, $desc, $priority, $deadline, $owner, $relatedLeadId]);
 
-                        if (!empty($owner)) {
-                            $insAss = $pdo->prepare("INSERT IGNORE INTO `task_assignees` (`task_id`, `user_name`) VALUES (?, ?)");
-                            $insAss->execute([$taskId, $owner]);
+                        // Open the task in the operator's own first state rather
+                        // than a hardcoded 'todo' that matches no configured one.
+                        $taskStates = ccrm_workflow_task_states($pdo);
+                        $taskStatus = $taskStates[0] ?? 'todo';
+
+                        $workflowId = $wf['id'] ?? null;
+                        if (ccrm_workflow_open_task_exists($pdo, $workflowId, $relatedLeadId, $title)) {
+                            $outputPayload = [
+                                'skipped' => true,
+                                'reason' => 'An open task from this workflow already exists for this record.',
+                                'title' => $title
+                            ];
+                        } else {
+                            $stmt = $pdo->prepare("
+                                INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `workflow_id`, `created_at`)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Automation', ?, ?, CURRENT_TIMESTAMP())
+                            ");
+                            $stmt->execute([$taskId, $title, $desc, $priority, $deadline, $deadlineTime, $taskStatus, $owner, $relatedLeadId, $workflowId]);
+
+                            if (!empty($owner)) {
+                                $insAss = $pdo->prepare("INSERT IGNORE INTO `task_assignees` (`task_id`, `user_name`) VALUES (?, ?)");
+                                $insAss->execute([$taskId, $owner]);
+                            }
+
+                            $outputPayload = [
+                                'id' => $taskId,
+                                'title' => $title,
+                                'description' => $desc,
+                                'owner' => $owner,
+                                'status' => $taskStatus,
+                                'deadline' => $deadline,
+                                'deadline_time' => $deadlineTime
+                            ];
                         }
-
-                        $outputPayload = ['id' => $taskId, 'title' => $title, 'description' => $desc, 'owner' => $owner];
                     } elseif ($actionType === 'send_email') {
                         // Outbound SMTP setup
                         require_once __DIR__ . '/mail_broker.php';

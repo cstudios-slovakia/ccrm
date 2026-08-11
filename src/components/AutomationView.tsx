@@ -708,7 +708,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
         data = { type: "create_lead", name: "{{$trigger.name}}", city: "{{$trigger.city}}", status: "new" };
       } else if (subType === "create_task") {
         name = t("Create Task", "Vytvoriť úlohu", "Feladat létrehozása");
-        data = { type: "create_task", title: "Follow up with {{$trigger.name}}", description: "Details...", priority: "medium", deadline_days: 2 };
+        data = { type: "create_task", title: "Follow up with {{$trigger.name}}", description: "Details...", priority: "medium", deadline_days: 2, deadline_time: "09:00" };
       } else if (subType === "send_email") {
         name = t("Send Email", "Odoslať e-mail", "E-mail küldése");
         data = { type: "send_email", to: "{{$trigger.email}}", subject: "Welcome to CCRM", body: "Hello {{$trigger.name}}, ..." };
@@ -2132,6 +2132,22 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                       type="number"
                                       value={node.data.deadline_days || 2}
                                       onChange={(e) => updateActionField("deadline_days", parseInt(e.target.value) || 2)}
+                                      className="w-full px-1.5 py-0.5 border border-slate-200 rounded-lg text-[10px] font-semibold text-slate-700 focus:outline-none"
+                                    />
+                                  </div>
+                                </div>
+                                {/* Without a time the task lands on the calendar
+                                    with no hour and sorts above every timed entry. */}
+                                <div>
+                                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t("Time", "Čas", "Időpont")}</label>
+                                  <div className="flex items-center gap-1.5 mt-0.5">
+                                    <div className="p-1 bg-slate-50 border border-slate-100 rounded-md shrink-0 flex items-center justify-center">
+                                      <Clock className="h-3.5 w-3.5 text-slate-400" />
+                                    </div>
+                                    <input
+                                      type="time"
+                                      value={node.data.deadline_time || ""}
+                                      onChange={(e) => updateActionField("deadline_time", e.target.value)}
                                       className="w-full px-1.5 py-0.5 border border-slate-200 rounded-lg text-[10px] font-semibold text-slate-700 focus:outline-none"
                                     />
                                   </div>

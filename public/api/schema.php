@@ -125,6 +125,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `owner` VARCHAR(100) NOT NULL COMMENT 'Primary assignee name; empty when unassigned',
               `created_by` VARCHAR(100) NULL COMMENT 'Immutable task creator name; NULL for legacy rows',
               `related_lead_id` VARCHAR(50) NULL,
+              `workflow_id` VARCHAR(50) NULL COMMENT 'Automation that created this task; NULL for hand-made ones',
               `is_locking` TINYINT(1) NOT NULL DEFAULT 0,
               `archived` TINYINT(1) NOT NULL DEFAULT 0,
               `completed_by` VARCHAR(100) NULL COMMENT 'Name of the user who moved the task to a done state; NULL for legacy rows',
@@ -414,6 +415,12 @@ if (!function_exists('ccrm_schema_statements')) {
         }
         if (!ccrm_column_exists($pdo, 'tasks', 'start_date')) {
             $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `start_date` DATE NULL AFTER `priority`");
+        }
+        // Lets the workflow engine tell "this follow-up already exists" from a
+        // similar task somebody typed by hand, so re-entering a trigger status
+        // does not stack duplicate follow-ups.
+        if (!ccrm_column_exists($pdo, 'tasks', 'workflow_id')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `workflow_id` VARCHAR(50) NULL AFTER `related_lead_id`");
         }
         if (!ccrm_column_exists($pdo, 'meeting_tasks', 'start_date')) {
             $pdo->exec("ALTER TABLE `meeting_tasks` ADD COLUMN `start_date` DATE NULL AFTER `description`");
