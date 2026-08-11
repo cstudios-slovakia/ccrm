@@ -7,7 +7,8 @@ import {
   ToggleLeft, ToggleRight, Eye,
   Zap, Clock, UserPlus, Users, CheckSquare, ClipboardList,
   Bot, Calendar, User, Filter, Code, MapPin, Phone, Briefcase, Globe, FileText,
-  ChevronDown, ChevronUp, Move, Sparkles, Send, Star, Bell, Flame, Heart, Shield, Wrench, Package, Award, Target, Lock, Search, Sliders, Tag, Gift, Compass, Paperclip, Printer, Headphones, Video, Radio, Megaphone, Bookmark, DollarSign, CreditCard, TrendingUp, BarChart2, HelpCircle, Info, Smile, ThumbsUp
+  ChevronDown, ChevronUp, Move, Sparkles, Send, Star, Bell, Flame, Heart, Shield, Wrench, Package, Award, Target, Lock, Search, Sliders, Tag, Gift, Compass, Paperclip, Printer, Headphones, Video, Radio, Megaphone, Bookmark, DollarSign, CreditCard, TrendingUp, BarChart2, HelpCircle, Info, Smile, ThumbsUp,
+  Minus, Maximize2
 } from "lucide-react";
 import type { Language } from "../utils/translations";
 import { CustomSelect } from "./ui/CustomSelect";
@@ -431,6 +432,113 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
+  /* Canvas zoom. Node coordinates are stored in canvas space; the whole content
+     layer is drawn through one `translate(pan) scale(zoom)` transform, so every
+     mouse position has to be converted back into canvas space before use. */
+  const canvasRef = React.useRef<HTMLDivElement>(null);
+  const [zoom, setZoom] = useState(1);
+  const MIN_ZOOM = 0.3;
+  const MAX_ZOOM = 2;
+
+  // Mirror of the viewport for the native (non-passive) wheel listener below,
+  // which is registered once and would otherwise close over stale state.
+  const viewRef = React.useRef({ zoom: 1, pan: { x: 0, y: 0 } });
+  useEffect(() => {
+    viewRef.current = { zoom, pan: panOffset };
+  }, [zoom, panOffset]);
+
+  const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
+
+  // Screen (client) coordinates -> canvas coordinates.
+  const toCanvasCoords = (clientX: number, clientY: number) => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    const left = rect?.left ?? 0;
+    const top = rect?.top ?? 0;
+    return {
+      x: (clientX - left - panOffset.x) / zoom,
+      y: (clientY - top - panOffset.y) / zoom
+    };
+  };
+
+  /* Zoom while keeping the point under the cursor (or the viewport centre when
+     no anchor is given) pinned in place. */
+  const zoomAround = (nextZoomRaw: number, anchorClientX?: number, anchorClientY?: number) => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    const current = viewRef.current;
+    const next = clampZoom(nextZoomRaw);
+    if (next === current.zoom) return;
+
+    const ax = anchorClientX !== undefined && rect ? anchorClientX - rect.left : (rect ? rect.width / 2 : 0);
+    const ay = anchorClientY !== undefined && rect ? anchorClientY - rect.top : (rect ? rect.height / 2 : 0);
+    const ratio = next / current.zoom;
+
+    setPanOffset({
+      x: ax - (ax - current.pan.x) * ratio,
+      y: ay - (ay - current.pan.y) * ratio
+    });
+    setZoom(next);
+  };
+
+  const resetView = () => {
+    setPanOffset({ x: 0, y: 0 });
+    setZoom(1);
+  };
+
+  // Frame every node in the viewport — the fast way out of a sprawling workflow.
+  const fitViewToNodes = () => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect || nodes.length === 0) return;
+
+    const NODE_WIDTH = 320;
+    const xs = nodes.map(n => n.x);
+    const ys = nodes.map(n => n.y);
+    const heights = nodes.map(n => (collapsedNodes[n.id] ? 60 : 190));
+    const minX = Math.min(...xs);
+    const minY = Math.min(...ys);
+    const maxX = Math.max(...xs.map(x => x + NODE_WIDTH));
+    const maxY = Math.max(...ys.map((y, i) => y + heights[i]));
+
+    const padding = 60;
+    const contentW = Math.max(maxX - minX, 1);
+    const contentH = Math.max(maxY - minY, 1);
+    const nextZoom = clampZoom(Math.min(
+      (rect.width - padding * 2) / contentW,
+      (rect.height - padding * 2) / contentH,
+      1
+    ));
+
+    setZoom(nextZoom);
+    setPanOffset({
+      x: (rect.width - contentW * nextZoom) / 2 - minX * nextZoom,
+      y: (rect.height - contentH * nextZoom) / 2 - minY * nextZoom
+    });
+  };
+
+  /* React registers onWheel passively, so preventDefault() there is a no-op and
+     the page would scroll away underneath the canvas. Native listener instead. */
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      if (e.ctrlKey || e.metaKey) {
+        zoomAround(viewRef.current.zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12), e.clientX, e.clientY);
+        return;
+      }
+      // Plain wheel pans vertically, Shift pans horizontally (Figma/Miro style).
+      const { pan } = viewRef.current;
+      if (e.shiftKey) {
+        setPanOffset({ x: pan.x - (e.deltaY || e.deltaX), y: pan.y });
+      } else {
+        setPanOffset({ x: pan.x - e.deltaX, y: pan.y - e.deltaY });
+      }
+    };
+
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [activeTab]);
+
   const toggleNodeCollapse = (nodeId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setCollapsedNodes(prev => ({
@@ -750,13 +858,20 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
       }
     }
 
+    /* Drop the node where the user is actually looking — a fixed canvas position
+       lands off-screen as soon as the view has been panned or zoomed. */
+    const rect = canvasRef.current?.getBoundingClientRect();
+    const centre = rect
+      ? { x: (rect.width / 2 - panOffset.x) / zoom - 160, y: (rect.height / 2 - panOffset.y) / zoom - 60 }
+      : { x: 250, y: 150 };
+
     const newNode = {
       id: newId,
       type,
       name,
       data,
-      x: 150 + Math.floor(Math.random() * 150),
-      y: 150 + Math.floor(Math.random() * 150)
+      x: Math.round(centre.x + (Math.random() * 80 - 40)),
+      y: Math.round(centre.y + (Math.random() * 80 - 40))
     };
 
     setNodes(prev => [...prev, newNode]);
@@ -788,10 +903,11 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
     e.stopPropagation();
     const node = nodes.find(n => n.id === nodeId);
     if (node) {
+      const pos = toCanvasCoords(e.clientX, e.clientY);
       setDraggedNodeId(nodeId);
       setDragOffset({
-        x: e.clientX - node.x,
-        y: e.clientY - node.y
+        x: pos.x - node.x,
+        y: pos.y - node.y
       });
     }
   };
@@ -818,26 +934,25 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
       return;
     }
 
+    if (!draggedNodeId && !connectingSource) return;
+    const pos = toCanvasCoords(e.clientX, e.clientY);
+
     if (draggedNodeId) {
       const updatedNodes = nodes.map(n => {
         if (n.id === draggedNodeId) {
           return {
             ...n,
-            x: e.clientX - dragOffset.x,
-            y: e.clientY - dragOffset.y
+            x: pos.x - dragOffset.x,
+            y: pos.y - dragOffset.y
           };
         }
         return n;
       });
       setNodes(updatedNodes);
     }
-    
+
     if (connectingSource) {
-      const rect = e.currentTarget.getBoundingClientRect();
-      setConnectionMousePos({
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top
-      });
+      setConnectionMousePos(pos);
     }
   };
 
@@ -854,8 +969,8 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
       const isCollapsed = !!collapsedNodes[nodeId];
       const xOffset = 320;
       setConnectionMousePos({
-        x: node.x + panOffset.x + xOffset,
-        y: node.y + panOffset.y + (isCollapsed ? 24 : (handleId === "false" ? 80 : 45))
+        x: node.x + xOffset,
+        y: node.y + (isCollapsed ? 24 : (handleId === "false" ? 80 : 45))
       });
     }
   };
@@ -906,19 +1021,19 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
     
     if (type === "input") {
       return {
-        x: node.x + panOffset.x,
-        y: node.y + panOffset.y + yOffset
+        x: node.x,
+        y: node.y + yOffset
       };
     } else {
       if (node.type === "condition") {
         return {
-          x: node.x + panOffset.x + cardWidth,
-          y: node.y + panOffset.y + (isCollapsed ? 24 : (handleId === "false" ? 80 : 45))
+          x: node.x + cardWidth,
+          y: node.y + (isCollapsed ? 24 : (handleId === "false" ? 80 : 45))
         };
       }
       return {
-        x: node.x + panOffset.x + cardWidth,
-        y: node.y + panOffset.y + yOffset
+        x: node.x + cardWidth,
+        y: node.y + yOffset
       };
     }
   };
@@ -934,12 +1049,15 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
 
     return (
       <g key={edge.id} className="group">
+        {/* Only stroke properties transition — `transition-all` would also animate
+            the `d` geometry (Chrome treats it as a CSS property), which makes the
+            connector visibly lag behind the node while panning or dragging. */}
         <path
           d={d}
           fill="none"
           stroke={strokeColor}
           strokeWidth="3.5"
-          className="transition-all group-hover:stroke-rose-500 group-hover:stroke-[4px]"
+          className="transition-[stroke,stroke-width] duration-150 group-hover:stroke-rose-500 group-hover:stroke-[4px]"
         />
         <circle cx={end.x} cy={end.y} r="4" fill={strokeColor} className="group-hover:fill-rose-500 transition-colors" />
       </g>
@@ -1166,13 +1284,15 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
           <div className="h-[calc(100vh-15rem)] min-h-[560px] flex overflow-hidden rounded-3xl border border-white/60 bg-white/95 shadow-glass">
             {/* Editor Canvas Area */}
             <div
+              ref={canvasRef}
               className="flex-1 bg-slate-50 border-r border-slate-200 overflow-hidden relative select-none"
               onMouseDown={handleCanvasMouseDown}
               onMouseMove={handleCanvasMouseMove}
               onMouseUp={handleCanvasMouseUp}
+              onMouseLeave={handleCanvasMouseUp}
               onClick={handleCanvasClick}
               style={{
-                backgroundSize: '20px 20px',
+                backgroundSize: `${20 * zoom}px ${20 * zoom}px`,
                 backgroundImage: 'radial-gradient(circle, #cbd5e1 1.5px, transparent 1.5px)',
                 backgroundPosition: `${panOffset.x}px ${panOffset.y}px`,
                 cursor: isPanning ? 'grabbing' : (draggedNodeId ? 'grabbing' : 'grab')
@@ -1432,19 +1552,69 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                 )}
 
                 {/* Reset View Button */}
-                <button 
+                <button
                   type="button"
-                  onClick={() => setPanOffset({ x: 0, y: 0 })}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-full text-xs font-bold transition-all select-none ml-2 cursor-pointer"
-                  title={t("Reset view position", "Vynulovať pohľad", "Nézet visszaállítása")}
+                  onClick={resetView}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-full text-xs font-bold transition-colors select-none ml-2 cursor-pointer"
+                  title={t("Reset view position and zoom", "Vynulovať pohľad a priblíženie", "Nézet és nagyítás visszaállítása")}
                 >
                   <Move className="h-3.5 w-3.5 text-slate-500" />
                   <span>{panOffset.x !== 0 || panOffset.y !== 0 ? `Reset (${Math.round(panOffset.x)}, ${Math.round(panOffset.y)})` : t("Reset View", "Reset pohľadu", "Alaphelyzet")}</span>
                 </button>
               </div>
 
-              {/* SVG Connector Lines */}
-              <svg className="absolute inset-0 w-full h-full pointer-events-none z-10">
+              {/* Zoom Controls */}
+              <div className="absolute bottom-4 right-4 z-30 flex items-center gap-0.5 bg-white/95 backdrop-blur border border-slate-200/90 rounded-2xl p-1.5 shadow-lg">
+                <button
+                  type="button"
+                  onClick={() => zoomAround(zoom / 1.2)}
+                  disabled={zoom <= MIN_ZOOM + 0.001}
+                  className="h-7 w-7 flex items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-default transition-colors cursor-pointer"
+                  title={t("Zoom out", "Oddialiť", "Kicsinyítés")}
+                >
+                  <Minus className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => zoomAround(1)}
+                  className="min-w-[46px] px-1 h-7 rounded-xl text-[11px] font-extrabold text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer tabular-nums select-none"
+                  title={t("Reset zoom to 100%", "Obnoviť priblíženie na 100 %", "Nagyítás visszaállítása 100%-ra")}
+                >
+                  {Math.round(zoom * 100)}%
+                </button>
+                <button
+                  type="button"
+                  onClick={() => zoomAround(zoom * 1.2)}
+                  disabled={zoom >= MAX_ZOOM - 0.001}
+                  className="h-7 w-7 flex items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-default transition-colors cursor-pointer"
+                  title={t("Zoom in", "Priblížiť", "Nagyítás")}
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
+                <div className="w-px h-5 bg-slate-200 mx-1" />
+                <button
+                  type="button"
+                  onClick={fitViewToNodes}
+                  className="h-7 w-7 flex items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer"
+                  title={t("Fit all nodes to view (scroll to pan, Ctrl+scroll to zoom)", "Prispôsobiť všetky uzly pohľadu (koliesko posúva, Ctrl+koliesko približuje)", "Összes csomópont a nézetbe (görgetés = mozgatás, Ctrl+görgetés = nagyítás)")}
+                >
+                  <Maximize2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+
+              {/* Pan/zoom viewport — a single transform drives every content layer so
+                  connectors, edge buttons and cards stay locked together while moving. */}
+              <div
+                className="absolute inset-0"
+                style={{
+                  transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`,
+                  transformOrigin: '0 0'
+                }}
+              >
+
+              {/* SVG Connector Lines — overflow must stay visible, the drawing area is
+                  the unscaled viewport rect but edges can sit far outside it. */}
+              <svg className="absolute inset-0 w-full h-full pointer-events-none z-10" style={{ overflow: 'visible' }}>
                 {edges.map(edge => renderEdgeLine(edge))}
                 
                 {/* Temp dragging connection helper line */}
@@ -1482,7 +1652,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                         setEdges(edges.filter(ed => ed.id !== edge.id));
                         showToast(t("Connection removed", "Prepojenie bolo odstránené", "Kapcsolat törölve"));
                       }}
-                      className="absolute pointer-events-auto -translate-x-1/2 -translate-y-1/2 h-6 w-6 rounded-full bg-white border border-slate-300 shadow-md hover:border-rose-500 hover:bg-rose-500 text-slate-500 hover:text-white flex items-center justify-center transition-all cursor-pointer group select-none"
+                      className="absolute pointer-events-auto -translate-x-1/2 -translate-y-1/2 h-6 w-6 rounded-full bg-white border border-slate-300 shadow-md hover:border-rose-500 hover:bg-rose-500 text-slate-500 hover:text-white flex items-center justify-center transition-colors cursor-pointer group select-none"
                       style={{ left: midX, top: midY }}
                       title={t("Remove Connection", "Odstrániť prepojenie", "Kapcsolat törlése")}
                     >
@@ -1506,14 +1676,16 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                         e.stopPropagation();
                         setSelectedNode(node);
                       }}
-                      className={`node-card absolute w-80 bg-white border-2 rounded-xl p-4 shadow-sm cursor-grab transition-all select-none ${
-                        selectedNode?.id === node.id 
-                          ? "border-purple-700 shadow-md ring-4 ring-purple-100" 
+                      /* No `transition-all` here: it animates left/top too, which makes
+                         the card visibly trail the cursor while panning or dragging. */
+                      className={`node-card absolute w-80 bg-white border-2 rounded-xl p-4 shadow-sm cursor-grab transition-[border-color,box-shadow] duration-150 select-none ${
+                        selectedNode?.id === node.id
+                          ? "border-purple-700 shadow-md ring-4 ring-purple-100"
                           : "border-slate-200/80 hover:border-purple-300 hover:shadow"
                       }`}
-                      style={{ 
-                        left: node.x + panOffset.x, 
-                        top: node.y + panOffset.y,
+                      style={{
+                        left: node.x,
+                        top: node.y,
                         cursor: isPanning ? 'grabbing' : (draggedNodeId === node.id ? 'grabbing' : 'grab')
                       }}
                     >
@@ -2436,6 +2608,8 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                 );
               })}
               </div>
+
+              </div>{/* /pan-zoom viewport */}
             </div>
 
             {/* Sidebar properties editor panel */}
