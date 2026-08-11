@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { 
   Share2, Calendar, BarChart3, List, Search, RefreshCw, 
   ExternalLink, Heart, MessageSquare, Repeat, Eye, 
-  TrendingUp, TrendingDown, Globe, CheckCircle2, ChevronLeft, ChevronRight,
+  TrendingUp, TrendingDown, Globe, CheckCircle2, ChevronLeft, ChevronRight, ArrowLeft,
   Sparkles, Zap, X, Bookmark, ThumbsUp, Send, MoreHorizontal, Download,
   Clock, Users, Award, Activity, Filter, Check
 } from "lucide-react";
@@ -608,21 +608,29 @@ const normalizePlatformKey = (raw: string): any => {
       {selectedPostModal ? (
         /* DEDICATED FULL VIEW: LINKABLE POST DETAILS & COMMENTS FEED */
         <div className="space-y-6 animate-fade-in select-none">
-          {/* Header Navigation Bar */}
-          <div className="glass-panel p-5 rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <button
-              type="button"
-              onClick={handleClosePostDetails}
-              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer shadow-xs"
-            >
-              <ChevronLeft className="h-4 w-4 text-rose-500" />
-              {t("Back to Social Media Hub", "Späť na Správu sociálnych sietí", "Vissza a Közösségi Média Hubhoz")}
-            </button>
+          {/* Header Navigation Bar — same title-block + actions shape as the hub view */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-4">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleClosePostDetails}
+                className="p-2 rounded-xl hover:bg-slate-100 text-slate-500 transition-colors cursor-pointer shrink-0"
+                title={t("Back to Social Media Hub", "Späť na Správu sociálnych sietí", "Vissza a Közösségi Média Hubhoz")}
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </button>
+              <div className="flex flex-col">
+                <h1 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                  <Share2 className="h-6 w-6 text-rose-600" />
+                  {t("Post Details", "Detail príspevku", "Bejegyzés részletei")}
+                </h1>
+                <p className="text-xs text-slate-500 font-mono font-semibold tracking-wider mt-1">
+                  #social_media/post/{selectedPostModal.id}
+                </p>
+              </div>
+            </div>
 
-            <div className="flex items-center gap-3 flex-wrap">
-              <span className="px-3 py-1.5 bg-slate-100 border border-slate-200/90 rounded-2xl text-xs font-mono font-bold text-slate-600 shadow-xs">
-                #social_media/post/{selectedPostModal.id}
-              </span>
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
               <button
                 type="button"
                 onClick={() => {
@@ -632,7 +640,7 @@ const normalizePlatformKey = (raw: string): any => {
                     (window as any).showToast(t("Post link copied to clipboard!", "Odkaz na príspevok bol skopírovaný!", "Bejegyzés hivatkozás másolva!"));
                   }
                 }}
-                className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-2xl text-xs font-extrabold transition-all border border-rose-200 cursor-pointer flex items-center gap-2 shadow-xs"
+                className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors text-xs font-heading font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shrink-0"
               >
                 <Share2 className="h-4 w-4" />
                 {t("Copy CCRM Link", "Kopírovať odkaz", "Link másolása")}
@@ -812,103 +820,97 @@ const normalizePlatformKey = (raw: string): any => {
         </div>
       ) : (
         <div className="space-y-6">
-          {/* Top Header Bar */}
-          <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-rose-500 to-orange-500 flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-rose-500/20 shrink-0">
-            <Share2 className="h-6 w-6" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl font-heading font-black tracking-tight text-slate-900">
+          {/* HEADER SECTION — same shape as every other module: title block on the
+              left, actions on the right, hairline rule underneath. This view used to
+              paint its own glass hero bar with a gradient badge, which read as a
+              second header competing with the app header above it. */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-4">
+            <div className="flex flex-col">
+              <h1 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                <Share2 className="h-6 w-6 text-rose-600" />
                 {t("Social Media Hub", "Správa sociálnych sietí", "Közösségi Média Hub")}
               </h1>
-              <span className="bg-rose-100 text-rose-800 border border-rose-200 text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full">
-                Social Engine
-              </span>
+              <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
+                {t(
+                  "Multi-channel post manager, scheduled calendar & engagement analytics across 15+ networks.",
+                  "Multikanálový správca príspevkov, kalendár plánovania a analytika dosahu na 15+ sieťach.",
+                  "Többcsatornás bejegyzéskezelő, ütemezési naptár és eléréselemzés."
+                )}
+              </p>
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              {t(
-                "Multi-channel post manager, scheduled calendar & engagement analytics across 15+ networks.",
-                "Multikanálový správca príspevkov, kalendár plánovania a analytika dosahu na 15+ sieťach.",
-                "Többcsatornás bejegyzéskezelő, ütemezési naptár és eléréselemzés."
+
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              {/* Lightswitch for Demo Mode (Only rendered when isDemoMode is true) */}
+              {isDemoMode && (
+                <div className="flex items-center bg-slate-100/80 p-1 rounded-2xl border border-slate-200/80 select-none gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowDemoData(false)}
+                    className={`px-3 py-2 rounded-xl text-xs font-heading font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                      !showDemoData
+                        ? "bg-white text-slate-900 shadow-sm border border-slate-200/60"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    <Zap className="h-4 w-4 text-emerald-600" />
+                    {t("Real Data", "Živé dáta", "Élő adatok")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowDemoData(true)}
+                    className={`px-3 py-2 rounded-xl text-xs font-heading font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                      showDemoData
+                        ? "bg-white text-slate-900 shadow-sm border border-slate-200/60"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    <Sparkles className="h-4 w-4 text-amber-500" />
+                    {t("Demo Data", "Demo dáta", "Demo adatok")}
+                  </button>
+                </div>
               )}
-            </p>
-          </div>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-3 self-stretch md:self-auto justify-between sm:justify-start">
-          {/* Lightswitch for Demo Mode (Only rendered when isDemoMode is true) */}
-          {isDemoMode && (
-            <div className="flex items-center bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200/90 shadow-inner select-none gap-1">
-              <button
-                type="button"
-                onClick={() => setShowDemoData(false)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
-                  !showDemoData
-                    ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/20"
-                    : "text-slate-500 hover:text-slate-900"
-                }`}
-              >
-                <Zap className="h-3.5 w-3.5" />
-                {t("Real Data", "Živé dáta", "Élő adatok")}
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowDemoData(true)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
-                  showDemoData
-                    ? "bg-amber-500 text-white shadow-md shadow-amber-500/20"
-                    : "text-slate-500 hover:text-slate-900"
-                }`}
-              >
-                <Sparkles className="h-3.5 w-3.5" />
-                {t("Demo Data", "Demo dáta", "Demo adatok")}
-              </button>
+              {/* View Switcher Tabs (3 top views) */}
+              <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-2xl border border-slate-200/80">
+                <button
+                  type="button"
+                  onClick={() => setActiveView("list")}
+                  className={`px-3 py-2 rounded-xl text-xs font-heading font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                    activeView === "list"
+                      ? "bg-white text-slate-900 shadow-sm border border-slate-200/60"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  <List className="h-4 w-4 text-rose-500" />
+                  {t("List View", "Zoznam", "Lista nézet")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveView("calendar")}
+                  className={`px-3 py-2 rounded-xl text-xs font-heading font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                    activeView === "calendar"
+                      ? "bg-white text-slate-900 shadow-sm border border-slate-200/60"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  <Calendar className="h-4 w-4 text-indigo-500" />
+                  {t("Calendar View", "Kalendár", "Naptár nézet")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveView("analytics")}
+                  className={`px-3 py-2 rounded-xl text-xs font-heading font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                    activeView === "analytics"
+                      ? "bg-white text-slate-900 shadow-sm border border-slate-200/60"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  <BarChart3 className="h-4 w-4 text-emerald-500" />
+                  {t("Analytics View", "Analytika", "Analitika nézet")}
+                </button>
+              </div>
             </div>
-          )}
-
-          {/* View Switcher Tabs (3 top views) */}
-          <div className="flex items-center gap-2 bg-slate-100/80 p-1.5 rounded-2xl border border-slate-200/80">
-          <button
-            type="button"
-            onClick={() => setActiveView("list")}
-            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
-              activeView === "list"
-                ? "bg-white text-slate-900 shadow-md shadow-slate-200 border border-slate-200/60"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            <List className="h-4 w-4 text-rose-500" />
-            {t("List View", "Zoznam", "Lista nézet")}
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveView("calendar")}
-            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
-              activeView === "calendar"
-                ? "bg-white text-slate-900 shadow-md shadow-slate-200 border border-slate-200/60"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            <Calendar className="h-4 w-4 text-indigo-500" />
-            {t("Calendar View", "Kalendár", "Naptár nézet")}
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveView("analytics")}
-            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
-              activeView === "analytics"
-                ? "bg-white text-slate-900 shadow-md shadow-slate-200 border border-slate-200/60"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            <BarChart3 className="h-4 w-4 text-emerald-500" />
-            {t("Analytics View", "Analytika", "Analitika nézet")}
-          </button>
-        </div>
-      </div>
-      </div>
+          </div>
 
       {/* Main Workspace Grid (Left Sidebar + Center Content) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
