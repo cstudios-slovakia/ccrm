@@ -1931,6 +1931,7 @@ ${log.payload || ''}
             taskStates={taskStates}
             leadStates={orderedLeadStates}
             leadSources={leadSources}
+            setAppTab={setActiveTab}
           />
         );
       case "social_media":

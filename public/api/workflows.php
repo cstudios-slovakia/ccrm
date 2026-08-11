@@ -149,12 +149,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     if ($action === 'get_settings') {
         ccrm_require_admin();
         $cfg = ccrm_load_automation_config($pdo);
-        // mask API keys for client transmission
-        if (!empty($cfg['openAiKey'])) $cfg['openAiKey'] = '••••••••';
-        if (!empty($cfg['anthropicKey'])) $cfg['anthropicKey'] = '••••••••';
-        if (!empty($cfg['geminiKey'])) $cfg['geminiKey'] = '••••••••';
-        
-        echo json_encode(['success' => true, 'settings' => $cfg]);
+        echo json_encode(['success' => true, 'settings' => ['cronToken' => $cfg['cronToken'] ?? '']]);
         exit;
     }
 }
@@ -295,31 +290,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'save_settings') {
         ccrm_require_admin();
         $existing = ccrm_load_automation_config($pdo);
-        
-        $openAiKey = $payload['openAiKey'] ?? '';
-        $anthropicKey = $payload['anthropicKey'] ?? '';
-        $geminiKey = $payload['geminiKey'] ?? '';
-        $cronToken = $payload['cronToken'] ?? $existing['cronToken'];
-        
-        if ($openAiKey === '••••••••') $openAiKey = $existing['openAiKey'];
-        if ($anthropicKey === '••••••••') $anthropicKey = $existing['anthropicKey'];
-        if ($geminiKey === '••••••••') $geminiKey = $existing['geminiKey'];
-        
-        $newCfg = [
-            'openAiKey' => $openAiKey,
-            'anthropicKey' => $anthropicKey,
-            'geminiKey' => $geminiKey,
-            'cronToken' => $cronToken
-        ];
-        
-        $encrypted = $newCfg;
-        if (function_exists('ccrm_encrypt_config_secrets')) {
-            $encrypted = ccrm_encrypt_config_secrets($encrypted, ['openAiKey', 'anthropicKey', 'geminiKey']);
-        }
-        
+
+        // AI provider keys are stored in INTEGRATIONS_CONFIG (Settings -> AI);
+        // this config only holds the cron endpoint token.
+        $newCfg = ['cronToken' => $payload['cronToken'] ?? $existing['cronToken']];
+
         $stmt = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('AUTOMATION_CONFIG', ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
-        $stmt->execute([json_encode($encrypted)]);
-        
+        $stmt->execute([json_encode($newCfg)]);
+
         echo json_encode(['success' => true]);
         exit;
     }

@@ -617,7 +617,8 @@ HTACCESS
     /** System-level integration secrets (system_settings.INTEGRATIONS_CONFIG). */
     function ccrm_integration_secret_keys(): array {
         return [
-            'openAiKey', 'smtpPassword', 'exchClientSecret', 'exchPassword',
+            'openAiKey', 'anthropicKey', 'geminiKey',
+            'smtpPassword', 'exchClientSecret', 'exchPassword',
             'metaAppSecret', 'metaAccessToken', 'googleClientSecret',
             'googleRefreshToken', 'googleDevToken', 'mariaDbPassword',
             'qdrantApiKey', 'pineconeApiKey',
