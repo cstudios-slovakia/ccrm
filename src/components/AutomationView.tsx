@@ -82,6 +82,8 @@ interface AutomationViewProps {
   taskStates: string[];
   leadStates: string[];
   leadSources: string[];
+  /** Switches the app's main view — used to deep-link into Settings. */
+  setAppTab?: (tab: string) => void;
 }
 
 interface VariableInputFieldProps {
@@ -345,7 +347,8 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
   systemLanguage,
   users,
   leadStates,
-  leadSources
+  leadSources,
+  setAppTab
 }) => {
   const [workflows, setWorkflows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1373,9 +1376,12 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                   )}
                 </div>
 
-                {/* Splitter Pill */}
+                {/* Splitter Pill: temporarily hidden — array_path never resolves because no
+                    trigger/node in the engine emits a list payload yet (see api/workflows_engine.php
+                    splitter case, ~line 474). Re-enable once a list-producing trigger/node exists. */}
+                {false && (
                 <div className="relative">
-                  <button 
+                  <button
                     type="button"
                     onClick={() => setActivePillDropdown(activePillDropdown === "splitter" ? null : "splitter")}
                     className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer border ${
@@ -1394,9 +1400,9 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                         <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
                         {t("Flow Control", "ROZDELENIE TOKU", "FOLYAMAT VEZÉRLÉS")}
                       </div>
-                      <button 
+                      <button
                         type="button"
-                        onClick={() => addNode("splitter", "array")} 
+                        onClick={() => addNode("splitter", "array")}
                         className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-amber-50 hover:text-amber-900 text-left transition-colors cursor-pointer"
                       >
                         <div className="p-1 rounded-md bg-amber-50 text-amber-600">
@@ -1407,9 +1413,9 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                           <div className="text-[10px] text-slate-400 font-normal">{t("Process items individually", "Spracovať položky po jednej", "Elemek feldolgozása egyenkoľnek")}</div>
                         </div>
                       </button>
-                      <button 
+                      <button
                         type="button"
-                        onClick={() => addNode("splitter", "parallel")} 
+                        onClick={() => addNode("splitter", "parallel")}
                         className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-amber-50 hover:text-amber-900 text-left transition-colors cursor-pointer"
                       >
                         <div className="p-1 rounded-md bg-amber-50 text-amber-600">
@@ -1423,6 +1429,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                     </div>
                   )}
                 </div>
+                )}
 
                 {/* Reset View Button */}
                 <button 
@@ -2657,9 +2664,19 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                 <Info className="h-4 w-4 text-indigo-600 shrink-0 mt-0.5" />
                 <p className="text-xs text-slate-600 font-semibold leading-relaxed">
                   {t(
-                    "AI agent nodes use the API keys from Settings → AI Settings & Embeddings. Make sure the key for your chosen provider (OpenAI, Anthropic or Gemini) is set there.",
-                    "Uzly AI agenta používajú API kľúče z Nastavenia → AI nastavenia a model. Uistite sa, že kľúč pre zvoleného poskytovateľa (OpenAI, Anthropic alebo Gemini) je tam nastavený.",
-                    "Az AI ügynök csomópontok a Beállítások → AI beállítások és beágyazások alatt megadott API kulcsokat használják. Győződjön meg róla, hogy a választott szolgáltató (OpenAI, Anthropic vagy Gemini) kulcsa be van állítva."
+                    "AI agent nodes use the API keys from Settings. Make sure the key for your chosen provider (OpenAI, Anthropic or Gemini) is set there.",
+                    "Uzly AI agenta používajú API kľúče z Nastavení. Uistite sa, že kľúč pre zvoleného poskytovateľa (OpenAI, Anthropic alebo Gemini) je tam nastavený.",
+                    "Az AI ügynök csomópontok a Beállításokban megadott API kulcsokat használják. Győződjön meg róla, hogy a választott szolgáltató (OpenAI, Anthropic vagy Gemini) kulcsa be van állítva."
+                  )}
+                  {setAppTab && (
+                    <button
+                      type="button"
+                      onClick={() => setAppTab("settings/ai")}
+                      className="ml-1.5 inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 font-bold underline underline-offset-2 decoration-indigo-300 hover:decoration-indigo-600 transition-colors cursor-pointer align-baseline"
+                    >
+                      {t("Open AI Settings & Embeddings", "Otvoriť AI nastavenia a model", "AI beállítások megnyitása")}
+                      <ArrowLeft className="h-3 w-3 rotate-180" />
+                    </button>
                   )}
                 </p>
               </div>

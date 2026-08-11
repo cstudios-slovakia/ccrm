@@ -139,13 +139,7 @@ if (!function_exists('ccrm_load_automation_config')) {
             $raw = false;
         }
         if (!$raw) {
-            $cronToken = bin2hex(random_bytes(16));
-            $defaultConfig = [
-                'openAiKey' => '',
-                'anthropicKey' => '',
-                'geminiKey' => '',
-                'cronToken' => $cronToken
-            ];
+            $defaultConfig = ['cronToken' => bin2hex(random_bytes(16))];
             try {
                 $stmt = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('AUTOMATION_CONFIG', ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
                 $stmt->execute([json_encode($defaultConfig)]);
@@ -153,13 +147,38 @@ if (!function_exists('ccrm_load_automation_config')) {
             return $defaultConfig;
         }
         $cfg = json_decode($raw, true) ?: [];
-        if (function_exists('ccrm_decrypt_config_secrets')) {
-            $cfg = ccrm_decrypt_config_secrets($cfg, ['openAiKey', 'anthropicKey', 'geminiKey']);
-        }
         if (empty($cfg['cronToken'])) {
             $cfg['cronToken'] = bin2hex(random_bytes(16));
         }
         return $cfg;
+    }
+}
+
+if (!function_exists('ccrm_ai_provider_key')) {
+    /**
+     * API key for one of the LLM providers an AI agent node can pick. All AI
+     * credentials live in INTEGRATIONS_CONFIG (Settings -> AI) so the CRM's AI
+     * features and the workflow engine never read from two diverging copies.
+     */
+    function ccrm_ai_provider_key($pdo, string $provider): string {
+        static $cfg = null;
+        if ($cfg === null) {
+            try {
+                $raw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'INTEGRATIONS_CONFIG'")->fetchColumn();
+            } catch (\Throwable $e) {
+                $raw = false;
+            }
+            $cfg = $raw ? (json_decode($raw, true) ?: []) : [];
+            if (function_exists('ccrm_decrypt_config_secrets') && function_exists('ccrm_integration_secret_keys')) {
+                $cfg = ccrm_decrypt_config_secrets($cfg, ccrm_integration_secret_keys());
+            }
+        }
+        $field = [
+            'openai' => 'openAiKey',
+            'anthropic' => 'anthropicKey',
+            'gemini' => 'geminiKey',
+        ][$provider] ?? '';
+        return $field ? (string)($cfg[$field] ?? '') : '';
     }
 }
 
@@ -453,6 +472,10 @@ if (!function_exists('ccrm_execute_workflow')) {
                     $conditionResult = ccrm_evaluate_condition($jsCode, $incomingPayload);
                     $outputPayload = ['result' => $conditionResult];
                 } elseif ($nodeType === 'splitter') {
+                    // Splitter node is hidden from the builder UI (AutomationView.tsx) until a
+                    // trigger/node exists that actually emits a list payload — no current trigger
+                    // does, so array_path never resolves and this branch is currently dead in
+                    // practice. Re-enable the UI once list-producing sources exist.
                     // Splits events: expects array payload
                     $arrayPath = $nodeData['array_path'] ?? '';
                     $arrayData = ccrm_resolve_json_path($arrayPath, $incomingPayload);
@@ -471,15 +494,11 @@ if (!function_exists('ccrm_execute_workflow')) {
                         continue;
                     }
                 } elseif ($nodeType === 'ai_agent') {
-                    $autoConfig = ccrm_load_automation_config($pdo);
                     $provider = $nodeData['provider'] ?? 'gemini';
-                    $key = '';
-                    if ($provider === 'openai') $key = $autoConfig['openAiKey'];
-                    elseif ($provider === 'anthropic') $key = $autoConfig['anthropicKey'];
-                    elseif ($provider === 'gemini') $key = $autoConfig['geminiKey'];
-                    
+                    $key = ccrm_ai_provider_key($pdo, $provider);
+
                     if (empty($key)) {
-                        throw new Exception("AI Provider API key is not configured for $provider.");
+                        throw new Exception("AI Provider API key is not configured for $provider. Set it in Settings -> AI Settings & Embeddings.");
                     }
                     
                     $promptTemplate = $nodeData['prompt'] ?? '';
