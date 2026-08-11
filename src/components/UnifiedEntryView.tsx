@@ -832,7 +832,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
         <div className="flex flex-col">
           <h1 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
             {(() => {
-              const IconComponent = (Icons as any)[registry.icon] || Icons.KeyRound;
+              const IconComponent = (Icons as any)[registry.icon] || Icons.FolderOpen;
               return <IconComponent className="h-6 w-6 shrink-0" style={{ color: registry.color }} />;
             })()}
             {registry.name}
