@@ -344,9 +344,456 @@ const VariableInputField: React.FC<VariableInputFieldProps> = ({
   );
 };
 
+/* ────────────────────────────────────────────────────────────────────────────
+   CONDITION BUILDER
+
+   A condition node is executed by ccrm_evaluate_condition() in
+   api/workflows_engine.php, which is NOT a JS engine: it only understands
+   `$path <op> <literal>` comparisons chained by a single kind of && / ||
+   (no precedence, no parentheses, no function calls). So the "JS expression"
+   field was never more expressive than a list of rules — it just hid the real
+   grammar behind syntax the user had to learn and could silently get wrong.
+
+   The builder therefore edits that rule list directly and compiles it back to
+   the same `js_code` string the engine already runs. No engine change, no
+   migration: an existing expression that fits the grammar is parsed straight
+   into rules, and anything else keeps the raw JS editor.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+type CondRule = { field: string; op: string; value: string };
+type CondFieldDef = { path: string; label: string; type: "text" | "number" | "select" | "bool"; options?: string[] };
+
+const COND_CUSTOM = "__custom__";
+
+const COND_OPS_BY_TYPE: Record<CondFieldDef["type"], string[]> = {
+  text: ["eq", "ne", "empty", "not_empty"],
+  select: ["eq", "ne", "empty", "not_empty"],
+  number: ["eq", "ne", "gt", "gte", "lt", "lte", "empty"],
+  bool: ["is_true", "is_false"],
+};
+
+const condOpNeedsValue = (op: string) => !["empty", "not_empty", "is_true", "is_false"].includes(op);
+
+const condIsNumeric = (raw: string) => raw !== "" && Number.isFinite(Number(String(raw).replace(",", ".")));
+
+/** Serialise one rule the way the PHP evaluator parses it back. */
+const condSerializeRule = (rule: CondRule, def?: CondFieldDef): string | null => {
+  const p = rule.field;
+  if (!p || !p.startsWith("$")) return null;
+
+  /* Numbers get loose ==/!= on purpose: the payload may carry 5000 while the
+     literal parses as 5000.0, and PHP's === is type-strict about that. */
+  const numeric = def ? def.type === "number" : condIsNumeric(rule.value);
+  const literal = numeric
+    ? String(Number(String(rule.value).replace(",", ".")) || 0)
+    : `"${String(rule.value ?? "").replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+
+  switch (rule.op) {
+    /* Loose comparison against "" also catches a missing field (null == ""). */
+    case "empty": return `${p} == ""`;
+    case "not_empty": return `${p} != ""`;
+    case "is_true": return `${p} === true`;
+    case "is_false": return `${p} == false`;
+    case "eq": return `${p} ${numeric ? "==" : "==="} ${literal}`;
+    case "ne": return `${p} ${numeric ? "!=" : "!=="} ${literal}`;
+    case "gt": return `${p} > ${literal}`;
+    case "gte": return `${p} >= ${literal}`;
+    case "lt": return `${p} < ${literal}`;
+    case "lte": return `${p} <= ${literal}`;
+    default: return null;
+  }
+};
+
+const compileConditionRules = (
+  rules: CondRule[],
+  logic: "AND" | "OR",
+  defFor?: (path: string) => CondFieldDef | undefined
+): string => {
+  const parts = rules
+    .map(r => condSerializeRule(r, defFor?.(r.field)))
+    .filter((s): s is string => !!s);
+  if (!parts.length) return "";
+  return `return ${parts.join(logic === "OR" ? " || " : " && ")};`;
+};
+
+/**
+ * Read an existing expression back into rules, or return null when it uses
+ * anything the builder can't represent (mixed &&/||, parentheses, string
+ * ordering comparisons…) — those keep the raw JS editor.
+ */
+const parseConditionExpression = (js: string): { rules: CondRule[]; logic: "AND" | "OR" } | null => {
+  let src = (js || "").trim();
+  if (!src) return { rules: [], logic: "AND" };
+  src = src.replace(/^return\s+/i, "").replace(/;\s*$/, "").trim();
+  if (!src) return { rules: [], logic: "AND" };
+
+  const hasAnd = src.includes("&&");
+  const hasOr = src.includes("||");
+  if (hasAnd && hasOr) return null; // the engine has no precedence — don't pretend
+  const logic: "AND" | "OR" = hasOr ? "OR" : "AND";
+
+  const rules: CondRule[] = [];
+  for (const raw of src.split(hasOr ? "||" : "&&")) {
+    const m = raw.trim().match(/^(\$[a-zA-Z0-9_.]+)\s*(===|!==|==|!=|>=|<=|>|<)\s*(.+)$/);
+    if (!m) return null;
+    const [, field, op, rightRaw] = m;
+    const right = rightRaw.trim();
+    const isEq = op === "===" || op === "==";
+    const isNe = op === "!==" || op === "!=";
+
+    const strMatch = right.match(/^"([\s\S]*)"$/) || right.match(/^'([\s\S]*)'$/);
+    if (strMatch) {
+      const str = strMatch[1];
+      if (!isEq && !isNe) return null;
+      if (str === "") {
+        rules.push({ field, op: isEq ? "empty" : "not_empty", value: "" });
+      } else {
+        rules.push({ field, op: isEq ? "eq" : "ne", value: str });
+      }
+      continue;
+    }
+    if (right === "true" || right === "false") {
+      if (!isEq && !isNe) return null;
+      const truthy = (right === "true") === isEq;
+      rules.push({ field, op: truthy ? "is_true" : "is_false", value: "" });
+      continue;
+    }
+    if (condIsNumeric(right)) {
+      const numOp = isEq ? "eq" : isNe ? "ne"
+        : op === ">" ? "gt" : op === ">=" ? "gte" : op === "<" ? "lt" : "lte";
+      rules.push({ field, op: numOp, value: right });
+      continue;
+    }
+    return null; // right-hand side is another path or an expression
+  }
+  return { rules, logic };
+};
+
+interface ConditionBuilderProps {
+  data: any;
+  /** Patch merged into the node's `data` — always carries a recompiled `js_code`. */
+  onChange: (patch: any) => void;
+  triggerType: string;
+  t: (en: string, sk: string, hu: string) => string;
+  leadStates: string[];
+  taskStates: string[];
+  leadSources: string[];
+  users: any[];
+  nodes: any[];
+  currentNodeId: string;
+}
+
+const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
+  data, onChange, triggerType, t, leadStates, taskStates, leadSources, users, nodes, currentNodeId
+}) => {
+  /** Fields offered for the left-hand side, driven by the workflow's trigger. */
+  const fields = React.useMemo<CondFieldDef[]>(() => {
+    const F = (path: string, label: string, type: CondFieldDef["type"] = "text", options?: string[]): CondFieldDef =>
+      ({ path, label, type, options });
+    const list: CondFieldDef[] = [];
+
+    const isLead = triggerType.startsWith("lead") && triggerType !== "lead_timeline_event";
+    const isClient = triggerType === "client_created";
+    const isTask = triggerType.startsWith("task");
+
+    if (isLead || isClient) {
+      list.push(
+        F("$trigger.name", t("Name", "Meno", "Név")),
+        F("$trigger.status", t("Lead status", "Stav leadu", "Lead státusz"), "select", leadStates),
+        F("$trigger.clientType", t("Client type", "Typ klienta", "Ügyfél típus"), "select", ["person", "business", "partner"]),
+        F("$trigger.source", t("Source", "Zdroj", "Forrás"), "select", leadSources),
+        F("$trigger.owner", t("Owner", "Zodpovedný", "Felelős"), "select", users.map(u => u.name).filter(Boolean)),
+        F("$trigger.value", t("Value", "Hodnota", "Érték"), "number"),
+        F("$trigger.rating", t("Rating", "Hodnotenie", "Értékelés"), "number"),
+        F("$trigger.city", t("City", "Mesto", "Város")),
+        F("$trigger.email", t("E-mail", "E-mail", "E-mail")),
+        F("$trigger.phone", t("Phone", "Telefón", "Telefon")),
+        F("$trigger.region", t("Region", "Región", "Régió")),
+        F("$trigger.district", t("District", "Okres", "Járás")),
+        F("$trigger.companyId", t("Company ID", "IČO", "Cégjegyzékszám")),
+        F("$trigger.vatId", t("VAT ID", "IČ DPH", "Adószám")),
+        F("$trigger.contactPerson", t("Contact person", "Kontaktná osoba", "Kapcsolattartó")),
+        F("$trigger.website", t("Website", "Web", "Weboldal")),
+        F("$trigger.interestNote", t("Interest note", "Poznámka k záujmu", "Érdeklődés megjegyzés")),
+        F("$trigger.referralLeadId", t("Referral lead ID", "ID odporúčania", "Ajánló lead ID")),
+      );
+    }
+    if (triggerType === "lead_status_changed" || triggerType === "task_status_changed") {
+      list.push(
+        F("$trigger.oldStatus", t("Previous status", "Predchádzajúci stav", "Előző státusz"), "select",
+          triggerType === "task_status_changed" ? taskStates : leadStates),
+        F("$trigger.newStatus", t("New status", "Nový stav", "Új státusz"), "select",
+          triggerType === "task_status_changed" ? taskStates : leadStates),
+      );
+    }
+    if (isTask) {
+      list.push(
+        F("$trigger.title", t("Task title", "Názov úlohy", "Feladat neve")),
+        F("$trigger.description", t("Description", "Popis", "Leírás")),
+        F("$trigger.status", t("Task status", "Stav úlohy", "Feladat státusz"), "select", taskStates),
+        F("$trigger.priority", t("Priority", "Priorita", "Prioritás"), "select", ["low", "medium", "high"]),
+        F("$trigger.owner", t("Assignee", "Zodpovedný", "Felelős"), "select", users.map(u => u.name).filter(Boolean)),
+        F("$trigger.deadline", t("Deadline", "Termín", "Határidő")),
+        F("$trigger.relatedLeadId", t("Related lead ID", "ID súvisiaceho leadu", "Kapcsolt lead ID")),
+        F("$trigger.isLocking", t("Blocking task", "Blokujúca úloha", "Blokkoló feladat"), "bool"),
+        F("$trigger.isAiGenerated", t("Created by AI", "Vytvorené AI", "AI által létrehozva"), "bool"),
+      );
+    }
+    if (triggerType === "lead_timeline_event") {
+      list.push(
+        F("$trigger.type", t("Event type", "Typ udalosti", "Esemény típus")),
+        F("$trigger.title", t("Event title", "Názov udalosti", "Esemény neve")),
+        F("$trigger.content", t("Event content", "Obsah udalosti", "Esemény tartalma")),
+        F("$trigger.amount", t("Amount", "Suma", "Összeg"), "number"),
+        F("$trigger.isOutgoing", t("Outgoing", "Odchodzia", "Kimenő"), "bool"),
+        F("$trigger.lead_id", t("Lead ID", "ID leadu", "Lead ID")),
+      );
+    }
+
+    /* Output of upstream blocks — same namespaces the pill tags offer. */
+    if (nodes.some(n => n.type === "ai_agent" && n.id !== currentNodeId)) {
+      list.push(F("$ai.result", t("AI output", "AI výstup", "AI kimenet")));
+    }
+    if (nodes.some(n => n.type === "condition" && n.id !== currentNodeId)) {
+      list.push(F("$condition.result", t("Previous condition result", "Výsledok predch. podmienky", "Előző feltétel eredménye"), "bool"));
+    }
+    if (nodes.some(n => n.type === "splitter" && n.id !== currentNodeId)) {
+      list.push(F("$item.value", t("Current split item", "Aktuálna položka", "Aktuális elem")));
+    }
+    return list;
+  }, [triggerType, leadStates, taskStates, leadSources, users, nodes, currentNodeId, t]);
+
+  const parsed = React.useMemo(() => parseConditionExpression(data.js_code || ""), [data.js_code]);
+  const storedRules: CondRule[] | null = Array.isArray(data.rules) ? data.rules : null;
+  const mode: "visual" | "js" = data.cond_mode === "js" ? "js" : (data.cond_mode === "visual" || parsed ? "visual" : "js");
+  const rules: CondRule[] = storedRules ?? parsed?.rules ?? [];
+  const logic: "AND" | "OR" = data.cond_logic === "OR" ? "OR" : (data.cond_logic === "AND" ? "AND" : (parsed?.logic ?? "AND"));
+
+  const defFor = (path: string) => fields.find(f => f.path === path);
+
+  const commit = (nextRules: CondRule[], nextLogic: "AND" | "OR" = logic) => {
+    onChange({
+      cond_mode: "visual",
+      cond_logic: nextLogic,
+      rules: nextRules,
+      js_code: compileConditionRules(nextRules, nextLogic, defFor),
+    });
+  };
+
+  const updateRule = (index: number, patch: Partial<CondRule>) => {
+    commit(rules.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+  };
+
+  const changeField = (index: number, path: string) => {
+    const def = defFor(path);
+    const allowed = COND_OPS_BY_TYPE[def?.type ?? "text"];
+    const current = rules[index];
+    const op = allowed.includes(current.op) ? current.op : allowed[0];
+    /* A select's old free-text value rarely exists in the new option list. */
+    const keepValue = def?.options?.length ? (def.options.includes(current.value) ? current.value : "") : current.value;
+    updateRule(index, { field: path, op, value: keepValue });
+  };
+
+  const addRule = () => {
+    const first = fields[0];
+    commit([...rules, { field: first ? first.path : "$trigger.status", op: "eq", value: "" }]);
+  };
+
+  const switchMode = (next: "visual" | "js") => {
+    if (next === "js") {
+      onChange({ cond_mode: "js", rules: undefined, cond_logic: undefined, js_code: data.js_code || compileConditionRules(rules, logic, defFor) });
+      return;
+    }
+    if (parsed) {
+      onChange({ cond_mode: "visual", cond_logic: parsed.logic, rules: parsed.rules, js_code: data.js_code || "" });
+      return;
+    }
+    const ok = window.confirm(t(
+      "This expression can't be shown in the builder and will be cleared. Continue?",
+      "Tento výraz sa nedá zobraziť v editore podmienok a bude vymazaný. Pokračovať?",
+      "Ez a kifejezés nem jeleníthető meg a szerkesztőben, és törlődni fog. Folytatja?"
+    ));
+    if (!ok) return;
+    onChange({ cond_mode: "visual", cond_logic: "AND", rules: [], js_code: "" });
+  };
+
+  const opLabel = (op: string) => {
+    switch (op) {
+      case "eq": return t("is", "je", "egyenlő");
+      case "ne": return t("is not", "nie je", "nem egyenlő");
+      case "gt": return t("greater than", "väčšie ako", "nagyobb mint");
+      case "gte": return t("at least", "aspoň", "legalább");
+      case "lt": return t("less than", "menšie ako", "kisebb mint");
+      case "lte": return t("at most", "najviac", "legfeljebb");
+      case "empty": return t("is empty", "je prázdne", "üres");
+      case "not_empty": return t("is not empty", "nie je prázdne", "nem üres");
+      case "is_true": return t("is yes", "je áno", "igen");
+      case "is_false": return t("is no", "je nie", "nem");
+      default: return op;
+    }
+  };
+
+  const tabBtn = (active: boolean) =>
+    `px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase tracking-wider transition-colors ${
+      active ? "bg-white text-indigo-700 shadow-sm" : "text-slate-400 hover:text-slate-600"
+    }`;
+
+  return (
+    <div className="mt-2 space-y-1.5">
+      <div className="flex items-center justify-between">
+        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+          {t("Condition", "Podmienka", "Feltétel")}
+        </label>
+        <div className="flex items-center gap-0.5 bg-slate-100 rounded-lg p-0.5">
+          <button type="button" className={tabBtn(mode === "visual")} onClick={() => switchMode("visual")}>
+            <span className="flex items-center gap-1"><Sliders className="h-2.5 w-2.5" />{t("Builder", "Editor", "Szerkesztő")}</span>
+          </button>
+          <button type="button" className={tabBtn(mode === "js")} onClick={() => switchMode("js")}>
+            <span className="flex items-center gap-1"><Code className="h-2.5 w-2.5" />JS</span>
+          </button>
+        </div>
+      </div>
+
+      {mode === "js" ? (
+        <div className="flex items-start gap-2">
+          <div className="p-1.5 bg-slate-50 border border-slate-100 rounded-lg shrink-0 flex items-center justify-center mt-0.5">
+            <Code className="h-3.5 w-3.5 text-slate-400" />
+          </div>
+          <textarea
+            value={data.js_code || ""}
+            onChange={(e) => onChange({ js_code: e.target.value, cond_mode: "js", rules: undefined })}
+            className="w-full px-2 py-1 border border-slate-200 rounded-lg text-xs font-mono text-slate-700 h-16 bg-white resize-none focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all"
+            placeholder='return $trigger.status === "won";'
+          />
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          {rules.length === 0 && (
+            <p className="text-[10px] text-slate-400 font-semibold italic px-0.5">
+              {t("No rules — the condition always passes.", "Žiadne pravidlá — podmienka vždy prejde.", "Nincs szabály — a feltétel mindig teljesül.")}
+            </p>
+          )}
+
+          {rules.map((rule, index) => {
+            const def = defFor(rule.field);
+            const isCustom = !def;
+            const ops = COND_OPS_BY_TYPE[def?.type ?? "text"];
+            const fieldOptions = [
+              ...fields.map(f => ({ value: f.path, label: f.label })),
+              ...(isCustom ? [{ value: rule.field, label: rule.field }] : []),
+              { value: COND_CUSTOM, label: t("Custom path…", "Vlastná cesta…", "Egyéni útvonal…") },
+            ];
+            return (
+              <div key={index} className="rounded-lg border border-slate-200 bg-slate-50/60 p-1.5 space-y-1">
+                <div className="flex items-center gap-1">
+                  {index > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => commit(rules, logic === "AND" ? "OR" : "AND")}
+                      className="shrink-0 px-1.5 py-0.5 rounded-md bg-indigo-100 text-indigo-700 text-[9px] font-extrabold uppercase tracking-wider hover:bg-indigo-200 transition-colors"
+                      title={t("Switch AND / OR", "Prepnúť A / ALEBO", "ÉS / VAGY váltás")}
+                    >
+                      {logic === "AND" ? t("AND", "A", "ÉS") : t("OR", "ALEBO", "VAGY")}
+                    </button>
+                  ) : (
+                    <span className="shrink-0 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-slate-400">
+                      {t("IF", "AK", "HA")}
+                    </span>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <CustomSelect
+                      size="sm"
+                      value={rule.field}
+                      onChange={(v) => {
+                        if (v === COND_CUSTOM) {
+                          updateRule(index, { field: "$trigger." });
+                          return;
+                        }
+                        changeField(index, v);
+                      }}
+                      options={fieldOptions}
+                      placeholder={t("Select field", "Vyberte pole", "Válasszon mezőt")}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => commit(rules.filter((_, i) => i !== index))}
+                    className="shrink-0 p-1 rounded-md text-slate-300 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                    title={t("Remove rule", "Odstrániť pravidlo", "Szabály törlése")}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </div>
+
+                {isCustom && (
+                  <input
+                    type="text"
+                    value={rule.field}
+                    onChange={(e) => updateRule(index, { field: e.target.value })}
+                    className="w-full px-2 py-1 border border-slate-200 rounded-lg text-[11px] font-mono text-slate-700 bg-white focus:outline-none focus:border-indigo-400"
+                    placeholder="$trigger.customField"
+                  />
+                )}
+
+                <div className="flex items-center gap-1">
+                  <div className={condOpNeedsValue(rule.op) ? "w-[46%] shrink-0" : "flex-1"}>
+                    <CustomSelect
+                      size="sm"
+                      value={rule.op}
+                      onChange={(v) => updateRule(index, { op: v, value: condOpNeedsValue(v) ? rule.value : "" })}
+                      options={ops.map(op => ({ value: op, label: opLabel(op) }))}
+                    />
+                  </div>
+                  {condOpNeedsValue(rule.op) && (
+                    <div className="flex-1 min-w-0">
+                      {def?.options?.length ? (
+                        <CustomSelect
+                          size="sm"
+                          value={rule.value}
+                          onChange={(v) => updateRule(index, { value: v })}
+                          options={def.options.map(o => ({ value: o, label: o }))}
+                          placeholder={t("Select value", "Vyberte hodnotu", "Válasszon értéket")}
+                        />
+                      ) : (
+                        <input
+                          type={def?.type === "number" ? "number" : "text"}
+                          value={rule.value}
+                          onChange={(e) => updateRule(index, { value: e.target.value })}
+                          className="w-full px-2 py-1 border border-slate-200 rounded-lg text-[11px] font-semibold text-slate-700 bg-white focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all"
+                          placeholder={def?.type === "number" ? "0" : t("value", "hodnota", "érték")}
+                        />
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          <button
+            type="button"
+            onClick={addRule}
+            className="w-full flex items-center justify-center gap-1 py-1 rounded-lg border border-dashed border-indigo-200 text-[10px] font-extrabold uppercase tracking-wider text-indigo-600 hover:bg-indigo-50 hover:border-indigo-300 transition-colors"
+          >
+            <Plus className="h-3 w-3" />
+            {t("Add rule", "Pridať pravidlo", "Szabály hozzáadása")}
+          </button>
+
+          {rules.length > 0 && (
+            <code className="block px-2 py-1 rounded-lg bg-slate-900/90 text-[9px] font-mono text-emerald-300 break-all">
+              {compileConditionRules(rules, logic, defFor)}
+            </code>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const AutomationView: React.FC<AutomationViewProps> = ({
   systemLanguage,
   users,
+  taskStates,
   leadStates,
   leadSources,
   setAppTab
@@ -816,13 +1263,19 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
     let data: any = {};
     
     if (type === "condition") {
-      if (subType === "status_check") {
-        name = t("Check Status Condition", "Kontrola stavu", "Státusz ellenőrzése");
-        data = { js_code: 'return $input.status === "new";' };
-      } else {
-        name = t("If/Else Condition", "Podmienka If/Else", "Feltétel");
-        data = { js_code: 'return $input.status === "won";' };
-      }
+      /* Seeded through the builder's own model so a fresh node opens on the
+         visual editor with one editable rule instead of raw JS. */
+      const seedStatus = leadStates[0] || "new";
+      const seedRules: CondRule[] = [{ field: "$trigger.status", op: "eq", value: seedStatus }];
+      name = subType === "status_check"
+        ? t("Check Status Condition", "Kontrola stavu", "Státusz ellenőrzése")
+        : t("If/Else Condition", "Podmienka If/Else", "Feltétel");
+      data = {
+        cond_mode: "visual",
+        cond_logic: "AND",
+        rules: seedRules,
+        js_code: compileConditionRules(seedRules, "AND"),
+      };
     } else if (type === "splitter") {
       if (subType === "parallel") {
         name = t("Parallel Branching", "Paralelné vetvenie", "Párhuzamos ágak");
@@ -896,10 +1349,10 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
   const handleNodeMouseDown = (nodeId: string, e: React.MouseEvent) => {
     if (e.button !== 0) return; // Left click only
     const target = e.target as HTMLElement;
-    if (target.closest('button') || target.closest('input') || target.closest('select') || target.closest('.connection-handle')) {
+    if (target.closest('button') || target.closest('input') || target.closest('textarea') || target.closest('select') || target.closest('.connection-handle')) {
       return;
     }
-    
+
     e.stopPropagation();
     const node = nodes.find(n => n.id === nodeId);
     if (node) {
@@ -915,7 +1368,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
     const target = e.target as HTMLElement;
-    if (target.closest('button') || target.closest('input') || target.closest('select') || target.closest('.connection-handle') || target.closest('.node-card')) {
+    if (target.closest('button') || target.closest('input') || target.closest('textarea') || target.closest('select') || target.closest('.connection-handle') || target.closest('.node-card')) {
       return;
     }
     setIsPanning(true);
@@ -2143,28 +2596,20 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                     )}
 
                     {node.type === "condition" && (
-                      <div className="mt-2 space-y-1">
-                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t("JS Expression", "JS výraz", "JS kifejezés")}</label>
-                        <div className="flex items-start gap-2 mt-0.5">
-                          <div className="p-1.5 bg-slate-50 border border-slate-100 rounded-lg shrink-0 flex items-center justify-center mt-0.5">
-                            <Code className="h-3.5 w-3.5 text-slate-400" />
-                          </div>
-                          <textarea
-                            value={node.data.js_code || ""}
-                            onChange={(e) => {
-                              const updatedNodes = nodes.map(n => {
-                                if (n.id === node.id) {
-                                  return { ...n, data: { ...n.data, js_code: e.target.value } };
-                                }
-                                return n;
-                              });
-                              setNodes(updatedNodes);
-                            }}
-                            className="w-full px-2 py-1 border border-slate-200 rounded-lg text-xs font-mono text-slate-700 h-16 bg-white resize-none focus:outline-none"
-                            placeholder="return $input.status === 'won';"
-                          />
-                        </div>
-                      </div>
+                      <ConditionBuilder
+                        data={node.data}
+                        onChange={(patch) => {
+                          setNodes(nodes.map(n => (n.id === node.id ? { ...n, data: { ...n.data, ...patch } } : n)));
+                        }}
+                        triggerType={triggerType}
+                        t={t}
+                        leadStates={leadStates}
+                        taskStates={taskStates}
+                        leadSources={leadSources}
+                        users={users}
+                        nodes={nodes}
+                        currentNodeId={node.id}
+                      />
                     )}
 
                     {node.type === "splitter" && (
