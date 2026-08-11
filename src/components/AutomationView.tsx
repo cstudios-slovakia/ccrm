@@ -114,9 +114,12 @@ const VariableInputField: React.FC<VariableInputFieldProps> = ({
       }
     };
     if (isOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
+      // Capture phase: the node card's own onMouseDown calls stopPropagation()
+      // during the bubble phase to start dragging, which would otherwise stop
+      // this listener from ever seeing the click.
+      document.addEventListener("mousedown", handleClickOutside, true);
     }
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside, true);
   }, [isOpen]);
 
   // Extract tags in current value
@@ -368,6 +371,9 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
   const [triggerConfig, setTriggerConfig] = useState<any>({});
   const [nodes, setNodes] = useState<any[]>([]);
   const [isTriggerDropdownOpen, setIsTriggerDropdownOpen] = useState(false);
+  const triggerDropdownRef = React.useRef<HTMLDivElement>(null);
+  const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
+  const iconPickerRef = React.useRef<HTMLDivElement>(null);
   const [activePillDropdown, setActivePillDropdown] = useState<string | null>(null);
   const pillDropdownRef = React.useRef<HTMLDivElement>(null);
 
@@ -378,10 +384,34 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
       }
     };
     if (activePillDropdown) {
-      document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener("mousedown", handleClickOutside, true);
     }
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside, true);
   }, [activePillDropdown]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (triggerDropdownRef.current && !triggerDropdownRef.current.contains(e.target as Node)) {
+        setIsTriggerDropdownOpen(false);
+      }
+    };
+    if (isTriggerDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside, true);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside, true);
+  }, [isTriggerDropdownOpen]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (iconPickerRef.current && !iconPickerRef.current.contains(e.target as Node)) {
+        setIsIconPickerOpen(false);
+      }
+    };
+    if (isIconPickerOpen) {
+      document.addEventListener("mousedown", handleClickOutside, true);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside, true);
+  }, [isIconPickerOpen]);
 
   const [edges, setEdges] = useState<any[]>([]);
   const [selectedNode, setSelectedNode] = useState<any>(null);
@@ -407,7 +437,6 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
   };
   
   // Icon Picker states
-  const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
   const [iconSearchQuery, setIconSearchQuery] = useState("");
 
   const t = (en: string, sk: string, hu: string) => {
@@ -708,7 +737,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
         data = { type: "create_lead", name: "{{$trigger.name}}", city: "{{$trigger.city}}", status: "new" };
       } else if (subType === "create_task") {
         name = t("Create Task", "Vytvoriť úlohu", "Feladat létrehozása");
-        data = { type: "create_task", title: "Follow up with {{$trigger.name}}", description: "Details...", priority: "medium", deadline_days: 2, deadline_time: "09:00" };
+        data = { type: "create_task", title: "", description: "", priority: "medium", deadline_days: 2, deadline_time: "09:00" };
       } else if (subType === "send_email") {
         name = t("Send Email", "Odoslať e-mail", "E-mail küldése");
         data = { type: "send_email", to: "{{$trigger.email}}", subject: "Welcome to CCRM", body: "Hello {{$trigger.name}}, ..." };
@@ -1538,7 +1567,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                       <div className="space-y-2 mt-2">
                         <div>
                           <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t("Trigger Event", "Udalosť spúšťača", "Indító esemény")}</label>
-                          <div className="relative mt-0.5">
+                          <div className="relative mt-0.5" ref={triggerDropdownRef}>
                             <button
                               type="button"
                               onClick={() => setIsTriggerDropdownOpen(!isTriggerDropdownOpen)}
@@ -1864,7 +1893,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                               {/* Rich Icon Selector with all system icons */}
                               <div>
                                 <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t("Button Icon", "Ikona tlačidla", "Gomb ikon")}</label>
-                                <div className="relative mt-0.5">
+                                <div className="relative mt-0.5" ref={iconPickerRef}>
                                   <button
                                     type="button"
                                     onClick={() => setIsIconPickerOpen(!isIconPickerOpen)}
@@ -2123,7 +2152,17 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                   </div>
                                 </div>
                                 <div>
-                                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Deadline (Days)</label>
+                                  <label className="flex items-center gap-1 text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                                    {t("Deadline (Days)", "Termín (dni)", "Határidő (nap)")}
+                                    <Info
+                                      className="h-2.5 w-2.5 text-slate-300 cursor-help shrink-0"
+                                      title={t(
+                                        "The task's due date is set automatically to today + this many days",
+                                        "Termín úlohy sa automaticky nastaví na dnešný deň + tento počet dní",
+                                        "A feladat határideje automatikusan a mai nap + ennyi napra lesz beállítva"
+                                      )}
+                                    />
+                                  </label>
                                   <div className="flex items-center gap-1.5 mt-0.5">
                                     <div className="p-1 bg-slate-50 border border-slate-100 rounded-md shrink-0 flex items-center justify-center">
                                       <Calendar className="h-3.5 w-3.5 text-slate-400" />
