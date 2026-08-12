@@ -41,22 +41,6 @@ const renderIconByName = (iconName: string, className: string = "h-4 w-4") => {
 };
 
 
-const getActionIcon = (type: string) => {
-  const size = "h-3.5 w-3.5";
-  switch (type) {
-    case "create_lead":
-      return <UserPlus className={`${size} text-blue-500`} />;
-    case "create_task":
-      return <CheckSquare className={`${size} text-amber-600`} />;
-    case "send_email":
-      return <Mail className={`${size} text-indigo-500`} />;
-    case "create_client":
-      return <Users className={`${size} text-emerald-500`} />;
-    default:
-      return <Activity className={`${size} text-slate-400`} />;
-  }
-};
-
 const getNodeHeaderIcon = (type: string) => {
   const size = "h-3.5 w-3.5";
   switch (type) {
@@ -280,7 +264,7 @@ const VariableInputField: React.FC<VariableInputFieldProps> = ({
             onChange={(e) => onChange(e.target.value)}
             onFocus={() => setIsOpen(true)}
             onClick={() => setIsOpen(true)}
-            className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 h-16 bg-white resize-none focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100 transition-all cursor-text"
+            className="w-full px-2.5 py-1.5 border border-slate-200 rounded-md text-xs font-semibold text-slate-700 h-16 bg-white resize-none focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100 transition-all cursor-text"
             placeholder={placeholder}
           />
         ) : (
@@ -298,16 +282,16 @@ const VariableInputField: React.FC<VariableInputFieldProps> = ({
 
       {/* Previous Block Values Dropdown */}
       {isOpen && (
-        <div 
-          className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-2xl p-2 z-[999] border-purple-100 ring-4 ring-purple-50/50 max-h-60 overflow-y-auto animate-in fade-in-50 zoom-in-95"
+        <div
+          className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-2xl z-[999] border-purple-100 ring-4 ring-purple-50/50 flex flex-col max-h-72 overflow-hidden animate-in fade-in-50 zoom-in-95"
         >
-          <div className="flex items-center justify-between px-2 py-1 border-b border-slate-100 mb-1.5 select-none">
+          <div className="flex items-center justify-between px-3 py-2 border-b-2 border-slate-100 select-none shrink-0">
             <span className="text-[9px] font-extrabold text-purple-700 uppercase tracking-wider flex items-center gap-1">
               <Zap className="h-3 w-3 text-purple-600" />
               Hodnoty z predchádzajúcich blokov
             </span>
-            <button 
-              type="button" 
+            <button
+              type="button"
               onClick={() => setIsOpen(false)}
               className="text-[10px] text-slate-400 hover:text-slate-600 font-bold px-1"
             >
@@ -315,29 +299,31 @@ const VariableInputField: React.FC<VariableInputFieldProps> = ({
             </button>
           </div>
 
-          {categories.map((cat) => (
-            <div key={cat.title} className="mb-2">
-              <div className={`px-2 py-0.5 text-[8px] font-extrabold uppercase tracking-wider rounded-md mb-1 flex items-center justify-between ${cat.color}`}>
-                <span>{cat.title}</span>
-                <span className="text-[7px] opacity-75">{cat.badge}</span>
+          <div className="p-2 overflow-y-auto">
+            {categories.map((cat) => (
+              <div key={cat.title} className="mb-2">
+                <div className={`px-2 py-0.5 text-[8px] font-extrabold uppercase tracking-wider rounded-md mb-1 flex items-center justify-between ${cat.color}`}>
+                  <span>{cat.title}</span>
+                  <span className="text-[7px] opacity-75">{cat.badge}</span>
+                </div>
+                <div className="space-y-0.5">
+                  {cat.items.map((tItem) => (
+                    <button
+                      key={tItem.tag}
+                      type="button"
+                      onClick={() => handleInsertTag(tItem.tag)}
+                      className="w-full text-left px-2 py-1 text-xs hover:bg-purple-50 rounded-lg transition-colors flex items-center justify-between group cursor-pointer"
+                    >
+                      <span className="font-bold text-slate-700 group-hover:text-purple-900">{tItem.label}</span>
+                      <code className="text-[9px] bg-slate-100 group-hover:bg-purple-100 text-slate-500 group-hover:text-purple-800 px-1.5 py-0.5 rounded-md font-mono font-bold">
+                        {tItem.tag}
+                      </code>
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="space-y-0.5">
-                {cat.items.map((tItem) => (
-                  <button
-                    key={tItem.tag}
-                    type="button"
-                    onClick={() => handleInsertTag(tItem.tag)}
-                    className="w-full text-left px-2 py-1 text-xs hover:bg-purple-50 rounded-lg transition-colors flex items-center justify-between group cursor-pointer"
-                  >
-                    <span className="font-bold text-slate-700 group-hover:text-purple-900">{tItem.label}</span>
-                    <code className="text-[9px] bg-slate-100 group-hover:bg-purple-100 text-slate-500 group-hover:text-purple-800 px-1.5 py-0.5 rounded-md font-mono font-bold">
-                      {tItem.tag}
-                    </code>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -2693,17 +2679,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                       };
 
                       return (
-                        <div className="mt-2 space-y-2">
-                          <div className="flex items-center gap-1.5 select-none mb-2 pb-1.5 border-b border-slate-100">
-                            {getActionIcon(node.data.type)}
-                            <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">
-                              {node.data.type === "create_lead" ? t("Create Lead", "Vytvoriť lead", "Lead") :
-                               node.data.type === "create_task" ? t("Create Task", "Vytvoriť úlohu", "Feladat") :
-                               node.data.type === "send_email" ? t("Send Email", "Odoslať e-mail", "E-mail") :
-                               node.data.type === "create_client" ? t("Create Client", "Vytvoriť klienta", "Ügyfél") : ""}
-                            </span>
-                          </div>
-
+                        <div className="mt-2 pt-2 space-y-2 border-t border-slate-100">
                           {node.data.type === "create_lead" && (
                             <div className="space-y-2">
                               <VariableInputField
