@@ -3477,12 +3477,26 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                           : `Cannot transition pipeline stage! Please complete the following locking tasks first:\n\n` +
                             lockingTasks.map((t) => `• ${t.title}`).join("\n");
                 (window as any).showToast(`${warningTitle}\n\n${warningMsg}`);
-                return;
+                return false;
             }
         }
         setLeads((prev) =>
             prev.map((l) => (l.id === id ? { ...l, status: newStatus } : l)),
         );
+        return true;
+    };
+
+    /**
+     * Lead detail: the state selector under the block header saves straight away,
+     * without the pencil toggle the rest of the fields go through. The local
+     * `leadStatus` mirror only follows once the guard actually let the move
+     * through, otherwise a blocked transition would still repaint the pipeline.
+     */
+    const handleDirectLeadStateChange = (newStatus: string) => {
+        if (!activeLead) return;
+        if (handleUpdateLeadState(activeLead.id, newStatus.toLowerCase())) {
+            setLeadStatus(newStatus.toLowerCase());
+        }
     };
 
     /**
@@ -3986,21 +4000,21 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         return (
             <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
                 {/* Back header */}
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-4 flex-wrap">
                     <button
                         onClick={() => {
                             window.location.hash = "leads";
                         }}
-                        className="px-4.5 py-3 rounded-2xl bg-white border-2 border-slate-300 text-slate-700 hover:text-slate-955 hover:border-slate-850 transition-all text-xs font-extrabold uppercase tracking-wider flex items-center gap-2 shadow-sm"
+                        className="h-12 shrink-0 px-4.5 rounded-2xl bg-white border-2 border-slate-300 text-slate-700 hover:text-slate-955 hover:border-slate-850 transition-all text-xs font-extrabold uppercase tracking-wider leading-tight flex items-center gap-2 shadow-sm"
                     >
-                        <ArrowLeft className="h-4.5 w-4.5 stroke-[2.5]" />{" "}
+                        <ArrowLeft className="h-4.5 w-4.5 stroke-[2.5] shrink-0" />{" "}
                         {getTranslation(systemLanguage, "common.back_to_leads")}
                     </button>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-1 min-w-0 items-center justify-end gap-3 flex-wrap">
                         {/* AI Summary Purple Card */}
                         {!isOpenAiConfigured && !localSummary ? (
-                            <div className="flex items-center gap-2.5 bg-purple-50/50 border border-purple-250 p-2.5 px-3.5 rounded-2xl max-w-md text-xs font-bold text-purple-800 shadow-sm">
+                            <div className="flex min-w-0 items-center gap-2.5 bg-purple-50/50 border border-purple-250 p-2.5 px-3.5 rounded-2xl max-w-md text-xs font-bold text-purple-800 shadow-sm">
                                 <Brain className="h-5 w-5 text-purple-400 shrink-0" />
                                 <span className="text-[10px] text-purple-650 italic">
                                     {systemLanguage === "sk"
@@ -4011,7 +4025,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 </span>
                             </div>
                         ) : localSummary || isGeneratingSummary ? (
-                            <div className="flex items-center gap-2.5 bg-purple-50 border-2 border-purple-200 p-2.5 px-3.5 rounded-2xl max-w-xl text-xs font-bold text-purple-900 shadow-sm hover:shadow-md transition-all animate-fade-in">
+                            <div className="flex min-w-0 items-center gap-2.5 bg-purple-50 border-2 border-purple-200 p-2.5 px-3.5 rounded-2xl max-w-xl text-xs font-bold text-purple-900 shadow-sm hover:shadow-md transition-all animate-fade-in">
                                 <Brain
                                     className={`h-5 w-5 text-purple-600 shrink-0 ${isGeneratingSummary ? "animate-pulse" : ""}`}
                                 />
@@ -4046,8 +4060,21 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             </div>
                         ) : null}
 
-                        {/* Convert to Project Button */}
-                        {projectTypes &&
+                        {/* Lead value + Convert button — wrap together, value first */}
+                        <div className="flex items-center justify-end gap-3 flex-wrap">
+                            <span className="h-12 inline-flex items-center text-xs font-black uppercase tracking-widest text-blue-800 bg-blue-100 border-2 border-blue-300 px-4 rounded-2xl shadow-inner whitespace-nowrap">
+                                {getTranslation(
+                                    systemLanguage,
+                                    "common.lead_value",
+                                )}
+                                :{" "}
+                                {money(activeLead.value, {
+                                    minimumFractionDigits: 2,
+                                })}
+                            </span>
+
+                            {/* Convert to Project Button */}
+                            {projectTypes &&
                             projectTypes.length > 0 &&
                             setProjects &&
                             setActiveTab && (
@@ -4058,7 +4085,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 !isConvertDropdownOpen,
                                             )
                                         }
-                                        className="px-4.5 py-2.5 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-purple-600/10 cursor-pointer"
+                                        className="h-12 px-4.5 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs uppercase tracking-wider leading-tight flex items-center gap-1.5 shadow-md shadow-purple-600/10 cursor-pointer"
                                     >
                                         <Briefcase className="h-4.5 w-4.5" />
                                         <span>
@@ -4104,17 +4131,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     )}
                                 </div>
                             )}
-
-                        <span className="text-xs font-black uppercase tracking-widest text-blue-800 bg-blue-100 border-2 border-blue-300 px-4 py-2 rounded-2xl shadow-inner">
-                            {getTranslation(
-                                systemLanguage,
-                                "common.lead_value",
-                            )}
-                            :{" "}
-                            {money(activeLead.value, {
-                                minimumFractionDigits: 2,
-                            })}
-                        </span>
+                        </div>
                     </div>
                 </div>
 
@@ -4125,15 +4142,15 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         {/* 1. Client Profile Card (On Top) */}
                         {clientCardData && (
                             <div className="glass-panel p-6 rounded-[28px] border-2 border-emerald-450 bg-emerald-50/70 shadow-xl space-y-4 text-emerald-950">
-                                <div className="border-b-2 border-emerald-200/50 pb-3 flex items-center justify-between">
-                                    <span className="text-[9px] font-black text-emerald-700 uppercase tracking-wider flex items-center gap-1">
-                                        <Briefcase className="h-4 w-4 text-emerald-600" />{" "}
+                                <div className="border-b-2 border-emerald-200/50 pb-2 flex items-center justify-between gap-2">
+                                    <span className="text-xs font-black text-emerald-700 uppercase tracking-wider flex items-center gap-1.5">
+                                        <Briefcase className="h-4.5 w-4.5 text-emerald-600 stroke-[2.5] shrink-0" />{" "}
                                         {getTranslation(
                                             systemLanguage,
                                             "common.client_relationship_card",
                                         )}
                                     </span>
-                                    <span className="px-2 py-0.5 rounded-full text-[8px] font-black bg-emerald-100 text-emerald-800 border border-emerald-250 uppercase tracking-wider animate-pulse">
+                                    <span className="px-2 py-0.5 rounded-full text-[8px] font-black bg-emerald-100 text-emerald-800 border border-emerald-250 uppercase tracking-wider animate-pulse shrink-0">
                                         {getTranslation(
                                             systemLanguage,
                                             "common.synced_profile",
@@ -4331,7 +4348,73 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                         {/* 2. Lead Details Panel (On Bottom) */}
                         <div className="glass-panel p-6 rounded-[28px] border-2 border-blue-450 bg-white shadow-xl space-y-6 overflow-hidden relative">
-                            {/* Pipeline State Progress Bar at the top edge of the card */}
+                            {/* Block header — same shape as every other block header */}
+                            <div className="border-b-2 border-slate-100 pb-2 flex items-center justify-between gap-2">
+                                <span className="text-xs font-black text-blue-700 uppercase tracking-wider flex items-center gap-1.5">
+                                    <SlidersHorizontal className="h-4.5 w-4.5 text-blue-600 stroke-[2.5] shrink-0" />{" "}
+                                    {getTranslation(
+                                        systemLanguage,
+                                        "profile.lead_params",
+                                    )}
+                                </span>
+
+                                {/* Pencil Toggle edit button */}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (isEditingLead) {
+                                            // Revert changes on toggle off
+                                            setLeadName(activeLead.name);
+                                            setLeadValue(
+                                                activeLead.value.toString(),
+                                            );
+                                            setLeadOwner(activeLead.owner);
+                                            setLeadStatus(activeLead.status);
+                                            setLeadSource(activeLead.source);
+                                            setLeadRating(
+                                                activeLead.rating || 3,
+                                            );
+                                            setLeadCity(activeLead.city || "");
+                                            setLeadClientType(
+                                                activeLead.clientType ||
+                                                    "person",
+                                            );
+                                            setLeadReferralId(
+                                                activeLead.referralLeadId || "",
+                                            );
+                                        }
+                                        setIsEditingLead(!isEditingLead);
+                                    }}
+                                    className={`h-9 w-9 shrink-0 rounded-xl flex items-center justify-center transition-all border-2 shadow-sm ${
+                                        isEditingLead
+                                            ? "bg-rose-50 border-rose-300 text-rose-600 hover:bg-rose-100"
+                                            : "bg-blue-50 border-blue-300 text-blue-700 hover:bg-blue-100"
+                                    }`}
+                                    title={
+                                        isEditingLead
+                                            ? t(
+                                                  "Cancel editing",
+                                                  "Zrušiť úpravy",
+                                                  "Szerkesztés megszakítása",
+                                              )
+                                            : t(
+                                                  "Edit Lead details",
+                                                  "Upraviť detaily leadu",
+                                                  "Lead részleteinek szerkesztése",
+                                              )
+                                    }
+                                >
+                                    {isEditingLead ? (
+                                        <X className="h-4.5 w-4.5 stroke-[2.5]" />
+                                    ) : (
+                                        <PencilLine className="h-4.5 w-4.5 stroke-[2.5]" />
+                                    )}
+                                </button>
+                            </div>
+
+                            {/* Lead state section: the pipeline strip sits directly under
+                                the header and the state itself is always editable here —
+                                it is the one field that must not need the edit toggle. */}
                             <div
                                 onMouseEnter={() =>
                                     setHoveredDetailTimeline(true)
@@ -4339,13 +4422,17 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 onMouseLeave={() =>
                                     setHoveredDetailTimeline(false)
                                 }
-                                className="w-[calc(100%+48px)] mx-[-24px] mt-[-24px] flex items-center gap-[1px] select-none bg-slate-200 transition-all duration-300 overflow-hidden shrink-0 border-b border-slate-100"
-                                style={{
-                                    height: hoveredDetailTimeline
-                                        ? "20px"
-                                        : "4px",
-                                }}
+                                className="-mt-3 space-y-3 border-b-2 border-slate-100 pb-4"
                             >
+                                {/* Pipeline State Progress Bar */}
+                                <div
+                                    className="w-[calc(100%+48px)] mx-[-24px] flex items-center gap-[1px] select-none bg-slate-200 transition-all duration-300 overflow-hidden shrink-0"
+                                    style={{
+                                        height: hoveredDetailTimeline
+                                            ? "20px"
+                                            : "4px",
+                                    }}
+                                >
                                 {(() => {
                                     const isStateClosed = (
                                         stateName: string,
@@ -4492,83 +4579,24 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         );
                                     });
                                 })()}
-                            </div>
-
-                            <div className="border-b-2 border-slate-150 pb-4 flex items-center justify-between gap-2.5">
-                                <div className="flex items-center gap-2.5">
-                                    <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 text-white border-2 border-blue-700 flex items-center justify-center font-heading font-black text-sm shadow-md">
-                                        {getInitials(
-                                            leadName || activeLead.name,
-                                        )}
-                                    </div>
-                                    <div>
-                                        <h3 className="text-md font-heading font-black text-slate-900 uppercase tracking-tight">
-                                            {getTranslation(
-                                                systemLanguage,
-                                                "profile.lead_params",
-                                            )}
-                                        </h3>
-                                        <p className="text-[9px] text-slate-400 uppercase font-extrabold tracking-wide mt-0.5">
-                                            {getTranslation(
-                                                systemLanguage,
-                                                "profile.edit_lead_desc",
-                                            )}
-                                        </p>
-                                    </div>
                                 </div>
 
-                                {/* Pencil Toggle edit button */}
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        if (isEditingLead) {
-                                            // Revert changes on toggle off
-                                            setLeadName(activeLead.name);
-                                            setLeadValue(
-                                                activeLead.value.toString(),
-                                            );
-                                            setLeadOwner(activeLead.owner);
-                                            setLeadStatus(activeLead.status);
-                                            setLeadSource(activeLead.source);
-                                            setLeadRating(
-                                                activeLead.rating || 3,
-                                            );
-                                            setLeadCity(activeLead.city || "");
-                                            setLeadClientType(
-                                                activeLead.clientType ||
-                                                    "person",
-                                            );
-                                            setLeadReferralId(
-                                                activeLead.referralLeadId || "",
-                                            );
-                                        }
-                                        setIsEditingLead(!isEditingLead);
-                                    }}
-                                    className={`h-9 w-9 rounded-xl flex items-center justify-center transition-all border-2 shadow-sm ${
-                                        isEditingLead
-                                            ? "bg-rose-50 border-rose-300 text-rose-600 hover:bg-rose-100"
-                                            : "bg-blue-50 border-blue-300 text-blue-700 hover:bg-blue-100"
-                                    }`}
-                                    title={
-                                        isEditingLead
-                                            ? t(
-                                                  "Cancel editing",
-                                                  "Zrušiť úpravy",
-                                                  "Szerkesztés megszakítása",
-                                              )
-                                            : t(
-                                                  "Edit Lead details",
-                                                  "Upraviť detaily leadu",
-                                                  "Lead részleteinek szerkesztése",
-                                              )
-                                    }
-                                >
-                                    {isEditingLead ? (
-                                        <X className="h-4.5 w-4.5 stroke-[2.5]" />
-                                    ) : (
-                                        <PencilLine className="h-4.5 w-4.5 stroke-[2.5]" />
-                                    )}
-                                </button>
+                                {/* Lead state — always editable, no edit toggle needed */}
+                                <div className="space-y-1">
+                                    <label className="text-[9px] font-black text-slate-555 uppercase tracking-wider">
+                                        {getTranslation(
+                                            systemLanguage,
+                                            "profile.lead_state",
+                                        )}
+                                    </label>
+                                    <div className="select-none">
+                                        <StatusSelector
+                                            status={leadStatus}
+                                            onChange={handleDirectLeadStateChange}
+                                            isEditing={true}
+                                        />
+                                    </div>
+                                </div>
                             </div>
 
                             <form
@@ -4595,7 +4623,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all ${
                                                 isEditingLead
                                                     ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-blue-500 text-slate-800"
-                                                    : "bg-transparent border-2 border-transparent pl-0 text-slate-900 text-sm font-black cursor-default select-all"
+                                                    : "bg-transparent border-2 border-transparent text-slate-900 text-sm font-black cursor-default select-all"
                                             }`}
                                         />
                                     </div>
@@ -4617,7 +4645,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all ${
                                                 isEditingLead
                                                     ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-blue-500 text-slate-800"
-                                                    : "bg-transparent border-2 border-transparent pl-0 text-slate-900 text-sm font-black cursor-default select-all"
+                                                    : "bg-transparent border-2 border-transparent text-slate-900 text-sm font-black cursor-default select-all"
                                             }`}
                                         />
                                     </div>
@@ -4644,30 +4672,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all ${
                                             isEditingLead
                                                 ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-blue-500 text-slate-800"
-                                                : "bg-transparent border-2 border-transparent pl-0 text-slate-900 text-sm font-black cursor-default select-all"
+                                                : "bg-transparent border-2 border-transparent text-slate-900 text-sm font-black cursor-default select-all"
                                         }`}
                                     />
                                 </div>
 
-                                {/* State & Source */}
+                                {/* Source & Project Manager — the lead state lives in its
+                                    own always-editable section above the form. */}
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <div className="space-y-1">
-                                        <label className="text-[9px] font-black text-slate-555 uppercase tracking-wider">
-                                            {getTranslation(
-                                                systemLanguage,
-                                                "profile.lead_state",
-                                            )}
-                                        </label>
-                                        <div className="pt-1 select-none">
-                                            <StatusSelector
-                                                status={leadStatus}
-                                                onChange={(newStatus) =>
-                                                    setLeadStatus(newStatus)
-                                                }
-                                                isEditing={isEditingLead}
-                                            />
-                                        </div>
-                                    </div>
                                     <div className="space-y-1">
                                         <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">
                                             {getTranslation(
@@ -4690,15 +4702,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 )}
                                             />
                                         ) : (
-                                            <div className="pt-2 pl-0 text-slate-900 text-sm font-black uppercase tracking-wider cursor-default select-all">
+                                            <div className="pt-2 px-3 text-slate-900 text-sm font-black uppercase tracking-wider cursor-default select-all">
                                                 🚀 {leadSource}
                                             </div>
                                         )}
                                     </div>
-                                </div>
 
-                                {/* Project Manager */}
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    {/* Project Manager */}
                                     <div className="space-y-1">
                                         <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">
                                             {getTranslation(
@@ -4733,7 +4743,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 ]}
                                             />
                                         ) : (
-                                            <div className="pt-2 pl-0 flex items-center">
+                                            <div className="pt-2 px-3 flex items-center">
                                                 {!leadOwner ||
                                                 leadOwner.toLowerCase() ===
                                                     "unassigned" ? (
@@ -5027,9 +5037,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                         {/* 3. Pipeline Stage Gate & Tasks Card */}
                         <div className="glass-panel p-6 rounded-[28px] border-2 border-violet-400 bg-white shadow-xl space-y-4">
-                            <div className="border-b-2 border-slate-150 pb-3 flex items-center justify-between">
-                                <span className="text-[9px] font-black text-violet-700 uppercase tracking-wider flex items-center gap-1.5">
-                                    <CheckSquare className="h-4.5 w-4.5 text-violet-650" />
+                            <div className="border-b-2 border-slate-150 pb-2 flex items-center justify-between gap-2">
+                                <span className="text-xs font-black text-violet-700 uppercase tracking-wider flex items-center gap-1.5">
+                                    <CheckSquare className="h-4.5 w-4.5 text-violet-650 stroke-[2.5] shrink-0" />
                                     {systemLanguage === "sk"
                                         ? "FÁZOVÁ BRÁNA A ÚLOHY"
                                         : systemLanguage === "hu"
