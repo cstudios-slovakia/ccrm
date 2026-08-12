@@ -1620,6 +1620,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     // Hover state for the detail view left card progress bar
     const [hoveredDetailTimeline, setHoveredDetailTimeline] =
         useState<boolean>(false);
+    const detailPipelineStripRef = React.useRef<HTMLDivElement>(null);
+    const detailPipelineMeasureCanvasRef =
+        React.useRef<HTMLCanvasElement | null>(null);
+    // Font size for the pipeline strip labels, recalculated so the longest
+    // label always fits its segment — the states themselves are configurable
+    // in Settings, so the count/length of labels isn't fixed.
+    const [detailPipelineFontSize, setDetailPipelineFontSize] = useState(10);
 
     // View mode switcher: list (default) or kanban
     const [viewMode, setViewMode] = useState<"list" | "kanban">(() => {
@@ -3856,6 +3863,130 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         return Array.from(new Set(list));
     }, [leadStates, leadStateParents]);
 
+    // Segments for the lead detail pipeline strip — extracted into a memo (rather
+    // than computed inline in JSX) so the font-size-fitting effect below can read
+    // the same list of labels that gets rendered.
+    const detailPipelineSegments = useMemo(() => {
+        const isStateClosed = (stateName: string) => {
+            const sLower = stateName.toLowerCase();
+            const parent = leadStateParents[sLower];
+            return (
+                sLower === "accepted" ||
+                sLower === "rejected" ||
+                parent === "accepted" ||
+                parent === "rejected"
+            );
+        };
+
+        const nonClosedStates = orderedAllStates.filter(
+            (s) => !isStateClosed(s),
+        );
+        const closedStates = orderedAllStates.filter((s) => isStateClosed(s));
+
+        const currentStatus = leadStatus || activeLead?.status || "";
+        const leadStatusLower = currentStatus.toLowerCase();
+        const isLeadClosed = isStateClosed(leadStatusLower);
+
+        const segments: {
+            key: string;
+            title: string;
+            isPastOrCurrent: boolean;
+            color: string;
+            tooltip: string;
+        }[] = [];
+
+        nonClosedStates.forEach((state) => {
+            const stateLower = state.toLowerCase();
+            const sIndex = orderedAllStates.findIndex(
+                (s) => s.toLowerCase() === stateLower,
+            );
+            const cIndex = orderedAllStates.findIndex(
+                (s) => s.toLowerCase() === leadStatusLower,
+            );
+
+            const isPastOrCurrent =
+                isLeadClosed ||
+                (sIndex !== -1 && cIndex !== -1 && sIndex <= cIndex);
+            const stateColor = getSafeStateColor(state);
+            const bgStyle = isPastOrCurrent ? stateColor : "#cbd5e1";
+
+            segments.push({
+                key: state,
+                title: state,
+                isPastOrCurrent,
+                color: bgStyle,
+                tooltip: `${state} ${isPastOrCurrent ? t("(Current/Past)", "(Aktuálne/Minulé)", "(Aktuális/Múlt)") : t("(Upcoming)", "(Nadchádzajúce)", "(Közelgő)")}`,
+            });
+        });
+
+        if (closedStates.length > 0) {
+            const combinedTitle = closedStates.join(" / ");
+            const activeColor = isLeadClosed
+                ? getSafeStateColor(currentStatus)
+                : "#cbd5e1";
+
+            segments.push({
+                key: "closed_states_combined",
+                title: combinedTitle,
+                isPastOrCurrent: isLeadClosed,
+                color: activeColor,
+                tooltip: isLeadClosed
+                    ? `${t("Closed", "Uzavreté", "Lezárva")} (${currentStatus})`
+                    : `${t("Closed", "Uzavreté", "Lezárva")} (${combinedTitle})`,
+            });
+        }
+
+        return segments;
+    }, [orderedAllStates, leadStateParents, leadStatus, activeLead?.status]);
+
+    // Keep the pipeline strip's label font size small enough that every
+    // segment title fits without truncating, however many states/substates
+    // are configured — recalculated whenever the segment list or the strip's
+    // own width changes (panel resize, sidebar collapse, etc).
+    useEffect(() => {
+        const el = detailPipelineStripRef.current;
+        if (!el || detailPipelineSegments.length === 0) return;
+
+        const measure = () => {
+            const containerWidth = el.clientWidth;
+            if (!containerWidth) return;
+
+            const gapTotal = detailPipelineSegments.length - 1;
+            const segmentWidth =
+                (containerWidth - gapTotal) / detailPipelineSegments.length;
+            // Leave room for the segment's px-1 padding and the diagonal
+            // clip-path notches on either side.
+            const availableWidth = Math.max(segmentWidth - 16, 4);
+
+            const canvas =
+                detailPipelineMeasureCanvasRef.current ??
+                (detailPipelineMeasureCanvasRef.current =
+                    document.createElement("canvas"));
+            const ctx = canvas.getContext("2d");
+            if (!ctx) return;
+
+            const REF_SIZE = 24;
+            ctx.font = `900 ${REF_SIZE}px ui-sans-serif, system-ui, -apple-system, sans-serif`;
+            let maxTextWidth = 0;
+            detailPipelineSegments.forEach((seg) => {
+                const width = ctx.measureText(seg.title.toUpperCase()).width;
+                if (width > maxTextWidth) maxTextWidth = width;
+            });
+            if (maxTextWidth === 0) return;
+
+            // Canvas measurement ignores the `tracking-wider` letter-spacing the
+            // label actually renders with, so pad the estimate to compensate.
+            const scale = availableWidth / (maxTextWidth * 1.15);
+            const nextSize = Math.min(10, Math.max(6, REF_SIZE * scale));
+            setDetailPipelineFontSize(nextSize);
+        };
+
+        measure();
+        const ro = new ResizeObserver(measure);
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, [detailPipelineSegments]);
+
     // Aggregate statistics for Card 1 & Card 2 (Unused)
     /*
   const stats = useMemo(() => {
@@ -4428,17 +4559,17 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             {/* Lead state section: the pipeline strip sits directly under
                                 the header and the state itself is always editable here —
                                 it is the one field that must not need the edit toggle. */}
-                            <div
-                                onMouseEnter={() =>
-                                    setHoveredDetailTimeline(true)
-                                }
-                                onMouseLeave={() =>
-                                    setHoveredDetailTimeline(false)
-                                }
-                                className="-mt-3 space-y-3 border-b-2 border-slate-100 pb-4"
-                            >
-                                {/* Pipeline State Progress Bar */}
+                            <div className="-mt-3 space-y-3 border-b-2 border-slate-100 pb-4">
+                                {/* Pipeline State Progress Bar — expands on hover of the
+                                    strip itself only, not the state selector below it */}
                                 <div
+                                    ref={detailPipelineStripRef}
+                                    onMouseEnter={() =>
+                                        setHoveredDetailTimeline(true)
+                                    }
+                                    onMouseLeave={() =>
+                                        setHoveredDetailTimeline(false)
+                                    }
                                     className="w-[calc(100%+48px)] mx-[-24px] flex items-center gap-[1px] select-none bg-slate-200 transition-all duration-300 overflow-hidden shrink-0"
                                     style={{
                                         height: hoveredDetailTimeline
@@ -4446,107 +4577,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             : "4px",
                                     }}
                                 >
-                                {(() => {
-                                    const isStateClosed = (
-                                        stateName: string,
-                                    ) => {
-                                        const sLower = stateName.toLowerCase();
-                                        const parent = leadStateParents[sLower];
-                                        return (
-                                            sLower === "accepted" ||
-                                            sLower === "rejected" ||
-                                            parent === "accepted" ||
-                                            parent === "rejected"
-                                        );
-                                    };
-
-                                    const nonClosedStates =
-                                        orderedAllStates.filter(
-                                            (s) => !isStateClosed(s),
-                                        );
-                                    const closedStates =
-                                        orderedAllStates.filter((s) =>
-                                            isStateClosed(s),
-                                        );
-
-                                    // Use active edited status or saved lead status
-                                    const currentStatus =
-                                        leadStatus || activeLead.status || "";
-                                    const leadStatusLower =
-                                        currentStatus.toLowerCase();
-                                    const isLeadClosed =
-                                        isStateClosed(leadStatusLower);
-
-                                    const segments: {
-                                        key: string;
-                                        title: string;
-                                        isPastOrCurrent: boolean;
-                                        color: string;
-                                        tooltip: string;
-                                    }[] = [];
-
-                                    // 1. Add non-closed states
-                                    nonClosedStates.forEach((state) => {
-                                        const stateLower = state.toLowerCase();
-                                        const sIndex =
-                                            orderedAllStates.findIndex(
-                                                (s) =>
-                                                    s.toLowerCase() ===
-                                                    stateLower,
-                                            );
-                                        const cIndex =
-                                            orderedAllStates.findIndex(
-                                                (s) =>
-                                                    s.toLowerCase() ===
-                                                    leadStatusLower,
-                                            );
-
-                                        const isPastOrCurrent =
-                                            isLeadClosed ||
-                                            (sIndex !== -1 &&
-                                                cIndex !== -1 &&
-                                                sIndex <= cIndex);
-                                        const stateColor =
-                                            getSafeStateColor(state);
-                                        const bgStyle = isPastOrCurrent
-                                            ? stateColor
-                                            : "#cbd5e1";
-
-                                        segments.push({
-                                            key: state,
-                                            title: state,
-                                            isPastOrCurrent,
-                                            color: bgStyle,
-                                            tooltip: `${state} ${isPastOrCurrent ? t("(Current/Past)", "(Aktuálne/Minulé)", "(Aktuális/Múlt)") : t("(Upcoming)", "(Nadchádzajúce)", "(Közelgő)")}`,
-                                        });
-                                    });
-
-                                    // 2. Add combined final segment
-                                    if (closedStates.length > 0) {
-                                        const combinedTitle =
-                                            closedStates.join(" / ");
-                                        const activeColor = isLeadClosed
-                                            ? getSafeStateColor(currentStatus)
-                                            : "#cbd5e1";
-
-                                        segments.push({
-                                            key: "closed_states_combined",
-                                            title: combinedTitle,
-                                            isPastOrCurrent: isLeadClosed,
-                                            color: activeColor,
-                                            tooltip: isLeadClosed
-                                                ? `${t("Closed", "Uzavreté", "Lezárva")} (${currentStatus})`
-                                                : `${t("Closed", "Uzavreté", "Lezárva")} (${combinedTitle})`,
-                                        });
-                                    }
-
-                                    return segments.map((seg, index) => {
+                                {detailPipelineSegments.map((seg, index) => {
                                         const isFirst = index === 0;
                                         const isLast =
-                                            index === segments.length - 1;
+                                            index ===
+                                            detailPipelineSegments.length - 1;
 
                                         let segmentClipPath = "none";
-                                        if (segments.length > 1) {
+                                        if (detailPipelineSegments.length > 1) {
                                             if (isFirst) {
                                                 segmentClipPath =
                                                     "polygon(0% 0%, calc(100% - 4px) 0%, 100% 50%, calc(100% - 4px) 100%, 0% 100%)";
@@ -4575,13 +4613,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             >
                                                 {hoveredDetailTimeline && (
                                                     <span
-                                                        className="text-[10px] font-black uppercase tracking-wider px-1 truncate"
+                                                        className="font-black uppercase tracking-wider px-1 truncate"
                                                         style={{
-                                                            fontSize: "10px",
+                                                            fontSize: `${detailPipelineFontSize}px`,
                                                             // Room for the accents on uppercase Slovak/Hungarian
                                                             // labels (Ý, Á, Ô, Ő) — `truncate` clips whatever
                                                             // grows past the line box.
-                                                            lineHeight: "14px",
+                                                            lineHeight: `${detailPipelineFontSize + 4}px`,
                                                             color: textColor,
                                                         }}
                                                     >
@@ -4590,8 +4628,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 )}
                                             </div>
                                         );
-                                    });
-                                })()}
+                                })}
                                 </div>
 
                                 {/* Lead state — always editable, no edit toggle needed */}
