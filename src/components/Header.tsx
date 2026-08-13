@@ -5,6 +5,7 @@ import type { UserProfile } from "../types";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import type { UpdateEntry } from "./UpdateNotesModal";
+import { useUserPref } from "../utils/userPrefs";
 
 interface HeaderProps {
   activeTab: string;
@@ -43,6 +44,13 @@ export const Header: React.FC<HeaderProps> = ({
   // Update notes states
   const [updatesList, setUpdatesList] = useState<UpdateEntry[]>([]);
   const [hasNewUpdate, setHasNewUpdate] = useState(false);
+  // Which release note the user has already opened. A DB-backed preference, so
+  // the "new updates" dot doesn't reappear on every device and every new browser.
+  // Mirrored into a ref because the fetch effect below must not re-run when it
+  // changes — it only needs the value at the moment the list arrives.
+  const [seenUpdateId, setSeenUpdateId] = useUserPref("seenUpdateId");
+  const seenUpdateIdRef = React.useRef(seenUpdateId);
+  seenUpdateIdRef.current = seenUpdateId;
 
   useEffect(() => {
     const fetchUpdateNotes = async () => {
@@ -116,8 +124,7 @@ export const Header: React.FC<HeaderProps> = ({
         // Check if there is a new unseen update
         if (localizedList.length > 0) {
           const latestId = localizedList[0].id;
-          const seenId = localStorage.getItem("ccrm_seen_update_id");
-          if (seenId !== latestId) {
+          if (seenUpdateIdRef.current !== latestId) {
             setHasNewUpdate(true);
           }
         }
@@ -133,7 +140,7 @@ export const Header: React.FC<HeaderProps> = ({
       onNavigateUpdates();
     }
     if (updatesList.length > 0) {
-      localStorage.setItem("ccrm_seen_update_id", updatesList[0].id);
+      setSeenUpdateId(updatesList[0].id);
       setHasNewUpdate(false);
     }
   };
