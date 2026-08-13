@@ -7214,6 +7214,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                     event.content.split(
                                                                         "\n",
                                                                     );
+                                                                // Long entries stay clipped until the user opens
+                                                                // them with the "Show more" toggle below.
                                                                 const isTruncatable =
                                                                     lines.length >
                                                                         5 ||
@@ -7231,7 +7233,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                 return (
                                                                     <div>
                                                                         <div
-                                                                            className={`relative ${showGradient ? "max-h-[8.1em] overflow-hidden" : ""}`}
+                                                                            className={`relative ${
+                                                                                isTruncatable
+                                                                                    ? `overflow-hidden transition-[max-height] duration-300 ease-in-out ${isExpanded ? "max-h-[3000px]" : "max-h-[8.1em]"}`
+                                                                                    : ""
+                                                                            }`}
                                                                             style={{
                                                                                 lineHeight: 1.35,
                                                                             }}
@@ -7256,7 +7262,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                         event.id,
                                                                                     );
                                                                                 }}
-                                                                                className="mt-1.5 flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-indigo-600 hover:text-indigo-800 transition-colors"
+                                                                                className="mt-1.5 flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-indigo-600 hover:text-indigo-800 hover:gap-1.5 active:scale-95 transition-all duration-200"
                                                                             >
                                                                                 {isExpanded ? (
                                                                                     <>
