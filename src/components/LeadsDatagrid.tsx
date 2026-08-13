@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { useUserPref } from "../utils/userPrefs";
 import { resolveAssigneeName } from "../utils/taskSelectors";
-import { createPortal } from "react-dom";
+// import { createPortal } from "react-dom";
 import {
     Users,
     MapPin,
@@ -311,7 +311,7 @@ import type { Language } from "../utils/translations";
 import {
     todayLocal,
     formatDateLocalized,
-    formatTimestampLocalized,
+    // formatTimestampLocalized — only used by the commented-out e-mail full view
 } from "../utils/localTime";
 import { formatMoney } from "../utils/currency";
 
@@ -2249,81 +2249,81 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const [leadEmails, setLeadEmails] = useState<TimelineEvent[]>([]);
     const [isLoadingMails, setIsLoadingMails] = useState(false);
 
-    // --- TIMELINE EMAIL VIEW DRAWER STATE ---
-    const [selectedTimelineEmail, setSelectedTimelineEmail] = useState<
-        any | null
-    >(null);
-    const [isClosingEmailDetail, setIsClosingEmailDetail] = useState(false);
-
-    const closeEmailDetailSlideout = () => {
-        setIsClosingEmailDetail(true);
-        setTimeout(() => {
-            setSelectedTimelineEmail(null);
-            setIsClosingEmailDetail(false);
-        }, 350);
-    };
-
-    const [isLoadingEmailDetail, setIsLoadingEmailDetail] = useState(false);
-    const [timelineEmailDetailBody, setTimelineEmailDetailBody] = useState<
-        any | null
-    >(null);
-
-    const handleTimelineEmailClick = async (event: any) => {
-        if (event.type !== "email") return;
-
-        setSelectedTimelineEmail(event);
-        setIsLoadingEmailDetail(true);
-        setTimelineEmailDetailBody(null);
-
-        try {
-            const parts = event.id.split("-");
-            const uid = parts[parts.length - 1];
-            const folder = event.isOutgoing ? "Sent" : "INBOX";
-
-            const currentUserStr = sessionStorage.getItem(
-                "crm_current_user_rbac",
-            );
-            const currentUser = currentUserStr
-                ? JSON.parse(currentUserStr)
-                : null;
-
-            const res = await fetch(
-                `/api/mail_broker.php?action=get_email_detail&folder=${folder}&uid=${uid}`,
-                { headers: { "X-User-Email": currentUser?.email || "" } },
-            );
-            const data = await res.json();
-            if (data.success && data.email) {
-                setTimelineEmailDetailBody(data.email);
-            } else {
-                setTimelineEmailDetailBody({
-                    uid,
-                    html: "",
-                    text:
-                        event.content ||
-                        t(
-                            "No message content.",
-                            "Žiadny obsah správy.",
-                            "Nincs üzenettartalom.",
-                        ),
-                });
-            }
-        } catch (e) {
-            console.error("Failed to load email details", e);
-            setTimelineEmailDetailBody({
-                uid: event.id,
-                html: "",
-                text:
-                    event.content ||
-                    t(
-                        "No message content.",
-                        "Žiadny obsah správy.",
-                        "Nincs üzenettartalom.",
-                    ),
-            });
-        } finally {
-            setIsLoadingEmailDetail(false);
-        }
-    };
+    // // --- TIMELINE EMAIL VIEW DRAWER STATE ---
+    // const [selectedTimelineEmail, setSelectedTimelineEmail] = useState<
+        // any | null
+    // >(null);
+    // const [isClosingEmailDetail, setIsClosingEmailDetail] = useState(false);
+//
+    // const closeEmailDetailSlideout = () => {
+        // setIsClosingEmailDetail(true);
+        // setTimeout(() => {
+            // setSelectedTimelineEmail(null);
+            // setIsClosingEmailDetail(false);
+        // }, 350);
+    // };
+//
+    // const [isLoadingEmailDetail, setIsLoadingEmailDetail] = useState(false);
+    // const [timelineEmailDetailBody, setTimelineEmailDetailBody] = useState<
+        // any | null
+    // >(null);
+//
+    // const handleTimelineEmailClick = async (event: any) => {
+        // if (event.type !== "email") return;
+//
+        // setSelectedTimelineEmail(event);
+        // setIsLoadingEmailDetail(true);
+        // setTimelineEmailDetailBody(null);
+//
+        // try {
+            // const parts = event.id.split("-");
+            // const uid = parts[parts.length - 1];
+            // const folder = event.isOutgoing ? "Sent" : "INBOX";
+//
+            // const currentUserStr = sessionStorage.getItem(
+                // "crm_current_user_rbac",
+            // );
+            // const currentUser = currentUserStr
+                // ? JSON.parse(currentUserStr)
+                // : null;
+//
+            // const res = await fetch(
+                // `/api/mail_broker.php?action=get_email_detail&folder=${folder}&uid=${uid}`,
+                // { headers: { "X-User-Email": currentUser?.email || "" } },
+            // );
+            // const data = await res.json();
+            // if (data.success && data.email) {
+                // setTimelineEmailDetailBody(data.email);
+            // } else {
+                // setTimelineEmailDetailBody({
+                    // uid,
+                    // html: "",
+                    // text:
+                        // event.content ||
+                        // t(
+                            // "No message content.",
+                            // "Žiadny obsah správy.",
+                            // "Nincs üzenettartalom.",
+                        // ),
+                // });
+            // }
+        // } catch (e) {
+            // console.error("Failed to load email details", e);
+            // setTimelineEmailDetailBody({
+                // uid: event.id,
+                // html: "",
+                // text:
+                    // event.content ||
+                    // t(
+                        // "No message content.",
+                        // "Žiadny obsah správy.",
+                        // "Nincs üzenettartalom.",
+                    // ),
+            // });
+        // } finally {
+            // setIsLoadingEmailDetail(false);
+        // }
+    // };
 
     useEffect(() => {
         if (
@@ -6867,16 +6867,17 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     </div>
 
                                                     {/* Right Content box */}
-                                                    <div
-                                                        onClick={() =>
-                                                            event.type ===
-                                                                "email" &&
-                                                            handleTimelineEmailClick(
-                                                                event,
-                                                            )
-                                                        }
-                                                        className={`flex-1 bg-white p-4.5 rounded-[22px] border-2 border-slate-200 shadow-md group-hover:shadow-lg transition-all duration-200 relative select-text ${event.type === "email" ? "cursor-pointer hover:border-indigo-400 active:scale-[0.99]" : ""}`}
-                                                    >
+                                                    {
+                                                        // Opening the e-mail full view from the card is commented out
+                                                        // together with the overlay further down:
+                                                        // onClick={() =>
+                                                        //     event.type === "email" &&
+                                                        //     handleTimelineEmailClick(event)
+                                                        // }
+                                                        // ...along with the e-mail-only affordances on the box below:
+                                                        // ${event.type === "email" ? "cursor-pointer hover:border-indigo-400 active:scale-[0.99]" : ""}
+                                                    }
+                                                    <div className="flex-1 bg-white p-4.5 rounded-[22px] border-2 border-slate-200 shadow-md group-hover:shadow-lg transition-all duration-200 relative select-text">
                                                         <div className="absolute -left-[7px] top-[14px] w-3 h-3 bg-white border-l-2 border-b-2 border-slate-200 transform rotate-45 hidden md:block"></div>
 
                                                         <div className="flex items-start justify-between gap-4 border-b-2 border-slate-100 pb-2 mb-2.5">
@@ -7307,147 +7308,153 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     </div>
                 </div>
 
-                {/* TIMELINE EMAIL DETAIL SLIDEOUT OVERLAY */}
-                {(selectedTimelineEmail || isClosingEmailDetail) &&
-                    typeof document !== "undefined" &&
-                    createPortal(
-                        <div
-                            className={`fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-[9999] flex flex-col justify-start ${isClosingEmailDetail ? "animate-fade-out" : "animate-fade-in"}`}
-                        >
-                            <div
-                                className={`w-full max-w-4xl mx-auto bg-white rounded-b-[28px] border-b-2 border-slate-200 shadow-2xl flex flex-col relative overflow-hidden h-[75vh] max-h-[80vh] ${isClosingEmailDetail ? "animate-slide-out-top" : "animate-slide-in-top"}`}
-                            >
-                                {/* Header */}
-                                <div className="bg-slate-900 text-white p-4 flex items-center justify-between shrink-0">
-                                    <div className="text-left min-w-0 flex-1 pr-4">
-                                        <span className="text-[10px] font-black uppercase text-pink-500 tracking-wider">
-                                            {t(
-                                                "Email Correspondence",
-                                                "E-mailová korešpondencia",
-                                                "E-mail levelezés",
-                                            )}
-                                        </span>
-                                        <h3 className="text-sm font-heading font-black uppercase tracking-tight truncate">
-                                            {selectedTimelineEmail.title}
-                                        </h3>
-                                    </div>
-                                    <button
-                                        onClick={closeEmailDetailSlideout}
-                                        className="text-slate-400 hover:text-white p-1 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
-                                    >
-                                        <X size={18} />
-                                    </button>
-                                </div>
-
-                                {/* Body / parsed content */}
-                                <div className="flex-1 overflow-y-auto p-5 flex flex-col">
-                                    {isLoadingEmailDetail ? (
-                                        <div className="flex flex-col items-center justify-center py-12 gap-2 text-slate-400 my-auto">
-                                            <Loader2
-                                                className="animate-spin text-pink-500"
-                                                size={24}
-                                            />
-                                            <span className="text-[9px] font-bold uppercase tracking-wider">
-                                                {t(
-                                                    "Loading mail contents...",
-                                                    "Načítava sa obsah e-mailu...",
-                                                    "E-mail tartalmának betöltése...",
-                                                )}
-                                            </span>
-                                        </div>
-                                    ) : timelineEmailDetailBody ? (
-                                        <div className="flex-1 flex flex-col justify-between">
-                                            <div className="border-b border-slate-150 pb-3 mb-4 text-left">
-                                                <p className="text-[10px] text-slate-550 font-bold">
-                                                    {t(
-                                                        "Subject:",
-                                                        "Predmet:",
-                                                        "Tárgy:",
-                                                    )}{" "}
-                                                    <strong className="text-slate-800">
-                                                        {
-                                                            selectedTimelineEmail.title
-                                                        }
-                                                    </strong>
-                                                </p>
-                                                <p className="text-[10px] text-slate-550 font-bold mt-1">
-                                                    {t(
-                                                        "Date:",
-                                                        "Dátum:",
-                                                        "Dátum:",
-                                                    )}{" "}
-                                                    <span className="text-slate-700">
-                                                        {formatTimestampLocalized(
-                                                            selectedTimelineEmail.timestamp,
-                                                            systemLanguage,
-                                                        )}
-                                                    </span>
-                                                </p>
-                                            </div>
-                                            <div className="flex-1 min-h-[300px]">
-                                                {timelineEmailDetailBody.html ? (
-                                                    <iframe
-                                                        className="w-full h-full min-h-[400px] border-0 rounded-2xl bg-transparent"
-                                                        title={t(
-                                                            "Timeline parsed mail content",
-                                                            "Spracovaný obsah e-mailu časovej osi",
-                                                            "Idővonal feldolgozott e-mail tartalma",
-                                                        )}
-                                                        sandbox=""
-                                                        srcDoc={`
-                            <html>
-                              <head>
-                                <style>
-                                  body {
-                                    font-family: system-ui, -apple-system, sans-serif;
-                                    color: #0f172a;
-                                    background-color: transparent;
-                                    line-height: 1.6;
-                                    font-size: 13px;
-                                  }
-                                  a { color: #db2777; text-decoration: none; }
-                                  a:hover { text-decoration: underline; }
-                                  blockquote { border-left: 3px solid #cbd5e1; padding-left: 12px; color: #64748b; margin: 12px 0; }
-                                </style>
-                              </head>
-                              <body>
-                                ${timelineEmailDetailBody.html}
-                              </body>
-                            </html>
-                          `}
-                                                    />
-                                                ) : (
-                                                    <div className="text-left text-xs text-slate-700 font-semibold whitespace-pre-wrap leading-relaxed select-text p-4 bg-slate-50 rounded-2xl border border-slate-150">
-                                                        {timelineEmailDetailBody.text ||
-                                                            t(
-                                                                "No message content.",
-                                                                "Žiadny obsah správy.",
-                                                                "Nincs üzenettartalom.",
-                                                            )}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="text-center text-slate-400 py-12 text-xs font-semibold my-auto">
-                                            {t(
-                                                "No message content.",
-                                                "Žiadny obsah správy.",
-                                                "Nincs üzenettartalom.",
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Backdrop click close target */}
-                            <div
-                                className="flex-1 w-full"
-                                onClick={closeEmailDetailSlideout}
-                            />
-                        </div>,
-                        document.body,
-                    )}
+                {/* TIMELINE EMAIL DETAIL SLIDEOUT OVERLAY — commented out on request.
+                    E-mails now expand inline in the timeline via "Show more", so there is
+                    no separate full view. To bring it back, uncomment this block, the card
+                    onClick above and the drawer state near the top of the component. */}
+                {
+                // {/* TIMELINE EMAIL DETAIL SLIDEOUT OVERLAY */}
+                // {(selectedTimelineEmail || isClosingEmailDetail) &&
+                    // typeof document !== "undefined" &&
+                    // createPortal(
+                        // <div
+                            // className={`fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-[9999] flex flex-col justify-start ${isClosingEmailDetail ? "animate-fade-out" : "animate-fade-in"}`}
+                        // >
+                            // <div
+                                // className={`w-full max-w-4xl mx-auto bg-white rounded-b-[28px] border-b-2 border-slate-200 shadow-2xl flex flex-col relative overflow-hidden h-[75vh] max-h-[80vh] ${isClosingEmailDetail ? "animate-slide-out-top" : "animate-slide-in-top"}`}
+                            // >
+                                // {/* Header */}
+                                // <div className="bg-slate-900 text-white p-4 flex items-center justify-between shrink-0">
+                                    // <div className="text-left min-w-0 flex-1 pr-4">
+                                        // <span className="text-[10px] font-black uppercase text-pink-500 tracking-wider">
+                                            // {t(
+                                                // "Email Correspondence",
+                                                // "E-mailová korešpondencia",
+                                                // "E-mail levelezés",
+                                            // )}
+                                        // </span>
+                                        // <h3 className="text-sm font-heading font-black uppercase tracking-tight truncate">
+                                            // {selectedTimelineEmail.title}
+                                        // </h3>
+                                    // </div>
+                                    // <button
+                                        // onClick={closeEmailDetailSlideout}
+                                        // className="text-slate-400 hover:text-white p-1 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                                    // >
+                                        // <X size={18} />
+                                    // </button>
+                                // </div>
+//
+                                // {/* Body / parsed content */}
+                                // <div className="flex-1 overflow-y-auto p-5 flex flex-col">
+                                    // {isLoadingEmailDetail ? (
+                                        // <div className="flex flex-col items-center justify-center py-12 gap-2 text-slate-400 my-auto">
+                                            // <Loader2
+                                                // className="animate-spin text-pink-500"
+                                                // size={24}
+                                            // />
+                                            // <span className="text-[9px] font-bold uppercase tracking-wider">
+                                                // {t(
+                                                    // "Loading mail contents...",
+                                                    // "Načítava sa obsah e-mailu...",
+                                                    // "E-mail tartalmának betöltése...",
+                                                // )}
+                                            // </span>
+                                        // </div>
+                                    // ) : timelineEmailDetailBody ? (
+                                        // <div className="flex-1 flex flex-col justify-between">
+                                            // <div className="border-b border-slate-150 pb-3 mb-4 text-left">
+                                                // <p className="text-[10px] text-slate-550 font-bold">
+                                                    // {t(
+                                                        // "Subject:",
+                                                        // "Predmet:",
+                                                        // "Tárgy:",
+                                                    // )}{" "}
+                                                    // <strong className="text-slate-800">
+                                                        // {
+                                                            // selectedTimelineEmail.title
+                                                        // }
+                                                    // </strong>
+                                                // </p>
+                                                // <p className="text-[10px] text-slate-550 font-bold mt-1">
+                                                    // {t(
+                                                        // "Date:",
+                                                        // "Dátum:",
+                                                        // "Dátum:",
+                                                    // )}{" "}
+                                                    // <span className="text-slate-700">
+                                                        // {formatTimestampLocalized(
+                                                            // selectedTimelineEmail.timestamp,
+                                                            // systemLanguage,
+                                                        // )}
+                                                    // </span>
+                                                // </p>
+                                            // </div>
+                                            // <div className="flex-1 min-h-[300px]">
+                                                // {timelineEmailDetailBody.html ? (
+                                                    // <iframe
+                                                        // className="w-full h-full min-h-[400px] border-0 rounded-2xl bg-transparent"
+                                                        // title={t(
+                                                            // "Timeline parsed mail content",
+                                                            // "Spracovaný obsah e-mailu časovej osi",
+                                                            // "Idővonal feldolgozott e-mail tartalma",
+                                                        // )}
+                                                        // sandbox=""
+                                                        // srcDoc={`
+                            // <html>
+                              // <head>
+                                // <style>
+                                  // body {
+                                    // font-family: system-ui, -apple-system, sans-serif;
+                                    // color: #0f172a;
+                                    // background-color: transparent;
+                                    // line-height: 1.6;
+                                    // font-size: 13px;
+                                  // }
+                                  // a { color: #db2777; text-decoration: none; }
+                                  // a:hover { text-decoration: underline; }
+                                  // blockquote { border-left: 3px solid #cbd5e1; padding-left: 12px; color: #64748b; margin: 12px 0; }
+                                // </style>
+                              // </head>
+                              // <body>
+                                // ${timelineEmailDetailBody.html}
+                              // </body>
+                            // </html>
+                          // `}
+                                                    // />
+                                                // ) : (
+                                                    // <div className="text-left text-xs text-slate-700 font-semibold whitespace-pre-wrap leading-relaxed select-text p-4 bg-slate-50 rounded-2xl border border-slate-150">
+                                                        // {timelineEmailDetailBody.text ||
+                                                            // t(
+                                                                // "No message content.",
+                                                                // "Žiadny obsah správy.",
+                                                                // "Nincs üzenettartalom.",
+                                                            // )}
+                                                    // </div>
+                                                // )}
+                                            // </div>
+                                        // </div>
+                                    // ) : (
+                                        // <div className="text-center text-slate-400 py-12 text-xs font-semibold my-auto">
+                                            // {t(
+                                                // "No message content.",
+                                                // "Žiadny obsah správy.",
+                                                // "Nincs üzenettartalom.",
+                                            // )}
+                                        // </div>
+                                    // )}
+                                // </div>
+                            // </div>
+//
+                            // {/* Backdrop click close target */}
+                            // <div
+                                // className="flex-1 w-full"
+                                // onClick={closeEmailDetailSlideout}
+                            // />
+                        // </div>,
+                        // document.body,
+                    // )}
+                }
             </div>
         );
     }
