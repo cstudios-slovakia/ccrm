@@ -63,14 +63,15 @@ export const HERB_THEMES: ThemeOption[] = [
   }
 ];
 
-export const getStoredTheme = (): string => {
-  if (typeof window === "undefined") return "basic";
-  return localStorage.getItem("crm_user_theme") || "basic";
-};
+export const DEFAULT_THEME_ID = "basic";
 
+/**
+ * Paints a theme. Persistence is NOT done here — the chosen theme is a per-user
+ * preference stored in the database (utils/userPrefs.ts), so it follows the
+ * account across devices and survives a browser that forbids local storage.
+ */
 export const applyTheme = (themeId: string): void => {
   if (typeof document === "undefined") return;
-  const validTheme = HERB_THEMES.some((t) => t.id === themeId) ? themeId : "basic";
+  const validTheme = HERB_THEMES.some((t) => t.id === themeId) ? themeId : DEFAULT_THEME_ID;
   document.documentElement.setAttribute("data-theme", validTheme);
-  localStorage.setItem("crm_user_theme", validTheme);
 };

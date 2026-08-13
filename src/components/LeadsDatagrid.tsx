@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
+import { useUserPref } from "../utils/userPrefs";
 import { resolveAssigneeName } from "../utils/taskSelectors";
 import { createPortal } from "react-dom";
 import {
@@ -1625,43 +1626,17 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     // in Settings, so the count/length of labels isn't fixed.
     const [detailPipelineFontSize, setDetailPipelineFontSize] = useState(10);
 
-    // View mode switcher: list (default) or kanban
-    const [viewMode, setViewMode] = useState<"list" | "kanban">(() => {
-        const stored = sessionStorage.getItem("crm_leads_view_mode");
-        return stored === "kanban" || stored === "list" ? stored : "list";
-    });
-
-    useEffect(() => {
-        sessionStorage.setItem("crm_leads_view_mode", viewMode);
-    }, [viewMode]);
+    // View mode switcher: list (default) or kanban. Along with the compact and
+    // ordering switches below, this is a per-user preference stored in the
+    // database — it used to sit in sessionStorage, so it was forgotten the moment
+    // the tab was closed and never followed the user to another device.
+    const [viewMode, setViewMode] = useUserPref("leadsViewMode");
 
     // Compact mode switcher
-    const [compactMode, setCompactMode] = useState<boolean>(() => {
-        return sessionStorage.getItem("crm_leads_compact_mode") === "true";
-    });
-
-    useEffect(() => {
-        sessionStorage.setItem("crm_leads_compact_mode", String(compactMode));
-    }, [compactMode]);
+    const [compactMode, setCompactMode] = useUserPref("leadsCompactMode");
 
     // Multiple sorting and grouping versions
-    const [orderingMode, setOrderingMode] = useState<
-        "state" | "pm" | "created_newest" | "created_oldest" | "size" | "rating"
-    >(() => {
-        const stored = sessionStorage.getItem("crm_leads_ordering_mode");
-        return stored === "state" ||
-            stored === "pm" ||
-            stored === "created_newest" ||
-            stored === "created_oldest" ||
-            stored === "size" ||
-            stored === "rating"
-            ? stored
-            : "state";
-    });
-
-    useEffect(() => {
-        sessionStorage.setItem("crm_leads_ordering_mode", orderingMode);
-    }, [orderingMode]);
+    const [orderingMode, setOrderingMode] = useUserPref("leadsOrderingMode");
 
     // Incremental rendering ("pagination") for lead groups. With ~1k leads a
     // single group used to mount ~1k rows/cards at once, which is the main cause
@@ -1733,16 +1708,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         [leadStateParents, leadStageGroups],
     );
 
-    const [visibleStates, setVisibleStates] = useState<string[]>(() => {
-        const stored = localStorage.getItem("crm_leads_visible_states");
-        if (stored) {
-            try {
-                const parsed = JSON.parse(stored);
-                if (Array.isArray(parsed)) return parsed;
-            } catch (e) {}
-        }
-        return [];
-    });
+    // null means the user has never touched the filter, which is not the same as
+    // "everything switched off" — see resolvedVisibleStates below.
+    const [visibleStates, setVisibleStates] = useUserPref("leadsVisibleStates");
 
     const [collapsedGroups, setCollapsedGroups] = useState<
         Record<string, boolean>
@@ -1756,8 +1724,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     };
 
     const resolvedVisibleStates = useMemo(() => {
-        const stored = localStorage.getItem("crm_leads_visible_states");
-        if (stored === null) {
+        if (visibleStates === null) {
             // By default, only non-closed states are visible (on)
             return majorStates.filter((s) => !isStateClosedLocal(s));
         }
@@ -1766,9 +1733,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     const toggleStateVisibility = (state: string) => {
         const stateLower = state.toLowerCase();
-        const stored = localStorage.getItem("crm_leads_visible_states");
         const currentList =
-            stored === null
+            visibleStates === null
                 ? majorStates.filter((s) => !isStateClosedLocal(s))
                 : visibleStates;
 
@@ -1779,7 +1745,6 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             next = [...currentList, stateLower];
         }
         setVisibleStates(next);
-        localStorage.setItem("crm_leads_visible_states", JSON.stringify(next));
     };
 
     // Extract unique cities dynamically from database

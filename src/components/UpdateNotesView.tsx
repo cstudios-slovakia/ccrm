@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Sparkles, Calendar, Loader2 } from "lucide-react";
 import type { Language } from "../utils/translations";
 import type { UpdateEntry } from "./UpdateNotesModal";
+import { useUserPref } from "../utils/userPrefs";
 
 interface UpdateNotesViewProps {
   systemLanguage: Language;
@@ -9,6 +10,11 @@ interface UpdateNotesViewProps {
 
 export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({ systemLanguage }) => {
   const [updates, setUpdates] = useState<UpdateEntry[]>([]);
+  // Opening this view is what marks the newest release note as read; the flag is
+  // a DB-backed user preference shared with the header's "new updates" dot.
+  const [, setSeenUpdateId] = useUserPref("seenUpdateId");
+  const setSeenUpdateIdRef = React.useRef(setSeenUpdateId);
+  setSeenUpdateIdRef.current = setSeenUpdateId;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -87,11 +93,10 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({ systemLanguage
         localizedList.sort((a, b) => new Date(b.postDate).getTime() - new Date(a.postDate).getTime());
         setUpdates(localizedList);
         
-        // Mark as read when entering this view
+        // Mark as read when entering this view. The header reads the same
+        // preference out of context, so its badge clears without an event hop.
         if (localizedList.length > 0) {
-          localStorage.setItem("ccrm_seen_update_id", localizedList[0].id);
-          // Dispatch a storage event or window event if we need to sync header badge
-          window.dispatchEvent(new Event("storage"));
+          setSeenUpdateIdRef.current(localizedList[0].id);
         }
       } catch (err: any) {
         console.error("Error fetching release notes:", err);

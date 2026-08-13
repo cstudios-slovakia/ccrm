@@ -13,7 +13,18 @@ import { InstallerWizard } from "./components/InstallerWizard";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { RefreshCw, AlertOctagon, Trash2, Copy } from "lucide-react";
 import { ShaderGradient, ShaderGradientCanvas } from "shadergradient";
-import { getStoredTheme, applyTheme } from "./utils/theme";
+import { applyTheme } from "./utils/theme";
+import { hasPersistentStorage } from "./utils/safeStorage";
+import type { UserPrefs, UserPrefsApi } from "./utils/userPrefs";
+import {
+  DEFAULT_USER_PREFS,
+  UserPrefsContext,
+  clearLegacyPrefs,
+  hasStoredPrefs,
+  parseUserMetadata,
+  readLegacyPrefs,
+  readUserPrefs,
+} from "./utils/userPrefs";
 
 // Helper for resilient lazy loading: automatically reloads page if a build update changed chunk hash filenames
 const safeLazy = (importFn: () => Promise<any>) =>
@@ -29,7 +40,12 @@ const safeLazy = (importFn: () => Promise<any>) =>
           error.message.includes("Loading chunk")
         ))
       );
-      if (isChunkError) {
+      // The auto-reload is rate-limited through sessionStorage. When the browser
+      // forbids storage we fall back to an in-memory stand-in, which starts empty
+      // after every reload — the limiter would never trip and a genuinely missing
+      // chunk would reload the page forever. In that case we let the error reach
+      // the ErrorBoundary, which offers the user a manual reload instead.
+      if (isChunkError && hasPersistentStorage("sessionStorage")) {
         const reloadKey = "ccrm_chunk_reload";
         const lastReload = sessionStorage.getItem(reloadKey);
         const now = Date.now();
@@ -342,11 +358,6 @@ function App() {
   const [systemName, setSystemName] = useState("CCRM");
   const [systemLanguage, setSystemLanguage] = useState<"en" | "sk" | "hu">("sk");
   const [userLanguage, setUserLanguage] = useState<"en" | "sk" | "hu">("sk");
-  const [userTheme, setUserTheme] = useState<string>(getStoredTheme);
-
-  useEffect(() => {
-    applyTheme(userTheme);
-  }, [userTheme]);
 
   // Same three-language shorthand every view uses for one-off copy that has no
   // entry in translations.ts.
@@ -357,103 +368,19 @@ function App() {
   // Meeting Room state
   const [meetingsAction, setMeetingsAction] = useState<"list" | "new">("list");
   const [autoOpenAddTask, setAutoOpenAddTask] = useState(false);
-  const [meetingNotes, setMeetingNotes] = useState<MeetingNote[]>(() => {
-    const stored = localStorage.getItem("crm_meeting_notes");
-    if (stored) {
-      try {
-        return JSON.parse(stored);
-      } catch (e) {}
-    }
-    return [
-      {
-        id: "meet-1",
-        title: "Initial Budget Alignment Call",
-        date: "2026-06-10",
-        leadId: "lead-1",
-        leadName: "Ján Novák",
-        duration: 25,
-        notes: JSON.stringify([
-          { id: "b-init-1", type: "h2", content: "Countertop Slab Price Negotiation" },
-          { id: "b-init-2", type: "paragraph", content: "Ján from Bratislava showroom discussed countertop materials. He is interested in Laminam Ceramic slabs but is concerned about the price." },
-          { id: "b-init-3", type: "banner", bannerType: "info", content: "Proposed a bundle discount of 15% if they proceed with flooring tiles as well." },
-          { id: "b-init-4", type: "todo", content: "Prepare a unified quote for countertops and flooring tiles by Friday", "checked": false },
-          { id: "b-init-5", type: "todo", content: "Send gray marble sample slabs package via courier", "checked": true }
-        ]),
-        aiSummary: {
-          summary: "Discussion regarding Laminam Ceramic slabs pricing and interested cross-sell for flooring tiles. The lead is price-sensitive but open to discounts.",
-          actionItems: [
-            "Prepare unified quote for countertops and flooring tiles",
-            "Send sample package via courier"
-          ],
-          sentiment: "neutral",
-          topics: ["Pricing & Budget", "Material Selection"]
-        }
-      },
-      {
-        id: "meet-2",
-        title: "Technical Spec & Timeline Review",
-        date: "2026-06-12",
-        leadId: "lead-2",
-        leadName: "Martina Kováčová",
-        duration: 45,
-        notes: JSON.stringify([
-          { id: "b-init-6", type: "h2", content: "Onsite Measurements & Finish Approvals" },
-          { id: "b-init-7", type: "paragraph", content: "Conducted full onsite measurements at Martina's kitchen in Trnava. Physical layout details recorded successfully." },
-          { id: "b-init-8", type: "banner", bannerType: "success", content: "Client officially approved the Calacatta Gold polished finish quartz countertop!" },
-          { id: "b-init-9", type: "todo", content: "Send measurements sheet to fabrication team", "checked": false },
-          { id: "b-init-10", type: "todo", content: "Book installation window for early July", "checked": false }
-        ]),
-        aiSummary: {
-          summary: "Onsite physical measurements completed. Client approved Calacatta Gold quartz in polished finish. Milestone delivery dates established.",
-          actionItems: [
-            "Send measurements sheet to fabrication team",
-            "Book installation window for early July"
-          ],
-          sentiment: "positive",
-          topics: ["Onsite Measurement", "Milestones", "Material Selection"]
-        }
-      }
-    ];
-  });
-
-  // Persist locally only. Server pushes happen explicitly in updateMeetingNotesAndSync
-  // on real user edits; pushing here as well would echo freshly-loaded/polled server
-  // data back (and re-fire on the isInitialSyncResolved flip), which is exactly what
-  // made the "Saving…" indicator flash on login and on every reload with no user action.
-  useEffect(() => {
-    localStorage.setItem("crm_meeting_notes", JSON.stringify(meetingNotes));
-  }, [meetingNotes]);
+  // Server-backed state. The real rows arrive with the first sync GET (see
+  // meeting_notes / project_types / projects in sync.php) and every edit is
+  // pushed back through updateMeetingNotesAndSync & friends, exactly like leads
+  // and tasks below. They used to also be mirrored into localStorage as a
+  // paint-ahead cache: that duplicated the server as a source of truth, went
+  // stale as soon as the user opened a second device, and — because the cache
+  // miss fell back to two hardcoded demo meetings — briefly showed fake
+  // meetings in a real customer's CRM on any fresh browser.
+  const [meetingNotes, setMeetingNotes] = useState<MeetingNote[]>([]);
 
   // Project Management state
-  const [projectTypes, setProjectTypes] = useState<ProjectType[]>(() => {
-    const stored = localStorage.getItem("crm_projectTypes");
-    if (stored) {
-      try {
-        return JSON.parse(stored);
-      } catch (e) {}
-    }
-    return [];
-  });
-
-  const [projects, setProjects] = useState<Project[]>(() => {
-    const stored = localStorage.getItem("crm_projects");
-    if (stored) {
-      try {
-        return JSON.parse(stored);
-      } catch (e) {}
-    }
-    return [];
-  });
-
-  // Persist locally only — real edits push via updateProjectTypesAndSync. See note above.
-  useEffect(() => {
-    localStorage.setItem("crm_projectTypes", JSON.stringify(projectTypes));
-  }, [projectTypes]);
-
-  // Persist locally only — real edits push via updateProjectsAndSync. See note above.
-  useEffect(() => {
-    localStorage.setItem("crm_projects", JSON.stringify(projects));
-  }, [projects]);
+  const [projectTypes, setProjectTypes] = useState<ProjectType[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
 
   // Initial states set to empty / defaults without localStorage or mockData loaders
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -583,7 +510,8 @@ function App() {
     }
   }, [currentUser]);
 
-  const [errorSidebarEnabled, setErrorSidebarEnabled] = useState(() => localStorage.getItem("ccrm_error_sidebar_enabled") === "true");
+  // Theme, error sidebar and the leads-screen view modes are per-user
+  // preferences read out of the DB — see the UserPrefs block below.
   const [errorLogs, setErrorLogs] = useState<any[]>([]);
   const [selectedLog, setSelectedLog] = useState<any | null>(null);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
@@ -644,14 +572,6 @@ ${log.payload || ''}
       }
     });
   };
-
-  useEffect(() => {
-    if (errorSidebarEnabled) {
-      fetchErrorLogs();
-      const interval = setInterval(fetchErrorLogs, 15000);
-      return () => clearInterval(interval);
-    }
-  }, [errorSidebarEnabled]);
 
   // Resolve a user's personal interface language from their DB-backed metadata.
   // Per-user language lives in metadata_json.language — the same durable, server-synced
@@ -1168,6 +1088,107 @@ ${log.payload || ''}
       return nextUsers;
     });
   };
+
+  // ---------------------------------------------------------------------------
+  // Per-user interface preferences (theme, error sidebar, leads view modes, seen
+  // release note, custom RAG agent).
+  //
+  // These live in the user's DB row under metadata_json.preferences and reach
+  // every screen through UserPrefsContext, so no view has to prop-drill them.
+  // They were previously kept in localStorage/sessionStorage, which meant they
+  // did not follow the account to another device, were lost whenever the browser
+  // cleared site data, and — on iOS Safari with "Block All Cookies", where even
+  // reading localStorage throws — crashed the app before it could paint.
+  // ---------------------------------------------------------------------------
+
+  // Nobody is logged in on the login screen, so there is no row to write to;
+  // preference changes made there stay in memory for the session.
+  const [anonPrefs, setAnonPrefs] = useState<Partial<UserPrefs>>({});
+
+  // Keyed on the metadata blob rather than on the currentUser object: a background
+  // poll hands out a fresh profile object every few seconds, and rebuilding the
+  // preferences (and with them the context value) each time would re-render every
+  // consumer for nothing. The blob is a string while it comes from the server, so
+  // React's dependency comparison sees an unchanged value.
+  const isLoggedIn = !!currentUser;
+  const currentUserMetaJson = currentUser?.metadata_json;
+  const userPrefs = useMemo<UserPrefs>(
+    () => (isLoggedIn
+      ? readUserPrefs({ metadata_json: currentUserMetaJson })
+      : { ...DEFAULT_USER_PREFS, ...anonPrefs }),
+    [isLoggedIn, currentUserMetaJson, anonPrefs]
+  );
+
+  const setUserPref = <K extends keyof UserPrefs>(key: K, value: UserPrefs[K]) => {
+    if (!currentUser) {
+      setAnonPrefs(prev => ({ ...prev, [key]: value }));
+      return;
+    }
+    const nextMeta = {
+      ...parseUserMetadata(currentUser),
+      preferences: { ...readUserPrefs(currentUser), [key]: value }
+    };
+    updateUsersAndSync(prevUsers => prevUsers.map(u =>
+      u.email === currentUser.email ? { ...u, metadata_json: nextMeta } : u
+    ));
+    // Keep the in-memory profile in step so the change paints immediately rather
+    // than waiting for the users list to round-trip.
+    setCurrentUser(prev => prev ? { ...prev, metadata_json: nextMeta } : prev);
+  };
+
+  // The context value must not close over a stale setter: pushStateToServer reads
+  // isInitialSyncResolved from its own closure and silently drops pushes when it
+  // is still false, so a memoised setter captured on first render would never
+  // save anything.
+  const setUserPrefRef = useRef(setUserPref);
+  setUserPrefRef.current = setUserPref;
+  const userPrefsApi = useMemo<UserPrefsApi>(() => ({
+    prefs: userPrefs,
+    setPref: (key, value) => setUserPrefRef.current(key, value)
+  }), [userPrefs]);
+
+  const userTheme = userPrefs.theme;
+  const errorSidebarEnabled = userPrefs.errorSidebarEnabled;
+
+  useEffect(() => {
+    applyTheme(userTheme);
+  }, [userTheme]);
+
+  useEffect(() => {
+    if (errorSidebarEnabled) {
+      fetchErrorLogs();
+      const interval = setInterval(fetchErrorLogs, 15000);
+      return () => clearInterval(interval);
+    }
+  }, [errorSidebarEnabled]);
+
+  // One-shot adoption of the preferences an existing install still has sitting in
+  // localStorage, so this change doesn't reset everybody's theme on first login.
+  // Gated on a resolved sync and on the profile actually being present in `users`
+  // — pushing a users array we haven't loaded yet would be a write of nothing.
+  // Keyed on the email rather than a plain flag so that signing in as a second
+  // user in the same tab migrates their preferences too.
+  const legacyPrefsMigratedForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!currentUser || !isInitialSyncResolved) return;
+    if (legacyPrefsMigratedForRef.current === currentUser.email) return;
+    if (!users.some(u => u.email === currentUser.email)) return;
+    legacyPrefsMigratedForRef.current = currentUser.email;
+
+    if (hasStoredPrefs(currentUser)) {
+      clearLegacyPrefs();
+      return;
+    }
+    const nextMeta = {
+      ...parseUserMetadata(currentUser),
+      preferences: { ...DEFAULT_USER_PREFS, ...readLegacyPrefs() }
+    };
+    updateUsersAndSync(prevUsers => prevUsers.map(u =>
+      u.email === currentUser.email ? { ...u, metadata_json: nextMeta } : u
+    ));
+    setCurrentUser(prev => prev ? { ...prev, metadata_json: nextMeta } : prev);
+    clearLegacyPrefs();
+  }, [currentUser, users, isInitialSyncResolved]);
 
   const handleSaveUserLayout = (layout: string[]) => {
     if (!currentUser) return;
@@ -1863,10 +1884,10 @@ ${log.payload || ''}
             userLanguage={userLanguage}
             setUserLanguage={changeUserLanguage}
             userTheme={userTheme}
-            setUserTheme={setUserTheme}
+            setUserTheme={(theme: string) => setUserPref("theme", theme)}
             onSync={() => {}}
             errorSidebarEnabled={errorSidebarEnabled}
-            setErrorSidebarEnabled={setErrorSidebarEnabled}
+            setErrorSidebarEnabled={(enabled: boolean) => setUserPref("errorSidebarEnabled", enabled)}
           />
         );
       case "email":
@@ -2136,6 +2157,7 @@ ${log.payload || ''}
   }
 
   return (
+    <UserPrefsContext.Provider value={userPrefsApi}>
     <div className="flex h-screen overflow-hidden relative font-sans antialiased text-slate-800 bg-slate-50/50">
 
       {/* Blurred application background layout if not logged in */}
@@ -2495,6 +2517,7 @@ ${log.payload || ''}
         </div>
       )}
     </div>
+    </UserPrefsContext.Provider>
   );
 }
 

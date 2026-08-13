@@ -3,7 +3,7 @@ import { User, Mail, Settings, Save, RefreshCw, CheckCircle2, AlertCircle, Alert
 import { PasswordInput } from "./PasswordInput";
 import type { UserProfile } from "../types";
 import type { Language } from "../utils/translations";
-import { HERB_THEMES, getStoredTheme, applyTheme } from "../utils/theme";
+import { HERB_THEMES, DEFAULT_THEME_ID, applyTheme } from "../utils/theme";
 import { CustomSelect } from "./ui/CustomSelect";
 
 interface PersonalSettingsViewProps {
@@ -35,7 +35,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
 
-  const currentThemeId = userTheme || getStoredTheme();
+  const currentThemeId = userTheme || DEFAULT_THEME_ID;
   const currentThemeObj = HERB_THEMES.find((th) => th.id === currentThemeId) || HERB_THEMES[0];
 
   const [activeSubTab, setActiveSubTab] = useState<"profile" | "email" | "errors">("profile");
@@ -883,7 +883,6 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                     checked={errorSidebarEnabled}
                     onChange={(e) => {
                       setErrorSidebarEnabled(e.target.checked);
-                      localStorage.setItem("ccrm_error_sidebar_enabled", e.target.checked ? "true" : "false");
                       if (typeof (window as any).showToast === "function") {
                         (window as any).showToast(e.target.checked
                           ? t("Error sidebar enabled!", "Panel chýb zapnutý!", "Hiba oldalsáv bekapcsolva!")
