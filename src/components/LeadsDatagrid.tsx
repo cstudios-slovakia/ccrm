@@ -25,6 +25,8 @@ import {
     Layers,
     SlidersHorizontal,
     ArrowLeft,
+    ArrowRight,
+    Milestone,
     PencilLine,
     Phone,
     Mail,
@@ -314,6 +316,12 @@ import {
     // formatTimestampLocalized — only used by the commented-out e-mail full view
 } from "../utils/localTime";
 import { formatMoney } from "../utils/currency";
+
+// Separates the old from the new state inside a `status_change` event's content.
+// `timeline_events` has no column for the pair, so it is stored as plain text —
+// the timeline card splits it back apart to paint both states in their pipeline
+// colours, and falls back to the raw line if someone edits the text by hand.
+const STATUS_CHANGE_ARROW = "→";
 
 const CalendarPane: React.FC<{
     title: string;
@@ -791,6 +799,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         if (!leadStateColors) return "#64748b";
         const key = (stateName || "").toLowerCase();
         return leadStateColors[key] || "#64748b";
+    };
+
+    // A lead's `status` is stored lowercased; the states list keeps the casing the
+    // user typed in Settings. Written history has to read the way the pipeline
+    // does, so resolve the label back before putting it on the timeline.
+    const leadStateLabel = (stateName: string) => {
+        const key = (stateName || "").toLowerCase();
+        return leadStates.find((s) => s.toLowerCase() === key) || stateName;
     };
 
     const isDoneState = (status: string) => {
@@ -2171,6 +2187,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     // Inline edit/delete of an already-logged timeline event
     const [editingEventId, setEditingEventId] = useState<string | null>(null);
     const [editingEventDraft, setEditingEventDraft] = useState("");
+    // YYYY-MM-DD and HH:MM halves of the edited entry's timestamp
+    const [editingEventDate, setEditingEventDate] = useState("");
+    const [editingEventTime, setEditingEventTime] = useState("");
 
     // Timeline events whose truncated content the user expanded via "Show more"
     const [expandedTimelineEventIds, setExpandedTimelineEventIds] = useState<
@@ -2496,6 +2515,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     dotBg: "bg-orange-600 border-orange-700 text-white shadow-md shadow-orange-500/20",
                     badgeBg: "bg-orange-50 text-orange-700 border-orange-200",
                 };
+            // Written by the system rather than logged by a person, so it stays
+            // neutral: the two pipeline chips inside the card carry the colour.
+            case "status_change":
+                return {
+                    dotBg: "bg-slate-700 border-slate-800 text-white shadow-md shadow-slate-500/20",
+                    badgeBg: "bg-slate-100 text-slate-700 border-slate-300",
+                };
             default:
                 return {
                     dotBg: "bg-blue-600 border-blue-700 text-white shadow-md shadow-blue-500/20",
@@ -2526,6 +2552,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 return <Receipt className="h-3.5 w-3.5 stroke-[2.5]" />;
             case "delivery_note":
                 return <Truck className="h-3.5 w-3.5 stroke-[2.5]" />;
+            case "status_change":
+                return <Milestone className="h-3.5 w-3.5 stroke-[2.5]" />;
             default:
                 return <Clock className="h-3.5 w-3.5 stroke-[2.5]" />;
         }
@@ -2558,6 +2586,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 return t("Invoice", "Faktúra", "Számla");
             case "delivery_note":
                 return t("Delivery note", "Dodací list", "Szállítólevél");
+            case "status_change":
+                return t("State change", "Zmena stavu", "Állapotváltozás");
             default:
                 return type;
         }
@@ -2603,6 +2633,43 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     "Dokumentum rögzítve",
                 );
         }
+    };
+
+    // Body of an automatic state-change entry: the two pipeline states as chips
+    // in their own colours with an arrow between them. Anything that no longer
+    // splits on the arrow (a hand-edited or legacy line) renders as plain text.
+    const renderStatusChangeContent = (event: TimelineEvent) => {
+        const [from, to] = (event.content || "").split(STATUS_CHANGE_ARROW);
+        if (!from?.trim() || !to?.trim()) {
+            return (
+                <p className="text-slate-600 mt-2 text-xs font-semibold leading-relaxed whitespace-pre-line">
+                    {event.content}
+                </p>
+            );
+        }
+        const chip = (label: string, faded: boolean) => {
+            const color = getSafeStateColor(label);
+            return (
+                <span
+                    className="px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border-2 whitespace-nowrap"
+                    style={{
+                        backgroundColor: `${color}${faded ? "10" : "20"}`,
+                        borderColor: `${color}${faded ? "30" : "60"}`,
+                        color: color,
+                        opacity: faded ? 0.75 : 1,
+                    }}
+                >
+                    {label}
+                </span>
+            );
+        };
+        return (
+            <div className="flex items-center flex-wrap gap-2 mt-2">
+                {chip(from.trim(), true)}
+                <ArrowRight className="h-3.5 w-3.5 text-slate-400 stroke-[3] shrink-0" />
+                {chip(to.trim(), false)}
+            </div>
+        );
     };
 
     // True for event types that carry attached paperwork.
@@ -2730,6 +2797,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             return;
         }
 
+        // The profile form can move the lead too, so it writes the same automatic
+        // history entry the pipeline strip does.
+        const nextStatus = leadStatus.toLowerCase();
+        const statusHistoryEntry =
+            activeLead.status !== nextStatus
+                ? buildStatusChangeEvent(activeLead.status, nextStatus)
+                : null;
+
         setLeads((prev) =>
             prev.map((l) => {
                 if (l.id === activeLead.id) {
@@ -2742,12 +2817,20 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         : (l.createdAt || "").slice(0, 10);
                     return {
                         ...l,
+                        ...(statusHistoryEntry
+                            ? {
+                                  timeline: [
+                                      statusHistoryEntry,
+                                      ...(l.timeline || []),
+                                  ],
+                              }
+                            : {}),
                         name: leadName.trim(),
                         city: leadCity.trim(),
                         clientType: leadClientType,
                         value: valNum,
                         owner: leadOwner,
-                        status: leadStatus.toLowerCase(),
+                        status: nextStatus,
                         source: leadSource.toLowerCase(),
                         rating: leadRating,
                         categories: leadSelectedCategories,
@@ -3127,9 +3210,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         setLogTimeOfEvent(new Date().toTimeString().substring(0, 5));
     };
 
-    // Begin editing an already-logged event: prefill the draft with its text.
-    // Rich "note" events are stored as JSON blocks — flatten them to plain text so
-    // they can be edited in a simple textarea (they re-render fine as plain text).
+    // Begin editing an already-logged event: prefill the draft with its text and
+    // its moment. Rich "note" events are stored as JSON blocks — flatten them to
+    // plain text so they can be edited in a simple textarea (they re-render fine
+    // as plain text).
     const handleStartEditEvent = (event: TimelineEvent) => {
         let text = event.content || "";
         if (event.type === "note" && text.trim().startsWith("[")) {
@@ -3144,16 +3228,27 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         }
         setEditingEventId(event.id);
         setEditingEventDraft(text);
+        setEditingEventDate((event.timestamp || "").substring(0, 10));
+        setEditingEventTime((event.timestamp || "").substring(11, 16));
     };
 
     const handleCancelEditEvent = () => {
         setEditingEventId(null);
         setEditingEventDraft("");
+        setEditingEventDate("");
+        setEditingEventTime("");
     };
 
     const handleSaveEditEvent = (eventId: string) => {
         if (!activeLead) return;
         const nextContent = editingEventDraft;
+        // Timestamps drive the whole timeline (ordering, the future/past split and
+        // the "today" divider), so a half-filled date/time is dropped rather than
+        // written as a broken stamp — the entry simply keeps the one it had.
+        const nextTimestamp =
+            editingEventDate && editingEventTime
+                ? `${editingEventDate} ${editingEventTime}`
+                : null;
         setLeads((prev) =>
             prev.map((l) =>
                 l.id === activeLead.id
@@ -3161,15 +3256,20 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                           ...l,
                           timeline: (l.timeline || []).map((e) =>
                               e.id === eventId
-                                  ? { ...e, content: nextContent }
+                                  ? {
+                                        ...e,
+                                        content: nextContent,
+                                        ...(nextTimestamp
+                                            ? { timestamp: nextTimestamp }
+                                            : {}),
+                                    }
                                   : e,
                           ),
                       }
                     : l,
             ),
         );
-        setEditingEventId(null);
-        setEditingEventDraft("");
+        handleCancelEditEvent();
         (window as any).showToast?.(
             t(
                 "Event updated.",
@@ -3178,6 +3278,36 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             ),
         );
     };
+
+    // Date and time of the entry being edited. Both halves of the moment stay
+    // correctable by hand — an automatic state-change record in particular is
+    // written at the click, which is not always when the move actually happened.
+    const renderEventTimestampFields = () => (
+        <div className="grid grid-cols-2 gap-2">
+            <div className="flex flex-col gap-1">
+                <label className="text-[8px] font-black text-slate-450 uppercase tracking-wider">
+                    {t("Date", "Dátum", "Dátum")}
+                </label>
+                <input
+                    type="date"
+                    value={editingEventDate}
+                    onChange={(e) => setEditingEventDate(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-xl bg-slate-50 border-2 border-indigo-200 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400 text-[11px] text-slate-700 font-bold"
+                />
+            </div>
+            <div className="flex flex-col gap-1">
+                <label className="text-[8px] font-black text-slate-450 uppercase tracking-wider">
+                    {t("Time", "Čas", "Idő")}
+                </label>
+                <input
+                    type="time"
+                    value={editingEventTime}
+                    onChange={(e) => setEditingEventTime(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-xl bg-slate-50 border-2 border-indigo-200 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400 text-[11px] text-slate-700 font-bold"
+                />
+            </div>
+        </div>
+    );
 
     const handleDeleteTimelineEvent = (eventId: string) => {
         if (!activeLead) return;
@@ -3448,6 +3578,30 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     };
 
     /**
+     * The history entry a pipeline move writes for itself.
+     *
+     * Every state transition has to land on the chronological timeline without
+     * anybody logging it by hand. It is built like any other timeline event —
+     * same id scheme, same `YYYY-MM-DD HH:MM` local stamp — so the pencil on the
+     * card can correct its date and time afterwards, and so the sync stores it
+     * through the ordinary `timeline_events` path.
+     */
+    const buildStatusChangeEvent = (
+        fromStatus: string,
+        toStatus: string,
+    ): TimelineEvent => ({
+        id: "evt_" + Math.random().toString(36).substr(2, 9),
+        type: "status_change",
+        timestamp: `${todayLocal()} ${new Date().toTimeString().substring(0, 5)}`,
+        title: t(
+            "Lead state changed",
+            "Zmena stavu leadu",
+            "Lead állapota módosítva",
+        ),
+        content: `${leadStateLabel(fromStatus)} ${STATUS_CHANGE_ARROW} ${leadStateLabel(toStatus)}`,
+    });
+
+    /**
      * Pipeline Stage Transition Guard:
      * Handles updating a lead's status/stage inside the CRM.
      * If there are uncompleted tasks with the `isLocking` (blocking) flag set for the lead,
@@ -3489,8 +3643,27 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 return false;
             }
         }
+        const historyEntry =
+            lead && lead.status !== newStatus
+                ? buildStatusChangeEvent(lead.status, newStatus)
+                : null;
         setLeads((prev) =>
-            prev.map((l) => (l.id === id ? { ...l, status: newStatus } : l)),
+            prev.map((l) =>
+                l.id === id
+                    ? {
+                          ...l,
+                          status: newStatus,
+                          ...(historyEntry
+                              ? {
+                                    timeline: [
+                                        historyEntry,
+                                        ...(l.timeline || []),
+                                    ],
+                                }
+                              : {}),
+                      }
+                    : l,
+            ),
         );
         return true;
     };
@@ -6597,6 +6770,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                         {editingEventId ===
                                                         event.id ? (
                                                             <div className="space-y-2 animate-in fade-in duration-150">
+                                                                {renderEventTimestampFields()}
                                                                 <textarea
                                                                     autoFocus
                                                                     rows={4}
@@ -6671,6 +6845,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                             </div>
                                                         ) : (
                                                             (() => {
+                                                                if (
+                                                                    event.type ===
+                                                                    "status_change"
+                                                                ) {
+                                                                    return renderStatusChangeContent(
+                                                                        event,
+                                                                    );
+                                                                }
                                                                 if (
                                                                     event.type ===
                                                                         "note" &&
@@ -7033,6 +7215,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                         {editingEventId ===
                                                         event.id ? (
                                                             <div className="space-y-2 animate-in fade-in duration-150">
+                                                                {renderEventTimestampFields()}
                                                                 <textarea
                                                                     autoFocus
                                                                     rows={4}
@@ -7107,6 +7290,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                             </div>
                                                         ) : (
                                                             (() => {
+                                                                if (
+                                                                    event.type ===
+                                                                    "status_change"
+                                                                ) {
+                                                                    return renderStatusChangeContent(
+                                                                        event,
+                                                                    );
+                                                                }
                                                                 if (
                                                                     event.type ===
                                                                         "note" &&

@@ -532,6 +532,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // Global view filters & user list memo
     const [globalPriorityFilter, setGlobalPriorityFilter] = useState("all");
     const [globalStateFilter, setGlobalStateFilter] = useState("all");
+    // "all" keeps the whole-team board; any other value narrows both halves of
+    // the split view to that one project manager.
+    const [globalUserFilter, setGlobalUserFilter] = useState("all");
     const allUsersList = useMemo(() => {
         const list = users.map((u) => u.name);
         tasks.forEach((t) => {
@@ -551,6 +554,15 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         }
         return Array.from(new Set(list));
     }, [users, tasks]);
+
+    // A selected manager can disappear from the list (user deleted, or their
+    // last task reassigned). Fall back to the team-wide board instead of
+    // leaving the filter pinned to a name that matches nothing.
+    React.useEffect(() => {
+        if (globalUserFilter !== "all" && !allUsersList.includes(globalUserFilter)) {
+            setGlobalUserFilter("all");
+        }
+    }, [allUsersList, globalUserFilter]);
 
     React.useEffect(() => {
         if (autoOpenAddTask) {
@@ -1580,7 +1592,14 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         // Team-wide by default; a role whose `tasks.view_all` is revoked keeps the
         // old single-column board of its own work (see resolveTaskViewAll).
         const activeTasks = (canSeeAllTasks ? tasks : myTasks).filter((task) => isActiveTask(task, isDoneState));
-        const columnUsers = canSeeAllTasks ? allUsersList : [myName];
+        // Picking one manager collapses the right-hand stack to their card
+        // alone, so the board reads as "this person's workload" end to end.
+        const isSingleUserView = canSeeAllTasks && globalUserFilter !== "all";
+        const columnUsers = !canSeeAllTasks
+            ? [myName]
+            : isSingleUserView
+              ? [globalUserFilter]
+              : allUsersList;
 
         // The filter bar drives both halves of the split view, so the time
         // buckets on the left and the per-member cards on the right always
@@ -1592,6 +1611,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             )
                 return false;
             if (globalStateFilter !== "all" && task.status !== globalStateFilter)
+                return false;
+            // Same test the member cards use, so a filtered bucket and that
+            // manager's card always hold exactly the same tasks.
+            if (
+                isSingleUserView &&
+                !task.assignedUsers?.includes(globalUserFilter)
+            )
                 return false;
             if (!dateInRange(task.deadline, globalDateStart, globalDateEnd))
                 return false;
@@ -1808,6 +1834,37 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             </select>
                         </div>
 
+                        {/* Project Manager Filter — only meaningful on the
+                            team-wide board; a restricted role already sees
+                            nothing but its own work. */}
+                        {canSeeAllTasks && (
+                            <div className="flex items-center gap-1.5 text-xs font-bold">
+                                <span className="text-slate-500">
+                                    {t(
+                                        "Project Manager:",
+                                        "Projektový manažér:",
+                                        "Projektmenedzser:",
+                                    )}
+                                </span>
+                                <select
+                                    value={globalUserFilter}
+                                    onChange={(e) =>
+                                        setGlobalUserFilter(e.target.value)
+                                    }
+                                    className="px-3 py-1.5 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-indigo-650 focus:outline-none text-xs font-extrabold cursor-pointer"
+                                >
+                                    <option value="all">
+                                        {t("All", "Všetci", "Mindenki")}
+                                    </option>
+                                    {allUsersList.map((uName) => (
+                                        <option key={uName} value={uName}>
+                                            {uName}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+
                         {/* Date Filter (item 9) */}
                         <div className="flex items-center gap-1.5 text-xs font-bold">
                             <span className="text-slate-500">
@@ -1876,17 +1933,23 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         <div className="flex items-center justify-between gap-3 shrink-0">
                             <h3 className="text-xs font-black text-slate-600 uppercase tracking-widest flex items-center gap-2 select-none">
                                 <Users className="h-5 w-5" />
-                                {canSeeAllTasks
+                                {!canSeeAllTasks
                                     ? t(
-                                          "Team workload",
-                                          "Vyťaženie tímu",
-                                          "Csapat munkaterhelése",
-                                      )
-                                    : t(
                                           "Your workload",
                                           "Vaše vyťaženie",
                                           "Az Ön munkaterhelése",
-                                      )}
+                                      )
+                                    : isSingleUserView
+                                      ? t(
+                                            "Selected workload",
+                                            "Vyťaženie vybraného manažéra",
+                                            "A kiválasztott munkaterhelése",
+                                        )
+                                      : t(
+                                            "Team workload",
+                                            "Vyťaženie tímu",
+                                            "Csapat munkaterhelése",
+                                        )}
                             </h3>
                             <span className="px-2.5 py-0.5 rounded-full bg-white border border-slate-200 text-[10px] font-black text-slate-500 shadow-sm">
                                 {filteredTasks.length}

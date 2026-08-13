@@ -7,7 +7,7 @@ import {
   Calendar, ArrowLeft, Plus, TrendingUp, PencilLine, FileText,
   X, FolderOpen, Download, Trash2, SlidersHorizontal,
   CornerDownLeft, CornerLeftDown, Loader2, Brain, Mic, Play, Pause, Square, Sparkles,
-  ChevronLeft, ChevronRight, ChevronDown, ChevronUp
+  ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Milestone
 } from "lucide-react";
 import type { Lead, TimelineEvent, Task } from "../types";
 import { cn } from "../utils/cn";
@@ -2538,6 +2538,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       case "note": return <FileText className="h-3 w-3 stroke-[2.5]" />;
       case "offer": return <Euro className="h-3 w-3 stroke-[2.5]" />;
       case "appointment": return <Calendar className="h-3 w-3 stroke-[2.5]" />;
+      // Automatic pipeline-state entry. It keeps the neutral slate default from
+      // getEventColors — written by the system, not logged by a person.
+      case "status_change": return <Milestone className="h-3 w-3 stroke-[2.5]" />;
       default: return <Clock className="h-3 w-3 stroke-[2.5]" />;
     }
   };

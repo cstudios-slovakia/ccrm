@@ -27,6 +27,11 @@ export type LeadEventType =
   | "note"
   | "offer"
   | "appointment"
+  // Written automatically whenever the lead moves to another pipeline state.
+  // The old → new pair lives in `content` as plain text (there is no column for
+  // it), so it survives the sync round-trip like any other logged event and its
+  // date/time stay editable afterwards.
+  | "status_change"
   | DocumentEventType;
 
 // One file attached to a timeline event. Events can carry several (e.g. a batch

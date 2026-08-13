@@ -468,15 +468,23 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                         $timestamp = isset($o->date) ? date('Y-m-d H:i:s', strtotime($o->date)) : date('Y-m-d H:i:s');
                         $title = isset($o->subject) ? safe_utf8(imap_utf8($o->subject)) : '(No Subject)';
                         $content = "From: " . $fromName . " <" . $fromAddress . ">\nTo: " . $toName . " <" . $toAddress . ">\nSubject: " . $title;
+                        // The timeline badge (and the folder its body is later
+                        // fetched from) depends on who sent the message. The
+                        // sender address is authoritative; the folder only
+                        // decides when we have no account address to compare to.
+                        $accountEmail = isset($GLOBALS['userEmail']) ? strtolower(trim($GLOBALS['userEmail'])) : '';
+                        $isOutgoing = $accountEmail !== ''
+                            ? (strtolower(trim($fromAddress)) === $accountEmail ? 1 : 0)
+                            : (strcasecmp($folder, 'Sent') === 0 ? 1 : 0);
 
                         $checkStmt = $pdo->prepare("SELECT 1 FROM `timeline_events` WHERE `id` = ?");
                         $checkStmt->execute([$eventId]);
                         if (!$checkStmt->fetchColumn()) {
-                            $insStmt = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`) VALUES (?, ?, 'email', ?, ?, ?)");
-                            $insStmt->execute([$eventId, $matchedLeadId, $timestamp, $title, $content]);
+                            $insStmt = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`, `is_outgoing`) VALUES (?, ?, 'email', ?, ?, ?, ?)");
+                            $insStmt->execute([$eventId, $matchedLeadId, $timestamp, $title, $content, $isOutgoing]);
                         } else {
-                            $upStmt = $pdo->prepare("UPDATE `timeline_events` SET `timestamp` = ?, `title` = ? WHERE `id` = ?");
-                            $upStmt->execute([$timestamp, $title, $eventId]);
+                            $upStmt = $pdo->prepare("UPDATE `timeline_events` SET `timestamp` = ?, `title` = ?, `is_outgoing` = ? WHERE `id` = ?");
+                            $upStmt->execute([$timestamp, $title, $isOutgoing, $eventId]);
                         }
                     }
                 }
@@ -1098,22 +1106,37 @@ function save_imap_attachment_to_uploads($settings, $folder, $uid, $partNum, $na
     }
 
     $structure = @imap_fetchstructure($imapStream, $msgNo);
-    $encoding = 0;
-    
+
     $part = $structure ? find_structure_part($structure, $partNum) : null;
-    if ($part && is_object($part)) {
-        $encoding = isset($part->encoding) ? $part->encoding : 0;
+    if (!$part || !is_object($part)) {
+        // Without the part we do not know its transfer encoding, and the old
+        // fallback (assume 7BIT) wrote the raw base64 text to disk under a .pdf
+        // name. That file downloads and previews as a black page days later with
+        // nothing to explain it, so refuse the save instead.
+        @imap_close($imapStream);
+        return ['success' => false, 'error' => 'This attachment could not be read from the message (its structure did not match).'];
     }
-    
+    $encoding = isset($part->encoding) ? $part->encoding : 0;
+
     $data = @imap_fetchbody($imapStream, $msgNo, $partNum);
     $data = decode_imap_body($data, $encoding);
-    
+
     @imap_close($imapStream);
-    
+
+    if (!is_string($data) || $data === '') {
+        return ['success' => false, 'error' => 'This attachment came back empty from the mail server.'];
+    }
+
     $uploadDir = ccrm_uploads_dir();
 
     $targetPath = $uploadDir . $eventId . '_' . $safeName;
     if (@file_put_contents($targetPath, $data) !== false) {
+        // Same guard as upload.php: never keep bytes that do not match the format
+        // the file name promises.
+        if (!ccrm_stored_file_matches_extension($targetPath, $safeName)) {
+            @unlink($targetPath);
+            return ['success' => false, 'error' => 'The attachment arrived damaged or incomplete and was not saved.'];
+        }
         $extractedText = '';
         $ext = strtolower(pathinfo($safeName, PATHINFO_EXTENSION));
         if ($ext === 'txt') {
