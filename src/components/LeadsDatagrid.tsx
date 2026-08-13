@@ -7262,7 +7262,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                         event.id,
                                                                                     );
                                                                                 }}
-                                                                                className="mt-1.5 flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-indigo-600 hover:text-indigo-800 hover:gap-1.5 active:scale-95 transition-all duration-200"
+                                                                                className="mt-1.5 mx-auto w-fit flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-indigo-600 hover:text-indigo-800 active:scale-95 transition-all duration-200"
                                                                             >
                                                                                 {isExpanded ? (
                                                                                     <>
