@@ -102,6 +102,32 @@ export const installStorageFallback = (): void => {
  */
 export const hasPersistentStorage = (kind: StorageKind): boolean => persistent[kind];
 
+/**
+ * Whether the browser lets us set a first-party cookie.
+ *
+ * This matters more than web storage: authentication is a PHP session carried by
+ * the PHPSESSID cookie (api/login.php), so with cookies blocked every request to
+ * sync.php comes back unauthenticated and the user is bounced straight back to
+ * the login screen — a loop they cannot escape and cannot diagnose. The login
+ * screen warns them instead of failing silently.
+ *
+ * `navigator.cookieEnabled` alone is not trustworthy across browsers, so we
+ * actually write one and read it back.
+ */
+export const hasCookieAccess = (): boolean => {
+  try {
+    if (typeof document === "undefined") return false;
+    if (navigator.cookieEnabled === false) return false;
+    const probeKey = "__ccrm_cookie_probe__";
+    document.cookie = `${probeKey}=1; path=/; SameSite=Lax`;
+    const granted = document.cookie.indexOf(`${probeKey}=`) !== -1;
+    document.cookie = `${probeKey}=; path=/; SameSite=Lax; Max-Age=0`;
+    return granted;
+  } catch (e) {
+    return false;
+  }
+};
+
 // Installed on import so that module evaluation order alone guarantees the
 // fallback is in place before any other module touches storage.
 installStorageFallback();
