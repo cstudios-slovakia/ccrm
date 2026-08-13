@@ -442,6 +442,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "timeline.badge.advance_receipt": "Advance Payment Receipt",
     "timeline.badge.invoice": "Invoice",
     "timeline.badge.delivery_note": "Delivery Note",
+    "timeline.badge.status_change": "State Change",
     "timeline.activity": "Timeline Activity",
     "timeline.doc_suffix": "Document",
     "editor.toggle_placeholder": "Click here to add nested toggle details..."
@@ -886,6 +887,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "timeline.badge.advance_receipt": "Doklad o prijatom preddavku",
     "timeline.badge.invoice": "Faktúra",
     "timeline.badge.delivery_note": "Dodací list",
+    "timeline.badge.status_change": "Zmena stavu",
     "timeline.activity": "Aktivita na časovej osi",
     "timeline.doc_suffix": "Dokument",
     "editor.toggle_placeholder": "Kliknutím sem pridáte podrobnosti rozbaľovacieho zoznamu..."
@@ -1330,6 +1332,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "timeline.badge.advance_receipt": "Előlegbizonylat",
     "timeline.badge.invoice": "Számla",
     "timeline.badge.delivery_note": "Szállítólevél",
+    "timeline.badge.status_change": "Állapotváltozás",
     "timeline.activity": "Idővonal tevékenység",
     "timeline.doc_suffix": "Dokumentum",
     "editor.toggle_placeholder": "Kattintson ide a lenyitható részletek hozzáadásához..."

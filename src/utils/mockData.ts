@@ -121,12 +121,34 @@ export const INITIAL_LEADS: Lead[] = [
         title: "Inbound Inquiry Call",
         content: "Customer inquired about kitchen countertop quartz. Scheduled stone samples layout presentation."
       },
+      // Shaped like the note pipeline.php files on its own when a web form
+      // submission matches an already active lead: the fixed title and the
+      // submitted fields flattened one per line.
       {
-        id: "ev-7",
+        id: "ev-5",
+        type: "note",
+        timestamp: "2026-05-18 08:15",
+        title: "Form Inquiry (Existing Active Lead)",
+        content: "Form submission received from source: instagram\nName: Martina Kováčová\nEmail: m.kovacova@gmail.com\nPhone: +421 911 987 654\nCity: Trnava\nCategories: Services\nValue: 8400 EUR\nMessage: Good afternoon, we are renovating the kitchen of a family house in Trnava. I would need a price for a 2.4 x 0.6 m worktop in white quartz, including the sink cutout and a matching backsplash. Please send the estimate by e-mail, I am reachable in the afternoons."
+      },
+      // Shaped like the events mail_broker.php files on its own once a mailbox
+      // message matches a lead: an `email-<uid>` id, the subject as the title
+      // and the headers flattened above the message body.
+      {
+        id: "email-10412",
         type: "email",
-        timestamp: "2026-05-19 14:20",
-        title: "Countertop Drawing File Received",
-        content: "Client sent draft layout sketches detailing sink cutouts and edge rounding specifications."
+        timestamp: "2026-05-19 09:12",
+        title: "Kitchen countertop drawings + sink cutout",
+        content: "From: Martina Kováčová <m.kovacova@gmail.com>\nTo: Jordan <jordan@crm.com>\nSubject: Kitchen countertop drawings + sink cutout\n\nHello Jordan,\n\nthank you for the showroom visit last week. I am attaching the kitchen drawings from our architect — the worktop is 2.4 m long and 60 cm deep, with a 20 cm overhang above the dishwasher.\n\nThere are three things I would like to confirm before we go ahead:\n\n1. The sink is an undermount Blanco 500x400 mm, so the cutout has to be polished on all four sides.\n2. We would like the same stone for the 60 cm backsplash, in 12 mm thickness.\n3. Is a 4 cm mitred edge possible on the front side, or does it change the price significantly?\n\nDelivery would ideally fall in the second half of June — the kitchen units are being installed on 14 June.\n\nThank you and have a nice day,\nMartina Kováčová",
+        isOutgoing: false
+      },
+      {
+        id: "email-10457",
+        type: "email",
+        timestamp: "2026-05-20 16:40",
+        title: "RE: Kitchen countertop drawings + sink cutout",
+        content: "From: Jordan <jordan@crm.com>\nTo: Martina Kováčová <m.kovacova@gmail.com>\nSubject: RE: Kitchen countertop drawings + sink cutout\n\nHello Mrs. Kováčová,\n\nthank you for the drawings, everything is clear.\n\n1. The undermount cutout including the polishing of all four edges is part of the standard fabrication price, no surcharge.\n2. The 60 cm backsplash in 12 mm is no problem — I have added it to the quote as a separate item.\n3. The 4 cm mitred edge is possible; it adds roughly 180 EUR to the total because of the extra cutting and gluing.\n\nThe revised quote is attached. If you confirm it by Friday, we can book the laser measurement for 2 June and deliver in the week of 15 June, so you would be on time for the kitchen units.\n\nBest regards,\nJordan",
+        isOutgoing: true
       },
       {
         id: "ev-8",
@@ -1040,69 +1062,8 @@ export const INITIAL_PROJECTS: Project[] = [
   }
 ];
 
-// Helper to seed localStorage
-export const seedStorageIfEmpty = () => {
-  if (!localStorage.getItem("crm_seeded_v9")) {
-    localStorage.setItem("crm_leads", JSON.stringify(INITIAL_LEADS));
-    localStorage.setItem("crm_appointments", JSON.stringify(INITIAL_APPOINTMENTS));
-    localStorage.setItem("crm_documents", JSON.stringify(INITIAL_DOCUMENTS));
-    localStorage.setItem("crm_marketing", JSON.stringify(INITIAL_MARKETING));
-    localStorage.setItem("crm_campaigns", JSON.stringify(INITIAL_CAMPAIGNS));
-    localStorage.setItem("crm_tasks", JSON.stringify(INITIAL_TASKS));
-    localStorage.setItem("crm_timelogs", JSON.stringify(INITIAL_TIMELOGS));
-    localStorage.setItem("crm_employees", JSON.stringify(INITIAL_EMPLOYEES));
-    localStorage.setItem("crm_forms", JSON.stringify(INITIAL_FORMS));
-    localStorage.setItem("crm_submissions", JSON.stringify(INITIAL_SUBMISSIONS));
-    localStorage.setItem("crm_projectTypes", JSON.stringify(INITIAL_PROJECT_TYPES));
-    localStorage.setItem("crm_projects", JSON.stringify(INITIAL_PROJECTS));
-    
-    localStorage.setItem("crm_seeded_v9", "true");
-  }
-};
-
-// Global Store interfaces
-export interface CRMStore {
-  leads: Lead[];
-  appointments: Appointment[];
-  documents: GeneratedDocument[];
-  marketing: MarketingChannel[];
-  campaigns: NewsletterCampaign[];
-  tasks: Task[];
-  timelogs: TimeLog[];
-  employees: Employee[];
-  forms: CustomForm[];
-  submissions: FormSubmission[];
-  projectTypes: ProjectType[];
-  projects: Project[];
-}
-
-export const loadCRMData = (): CRMStore => {
-  seedStorageIfEmpty();
-  return {
-    leads: JSON.parse(localStorage.getItem("crm_leads") || "[]"),
-    appointments: JSON.parse(localStorage.getItem("crm_appointments") || "[]"),
-    documents: JSON.parse(localStorage.getItem("crm_documents") || "[]"),
-    marketing: JSON.parse(localStorage.getItem("crm_marketing") || "[]"),
-    campaigns: JSON.parse(localStorage.getItem("crm_campaigns") || "[]"),
-    tasks: JSON.parse(localStorage.getItem("crm_tasks") || "[]"),
-    timelogs: JSON.parse(localStorage.getItem("crm_timelogs") || "[]"),
-    employees: JSON.parse(localStorage.getItem("crm_employees") || "[]"),
-    forms: JSON.parse(localStorage.getItem("crm_forms") || "[]"),
-    submissions: JSON.parse(localStorage.getItem("crm_submissions") || "[]"),
-    projectTypes: JSON.parse(localStorage.getItem("crm_projectTypes") || "[]"),
-    projects: JSON.parse(localStorage.getItem("crm_projects") || "[]")
-  };
-};
-
-export const saveCRMData = (data: Partial<CRMStore>) => {
-  Object.entries(data).forEach(([key, val]) => {
-    localStorage.setItem(`crm_${key}`, JSON.stringify(val));
-  });
-};
-
-export const resetCRMData = () => {
-  localStorage.removeItem("crm_seeded_v9");
-  localStorage.removeItem("crm_projectTypes");
-  localStorage.removeItem("crm_projects");
-  seedStorageIfEmpty();
-};
+// NOTE: this file is now only a set of INITIAL_* fixtures used for local
+// development. The localStorage-backed store that used to live here
+// (seedStorageIfEmpty / loadCRMData / saveCRMData / resetCRMData) had no
+// callers left — all CRM data comes from MySQL through sync.php — and it was
+// removed along with the rest of the browser-storage persistence.
