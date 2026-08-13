@@ -5,6 +5,7 @@ import { LoginView } from "./components/LoginView";
 import { TaskDashboardView } from "./components/TaskDashboardView";
 import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project } from "./types";
 import { VERSION } from "./utils/version";
+import { SOCIAL_MEDIA_ENABLED } from "./utils/featureFlags";
 import type { MeetingNote } from "./components/MeetingRoomView";
 import { getTranslation } from "./utils/translations";
 import { orderLeadStates } from "./utils/leadStates";
@@ -269,7 +270,7 @@ function App() {
     if (hashLower.startsWith("client-") || hashLower.startsWith("lead-") || hashLower.startsWith("user-") || hashLower.startsWith("ue_") || hashLower.startsWith("dash_") || hashLower.startsWith("settings")) {
       return rawHash; // Keep case sensitivity and allow sub-tabs for settings
     }
-    const validTabs = ["dashboard", "overview", "leads", "clients", "tasks", "files", "personal-settings", "email", "rag_ai", "automation", "meetings", "projects", "updates", "social_media"];
+    const validTabs = ["dashboard", "overview", "leads", "clients", "tasks", "files", "personal-settings", "email", "rag_ai", "automation", "meetings", "projects", "updates", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
     return validTabs.includes(hashLower) ? rawHash : "dashboard";
   };
 
@@ -1808,7 +1809,8 @@ ${log.payload || ''}
       );
     }
 
-    const baseTab = activeTab.split(/[/?]/)[0];
+    const rawBaseTab = activeTab.split(/[/?]/)[0];
+    const baseTab = rawBaseTab === "social_media" && !SOCIAL_MEDIA_ENABLED ? "dashboard" : rawBaseTab;
     switch (baseTab) {
       case "leads":
         return (

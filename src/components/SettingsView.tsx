@@ -13,6 +13,7 @@ import { ProjectSettings } from "./ProjectSettings";
 import { PasswordInput } from "./PasswordInput";
 import { CustomSelect } from "./ui/CustomSelect";
 import { CURRENCY_OPTIONS, currencyForRegion } from "../utils/currency";
+import { SOCIAL_MEDIA_ENABLED } from "../utils/featureFlags";
 import { formatTimestampLocalized } from "../utils/localTime";
 
 // Inline "double-click / pencil to rename" field.
@@ -1872,6 +1873,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   // Filter allowed tabs based on permissions
   const allowedTabs = SETTINGS_TABS
+    .filter(tab => tab.id !== "social" || SOCIAL_MEDIA_ENABLED)
     .map(tab => ({ ...tab, label: getTranslation(userLanguage, `settings.tab.${tab.id}`) }))
     .filter(tab => getPermission(tab.permKey) !== "nothing");
   // Read-only alert component
@@ -5277,7 +5279,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         )}
 
         {/* TAB: Social Media (Zernio) Integration */}
-        {activeSubTab === "social" && getPermission("general_config") !== "nothing" && (
+        {SOCIAL_MEDIA_ENABLED && activeSubTab === "social" && getPermission("general_config") !== "nothing" && (
           <div className="lg:col-span-12 space-y-6 animate-fade-in">
             {renderReadOnlyBanner("general_config")}
 

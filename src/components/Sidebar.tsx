@@ -4,6 +4,7 @@ import { LayoutDashboard, ChevronLeft, ChevronRight, Settings, LogOut, TableProp
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { cn } from "../utils/cn";
+import { SOCIAL_MEDIA_ENABLED } from "../utils/featureFlags";
 import type { UserProfile, RolePermission, UnifiedEntryRegistry, CustomDashboard } from "../types";
 
 const ALL_LUCIDE_ICONS = Object.keys(Icons).filter(key => {
@@ -414,6 +415,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
     if (id === "email") {
       return showMailIcon;
+    }
+    if (id === "social_media") {
+      return SOCIAL_MEDIA_ENABLED;
     }
     return true;
   };
