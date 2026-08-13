@@ -23,6 +23,7 @@ import {
 import type { Task, UserProfile, Lead } from "../types";
 import type { Language } from "../utils/translations";
 import { CalendarPane } from "./Dashboard";
+import { CustomSelect } from "./ui/CustomSelect";
 import {
     canDeleteTask as userCanDeleteTask,
     canEditTask as userCanEditTask,
@@ -1846,22 +1847,21 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                         "Projektmenedzser:",
                                     )}
                                 </span>
-                                <select
+                                <CustomSelect
                                     value={globalUserFilter}
-                                    onChange={(e) =>
-                                        setGlobalUserFilter(e.target.value)
-                                    }
-                                    className="px-3 py-1.5 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-indigo-650 focus:outline-none text-xs font-extrabold cursor-pointer"
-                                >
-                                    <option value="all">
-                                        {t("All", "Všetci", "Mindenki")}
-                                    </option>
-                                    {allUsersList.map((uName) => (
-                                        <option key={uName} value={uName}>
-                                            {uName}
-                                        </option>
-                                    ))}
-                                </select>
+                                    onChange={(v) => setGlobalUserFilter(v)}
+                                    size="sm"
+                                    options={[
+                                        {
+                                            value: "all",
+                                            label: t("All", "Všetci", "Mindenki"),
+                                        },
+                                        ...allUsersList.map((uName) => ({
+                                            value: uName,
+                                            label: uName,
+                                        })),
+                                    ]}
+                                />
                             </div>
                         )}
 

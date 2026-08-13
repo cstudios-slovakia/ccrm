@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { useUserPref } from "../utils/userPrefs";
 import { resolveAssigneeName } from "../utils/taskSelectors";
+import { CustomSelect } from "./ui/CustomSelect";
 // import { createPortal } from "react-dom";
 import {
     Users,
@@ -892,29 +893,26 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         return (
             <div className="flex flex-col items-center lg:items-start gap-1 justify-center">
                 {/* Main Dropdown */}
-                <select
+                <CustomSelect
+                    size="sm"
                     value={activeMain}
-                    onChange={(e) => handleMainChange(e.target.value)}
-                    className="text-[9px] font-black uppercase tracking-wider border rounded-xl px-2.5 py-1 focus:outline-none focus:ring-1 transition-all cursor-pointer shadow-sm"
+                    onChange={handleMainChange}
+                    className="!font-black !uppercase !tracking-wider !shadow-sm"
                     style={{
                         backgroundColor: `${mainColor}18`,
                         color: mainColor,
                         borderColor: `${mainColor}35`,
                     }}
-                >
-                    {majorStates.map((state) => (
-                        <option key={state} value={state.toLowerCase()}>
-                            {state}
-                        </option>
-                    ))}
-                </select>
+                    options={majorStates.map((state) => ({ value: state.toLowerCase(), label: state }))}
+                />
 
                 {/* Substate Dropdown */}
                 {hasSubstates && (
-                    <select
+                    <CustomSelect
+                        size="sm"
                         value={currentSub}
-                        onChange={(e) => handleSubChange(e.target.value)}
-                        className="text-[9px] font-black uppercase tracking-wider border rounded-xl px-2.5 py-1 focus:outline-none focus:ring-1 transition-all cursor-pointer shadow-sm"
+                        onChange={handleSubChange}
+                        className="!font-black !uppercase !tracking-wider !shadow-sm"
                         style={{
                             background: currentSub
                                 ? `linear-gradient(to right, ${mainColor}18, ${subColor}18)`
@@ -922,20 +920,19 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             color: subColor,
                             borderColor: `${subColor}30`,
                         }}
-                    >
-                        <option value="">
-                            {systemLanguage === "sk"
-                                ? "-- Žiadny podstav --"
-                                : systemLanguage === "hu"
-                                  ? "-- Nincs al-állapot --"
-                                  : "-- No Substate --"}
-                        </option>
-                        {activeSubstates.map((sub) => (
-                            <option key={sub} value={sub.toLowerCase()}>
-                                ↳ {sub}
-                            </option>
-                        ))}
-                    </select>
+                        options={[
+                            {
+                                value: "",
+                                label:
+                                    systemLanguage === "sk"
+                                        ? "-- Žiadny podstav --"
+                                        : systemLanguage === "hu"
+                                          ? "-- Nincs al-állapot --"
+                                          : "-- No Substate --",
+                            },
+                            ...activeSubstates.map((sub) => ({ value: sub.toLowerCase(), label: `↳ ${sub}` })),
+                        ]}
+                    />
                 )}
             </div>
         );
