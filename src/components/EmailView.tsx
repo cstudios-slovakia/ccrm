@@ -89,6 +89,20 @@ export const EmailView: React.FC<EmailViewProps> = ({
   const [slideoutEmails, setSlideoutEmails] = useState<any[]>([]);
   const [isLoadingSlideoutEmails, setIsLoadingSlideoutEmails] = useState(false);
 
+  // Timeline events whose truncated content the user expanded via "Show more"
+  const [expandedTimelineEventIds, setExpandedTimelineEventIds] = useState<Set<string>>(new Set());
+  const toggleTimelineEventExpanded = (eventId: string) => {
+    setExpandedTimelineEventIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(eventId)) {
+        next.delete(eventId);
+      } else {
+        next.add(eventId);
+      }
+      return next;
+    });
+  };
+
   // Match current selected email to CRM client / lead
   const matchedClient = useMemo(() => {
     if (!selectedEmail) return null;
@@ -1915,14 +1929,41 @@ export const EmailView: React.FC<EmailViewProps> = ({
                           </div>
                           {(() => {
                             const lines = event.content.split("\n");
-                            const showGradient = lines.length > 5 || event.content.length > 250;
+                            // Long entries stay clipped until the user opens them with the "Show more" toggle below.
+                            const isTruncatable = lines.length > 5 || event.content.length > 250;
+                            const isExpanded = expandedTimelineEventIds.has(event.id);
+                            const showGradient = isTruncatable && !isExpanded;
                             return (
-                              <div className={`relative ${showGradient ? "max-h-[90px] overflow-hidden" : ""}`}>
-                                <p className="text-[10.5px] text-slate-655 leading-[1.35] font-bold select-text whitespace-pre-wrap">
-                                  {event.content}
-                                </p>
-                                {showGradient && (
-                                  <div className="absolute bottom-0 left-0 right-0 h-[35px] bg-gradient-to-t from-slate-55 via-slate-55/70 to-transparent pointer-events-none" />
+                              <div>
+                                <div className={`relative ${isTruncatable ? `overflow-hidden transition-[max-height] duration-300 ease-in-out ${isExpanded ? "max-h-[3000px]" : "max-h-[90px]"}` : ""}`}>
+                                  <p className="text-[10.5px] text-slate-655 leading-[1.35] font-bold select-text whitespace-pre-wrap">
+                                    {event.content}
+                                  </p>
+                                  {showGradient && (
+                                    <div className="absolute bottom-0 left-0 right-0 h-[35px] bg-gradient-to-t from-slate-55 via-slate-55/70 to-transparent pointer-events-none" />
+                                  )}
+                                </div>
+                                {isTruncatable && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      toggleTimelineEventExpanded(event.id);
+                                    }}
+                                    className="mt-1.5 flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-indigo-600 hover:text-indigo-800 hover:gap-1.5 active:scale-95 transition-all duration-200"
+                                  >
+                                    {isExpanded ? (
+                                      <>
+                                        <ChevronUp className="h-3 w-3 stroke-[2.5]" />
+                                        {t("Show less", "Zobraziť menej", "Kevesebb megjelenítése")}
+                                      </>
+                                    ) : (
+                                      <>
+                                        <ChevronDown className="h-3 w-3 stroke-[2.5]" />
+                                        {t("Show more", "Zobraziť viac", "Több megjelenítése")}
+                                      </>
+                                    )}
+                                  </button>
                                 )}
                               </div>
                             );
