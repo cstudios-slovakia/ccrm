@@ -693,16 +693,14 @@ if (!function_exists('ccrm_execute_workflow')) {
                         $subject = ccrm_interpolate_variables($nodeData['subject'] ?? '', $incomingPayload, $context);
                         $body = ccrm_interpolate_variables($nodeData['body'] ?? '', $incomingPayload, $context);
                         
-                        if (function_exists('send_smtp_email') && !empty($mailSettings['smtpHost'])) {
-                            send_smtp_email($mailSettings, $to, $subject, $body);
-                            $outputPayload = ['success' => true, 'to' => $to];
-                        } else {
-                            // Fallback to php mail()
-                            $headers = "MIME-Version: 1.0" . "\r\n";
-                            $headers .= "Content-type:text/html;charset=UTF-8" . "\r\n";
-                            mail($to, $subject, $body, $headers);
-                            $outputPayload = ['success' => true, 'to' => $to, 'mode' => 'fallback'];
-                        }
+                        // Deliver through the system outbound profile, which
+                        // validates every SMTP reply code. The previous php
+                        // mail() fallback ignored its own return value, so an
+                        // unconfigured server logged "success" while the mail
+                        // was silently dropped — never report a send the
+                        // server did not actually accept.
+                        ccrm_send_system_mail($mailSettings, $to, $subject, $body);
+                        $outputPayload = ['success' => true, 'to' => $to, 'subject' => $subject];
                     } else {
                         // Other actions (Reply to email, SMS, Create document) are stubbed out or simulated for testing
                         $outputPayload = ['action' => $actionType, 'simulated' => true, 'time' => date('Y-m-d H:i:s')];

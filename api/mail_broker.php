@@ -767,14 +767,22 @@ function send_smtp_email($settings, $to, $subject, $html) {
 }
 
 /**
- * Send a diagnostic test message through the SYSTEM outbound profile
- * (INTEGRATIONS_CONFIG). Unlike send_smtp_email() this validates every SMTP
- * reply code, so a rejected auth/recipient/relay surfaces as a real error
- * instead of a silent no-op — that silent no-op is exactly why the previous
- * front-end "simulation" reported success while nothing was ever delivered.
+ * Send a message through the SYSTEM outbound profile (INTEGRATIONS_CONFIG).
+ * Unlike send_smtp_email() this validates every SMTP reply code, so a rejected
+ * auth/recipient/relay surfaces as a real error instead of a silent no-op —
+ * that silent no-op is exactly why the previous front-end "simulation"
+ * reported success while nothing was ever delivered, and why workflow
+ * "Send e-mail" actions logged success with nothing in the inbox.
+ *
+ * Throws on any misconfiguration or SMTP-level rejection.
  */
-function send_system_test_email(array $config, string $to, string $lang = 'en') {
-    $provider = $config['emailProvider'] ?? 'smtp';
+function ccrm_send_system_mail(array $config, string $to, string $subject, string $html) {
+    $to = trim($to);
+    if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
+        throw new Exception('No valid recipient address: ' . ($to === '' ? '(empty)' : $to));
+    }
+
+    $provider = $config['emailProvider'] ?? ($config['provider'] ?? 'smtp');
 
     $host    = (string)($config['smtpHost'] ?? '');
     $port    = intval($config['smtpPort'] ?? 0);
@@ -878,25 +886,9 @@ function send_system_test_email(array $config, string $to, string $lang = 'en') 
     $send('DATA');
     $expect('354', 'DATA');
 
-    if ($lang === 'sk') {
-        $subject = 'CCRM — testovací e-mail';
-        $body    = 'Toto je testovacia správa z CRM. Ak ste ju dostali, odchádzajúci e-mailový server je nastavený správne.';
-    } elseif ($lang === 'hu') {
-        $subject = 'CCRM — teszt e-mail';
-        $body    = 'Ez egy teszt üzenet a CRM-ből. Ha megkapta, a kimenő levelezőszerver helyesen van beállítva.';
-    } else {
-        $subject = 'CCRM — test email';
-        $body    = 'This is a test message from your CRM. If you received it, the outgoing mail server is configured correctly.';
-    }
-
     $fromHeader = $senderName !== ''
         ? '=?UTF-8?B?' . base64_encode($senderName) . '?= <' . $senderEmail . '>'
         : '<' . $senderEmail . '>';
-
-    $html = '<div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#1e293b">'
-        . '<h2 style="font-size:18px;margin:0 0 16px">CCRM</h2>'
-        . '<p style="font-size:14px;line-height:1.5;margin:0">' . htmlspecialchars($body, ENT_QUOTES, 'UTF-8') . '</p>'
-        . '</div>';
 
     $message  = "MIME-Version: 1.0\r\n";
     $message .= "Content-Type: text/html; charset=UTF-8\r\n";
@@ -912,6 +904,29 @@ function send_system_test_email(array $config, string $to, string $lang = 'en') 
     $expect('250', 'message body');
     $send('QUIT');
     fclose($socket);
+}
+
+/**
+ * Send a diagnostic test message through the SYSTEM outbound profile.
+ */
+function send_system_test_email(array $config, string $to, string $lang = 'en') {
+    if ($lang === 'sk') {
+        $subject = 'CCRM — testovací e-mail';
+        $body    = 'Toto je testovacia správa z CRM. Ak ste ju dostali, odchádzajúci e-mailový server je nastavený správne.';
+    } elseif ($lang === 'hu') {
+        $subject = 'CCRM — teszt e-mail';
+        $body    = 'Ez egy teszt üzenet a CRM-ből. Ha megkapta, a kimenő levelezőszerver helyesen van beállítva.';
+    } else {
+        $subject = 'CCRM — test email';
+        $body    = 'This is a test message from your CRM. If you received it, the outgoing mail server is configured correctly.';
+    }
+
+    $html = '<div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#1e293b">'
+        . '<h2 style="font-size:18px;margin:0 0 16px">CCRM</h2>'
+        . '<p style="font-size:14px;line-height:1.5;margin:0">' . htmlspecialchars($body, ENT_QUOTES, 'UTF-8') . '</p>'
+        . '</div>';
+
+    ccrm_send_system_mail($config, $to, $subject, $html);
 }
 
 function get_attachments_from_structure($structure) {
