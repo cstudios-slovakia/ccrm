@@ -4,6 +4,7 @@ import { Brain, Send, Bot, User, Sparkles, Database, Check, RotateCcw, Plus, X, 
 import type { Language } from "../utils/translations";
 import { Markdown } from "../utils/markdown";
 import { localeCodeFor } from "../utils/localTime";
+import { useUserPref } from "../utils/userPrefs";
 import type { Lead } from "../types";
 
 interface Message {
@@ -21,6 +22,17 @@ interface Agent {
   skill_content: string;
   is_autonomous: boolean;
 }
+
+/** The built-in assistant, as shipped. Users may rewrite it — that edited copy is
+ *  stored per user in the database, see the ragDefaultAgent preference. */
+const STOCK_DEFAULT_AGENT: Agent = {
+  id: "durian",
+  name: "Grapefruit",
+  position: "CRM Assistant & Consultant",
+  color: "purple",
+  skill_content: "You are Grapefruit, the active CRM RAG AI assistant. Answer user queries based on context.",
+  is_autonomous: false
+};
 
 interface RagAiViewProps {
   systemLanguage: Language;
@@ -70,24 +82,22 @@ const COLOR_MAP: Record<string, { bg: string; text: string; fill: string; border
 export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUser, leads: _leads }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
   const [customAgents, setCustomAgents] = useState<Agent[]>([]);
-  const [defaultAgent, setDefaultAgent] = useState<Agent>(() => {
-    const saved = localStorage.getItem("ccrm_custom_default_agent");
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {}
-    }
-    return {
-      id: "durian",
-      name: "Grapefruit",
-      position: "CRM Assistant & Consultant",
-      color: "purple",
-      skill_content: "You are Grapefruit, the active CRM RAG AI assistant. Answer user queries based on context.",
-      is_autonomous: false
-    };
-  });
+  // The user's edits to the built-in agent are a DB-backed preference (null while
+  // it is still the stock one), so a rewritten assistant persona follows the
+  // account instead of living in one browser's localStorage.
+  const [customDefaultAgent, setCustomDefaultAgent] = useUserPref("ragDefaultAgent");
+  const defaultAgent: Agent = customDefaultAgent ?? STOCK_DEFAULT_AGENT;
 
   const [selectedAgent, setSelectedAgent] = useState<Agent>(defaultAgent);
+
+  // The preference only becomes readable once the profile has synced, and it can
+  // change from another device mid-session, so re-point the selection whenever the
+  // built-in agent is the one being shown. Keyed on the serialised agent: the
+  // object identity is not stable across background syncs.
+  const defaultAgentSignature = JSON.stringify(customDefaultAgent);
+  useEffect(() => {
+    setSelectedAgent(prev => (prev.id === STOCK_DEFAULT_AGENT.id ? defaultAgent : prev));
+  }, [defaultAgentSignature]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -532,8 +542,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
         skill_content: editSkillContent,
         is_autonomous: editIsAutonomous
       };
-      setDefaultAgent(updatedDefault);
-      localStorage.setItem("ccrm_custom_default_agent", JSON.stringify(updatedDefault));
+      setCustomDefaultAgent(updatedDefault);
       if (selectedAgent.id === "durian") {
         setSelectedAgent(updatedDefault);
       }
@@ -640,18 +649,9 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
         
     if (!confirm(confirmMsg)) return;
     
-    localStorage.removeItem("ccrm_custom_default_agent");
-    const restoredDefault: Agent = {
-      id: "durian",
-      name: "Grapefruit",
-      position: "CRM Assistant & Consultant",
-      color: "purple",
-      skill_content: "You are Grapefruit, the active CRM RAG AI assistant. Answer user queries based on context.",
-      is_autonomous: false
-    };
-    setDefaultAgent(restoredDefault);
+    setCustomDefaultAgent(null);
     if (selectedAgent.id === "durian") {
-      setSelectedAgent(restoredDefault);
+      setSelectedAgent(STOCK_DEFAULT_AGENT);
     }
     if (typeof (window as any).showToast === "function") {
       (window as any).showToast(t("Default agent reset successfully!", "Predvolený agent resetovaný!", "Az alapértelmezett ügynök sikeresen visszaállítva!"));

@@ -245,6 +245,8 @@ export const translations: Record<Language, Record<string, string>> = {
     "login.moves": "moves count:",
     "login.error_user": "Account with this email was not found.",
     "login.error_pass": "Invalid password credentials. Please try again.",
+    "login.storage_blocked_title": "Your browser is blocking site data",
+    "login.storage_blocked_desc": "Signing in will not work until you allow cookies for this site. On iPhone: Settings → Safari → turn off \"Block All Cookies\", then reload this page.",
 
     // Files
     "files.title": "Documents Registry",
@@ -439,6 +441,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "timeline.badge.advance_receipt": "Advance Payment Receipt",
     "timeline.badge.invoice": "Invoice",
     "timeline.badge.delivery_note": "Delivery Note",
+    "timeline.badge.status_change": "State Change",
     "timeline.activity": "Timeline Activity",
     "timeline.doc_suffix": "Document",
     "editor.toggle_placeholder": "Click here to add nested toggle details..."
@@ -686,6 +689,8 @@ export const translations: Record<Language, Record<string, string>> = {
     "login.moves": "počet ťahov:",
     "login.error_user": "Účet s týmto e-mailom sa nenašiel.",
     "login.error_pass": "Neplatné heslo. Prosím skús to znova.",
+    "login.storage_blocked_title": "Prehliadač blokuje údaje stránky",
+    "login.storage_blocked_desc": "Prihlásenie nebude fungovať, kým pre túto stránku nepovolíte súbory cookie. Na iPhone: Nastavenia → Safari → vypnite „Blokovať všetky cookies“ a znova načítajte stránku.",
 
     // Files
     "files.title": "Register dokumentov",
@@ -880,6 +885,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "timeline.badge.advance_receipt": "Doklad o prijatom preddavku",
     "timeline.badge.invoice": "Faktúra",
     "timeline.badge.delivery_note": "Dodací list",
+    "timeline.badge.status_change": "Zmena stavu",
     "timeline.activity": "Aktivita na časovej osi",
     "timeline.doc_suffix": "Dokument",
     "editor.toggle_placeholder": "Kliknutím sem pridáte podrobnosti rozbaľovacieho zoznamu..."
@@ -1127,6 +1133,8 @@ export const translations: Record<Language, Record<string, string>> = {
     "login.moves": "lépések száma:",
     "login.error_user": "Fiók evvel az e-mail címmel nem található.",
     "login.error_pass": "Érvénytelen jelszó. Kérjük próbálja meg újra.",
+    "login.storage_blocked_title": "A böngésző blokkolja az oldal adatait",
+    "login.storage_blocked_desc": "A bejelentkezés nem fog működni, amíg nem engedélyezi a sütiket ehhez az oldalhoz. iPhone-on: Beállítások → Safari → kapcsolja ki a „Minden süti blokkolása” lehetőséget, majd töltse újra az oldalt.",
 
     // Files
     "files.title": "Dokumentum Nyilvántartás",
@@ -1321,6 +1329,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "timeline.badge.advance_receipt": "Előlegbizonylat",
     "timeline.badge.invoice": "Számla",
     "timeline.badge.delivery_note": "Szállítólevél",
+    "timeline.badge.status_change": "Állapotváltozás",
     "timeline.activity": "Idővonal tevékenység",
     "timeline.doc_suffix": "Dokumentum",
     "editor.toggle_placeholder": "Kattintson ide a lenyitható részletek hozzáadásához..."

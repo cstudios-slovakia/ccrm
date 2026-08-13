@@ -7,7 +7,7 @@ import {
   Calendar, ArrowLeft, Plus, TrendingUp, PencilLine, FileText,
   X, FolderOpen, Download, Trash2, SlidersHorizontal,
   CornerDownLeft, CornerLeftDown, Loader2, Brain, Mic, Play, Pause, Square, Sparkles,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Milestone
 } from "lucide-react";
 import type { Lead, TimelineEvent, Task } from "../types";
 import { cn } from "../utils/cn";
@@ -1332,6 +1332,20 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [profileDistrict, setProfileDistrict] = useState("");
   const [profileCategories, setProfileCategories] = useState<string[]>([]);
 
+  // Timeline events whose truncated content the user expanded via "Show more"
+  const [expandedTimelineEventIds, setExpandedTimelineEventIds] = useState<Set<string>>(new Set());
+  const toggleTimelineEventExpanded = (eventId: string) => {
+    setExpandedTimelineEventIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(eventId)) {
+        next.delete(eventId);
+      } else {
+        next.add(eventId);
+      }
+      return next;
+    });
+  };
+
   // --- EVENT TIMELINE LOGGING STATES ---
   const [logType, setLogType] = useState<"phone" | "email" | "note" | "offer" | "appointment" | null>(null);
   const [logContent, setLogContent] = useState("");
@@ -2524,6 +2538,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       case "note": return <FileText className="h-3 w-3 stroke-[2.5]" />;
       case "offer": return <Euro className="h-3 w-3 stroke-[2.5]" />;
       case "appointment": return <Calendar className="h-3 w-3 stroke-[2.5]" />;
+      // Automatic pipeline-state entry. It keeps the neutral slate default from
+      // getEventColors — written by the system, not logged by a person.
+      case "status_change": return <Milestone className="h-3 w-3 stroke-[2.5]" />;
       default: return <Clock className="h-3 w-3 stroke-[2.5]" />;
     }
   };
@@ -3573,17 +3590,44 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                     }
 
                                     const lines = event.content.split("\n");
-                                    const showGradient = lines.length > 5 || event.content.length > 250;
+                                    // Long entries stay clipped until the user opens them with the "Show more" toggle below.
+                                    const isTruncatable = lines.length > 5 || event.content.length > 250;
+                                    const isExpanded = expandedTimelineEventIds.has(event.id);
+                                    const showGradient = isTruncatable && !isExpanded;
                                     return (
-                                      <div className={`relative ${showGradient ? "max-h-[8.1em] overflow-hidden" : ""}`} style={{ lineHeight: 1.35 }}>
-                                        <p className="text-[11px] text-slate-700 font-bold select-text whitespace-pre-wrap">
-                                          {event.content}
-                                        </p>
-                                        {showGradient && (
-                                          <div 
-                                            className="absolute bottom-0 left-0 right-0 pointer-events-none bg-gradient-to-t from-slate-50 via-slate-50/70 to-transparent" 
-                                            style={{ height: "2.7em" }}
-                                          />
+                                      <div>
+                                        <div className={`relative ${isTruncatable ? `overflow-hidden transition-[max-height] duration-300 ease-in-out ${isExpanded ? "max-h-[3000px]" : "max-h-[8.1em]"}` : ""}`} style={{ lineHeight: 1.35 }}>
+                                          <p className="text-[11px] text-slate-700 font-bold select-text whitespace-pre-wrap">
+                                            {event.content}
+                                          </p>
+                                          {showGradient && (
+                                            <div
+                                              className="absolute bottom-0 left-0 right-0 pointer-events-none bg-gradient-to-t from-slate-50 via-slate-50/70 to-transparent"
+                                              style={{ height: "2.7em" }}
+                                            />
+                                          )}
+                                        </div>
+                                        {isTruncatable && (
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              toggleTimelineEventExpanded(event.id);
+                                            }}
+                                            className="mt-1.5 mx-auto w-fit flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-indigo-600 hover:text-indigo-800 active:scale-95 transition-all duration-200"
+                                          >
+                                            {isExpanded ? (
+                                              <>
+                                                <ChevronUp className="h-3 w-3 stroke-[2.5]" />
+                                                {t("Show less", "Zobraziť menej", "Kevesebb megjelenítése")}
+                                              </>
+                                            ) : (
+                                              <>
+                                                <ChevronDown className="h-3 w-3 stroke-[2.5]" />
+                                                {t("Show more", "Zobraziť viac", "Több megjelenítése")}
+                                              </>
+                                            )}
+                                          </button>
                                         )}
                                       </div>
                                     );
@@ -3766,17 +3810,44 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                     }
 
                                     const lines = event.content.split("\n");
-                                    const showGradient = lines.length > 5 || event.content.length > 250;
+                                    // Long entries stay clipped until the user opens them with the "Show more" toggle below.
+                                    const isTruncatable = lines.length > 5 || event.content.length > 250;
+                                    const isExpanded = expandedTimelineEventIds.has(event.id);
+                                    const showGradient = isTruncatable && !isExpanded;
                                     return (
-                                      <div className={`relative ${showGradient ? "max-h-[8.1em] overflow-hidden" : ""}`} style={{ lineHeight: 1.35 }}>
-                                        <p className="text-[11px] text-slate-700 font-bold select-text whitespace-pre-wrap">
-                                          {event.content}
-                                        </p>
-                                        {showGradient && (
-                                          <div 
-                                            className="absolute bottom-0 left-0 right-0 pointer-events-none bg-gradient-to-t from-slate-50 via-slate-50/70 to-transparent" 
-                                            style={{ height: "2.7em" }}
-                                          />
+                                      <div>
+                                        <div className={`relative ${isTruncatable ? `overflow-hidden transition-[max-height] duration-300 ease-in-out ${isExpanded ? "max-h-[3000px]" : "max-h-[8.1em]"}` : ""}`} style={{ lineHeight: 1.35 }}>
+                                          <p className="text-[11px] text-slate-700 font-bold select-text whitespace-pre-wrap">
+                                            {event.content}
+                                          </p>
+                                          {showGradient && (
+                                            <div
+                                              className="absolute bottom-0 left-0 right-0 pointer-events-none bg-gradient-to-t from-slate-50 via-slate-50/70 to-transparent"
+                                              style={{ height: "2.7em" }}
+                                            />
+                                          )}
+                                        </div>
+                                        {isTruncatable && (
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              toggleTimelineEventExpanded(event.id);
+                                            }}
+                                            className="mt-1.5 mx-auto w-fit flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-indigo-600 hover:text-indigo-800 active:scale-95 transition-all duration-200"
+                                          >
+                                            {isExpanded ? (
+                                              <>
+                                                <ChevronUp className="h-3 w-3 stroke-[2.5]" />
+                                                {t("Show less", "Zobraziť menej", "Kevesebb megjelenítése")}
+                                              </>
+                                            ) : (
+                                              <>
+                                                <ChevronDown className="h-3 w-3 stroke-[2.5]" />
+                                                {t("Show more", "Zobraziť viac", "Több megjelenítése")}
+                                              </>
+                                            )}
+                                          </button>
                                         )}
                                       </div>
                                     );

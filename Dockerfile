@@ -20,8 +20,16 @@ ADD https://github.com/mlocati/docker-php-extension-installer/releases/latest/do
 RUN chmod +x /usr/local/bin/install-php-extensions && \
     install-php-extensions imap pdo_mysql zip
 
-# Enable apache rewrite module
-RUN a2enmod rewrite
+# Enable apache rewrite and headers modules, and let the checked-in .htaccess
+# files actually take effect. Without AllowOverride the container ignores both
+# the docroot guard and uploads/.htaccess, so security headers that shape how
+# the browser treats an attachment (nosniff, CSP) behave differently here than
+# on the shared hosting that serves production — which is exactly the class of
+# bug that is hardest to reproduce locally.
+RUN a2enmod rewrite headers && \
+    printf '<Directory /var/www/html>\n    AllowOverride All\n</Directory>\n' \
+      > /etc/apache2/conf-available/ccrm-htaccess.conf && \
+    a2enconf ccrm-htaccess
 
 # Copy compiled assets and PHP scripts to document root
 COPY --from=builder /app/dist /var/www/html

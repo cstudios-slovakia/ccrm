@@ -1211,18 +1211,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               ? "A bemutató adatok sikeresen törölve, és a CRM visszaállítva."
               : "Demo data was successfully removed and CRM was reset."
         );
-        // Clear local storage overrides to force pull clean slate
-        localStorage.removeItem("crm_seeded_leads_v5_vibe");
-        localStorage.removeItem("crm_leads");
-        localStorage.removeItem("crm_tasks");
-        if (!keepConfigs) {
-          localStorage.removeItem("crm_lead_states");
-          localStorage.removeItem("crm_lead_sources");
-          localStorage.removeItem("crm_lead_categories");
-          localStorage.removeItem("crm_lead_state_colors");
-          localStorage.removeItem("crm_users_rbac");
-          localStorage.removeItem("crm_roles_rbac");
-        }
+        // No local overrides left to clear: leads, tasks, states, users and roles
+        // all come from the server on load, so the reload alone pulls a clean slate.
         window.location.reload();
       } else {
         (window as any).showToast(t("Wipe failed: ", "Vymazanie zlyhalo: ", "A törlés sikertelen: ") + data.message);
@@ -3845,7 +3835,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       value={metaAppId}
                       onChange={(e) => {
                         setMetaAppId(e.target.value);
-                        localStorage.setItem("ads_meta_app_id", e.target.value);
                       }}
                       onBlur={syncAdsCredentialsToDb}
                       placeholder={t("e.g. 8493029104928", "napr. 8493029104928", "pl. 8493029104928")}
@@ -3860,7 +3849,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       value={metaAppSecret}
                       onChange={(e) => {
                         setMetaAppSecret(e.target.value);
-                        localStorage.setItem("ads_meta_app_secret", e.target.value);
                       }}
                       onBlur={syncAdsCredentialsToDb}
                       placeholder="••••••••••••••••••••••••••••••••"
@@ -3876,7 +3864,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       value={metaAccessToken}
                       onChange={(e) => {
                         setMetaAccessToken(e.target.value);
-                        localStorage.setItem("ads_meta_access_token", e.target.value);
                       }}
                       onBlur={syncAdsCredentialsToDb}
                       placeholder="EAAGm0PX4ZBQBO..."
@@ -3902,7 +3889,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         value={googleDevToken}
                         onChange={(e) => {
                           setGoogleDevToken(e.target.value);
-                          localStorage.setItem("ads_google_dev_token", e.target.value);
                         }}
                         onBlur={syncAdsCredentialsToDb}
                         placeholder={t("e.g. AbC12D34E5...", "napr. AbC12D34E5...", "pl. AbC12D34E5...")}
@@ -3918,7 +3904,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         value={googleClientId}
                         onChange={(e) => {
                           setGoogleClientId(e.target.value);
-                          localStorage.setItem("ads_google_client_id", e.target.value);
                         }}
                         onBlur={syncAdsCredentialsToDb}
                         placeholder="84092-abc.apps.google..."
@@ -3934,7 +3919,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       value={googleClientSecret}
                       onChange={(e) => {
                         setGoogleClientSecret(e.target.value);
-                        localStorage.setItem("ads_google_client_secret", e.target.value);
                       }}
                       onBlur={syncAdsCredentialsToDb}
                       placeholder="GOCSPX-••••••••••••••••"
@@ -3950,7 +3934,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       value={googleRefreshToken}
                       onChange={(e) => {
                         setGoogleRefreshToken(e.target.value);
-                        localStorage.setItem("ads_google_refresh_token", e.target.value);
                       }}
                       onBlur={syncAdsCredentialsToDb}
                       placeholder="1//0gDabc..."
@@ -4014,8 +3997,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             googleRefreshToken,
                             adsConnected: true
                           });
-                        } else {
-                          localStorage.setItem("ads_connected", "true");
                         }
                         (window as any).showToast(
                           userLanguage === "sk" 
@@ -4881,7 +4862,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       value={openAiKey}
                       onChange={(e) => setOpenAiKey(e.target.value)}
                       placeholder="sk-proj-..."
-                      className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-mono font-bold text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:bg-slate-50 disabled:text-slate-400"
+                      className="w-full pl-4 pr-10 py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-mono font-bold text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:bg-slate-50 disabled:text-slate-400"
                     />
                     <button
                       type="button"
