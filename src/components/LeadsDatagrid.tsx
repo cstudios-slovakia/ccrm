@@ -4125,10 +4125,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             );
             if (textWidths.some((w) => !w)) return;
 
-            // Per-segment chrome: the px-1 padding plus the diagonal clip-path
-            // notch on either side. Added into the weight as well, so a short
-            // label like "NEW" keeps a sane minimum share of the strip.
-            const CHROME = 14;
+            // Per-segment chrome: the px-1 padding (4px) plus the diagonal
+            // clip-path notch (4px) on either side, plus a little slack.
+            // Added into the weight as well, so a short label like "NEW"
+            // keeps a sane minimum share of the strip.
+            const CHROME = 9;
             const weights = textWidths.map((w) => w + CHROME * 2);
             const weightTotal = weights.reduce((a, b) => a + b, 0);
             const usable = containerWidth - (detailPipelineSegments.length - 1);
