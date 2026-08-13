@@ -1624,10 +1624,15 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const detailPipelineStripRef = React.useRef<HTMLDivElement>(null);
     const detailPipelineMeasureCanvasRef =
         React.useRef<HTMLCanvasElement | null>(null);
-    // Font size for the pipeline strip labels, recalculated so the longest
-    // label always fits its segment — the states themselves are configurable
-    // in Settings, so the count/length of labels isn't fixed.
-    const [detailPipelineFontSize, setDetailPipelineFontSize] = useState(10);
+    // Auto-fit for the pipeline strip labels: `fontSize` is the largest size at
+    // which every label still fits, `weights` are the per-segment flex-grow
+    // factors that give each segment room proportional to its own label. The
+    // states are configurable in Settings, so neither their count nor their
+    // length is fixed and both have to be measured at runtime.
+    const [detailPipelineFit, setDetailPipelineFit] = useState<{
+        fontSize: number;
+        weights: number[];
+    }>({ fontSize: 13, weights: [] });
 
     // View mode switcher: list (default) or kanban. Along with the compact and
     // ordering switches below, this is a per-user preference stored in the
@@ -3904,10 +3909,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         return segments;
     }, [orderedAllStates, leadStateParents, leadStatus, activeLead?.status]);
 
-    // Keep the pipeline strip's label font size small enough that every
-    // segment title fits without truncating, however many states/substates
-    // are configured — recalculated whenever the segment list or the strip's
-    // own width changes (panel resize, sidebar collapse, etc).
+    // Fit the pipeline strip's labels: pick the largest font size at which every
+    // segment title still fits, and hand each segment a flex-grow weight based on
+    // its own label width. Equal-width segments would peg the whole strip to the
+    // longest label ("ACCEPTED / REJECTED") and shrink the type to the point of
+    // unreadability; proportional widths let every label sit at the same, much
+    // larger size. Recalculated whenever the segment list or the strip's own
+    // width changes (panel resize, sidebar collapse, etc).
     useEffect(() => {
         const el = detailPipelineStripRef.current;
         if (!el || detailPipelineSegments.length === 0) return;
@@ -3915,13 +3923,6 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         const measure = () => {
             const containerWidth = el.clientWidth;
             if (!containerWidth) return;
-
-            const gapTotal = detailPipelineSegments.length - 1;
-            const segmentWidth =
-                (containerWidth - gapTotal) / detailPipelineSegments.length;
-            // Leave room for the segment's px-1 padding and the diagonal
-            // clip-path notches on either side.
-            const availableWidth = Math.max(segmentWidth - 16, 4);
 
             const canvas =
                 detailPipelineMeasureCanvasRef.current ??
@@ -3932,18 +3933,39 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
             const REF_SIZE = 24;
             ctx.font = `900 ${REF_SIZE}px ui-sans-serif, system-ui, -apple-system, sans-serif`;
-            let maxTextWidth = 0;
-            detailPipelineSegments.forEach((seg) => {
-                const width = ctx.measureText(seg.title.toUpperCase()).width;
-                if (width > maxTextWidth) maxTextWidth = width;
-            });
-            if (maxTextWidth === 0) return;
-
             // Canvas measurement ignores the `tracking-wider` letter-spacing the
             // label actually renders with, so pad the estimate to compensate.
-            const scale = availableWidth / (maxTextWidth * 1.15);
-            const nextSize = Math.min(10, Math.max(6, REF_SIZE * scale));
-            setDetailPipelineFontSize(nextSize);
+            const TRACKING = 1.12;
+            const textWidths = detailPipelineSegments.map(
+                (seg) =>
+                    ctx.measureText(seg.title.toUpperCase()).width * TRACKING,
+            );
+            if (textWidths.some((w) => !w)) return;
+
+            // Per-segment chrome: the px-1 padding plus the diagonal clip-path
+            // notch on either side. Added into the weight as well, so a short
+            // label like "NEW" keeps a sane minimum share of the strip.
+            const CHROME = 14;
+            const weights = textWidths.map((w) => w + CHROME * 2);
+            const weightTotal = weights.reduce((a, b) => a + b, 0);
+            const usable = containerWidth - (detailPipelineSegments.length - 1);
+
+            // The binding segment decides the size — with proportional weights
+            // they all come out near-identical, but the min keeps it exact.
+            let scale = Infinity;
+            weights.forEach((weight, i) => {
+                const segWidth = (usable * weight) / weightTotal - CHROME;
+                scale = Math.min(scale, Math.max(segWidth, 1) / textWidths[i]);
+            });
+
+            const nextSize = Math.min(13, Math.max(6, REF_SIZE * scale));
+            setDetailPipelineFit((prev) =>
+                prev.fontSize === nextSize &&
+                prev.weights.length === weights.length &&
+                prev.weights.every((w, i) => w === weights[i])
+                    ? prev
+                    : { fontSize: nextSize, weights },
+            );
         };
 
         measure();
@@ -4538,7 +4560,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     className="w-[calc(100%+48px)] mx-[-24px] flex items-center gap-[1px] select-none bg-slate-200 transition-all duration-300 overflow-hidden shrink-0"
                                     style={{
                                         height: hoveredDetailTimeline
-                                            ? "20px"
+                                            ? "24px"
                                             : "4px",
                                     }}
                                 >
@@ -4569,8 +4591,19 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         return (
                                             <div
                                                 key={seg.key}
-                                                className="flex-1 h-full flex items-center justify-center relative transition-all duration-300"
+                                                className="h-full flex items-center justify-center relative transition-all duration-300"
                                                 style={{
+                                                    // Width proportional to the label, so the font
+                                                    // never has to shrink to the longest one's worst
+                                                    // case. Falls back to equal shares before the
+                                                    // first measurement lands.
+                                                    flexGrow:
+                                                        detailPipelineFit
+                                                            .weights[index] ??
+                                                        1,
+                                                    flexShrink: 1,
+                                                    flexBasis: 0,
+                                                    minWidth: 0,
                                                     backgroundColor: seg.color,
                                                     clipPath: segmentClipPath,
                                                 }}
@@ -4580,11 +4613,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     <span
                                                         className="font-black uppercase tracking-wider px-1 truncate"
                                                         style={{
-                                                            fontSize: `${detailPipelineFontSize}px`,
+                                                            fontSize: `${detailPipelineFit.fontSize}px`,
                                                             // Room for the accents on uppercase Slovak/Hungarian
                                                             // labels (Ý, Á, Ô, Ő) — `truncate` clips whatever
                                                             // grows past the line box.
-                                                            lineHeight: `${detailPipelineFontSize + 4}px`,
+                                                            lineHeight: `${detailPipelineFit.fontSize + 4}px`,
                                                             color: textColor,
                                                         }}
                                                     >
