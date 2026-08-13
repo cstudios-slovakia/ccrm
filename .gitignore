@@ -25,6 +25,13 @@ node_modules
 dist-ssr
 *.local
 
+# Local port/env overrides (e.g. CCRM_DEV_BACKEND_PORT when 8080 is already
+# taken by another project on a given machine) — read by both `docker compose`
+# and vite.config.ts, never shared.
+.env
+.env.*
+!.env.example
+
 # public/ is the Vite publicDir (static inputs: PWA icons, manifest, sw.js, backend PHP).
 # The built frontend (index.html + hashed assets/) must NEVER be committed here: the
 # server's `php ccrm update` copies public/* over dist/ to refresh backend PHP, so a

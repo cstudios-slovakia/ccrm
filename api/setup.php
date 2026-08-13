@@ -233,6 +233,11 @@ try {
                 'ev3_body' => 'Met at our main showroom. Selected grey marble slab variants. Sam compiled official technical logistics requirements.',
                 'ev4_title' => 'Official Price Offer Sent',
                 'ev4_body' => 'Drafted and emailed formal budget quote detailing complete slabs cutting & assembly pricing.',
+                'ev5_subject' => 'Kitchen countertop drawings + sink cutout',
+                'ev5_body' => "Hello Jordan,\n\nthank you for the showroom visit last week. I am attaching the kitchen drawings from our architect — the worktop is 2.4 m long and 60 cm deep, with a 20 cm overhang above the dishwasher.\n\nThere are three things I would like to confirm before we go ahead:\n\n1. The sink is an undermount Blanco 500x400 mm, so the cutout has to be polished on all four sides.\n2. We would like the same stone for the 60 cm backsplash, in 12 mm thickness.\n3. Is a 4 cm mitred edge possible on the front side, or does it change the price significantly?\n\nDelivery would ideally fall in the second half of June — the kitchen units are being installed on 14 June.\n\nThank you and have a nice day,\nMartina Kováčová",
+                'ev6_subject' => 'RE: Kitchen countertop drawings + sink cutout',
+                'ev6_body' => "Hello Mrs. Kováčová,\n\nthank you for the drawings, everything is clear.\n\n1. The undermount cutout including the polishing of all four edges is part of the standard fabrication price, no surcharge.\n2. The 60 cm backsplash in 12 mm is no problem — I have added it to the quote as a separate item.\n3. The 4 cm mitred edge is possible; it adds roughly 180 EUR to the total because of the extra cutting and gluing.\n\nThe revised quote is attached. If you confirm it by Friday, we can book the laser measurement for 2 June and deliver in the week of 15 June, so you would be on time for the kitchen units.\n\nBest regards,\nJordan",
+                'ev7_message' => 'Good afternoon, we are renovating the kitchen of a family house in Trnava. I would need a price for a 2.4 x 0.6 m worktop in white quartz, including the sink cutout and a matching backsplash. Please send the estimate by e-mail, I am reachable in the afternoons.',
                 'task1_title' => 'Draft SLA contract for wholesale partner',
                 'task1_body' => 'Prepare standard wholesale SLA layout including slab delivery timelines.',
                 'task2_title' => 'Onsite laser measurement for kitchen countertop',
@@ -249,6 +254,11 @@ try {
                 'ev3_body' => 'Stretli sme sa v našom hlavnom showroome. Klient si vybral sivé mramorové dosky. Sam spísal technické a logistické požiadavky.',
                 'ev4_title' => 'Odoslaná oficiálna cenová ponuka',
                 'ev4_body' => 'Pripravili a e-mailom odoslali formálnu cenovú ponuku vrátane rezania a montáže dosiek.',
+                'ev5_subject' => 'Nákresy kuchynskej dosky + výrez na drez',
+                'ev5_body' => "Dobrý deň Jordan,\n\nďakujem za návštevu showroomu minulý týždeň. Posielam v prílohe nákresy kuchyne od nášho architekta — doska má 2,4 m na dĺžku a 60 cm na hĺbku, s 20 cm presahom nad umývačkou.\n\nPred objednaním by som si rada potvrdila tri veci:\n\n1. Drez je podstavný Blanco 500x400 mm, takže výrez musí byť leštený zo všetkých štyroch strán.\n2. Rovnaký kameň by sme chceli aj na 60 cm zástenu, v hrúbke 12 mm.\n3. Je možná 4 cm zrezaná hrana vpredu, alebo to výrazne mení cenu?\n\nDodanie by sme ideálne potrebovali v druhej polovici júna — kuchynskú linku montujú 14. júna.\n\nĎakujem a prajem pekný deň,\nMartina Kováčová",
+                'ev6_subject' => 'RE: Nákresy kuchynskej dosky + výrez na drez',
+                'ev6_body' => "Dobrý deň pani Kováčová,\n\nďakujem za nákresy, všetko je zrozumiteľné.\n\n1. Výrez pre podstavný drez vrátane leštenia všetkých štyroch hrán je súčasťou štandardnej ceny opracovania, bez príplatku.\n2. Zástena 60 cm v hrúbke 12 mm nie je problém — pridal som ju do ponuky ako samostatnú položku.\n3. Zrezaná hrana 4 cm je možná; kvôli rezaniu a lepeniu navyšuje cenu približne o 180 EUR.\n\nUpravenú ponuku posielam v prílohe. Ak ju potvrdíte do piatku, laserové zameranie stihneme 2. júna a dodanie v týždni od 15. júna, takže by ste boli včas pred montážou linky.\n\nS pozdravom,\nJordan",
+                'ev7_message' => 'Dobrý deň, rekonštruujeme kuchyňu v rodinnom dome v Trnave. Potrebovala by som cenu na pracovnú dosku 2,4 x 0,6 m z bieleho kremeňa vrátane výrezu na drez a zodpovedajúcej zásteny. Odhad mi prosím pošlite e-mailom, dostupná som popoludní.',
                 'task1_title' => 'Pripraviť SLA zmluvu pre veľkoobchodného partnera',
                 'task1_body' => 'Pripraviť štandardnú veľkoobchodnú SLA vrátane termínov dodania dosiek.',
                 'task2_title' => 'Laserové zameranie kuchynskej dosky u klienta',
@@ -265,6 +275,11 @@ try {
                 'ev3_body' => 'A fő bemutatóteremben találkoztunk. Az ügyfél szürke márványlapokat választott. Sam összeállította a műszaki és logisztikai követelményeket.',
                 'ev4_title' => 'Hivatalos árajánlat elküldve',
                 'ev4_body' => 'Elkészítettük és e-mailben elküldtük a hivatalos árajánlatot a lapok vágásával és szerelésével együtt.',
+                'ev5_subject' => 'Konyhapult rajzok + mosogató kivágás',
+                'ev5_body' => "Jó napot Jordan,\n\nköszönöm a múlt heti bemutatótermi látogatást. Csatolom az építészünk konyharajzait — a munkalap 2,4 m hosszú és 60 cm mély, a mosogatógép fölött 20 cm túlnyúlással.\n\nA megrendelés előtt három dolgot szeretnék megerősíteni:\n\n1. A mosogató alulról beépített Blanco 500x400 mm, tehát a kivágást mind a négy oldalon políroznod kell.\n2. Ugyanezt a követ szeretnénk a 60 cm-es hátfalra is, 12 mm vastagságban.\n3. Lehetséges elöl a 4 cm-es gérvágott él, vagy az jelentősen módosítja az árat?\n\nA szállítás ideális esetben június második felében lenne — a konyhabútort június 14-én szerelik.\n\nKöszönöm és szép napot,\nMartina Kováčová",
+                'ev6_subject' => 'RE: Konyhapult rajzok + mosogató kivágás',
+                'ev6_body' => "Jó napot Kováčová asszony,\n\nköszönöm a rajzokat, minden világos.\n\n1. Az alulról beépített mosogató kivágása mind a négy él polírozásával együtt a megmunkálás alapárának része, felár nélkül.\n2. A 60 cm-es hátfal 12 mm-ben nem probléma — külön tételként hozzáadtam az ajánlathoz.\n3. A 4 cm-es gérvágott él megoldható; a többletvágás és ragasztás miatt nagyjából 180 EUR-val növeli a végösszeget.\n\nA módosított ajánlatot csatolom. Ha péntekig visszaigazolja, a lézeres felmérést június 2-ra tudjuk ütemezni, a szállítást pedig a június 15-i hétre, így időben lenne a bútorszereléshez.\n\nÜdvözlettel,\nJordan",
+                'ev7_message' => 'Jó napot, egy nagyszombati családi ház konyháját újítjuk fel. Szeretnék árat kérni egy 2,4 x 0,6 m-es fehér kvarc munkalapra, a mosogató kivágásával és a hozzá illő hátfallal együtt. A becslést kérem e-mailben küldjék, délutánonként vagyok elérhető.',
                 'task1_title' => 'SLA szerződés előkészítése a nagykereskedelmi partnernek',
                 'task1_body' => 'Készítsd elő a szokásos nagykereskedelmi SLA-t a lapok szállítási határidőivel együtt.',
                 'task2_title' => 'Helyszíni lézeres felmérés a konyhapulthoz',
@@ -299,13 +314,47 @@ try {
             $insLeadCat->execute($lc);
         }
 
+        // The lead-2 entries reproduce the two ways the CRM files events on its
+        // own, so the demo shows the real automatic cards instead of hand-typed
+        // notes:
+        //   * `ev-5` is what pipeline.php writes when a web form matches an
+        //     already active lead — a note titled "Form Inquiry (Existing
+        //     Active Lead)" whose body is the submitted fields, one per line.
+        //   * `email-*` is what mail_broker.php writes when a mailbox message
+        //     matches a lead — an `email-<uid>` id, the subject as the title
+        //     and the headers flattened above the message body.
+        $formBody = function (array $lines): string {
+            return implode("\n", $lines);
+        };
+        $mailBody = function (string $fromName, string $fromAddress, string $toName, string $toAddress, string $subject, string $body = ''): string {
+            $headers = "From: {$fromName} <{$fromAddress}>\nTo: {$toName} <{$toAddress}>\nSubject: {$subject}";
+            return $body === '' ? $headers : $headers . "\n\n" . $body;
+        };
         $timelineEvents = [
-            ['ev-1', 'lead-1', 'phone', '2026-05-15 10:00', $demoText['ev1_title'], $demoText['ev1_body'], null, null, null, null, null],
-            ['ev-2', 'lead-1', 'email', '2026-05-16 11:30', $demoText['ev2_title'], $demoText['ev2_body'], null, null, null, null, null],
-            ['ev-3', 'lead-1', 'appointment', '2026-05-20 14:00', $demoText['ev3_title'], $demoText['ev3_body'], null, null, null, null, '14:00'],
-            ['ev-4', 'lead-1', 'offer', '2026-05-22 15:45', $demoText['ev4_title'], $demoText['ev4_body'], 12500.00, 'novak_slabs_proposal.pdf', '1.45 MB', 'offer', null],
+            ['ev-1', 'lead-1', 'phone', '2026-05-15 10:00', $demoText['ev1_title'], $demoText['ev1_body'], null, null, null, null, null, 0],
+            ['ev-2', 'lead-1', 'email', '2026-05-16 11:30', $demoText['ev2_title'], $demoText['ev2_body'], null, null, null, null, null, 1],
+            ['ev-3', 'lead-1', 'appointment', '2026-05-20 14:00', $demoText['ev3_title'], $demoText['ev3_body'], null, null, null, null, '14:00', 0],
+            ['ev-4', 'lead-1', 'offer', '2026-05-22 15:45', $demoText['ev4_title'], $demoText['ev4_body'], 12500.00, 'novak_slabs_proposal.pdf', '1.45 MB', 'offer', null, 0],
+            ['ev-5', 'lead-2', 'note', '2026-05-18 08:15', 'Form Inquiry (Existing Active Lead)',
+                $formBody([
+                    'Form submission received from source: ' . $leadSources[2],
+                    'Name: Martina Kováčová',
+                    'Email: m.kovacova@example.com',
+                    'Phone: +421 911 987 654',
+                    'City: Trnava',
+                    'Categories: ' . $leadCategories[1],
+                    'Value: 8400 EUR',
+                    'Message: ' . $demoText['ev7_message'],
+                ]),
+                null, null, null, null, null, 0],
+            ['email-10412', 'lead-2', 'email', '2026-05-19 09:12', $demoText['ev5_subject'],
+                $mailBody('Martina Kováčová', 'm.kovacova@example.com', 'Jordan', 'jordan@crm.com', $demoText['ev5_subject'], $demoText['ev5_body']),
+                null, null, null, null, null, 0],
+            ['email-10457', 'lead-2', 'email', '2026-05-20 16:40', $demoText['ev6_subject'],
+                $mailBody('Jordan', 'jordan@crm.com', 'Martina Kováčová', 'm.kovacova@example.com', $demoText['ev6_subject'], $demoText['ev6_body']),
+                null, null, null, null, null, 1],
         ];
-        $insTimeline = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`, `amount`, `file_name`, `file_size`, `file_type`, `extra_time`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $insTimeline = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`, `amount`, `file_name`, `file_size`, `file_type`, `extra_time`, `is_outgoing`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
         foreach ($timelineEvents as $te) {
             $insTimeline->execute($te);
         }

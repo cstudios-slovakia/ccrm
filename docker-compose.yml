@@ -5,7 +5,9 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "8085:80"
+      # Override per-machine via CCRM_DEV_BACKEND_PORT in a local .env file
+      # (gitignored) when 8085 is already taken by another project.
+      - "${CCRM_DEV_BACKEND_PORT:-8085}:80"
     depends_on:
       - db
     volumes:

@@ -96,7 +96,7 @@ if (!function_exists('ccrm_schema_statements')) {
             "CREATE TABLE IF NOT EXISTS `timeline_events` (
               `id` VARCHAR(50) NOT NULL,
               `lead_id` VARCHAR(50) NOT NULL,
-              `type` ENUM('phone', 'email', 'note', 'offer', 'appointment', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note') NOT NULL DEFAULT 'note',
+              `type` ENUM('phone', 'email', 'note', 'offer', 'appointment', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note', 'status_change') NOT NULL DEFAULT 'note',
               `timestamp` DATETIME NOT NULL,
               `title` VARCHAR(255) NOT NULL,
               `content` TEXT NULL,
@@ -106,6 +106,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `file_type` ENUM('offer', 'contract', 'invoice') NULL,
               `attachments_json` TEXT NULL COMMENT 'JSON array of {name,size,path} — an event can carry several documents',
               `extra_time` VARCHAR(10) NULL,
+              `is_outgoing` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'email events only: 1 = we sent it, 0 = the client did',
               PRIMARY KEY (`id`),
               FOREIGN KEY (`lead_id`) REFERENCES `leads` (`id`) ON DELETE CASCADE,
               INDEX idx_event_timestamp (`timestamp`),
@@ -520,6 +521,12 @@ if (!function_exists('ccrm_schema_statements')) {
         if (!ccrm_column_exists($pdo, 'timeline_events', 'attachments_json')) {
             $pdo->exec("ALTER TABLE `timeline_events` ADD COLUMN `attachments_json` TEXT NULL AFTER `file_type`");
         }
+        // Mail-derived timeline events remember their direction. Without it every
+        // message auto-filed from the mailbox — including the ones we sent from
+        // the Sent folder — rendered with the "Incoming" badge.
+        if (!ccrm_column_exists($pdo, 'timeline_events', 'is_outgoing')) {
+            $pdo->exec("ALTER TABLE `timeline_events` ADD COLUMN `is_outgoing` TINYINT(1) NOT NULL DEFAULT 0 AFTER `extra_time`");
+        }
         // `tasks`.`status` was originally a fixed ENUM, but task states are
         // user-customizable free text (see Settings > task states / taskStates
         // in App.tsx), same as `leads`.`status`. A custom state name that
@@ -561,9 +568,11 @@ if (!function_exists('ccrm_schema_statements')) {
     }
 
     /**
-     * Widen `timeline_events`.`type` so it accepts the business-document event
-     * types added after the initial release. Idempotent: the ALTER only runs
-     * when one of the new names is missing from the live ENUM definition.
+     * Widen `timeline_events`.`type` so it accepts the event types added after
+     * the initial release: the business documents, and `status_change` — the
+     * entry a lead writes for itself whenever it moves to another pipeline
+     * state. Idempotent: the ALTER only runs when one of the new names is
+     * missing from the live ENUM definition.
      */
     function ccrm_migrate_timeline_event_types(PDO $pdo): void {
         $columnType = $pdo->query(
@@ -573,12 +582,12 @@ if (!function_exists('ccrm_schema_statements')) {
         if ($columnType === false || $columnType === null) {
             return; // timeline_events not provisioned yet — CREATE TABLE covers it.
         }
-        $required = ['order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note'];
+        $required = ['order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note', 'status_change'];
         foreach ($required as $value) {
             if (strpos($columnType, "'" . $value . "'") === false) {
                 $pdo->exec(
                     "ALTER TABLE `timeline_events` MODIFY COLUMN `type`
-                     ENUM('phone', 'email', 'note', 'offer', 'appointment', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note')
+                     ENUM('phone', 'email', 'note', 'offer', 'appointment', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note', 'status_change')
                      NOT NULL DEFAULT 'note'"
                 );
                 return;

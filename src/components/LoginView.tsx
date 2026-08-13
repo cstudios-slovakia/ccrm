@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { LogIn, Key, Mail, Terminal, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
+import { LogIn, Key, Mail, Terminal, AlertCircle, AlertTriangle, CheckCircle, Loader2 } from "lucide-react";
 import { PasswordInput } from "./PasswordInput";
 import type { UserProfile } from "../types";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import LightRays from "./LightRays";
+import { hasCookieAccess, hasPersistentStorage } from "../utils/safeStorage";
 
 interface LoginViewProps {
   users: UserProfile[];
@@ -23,6 +24,13 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
   const [showResetInfo, setShowResetInfo] = useState(false);
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+
+  // Probed once on mount rather than on every render: writing and reading back a
+  // cookie touches the document on each call, and the answer cannot change while
+  // the page is open.
+  const [browserStorageBlocked] = useState(
+    () => !hasCookieAccess() || !hasPersistentStorage("localStorage") || !hasPersistentStorage("sessionStorage")
+  );
 
   // --- Password reset (email-based, only when a mail server is configured) ---
   const [resetAvailable, setResetAvailable] = useState<boolean | null>(null);
@@ -461,6 +469,27 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
               </p>
             </div>
           </div>
+
+          {/* Browser is refusing cookies: the login below cannot possibly stick,
+              because the session lives in a PHPSESSID cookie. Say so up front
+              rather than letting the user loop through a login that silently
+              bounces them back here. */}
+          {browserStorageBlocked && (
+            <div
+              role="alert"
+              className="flex items-start gap-2.5 p-3.5 mb-6 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-semibold leading-relaxed animate-in fade-in slide-in-from-top-4 duration-300"
+            >
+              <AlertTriangle className="h-4.5 w-4.5 text-amber-600 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="font-black uppercase tracking-wider text-[10px] text-amber-700">
+                  {getTranslation(systemLanguage, "login.storage_blocked_title")}
+                </p>
+                <p className="font-medium text-amber-850">
+                  {getTranslation(systemLanguage, "login.storage_blocked_desc")}
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Credentials Form */}
           <form onSubmit={handleLogin} className="space-y-4">

@@ -883,7 +883,6 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                     checked={errorSidebarEnabled}
                     onChange={(e) => {
                       setErrorSidebarEnabled(e.target.checked);
-                      localStorage.setItem("ccrm_error_sidebar_enabled", e.target.checked ? "true" : "false");
                       if (typeof (window as any).showToast === "function") {
                         (window as any).showToast(e.target.checked
                           ? t("Error sidebar enabled!", "Panel chýb zapnutý!", "Hiba oldalsáv bekapcsolva!")
