@@ -2905,6 +2905,19 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 if (uploadData.success) {
                     finalFileName = uploadData.fileName || logFileObject.name;
                     finalFilePath = uploadData.filePath;
+                    // `filePath` has no column of its own — only attachments_json
+                    // survives a sync round trip. Without this the stored path is
+                    // lost on the next reload and the preview has to guess the URL
+                    // back from the event id and the file name.
+                    if (uploadData.filePath) {
+                        finalAttachments = [
+                            {
+                                name: finalFileName || logFileObject.name,
+                                size: finalFileSize || (logFileObject.size / 1024 / 1024).toFixed(2) + " MB",
+                                path: uploadData.filePath,
+                            },
+                        ];
+                    }
                     // The server only returns extracted text when it is genuinely readable
                     // (its quality filter drops binary/metadata noise from any format,
                     // including PDFs), so append whatever comes back. Garbage arrives empty.

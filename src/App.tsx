@@ -11,6 +11,7 @@ import { orderLeadStates } from "./utils/leadStates";
 import { resolveTaskViewAll } from "./utils/taskSelectors";
 import { InstallerWizard } from "./components/InstallerWizard";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import FilePreviewPane from "./components/FilePreviewPane";
 import { RefreshCw, AlertOctagon, Trash2, Copy } from "lucide-react";
 import { ShaderGradient, ShaderGradientCanvas } from "shadergradient";
 import { applyTheme } from "./utils/theme";
@@ -2310,7 +2311,17 @@ ${log.payload || ''}
                 <h3 className="text-sm font-heading font-black uppercase tracking-tight truncate">{previewFile.name}</h3>
               </div>
               <div className="flex items-center gap-2">
-                <a 
+                {/* The browser's own viewer reports why a document failed to open,
+                    which the embedded frame cannot, so keep an escape hatch to it. */}
+                <a
+                  href={previewFile.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-[10px] font-black uppercase flex items-center gap-1 transition-all"
+                >
+                  {t("Open in a new tab", "Otvoriť na novej karte", "Megnyitás új lapon")}
+                </a>
+                <a
                   href={previewFile.url}
                   download={previewFile.name}
                   className="px-3 py-1.5 rounded-xl bg-amber-700 hover:bg-amber-600 border border-amber-800 text-white text-[10px] font-black uppercase flex items-center gap-1 transition-all"
@@ -2329,39 +2340,12 @@ ${log.payload || ''}
 
             {/* Content preview pane */}
             <div className="flex-1 mt-4 border border-slate-200 rounded-2xl overflow-hidden bg-slate-50 flex items-center justify-center">
-              {(() => {
-                const ext = previewFile.name.split('.').pop()?.toLowerCase() || '';
-                const isImage = ['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp'].includes(ext);
-                const isPdf = ext === 'pdf';
-
-                if (isImage) {
-                  return (
-                    <img 
-                      src={previewFile.url} 
-                      alt={previewFile.name} 
-                      className="max-w-full max-h-full object-contain p-2"
-                    />
-                  );
-                }
-
-                if (isPdf) {
-                  return (
-                    <iframe 
-                      src={previewFile.url} 
-                      title={previewFile.name} 
-                      className="w-full h-full border-none"
-                    />
-                  );
-                }
-
-                return (
-                  <div className="text-center p-8 text-slate-500">
-                    <p className="text-3xl mb-2">📄</p>
-                    <p className="text-xs font-bold uppercase tracking-wider">{t("Preview not supported for this file format.", "Náhľad nie je podporovaný pre tento formát súboru.", "Ehhez a fájlformátumhoz nem érhető el előnézet.")}</p>
-                    <p className="text-[10px] text-slate-400 mt-1">{t("Please use the Download button above to view it offline.", "Použite tlačidlo Stiahnuť vyššie a otvorte súbor offline.", "A fenti Letöltés gombbal nyithatja meg offline.")}</p>
-                  </div>
-                );
-              })()}
+              <FilePreviewPane
+                key={previewFile.url}
+                url={previewFile.url}
+                name={previewFile.name}
+                t={t}
+              />
             </div>
           </div>
         </div>

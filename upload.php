@@ -52,6 +52,21 @@ if (php_sapi_name() !== 'cli') {
     $targetPath = $uploadDir . $eventId . '_' . $fileName;
 
     if (move_uploaded_file($file['tmp_name'], $targetPath)) {
+        // Bytes that do not carry their format's magic number were truncated or
+        // mangled on the way in. Keeping them would hide the problem until someone
+        // opens the document weeks later and gets a blank black preview pane, so
+        // refuse now, while the user is still standing in front of the upload form.
+        if (!ccrm_stored_file_matches_extension($targetPath, $fileName)) {
+            @unlink($targetPath);
+            http_response_code(422);
+            echo json_encode([
+                'success' => false,
+                'error' => 'The uploaded file is damaged or incomplete (it is not a valid ' .
+                    strtoupper(pathinfo($fileName, PATHINFO_EXTENSION)) . ' file). Please try attaching it again.'
+            ]);
+            exit;
+        }
+
         $extractedText = ccrm_extract_text_from_file($targetPath, $fileName);
 
         // Coerce to valid UTF-8, strip control bytes, and DROP the text entirely
