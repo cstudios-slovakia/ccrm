@@ -2489,6 +2489,31 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                           </div>
                         )}
 
+                        {/* Trigger Filter: Client Type.
+                            "Person" is missing on purpose — sync.php fires
+                            client_created only for a lead that is not a person, so
+                            picking it would build a workflow that can never run. */}
+                        {triggerType === "client_created" && (
+                          <div>
+                            <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t("Filter Client Type", "Filter typu klienta", "Ügyfél típus szűrő")}</label>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <div className="p-1.5 bg-slate-50 border border-slate-100 rounded-lg shrink-0 flex items-center justify-center">
+                                <Filter className="h-3.5 w-3.5 text-slate-400" />
+                              </div>
+                              <CustomSelect
+                                size="sm"
+                                value={triggerConfig.clientType || "any"}
+                                onChange={(v) => setTriggerConfig({ ...triggerConfig, clientType: v === "any" ? null : v })}
+                                options={[
+                                  { value: "any", label: t("Any Type", "Akýkoľvek typ", "Bármely típus") },
+                                  { value: "business", label: t("Business", "Firma", "Cég") },
+                                  { value: "partner", label: t("Partner", "Partner", "Partner") },
+                                ]}
+                              />
+                            </div>
+                          </div>
+                        )}
+
                         {/* Trigger Filter: Lead Status Changed */}
                         {triggerType === "lead_status_changed" && (
                           <div className="grid grid-cols-2 gap-1.5">
