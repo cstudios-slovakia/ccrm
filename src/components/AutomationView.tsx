@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { 
   Play, Copy, Trash2, Plus, Settings, 
   GitFork, Brain, Database, Mail, 
-  CheckCircle2, XCircle, AlertCircle, 
+  CheckCircle2, XCircle, AlertCircle, AlertTriangle,
   Activity, ArrowLeft, RefreshCw, Layers, Terminal, Workflow,
   ToggleLeft, ToggleRight, Eye,
   Zap, Clock, UserPlus, Users, CheckSquare, ClipboardList,
@@ -932,6 +932,28 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
 
   const [edges, setEdges] = useState<any[]>([]);
   const [selectedNode, setSelectedNode] = useState<any>(null);
+
+  /* Nodes the engine can actually walk to from the trigger. A node nothing
+     links to is never executed and never logged, so a workflow whose only
+     action is unconnected ran "successfully" while doing nothing at all —
+     which reads as a broken action rather than a missing connection. */
+  const reachableNodeIds = React.useMemo(() => {
+    const reachable = new Set<string>();
+    const start = nodes.find(n => n.type === "trigger")?.id;
+    if (!start) return reachable;
+    const stack = [start];
+    reachable.add(start);
+    while (stack.length) {
+      const id = stack.pop() as string;
+      for (const edge of edges) {
+        if (edge.source === id && edge.target && !reachable.has(edge.target)) {
+          reachable.add(edge.target);
+          stack.push(edge.target);
+        }
+      }
+    }
+    return reachable;
+  }, [nodes, edges]);
 
   // Canvas drag & connect states
   const [draggedNodeId, setDraggedNodeId] = useState<string | null>(null);
@@ -2268,6 +2290,19 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
 
                       <h4 className="font-bold text-slate-700 text-xs truncate">{node.name}</h4>
 
+                      {node.type !== "trigger" && !reachableNodeIds.has(node.id) && (
+                        <div className="mt-1.5 flex items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5">
+                          <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-px" />
+                          <span className="text-[10px] font-bold text-amber-800 leading-snug">
+                            {t(
+                              "Not connected to the trigger — this block never runs. Drag a link from the previous block's OUT handle to this block's IN handle.",
+                              "Nie je pripojený k spúšťaču — tento blok sa nikdy nespustí. Potiahnite spojenie z výstupu predchádzajúceho bloku na vstup tohto bloku.",
+                              "Nincs az indítóhoz kötve — ez a blokk soha nem fut le. Húzzon összekötést az előző blokk KI pontjából ennek a blokknak a BE pontjába."
+                            )}
+                          </span>
+                        </div>
+                      )}
+
                       {/* Node Config forms directly inside the card if NOT collapsed */}
                       {!isCollapsed && (
                         <>
@@ -3355,6 +3390,14 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                               <span className="text-xs font-bold text-rose-700">{t("FAILED", "ZLYHALO", "HIBA")}</span>
                             )}
                           </div>
+                          {/* The reason the step failed. It was recorded all along but
+                              never shown, which left the trace saying "FAILED" with no
+                              way to tell what went wrong. */}
+                          {step.error && (
+                            <div className="px-3 py-2 bg-rose-50/70 border-b border-rose-100 text-[11px] font-semibold text-rose-800">
+                              {step.error}
+                            </div>
+                          )}
                           <div className="p-4 grid grid-cols-2 gap-4 bg-slate-50/50">
                             <div>
                               <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-1">{t("Input Data", "Vstupné dáta", "Bemeneti adatok")}</span>

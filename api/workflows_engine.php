@@ -329,6 +329,45 @@ if (!function_exists('ccrm_workflow_related_record_id')) {
     }
 }
 
+if (!function_exists('ccrm_workflow_unreachable_nodes')) {
+    /**
+     * Nodes no edge can lead to from the trigger.
+     *
+     * The executor walks outward from the trigger, so a node nothing links to is
+     * never visited and never logged — a workflow whose only action is left
+     * unconnected therefore finished as a plain "success" while doing nothing at
+     * all, which reads as a broken action rather than a missing connection.
+     *
+     * Reachability ignores which branch of a condition would be taken: an unused
+     * false-branch is a normal run, while a node outside the graph entirely can
+     * never run for any input and is always a mistake worth reporting.
+     */
+    function ccrm_workflow_unreachable_nodes($nodes, $edges, $triggerNodeId) {
+        $reachable = [$triggerNodeId => true];
+        $stack = [$triggerNodeId];
+        while ($stack) {
+            $current = array_pop($stack);
+            foreach ($edges as $edge) {
+                $target = $edge['target'] ?? null;
+                if (($edge['source'] ?? null) === $current && $target !== null && !isset($reachable[$target])) {
+                    $reachable[$target] = true;
+                    $stack[] = $target;
+                }
+            }
+        }
+
+        $unreachable = [];
+        foreach ($nodes as $node) {
+            $id = $node['id'] ?? null;
+            if ($id === null || isset($reachable[$id]) || ($node['type'] ?? '') === 'trigger') {
+                continue;
+            }
+            $unreachable[] = $node;
+        }
+        return $unreachable;
+    }
+}
+
 if (!function_exists('ccrm_workflow_resolve_assignee')) {
     /**
      * Narrow a workflow's assignee expression down to exactly one real CRM user.
@@ -843,8 +882,25 @@ if (!function_exists('ccrm_execute_workflow')) {
             }
         }
         
+        // Report every block the run could not even reach. Without this the log
+        // says "success" for a workflow that did nothing, and the operator goes
+        // looking for a bug in an action that was never executed.
+        foreach (ccrm_workflow_unreachable_nodes($nodes, $edges, $triggerNode['id']) as $stranded) {
+            $strandedType = $stranded['type'] ?? 'action';
+            $executionLog[] = [
+                'node_id' => $stranded['id'] ?? '',
+                'node_name' => $stranded['name'] ?? $strandedType,
+                'type' => $strandedType,
+                'success' => false,
+                'error' => 'Action node not connected: nothing links it to the trigger, so it never runs. Connect it to the previous block in the workflow builder.',
+                'input' => null,
+                'output' => null
+            ];
+            $status = 'failed';
+        }
+
         $durationMs = (int)((microtime(true) - $startTime) * 1000);
-        
+
         // Log the execution
         $logId = 'log-' . sprintf('%04x%04x-%04x', mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff));
         $logStmt = $pdo->prepare("
