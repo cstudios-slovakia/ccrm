@@ -329,6 +329,78 @@ if (!function_exists('ccrm_workflow_related_record_id')) {
     }
 }
 
+if (!function_exists('ccrm_workflow_resolve_assignee')) {
+    /**
+     * Narrow a workflow's assignee expression down to exactly one real CRM user.
+     *
+     * A task assignee is stored as a user *name* (`tasks`.`owner` and
+     * `task_assignees`.`user_name`), so anything that is not one opens a task
+     * that appears in nobody's list. The builder now offers a single choice per
+     * node, but saved workflows still hold hand-typed strings, a name with a
+     * variable appended behind it ("Admin {{$trigger.changedBy}}"), or a
+     * variable that resolved to an e-mail — so normalise here as well.
+     *
+     * A value that names nobody is dropped: leaving the task unassigned is
+     * honest, while writing an unknown string pretends someone owns the work.
+     */
+    function ccrm_workflow_resolve_assignee($pdo, $raw) {
+        $candidate = trim(preg_replace('/\s+/u', ' ', (string)$raw));
+        if ($candidate === '') {
+            return '';
+        }
+
+        static $users = null;
+        if ($users === null) {
+            $users = [];
+            try {
+                $rows = $pdo->query("SELECT `name`, `email` FROM `users`")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                foreach ($rows as $row) {
+                    $name = trim((string)($row['name'] ?? ''));
+                    if ($name === '') {
+                        continue;
+                    }
+                    $users[] = ['name' => $name, 'email' => mb_strtolower(trim((string)($row['email'] ?? '')), 'UTF-8')];
+                }
+            } catch (\Throwable $e) {
+                if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+                $users = [];
+            }
+        }
+        // Nothing to check against (query failed, empty install): keep the
+        // literal value rather than silently dropping every assignment.
+        if (!$users) {
+            return $candidate;
+        }
+
+        $lower = mb_strtolower($candidate, 'UTF-8');
+        foreach ($users as $u) {
+            if ($u['name'] === $candidate) {
+                return $u['name'];
+            }
+        }
+        foreach ($users as $u) {
+            if (mb_strtolower($u['name'], 'UTF-8') === $lower) {
+                return $u['name'];
+            }
+        }
+        foreach ($users as $u) {
+            if ($u['email'] !== '' && $u['email'] === $lower) {
+                return $u['name'];
+            }
+        }
+        // A name buried in leftover text. Longest match wins so that "Jan"
+        // never beats "Jan Novak" when both are on the team.
+        $best = '';
+        foreach ($users as $u) {
+            if (mb_strpos($lower, mb_strtolower($u['name'], 'UTF-8')) !== false
+                && mb_strlen($u['name'], 'UTF-8') > mb_strlen($best, 'UTF-8')) {
+                $best = $u['name'];
+            }
+        }
+        return $best;
+    }
+}
+
 if (!function_exists('ccrm_call_llm')) {
     function ccrm_call_llm($provider, $key, $prompt, $options = []) {
         $ch = curl_init();
@@ -626,7 +698,11 @@ if (!function_exists('ccrm_execute_workflow')) {
                     } elseif ($actionType === 'create_task') {
                         $title = ccrm_interpolate_variables($nodeData['title'] ?? '', $incomingPayload, $context);
                         $desc = ccrm_interpolate_variables($nodeData['description'] ?? '', $incomingPayload, $context);
-                        $owner = ccrm_interpolate_variables($nodeData['owner'] ?? '', $incomingPayload, $context);
+                        // Exactly one real user, or nobody at all.
+                        $owner = ccrm_workflow_resolve_assignee(
+                            $pdo,
+                            ccrm_interpolate_variables($nodeData['owner'] ?? '', $incomingPayload, $context)
+                        );
                         $priority = $nodeData['priority'] ?? 'medium';
                         $deadlineDays = (int)($nodeData['deadline_days'] ?? 1);
 

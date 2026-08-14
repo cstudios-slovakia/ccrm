@@ -2694,6 +2694,34 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                         setNodes(updatedNodes);
                       };
 
+                      /* A task assignee is one person, stored as a user name — so this
+                         field is a picker, not a text box with pills. Typing into it (or
+                         appending a pill behind a name already there) produced strings
+                         like "Admin {{$trigger.changedBy}}" that match no user, and the
+                         task silently ended up belonging to nobody. Only values that can
+                         name a single real user are offered. */
+                      const ownerValue: string = node.data.owner || "";
+                      const userNames: string[] = Array.from(
+                        new Set(users.map((u: any) => String(u?.name || "").trim()).filter(Boolean))
+                      );
+                      const assigneeOptions: { value: string; label: string; disabled?: boolean }[] = [
+                        { value: "", label: t("Unassigned", "Nepriradené", "Nincs felelős") },
+                        ...(userNames.length
+                          ? [{ value: "__users__", label: t("Users", "Používatelia", "Felhasználók"), disabled: true }]
+                          : []),
+                        ...userNames.map(name => ({ value: name, label: name })),
+                        { value: "__trigger__", label: t("From trigger", "Zo spúšťača", "Triggerből"), disabled: true },
+                        { value: "{{$trigger.changedBy}}", label: t("Person who made the change", "Osoba, ktorá vykonala zmenu", "Aki a változtatást végezte") },
+                        { value: "{{$trigger.owner}}", label: t("Owner of the record", "Zodpovedný za záznam", "A rekord felelőse") },
+                      ];
+                      /* Something saved before this field became a picker, or a user who
+                         has since been removed. Kept visible and flagged instead of being
+                         rewritten behind the operator's back — but it will not assign
+                         anyone when the workflow runs. */
+                      if (ownerValue && !assigneeOptions.some(o => !o.disabled && o.value === ownerValue)) {
+                        assigneeOptions.push({ value: ownerValue, label: `⚠ ${ownerValue}` });
+                      }
+
                       return (
                         <div className="mt-2 pt-2 space-y-2 border-t border-slate-100">
                           {node.data.type === "create_lead" && (
@@ -2816,32 +2844,17 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                 </div>
                               </div>
                               <div>
-                                <div className="flex items-center justify-between mb-0.5">
-                                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t("Assignee", "Poverená osoba", "Felelős")}</label>
-                                  {users.length > 0 && (
-                                    <CustomSelect
-                                      unstyled
-                                      value=""
-                                      onChange={(v) => {
-                                        if (v) {
-                                          updateActionField("owner", v);
-                                        }
-                                      }}
-                                      className="text-[10px] bg-slate-100 text-slate-600 font-bold px-1.5 py-0.5 rounded-full gap-1"
-                                      placeholder={t("Select User...", "Vybrať používateľa...", "Kiválasztás...")}
-                                      options={users.map(u => ({ value: u.name, label: u.name }))}
-                                    />
-                                  )}
+                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t("Assignee", "Poverená osoba", "Felelős")}</label>
+                                <div className="mt-0.5">
+                                  <CustomSelect
+                                    size="sm"
+                                    value={ownerValue}
+                                    onChange={(v) => updateActionField("owner", v)}
+                                    icon={<User className="h-3.5 w-3.5 text-slate-400 shrink-0" />}
+                                    placeholder={t("Unassigned", "Nepriradené", "Nincs felelős")}
+                                    options={assigneeOptions}
+                                  />
                                 </div>
-                                <VariableInputField
-                                  label=""
-                                  value={node.data.owner || ""}
-                                  onChange={(val) => updateActionField("owner", val)}
-                                  placeholder="e.g. Erik or {{$trigger.changedBy}}"
-                                  icon={<User className="h-3.5 w-3.5 text-slate-400" />}
-                                  nodes={nodes}
-                                  currentNodeId={node.id}
-                                />
                               </div>
                             </div>
                           )}
