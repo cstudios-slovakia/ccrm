@@ -84,3 +84,4 @@ craft_cookies.txt
 errorsFigtree.md
 graphiql_dump.html
 graphql_settings.html
+__pycache__/
