@@ -1878,6 +1878,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $address = $l['address'] ?? [];
 
+                // A lead pushed without an owner is stored under the fallback one,
+                // so the trigger payload has to carry that same name — otherwise
+                // {{$trigger.owner}} resolves to empty for exactly the leads that
+                // do have an owner in the database.
+                $l['owner'] = $l['owner'] ?? $defaultOwner;
+
                 $isNew = !isset($dbLeads[$leadId]);
                 $oldStatus = $isNew ? null : ($dbLeads[$leadId]['status'] ?? null);
 
@@ -1888,7 +1894,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $l['clientType'] ?? 'person',
                     $l['status'] ?? 'new',
                     $l['source'] ?? 'website',
-                    $l['owner'] ?? $defaultOwner,
+                    $l['owner'],
                     $l['value'] ?? 0.00,
                     $l['rating'] ?? 3,
                     $l['phone'] ?? null,

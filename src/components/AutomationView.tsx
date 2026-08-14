@@ -340,6 +340,70 @@ const VariableInputField: React.FC<VariableInputFieldProps> = ({
 };
 
 /* ────────────────────────────────────────────────────────────────────────────
+   PEOPLE CARRIED BY A TRIGGER
+
+   Which payload fields of each trigger can name a CRM user. Used by the task
+   assignee picker, where a value is only useful if the engine can match it to
+   a real user — a city, a company or a lead's own name never can.
+
+   The list is per trigger on purpose: a lead has an owner but no creator
+   column, a timeline entry has an author but no owner, and a timer fires with
+   nobody behind it at all. Offering a field the payload does not carry would
+   look like a promise the engine cannot keep — it would simply resolve to
+   empty and leave the task unassigned.
+
+   `changedBy` is the session that pushed the change (see sync.php), so it is
+   the *acting* user, while `author`/`createdBy`/`completedBy` are stored on
+   the record itself and can name someone else entirely.
+   ──────────────────────────────────────────────────────────────────────────── */
+type TFn = (en: string, sk: string, hu: string) => string;
+
+const personVariablesForTrigger = (triggerType: string, t: TFn): { value: string; label: string }[] => {
+  const OWNER_LEAD = { value: "{{$trigger.owner}}", label: t("Lead owner", "Zodpovedný za lead", "A lead felelőse") };
+  const OWNER_TASK = { value: "{{$trigger.owner}}", label: t("Task assignee", "Poverená osoba úlohy", "A feladat felelőse") };
+  const TASK_AUTHOR = { value: "{{$trigger.createdBy}}", label: t("Task author", "Autor úlohy", "A feladat szerzője") };
+
+  switch (triggerType) {
+    case "lead_created":
+      return [
+        { value: "{{$trigger.changedBy}}", label: t("User who created the lead", "Používateľ, ktorý lead vytvoril", "A leadet létrehozó felhasználó") },
+        OWNER_LEAD,
+      ];
+    case "client_created":
+      return [
+        { value: "{{$trigger.changedBy}}", label: t("User who created the client", "Používateľ, ktorý klienta vytvoril", "Az ügyfelet létrehozó felhasználó") },
+        { value: "{{$trigger.owner}}", label: t("Client owner", "Zodpovedný za klienta", "Az ügyfél felelőse") },
+      ];
+    case "lead_status_changed":
+      return [
+        { value: "{{$trigger.changedBy}}", label: t("User who changed the status", "Používateľ, ktorý zmenil stav", "A státuszt módosító felhasználó") },
+        OWNER_LEAD,
+      ];
+    case "lead_timeline_event":
+      return [
+        { value: "{{$trigger.changedBy}}", label: t("User who added the entry", "Používateľ, ktorý záznam pridal", "A bejegyzést hozzáadó felhasználó") },
+        { value: "{{$trigger.author}}", label: t("Author of the entry", "Autor záznamu", "A bejegyzés szerzője") },
+      ];
+    case "task_created":
+      return [
+        { value: "{{$trigger.changedBy}}", label: t("User who created the task", "Používateľ, ktorý úlohu vytvoril", "A feladatot létrehozó felhasználó") },
+        TASK_AUTHOR,
+        OWNER_TASK,
+      ];
+    case "task_status_changed":
+      return [
+        { value: "{{$trigger.changedBy}}", label: t("User who changed the status", "Používateľ, ktorý zmenil stav", "A státuszt módosító felhasználó") },
+        OWNER_TASK,
+        TASK_AUTHOR,
+        { value: "{{$trigger.completedBy}}", label: t("User who completed the task", "Používateľ, ktorý úlohu dokončil", "A feladatot befejező felhasználó") },
+      ];
+    default:
+      // timer / manual: nobody's action starts these, so the payload names no one.
+      return [];
+  }
+};
+
+/* ────────────────────────────────────────────────────────────────────────────
    CONDITION BUILDER
 
    A condition node is executed by ccrm_evaluate_condition() in
@@ -2704,15 +2768,17 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                       const userNames: string[] = Array.from(
                         new Set(users.map((u: any) => String(u?.name || "").trim()).filter(Boolean))
                       );
+                      const triggerPeople = personVariablesForTrigger(triggerType, t);
                       const assigneeOptions: { value: string; label: string; disabled?: boolean }[] = [
                         { value: "", label: t("Unassigned", "Nepriradené", "Nincs felelős") },
                         ...(userNames.length
                           ? [{ value: "__users__", label: t("Users", "Používatelia", "Felhasználók"), disabled: true }]
                           : []),
                         ...userNames.map(name => ({ value: name, label: name })),
-                        { value: "__trigger__", label: t("From trigger", "Zo spúšťača", "Triggerből"), disabled: true },
-                        { value: "{{$trigger.changedBy}}", label: t("Person who made the change", "Osoba, ktorá vykonala zmenu", "Aki a változtatást végezte") },
-                        { value: "{{$trigger.owner}}", label: t("Owner of the record", "Zodpovedný za záznam", "A rekord felelőse") },
+                        ...(triggerPeople.length
+                          ? [{ value: "__trigger__", label: t("From trigger", "Zo spúšťača", "Triggerből"), disabled: true }]
+                          : []),
+                        ...triggerPeople,
                       ];
                       /* Something saved before this field became a picker, or a user who
                          has since been removed. Kept visible and flagged instead of being
