@@ -523,6 +523,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         }
     }
 
+    // Identity of the session, resolved from `users` rather than taken from the
+    // session copy: api/auth.php only refreshes that copy every 60 seconds, so a
+    // user who has just changed their own e-mail would look like a different
+    // person to the client's check below and be logged out for it.
+    $sessionEmailStmt = $pdo->prepare("SELECT `email` FROM `users` WHERE `id` = ? LIMIT 1");
+    $sessionEmailStmt->execute([$sessionUser['id']]);
+    $sessionEmail = (string)($sessionEmailStmt->fetchColumn() ?: ($sessionUser['email'] ?? ''));
+
     // Lightweight probe: the SPA polls this every few seconds to learn whether
     // anything changed. It returns only the current data version (one cheap
     // settings query — no leads/tasks/timeline reads, no multi-MB payload), so
@@ -532,6 +540,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'installed' => true,
             'demoMode' => $isDemoMode,
             'dataVersion' => $dataVersion,
+            'sessionUser' => ['email' => $sessionEmail],
         ]);
         exit;
     }
@@ -1058,6 +1067,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         // Lets the client tell a real read apart from the unauthenticated
         // demo-login payload above, which carries no CRM data.
         'authenticated' => true,
+        // Who the server believes is writing. The browser keeps the logged-in
+        // user in per-tab sessionStorage, while the PHP session is a cookie
+        // shared by every tab: logging in as a colleague in a second tab
+        // silently rebinds this tab's writes to them, with no 401 to notice.
+        // Reporting the identity back lets the client stop instead of filing
+        // one person's work under another's name.
+        'sessionUser' => ['email' => $sessionEmail],
         'demoMode' => $isDemoMode,
         // Highest POST protocol this build understands. The client MUST see this
         // before it may send a delta payload: an older sync.php has no idea what

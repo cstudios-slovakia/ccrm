@@ -1331,6 +1331,18 @@ ${log.payload || ''}
     let lastDataVersion: string | null = null;
     let tick = 0;
 
+    /* The PHP session is a cookie shared by every tab, while the logged-in user
+       here lives in per-tab sessionStorage. Logging in as a colleague in a
+       second tab rebinds this tab's writes to them without any 401 firing: the
+       header keeps showing the old name while sync.php files every change under
+       the new one. The server now reports whose session it is, so treat a
+       disagreement as "this tab is no longer logged in as who it thinks". */
+    const sessionUserChanged = (data: any) => {
+      const serverEmail = String(data?.sessionUser?.email || "").trim().toLowerCase();
+      const shownEmail = String(currentUser?.email || "").trim().toLowerCase();
+      return serverEmail !== "" && shownEmail !== "" && serverEmail !== shownEmail;
+    };
+
     const applyServerData = (data: any) => {
       setIsInstalled(true);
       setIsDemoMode(data.demoMode === true);
@@ -1349,6 +1361,19 @@ ${log.payload || ''}
           if (s.systemCurrency !== undefined && s.systemCurrency !== systemCurrency) setSystemCurrency(s.systemCurrency || "");
         }
         setCurrentUser(null);
+        return;
+      }
+      // Someone else's login took over the browser session. Stop before this
+      // pull hands their data to a screen still labelled with the old user.
+      if (sessionUserChanged(data)) {
+        setCurrentUser(null);
+        if (typeof (window as any).showToast === "function") {
+          (window as any).showToast(t(
+            "You are now signed in as a different user in this browser. Please log in again.",
+            "V tomto prehliadači ste teraz prihlásený ako iný používateľ. Prihláste sa znova.",
+            "Ebben a böngészőben már más felhasználóként van bejelentkezve. Jelentkezzen be újra."
+          ), "warning");
+        }
         return;
       }
       if (typeof data.serverTime === "string") {
@@ -1527,6 +1552,13 @@ ${log.payload || ''}
           // applyServerData). Without this the logout only surfaces on the next
           // forced full pull, up to a minute later.
           if (probe && probe.authenticated === false) {
+            setIsInstalled(true);
+            setCurrentUser(null);
+            return;
+          }
+          // Cheapest place to catch a session taken over by another tab: the
+          // probe runs every 5s, the full pull only when data actually moves.
+          if (probe && sessionUserChanged(probe)) {
             setIsInstalled(true);
             setCurrentUser(null);
             return;
