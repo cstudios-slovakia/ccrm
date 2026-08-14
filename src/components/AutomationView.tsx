@@ -2804,16 +2804,20 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                         new Set(users.map((u: any) => String(u?.name || "").trim()).filter(Boolean))
                       );
                       const triggerPeople = personVariablesForTrigger(triggerType, t);
+                      /* The trigger values come first: they are what an automation
+                         normally wants (whoever moved the lead), while a fixed name
+                         is the exception. The user list can be long enough to push
+                         them out of sight at the bottom. */
                       const assigneeOptions: { value: string; label: string; disabled?: boolean }[] = [
                         { value: "", label: t("Unassigned", "Nepriradené", "Nincs felelős") },
-                        ...(userNames.length
-                          ? [{ value: "__users__", label: t("Users", "Používatelia", "Felhasználók"), disabled: true }]
-                          : []),
-                        ...userNames.map(name => ({ value: name, label: name })),
                         ...(triggerPeople.length
                           ? [{ value: "__trigger__", label: t("From trigger", "Zo spúšťača", "Triggerből"), disabled: true }]
                           : []),
                         ...triggerPeople,
+                        ...(userNames.length
+                          ? [{ value: "__users__", label: t("Users", "Používatelia", "Felhasználók"), disabled: true }]
+                          : []),
+                        ...userNames.map(name => ({ value: name, label: name })),
                       ];
                       /* Something saved before this field became a picker, or a user who
                          has since been removed. Kept visible and flagged instead of being
