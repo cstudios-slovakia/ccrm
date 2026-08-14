@@ -502,8 +502,14 @@ if (!function_exists('ccrm_trigger_workflow')) {
                         }
                     }
                 } elseif ($eventType === 'client_created') {
-                    if (!empty($config['clientType']) && isset($payload['client_type'])) {
-                        if ($payload['client_type'] !== $config['clientType']) $matches = false;
+                    // The payload is the client row as the browser pushed it, so the
+                    // key is camelCase. The snake_case spelling this used to read
+                    // never existed in it, which made the filter silently vanish and
+                    // fired the workflow for every new client. Both spellings are
+                    // accepted so anything already queued still matches.
+                    $clientType = $payload['clientType'] ?? $payload['client_type'] ?? null;
+                    if (!empty($config['clientType']) && $clientType !== null) {
+                        if ($clientType !== $config['clientType']) $matches = false;
                     }
                 } elseif ($eventType === 'task_created') {
                     if (!empty($config['owner']) && isset($payload['owner'])) {
