@@ -1188,6 +1188,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $sessionNameStmt->execute([$sessionUser['id']]);
     $sessionUserName = (string)($sessionNameStmt->fetchColumn() ?: '');
 
+    // Identity of whoever performed the write, merged into every workflow trigger
+    // payload fired from this sync so automations can address the person behind
+    // the event ({{$trigger.changedBy}}) — the user who moved the lead, not the
+    // lead's owner or the lead itself; the two are frequently different people.
+    // Stays absent when we cannot name that user, so the variable renders empty
+    // rather than crediting the action to the wrong colleague. Events fired from
+    // anywhere without a CRM session (public form, cron timers) never carry it.
+    $workflowActor = $sessionUserName !== ''
+        ? ['changedBy' => $sessionUserName, 'changedByEmail' => (string)($sessionUser['email'] ?? '')]
+        : [];
+
     // Dynamic tables belonging to deleted project types. DDL implicitly commits in
     // MySQL, so these are collected during the transaction and executed after it.
     $deferredTableDrops = [];
@@ -1913,14 +1924,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Workflow Triggers
                 require_once __DIR__ . '/api/workflows_engine.php';
                 if ($isNew) {
-                    ccrm_trigger_workflow('lead_created', $l, $pdo);
+                    ccrm_trigger_workflow('lead_created', array_merge($l, $workflowActor), $pdo);
                     if (($l['clientType'] ?? 'person') !== 'person') {
-                        ccrm_trigger_workflow('client_created', $l, $pdo);
+                        ccrm_trigger_workflow('client_created', array_merge($l, $workflowActor), $pdo);
                     }
                 } else {
                     $newStatus = $l['status'] ?? null;
                     if ($oldStatus !== null && $newStatus !== null && $oldStatus !== $newStatus) {
-                        $triggerPayload = array_merge($l, [
+                        $triggerPayload = array_merge($l, $workflowActor, [
                             'oldStatus' => $oldStatus,
                             'newStatus' => $newStatus
                         ]);
@@ -2047,7 +2058,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $insTimeline->execute($teParams);
                             if ($isNewTe) {
                                 require_once __DIR__ . '/api/workflows_engine.php';
-                                ccrm_trigger_workflow('lead_timeline_event', array_merge($te, ['lead_id' => $leadId]), $pdo);
+                                ccrm_trigger_workflow('lead_timeline_event', array_merge($te, $workflowActor, ['lead_id' => $leadId]), $pdo);
                             }
                         } catch (\PDOException $pdoEx) {
                             // If duplicate key (SQLSTATE 23000 / error 1062), regenerate ID and retry
@@ -2140,11 +2151,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Workflow Triggers
                 require_once __DIR__ . '/api/workflows_engine.php';
                 if ($isNewTask) {
-                    ccrm_trigger_workflow('task_created', $t, $pdo);
+                    ccrm_trigger_workflow('task_created', array_merge($t, $workflowActor), $pdo);
                 } else {
                     $newTaskStatus = $t['status'] ?? null;
                     if ($oldTaskStatus !== null && $newTaskStatus !== null && $oldTaskStatus !== $newTaskStatus) {
-                        $triggerPayload = array_merge($t, [
+                        $triggerPayload = array_merge($t, $workflowActor, [
                             'oldStatus' => $oldTaskStatus,
                             'newStatus' => $newTaskStatus
                         ]);
@@ -2221,9 +2232,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Workflow Triggers
                 require_once __DIR__ . '/api/workflows_engine.php';
                 if ($isNewMeeting) {
-                    ccrm_trigger_workflow('note_created', $mn, $pdo);
+                    ccrm_trigger_workflow('note_created', array_merge($mn, $workflowActor), $pdo);
                 } else {
-                    ccrm_trigger_workflow('note_updated', $mn, $pdo);
+                    ccrm_trigger_workflow('note_updated', array_merge($mn, $workflowActor), $pdo);
                 }
 
                 // Sync meeting_tasks (Delete & Insert list)

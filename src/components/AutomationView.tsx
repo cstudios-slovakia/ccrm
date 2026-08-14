@@ -125,6 +125,9 @@ const VariableInputField: React.FC<VariableInputFieldProps> = ({
     "{{$trigger.company}}": { label: "Spoločnosť / Company", block: "Spúšťač", color: "bg-blue-100 text-blue-800 border-blue-200" },
     "{{$trigger.value}}": { label: "Hodnota / Value", block: "Spúšťač", color: "bg-blue-100 text-blue-800 border-blue-200" },
     "{{$trigger.status}}": { label: "Stav / Status", block: "Spúšťač", color: "bg-blue-100 text-blue-800 border-blue-200" },
+    "{{$trigger.owner}}": { label: "Zodpovedný / Owner", block: "Spúšťač", color: "bg-blue-100 text-blue-800 border-blue-200" },
+    "{{$trigger.changedBy}}": { label: "Zmenil / Changed by", block: "Spúšťač", color: "bg-blue-100 text-blue-800 border-blue-200" },
+    "{{$trigger.changedByEmail}}": { label: "E-mail používateľa / Changed by e-mail", block: "Spúšťač", color: "bg-blue-100 text-blue-800 border-blue-200" },
     "{{$trigger.id}}": { label: "ID", block: "Spúšťač", color: "bg-blue-100 text-blue-800 border-blue-200" },
     "{{$ai.result}}": { label: "AI Výstup", block: "AI Agent", color: "bg-purple-100 text-purple-800 border-purple-200" },
     "{{$ai.summary}}": { label: "AI Zhrnutie", block: "AI Agent", color: "bg-purple-100 text-purple-800 border-purple-200" },
@@ -151,6 +154,12 @@ const VariableInputField: React.FC<VariableInputFieldProps> = ({
         { label: "Spoločnosť / Company", tag: "{{$trigger.company}}" },
         { label: "Hodnota / Value", tag: "{{$trigger.value}}" },
         { label: "Stav / Status", tag: "{{$trigger.status}}" },
+        // The record's own assignee vs. the colleague whose action fired the
+        // workflow — assigning follow-up work to "whoever moved the lead" needs
+        // the second one, and the two are frequently different people.
+        { label: "Zodpovedný / Owner", tag: "{{$trigger.owner}}" },
+        { label: "Zmenil / Changed by", tag: "{{$trigger.changedBy}}" },
+        { label: "E-mail používateľa / Changed by e-mail", tag: "{{$trigger.changedByEmail}}" },
         { label: "ID", tag: "{{$trigger.id}}" },
       ]
     });
@@ -523,6 +532,13 @@ const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
         F("$trigger.relatedLeadId", t("Related lead ID", "ID súvisiaceho leadu", "Kapcsolt lead ID")),
         F("$trigger.isLocking", t("Blocking task", "Blokujúca úloha", "Blokkoló feladat"), "bool"),
         F("$trigger.isAiGenerated", t("Created by AI", "Vytvorené AI", "AI által létrehozva"), "bool"),
+      );
+    }
+    /* The user whose action fired the workflow — carried by every event a CRM
+       session produces, and not the same person as the record's owner. */
+    if (isLead || isClient || isTask || triggerType === "lead_timeline_event") {
+      list.push(
+        F("$trigger.changedBy", t("Changed by", "Zmenil", "Módosította"), "select", users.map(u => u.name).filter(Boolean)),
       );
     }
     if (triggerType === "lead_timeline_event") {
@@ -2821,7 +2837,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                   label=""
                                   value={node.data.owner || ""}
                                   onChange={(val) => updateActionField("owner", val)}
-                                  placeholder="e.g. Erik or {{$trigger.owner}}"
+                                  placeholder="e.g. Erik or {{$trigger.changedBy}}"
                                   icon={<User className="h-3.5 w-3.5 text-slate-400" />}
                                   nodes={nodes}
                                   currentNodeId={node.id}
