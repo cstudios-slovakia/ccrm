@@ -13,6 +13,7 @@ import type { Lead, TimelineEvent, Task } from "../types";
 import { cn } from "../utils/cn";
 import { BlockEditor } from "./BlockEditor";
 import { CustomSelect } from "./ui/CustomSelect";
+import { TimelineAuthorBadge } from "./TimelineAuthorBadge";
 import type { EditorBlock } from "./BlockEditor";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
@@ -1252,7 +1253,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               "Az e-mail megtekintéséhez vagy megválaszolásához nyissa meg a levelezőt."
             )}`,
             seen: mail.seen,
-            isOutgoing: isOutgoing
+            isOutgoing: isOutgoing,
+            // Only a sent mail has an author inside the CRM. What the client
+            // wrote to us was nobody's action here, so it stays unattributed.
+            author: isOutgoing ? currentUser?.name || "" : ""
           };
         };
 
@@ -2268,7 +2272,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       type: logType,
       timestamp: timestampStr,
       title: titleString,
-      content: contentString
+      content: contentString,
+      // Whoever is logging it right now, not the client's owner: the two are
+      // frequently different people and the timeline has to say which one acted.
+      author: currentUser?.name || ""
     };
 
     const offerAmt = parseFloat(logAmount);
@@ -2414,6 +2421,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       fileSize: uploadFileSize,
       fileType: uploadFileType,
       filePath: uploadedFilePath,
+      author: currentUser?.name || "",
     };
 
     setLeads(prev => prev.map(lead => {
@@ -3522,6 +3530,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                       <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded bg-amber-500 text-white border border-amber-600 tracking-widest shadow-sm">
                                         {getTranslation(systemLanguage, "timeline.upcoming")}
                                       </span>
+                                      <TimelineAuthorBadge
+                                        name={event.author}
+                                        color={projectManagerColors[event.author || ""]}
+                                      />
                                     </div>
                                     <span className="block md:hidden text-[9px] font-black text-slate-450 uppercase tracking-wider">
                                       {formatTimestampLocalized(event.timestamp, systemLanguage)}
@@ -3680,9 +3692,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         {/* 3. PAST EVENTS (Rendered at bottom, most recent closest to line) */}
                         {pastEvents.map((event) => {
                           const colors = getEventColors(event.type);
-                          const pmName = event.type === "email"
+                          const pmName = event.author || (event.type === "email"
                             ? (event.isOutgoing ? (currentUser?.name || projectManagers[0] || "") : (activeClient.owner || currentUser?.name || projectManagers[0] || ""))
-                            : (activeClient.owner || currentUser?.name || projectManagers[0] || "");
+                            : (activeClient.owner || currentUser?.name || projectManagers[0] || ""));
                           const pmColor = projectManagerColors[pmName] || "#6366f1";
                           return (
                             <div key={event.id} className="relative flex flex-row items-start gap-4 md:gap-8 group animate-in fade-in slide-in-from-bottom duration-250">
@@ -3738,9 +3750,15 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                           </span>
                                         </>
                                       ) : (
-                                        <span className={`text-[8px] font-black uppercase px-2.5 py-0.5 rounded-full border tracking-widest shadow-inner ${colors.badgeBg}`}>
-                                          {getTranslation(systemLanguage, `timeline.badge.${event.type}`)}
-                                        </span>
+                                        <>
+                                          <span className={`text-[8px] font-black uppercase px-2.5 py-0.5 rounded-full border tracking-widest shadow-inner ${colors.badgeBg}`}>
+                                            {getTranslation(systemLanguage, `timeline.badge.${event.type}`)}
+                                          </span>
+                                          <TimelineAuthorBadge
+                                            name={event.author}
+                                            color={projectManagerColors[event.author || ""]}
+                                          />
+                                        </>
                                       )}
                                     </div>
                                     <span className="block md:hidden text-[9px] font-black text-slate-400 uppercase tracking-wider">

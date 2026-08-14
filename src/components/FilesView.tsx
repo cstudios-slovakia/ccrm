@@ -31,6 +31,17 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
   const money = (value: number, opts?: Intl.NumberFormatOptions) => formatMoney(value, currencyCode, systemLanguage, opts);
   const [searchQuery, setSearchQuery] = useState("");
+
+  // The view takes no user prop, but every document it files lands on a lead
+  // timeline and has to name the person who uploaded it.
+  const currentUser = useMemo(() => {
+    try {
+      const stored = sessionStorage.getItem("crm_current_user_rbac");
+      return stored ? JSON.parse(stored) : null;
+    } catch (e) {
+      return null;
+    }
+  }, []);
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<"all" | "offer" | "contract" | "invoice">("all");
   const [selectedClientFilter, setSelectedClientFilter] = useState("all");
 
@@ -255,7 +266,8 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
               amount: isNaN(valNum) ? undefined : valNum,
               fileName: fileName,
               fileSize: formatBytes(queuedFile.file.size),
-              fileType: category
+              fileType: category,
+              author: currentUser?.name || ""
             };
           });
 

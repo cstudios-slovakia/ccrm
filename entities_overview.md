@@ -97,6 +97,7 @@ Interaction history logged against leads (emails, call logs, meetings).
 * `timestamp` DATETIME
 * `title` VARCHAR(255)
 * `content` TEXT
+* `author` VARCHAR(100) (CRM user whose action produced the entry; NULL for entries nobody triggered here — incoming mail, public-form inquiries, imports — and for rows written before the column existed)
 * `created_at` TIMESTAMP
 
 ---

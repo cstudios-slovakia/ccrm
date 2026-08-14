@@ -60,6 +60,11 @@ export interface TimelineEvent {
   isOutgoing?: boolean;
   audioFile?: string; // path to audio recording file
   transcription?: string; // RAG or speech-to-text transcript
+  // Who produced this entry — the user who logged the note, sent the mail or
+  // moved the lead to another state. Optional on purpose: entries nobody in the
+  // CRM triggered (incoming mail, imported paperwork) and every event written
+  // before this field existed simply have no author and render without a name.
+  author?: string;
 }
 
 export interface Lead {

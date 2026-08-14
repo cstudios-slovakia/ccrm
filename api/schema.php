@@ -107,6 +107,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `attachments_json` TEXT NULL COMMENT 'JSON array of {name,size,path} — an event can carry several documents',
               `extra_time` VARCHAR(10) NULL,
               `is_outgoing` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'email events only: 1 = we sent it, 0 = the client did',
+              `author` VARCHAR(100) NULL COMMENT 'CRM user whose action produced this entry. NULL for entries nobody triggered here (incoming mail, public-form inquiries, imports)',
               PRIMARY KEY (`id`),
               FOREIGN KEY (`lead_id`) REFERENCES `leads` (`id`) ON DELETE CASCADE,
               INDEX idx_event_timestamp (`timestamp`),
@@ -526,6 +527,14 @@ if (!function_exists('ccrm_schema_statements')) {
         // the Sent folder — rendered with the "Incoming" badge.
         if (!ccrm_column_exists($pdo, 'timeline_events', 'is_outgoing')) {
             $pdo->exec("ALTER TABLE `timeline_events` ADD COLUMN `is_outgoing` TINYINT(1) NOT NULL DEFAULT 0 AFTER `extra_time`");
+        }
+        // Who did it. Every entry a person produced — a logged note, a sent mail,
+        // a pipeline move — names the user behind it, so the history reads as
+        // "who did what, when". Left NULL for entries nobody triggered here
+        // (incoming mail, public-form inquiries) and for every event written
+        // before the column existed; those simply render without a name.
+        if (!ccrm_column_exists($pdo, 'timeline_events', 'author')) {
+            $pdo->exec("ALTER TABLE `timeline_events` ADD COLUMN `author` VARCHAR(100) NULL AFTER `is_outgoing`");
         }
         // `tasks`.`status` was originally a fixed ENUM, but task states are
         // user-customizable free text (see Settings > task states / taskStates

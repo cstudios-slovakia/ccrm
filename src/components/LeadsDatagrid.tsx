@@ -308,6 +308,7 @@ const SearchableLeadSelect: React.FC<{
     );
 };
 import { CustomSelect } from "./ui/CustomSelect";
+import { TimelineAuthorBadge } from "./TimelineAuthorBadge";
 import { BlockEditor } from "./BlockEditor";
 import type { EditorBlock } from "./BlockEditor";
 import { getTranslation } from "../utils/translations";
@@ -2400,6 +2401,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         content: `${t("From", "Od", "Feladó")}: ${mail.from.name || mail.from.address} <${mail.from.address}>\n${t("Date", "Dátum", "Dátum")}: ${mail.date}\n\n${t("To view this email or reply, please open the Mail Client.", "Pre zobrazenie alebo odpovedanie na tento e-mail otvorte poštového klienta.", "Az e-mail megtekintéséhez vagy megválaszolásához nyissa meg a levelezőklienst.")}`,
                         seen: mail.seen,
                         isOutgoing: isOutgoing,
+                        // Only a sent mail has an author inside the CRM. What the
+                        // client wrote to us was nobody's action here, so it stays
+                        // unattributed.
+                        author: isOutgoing ? currentUser?.name || "" : "",
                     };
                 };
 
@@ -3110,6 +3115,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 logType === "note" && (window as any)._latestTranscription
                     ? (window as any)._latestTranscription
                     : undefined,
+            // Whoever is logging it right now, not the lead's owner: the two are
+            // frequently different people and the timeline has to say which one acted.
+            author: currentUser?.name || "",
         };
 
         setLeads((prev) =>
@@ -3597,6 +3605,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             "Lead állapota módosítva",
         ),
         content: `${leadStateLabel(fromStatus)} ${STATUS_CHANGE_ARROW} ${leadStateLabel(toStatus)}`,
+        author: currentUser?.name || "",
     });
 
     /**
@@ -6688,6 +6697,15 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                 {event.title}
                                                             </h4>
                                                             <div className="flex items-center gap-1.5 shrink-0">
+                                                                <TimelineAuthorBadge
+                                                                    name={
+                                                                        event.author
+                                                                    }
+                                                                    color={getSafePMColor(
+                                                                        event.author ||
+                                                                            "",
+                                                                    )}
+                                                                />
                                                                 <span className="px-2.5 py-0.5 rounded-full text-[8.5px] font-extrabold uppercase border bg-purple-50 text-purple-700 border-purple-250">
                                                                     {getTranslation(
                                                                         systemLanguage,
@@ -7021,7 +7039,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 event.type,
                                             );
                                             const pmName =
-                                                event.type === "email"
+                                                event.author ||
+                                                (event.type === "email"
                                                     ? event.isOutgoing
                                                         ? currentUser?.name ||
                                                           projectManagers[0] ||
@@ -7033,7 +7052,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     : activeLead.owner ||
                                                       currentUser?.name ||
                                                       projectManagers[0] ||
-                                                      "";
+                                                      "");
                                             const pmColor =
                                                 projectManagerColors[pmName] ||
                                                 "#6366f1";
@@ -7130,6 +7149,15 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                 </div>
                                                             ) : (
                                                                 <div className="flex items-center gap-1.5 shrink-0">
+                                                                    <TimelineAuthorBadge
+                                                                        name={
+                                                                            event.author
+                                                                        }
+                                                                        color={getSafePMColor(
+                                                                            event.author ||
+                                                                                "",
+                                                                        )}
+                                                                    />
                                                                     <span
                                                                         className={`px-2.5 py-0.5 rounded-full text-[8.5px] font-extrabold uppercase border ${colors.badgeBg}`}
                                                                     >

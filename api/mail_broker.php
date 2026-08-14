@@ -488,14 +488,28 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                             ? (strtolower(trim($fromAddress)) === $accountEmail ? 1 : 0)
                             : (strcasecmp($folder, 'Sent') === 0 ? 1 : 0);
 
+                        // Only a message we sent has an author inside the CRM:
+                        // resolve the account address to the user behind it so the
+                        // timeline names who wrote it. An incoming mail was nobody's
+                        // action here and stays unattributed.
+                        $eventAuthor = null;
+                        if ($isOutgoing && $accountEmail !== '') {
+                            $authorStmt = $pdo->prepare("SELECT `name` FROM `users` WHERE LOWER(`email`) = ? LIMIT 1");
+                            $authorStmt->execute([$accountEmail]);
+                            $resolvedAuthor = $authorStmt->fetchColumn();
+                            if ($resolvedAuthor !== false && trim((string)$resolvedAuthor) !== '') {
+                                $eventAuthor = $resolvedAuthor;
+                            }
+                        }
+
                         $checkStmt = $pdo->prepare("SELECT 1 FROM `timeline_events` WHERE `id` = ?");
                         $checkStmt->execute([$eventId]);
                         if (!$checkStmt->fetchColumn()) {
-                            $insStmt = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`, `is_outgoing`) VALUES (?, ?, 'email', ?, ?, ?, ?)");
-                            $insStmt->execute([$eventId, $matchedLeadId, $timestamp, $title, $content, $isOutgoing]);
+                            $insStmt = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`, `is_outgoing`, `author`) VALUES (?, ?, 'email', ?, ?, ?, ?, ?)");
+                            $insStmt->execute([$eventId, $matchedLeadId, $timestamp, $title, $content, $isOutgoing, $eventAuthor]);
                         } else {
-                            $upStmt = $pdo->prepare("UPDATE `timeline_events` SET `timestamp` = ?, `title` = ?, `is_outgoing` = ? WHERE `id` = ?");
-                            $upStmt->execute([$timestamp, $title, $isOutgoing, $eventId]);
+                            $upStmt = $pdo->prepare("UPDATE `timeline_events` SET `timestamp` = ?, `title` = ?, `is_outgoing` = ?, `author` = ? WHERE `id` = ?");
+                            $upStmt->execute([$timestamp, $title, $isOutgoing, $eventAuthor, $eventId]);
                         }
                     }
                 }

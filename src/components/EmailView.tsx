@@ -10,6 +10,7 @@ import { formatBytes } from "../utils/formatBytes";
 import { nowLocalStamp, localeCodeFor, formatTimestampLocalized } from "../utils/localTime";
 import { getTranslation } from "../utils/translations";
 import { CustomSelect } from "./ui/CustomSelect";
+import { TimelineAuthorBadge } from "./TimelineAuthorBadge";
 
 interface EmailViewProps {
   currentUser: any;
@@ -230,7 +231,8 @@ export const EmailView: React.FC<EmailViewProps> = ({
             amount: undefined,
             fileName: data.fileName,
             fileSize: formatBytes(att.size || 0),
-            fileType: "offer" as const
+            fileType: "offer" as const,
+            author: currentUser?.name || ""
           };
 
           return {
@@ -416,7 +418,10 @@ export const EmailView: React.FC<EmailViewProps> = ({
             title: mail.subject || t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)"),
             content: `${t("From:", "Od:", "Feladó:")} ${mail.from.name || mail.from.address} <${mail.from.address}>\n\n${t("To view this email or reply, please open the Mail Client.", "Ak chcete zobraziť tento e-mail alebo naň odpovedať, otvorte poštového klienta.", "Az e-mail megtekintéséhez vagy megválaszolásához nyissa meg a levelezőklienst.")}`,
             seen: mail.seen,
-            isOutgoing
+            isOutgoing,
+            // Only a sent mail has an author inside the CRM. What the client
+            // wrote to us was nobody's action here, so it stays unattributed.
+            author: isOutgoing ? currentUser?.name || "" : ""
           };
         };
 
@@ -1866,7 +1871,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
               ) : (
                 <div className="space-y-4 relative border-l-2 border-slate-150 pl-4 text-left">
                   {slideoutTimelineEvents.map((event: any) => {
-                    const pmName = slideoutLead.owner || currentUser?.name || "";
+                    const pmName = event.author || slideoutLead.owner || currentUser?.name || "";
                     const pmColor = projectManagerColors[pmName] || "#6366f1";
                     let dotColor = "bg-blue-600 text-white border-blue-700";
                     let cardBorder = "border-slate-200 bg-slate-50/50";
@@ -1915,14 +1920,20 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                   </span>
                                 </>
                               ) : (
-                                <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded-full border bg-slate-100 text-slate-700 tracking-wider">
-                                  {event.type === "phone" ? t("Call Logs", "Záznam hovoru", "Hívásnapló")
-                                    : event.type === "email" ? t("Email Sent", "E-mail odoslaný", "E-mail elküldve")
-                                    : event.type === "note" ? t("Timeline Note", "Poznámka na časovej osi", "Idővonal jegyzet")
-                                    : event.type === "offer" ? t("Proposal", "Cenová ponuka", "Ajánlat")
-                                    : event.type === "appointment" ? t("Meeting Log", "Záznam stretnutia", "Találkozó napló")
-                                    : getTranslation(systemLanguage, `timeline.badge.${event.type}`)}
-                                </span>
+                                <>
+                                  <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded-full border bg-slate-100 text-slate-700 tracking-wider">
+                                    {event.type === "phone" ? t("Call Logs", "Záznam hovoru", "Hívásnapló")
+                                      : event.type === "email" ? t("Email Sent", "E-mail odoslaný", "E-mail elküldve")
+                                      : event.type === "note" ? t("Timeline Note", "Poznámka na časovej osi", "Idővonal jegyzet")
+                                      : event.type === "offer" ? t("Proposal", "Cenová ponuka", "Ajánlat")
+                                      : event.type === "appointment" ? t("Meeting Log", "Záznam stretnutia", "Találkozó napló")
+                                      : getTranslation(systemLanguage, `timeline.badge.${event.type}`)}
+                                  </span>
+                                  <TimelineAuthorBadge
+                                    name={event.author}
+                                    color={projectManagerColors[event.author || ""]}
+                                  />
+                                </>
                               )}
                             </div>
                             <span className="text-[8px] text-slate-400 font-extrabold">{formatTimestampLocalized(event.timestamp, systemLanguage)}</span>
