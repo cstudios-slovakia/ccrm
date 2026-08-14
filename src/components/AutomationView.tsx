@@ -308,7 +308,7 @@ const VariableInputField: React.FC<VariableInputFieldProps> = ({
             </button>
           </div>
 
-          <div className="p-2 overflow-y-auto">
+          <div className="p-2 overflow-y-auto" data-canvas-scroll-passthrough>
             {categories.map((cat) => (
               <div key={cat.title} className="mb-2">
                 <div className={`px-2 py-0.5 text-[8px] font-extrabold uppercase tracking-wider rounded-md mb-1 flex items-center justify-between ${cat.color}`}>
@@ -1034,6 +1034,16 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
     if (!el) return;
 
     const onWheel = (e: WheelEvent) => {
+      // Let scrollable overlay panels (e.g. the previous-block-values dropdown)
+      // handle their own scroll natively instead of panning the canvas underneath.
+      const target = e.target as HTMLElement | null;
+      const scrollPanel = target?.closest<HTMLElement>("[data-canvas-scroll-passthrough]");
+      if (scrollPanel && !e.ctrlKey && !e.metaKey) {
+        const atTop = scrollPanel.scrollTop <= 0 && e.deltaY < 0;
+        const atBottom = scrollPanel.scrollTop + scrollPanel.clientHeight >= scrollPanel.scrollHeight && e.deltaY > 0;
+        if (!atTop && !atBottom) return;
+      }
+
       e.preventDefault();
       if (e.ctrlKey || e.metaKey) {
         zoomAround(viewRef.current.zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12), e.clientX, e.clientY);
