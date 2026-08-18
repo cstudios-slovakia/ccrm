@@ -40,7 +40,10 @@ import {
   Loader2,
   Lock,
   Unlock,
-  Link2
+  Link2,
+  ShoppingCart,
+  Calculator,
+  UserCheck
 } from "lucide-react";
 import { formatMoney } from "../utils/currency";
 import type { Language } from "../utils/translations";
@@ -137,11 +140,16 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   const [isHeaderStuck, setIsHeaderStuck] = useState(false);
   const [isCopiedProductUrl, setIsCopiedProductUrl] = useState(false);
 
-  // Sync hash navigation with product detail selection (e.g. from Universal Search / Direct URL)
+  // Sync hash navigation with product detail / goods issue selection
   useEffect(() => {
     const handleHash = () => {
       const rawHash = window.location.hash.replace(/^#/, "");
-      if (rawHash.startsWith("warehouse/") || rawHash.startsWith("warehouse-")) {
+      if (rawHash === "warehouse/issue/new" || rawHash === "warehouse/issue" || rawHash === "warehouse/new-issue") {
+        setIsGoodsIssueOpen(true);
+        setSelectedProductDetailId(null);
+        setActiveSubTab("movements");
+      } else if (rawHash.startsWith("warehouse/") || rawHash.startsWith("warehouse-")) {
+        setIsGoodsIssueOpen(false);
         const sub = rawHash.replace(/^warehouse[\/-]/, "");
         if (sub === "new") {
           setSelectedProductDetailId("new");
@@ -156,8 +164,12 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
           setActiveSubTab("items");
         } else {
           setSelectedProductDetailId(null);
+          if (sub === "movements" || sub === "suppliers" || sub === "batches" || sub === "analytics") {
+            setActiveSubTab(sub as TabType);
+          }
         }
       } else if (rawHash === "warehouse") {
+        setIsGoodsIssueOpen(false);
         setSelectedProductDetailId(null);
       }
     };
@@ -212,7 +224,6 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   }, [selectedProductDetailId]);
 
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
-  const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   
   const [isSupplierModalOpen, setIsSupplierModalOpen] = useState(false);
@@ -350,18 +361,38 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     { itemId: warehouseItems[0]?.id || "", quantity: 1, unitPurchasePrice: warehouseItems[0]?.avgPurchasePrice || 0, batchNumber: "", expirationDate: "", note: "" }
   ]);
 
+  // Dedicated Goods Issue (Výdajka) state & line items
+  const [isGoodsIssueOpen, setIsGoodsIssueOpen] = useState<boolean>(false);
+  const [issueDocumentNumber, setIssueDocumentNumber] = useState<string>("");
+  const [issueDate, setIssueDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [issueWarehouseId, setIssueWarehouseId] = useState<string>(warehouses[0]?.id || "wh-1");
   const [issueLeadId, setIssueLeadId] = useState<string>("");
   const [issueNote, setIssueNote] = useState<string>("");
   const [issueLogTimeline, setIssueLogTimeline] = useState<boolean>(true);
+  const [clientSearchQuery, setClientSearchQuery] = useState<string>("");
+  const [isClientDropdownOpen, setIsClientDropdownOpen] = useState<boolean>(false);
+  const [productSearchQuery, setProductSearchQuery] = useState<string>("");
+  const [isProductSearchDropdownOpen, setIsProductSearchDropdownOpen] = useState<boolean>(false);
   const [issueItems, setIssueItems] = useState<{
+    id: string;
     itemId: string;
     batchId: string;
     quantity: number;
+    baseSellPrice: number;
+    discountPct: number;
     unitSellPrice: number;
     note: string;
   }[]>([
-    { itemId: warehouseItems[0]?.id || "", batchId: "", quantity: 1, unitSellPrice: warehouseItems[0]?.defaultSellPrice || 0, note: "" }
+    {
+      id: "gi-row-1",
+      itemId: warehouseItems[0]?.id || "",
+      batchId: "",
+      quantity: 1,
+      baseSellPrice: warehouseItems[0]?.defaultSellPrice || 0,
+      discountPct: 0,
+      unitSellPrice: warehouseItems[0]?.defaultSellPrice || 0,
+      note: ""
+    }
   ]);
 
   const [transferSourceWh, setTransferSourceWh] = useState<string>(warehouses[0]?.id || "");
@@ -1286,9 +1317,132 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     setReceiptNote("");
   };
 
+  // ---------------------------------------------------------------------------
+  // DEDICATED GOODS ISSUE (VÝDAJKA) LOGIC & HELPERS
+  // ---------------------------------------------------------------------------
+  const handleOpenGoodsIssue = (prefillItemId?: string) => {
+    setIsGoodsIssueOpen(true);
+    setSelectedProductDetailId(null);
+    const initialItem = prefillItemId 
+      ? warehouseItems.find(i => i.id === prefillItemId)
+      : warehouseItems[0];
+    
+    setIssueItems([
+      {
+        id: `gi-row-${Date.now()}-1`,
+        itemId: initialItem?.id || "",
+        batchId: "",
+        quantity: 1,
+        baseSellPrice: initialItem?.defaultSellPrice || 0,
+        discountPct: 0,
+        unitSellPrice: initialItem?.defaultSellPrice || 0,
+        note: ""
+      }
+    ]);
+    const nextSeq = warehouseMovements.filter(m => m.type === "outward").length + 1;
+    setIssueDocumentNumber(`VYD-${new Date().getFullYear()}-${String(nextSeq).padStart(4, "0")}`);
+    setIssueDate(new Date().toISOString().slice(0, 10));
+    setIssueNote("");
+    setClientSearchQuery("");
+    setIsClientDropdownOpen(false);
+    setProductSearchQuery("");
+    setIsProductSearchDropdownOpen(false);
+    window.location.hash = "warehouse/issue/new";
+  };
+
+  const handleCloseGoodsIssue = () => {
+    setIsGoodsIssueOpen(false);
+    window.location.hash = "warehouse/movements";
+  };
+
+  const handleUpdateIssueRow = (rowId: string, patch: Partial<{
+    itemId: string;
+    batchId: string;
+    quantity: number;
+    baseSellPrice: number;
+    discountPct: number;
+    unitSellPrice: number;
+    note: string;
+  }>) => {
+    setIssueItems(prev => prev.map(row => {
+      if (row.id !== rowId) return row;
+      const updated = { ...row, ...patch };
+
+      if ("itemId" in patch) {
+        const it = warehouseItems.find(i => i.id === patch.itemId);
+        if (it) {
+          updated.baseSellPrice = it.defaultSellPrice || 0;
+          updated.discountPct = 0;
+          updated.unitSellPrice = it.defaultSellPrice || 0;
+          updated.batchId = "";
+        }
+      } else if ("discountPct" in patch) {
+        const disc = Math.min(100, Math.max(0, Number(patch.discountPct) || 0));
+        updated.discountPct = disc;
+        updated.unitSellPrice = Number((updated.baseSellPrice * (1 - disc / 100)).toFixed(2));
+      } else if ("unitSellPrice" in patch) {
+        const price = Math.max(0, Number(patch.unitSellPrice) || 0);
+        updated.unitSellPrice = price;
+        updated.discountPct = updated.baseSellPrice > 0 
+          ? Number((((updated.baseSellPrice - price) / updated.baseSellPrice) * 100).toFixed(1))
+          : 0;
+      } else if ("baseSellPrice" in patch) {
+        const base = Math.max(0, Number(patch.baseSellPrice) || 0);
+        updated.baseSellPrice = base;
+        updated.unitSellPrice = Number((base * (1 - (updated.discountPct || 0) / 100)).toFixed(2));
+      }
+
+      return updated;
+    }));
+  };
+
+  const handleAddProductToIssue = (item: WarehouseItem) => {
+    const existing = issueItems.find(r => r.itemId === item.id);
+    if (existing) {
+      handleUpdateIssueRow(existing.id, { quantity: Number((Number(existing.quantity) + 1).toFixed(2)) });
+    } else {
+      const newRow = {
+        id: `gi-row-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        itemId: item.id,
+        batchId: "",
+        quantity: 1,
+        baseSellPrice: item.defaultSellPrice || 0,
+        discountPct: 0,
+        unitSellPrice: item.defaultSellPrice || 0,
+        note: ""
+      };
+      setIssueItems(prev => [...prev, newRow]);
+    }
+    setProductSearchQuery("");
+    setIsProductSearchDropdownOpen(false);
+  };
+
+  const handleAddEmptyIssueRow = () => {
+    const defaultItem = warehouseItems[0];
+    const newRow = {
+      id: `gi-row-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      itemId: defaultItem?.id || "",
+      batchId: "",
+      quantity: 1,
+      baseSellPrice: defaultItem?.defaultSellPrice || 0,
+      discountPct: 0,
+      unitSellPrice: defaultItem?.defaultSellPrice || 0,
+      note: ""
+    };
+    setIssueItems(prev => [...prev, newRow]);
+  };
+
+  const handleRemoveIssueRow = (rowId: string) => {
+    if (issueItems.length > 1) {
+      setIssueItems(prev => prev.filter(r => r.id !== rowId));
+    } else {
+      alert(t("At least one product row is required in the issue.", "Výdajka musí obsahovať aspoň jeden tovar.", "Legalább egy tétel szükséges a kiadáshoz."));
+    }
+  };
+
   // Submit New Issue (Výdajka - VYD)
   const handleCreateIssue = () => {
-    const validItems = issueItems.filter(it => it.itemId && it.quantity > 0);
+    const validItems = issueItems.filter(it => it.itemId && Number(it.quantity) > 0);
     if (validItems.length === 0) {
       alert(t("Please add at least one item with valid quantity.", "Pridajte aspoň jednu položku s platným množstvom.", "Kérjük, adjon hozzá legalább egy érvényes tételt."));
       return;
@@ -1297,18 +1451,19 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     // Stock availability verification
     for (const v of validItems) {
       const stock = getStockInfoForItem(v.itemId, issueWarehouseId);
-      if (v.quantity > stock.available) {
+      if (Number(v.quantity) > stock.available) {
         const item = warehouseItems.find(i => i.id === v.itemId);
-        alert(t(
-          `Insufficient stock for "${item?.name}". Available: ${stock.available} ${item?.unit}, Requested: ${v.quantity}`,
-          `Nedostatočný stav zásob pre "${item?.name}". Dostupné: ${stock.available} ${item?.unit}, Požadované: ${v.quantity}`,
-          `Nincs elegendő készlet a(z) "${item?.name}" termékből.`
+        const proceed = window.confirm(t(
+          `Notice: Available stock for "${item?.name || v.itemId}" in source warehouse is ${stock.available} ${item?.unit || "ks"} (requested: ${v.quantity} ${item?.unit || "ks"}). Do you want to proceed with dispatch?`,
+          `Upozornenie: Dostupné množstvo pre "${item?.name || v.itemId}" v zdrojovom sklade je iba ${stock.available} ${item?.unit || "ks"} (požadované: ${v.quantity} ${item?.unit || "ks"}). Chcete pokračovať vo výdaji?`,
+          `Figyelem: A rendelkezésre álló készlet nem elegendő. Folytatja a kiadást?`
         ));
-        return;
+        if (!proceed) return;
       }
     }
 
-    const docNum = `VYD-${new Date().getFullYear()}-${String(warehouseMovements.filter(m => m.type === "outward").length + 1).padStart(4, "0")}`;
+    const nextSeq = warehouseMovements.filter(m => m.type === "outward").length + 1;
+    const docNum = issueDocumentNumber.trim() || `VYD-${new Date().getFullYear()}-${String(nextSeq).padStart(4, "0")}`;
     const movId = `mov-${Date.now()}`;
 
     let totalCost = 0;
@@ -1318,8 +1473,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       const item = warehouseItems.find(i => i.id === v.itemId);
       const unitCost = item?.avgPurchasePrice || 0;
       const unitSell = Number(v.unitSellPrice) || 0;
-      const lineCost = v.quantity * unitCost;
-      const lineSell = v.quantity * unitSell;
+      const lineCost = Number(v.quantity) * unitCost;
+      const lineSell = Number(v.quantity) * unitSell;
       totalCost += lineCost;
       totalSell += lineSell;
 
@@ -1349,11 +1504,11 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       totalCostValue: totalCost,
       totalSellValue: totalSell,
       totalProfitValue: totalSell - totalCost,
-      createdBy: currentUser.email,
+      createdBy: currentUser.name || currentUser.email,
       note: issueNote.trim() || null,
       fileName: null,
       filePath: null,
-      issuedAt: new Date().toISOString().slice(0, 19).replace("T", " "),
+      issuedAt: issueDate ? `${issueDate} ${new Date().toTimeString().slice(0, 8)}` : new Date().toISOString().slice(0, 19).replace("T", " "),
       createdAt: new Date().toISOString().slice(0, 19).replace("T", " "),
       items: movementItems
     };
@@ -1377,20 +1532,23 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       }
     });
 
-    // Auto-log to Lead Timeline if requested
+    // Attach movement as a Sale to the client in CRM Timeline
     if (issueLeadId && issueLogTimeline && onAddTimelineEvent) {
-      const lead = leads.find(l => l.id === issueLeadId);
+      const client = leads.find(l => l.id === issueLeadId);
       const itemsSummary = validItems.map(v => {
         const it = warehouseItems.find(i => i.id === v.itemId);
-        return `${v.quantity} ${it?.unit || "ks"} × ${it?.name || ""}`;
-      }).join(", ");
+        const discountText = v.discountPct > 0 ? ` (zľava ${v.discountPct}%)` : "";
+        return `• ${v.quantity} ${it?.unit || "ks"} × ${it?.name || v.itemId} @ ${formatCurrency(v.unitSellPrice, systemLanguage, systemCurrency)}${discountText} = ${formatCurrency(Number(v.quantity) * Number(v.unitSellPrice), systemLanguage, systemCurrency)}`;
+      }).join("\n");
+
+      const sourceWh = warehouses.find(w => w.id === issueWarehouseId);
 
       const timelineEvent = {
         id: `ev-${Date.now()}`,
-        type: "delivery_note",
-        timestamp: new Date().toISOString().slice(0, 16).replace("T", " "),
-        title: `${t("Delivery Note", "Dodací list", "Szállítólevél")} ${docNum}`,
-        content: `${t("Issued goods to client", "Vydaný materiál a tovar pre klienta", "Kiadott áru az ügyfélnek")}${lead?.name ? ` (${lead.name})` : ""}: ${itemsSummary}.\n${issueNote ? t("Note", "Poznámka", "Megjegyzés") + ": " + issueNote : ""}`,
+        type: "sale",
+        timestamp: issueDate ? `${issueDate} ${new Date().toTimeString().slice(0, 5)}` : new Date().toISOString().slice(0, 16).replace("T", " "),
+        title: `${t("Sale & Goods Issue", "Predaj a výdaj tovaru", "Értékesítés és kiadás")} (${docNum})`,
+        content: `${t("Client", "Klient", "Ügyfél")}: ${client?.name || issueLeadId}\n${t("Issued from warehouse", "Vydané zo skladu", "Kiadva a raktárból")}: ${sourceWh?.name || issueWarehouseId}\n\n${itemsSummary}\n\n${t("Total Sale Amount", "Celková suma predaja", "Teljes összeg")}: ${formatCurrency(totalSell, systemLanguage, systemCurrency)}${issueNote ? `\n${t("Note", "Poznámka", "Megjegyzés")}: ${issueNote}` : ""}`,
         amount: totalSell,
         author: currentUser.name || currentUser.email
       };
@@ -1398,10 +1556,11 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       onAddTimelineEvent(issueLeadId, timelineEvent);
     }
 
-    setIsIssueModalOpen(false);
-    setIssueItems([{ itemId: warehouseItems[0]?.id || "", batchId: "", quantity: 1, unitSellPrice: warehouseItems[0]?.defaultSellPrice || 0, note: "" }]);
-    setIssueNote("");
-    setIssueLeadId("");
+    if (typeof (window as any).showToast === "function") {
+      (window as any).showToast(t(`Goods Issue ${docNum} created and recorded as sale.`, `Výdajka ${docNum} bola úspešne vytvorená a zaevidovaná ako predaj.`, `A(z) ${docNum} kiadás sikeresen rögzítve.`));
+    }
+
+    handleCloseGoodsIssue();
   };
 
   // Submit New Transfer (Prevodka - PRE)
@@ -1508,6 +1667,786 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     setTransferItems([{ itemId: warehouseItems[0]?.id || "", quantity: 1, note: "" }]);
     setTransferNote("");
   };
+
+  // ---------------------------------------------------------------------------
+  // DEDICATED FULL VIEW: NEW GOODS ISSUE (VÝDAJKA TOVARU A PREDAJ ZÁKAZNÍKOVI)
+  // ---------------------------------------------------------------------------
+  if (isGoodsIssueOpen) {
+    const selectedClient = leads.find(l => l.id === issueLeadId);
+    
+    const filteredClients = leads.filter(l => 
+      l.name.toLowerCase().includes(clientSearchQuery.toLowerCase()) ||
+      (l.city && l.city.toLowerCase().includes(clientSearchQuery.toLowerCase())) ||
+      (l.email && l.email.toLowerCase().includes(clientSearchQuery.toLowerCase())) ||
+      (l.phone && l.phone.includes(clientSearchQuery))
+    );
+
+    const filteredSearchProducts = productSearchQuery.trim() 
+      ? warehouseItems.filter(i => 
+          i.name.toLowerCase().includes(productSearchQuery.toLowerCase()) ||
+          i.sku.toLowerCase().includes(productSearchQuery.toLowerCase()) ||
+          (i.barcode && i.barcode.includes(productSearchQuery)) ||
+          (i.category && i.category.toLowerCase().includes(productSearchQuery.toLowerCase()))
+        ).slice(0, 10)
+      : [];
+
+    const subtotalBase = issueItems.reduce((acc, it) => acc + (Number(it.quantity) || 0) * (Number(it.baseSellPrice) || 0), 0);
+    const totalSellPrice = issueItems.reduce((acc, it) => acc + (Number(it.quantity) || 0) * (Number(it.unitSellPrice) || 0), 0);
+    const totalDiscount = Math.max(0, subtotalBase - totalSellPrice);
+    const totalDiscountPct = subtotalBase > 0 ? (totalDiscount / subtotalBase) * 100 : 0;
+    const totalWapCost = issueItems.reduce((acc, it) => {
+      const item = warehouseItems.find(i => i.id === it.itemId);
+      return acc + (Number(it.quantity) || 0) * (item?.avgPurchasePrice || 0);
+    }, 0);
+    const totalEstimatedProfit = totalSellPrice - totalWapCost;
+    const totalMarginPct = totalSellPrice > 0 ? (totalEstimatedProfit / totalSellPrice) * 100 : 0;
+    const totalUnitsSum = issueItems.reduce((acc, it) => acc + (Number(it.quantity) || 0), 0);
+
+    return (
+      <div className="space-y-6 pb-16 animate-fadeIn">
+        {/* STICKY TOP BAR */}
+        <div className={`sticky -top-4 md:-top-6 z-40 -mt-4 md:-mt-6 -mx-4 md:-mx-6 px-4 md:px-6 bg-white/95 backdrop-blur-md border-b transition-all duration-200 flex flex-col md:flex-row md:items-center justify-between gap-3 ${
+          isHeaderStuck
+            ? "py-2 md:py-2.5 border-slate-200/90 shadow-md"
+            : "py-3.5 md:py-4 border-slate-200/80 shadow-sm"
+        }`}>
+          <div className="flex items-center gap-3 md:gap-4 min-w-0">
+            <button
+              onClick={handleCloseGoodsIssue}
+              className={`rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all flex items-center justify-center shrink-0 ${
+                isHeaderStuck ? "p-1.5 md:p-2" : "p-2.5 rounded-2xl"
+              }`}
+              title={t("Back to Movements", "Späť na pohyby", "Vissza a mozgásokhoz")}
+            >
+              <ArrowLeft className={isHeaderStuck ? "w-4 h-4" : "w-5 h-5"} />
+            </button>
+
+            <div className="min-w-0">
+              {!isHeaderStuck && (
+                <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 mb-1 transition-all">
+                  <span>{t("Warehouse", "Sklad", "Raktár")}</span>
+                  <span>/</span>
+                  <span>{t("Movements & Issues", "Pohyby & Výdajky", "Kiadások")}</span>
+                  <span>/</span>
+                  <span className="text-blue-900 font-bold">{t("New Issue", "Nová výdajka", "Új kiadás")}</span>
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center gap-2 md:gap-3">
+                <div className="w-8 h-8 rounded-xl bg-blue-700 text-white flex items-center justify-center shadow-md shadow-blue-700/20 shrink-0">
+                  <ArrowUpRight className="w-4 h-4" />
+                </div>
+                <h1 className={`font-black text-slate-900 tracking-tight transition-all truncate ${
+                  isHeaderStuck ? "text-base md:text-lg" : "text-xl md:text-2xl"
+                }`}>
+                  {t("New Goods Issue (Výdajka - VYD)", "Nová výdajka tovaru a predaj zákazníkovi", "Új árukiadás")}
+                </h1>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-900 border border-blue-200">
+                  {issueDocumentNumber || "VYD-NEW"}
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                  {t("Draft", "Rozpracované", "Piszkozat")}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={handleCloseGoodsIssue}
+              className={`rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-all ${
+                isHeaderStuck ? "px-3 py-1.5 text-xs" : "px-4 py-2.5 text-xs rounded-2xl"
+              }`}
+            >
+              {t("Cancel", "Zrušiť", "Mégse")}
+            </button>
+
+            <button
+              onClick={handleCreateIssue}
+              className={`flex items-center gap-1.5 md:gap-2 rounded-xl bg-blue-950 hover:bg-blue-900 text-white font-black shadow-lg shadow-blue-950/20 transition-all ${
+                isHeaderStuck ? "px-3.5 py-1.5 text-xs" : "px-5 py-2.5 text-xs rounded-2xl"
+              }`}
+            >
+              <CheckCircle2 className={isHeaderStuck ? "w-3.5 h-3.5 text-emerald-400" : "w-4 h-4 text-emerald-400"} />
+              <span>{t("Confirm Issue & Deduct Stock", "Vytvoriť výdajku a odpísať zo skladu", "Kiadás megerősítése")}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* TWO-COLUMN LAYOUT: LEFT SIDEBAR (CLIENT & PARAMS) + RIGHT MAIN (PRODUCTS & PRICING) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          
+          {/* ========================================================================= */}
+          {/* LEFT NARROW SIDEBAR (4 of 12 cols on LG): CLIENT, WAREHOUSE & FINANCIALS */}
+          {/* ========================================================================= */}
+          <div className="lg:col-span-4 xl:col-span-4 space-y-4">
+            
+            {/* 1. CLIENT / LEAD SELECTION CARD */}
+            <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm space-y-4 relative">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
+                  <UserCheck className="w-4 h-4 text-blue-700" />
+                  <span>{t("Client / Customer from CRM", "Klient / Zákazník z CRM", "Ügyfél a CRM-ből")}</span>
+                </div>
+                {selectedClient && (
+                  <button
+                    onClick={() => {
+                      setIssueLeadId("");
+                      setClientSearchQuery("");
+                    }}
+                    className="text-[11px] font-bold text-slate-400 hover:text-rose-600 transition"
+                  >
+                    {t("Clear", "Zrušiť výber", "Törlés")}
+                  </button>
+                )}
+              </div>
+
+              {/* Client Searchable Combobox */}
+              <div className="relative">
+                <div className="relative">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={clientSearchQuery}
+                    onChange={(e) => {
+                      setClientSearchQuery(e.target.value);
+                      setIsClientDropdownOpen(true);
+                    }}
+                    onFocus={() => setIsClientDropdownOpen(true)}
+                    placeholder={t("Search client by name, company, email...", "Hľadať klienta podľa mena, firmy, emailu...", "Keresés ügyfél neve szerint...")}
+                    className="w-full pl-9 pr-8 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-blue-700 focus:outline-none transition"
+                  />
+                  {clientSearchQuery && (
+                    <button
+                      onClick={() => {
+                        setClientSearchQuery("");
+                        setIsClientDropdownOpen(false);
+                      }}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Client Dropdown Results */}
+                {isClientDropdownOpen && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-20" 
+                      onClick={() => setIsClientDropdownOpen(false)} 
+                    />
+                    <div className="absolute left-0 right-0 top-full mt-1.5 z-30 bg-white rounded-2xl border border-slate-200 shadow-xl max-h-60 overflow-y-auto divide-y divide-slate-100 animate-fadeIn">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIssueLeadId("");
+                          setClientSearchQuery("");
+                          setIsClientDropdownOpen(false);
+                        }}
+                        className="w-full px-3.5 py-2.5 text-left text-xs font-semibold hover:bg-blue-50 text-slate-600 flex items-center gap-2 transition"
+                      >
+                        <Building2 className="w-4 h-4 text-slate-400" />
+                        <span>{t("Direct Sale / Unassigned Client", "Priamy predaj / Bez priradenia k zákazníkovi", "Közvetlen eladás")}</span>
+                      </button>
+
+                      {filteredClients.map(l => (
+                        <button
+                          key={l.id}
+                          type="button"
+                          onClick={() => {
+                            setIssueLeadId(l.id);
+                            setClientSearchQuery(l.name);
+                            setIsClientDropdownOpen(false);
+                          }}
+                          className={`w-full px-3.5 py-2.5 text-left text-xs hover:bg-blue-50 transition flex items-center justify-between gap-2 ${
+                            issueLeadId === l.id ? "bg-blue-50/80 font-bold text-blue-900" : "text-slate-700"
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            <div className="font-bold truncate">{l.name}</div>
+                            <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5">
+                              {l.city && <span>{l.city}</span>}
+                              {l.phone && <span>&bull; {l.phone}</span>}
+                            </div>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold shrink-0 ${
+                            l.clientType === "business" ? "bg-purple-50 text-purple-700 border border-purple-200" : "bg-slate-100 text-slate-600"
+                          }`}>
+                            {l.clientType === "business" ? "Firma" : "Osoba"}
+                          </span>
+                        </button>
+                      ))}
+
+                      {filteredClients.length === 0 && (
+                        <div className="p-4 text-center text-xs text-slate-400">
+                          {t("No clients found matching query.", "Nenašli sa žiadni klienti.", "Nem található ügyfél.")}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Selected Client Card Details */}
+              {selectedClient ? (
+                <div className="p-3.5 rounded-2xl bg-gradient-to-br from-blue-50/60 to-slate-50 border border-blue-100 space-y-2">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-blue-700 text-white font-bold flex items-center justify-center text-sm shadow-sm shrink-0">
+                      {selectedClient.name.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h4 className="font-bold text-slate-900 text-sm truncate">{selectedClient.name}</h4>
+                      <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                        <span>{selectedClient.city || t("City unassigned", "Mesto nezadané", "Város nincs")}</span>
+                        <span>&bull;</span>
+                        <span className="capitalize">{selectedClient.clientType}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-blue-100/80 grid grid-cols-1 gap-1 text-xs text-slate-600">
+                    {selectedClient.phone && (
+                      <div className="flex items-center gap-2">
+                        <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <a href={`tel:${selectedClient.phone}`} className="hover:text-blue-900 truncate">{selectedClient.phone}</a>
+                      </div>
+                    )}
+                    {selectedClient.email && (
+                      <div className="flex items-center gap-2">
+                        <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <a href={`mailto:${selectedClient.email}`} className="hover:text-blue-900 truncate">{selectedClient.email}</a>
+                      </div>
+                    )}
+                    {selectedClient.vatId && (
+                      <div className="text-[11px] text-slate-500 font-mono">
+                        IČ DPH: {selectedClient.vatId}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 rounded-2xl bg-slate-50 border border-dashed border-slate-200 text-center text-xs text-slate-400">
+                  {t("No specific client selected (Direct Sale / Cash customer).", "Nevybraný konkrétny klient (Priamy pultový predaj).", "Nincs kiválasztott ügyfél (Közvetlen eladás).")}
+                </div>
+              )}
+
+              {/* Checkbox: Attach to timeline */}
+              {selectedClient && (
+                <label className="flex items-start gap-2.5 cursor-pointer bg-blue-50/70 p-3 rounded-2xl border border-blue-200">
+                  <input
+                    type="checkbox"
+                    checked={issueLogTimeline}
+                    onChange={(e) => setIssueLogTimeline(e.target.checked)}
+                    className="w-4 h-4 mt-0.5 rounded text-blue-900 focus:ring-blue-900"
+                  />
+                  <div>
+                    <span className="font-bold text-xs text-blue-900">
+                      {t("Attach to Client History as Sale", "Pripojiť ako predaj & dodací list do CRM", "Csatolás az ügyfélelőzményekhez eladásként")}
+                    </span>
+                    <p className="text-[11px] text-blue-700 mt-0.5">
+                      {t("Creates a detailed sale entry in client timeline with list of items and prices", "Vytvorí záznam o predaji v časovej osi klienta so súpisom položiek a celkovou sumou", "Részletes bejegyzést hoz létre a CRM-ben")}
+                    </p>
+                  </div>
+                </label>
+              )}
+            </div>
+
+            {/* 2. DOCUMENT PARAMETERS CARD */}
+            <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm space-y-3.5">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
+                <FileText className="w-4 h-4 text-blue-700" />
+                <span>{t("Document & Logistics", "Doklad a logistika", "Bizonylat és logisztika")}</span>
+              </h3>
+
+              <div className="space-y-3">
+                {/* Source Warehouse */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    {t("Source Warehouse", "Zdrojový sklad výdaja", "Kiadási raktár")} *
+                  </label>
+                  <select
+                    value={issueWarehouseId}
+                    onChange={(e) => setIssueWarehouseId(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-700 focus:outline-none transition"
+                  >
+                    {warehouses.map(w => (
+                      <option key={w.id} value={w.id}>
+                        {w.name} ({w.code}) {w.isDefault ? "• Predvolený" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Document Number */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      {t("Document No.", "Číslo dokladu", "Bizonylatszám")} *
+                    </label>
+                    <input
+                      type="text"
+                      value={issueDocumentNumber}
+                      onChange={(e) => setIssueDocumentNumber(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-700 focus:outline-none transition"
+                    />
+                  </div>
+
+                  {/* Issue Date */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      {t("Issue Date", "Dátum výdaja", "Kiadás dátuma")}
+                    </label>
+                    <input
+                      type="date"
+                      value={issueDate}
+                      onChange={(e) => setIssueDate(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-700 focus:outline-none transition"
+                    />
+                  </div>
+                </div>
+
+                {/* Delivery Purpose / Note */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    {t("Purpose & Internal Note", "Účel výdaja & Poznámka k zákazke", "Kiadás célja és megjegyzés")}
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={issueNote}
+                    onChange={(e) => setIssueNote(e.target.value)}
+                    placeholder="napr. Kuchynská pracovná doska a montážny materiál pre zákazku Dubnica"
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-blue-700 focus:outline-none transition resize-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* 3. FINANCIAL SUMMARY & PROFITABILITY CARD */}
+            <div className="bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 text-white p-5 rounded-3xl border border-blue-900/50 shadow-xl shadow-blue-950/20 space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-blue-300 flex items-center gap-1.5">
+                  <Calculator className="w-4 h-4" />
+                  <span>{t("Financial Summary", "Finančná rekapitulácia", "Pénzügyi összesítés")}</span>
+                </span>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                  {issueItems.length} {t("items", "položiek", "tétel")}
+                </span>
+              </div>
+
+              <div className="space-y-2 text-xs">
+                <div className="flex items-center justify-between text-slate-300">
+                  <span>{t("Catalog Subtotal (Base)", "Cenníková suma (Základ)", "Katalógus ár")}</span>
+                  <span className="font-mono font-semibold">{formatCurrency(subtotalBase, systemLanguage, systemCurrency)}</span>
+                </div>
+
+                {totalDiscount > 0 && (
+                  <div className="flex items-center justify-between text-rose-300">
+                    <span>{t("Total Discount", "Celková zľava", "Kedvezmény")} ({totalDiscountPct.toFixed(1)}%)</span>
+                    <span className="font-mono font-bold">-{formatCurrency(totalDiscount, systemLanguage, systemCurrency)}</span>
+                  </div>
+                )}
+
+                <div className="pt-2 border-t border-slate-700/80 flex items-baseline justify-between">
+                  <span className="text-sm font-bold text-white uppercase tracking-wide">
+                    {t("Final Sale Total", "Konečná cena predaja", "Végösszeg")}
+                  </span>
+                  <span className="text-2xl font-black text-emerald-400 font-mono tracking-tight">
+                    {formatCurrency(totalSellPrice, systemLanguage, systemCurrency)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Cost & Estimated Margin preview */}
+              <div className="pt-3 border-t border-blue-900/60 grid grid-cols-2 gap-2 text-[11px]">
+                <div className="p-2.5 rounded-xl bg-white/5 border border-white/10">
+                  <span className="text-slate-400 block mb-0.5">{t("WAP Cost", "Skladový náklad (WAP)", "Beszerzési költség")}</span>
+                  <span className="font-bold text-slate-200 font-mono">{formatCurrency(totalWapCost, systemLanguage, systemCurrency)}</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-white/5 border border-white/10">
+                  <span className="text-slate-400 block mb-0.5">{t("Gross Margin", "Hrubá marža", "Árrés")}</span>
+                  <span className={`font-bold font-mono ${totalEstimatedProfit >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                    {totalMarginPct.toFixed(1)}% (+{formatCurrency(totalEstimatedProfit, systemLanguage, systemCurrency)})
+                  </span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          {/* ========================================================================= */}
+          {/* RIGHT WIDE MAIN WORKSPACE (8 of 12 cols on LG): PRODUCT LINE ITEMS TABLE  */}
+          {/* ========================================================================= */}
+          <div className="lg:col-span-8 xl:col-span-8 space-y-4">
+            
+            {/* PRODUCT SEARCH & QUICK ADD BAR */}
+            <div className="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3 relative">
+              <div className="relative flex-1 w-full">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={productSearchQuery}
+                  onChange={(e) => {
+                    setProductSearchQuery(e.target.value);
+                    setIsProductSearchDropdownOpen(true);
+                  }}
+                  onFocus={() => setIsProductSearchDropdownOpen(true)}
+                  placeholder={t("Quick search & add product by name, SKU or barcode...", "Rýchlo pridať tovar do výdajky (hľadajte podľa názvu, SKU, čiarového kódu)...", "Termék gyors hozzáadása...")}
+                  className="w-full pl-10 pr-8 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-blue-700 focus:outline-none transition"
+                />
+                {productSearchQuery && (
+                  <button
+                    onClick={() => {
+                      setProductSearchQuery("");
+                      setIsProductSearchDropdownOpen(false);
+                    }}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+
+                {/* Product Search Autocomplete Dropdown */}
+                {isProductSearchDropdownOpen && filteredSearchProducts.length > 0 && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-20" 
+                      onClick={() => setIsProductSearchDropdownOpen(false)} 
+                    />
+                    <div className="absolute left-0 right-0 top-full mt-2 z-30 bg-white rounded-2xl border border-slate-200 shadow-2xl max-h-80 overflow-y-auto divide-y divide-slate-100 animate-fadeIn">
+                      {filteredSearchProducts.map(prod => {
+                        const stock = getStockInfoForItem(prod.id, issueWarehouseId);
+                        const isAvailable = stock.available > 0;
+
+                        return (
+                          <div
+                            key={prod.id}
+                            onClick={() => handleAddProductToIssue(prod)}
+                            className="p-3 hover:bg-blue-50/80 transition cursor-pointer flex items-center justify-between gap-3 group"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              {prod.imageUrl ? (
+                                <img src={prod.imageUrl} alt={prod.name} className="w-10 h-10 rounded-xl object-cover border border-slate-200 shrink-0" />
+                              ) : (
+                                <div className="w-10 h-10 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
+                                  <Package className="w-5 h-5" />
+                                </div>
+                              )}
+                              <div className="min-w-0">
+                                <div className="font-bold text-slate-900 text-xs group-hover:text-blue-900 transition truncate">{prod.name}</div>
+                                <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-400 font-mono">
+                                  <span>{prod.sku}</span>
+                                  {prod.hasExpiration && (
+                                    <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-200 font-sans">
+                                      FEFO
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-3 shrink-0 text-right">
+                              <div>
+                                <div className={`text-xs font-bold ${isAvailable ? "text-emerald-700" : "text-rose-600"}`}>
+                                  {stock.available} {prod.unit}
+                                </div>
+                                <span className="text-[10px] text-slate-400">{t("available", "k dispozícii", "elérhető")}</span>
+                              </div>
+                              <div className="border-l border-slate-200 pl-3">
+                                <div className="text-xs font-black text-blue-900">
+                                  {formatCurrency(prod.defaultSellPrice, systemLanguage, systemCurrency)}
+                                </div>
+                                <span className="text-[10px] text-slate-400">/{prod.unit}</span>
+                              </div>
+                              <button
+                                type="button"
+                                className="px-3 py-1.5 rounded-xl bg-blue-950 group-hover:bg-blue-900 text-white text-xs font-bold transition flex items-center gap-1 shadow-sm"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>{t("Add", "Pridať", "Hozzáadás")}</span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleAddEmptyIssueRow}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl text-xs font-bold transition flex items-center gap-1.5 shrink-0"
+              >
+                <Plus className="w-4 h-4" />
+                <span>{t("Add Empty Row", "Pridať prázdny riadok", "Üres sor hozzáadása")}</span>
+              </button>
+            </div>
+
+            {/* LINE ITEMS DATA GRID */}
+            <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden">
+              <div className="p-4 bg-slate-50/80 border-b border-slate-200/80 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ShoppingCart className="w-4 h-4 text-blue-700" />
+                  <h3 className="font-bold text-slate-900 text-xs uppercase tracking-wider">
+                    {t("Issued Products List", "Súpis tovaru a materiálu na výdaj", "Kiadandó tételek")}
+                  </h3>
+                </div>
+                <span className="text-xs text-slate-500 font-semibold">
+                  {issueItems.length} {t("items", "položiek", "tétel")} &bull; {totalUnitsSum.toFixed(2)} {t("total units", "spolu m.j.", "összesen")}
+                </span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-slate-600">
+                  <thead className="bg-slate-100/60 border-b border-slate-200/80 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    <tr>
+                      <th className="py-3 px-3 w-10 text-center">#</th>
+                      <th className="py-3 px-3 min-w-[240px]">{t("Product & Stock", "Tovar a skladový stav", "Termék & Készlet")}</th>
+                      <th className="py-3 px-3 w-32">{t("Quantity", "Množstvo", "Mennyiség")}</th>
+                      <th className="py-3 px-3 w-28 text-right">{t("Base Price", "Cenníková cena", "Alapár")}</th>
+                      <th className="py-3 px-3 w-28 text-center">{t("Discount %", "Zľava %", "Kedvezmény %")}</th>
+                      <th className="py-3 px-3 w-28 text-right">{t("Sale Price", "Predajná cena", "Eladási ár")}</th>
+                      <th className="py-3 px-3 w-32 text-right">{t("Line Total", "Spolu s DPH", "Összesen")}</th>
+                      <th className="py-3 px-3 w-36">{t("Note", "Poznámka", "Megjegyzés")}</th>
+                      <th className="py-3 px-2 w-10 text-center"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {issueItems.map((row, idx) => {
+                      const selItem = warehouseItems.find(i => i.id === row.itemId);
+                      const stock = getStockInfoForItem(row.itemId, issueWarehouseId);
+                      const isStockExceeded = Number(row.quantity) > stock.available;
+                      const itemBatches = warehouseBatches.filter(b => b.itemId === row.itemId && b.warehouseId === issueWarehouseId && b.currentQuantity > 0);
+                      const lineTotal = Number(row.quantity) * Number(row.unitSellPrice);
+
+                      return (
+                        <tr key={row.id} className="hover:bg-slate-50/80 transition">
+                          {/* 1. Index */}
+                          <td className="py-3 px-3 text-center font-bold text-slate-400 text-[11px]">
+                            {idx + 1}
+                          </td>
+
+                          {/* 2. Product Selector & Live Availability */}
+                          <td className="py-3 px-3">
+                            <div className="space-y-1.5">
+                              <select
+                                value={row.itemId}
+                                onChange={(e) => handleUpdateIssueRow(row.id, { itemId: e.target.value })}
+                                className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-blue-700 focus:outline-none"
+                              >
+                                {warehouseItems.map(it => (
+                                  <option key={it.id} value={it.id}>
+                                    {it.name} ({it.sku}) - {it.unit}
+                                  </option>
+                                ))}
+                              </select>
+
+                              {/* Availability Pill & Warnings */}
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  isStockExceeded
+                                    ? "bg-rose-50 text-rose-700 border border-rose-200"
+                                    : stock.available > 0
+                                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                    : "bg-amber-50 text-amber-700 border border-amber-200"
+                                }`}>
+                                  {isStockExceeded && <AlertTriangle className="w-3 h-3 inline mr-1 -mt-0.5" />}
+                                  {t("Available", "Dostupné", "Elérhető")}: {stock.available} {selItem?.unit || "ks"}
+                                </span>
+
+                                {selItem?.defaultLocation && (
+                                  <span className="text-[10px] text-slate-400 flex items-center gap-1 font-mono">
+                                    <MapPin className="w-3 h-3 text-slate-400" />
+                                    {stock.locations || selItem.defaultLocation}
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* FEFO Batch lot picker if expiration tracking is on */}
+                              {selItem?.hasExpiration && itemBatches.length > 0 && (
+                                <div className="pt-1 flex items-center gap-1.5">
+                                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">
+                                    {t("Batch (FEFO)", "Šarža", "Tétel")}:
+                                  </span>
+                                  <select
+                                    value={row.batchId}
+                                    onChange={(e) => handleUpdateIssueRow(row.id, { batchId: e.target.value })}
+                                    className="w-full px-2 py-1 bg-amber-50/50 border border-amber-200 rounded-lg text-[11px] font-mono text-amber-900"
+                                  >
+                                    <option value="">{t("Auto: Earliest Expiration (FEFO)", "Auto: Najskoršia exspirácia (FEFO)", "Legkorábbi lejárat")}</option>
+                                    {itemBatches.map(b => (
+                                      <option key={b.id} value={b.id}>
+                                        {b.batchNumber} (Exp: {b.expirationDate}, {b.currentQuantity} {selItem.unit})
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* 3. Quantity & Unit Stepper */}
+                          <td className="py-3 px-3">
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateIssueRow(row.id, { quantity: Math.max(0.01, Number((Number(row.quantity) - 1).toFixed(2))) })}
+                                className="w-6 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center justify-center transition shrink-0"
+                              >
+                                -
+                              </button>
+                              <input
+                                type="number"
+                                min="0.01"
+                                step="0.01"
+                                value={row.quantity}
+                                onChange={(e) => handleUpdateIssueRow(row.id, { quantity: Number(e.target.value) })}
+                                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 text-center focus:ring-2 focus:ring-blue-700 focus:outline-none"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateIssueRow(row.id, { quantity: Number((Number(row.quantity) + 1).toFixed(2)) })}
+                                className="w-6 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center justify-center transition shrink-0"
+                              >
+                                +
+                              </button>
+                            </div>
+                            <div className="text-center text-[10px] font-semibold text-slate-400 mt-1">
+                              {selItem?.unit || "ks"}
+                            </div>
+                          </td>
+
+                          {/* 4. Base Catalog Price */}
+                          <td className="py-3 px-3 text-right">
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={row.baseSellPrice}
+                              onChange={(e) => handleUpdateIssueRow(row.id, { baseSellPrice: Number(e.target.value) })}
+                              className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-700 text-right focus:ring-2 focus:ring-blue-700 focus:outline-none"
+                            />
+                            <span className="text-[10px] text-slate-400 mt-1 block">/{selItem?.unit || "ks"}</span>
+                          </td>
+
+                          {/* 5. Discount (%) */}
+                          <td className="py-3 px-3">
+                            <div className="space-y-1">
+                              <div className="relative">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  step="0.5"
+                                  value={row.discountPct}
+                                  onChange={(e) => handleUpdateIssueRow(row.id, { discountPct: Number(e.target.value) })}
+                                  className="w-full pl-2 pr-5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-center text-rose-600 focus:ring-2 focus:ring-blue-700 focus:outline-none"
+                                />
+                                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400">%</span>
+                              </div>
+                              {/* Quick presets */}
+                              <div className="flex items-center justify-center gap-1">
+                                {[0, 5, 10, 15].map(pct => (
+                                  <button
+                                    key={pct}
+                                    type="button"
+                                    onClick={() => handleUpdateIssueRow(row.id, { discountPct: pct })}
+                                    className={`px-1 py-0.5 rounded text-[9px] font-bold transition ${
+                                      row.discountPct === pct ? "bg-rose-100 text-rose-700" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                                    }`}
+                                  >
+                                    {pct}%
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* 6. Sale Price after Discount */}
+                          <td className="py-3 px-3 text-right">
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={row.unitSellPrice}
+                              onChange={(e) => handleUpdateIssueRow(row.id, { unitSellPrice: Number(e.target.value) })}
+                              className="w-full px-2 py-1.5 bg-blue-50/50 border border-blue-200 rounded-xl text-xs font-mono font-bold text-blue-950 text-right focus:bg-white focus:ring-2 focus:ring-blue-700 focus:outline-none"
+                            />
+                            <span className="text-[10px] text-slate-400 mt-1 block">/{selItem?.unit || "ks"}</span>
+                          </td>
+
+                          {/* 7. Line Total */}
+                          <td className="py-3 px-3 text-right">
+                            <div className="font-mono font-black text-sm text-slate-900">
+                              {formatCurrency(lineTotal, systemLanguage, systemCurrency)}
+                            </div>
+                            {row.discountPct > 0 && (
+                              <span className="text-[10px] text-rose-600 font-semibold block">
+                                -{formatCurrency((Number(row.quantity) * Number(row.baseSellPrice)) - lineTotal, systemLanguage, systemCurrency)}
+                              </span>
+                            )}
+                          </td>
+
+                          {/* 8. Note */}
+                          <td className="py-3 px-3">
+                            <input
+                              type="text"
+                              value={row.note}
+                              onChange={(e) => handleUpdateIssueRow(row.id, { note: e.target.value })}
+                              placeholder={t("Line note...", "Poznámka...", "Megjegyzés...")}
+                              className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-700 focus:outline-none"
+                            />
+                          </td>
+
+                          {/* 9. Actions */}
+                          <td className="py-3 px-2 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveIssueRow(row.id)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition"
+                              title={t("Remove Row", "Odstrániť riadok", "Sor törlése")}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* TABLE FOOTER */}
+              <div className="p-4 bg-slate-50 border-t border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={handleAddEmptyIssueRow}
+                  className="text-xs font-bold text-blue-700 hover:text-blue-900 flex items-center gap-1.5"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>{t("Add another line item", "Pridať ďalšiu položku do zoznamu", "További tétel hozzáadása")}</span>
+                </button>
+
+                <div className="flex items-center gap-4 text-xs">
+                  <span className="text-slate-500">
+                    {t("Total items", "Spolu položiek", "Összesen")}: <strong className="text-slate-900">{issueItems.length}</strong>
+                  </span>
+                  <span className="text-slate-500">
+                    {t("Total Amount", "Celková suma", "Végösszeg")}: <strong className="text-blue-900 font-mono font-black text-sm">{formatCurrency(totalSellPrice, systemLanguage, systemCurrency)}</strong>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+    );
+  }
 
   // ---------------------------------------------------------------------------
   // DEDICATED FULL VIEW: PRODUCT CREATE / EDIT & 360° INVENTORY MANAGEMENT
@@ -2330,10 +3269,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   </button>
 
                   <button
-                    onClick={() => {
-                      setIssueItems([{ itemId: currentItem.id, batchId: "", quantity: 1, unitSellPrice: currentItem.defaultSellPrice || 0, note: "" }]);
-                      setIsIssueModalOpen(true);
-                    }}
+                    onClick={() => handleOpenGoodsIssue(currentItem.id)}
                     className="flex flex-col items-center justify-center p-3 rounded-2xl bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 text-xs font-bold transition text-center gap-1 cursor-pointer"
                   >
                     <ArrowUpRight className="w-4 h-4 text-blue-700" />
@@ -3574,7 +4510,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
           </button>
 
           <button
-            onClick={() => setIsIssueModalOpen(true)}
+            onClick={() => handleOpenGoodsIssue()}
             className="flex items-center gap-1.5 px-3 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs font-semibold shadow-sm transition"
           >
             <ArrowUpRight className="w-4 h-4" />
@@ -4018,42 +4954,52 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       {/* TAB 2: MOVEMENTS & DOCUMENTS */}
       {activeSubTab === "movements" && (
         <div className="space-y-4">
-          {/* Movement Type Filter */}
-          <div className="flex flex-wrap items-center gap-2 bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-sm">
+          {/* Movement Type Filter & New Issue Action */}
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setMovementTypeFilter("all")}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
+                  movementTypeFilter === "all" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                {t("All Documents", "Všetky doklady", "Minden bizonylat")}
+              </button>
+              <button
+                onClick={() => setMovementTypeFilter("inward")}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
+                  movementTypeFilter === "inward" ? "bg-emerald-600 text-white" : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                }`}
+              >
+                <ArrowDownLeft className="w-3.5 h-3.5" />
+                <span>{t("Receipts (PRI)", "Príjemky (PRI)", "Bevételezések")}</span>
+              </button>
+              <button
+                onClick={() => setMovementTypeFilter("outward")}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
+                  movementTypeFilter === "outward" ? "bg-blue-700 text-white" : "bg-blue-50 text-blue-700 hover:bg-blue-100"
+                }`}
+              >
+                <ArrowUpRight className="w-3.5 h-3.5" />
+                <span>{t("Issues (VYD)", "Výdajky (VYD)", "Kiadások")}</span>
+              </button>
+              <button
+                onClick={() => setMovementTypeFilter("transfer")}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
+                  movementTypeFilter === "transfer" ? "bg-purple-700 text-white" : "bg-purple-50 text-purple-700 hover:bg-purple-100"
+                }`}
+              >
+                <ArrowLeftRight className="w-3.5 h-3.5" />
+                <span>{t("Transfers (PRE)", "Prevodky (PRE)", "Átadás")}</span>
+              </button>
+            </div>
+
             <button
-              onClick={() => setMovementTypeFilter("all")}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
-                movementTypeFilter === "all" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              }`}
+              onClick={() => handleOpenGoodsIssue()}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs font-bold transition shadow-sm"
             >
-              {t("All Documents", "Všetky doklady", "Minden bizonylat")}
-            </button>
-            <button
-              onClick={() => setMovementTypeFilter("inward")}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
-                movementTypeFilter === "inward" ? "bg-emerald-600 text-white" : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-              }`}
-            >
-              <ArrowDownLeft className="w-3.5 h-3.5" />
-              <span>{t("Receipts (PRI)", "Príjemky (PRI)", "Bevételezések")}</span>
-            </button>
-            <button
-              onClick={() => setMovementTypeFilter("outward")}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
-                movementTypeFilter === "outward" ? "bg-blue-700 text-white" : "bg-blue-50 text-blue-700 hover:bg-blue-100"
-              }`}
-            >
-              <ArrowUpRight className="w-3.5 h-3.5" />
-              <span>{t("Issues (VYD)", "Výdajky (VYD)", "Kiadások")}</span>
-            </button>
-            <button
-              onClick={() => setMovementTypeFilter("transfer")}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
-                movementTypeFilter === "transfer" ? "bg-purple-700 text-white" : "bg-purple-50 text-purple-700 hover:bg-purple-100"
-              }`}
-            >
-              <ArrowLeftRight className="w-3.5 h-3.5" />
-              <span>{t("Transfers (PRE)", "Prevodky (PRE)", "Átadás")}</span>
+              <Plus className="w-3.5 h-3.5" />
+              <span>{t("New Goods Issue (VYD)", "Nová výdajka (VYD)", "Új kiadás (VYD)")}</span>
             </button>
           </div>
 
@@ -4727,241 +5673,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* MODAL 3: NEW ISSUE (VÝDAJKA - VYD) */}
-      {/* ========================================================================= */}
-      {isIssueModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-3xl w-full p-6 shadow-2xl border border-slate-100 my-8">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-blue-700 text-white flex items-center justify-center">
-                  <ArrowUpRight className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-slate-900 text-base">
-                    {t("New Goods Issue (Výdajka - VYD)", "Výdaj tovaru a materiálu (Výdajka)", "Új kiadás (VYD)")}
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    {t("Dispatch goods to client / production. Validates available stock.", "Vydanie zákazníkovi alebo do výroby s kontrolou voľného stavu zásob.", "Kiadás az ügyfélnek.")}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setIsIssueModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
-            <div className="mt-5 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    {t("Source Warehouse", "Zdrojový sklad výdaja", "Forrásraktár")} *
-                  </label>
-                  <select
-                    value={issueWarehouseId}
-                    onChange={(e) => setIssueWarehouseId(e.target.value)}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-blue-700 focus:outline-none"
-                  >
-                    {warehouses.map(w => (
-                      <option key={w.id} value={w.id}>{w.name} ({w.code})</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    {t("Client / Lead from CRM", "Klient / Zákazka z CRM", "Ügyfél / Érdeklődő")}
-                  </label>
-                  <select
-                    value={issueLeadId}
-                    onChange={(e) => setIssueLeadId(e.target.value)}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-blue-700 focus:outline-none"
-                  >
-                    <option value="">{t("Direct Sale / Unassigned Client", "Priamy predaj / Bez priradenia", "Közvetlen eladás")}</option>
-                    {leads.map(l => (
-                      <option key={l.id} value={l.id}>{l.name} ({l.city})</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    {t("Note / Delivery Purpose", "Poznámka k výdaju / Zákazka", "Megjegyzés")}
-                  </label>
-                  <input
-                    type="text"
-                    value={issueNote}
-                    onChange={(e) => setIssueNote(e.target.value)}
-                    placeholder="napr. Kuchynská pracovná doska a lepidlá pre montáž"
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-blue-700 focus:outline-none"
-                  />
-                </div>
-
-                {issueLeadId && (
-                  <div className="sm:col-span-2">
-                    <label className="flex items-center gap-2.5 cursor-pointer bg-blue-50/70 p-3 rounded-xl border border-blue-200">
-                      <input
-                        type="checkbox"
-                        checked={issueLogTimeline}
-                        onChange={(e) => setIssueLogTimeline(e.target.checked)}
-                        className="w-4 h-4 rounded text-blue-900 focus:ring-blue-900"
-                      />
-                      <div>
-                        <span className="font-bold text-xs text-blue-900">
-                          {t("Automatically record Delivery Note into Client's Timeline", "Automaticky zaznamenať dodací list do časovej osi klienta", "Szállítólevél automatikus rögzítése az ügyfélnél")}
-                        </span>
-                        <p className="text-[11px] text-blue-700">
-                          {t("Attaches the issued goods list directly to this deal's history", "Pripojí súpis vydaného materiálu priamo k histórii tohto leadu", "Csatolja a kiadott tételeket az előzményekhez")}
-                        </p>
-                      </div>
-                    </label>
-                  </div>
-                )}
-              </div>
-
-              {/* Items Table */}
-              <div className="pt-2">
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                    {t("Issued Line Items", "Vydávané položky", "Kiadott tételek")}
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setIssueItems([...issueItems, { itemId: warehouseItems[0]?.id || "", batchId: "", quantity: 1, unitSellPrice: warehouseItems[0]?.defaultSellPrice || 0, note: "" }])}
-                    className="text-xs font-bold text-blue-700 hover:text-blue-800 flex items-center gap-1"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>{t("Add Row", "Pridať položku", "Sor hozzáadása")}</span>
-                  </button>
-                </div>
-
-                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                  {issueItems.map((row, idx) => {
-                    const selItem = warehouseItems.find(i => i.id === row.itemId);
-                    const stock = getStockInfoForItem(row.itemId, issueWarehouseId);
-                    const itemBatches = warehouseBatches.filter(b => b.itemId === row.itemId && b.warehouseId === issueWarehouseId && b.currentQuantity > 0);
-
-                    return (
-                      <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
-                          <div className="sm:col-span-2">
-                            <select
-                              value={row.itemId}
-                              onChange={(e) => {
-                                const it = warehouseItems.find(i => i.id === e.target.value);
-                                const updated = [...issueItems];
-                                updated[idx].itemId = e.target.value;
-                                updated[idx].unitSellPrice = it?.defaultSellPrice || 0;
-                                setIssueItems(updated);
-                              }}
-                              className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-900"
-                            >
-                              {warehouseItems.map(it => (
-                                <option key={it.id} value={it.id}>{it.name} ({it.sku})</option>
-                              ))}
-                            </select>
-                            <div className="text-[10px] text-slate-400 mt-1">
-                              {t("Available", "Dostupné", "Elérhető")}: <strong className="text-emerald-700">{stock.available} {selItem?.unit}</strong>
-                            </div>
-                          </div>
-
-                          <div>
-                            <div className="flex items-center gap-1">
-                              <input
-                                type="number"
-                                min="0.01"
-                                step="0.01"
-                                max={stock.available}
-                                value={row.quantity}
-                                onChange={(e) => {
-                                  const updated = [...issueItems];
-                                  updated[idx].quantity = Number(e.target.value);
-                                  setIssueItems(updated);
-                                }}
-                                placeholder="Množstvo"
-                                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-900"
-                              />
-                              <span className="text-[11px] text-slate-400 font-semibold">{selItem?.unit || "ks"}</span>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-1">
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={row.unitSellPrice}
-                              onChange={(e) => {
-                                const updated = [...issueItems];
-                                updated[idx].unitSellPrice = Number(e.target.value);
-                                setIssueItems(updated);
-                              }}
-                              placeholder="Predajná cena"
-                              className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold text-blue-900"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (issueItems.length > 1) {
-                                  setIssueItems(issueItems.filter((_, i) => i !== idx));
-                                }
-                              }}
-                              className="p-1.5 text-slate-400 hover:text-rose-600"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Batch selector if batches available */}
-                        {itemBatches.length > 0 && (
-                          <div className="pt-1 border-t border-slate-200/60 flex items-center gap-2">
-                            <span className="text-[10px] text-slate-400 font-bold uppercase">{t("Pick Batch (FEFO)", "Vybrať šaržu", "Tétel kiválasztása")}:</span>
-                            <select
-                              value={row.batchId}
-                              onChange={(e) => {
-                                const updated = [...issueItems];
-                                updated[idx].batchId = e.target.value;
-                                setIssueItems(updated);
-                              }}
-                              className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-[11px] font-mono font-semibold"
-                            >
-                              <option value="">{t("Auto-select earliest expiration (FEFO)", "Automaticky najskoršia exspirácia (FEFO)", "Legkorábbi lejárat")}</option>
-                              {itemBatches.map(b => (
-                                <option key={b.id} value={b.id}>{b.batchNumber} (Exp: {b.expirationDate}, {b.currentQuantity} {selItem?.unit})</option>
-                              ))}
-                            </select>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-end gap-2">
-              <button
-                onClick={() => setIsIssueModalOpen(false)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition"
-              >
-                {t("Cancel", "Zrušiť", "Mégse")}
-              </button>
-              <button
-                onClick={handleCreateIssue}
-                className="px-5 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs font-bold transition shadow-sm flex items-center gap-1.5"
-              >
-                <CheckCircle2 className="w-4 h-4" />
-                <span>{t("Confirm Issue & Deduct Stock", "Potvrdiť výdajku a vyskladniť", "Kiadás jóváhagyása")}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ========================================================================= */}
       {/* MODAL 4: NEW TRANSFER (PREVODKA - PRE) */}
