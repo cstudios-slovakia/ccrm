@@ -374,16 +374,20 @@ try {
 // 5. WAREHOUSE PRODUCTS & INVENTORY
 try {
     $stmt = $pdo->query("
-        SELECT wi.`id`, wi.`name`, wi.`sku`, wi.`barcode`, wi.`category`, wi.`categories`, wi.`unit`, wi.`default_sell_price`, wi.`default_location`, wi.`description`
+        SELECT wi.`id`, wi.`name`, wi.`sku`, wi.`barcode`, wi.`category`, wi.`unit`, wi.`default_sell_price`, wi.`default_location`, wi.`description`
         FROM `warehouse_items` wi
-        WHERE (wi.`is_archived` = 0 OR wi.`is_archived` IS NULL)
     ");
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $cats = !empty($row['categories']) ? json_decode($row['categories'], true) : [];
-        if (empty($cats) && !empty($row['category'])) {
-            $cats = array_map('trim', explode(',', $row['category']));
+        $rawCat = $row['category'] ?? '';
+        $cats = [];
+        if (!empty($rawCat)) {
+            if (strpos($rawCat, '[') === 0) {
+                $cats = json_decode($rawCat, true) ?: [];
+            } else {
+                $cats = array_map('trim', explode(',', $rawCat));
+            }
         }
-        $catStr = !empty($cats) ? implode(", ", $cats) : ($row['category'] ?? '');
+        $catStr = !empty($cats) ? implode(", ", $cats) : $rawCat;
 
         $fieldsToMatch = [
             $row['name'] ?? '',

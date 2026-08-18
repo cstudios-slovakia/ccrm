@@ -466,9 +466,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // RAG from Warehouse Products & Inventory
     try {
         $products_stmt = $pdo->query("
-            SELECT wi.`id`, wi.`name`, wi.`sku`, wi.`barcode`, wi.`category`, wi.`categories`, wi.`unit`, wi.`default_sell_price`, wi.`avg_purchase_price`, wi.`min_stock`, wi.`optimal_stock`, wi.`description`, wi.`default_location`, wi.`has_expiration`
+            SELECT wi.`id`, wi.`name`, wi.`sku`, wi.`barcode`, wi.`category`, wi.`unit`, wi.`default_sell_price`, wi.`avg_purchase_price`, wi.`min_stock`, wi.`optimal_stock`, wi.`description`, wi.`default_location`, wi.`has_expiration`
             FROM `warehouse_items` wi
-            WHERE (wi.`is_archived` = 0 OR wi.`is_archived` IS NULL)
             LIMIT 100
         ");
         $products_all = $products_stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -505,11 +504,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $matches = true;
             }
 
-            $cats = !empty($p['categories']) ? json_decode($p['categories'], true) : [];
-            if (empty($cats) && !empty($p['category'])) {
-                $cats = array_map('trim', explode(',', $p['category']));
+            $rawCat = $p['category'] ?? '';
+            $cats = [];
+            if (!empty($rawCat)) {
+                if (strpos($rawCat, '[') === 0) {
+                    $cats = json_decode($rawCat, true) ?: [];
+                } else {
+                    $cats = array_map('trim', explode(',', $rawCat));
+                }
             }
-            $catStr = !empty($cats) ? implode(", ", $cats) : ($p['category'] ?? 'N/A');
+            $catStr = !empty($cats) ? implode(", ", $cats) : ($rawCat ?: 'N/A');
 
             $onHand = 0;
             $reserved = 0;

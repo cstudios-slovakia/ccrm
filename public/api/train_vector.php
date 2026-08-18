@@ -154,9 +154,8 @@ if ($action === 'train') {
         $products = [];
         try {
             $products = $pdo->query("
-                SELECT wi.`id`, wi.`sku`, wi.`barcode`, wi.`name`, wi.`description`, wi.`category`, wi.`categories`, wi.`unit`, wi.`min_stock`, wi.`optimal_stock`, wi.`default_location`, wi.`has_expiration`, wi.`default_sell_price`, wi.`avg_purchase_price`
+                SELECT wi.`id`, wi.`sku`, wi.`barcode`, wi.`name`, wi.`description`, wi.`category`, wi.`unit`, wi.`min_stock`, wi.`optimal_stock`, wi.`default_location`, wi.`has_expiration`, wi.`default_sell_price`, wi.`avg_purchase_price`
                 FROM `warehouse_items` wi
-                WHERE (`is_archived` = 0 OR `is_archived` IS NULL)
                 LIMIT 50
             ")->fetchAll(PDO::FETCH_ASSOC);
         } catch (\Exception $e) {}
@@ -273,11 +272,16 @@ if ($action === 'train') {
         }
 
         foreach ($products as $p) {
-            $cats = !empty($p['categories']) ? json_decode($p['categories'], true) : [];
-            if (empty($cats) && !empty($p['category'])) {
-                $cats = array_map('trim', explode(',', $p['category']));
+            $rawCat = $p['category'] ?? '';
+            $cats = [];
+            if (!empty($rawCat)) {
+                if (strpos($rawCat, '[') === 0) {
+                    $cats = json_decode($rawCat, true) ?: [];
+                } else {
+                    $cats = array_map('trim', explode(',', $rawCat));
+                }
             }
-            $catStr = !empty($cats) ? implode(", ", $cats) : ($p['category'] ?? 'N/A');
+            $catStr = !empty($cats) ? implode(", ", $cats) : ($rawCat ?: 'N/A');
             
             $onHand = 0;
             $reserved = 0;

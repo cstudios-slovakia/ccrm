@@ -246,9 +246,8 @@ function execute_autonomous_run($pdo, $ragPdo, $agent, $openAiKey) {
     // RAG from Warehouse Products for autonomous agents
     try {
         $products_stmt = $pdo->query("
-            SELECT wi.`id`, wi.`name`, wi.`sku`, wi.`barcode`, wi.`category`, wi.`categories`, wi.`unit`, wi.`default_sell_price`, wi.`avg_purchase_price`, wi.`min_stock`, wi.`optimal_stock`, wi.`default_location`
+            SELECT wi.`id`, wi.`name`, wi.`sku`, wi.`barcode`, wi.`category`, wi.`unit`, wi.`default_sell_price`, wi.`avg_purchase_price`, wi.`min_stock`, wi.`optimal_stock`, wi.`default_location`
             FROM `warehouse_items` wi
-            WHERE (wi.`is_archived` = 0 OR wi.`is_archived` IS NULL)
             LIMIT 50
         ");
         $products_all = $products_stmt->fetchAll(PDO::FETCH_ASSOC);
