@@ -431,7 +431,7 @@ try {
                     'title' => $row['name'],
                     'subtitle' => $subtitle,
                     'excerpt' => get_excerpt($excerptText, $query),
-                    'url' => '#warehouse/item-' . $row['id']
+                    'url' => '#warehouse/' . $row['id']
                 ]
             ];
         }

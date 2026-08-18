@@ -140,17 +140,24 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   // Sync hash navigation with product detail selection (e.g. from Universal Search / Direct URL)
   useEffect(() => {
     const handleHash = () => {
-      const hash = window.location.hash;
-      if (hash.startsWith("#warehouse/item-")) {
-        const itemId = hash.replace("#warehouse/item-", "");
-        if (itemId) {
+      const rawHash = window.location.hash.replace(/^#/, "");
+      if (rawHash.startsWith("warehouse/") || rawHash.startsWith("warehouse-")) {
+        const sub = rawHash.replace(/^warehouse[\/-]/, "");
+        if (sub === "new") {
+          setSelectedProductDetailId("new");
+          setActiveSubTab("items");
+        } else if (sub.startsWith("item-item-")) {
+          // Handle legacy redundant prefix
+          const itemId = sub.replace("item-", "");
           setSelectedProductDetailId(itemId);
           setActiveSubTab("items");
+        } else if (sub && sub !== "items" && sub !== "movements" && sub !== "suppliers" && sub !== "batches" && sub !== "analytics") {
+          setSelectedProductDetailId(sub);
+          setActiveSubTab("items");
+        } else {
+          setSelectedProductDetailId(null);
         }
-      } else if (hash === "#warehouse/new") {
-        setSelectedProductDetailId("new");
-        setActiveSubTab("items");
-      } else if (hash === "#warehouse" || hash === "#warehouse/items") {
+      } else if (rawHash === "warehouse") {
         setSelectedProductDetailId(null);
       }
     };
@@ -658,7 +665,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     setIsCategoryDropdownOpen(false);
     setCategorySearchQuery("");
     setSelectedProductDetailId(item.id);
-    window.location.hash = `warehouse/item-${item.id}`;
+    window.location.hash = `warehouse/${item.id}`;
   };
 
   const handleProductImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1631,7 +1638,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 type="button"
                 onClick={() => {
                   const productId = currentItem?.id || selectedProductDetailId;
-                  const url = `${window.location.origin}${window.location.pathname}#warehouse/item-${productId}`;
+                  const url = `${window.location.origin}${window.location.pathname}#warehouse/${productId}`;
                   navigator.clipboard.writeText(url);
                   setIsCopiedProductUrl(true);
                   if (typeof (window as any).showToast === "function") {
@@ -3859,7 +3866,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                               <div>
                                 <div className="flex items-center gap-2">
                                   <a
-                                    href={`#warehouse/item-${item.id}`}
+                                    href={`#warehouse/${item.id}`}
                                     onClick={(e) => {
                                       e.preventDefault();
                                       handleOpenEditItem(item);
@@ -3974,7 +3981,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  const url = `${window.location.origin}${window.location.pathname}#warehouse/item-${item.id}`;
+                                  const url = `${window.location.origin}${window.location.pathname}#warehouse/${item.id}`;
                                   navigator.clipboard.writeText(url);
                                   if (typeof (window as any).showToast === "function") {
                                     (window as any).showToast(t("Product URL copied to clipboard.", "URL odkaz na tovar bol skopírovaný.", "A termék linkje a vágólapra másolva."));
