@@ -11,6 +11,7 @@ import { nowLocalStamp, localeCodeFor, formatTimestampLocalized } from "../utils
 import { getTranslation } from "../utils/translations";
 import { CustomSelect } from "./ui/CustomSelect";
 import { TimelineAuthorBadge } from "./TimelineAuthorBadge";
+import { TimelineCollapsible } from "./TimelineCollapsible";
 
 interface EmailViewProps {
   currentUser: any;
@@ -1938,47 +1939,16 @@ export const EmailView: React.FC<EmailViewProps> = ({
                             </div>
                             <span className="text-[8px] text-slate-400 font-extrabold">{formatTimestampLocalized(event.timestamp, systemLanguage)}</span>
                           </div>
-                          {(() => {
-                            const lines = event.content.split("\n");
-                            // Long entries stay clipped until the user opens them with the "Show more" toggle below.
-                            const isTruncatable = lines.length > 5 || event.content.length > 250;
-                            const isExpanded = expandedTimelineEventIds.has(event.id);
-                            const showGradient = isTruncatable && !isExpanded;
-                            return (
-                              <div>
-                                <div className={`relative ${isTruncatable ? `overflow-hidden transition-[max-height] duration-300 ease-in-out ${isExpanded ? "max-h-[3000px]" : "max-h-[90px]"}` : ""}`}>
-                                  <p className="text-[10.5px] text-slate-655 leading-[1.35] font-bold select-text whitespace-pre-wrap">
-                                    {event.content}
-                                  </p>
-                                  {showGradient && (
-                                    <div className="absolute bottom-0 left-0 right-0 h-[35px] bg-gradient-to-t from-slate-55 via-slate-55/70 to-transparent pointer-events-none" />
-                                  )}
-                                </div>
-                                {isTruncatable && (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      toggleTimelineEventExpanded(event.id);
-                                    }}
-                                    className="mt-1.5 mx-auto w-fit flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-indigo-600 hover:text-indigo-800 active:scale-95 transition-all duration-200"
-                                  >
-                                    {isExpanded ? (
-                                      <>
-                                        <ChevronUp className="h-3 w-3 stroke-[2.5]" />
-                                        {t("Show less", "Zobraziť menej", "Kevesebb megjelenítése")}
-                                      </>
-                                    ) : (
-                                      <>
-                                        <ChevronDown className="h-3 w-3 stroke-[2.5]" />
-                                        {t("Show more", "Zobraziť viac", "Több megjelenítése")}
-                                      </>
-                                    )}
-                                  </button>
-                                )}
-                              </div>
-                            );
-                          })()}
+                          <TimelineCollapsible
+                            language={systemLanguage}
+                            isExpanded={expandedTimelineEventIds.has(event.id)}
+                            onToggle={() => toggleTimelineEventExpanded(event.id)}
+                            fadeClassName="from-slate-55 via-slate-55/70"
+                          >
+                            <p className="text-[10.5px] text-slate-655 leading-[1.35] font-bold select-text whitespace-pre-wrap">
+                              {event.content}
+                            </p>
+                          </TimelineCollapsible>
                           {event.amount && (
                             <span className="block mt-1 text-[9px] font-black text-emerald-800 uppercase tracking-wider">
                               {t("Worth:", "Hodnota:", "Érték:")} &euro; {event.amount.toLocaleString()}

@@ -41,13 +41,7 @@ import {
     CornerLeftDown,
     Loader2,
     Brain,
-    Mic,
-    Play,
-    Pause,
-    Square,
-    Sparkles,
     ChevronDown,
-    ChevronUp,
     ClipboardList,
     Receipt,
     ReceiptText,
@@ -67,7 +61,6 @@ import type {
     ProjectType,
 } from "../types";
 import { DOCUMENT_EVENT_TYPES } from "../types";
-import { cn } from "../utils/cn";
 
 // Named preset deadline times offered in the gate quick-add picker, mirroring the
 // task dashboard's Add-task drawer. A "Custom" option reveals a free time input so
@@ -309,8 +302,10 @@ const SearchableLeadSelect: React.FC<{
 };
 import { CustomSelect } from "./ui/CustomSelect";
 import { TimelineAuthorBadge } from "./TimelineAuthorBadge";
+import { TimelineCollapsible } from "./TimelineCollapsible";
 import { BlockEditor } from "./BlockEditor";
 import type { EditorBlock } from "./BlockEditor";
+import { VoiceRecorderCard } from "./VoiceRecorderCard";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import {
@@ -1390,246 +1385,34 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             integrationsConfig?.openAiKey &&
             integrationsConfig.openAiKey.trim() !== ""
         );
-        const transcriptionAvailable = false; // not processed initially
 
         return (
-            <div className="flex items-center justify-between gap-3 bg-white p-2 rounded-lg border border-slate-200 shadow-sm text-xs select-none">
-                <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <div className="relative flex h-2.5 w-2.5 shrink-0">
-                        {recordingState === "recording" && (
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                        )}
-                        <span
-                            className={cn(
-                                "relative inline-flex rounded-full h-2.5 w-2.5",
-                                recordingState === "recording"
-                                    ? "bg-rose-600"
-                                    : recordingState === "paused"
-                                      ? "bg-amber-500"
-                                      : recordingState === "stopped"
-                                        ? "bg-emerald-500"
-                                        : "bg-slate-350",
-                            )}
-                        ></span>
-                    </div>
-
-                    <div className="text-left truncate">
-                        <span className="font-extrabold uppercase text-[9px] text-slate-700">
-                            {recordingState === "none" &&
-                                (systemLanguage === "sk"
-                                    ? "Hlasový záznam"
-                                    : systemLanguage === "hu"
-                                      ? "Hangrögzítés"
-                                      : "Voice Recording")}
-                            {recordingState === "recording" &&
-                                `${formatDuration(recordDuration)}`}
-                            {recordingState === "paused" &&
-                                (systemLanguage === "sk"
-                                    ? "Pozastavené"
-                                    : systemLanguage === "hu"
-                                      ? "Megállítva"
-                                      : "Paused")}
-                            {recordingState === "stopped" &&
-                                (systemLanguage === "sk"
-                                    ? "Nahrávka"
-                                    : systemLanguage === "hu"
-                                      ? "Felvétel"
-                                      : "Recording")}
-                        </span>
-                    </div>
-                </div>
-
-                {/* Small Audio Player */}
-                {recordingState === "stopped" && audioUrl && (
-                    <div className="flex items-center gap-2 flex-1 max-w-[150px]">
-                        <audio
-                            ref={audioRef}
-                            src={audioUrl}
-                            preload="metadata"
-                            onTimeUpdate={() => {
-                                if (
-                                    !audioRef.current ||
-                                    durationProbeRef.current
-                                )
-                                    return;
-                                setCurrentTime(audioRef.current.currentTime);
-                            }}
-                            onDurationChange={handleAudioDurationChange}
-                            onLoadedMetadata={handleAudioDurationChange}
-                            onPlay={() => setIsPlaying(true)}
-                            onPause={() => setIsPlaying(false)}
-                            onEnded={() => setIsPlaying(false)}
-                            onError={() => {
-                                setIsPlaying(false);
-                                if (
-                                    typeof (window as any).showToast ===
-                                    "function"
-                                ) {
-                                    (window as any).showToast(
-                                        t(
-                                            "The recording could not be loaded.",
-                                            "Nahrávku sa nepodarilo načítať.",
-                                            "A felvételt nem sikerült betölteni.",
-                                        ),
-                                        "error",
-                                    );
-                                }
-                            }}
-                            className="hidden"
-                        />
-                        <button
-                            type="button"
-                            onClick={() => {
-                                const el = audioRef.current;
-                                if (!el) return;
-                                if (isPlaying) {
-                                    el.pause();
-                                    return;
-                                }
-                                const played = el.play();
-                                if (
-                                    played &&
-                                    typeof played.catch === "function"
-                                ) {
-                                    played.catch((err: any) => {
-                                        setIsPlaying(false);
-                                        if (
-                                            typeof (window as any).showToast ===
-                                            "function"
-                                        ) {
-                                            (window as any).showToast(
-                                                t(
-                                                    "Could not play the recording: ",
-                                                    "Nahrávku sa nepodarilo prehrať: ",
-                                                    "A felvételt nem sikerült lejátszani: ",
-                                                ) + err.message,
-                                                "error",
-                                            );
-                                        }
-                                    });
-                                }
-                            }}
-                            className="p-1 rounded-full bg-slate-800 text-white flex items-center justify-center shrink-0 cursor-pointer"
-                        >
-                            {isPlaying ? (
-                                <Pause className="h-3 w-3 fill-white" />
-                            ) : (
-                                <Play className="h-3 w-3 fill-white" />
-                            )}
-                        </button>
-                        <span className="text-[8px] font-black text-slate-400">
-                            {formatDuration(Math.floor(currentTime))} /{" "}
-                            {formatDuration(Math.floor(audioDuration))}
-                        </span>
-                        <button
-                            type="button"
-                            onClick={removeAudioFile}
-                            className="text-slate-400 hover:text-rose-600 transition-colors p-1 cursor-pointer"
-                            title={t(
-                                "Delete audio",
-                                "Odstrániť zvuk",
-                                "Hang törlése",
-                            )}
-                        >
-                            <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                    </div>
-                )}
-
-                {/* Controls */}
-                <div className="flex items-center gap-1.5 shrink-0">
-                    {recordingState === "none" && (
-                        <button
-                            type="button"
-                            onClick={startRecording}
-                            className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white text-[9px] font-black uppercase tracking-wider rounded-lg cursor-pointer flex items-center gap-1 shadow-sm"
-                        >
-                            <Mic className="h-3 w-3 fill-white" />
-                            <span>
-                                {systemLanguage === "sk"
-                                    ? "Nahrať"
-                                    : systemLanguage === "hu"
-                                      ? "Felvétel"
-                                      : "Record"}
-                            </span>
-                        </button>
-                    )}
-
-                    {recordingState === "recording" && (
-                        <>
-                            <button
-                                type="button"
-                                onClick={pauseRecording}
-                                className="p-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg cursor-pointer"
-                                title={t("Pause", "Pozastaviť", "Szünet")}
-                            >
-                                <Pause className="h-3 w-3 fill-white" />
-                            </button>
-                            <button
-                                type="button"
-                                onClick={stopRecording}
-                                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-900 text-white text-[9px] font-black uppercase tracking-wider rounded-lg cursor-pointer flex items-center gap-1"
-                            >
-                                <Square className="h-3 w-3 fill-white" />
-                                <span>
-                                    {t("Stop", "Zastaviť", "Leállítás")}
-                                </span>
-                            </button>
-                        </>
-                    )}
-
-                    {recordingState === "paused" && (
-                        <>
-                            <button
-                                type="button"
-                                onClick={resumeRecording}
-                                className="p-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg cursor-pointer"
-                                title={t("Resume", "Pokračovať", "Folytatás")}
-                            >
-                                <Play className="h-3 w-3 fill-white" />
-                            </button>
-                            <button
-                                type="button"
-                                onClick={stopRecording}
-                                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-900 text-white text-[9px] font-black uppercase tracking-wider rounded-lg cursor-pointer flex items-center gap-1"
-                            >
-                                <Square className="h-3 w-3 fill-white" />
-                                <span>
-                                    {t("Stop", "Zastaviť", "Leállítás")}
-                                </span>
-                            </button>
-                        </>
-                    )}
-
-                    {recordingState === "stopped" &&
-                        isOpenAiConfigured &&
-                        !transcriptionAvailable && (
-                            <button
-                                type="button"
-                                disabled={
-                                    isTranscribing ||
-                                    isUploadingAudio ||
-                                    !uploadedAudioFile
-                                }
-                                onClick={handleTranscribeMeeting}
-                                className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white text-[9px] font-black uppercase tracking-wider rounded-lg cursor-pointer flex items-center gap-1.5"
-                            >
-                                {isTranscribing ? (
-                                    <Loader2 className="h-3 w-3 animate-spin" />
-                                ) : (
-                                    <Sparkles className="h-3 w-3" />
-                                )}
-                                <span>
-                                    {systemLanguage === "sk"
-                                        ? "Prepísať"
-                                        : systemLanguage === "hu"
-                                          ? "Átír"
-                                          : "Transcribe"}
-                                </span>
-                            </button>
-                        )}
-                </div>
-            </div>
+            <VoiceRecorderCard
+                systemLanguage={systemLanguage}
+                recordingState={recordingState}
+                recordDuration={recordDuration}
+                formatDuration={formatDuration}
+                analyser={analyser}
+                audioUrl={audioUrl}
+                audioRef={audioRef}
+                durationProbeRef={durationProbeRef}
+                isPlaying={isPlaying}
+                setIsPlaying={setIsPlaying}
+                currentTime={currentTime}
+                setCurrentTime={setCurrentTime}
+                audioDuration={audioDuration}
+                onAudioDurationChange={handleAudioDurationChange}
+                onStart={startRecording}
+                onPause={pauseRecording}
+                onResume={resumeRecording}
+                onStop={stopRecording}
+                onRemove={removeAudioFile}
+                canTranscribe={isOpenAiConfigured}
+                isTranscribing={isTranscribing}
+                isUploadingAudio={isUploadingAudio}
+                hasUploadedAudio={!!uploadedAudioFile}
+                onTranscribe={handleTranscribeMeeting}
+            />
         );
     };
 
@@ -6506,9 +6289,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 {logType === "note" ? (
                                                     <div className="space-y-2 border-2 border-slate-200 rounded-xl p-3 bg-slate-50/50">
                                                         {renderCompactAudioRecorder()}
-                                                        <div className="border border-slate-200 rounded-xl bg-white p-2 min-h-[140px] max-h-[260px] overflow-y-auto outline-none text-xs">
+                                                        <div className="flex flex-col border border-slate-200 rounded-xl bg-white p-3 min-h-[180px] max-h-[320px] overflow-y-auto outline-none text-xs cursor-text">
                                                             <BlockEditor
                                                                 key={editorKey}
+                                                                fillHeight
                                                                 initialBlocks={
                                                                     noteBlocks
                                                                 }
@@ -6835,7 +6619,18 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                 </div>
                                                             </div>
                                                         ) : (
-                                                            (() => {
+                                                            <TimelineCollapsible
+                                                                language={systemLanguage}
+                                                                isExpanded={expandedTimelineEventIds.has(
+                                                                    event.id,
+                                                                )}
+                                                                onToggle={() =>
+                                                                    toggleTimelineEventExpanded(
+                                                                        event.id,
+                                                                    )
+                                                                }
+                                                            >
+                                                                {(() => {
                                                                 if (
                                                                     event.type ===
                                                                     "status_change"
@@ -7001,7 +6796,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                         }
                                                                     </p>
                                                                 );
-                                                            })()
+                                                                })()}
+                                                            </TimelineCollapsible>
                                                         )}
 
                                                         {renderEventAttachments(
@@ -7290,7 +7086,18 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                 </div>
                                                             </div>
                                                         ) : (
-                                                            (() => {
+                                                            <TimelineCollapsible
+                                                                language={systemLanguage}
+                                                                isExpanded={expandedTimelineEventIds.has(
+                                                                    event.id,
+                                                                )}
+                                                                onToggle={() =>
+                                                                    toggleTimelineEventExpanded(
+                                                                        event.id,
+                                                                    )
+                                                                }
+                                                            >
+                                                                {(() => {
                                                                 if (
                                                                     event.type ===
                                                                     "status_change"
@@ -7449,84 +7256,15 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                     }
                                                                 }
 
-                                                                const lines =
-                                                                    event.content.split(
-                                                                        "\n",
-                                                                    );
-                                                                // Long entries stay clipped until the user opens
-                                                                // them with the "Show more" toggle below.
-                                                                const isTruncatable =
-                                                                    lines.length >
-                                                                        5 ||
-                                                                    event
-                                                                        .content
-                                                                        .length >
-                                                                        250;
-                                                                const isExpanded =
-                                                                    expandedTimelineEventIds.has(
-                                                                        event.id,
-                                                                    );
-                                                                const showGradient =
-                                                                    isTruncatable &&
-                                                                    !isExpanded;
                                                                 return (
-                                                                    <div>
-                                                                        <div
-                                                                            className={`relative ${
-                                                                                isTruncatable
-                                                                                    ? `overflow-hidden transition-[max-height] duration-300 ease-in-out ${isExpanded ? "max-h-[3000px]" : "max-h-[8.1em]"}`
-                                                                                    : ""
-                                                                            }`}
-                                                                            style={{
-                                                                                lineHeight: 1.35,
-                                                                            }}
-                                                                        >
-                                                                            <p className="text-[11px] text-slate-700 font-bold select-text whitespace-pre-wrap">
-                                                                                {
-                                                                                    event.content
-                                                                                }
-                                                                            </p>
-                                                                            {showGradient && (
-                                                                                <div className="absolute bottom-0 left-0 right-0 pointer-events-none bg-gradient-to-t from-white via-white/70 to-transparent h-10" />
-                                                                            )}
-                                                                        </div>
-                                                                        {isTruncatable && (
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={(
-                                                                                    e,
-                                                                                ) => {
-                                                                                    e.stopPropagation();
-                                                                                    toggleTimelineEventExpanded(
-                                                                                        event.id,
-                                                                                    );
-                                                                                }}
-                                                                                className="mt-1.5 mx-auto w-fit flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-indigo-600 hover:text-indigo-800 active:scale-95 transition-all duration-200"
-                                                                            >
-                                                                                {isExpanded ? (
-                                                                                    <>
-                                                                                        <ChevronUp className="h-3 w-3 stroke-[2.5]" />
-                                                                                        {t(
-                                                                                            "Show less",
-                                                                                            "Zobraziť menej",
-                                                                                            "Kevesebb megjelenítése",
-                                                                                        )}
-                                                                                    </>
-                                                                                ) : (
-                                                                                    <>
-                                                                                        <ChevronDown className="h-3 w-3 stroke-[2.5]" />
-                                                                                        {t(
-                                                                                            "Show more",
-                                                                                            "Zobraziť viac",
-                                                                                            "Több megjelenítése",
-                                                                                        )}
-                                                                                    </>
-                                                                                )}
-                                                                            </button>
-                                                                        )}
-                                                                    </div>
+                                                                    <p className="text-[11px] text-slate-700 font-bold select-text whitespace-pre-wrap" style={{ lineHeight: 1.35 }}>
+                                                                        {
+                                                                            event.content
+                                                                        }
+                                                                    </p>
                                                                 );
-                                                            })()
+                                                                })()}
+                                                            </TimelineCollapsible>
                                                         )}
 
                                                         {/* Attached documents. Events logged before multi-file

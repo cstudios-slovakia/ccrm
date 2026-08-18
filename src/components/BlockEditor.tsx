@@ -26,6 +26,13 @@ interface BlockEditorProps {
   initialBlocks?: EditorBlock[];
   onChange: (blocks: EditorBlock[]) => void;
   systemLanguage?: "en" | "sk" | "hu";
+  /**
+   * Stretch the editor over the whole height of its container and treat the empty
+   * space below the last block as part of the writing area. Without it the editor
+   * is only as tall as its text, so a tall bordered wrapper looks like a big text
+   * field while only the first line actually accepts clicks.
+   */
+  fillHeight?: boolean;
 }
 
 const DEFAULT_BLOCKS: EditorBlock[] = [
@@ -240,7 +247,8 @@ const getBannerIcon = (color: string, variant: string) => {
 export const BlockEditor: React.FC<BlockEditorProps> = ({
   initialBlocks,
   onChange,
-  systemLanguage = "en"
+  systemLanguage = "en",
+  fillHeight = false
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
   const [blocks, setBlocks] = useState<EditorBlock[]>(() => {
@@ -375,6 +383,25 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
     });
 
     setFocusBlockId(newBlock.id);
+  };
+
+  // Put the caret back into the note when the user clicks the empty area under
+  // the last block: reuse that block if it is still an empty paragraph, and open
+  // a fresh one otherwise.
+  const focusTrailingBlock = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const last = blocks[blocks.length - 1];
+    if (!last) return;
+    const isEmptyParagraph =
+      last.type === "paragraph" &&
+      !last.content.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim();
+    if (isEmptyParagraph) {
+      const el = blockRefs.current[last.id];
+      if (el) el.focus();
+      setFocusBlockId(last.id);
+      return;
+    }
+    insertBlockBelow(last.id, "paragraph");
   };
 
   // Delete block and shift focus
@@ -565,7 +592,13 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
   };
 
     return (
-    <div ref={containerRef} className="relative w-full select-text bg-transparent border-none shadow-none p-0 m-0">
+    <div
+      ref={containerRef}
+      className={cn(
+        "relative w-full select-text bg-transparent border-none shadow-none p-0 m-0",
+        fillHeight && "flex flex-col grow"
+      )}
+    >
       
       {/* FLOATING TEXT SELECTION FORMATTING BAR */}
       {showToolbar && (
@@ -971,6 +1004,15 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
           );
         })}
       </div>
+
+      {/* Clicking the empty space below the blocks continues writing, the way a
+          plain textarea would. */}
+      {fillHeight && (
+        <div
+          className="flex-1 min-h-[28px] cursor-text"
+          onMouseDown={focusTrailingBlock}
+        />
+      )}
 
       {/* Click outside target to close dropdowns */}
       {isMenuOpenAnywhere() && (
