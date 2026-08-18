@@ -39,7 +39,8 @@ import {
   Camera,
   Loader2,
   Lock,
-  Unlock
+  Unlock,
+  Link2
 } from "lucide-react";
 import { formatMoney } from "../utils/currency";
 import type { Language } from "../utils/translations";
@@ -134,8 +135,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
   // Compact Sticky Header state
   const [isHeaderStuck, setIsHeaderStuck] = useState(false);
+  const [isCopiedProductUrl, setIsCopiedProductUrl] = useState(false);
 
-  // Sync hash navigation with product detail selection (e.g. from Universal Search)
+  // Sync hash navigation with product detail selection (e.g. from Universal Search / Direct URL)
   useEffect(() => {
     const handleHash = () => {
       const hash = window.location.hash;
@@ -148,12 +150,40 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       } else if (hash === "#warehouse/new") {
         setSelectedProductDetailId("new");
         setActiveSubTab("items");
+      } else if (hash === "#warehouse" || hash === "#warehouse/items") {
+        setSelectedProductDetailId(null);
       }
     };
     handleHash();
     window.addEventListener("hashchange", handleHash);
     return () => window.removeEventListener("hashchange", handleHash);
   }, []);
+
+  // When selectedProductDetailId changes from URL, auto-populate itemForm
+  useEffect(() => {
+    if (selectedProductDetailId && selectedProductDetailId !== "new") {
+      const item = warehouseItems.find(i => i.id === selectedProductDetailId || i.sku === selectedProductDetailId);
+      if (item) {
+        setEditingItem(item);
+        const itemCats = getItemCategories(item);
+        setItemForm({
+          name: item.name,
+          sku: item.sku,
+          barcode: item.barcode || "",
+          categories: itemCats.length > 0 ? itemCats : ["Veľkoformátové dosky"],
+          unit: item.unit,
+          minStock: item.minStock,
+          optimalStock: item.optimalStock,
+          defaultLocation: item.defaultLocation || "",
+          hasExpiration: item.hasExpiration,
+          imageUrl: item.imageUrl || "",
+          defaultSellPrice: item.defaultSellPrice,
+          avgPurchasePrice: item.avgPurchasePrice,
+          description: item.description || ""
+        });
+      }
+    }
+  }, [selectedProductDetailId, warehouseItems]);
 
   // Monitor scroll on <main> scroll container to compact the sticky header
   useEffect(() => {
@@ -603,6 +633,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     setIsCategoryDropdownOpen(false);
     setCategorySearchQuery("");
     setSelectedProductDetailId("new");
+    window.location.hash = "warehouse/new";
   };
 
   const handleOpenEditItem = (item: WarehouseItem) => {
@@ -627,6 +658,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     setIsCategoryDropdownOpen(false);
     setCategorySearchQuery("");
     setSelectedProductDetailId(item.id);
+    window.location.hash = `warehouse/item-${item.id}`;
   };
 
   const handleProductImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -981,6 +1013,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     setWarehouseStock(prev => prev.filter(s => s.itemId !== itemId));
     setSelectedProductDetailId(null);
     setEditingItem(null);
+    window.location.hash = "warehouse";
 
     if (typeof (window as any).showToast === "function") {
       (window as any).showToast(t("Product was deleted successfully.", "Tovar bol úspešne vymazaný.", "A termék sikeresen törölve."));
@@ -1062,6 +1095,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
     setSelectedProductDetailId(null);
     setEditingItem(null);
+    window.location.hash = "warehouse";
   };
 
   // Save / Update Supplier handler
@@ -1515,6 +1549,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 setSelectedProductDetailId(null);
                 setIsCategoryDropdownOpen(false);
                 setCategorySearchQuery("");
+                window.location.hash = "warehouse";
               }}
               className={`rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all flex items-center justify-center shrink-0 ${
                 isHeaderStuck ? "p-1.5 md:p-2" : "p-2.5 rounded-2xl"
@@ -1591,11 +1626,44 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
           {/* Action Buttons */}
           <div className="flex items-center gap-2 shrink-0">
+            {!isNew && (
+              <button
+                type="button"
+                onClick={() => {
+                  const productId = currentItem?.id || selectedProductDetailId;
+                  const url = `${window.location.origin}${window.location.pathname}#warehouse/item-${productId}`;
+                  navigator.clipboard.writeText(url);
+                  setIsCopiedProductUrl(true);
+                  if (typeof (window as any).showToast === "function") {
+                    (window as any).showToast(t("Product URL copied to clipboard.", "URL odkaz na tovar bol skopírovaný.", "A termék linkje a vágólapra másolva."));
+                  }
+                  setTimeout(() => setIsCopiedProductUrl(false), 2000);
+                }}
+                className={`rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-all flex items-center gap-1.5 ${
+                  isHeaderStuck ? "p-1.5 md:px-2.5 md:py-1.5 text-xs" : "p-2.5 px-3.5 text-xs rounded-2xl"
+                }`}
+                title={t("Copy direct Product URL", "Kopírovať priamy URL odkaz na tovar", "Termék link másolása")}
+              >
+                {isCopiedProductUrl ? (
+                  <>
+                    <Check className={isHeaderStuck ? "w-3.5 h-3.5 text-emerald-600" : "w-4 h-4 text-emerald-600"} />
+                    <span className="hidden sm:inline text-emerald-700 font-bold">{t("Copied!", "Skopírované!", "Másolva!")}</span>
+                  </>
+                ) : (
+                  <>
+                    <Link2 className={isHeaderStuck ? "w-3.5 h-3.5" : "w-4 h-4"} />
+                    <span className="hidden sm:inline">{t("Copy URL", "Kopírovať URL", "Link")}</span>
+                  </>
+                )}
+              </button>
+            )}
+
             <button
               onClick={() => {
                 setSelectedProductDetailId(null);
                 setIsCategoryDropdownOpen(false);
                 setCategorySearchQuery("");
+                window.location.hash = "warehouse";
               }}
               className={`rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-all ${
                 isHeaderStuck ? "px-3 py-1.5 text-xs" : "px-4 py-2.5 text-xs rounded-2xl"
@@ -3790,9 +3858,16 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                               )}
                               <div>
                                 <div className="flex items-center gap-2">
-                                  <span className="font-bold text-slate-900 group-hover:text-blue-900 transition">
+                                  <a
+                                    href={`#warehouse/item-${item.id}`}
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      handleOpenEditItem(item);
+                                    }}
+                                    className="font-bold text-slate-900 group-hover:text-blue-900 transition hover:underline"
+                                  >
                                     {item.name}
-                                  </span>
+                                  </a>
                                   {item.hasExpiration && (
                                     <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-200" title={t("Expiration tracked", "Sledovanie exspirácie", "Lejárat követve")}>
                                       FEFO
@@ -3895,6 +3970,21 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                           {/* Actions */}
                           <td className="py-3 px-4 text-right">
                             <div className="flex items-center justify-end gap-1">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const url = `${window.location.origin}${window.location.pathname}#warehouse/item-${item.id}`;
+                                  navigator.clipboard.writeText(url);
+                                  if (typeof (window as any).showToast === "function") {
+                                    (window as any).showToast(t("Product URL copied to clipboard.", "URL odkaz na tovar bol skopírovaný.", "A termék linkje a vágólapra másolva."));
+                                  }
+                                }}
+                                className="p-1.5 text-slate-400 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition"
+                                title={t("Copy Product URL Link", "Kopírovať odkaz na tovar", "Termék link másolása")}
+                              >
+                                <Link2 className="w-3.5 h-3.5" />
+                              </button>
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
