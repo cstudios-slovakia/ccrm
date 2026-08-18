@@ -6476,11 +6476,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     <div className="flex-1 bg-white p-4.5 rounded-[22px] border-2 border-slate-200 shadow-md group-hover:shadow-lg transition-all duration-200 relative select-text">
                                                         <div className="absolute -left-[7px] top-[14px] w-3 h-3 bg-white border-l-2 border-b-2 border-slate-200 transform rotate-45 hidden md:block"></div>
 
-                                                        <div className="flex items-start justify-between gap-4 border-b-2 border-slate-100 pb-2 mb-2.5">
-                                                            <h4 className="font-heading font-black text-[11px] uppercase tracking-tight text-slate-850 leading-tight">
+                                                        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 border-b-2 border-slate-100 pb-2 mb-2.5">
+                                                            <h4 className="font-heading font-black text-[11px] uppercase tracking-tight text-slate-850 leading-snug break-words min-w-0 flex-1 basis-[60%] pt-0.5">
                                                                 {event.title}
                                                             </h4>
-                                                            <div className="flex items-center gap-1.5 shrink-0">
+                                                            <div className="flex flex-wrap items-center justify-end gap-1.5 ml-auto">
                                                                 <TimelineAuthorBadge
                                                                     name={
                                                                         event.author
@@ -6896,13 +6896,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     <div className="flex-1 bg-white p-4.5 rounded-[22px] border-2 border-slate-200 shadow-md group-hover:shadow-lg transition-all duration-200 relative select-text">
                                                         <div className="absolute -left-[7px] top-[14px] w-3 h-3 bg-white border-l-2 border-b-2 border-slate-200 transform rotate-45 hidden md:block"></div>
 
-                                                        <div className="flex items-start justify-between gap-4 border-b-2 border-slate-100 pb-2 mb-2.5">
-                                                            <h4 className="font-heading font-black text-[11px] uppercase tracking-tight text-slate-850 leading-tight">
+                                                        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 border-b-2 border-slate-100 pb-2 mb-2.5">
+                                                            <h4 className="font-heading font-black text-[11px] uppercase tracking-tight text-slate-850 leading-snug break-words min-w-0 flex-1 basis-[60%] pt-0.5">
                                                                 {event.title}
                                                             </h4>
                                                             {event.type ===
                                                             "email" ? (
-                                                                <div className="flex items-center gap-2 shrink-0">
+                                                                <div className="flex flex-wrap items-center justify-end gap-1.5 ml-auto">
                                                                     <span
                                                                         className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full border tracking-widest shadow-inner ${colors.badgeBg} flex items-center gap-1.5`}
                                                                     >
@@ -6944,7 +6944,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                     </span>
                                                                 </div>
                                                             ) : (
-                                                                <div className="flex items-center gap-1.5 shrink-0">
+                                                                <div className="flex flex-wrap items-center justify-end gap-1.5 ml-auto">
                                                                     <TimelineAuthorBadge
                                                                         name={
                                                                             event.author
@@ -6954,14 +6954,6 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                 "",
                                                                         )}
                                                                     />
-                                                                    <span
-                                                                        className={`px-2.5 py-0.5 rounded-full text-[8.5px] font-extrabold uppercase border ${colors.badgeBg}`}
-                                                                    >
-                                                                        {getTranslation(
-                                                                            systemLanguage,
-                                                                            `timeline.badge.${event.type}`,
-                                                                        )}
-                                                                    </span>
                                                                     {editingEventId !==
                                                                         event.id && (
                                                                         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">

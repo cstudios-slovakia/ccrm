@@ -3391,14 +3391,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                   onClick={() => event.type === "email" && handleTimelineEmailClick(event)}
                                   className={`${event.type === "email" ? "cursor-pointer hover:border-indigo-400 active:scale-[0.99]" : ""} bg-amber-50/10 border-2 border-dashed border-amber-300 rounded-2xl p-4 transition-all shadow-md hover:shadow-lg ${colors.cardBorder}`}
                                 >
-                                  <div className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-slate-200/50 pb-2 mb-2.5">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-[10px] font-black text-slate-900 uppercase tracking-wide">
-                                        {event.title}
-                                      </span>
-                                      <span className={`text-[8px] font-black uppercase px-2.5 py-0.5 rounded-full border tracking-widest shadow-inner ${colors.badgeBg}`}>
-                                        {getTranslation(systemLanguage, `timeline.badge.${event.type}`)}
-                                      </span>
+                                  <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 border-b-2 border-slate-200/50 pb-2 mb-2.5">
+                                    <span className="text-[10px] font-black text-slate-900 uppercase tracking-wide leading-snug break-words min-w-0 flex-1 basis-[55%] pt-0.5">
+                                      {event.title}
+                                    </span>
+                                    <div className="flex flex-wrap items-center justify-end gap-1.5 ml-auto">
                                       <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded bg-amber-500 text-white border border-amber-600 tracking-widest shadow-sm">
                                         {getTranslation(systemLanguage, "timeline.upcoming")}
                                       </span>
@@ -3564,11 +3561,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                   onClick={() => event.type === "email" && handleTimelineEmailClick(event)}
                                   className={`${event.type === "email" ? "cursor-pointer hover:border-indigo-400 active:scale-[0.99]" : ""} bg-slate-50/60 border rounded-2xl p-4 transition-all shadow-md hover:shadow-lg ${colors.cardBorder}`}
                                 >
-                                  <div className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-slate-200/50 pb-2 mb-2.5">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-[10px] font-black text-slate-900 uppercase tracking-wide">
-                                        {event.title}
-                                      </span>
+                                  <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 border-b-2 border-slate-200/50 pb-2 mb-2.5">
+                                    <span className="text-[10px] font-black text-slate-900 uppercase tracking-wide leading-snug break-words min-w-0 flex-1 basis-[55%] pt-0.5">
+                                      {event.title}
+                                    </span>
+                                    <div className="flex flex-wrap items-center justify-end gap-1.5 ml-auto">
                                       {event.type === "email" ? (
                                         <>
                                           <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full border tracking-widest shadow-inner ${colors.badgeBg} flex items-center gap-1.5`}>
@@ -3592,15 +3589,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                           </span>
                                         </>
                                       ) : (
-                                        <>
-                                          <span className={`text-[8px] font-black uppercase px-2.5 py-0.5 rounded-full border tracking-widest shadow-inner ${colors.badgeBg}`}>
-                                            {getTranslation(systemLanguage, `timeline.badge.${event.type}`)}
-                                          </span>
-                                          <TimelineAuthorBadge
-                                            name={event.author}
-                                            color={projectManagerColors[event.author || ""]}
-                                          />
-                                        </>
+                                        <TimelineAuthorBadge
+                                          name={event.author}
+                                          color={projectManagerColors[event.author || ""]}
+                                        />
                                       )}
                                     </div>
                                     <span className="block md:hidden text-[9px] font-black text-slate-400 uppercase tracking-wider">
