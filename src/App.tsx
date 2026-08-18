@@ -692,6 +692,9 @@ ${log.payload || ''}
         case "automation":
           viewName = t("Automation", "Automatizácia", "Automatizálás");
           break;
+        case "social_media":
+          viewName = t("Social Media", "Sociálne siete", "Közösségi média");
+          break;
         case "personal-settings":
           viewName = t("Personal Settings", "Osobné nastavenia", "Személyes beállítások");
           break;
@@ -1192,7 +1195,7 @@ ${log.payload || ''}
     clearLegacyPrefs();
   }, [currentUser, users, isInitialSyncResolved]);
 
-  const handleSaveUserLayout = (layout: string[]) => {
+  const handleSaveUserLayout = (layout: string[], hidden?: string[]) => {
     if (!currentUser) return;
     let currentMeta: any = {};
     try {
@@ -1202,7 +1205,9 @@ ${log.payload || ''}
     } catch (e) {
       console.error("Error parsing user metadata_json", e);
     }
-    const nextMeta = { ...currentMeta, navLayout: layout };
+    // navHidden records what the user removed on purpose, so a module added to
+    // the product later can be told apart from one they chose to hide.
+    const nextMeta = { ...currentMeta, navLayout: layout, ...(hidden ? { navHidden: hidden } : {}) };
     updateUsersAndSync(prevUsers => prevUsers.map(u => {
       if (u.email === currentUser.email) {
         return { ...u, metadata_json: nextMeta };

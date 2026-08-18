@@ -109,7 +109,7 @@ export const bundledUpdateNotes: UpdateEntry[] = [
   {
     id: "bundled-1-7",
     version: "1.7",
-    title: "Automatizácie a workflowy",
+    title: "Automatizácie, workflowy a sociálne siete",
     siteHandle: "default",
     postDate: "2026-08-10",
     contentMatrix: [
@@ -151,6 +151,17 @@ export const bundledUpdateNotes: UpdateEntry[] = [
   <li><strong>Kontrola vykonaných krokov:</strong> Pri každom behu je viditeľný stav, čas a postup cez jednotlivé uzly vrátane vstupných a výstupných údajov.</li>
   <li><strong>Centrálne nastavenia AI:</strong> Kľúče pre OpenAI, Anthropic a Gemini sa spravujú v sekcii Nastavenia → AI a používajú sa vo všetkých AI blokoch.</li>
   <li><strong>Cron adresa:</strong> Nastavenia zobrazujú adresu potrebnú na pravidelné spracovanie časovaných workflowov.</li>
+</ul>
+<h2>6. Sociálne siete</h2>
+<p>Druhou veľkou novinkou verzie 1.7 je sekcia <strong>Sociálne siete</strong>. Cez pripojenie na Zernio prináša príspevky zo všetkých firemných profilov do jedného prehľadu v CCRM – bez prepínania medzi Facebookom, Instagramom, LinkedInom či ďalšími sieťami.</p>
+<ul>
+  <li><strong>Pripojenie na jedno kliknutie:</strong> V Nastavenia → Sociálne siete stačí spustiť autorizáciu cez prehliadač alebo vložiť Zernio API kľúč. Stav pripojenia aj zoznam pripojených profilov sú viditeľné priamo v paneli; ak kľúč prestane platiť, systém to oznámi namiesto toho, aby ďalej hlásil funkčné pripojenie.</li>
+  <li><strong>Zoznam príspevkov:</strong> Publikované, naplánované aj rozpracované príspevky sú zoradené podľa dátumu a zobrazené v dizajne pôvodnej siete. Bočný panel filtruje podľa siete, stavu a textu.</li>
+  <li><strong>Kalendár publikovania:</strong> Mesačný prehľad ukazuje, čo a kedy vyšlo alebo vyjde. Kliknutie na deň otvorí bočný panel s celým obsahom daného dňa.</li>
+  <li><strong>Analytika z reálnych čísel:</strong> Miera angažovanosti, zobrazenia, interakcie, rozloženie podľa sietí, vývoj v čase, rebríček najlepších príspevkov aj mapa najvhodnejšieho času na publikovanie sa počítajú výhradne z údajov, ktoré vrátili samotné siete. Filtre podľa siete a obdobia (7, 30 alebo 90 dní) prepočítajú všetky ukazovatele naraz a tlačidlo Exportovať stiahne CSV súbor s príspevkami za zvolené obdobie.</li>
+  <li><strong>Detail príspevku a komentáre:</strong> Každý príspevok má vlastnú adresu, ktorú možno skopírovať a poslať kolegovi. V detaile sú výkonnostné čísla, odkaz na originál v sieti a živý zoznam komentárov načítaný priamo zo siete. Na komentár sa dá odpovedať priamo z CCRM – odpoveď sa zverejní na sociálnej sieti.</li>
+  <li><strong>Zrozumiteľné stavy:</strong> Prázdny zoznam vysvetlí dôvod – Zernio ešte nie je pripojené, synchronizácia zlyhala, filtre nič nenašli, alebo účty zatiaľ nemajú príspevky.</li>
+  <li><strong>Použiteľné na mobile:</strong> Kalendár aj analytické tabuľky sa posúvajú vo vlastnom rámci, bočný panel s komentármi sa skladá pod seba a zatváracie tlačidlá zostávajú dostupné aj na malých displejoch.</li>
 </ul>`,
         },
       },

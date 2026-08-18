@@ -782,6 +782,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // the backend uses the real values server-side. Saving a masked field is a
     // no-op (see the POST merge below).
     if (is_array($integrationsConfig)) {
+        $integrationsConfig = ccrm_decrypt_config_secrets($integrationsConfig, ccrm_integration_secret_keys());
         $integrationsConfig = ccrm_mask_secrets($integrationsConfig, ccrm_integration_secret_keys());
     }
 

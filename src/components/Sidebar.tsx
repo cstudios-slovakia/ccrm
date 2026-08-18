@@ -26,7 +26,7 @@ interface SidebarProps {
   currentUser: UserProfile | null;
   roles: RolePermission[];
   canEditNav: boolean;
-  onSaveUserLayout: (layout: string[]) => void;
+  onSaveUserLayout: (layout: string[], hidden?: string[]) => void;
   unifiedEntries?: UnifiedEntryRegistry[];
   customDashboards?: CustomDashboard[];
   onSaveCustomDashboards?: (dashboards: CustomDashboard[]) => void;
@@ -199,7 +199,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const nextHidden = hiddenItems.filter(id => id !== itemId);
     setActiveItems(nextActive);
     setHiddenItems(nextHidden);
-    onSaveUserLayout(nextActive);
+    onSaveUserLayout(nextActive, nextHidden);
   };
 
   // Dynamic Unified Entries Items mapping
@@ -254,8 +254,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   }, [roles, currentUser]);
 
   const resolvedLayout = React.useMemo(() => {
-    if (canEditNav && userMetadata?.navLayout) {
-      return userMetadata.navLayout;
+    if (canEditNav && Array.isArray(userMetadata?.navLayout)) {
+      const stored: string[] = userMetadata.navLayout;
+      const hidden: string[] = Array.isArray(userMetadata?.navHidden) ? userMetadata.navHidden : [];
+      // Ids in neither list did not exist when this layout was saved — surface
+      // them once instead of leaving a newly shipped module permanently invisible.
+      const introduced = defaultSystemLayout.filter(id => !stored.includes(id) && !hidden.includes(id));
+      return introduced.length ? [...stored, ...introduced] : stored;
     }
     if (userRole?.defaultNavLayout) {
       return userRole.defaultNavLayout;
@@ -335,7 +340,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
     setActiveItems(newActive);
     setHiddenItems(newHidden);
-    onSaveUserLayout(newActive);
+    onSaveUserLayout(newActive, newHidden);
 
     // Reset drag states
     setDraggedItemId(null);
@@ -377,7 +382,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           setActiveItems(newActive);
           setHiddenItems(newHidden);
-          onSaveUserLayout(newActive);
+          onSaveUserLayout(newActive, newHidden);
           (window as any).showToast(t("Layout imported successfully!", "Rozloženie bolo úspešne importované!", "Az elrendezés sikeresen importálva!"));
         } else {
           alert(t("Invalid layout file format.", "Neplatný formát súboru rozloženia.", "Érvénytelen elrendezésfájl-formátum."));
@@ -627,7 +632,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               onClick={() => {
                 if (isEditingNav) {
                   try {
-                    onSaveUserLayout(activeItems);
+                    onSaveUserLayout(activeItems, hiddenItems);
                   } catch (err) {
                     console.error("Failed to save navigation layout", err);
                   }

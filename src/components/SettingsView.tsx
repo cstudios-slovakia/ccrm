@@ -339,8 +339,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         const data = JSON.parse(event.target?.result as string);
         if (data && Array.isArray(data.layout)) {
           const roleToUpdate = uploadingRoleRef.current;
-          const defaultSystemLayout = ["dashboard", "overview", "rag_ai", "leads", "clients", "meetings", "files", "email"];
-          const newLayout = data.layout.filter((id: string) => defaultSystemLayout.includes(id));
+          // This used to be a hardcoded 8-id whitelist that silently dropped
+          // projects, automation, social_media, updates and every custom entry
+          // while still reporting a successful import.
+          const newLayout: string[] = data.layout.filter((id: string) => typeof id === "string" && id.length > 0);
           
           setRoles(prev => prev.map(r => {
             if (r.name === roleToUpdate) {
@@ -509,7 +511,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   // Zernio Social Media Integration State
   const [zernioApiKey, setZernioApiKey] = React.useState<string>(integrationsConfig?.zernioApiKey || "");
-  const [showZernioKey, setShowZernioKey] = React.useState<boolean>(true);
+  const [showZernioKey, setShowZernioKey] = React.useState<boolean>(false);
   const [isTestingZernio, setIsTestingZernio] = React.useState<boolean>(false);
   const [zernioTestResult, setZernioTestResult] = React.useState<{ success: boolean; message: string; accounts?: any[]; count?: number } | null>(
     integrationsConfig?.zernioConnected ? { success: true, message: "Zernio is connected", accounts: integrationsConfig?.zernioAccounts || [], count: (integrationsConfig?.zernioAccounts || []).length } : null
@@ -561,7 +563,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       if (data.success) {
         setZernioTestResult(data);
         setIsEditingZernioKey(false);
-        if (updateIntegrationsConfig) {
+        // The connectivity test itself is harmless for a read-only role, but the
+        // save that follows is not: sync.php silently drops a non-admin write, so
+        // the UI would show "Connected" until the next poll reverted it.
+        if (updateIntegrationsConfig && getPermission("general_config") === "edit") {
           updateIntegrationsConfig({
             ...integrationsConfig,
             zernioApiKey: key,
@@ -614,50 +619,80 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const handleStartDeviceAuth = async () => {
     setIsInitiatingDeviceAuth(true);
+    // Opened synchronously: after two awaits Safari blocks window.open outright.
+    const authWindow = window.open("", "_blank");
     try {
       const res = await fetch("/api/zernio.php?action=initiate_device_auth", {
         method: "POST",
         headers: { "Content-Type": "application/json" }
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (data.success && data.deviceCode) {
         setDeviceAuthInfo(data);
         setIsPollingDeviceAuth(true);
-        window.open(data.browserUrl, "_blank");
+        // The tab was opened synchronously in the click handler so the popup
+        // blocker sees it as a direct result of the click; point it at the real
+        // URL now that we have one.
+        if (authWindow) authWindow.location.href = data.browserUrl;
 
         if (pollTimerRef.current) clearInterval(pollTimerRef.current);
         const pollIntervalMs = (data.interval || 5) * 1000;
-        
+        // Without a deadline a permanently "pending" device code polls forever.
+        const deadline = Date.parse(data.expiresAt) || (Date.now() + 10 * 60 * 1000);
+        let consecutiveFailures = 0;
+
+        const stopPolling = () => {
+          if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+          pollTimerRef.current = null;
+          setIsPollingDeviceAuth(false);
+          setDeviceAuthInfo(null);
+        };
+
         pollTimerRef.current = setInterval(async () => {
+          if (Date.now() > deadline) {
+            stopPolling();
+            (window as any).showToast?.(t("Authorization window expired. Please start again.", "Časové okno autorizácie vypršalo. Skúste to znova.", "Az engedélyezési ablak lejárt. Kezdje újra."), "warning");
+            return;
+          }
           try {
             const pollRes = await fetch("/api/zernio.php?action=poll_device_auth", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ deviceCode: data.deviceCode })
             });
+            if (!pollRes.ok) throw new Error(`HTTP ${pollRes.status}`);
             const pollData = await pollRes.json();
+            consecutiveFailures = 0;
+
             if (pollData.success && pollData.status === "authorized" && pollData.apiKey) {
-              clearInterval(pollTimerRef.current);
-              pollTimerRef.current = null;
-              setIsPollingDeviceAuth(false);
+              stopPolling();
               setZernioApiKey(pollData.apiKey);
-              (window as any).showToast(t("Authorized by Zernio!", "Autorizované cez Zernio!", "Zernio által engedélyezve!"));
+              (window as any).showToast?.(t("Authorized by Zernio!", "Autorizované cez Zernio!", "Zernio által engedélyezve!"));
               handleTestZernio(pollData.apiKey);
-            } else if (pollData.status === "expired" || pollData.status === "denied" || !pollData.success) {
-              clearInterval(pollTimerRef.current);
-              pollTimerRef.current = null;
-              setIsPollingDeviceAuth(false);
-              (window as any).showToast(pollData.message || t("Authorization expired or denied.", "Autorizácia vypršala alebo bola zamietnutá.", "Az engedélyezés lejárt vagy megtagadva."), "warning");
+            } else if (pollData.status === "expired" || pollData.status === "denied" || pollData.status === "error") {
+              // Only terminal statuses stop the loop — a transient blip used to
+              // abort an authorization that was still valid upstream.
+              stopPolling();
+              (window as any).showToast?.(pollData.message || t("Authorization expired or denied.", "Autorizácia vypršala alebo bola zamietnutá.", "Az engedélyezés lejárt vagy megtagadva."), "warning");
             }
           } catch (e) {
-            // retry
+            consecutiveFailures++;
+            console.error("Zernio device-auth poll failed:", e);
+            if (consecutiveFailures >= 5) {
+              stopPolling();
+              (window as any).showToast?.(t("Lost contact with the authorization service.", "Stratilo sa spojenie s autorizačnou službou.", "Megszakadt a kapcsolat az engedélyezési szolgáltatással."), "error");
+            }
           }
         }, pollIntervalMs);
       } else {
-        (window as any).showToast(data.message || t("Could not initiate Zernio device auth.", "Nepadarilo sa spustiť Zernio autorizáciu.", "Nem sikerült elindítani a Zernio eszköz hitelesítést."), "error");
+        authWindow?.close();
+        (window as any).showToast?.(data.message || t("Could not initiate Zernio device auth.", "Nepodarilo sa spustiť Zernio autorizáciu.", "Nem sikerült elindítani a Zernio eszköz hitelesítést."), "error");
       }
     } catch (err: any) {
-      (window as any).showToast(err.message || "Failed to initiate device authorization", "error");
+      authWindow?.close();
+      console.error("Zernio device auth initiate failed:", err);
+      (window as any).showToast?.(t("Could not start Zernio device authorization.", "Nepodarilo sa spustiť Zernio autorizáciu.", "Nem sikerült elindítani a Zernio eszköz hitelesítést."), "error");
     } finally {
       setIsInitiatingDeviceAuth(false);
     }
@@ -5297,7 +5332,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         Zernio Social Media Engine
                       </h2>
                       <span className="bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full">
-                        15+ Platforms & AI Ready
+                        {t("15+ platforms, AI ready", "15+ platforiem, pripravené na AI", "15+ platform, AI-kész")}
                       </span>
                     </div>
                     <p className="text-xs text-slate-300 mt-1 max-w-xl leading-relaxed">
@@ -5313,11 +5348,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 {/* Connection Status & Control Buttons */}
                 <div className="shrink-0 flex items-center gap-3">
                   <div className="flex items-center gap-2.5 bg-white/10 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-white/10">
-                    <div className={`w-3 h-3 rounded-full ${zernioTestResult?.success || integrationsConfig?.zernioConnected ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`}></div>
+                    <div className={`w-3 h-3 rounded-full ${(zernioTestResult ? zernioTestResult.success : !!integrationsConfig?.zernioConnected) ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`}></div>
                     <div>
                       <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">{t("Status", "Stav", "Állapot")}</span>
                       <span className="text-xs font-extrabold text-white">
-                        {zernioTestResult?.success || integrationsConfig?.zernioConnected 
+                        {(zernioTestResult ? zernioTestResult.success : !!integrationsConfig?.zernioConnected) 
                           ? (userLanguage === "sk" ? "Pripojené & Aktívne" : userLanguage === "hu" ? "Csatlakoztatva & Aktív" : "Connected & Active")
                           : (userLanguage === "sk" ? "Čaká na API Kľúč" : userLanguage === "hu" ? "API Kulcsra vár" : "Awaiting API Key")}
                       </span>
@@ -5351,7 +5386,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
 
             {/* CONNECTED VIEW: Clean status & connected accounts card (Hidden while editing) */}
-            {(zernioTestResult?.success || integrationsConfig?.zernioConnected) && !isEditingZernioKey && (
+            {(zernioTestResult ? zernioTestResult.success : !!integrationsConfig?.zernioConnected) && !isEditingZernioKey && (
               <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-emerald-200/80 bg-white/95 shadow-glass space-y-6 animate-fade-in">
                 <div className="flex items-center justify-between border-b border-slate-150 pb-4">
                   <div className="flex items-center gap-3">
@@ -5372,7 +5407,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <button
                       type="button"
                       onClick={() => handleTestZernio()}
-                      disabled={isTestingZernio}
+                      disabled={isTestingZernio || getPermission("general_config") === "view"}
                       className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200 cursor-pointer flex items-center gap-2"
                     >
                       <Icons.RefreshCw className={`h-3.5 w-3.5 ${isTestingZernio ? "animate-spin text-indigo-600" : "text-slate-500"}`} />
@@ -5516,6 +5551,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       <button
                         type="button"
                         onClick={() => setShowZernioKey(!showZernioKey)}
+                        aria-label={showZernioKey ? t("Hide API key", "Skryť API kľúč", "API kulcs elrejtése") : t("Show API key", "Zobraziť API kľúč", "API kulcs megjelenítése")}
+                        title={showZernioKey ? t("Hide API key", "Skryť API kľúč", "API kulcs elrejtése") : t("Show API key", "Zobraziť API kľúč", "API kulcs megjelenítése")}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1.5 cursor-pointer"
                       >
                         {showZernioKey ? <Minus className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -5535,7 +5572,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <button
                       type="button"
                       onClick={() => handleTestZernio()}
-                      disabled={isTestingZernio || !zernioApiKey}
+                      disabled={isTestingZernio || !zernioApiKey || getPermission("general_config") === "view"}
                       className="px-5 py-3 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-2xl text-xs font-black uppercase tracking-wider transition-all border border-slate-200 cursor-pointer active:scale-95 disabled:opacity-50 flex items-center gap-2"
                     >
                       {isTestingZernio ? (
@@ -5557,24 +5594,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </div>
                 </form>
 
-                {/* Show failure message if test failed */}
-                {zernioTestResult && !zernioTestResult.success && (
-                  <div className="glass-panel p-6 rounded-3xl border border-rose-200/80 bg-rose-50/30 space-y-4 animate-fade-in">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2.5 rounded-2xl bg-rose-100 text-rose-700">
-                        <Icons.AlertCircle className="h-6 w-6" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-heading font-extrabold uppercase tracking-wider text-rose-900">
-                          {userLanguage === "sk" ? "Chyba overenia Zernio API" : userLanguage === "hu" ? "Zernio API ellenőrzési hiba" : "Zernio Verification Error"}
-                        </h4>
-                        <p className="text-xs font-medium text-slate-600 mt-0.5">{zernioTestResult.message}</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
               </>
             ) : null}
+
+            {/* Rendered in BOTH the connected and the setup state: a key revoked
+                after a successful connection fails silently otherwise. */}
+            {zernioTestResult && !zernioTestResult.success && (
+              <div className="glass-panel p-6 rounded-3xl border border-rose-200/80 bg-rose-50/30 space-y-4 animate-fade-in">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-2xl bg-rose-100 text-rose-700 shrink-0">
+                    <Icons.AlertCircle className="h-6 w-6" />
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="text-sm font-heading font-extrabold uppercase tracking-wider text-rose-900">
+                      {userLanguage === "sk" ? "Chyba overenia Zernio API" : userLanguage === "hu" ? "Zernio API ellenőrzési hiba" : "Zernio Verification Error"}
+                    </h4>
+                    <p className="text-xs font-medium text-slate-600 mt-0.5 break-words">{zernioTestResult.message}</p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

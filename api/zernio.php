@@ -52,6 +52,12 @@ function get_zernio_key(?string $providedKey = null): string {
 }
 
 if ($action === 'validate') {
+    // Validating (and the device-auth pair below) reads or mints a Zernio API key,
+    // which grants publish/delete rights on every connected social account. Same
+    // admin gate every other integration-config endpoint uses. The read-only
+    // actions (get_accounts / get_posts / get_comments / get_analytics) stay on
+    // ccrm_require_auth so the section itself works for ordinary users.
+    ccrm_require_admin();
     $input = file_get_contents('php://input');
     $data = json_decode($input, true);
     $apiKey = get_zernio_key($data['zernioApiKey'] ?? '');
@@ -103,7 +109,7 @@ if ($action === 'validate') {
 if ($action === 'get_accounts') {
     $input = file_get_contents('php://input');
     $data = json_decode($input, true) ?? [];
-    $apiKey = get_zernio_key($data['zernioApiKey'] ?? $_GET['zernioApiKey'] ?? '');
+    $apiKey = get_zernio_key($data['zernioApiKey'] ?? '');
 
     if (empty($apiKey)) {
         echo json_encode(['success' => false, 'message' => 'No Zernio API Key provided or stored.']);
@@ -150,7 +156,7 @@ if ($action === 'get_accounts') {
 if ($action === 'get_posts') {
     $input = file_get_contents('php://input');
     $data = json_decode($input, true) ?? [];
-    $apiKey = get_zernio_key($data['zernioApiKey'] ?? $_GET['zernioApiKey'] ?? '');
+    $apiKey = get_zernio_key($data['zernioApiKey'] ?? '');
 
     if (empty($apiKey)) {
         echo json_encode(['success' => false, 'message' => 'No Zernio API Key provided or stored.']);
@@ -159,12 +165,11 @@ if ($action === 'get_posts') {
 
     $allPosts = [];
     $seenIds = [];
+    $failures = [];
 
-    // Query 1: Default GET /v1/posts
-    // Query 2: GET /v1/posts?source=zernio
-    // Query 3: GET /v1/posts?source=external
+    // `source` defaults to `zernio`, so a bare GET /v1/posts and ?source=zernio are
+    // the same request — only the external feed needs a second round trip.
     $urls = [
-        'https://zernio.com/api/v1/posts?limit=100',
         'https://zernio.com/api/v1/posts?source=zernio&limit=100',
         'https://zernio.com/api/v1/posts?source=external&limit=100'
     ];
@@ -173,6 +178,7 @@ if ($action === 'get_posts') {
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CONNECTTIMEOUT => 5,
             CURLOPT_TIMEOUT => 10,
             CURLOPT_HTTPHEADER => [
                 'Authorization: Bearer ' . $apiKey,
@@ -182,33 +188,57 @@ if ($action === 'get_posts') {
 
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        // curl_error() must be read before the handle is closed.
+        $curlErr  = curl_error($ch);
         curl_close($ch);
 
-        if ($httpCode >= 200 && $httpCode < 300) {
-            $resData = json_decode($response, true);
-            $items = $resData['posts'] ?? $resData['data'] ?? $resData['results'] ?? [];
-            if (!is_array($items) && is_array($resData)) {
-                $items = $resData;
-            }
-            if (is_array($items)) {
-                foreach ($items as $it) {
-                    if (!is_array($it)) continue;
-                    $pid = $it['_id'] ?? $it['id'] ?? null;
-                    if ($pid && !isset($seenIds[$pid])) {
-                        $seenIds[$pid] = true;
-                        $allPosts[] = $it;
-                    } elseif (!$pid) {
-                        $allPosts[] = $it;
-                    }
+        $resData = is_string($response) ? json_decode($response, true) : null;
+
+        if ($curlErr || $httpCode < 200 || $httpCode >= 300) {
+            $failures[] = [
+                'url'      => $url,
+                'httpCode' => $httpCode,
+                'message'  => $curlErr
+                    ?: (is_array($resData) ? ($resData['message'] ?? $resData['error'] ?? "HTTP " . $httpCode) : "HTTP " . $httpCode),
+            ];
+            continue;
+        }
+
+        $items = $resData['posts'] ?? $resData['data'] ?? $resData['results'] ?? [];
+        if (!is_array($items) && is_array($resData)) {
+            $items = $resData;
+        }
+        if (is_array($items)) {
+            foreach ($items as $it) {
+                if (!is_array($it)) continue;
+                $pid = $it['_id'] ?? $it['id'] ?? null;
+                if ($pid && !isset($seenIds[$pid])) {
+                    $seenIds[$pid] = true;
+                    $allPosts[] = $it;
+                } elseif (!$pid) {
+                    $allPosts[] = $it;
                 }
             }
         }
     }
 
-    echo json_encode([
-        'success' => true,
-        'posts' => $allPosts
-    ]);
+    // Every upstream query failed: report it instead of returning an empty list
+    // that the UI would render as "you have no posts".
+    if (count($failures) === count($urls)) {
+        echo json_encode([
+            'success'  => false,
+            'message'  => $failures[0]['message'],
+            'httpCode' => $failures[0]['httpCode']
+        ]);
+        exit;
+    }
+
+    echo json_encode(array_filter([
+        'success'  => true,
+        'posts'    => $allPosts,
+        'partial'  => $failures ? true : null,
+        'warnings' => $failures ?: null
+    ], static fn($v) => $v !== null));
     exit;
 }
 
@@ -260,6 +290,9 @@ if ($action === 'get_comments') {
     $data = json_decode($input, true);
     $apiKey = get_zernio_key($data['zernioApiKey'] ?? '');
     $postId = $_GET['postId'] ?? $data['postId'] ?? '';
+    // GET /v1/inbox/comments/{postId} rejects the request with 400 unless the
+    // connected account the comments are read through is named explicitly.
+    $accountId = $_GET['accountId'] ?? $data['accountId'] ?? '';
 
     if (empty($apiKey)) {
         echo json_encode(['success' => false, 'message' => 'No Zernio API Key provided or stored.']);
@@ -271,7 +304,12 @@ if ($action === 'get_comments') {
         exit;
     }
 
-    $ch = curl_init('https://zernio.com/api/v1/inbox/comments/' . urlencode($postId));
+    if (empty($accountId)) {
+        echo json_encode(['success' => false, 'message' => 'Missing accountId']);
+        exit;
+    }
+
+    $ch = curl_init('https://zernio.com/api/v1/inbox/comments/' . urlencode($postId) . '?accountId=' . urlencode($accountId));
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT => 12,
@@ -304,7 +342,73 @@ if ($action === 'get_comments') {
     exit;
 }
 
+if ($action === 'reply_comment') {
+    $input = file_get_contents('php://input');
+    $data = json_decode($input, true) ?? [];
+    $apiKey = get_zernio_key($data['zernioApiKey'] ?? '');
+    $postId    = $data['postId'] ?? '';
+    $accountId = $data['accountId'] ?? '';
+    $message   = trim((string)($data['message'] ?? ''));
+    // Optional: reply to one specific comment rather than to the post itself.
+    $commentId = $data['commentId'] ?? '';
+
+    if (empty($apiKey)) {
+        echo json_encode(['success' => false, 'message' => 'No Zernio API Key provided or stored.']);
+        exit;
+    }
+    if (empty($postId) || empty($accountId)) {
+        echo json_encode(['success' => false, 'message' => 'Missing postId or accountId']);
+        exit;
+    }
+    if ($message === '') {
+        echo json_encode(['success' => false, 'message' => 'Reply text is empty']);
+        exit;
+    }
+
+    $body = ['accountId' => $accountId, 'message' => $message];
+    if (!empty($commentId)) {
+        $body['commentId'] = $commentId;
+    }
+
+    $ch = curl_init('https://zernio.com/api/v1/inbox/comments/' . urlencode($postId));
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_CONNECTTIMEOUT => 5,
+        CURLOPT_TIMEOUT => 15,
+        CURLOPT_POSTFIELDS => json_encode($body),
+        CURLOPT_HTTPHEADER => [
+            'Authorization: Bearer ' . $apiKey,
+            'Content-Type: application/json',
+            'Accept: application/json'
+        ]
+    ]);
+
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlErr = curl_error($ch);
+    curl_close($ch);
+
+    if ($curlErr) {
+        echo json_encode(['success' => false, 'message' => 'Connection error: ' . $curlErr]);
+        exit;
+    }
+
+    $resData = is_string($response) ? json_decode($response, true) : null;
+    if ($httpCode >= 200 && $httpCode < 300) {
+        echo json_encode([
+            'success' => true,
+            'comment' => is_array($resData) ? ($resData['data'] ?? $resData) : null
+        ]);
+    } else {
+        $msg = is_array($resData) ? ($resData['message'] ?? $resData['error'] ?? ("HTTP " . $httpCode)) : ("HTTP " . $httpCode);
+        echo json_encode(['success' => false, 'message' => $msg, 'httpCode' => $httpCode]);
+    }
+    exit;
+}
+
 if ($action === 'initiate_device_auth') {
+    ccrm_require_admin();
     $ch = curl_init('https://zernio.com/api/auth/cli/initiate');
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
@@ -345,6 +449,7 @@ if ($action === 'initiate_device_auth') {
 }
 
 if ($action === 'poll_device_auth') {
+    ccrm_require_admin();
     $input = file_get_contents('php://input');
     $data = json_decode($input, true);
     $deviceCode = $data['deviceCode'] ?? $_GET['deviceCode'] ?? '';
@@ -369,12 +474,18 @@ if ($action === 'poll_device_auth') {
     $curlErr = curl_error($ch);
     curl_close($ch);
 
+    // A dropped connection is transient: keep the client polling rather than
+    // tearing down an authorization that is still live on Zernio's side.
     if ($curlErr) {
-        echo json_encode(['success' => false, 'message' => 'Connection error: ' . $curlErr]);
+        echo json_encode(['success' => true, 'status' => 'pending', 'message' => 'Connection error: ' . $curlErr]);
         exit;
     }
 
     $resData = json_decode($response, true);
+    if (!is_array($resData)) {
+        $resData = [];
+    }
+
     if ($httpCode === 410) {
         echo json_encode(['success' => false, 'status' => 'expired', 'message' => 'Session expired. Please restart authorization.']);
         exit;
@@ -388,10 +499,18 @@ if ($action === 'poll_device_auth') {
             'status' => $status,
             'apiKey' => $apiKey
         ]);
-    } else {
-        $msg = $resData['message'] ?? $resData['error'] ?? ("HTTP " . $httpCode);
-        echo json_encode(['success' => false, 'status' => 'error', 'message' => $msg]);
+        exit;
     }
+
+    $msg = $resData['message'] ?? $resData['error'] ?? ("HTTP " . $httpCode);
+
+    // Rate limiting and upstream outages are retryable, not terminal.
+    if ($httpCode === 429 || $httpCode >= 500) {
+        echo json_encode(['success' => true, 'status' => 'pending', 'message' => $msg]);
+        exit;
+    }
+
+    echo json_encode(['success' => false, 'status' => 'error', 'message' => $msg]);
     exit;
 }
 

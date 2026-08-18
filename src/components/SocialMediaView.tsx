@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { 
   Share2, Calendar, BarChart3, List, Search, RefreshCw, 
   ExternalLink, Heart, MessageSquare, Repeat, Eye, 
-  TrendingUp, TrendingDown, Globe, CheckCircle2, ChevronLeft, ChevronRight, ArrowLeft,
-  Sparkles, Zap, X, Bookmark, ThumbsUp, Send, MoreHorizontal, Download,
-  Clock, Users, Award, Activity, Filter, Check
+  TrendingUp, Globe, CheckCircle2, ChevronLeft, ChevronRight, ArrowLeft,
+  Sparkles, Zap, X, Bookmark, Send, MoreHorizontal, Download,
+  Clock, Award, Activity, Filter, Check
 } from "lucide-react";
 import { CustomSelect } from "./ui/CustomSelect";
 import type { Language } from "../utils/translations";
@@ -17,7 +18,11 @@ interface SocialMediaViewProps {
 
 export interface SocialPost {
   id: string;
-  platform: "twitter" | "instagram" | "tiktok" | "linkedin" | "youtube" | "facebook" | "threads" | "bluesky";
+  platform: string;
+  // The Zernio SocialAccount the post was published through. The inbox endpoints
+  // (comments, replies) are scoped per connected account and reject a call
+  // without it, so it has to survive the mapping.
+  accountId?: string;
   accountName: string;
   accountHandle: string;
   accountAvatar?: string;
@@ -38,6 +43,16 @@ export interface SocialPost {
   };
 }
 
+// Shape of GET /v1/inbox/comments/{postId}, flattened to what the stream renders.
+export interface SocialComment {
+  id: string;
+  author: string;
+  handle: string;
+  text: string;
+  time: string;
+  likes: number;
+}
+
 const PLATFORM_CONFIG: Record<string, { name: string; color: string; bg: string; border: string; text: string; icon: string }> = {
   twitter: { name: "Twitter / X", color: "#000000", bg: "bg-slate-900", border: "border-slate-800", text: "text-white", icon: "Twitter" },
   instagram: { name: "Instagram", color: "#e1306c", bg: "bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600", border: "border-rose-300", text: "text-white", icon: "Instagram" },
@@ -46,7 +61,14 @@ const PLATFORM_CONFIG: Record<string, { name: string; color: string; bg: string;
   youtube: { name: "YouTube", color: "#ff0000", bg: "bg-red-600", border: "border-red-500", text: "text-white", icon: "Youtube" },
   facebook: { name: "Facebook", color: "#1877f2", bg: "bg-blue-600", border: "border-blue-500", text: "text-white", icon: "Facebook" },
   threads: { name: "Threads", color: "#000000", bg: "bg-slate-900", border: "border-slate-700", text: "text-white", icon: "AtSign" },
-  bluesky: { name: "Bluesky", color: "#0085ff", bg: "bg-sky-500", border: "border-sky-400", text: "text-white", icon: "Cloud" }
+  bluesky: { name: "Bluesky", color: "#0085ff", bg: "bg-sky-500", border: "border-sky-400", text: "text-white", icon: "Cloud" },
+  pinterest: { name: "Pinterest", color: "#e60023", bg: "bg-red-700", border: "border-red-600", text: "text-white", icon: "Image" },
+  reddit: { name: "Reddit", color: "#ff4500", bg: "bg-orange-600", border: "border-orange-500", text: "text-white", icon: "MessageCircle" },
+  googlebusiness: { name: "Google Business", color: "#4285f4", bg: "bg-blue-500", border: "border-blue-400", text: "text-white", icon: "Store" },
+  telegram: { name: "Telegram", color: "#229ed9", bg: "bg-sky-600", border: "border-sky-500", text: "text-white", icon: "Send" },
+  snapchat: { name: "Snapchat", color: "#fffc00", bg: "bg-yellow-400", border: "border-yellow-300", text: "text-slate-900", icon: "Ghost" },
+  whatsapp: { name: "WhatsApp", color: "#25d366", bg: "bg-emerald-500", border: "border-emerald-400", text: "text-white", icon: "MessageSquare" },
+  discord: { name: "Discord", color: "#5865f2", bg: "bg-indigo-500", border: "border-indigo-400", text: "text-white", icon: "Gamepad2" }
 };
 
 const SAMPLE_POSTS: SocialPost[] = [
@@ -162,28 +184,23 @@ export const SocialMediaView: React.FC<SocialMediaViewProps> = ({
   const [calendarDate, setCalendarDate] = useState<Date>(new Date());
   const [selectedPostModal, setSelectedPostModal] = useState<SocialPost | null>(null);
   const [selectedCalendarDay, setSelectedCalendarDay] = useState<{ dateStr: string; displayDate: string; posts: SocialPost[] } | null>(null);
-  const [postComments, setPostComments] = useState<Record<string, Array<{ id: string; author: string; handle: string; text: string; time: string; likes: number }>>>({
-    post_1: [
-      { id: "c1", author: "Alex Rivers", handle: "@arivers_dev", text: "This CCRM social engine is super fast! Can't wait to connect all client handles.", time: "2h ago", likes: 14 },
-      { id: "c2", author: "Sarah Jenkins", handle: "@sjenkins_mktg", text: "Multi-platform posting directly in CCRM is a huge time saver 🔥", time: "4h ago", likes: 9 },
-      { id: "c3", author: "David Vance", handle: "@dvance_tech", text: "Does it support video auto-chunking for TikTok and Shorts?", time: "5h ago", likes: 3 }
-    ],
-    post_2: [
-      { id: "c4", author: "Martin K.", handle: "@mk_enterprise", text: "Great engineering article. Workflow triggers save us hours every week.", time: "1h ago", likes: 7 },
-      { id: "c5", author: "Elena Rostova", handle: "@elena_sales", text: "Is there an option to auto-tag leads when they engage on LinkedIn posts?", time: "3h ago", likes: 5 }
-    ],
-    post_3: [
-      { id: "c6", author: "Vibe UI Design", handle: "@vibe_ui", text: "The glassmorphic depth on this layout looks incredibly premium! ✨", time: "30m ago", likes: 21 },
-      { id: "c7", author: "Tom Wright", handle: "@twright_dev", text: "Love the UI animations and color schemes!", time: "2h ago", likes: 4 }
-    ]
-  });
+  // Comments are read live from Zernio per post — nothing is seeded, so an empty
+  // stream means the post genuinely has no comments rather than "we made some up".
+  const [postComments, setPostComments] = useState<Record<string, SocialComment[]>>({});
+  const [commentsLoading, setCommentsLoading] = useState<boolean>(false);
+  const [commentsError, setCommentsError] = useState<string | null>(null);
+  const [isPostingComment, setIsPostingComment] = useState<boolean>(false);
   const [newCommentInput, setNewCommentInput] = useState<string>("");
 
   const [connectedPlatforms, setConnectedPlatforms] = useState<string[]>([]);
+  // Surfaced in the UI: a failed sync used to be a console.error and an empty list
+  // that read as "no posts match your filter".
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [deepLinkMiss, setDeepLinkMiss] = useState<string | null>(null);
   const [analyticsSubTab, setAnalyticsSubTab] = useState<"posting" | "inbox">("posting");
   const [analyticsPlatformFilter, setAnalyticsPlatformFilter] = useState<string>("all");
   const [analyticsDateRange, setAnalyticsDateRange] = useState<string>("30d");
-  const [activeMetrics, setActiveMetrics] = useState<string[]>(["likes", "shares", "impressions", "reach"]);
+  const [activeMetrics, setActiveMetrics] = useState<string[]>(["likes", "comments", "shares", "impressions"]);
 
   // Active posts depending on lightswitch & demo mode
   const posts = useMemo(() => {
@@ -193,49 +210,93 @@ export const SocialMediaView: React.FC<SocialMediaViewProps> = ({
     return realPosts;
   }, [isDemoMode, showDemoData, realPosts]);
 
-const normalizePlatformKey = (raw: string): any => {
+const normalizePlatformKey = (raw: string): string => {
   const p = (raw || "").toLowerCase();
   if (p.includes("facebook") || p.includes("fb") || p.includes("meta")) return "facebook";
-  if (p.includes("twitter") || p.includes("x")) return "twitter";
+  // Checked before the bare "x" alias so "twitter" and "x" both land here without
+  // swallowing every other key that happens to contain an x.
+  if (p.includes("twitter") || p === "x" || p === "x_twitter") return "twitter";
   if (p.includes("insta")) return "instagram";
   if (p.includes("linkedin")) return "linkedin";
   if (p.includes("tiktok")) return "tiktok";
-  if (p.includes("youtube") || p.includes("yt")) return "youtube";
+  if (p.includes("youtube") || p === "yt") return "youtube";
   if (p.includes("thread")) return "threads";
   if (p.includes("blue")) return "bluesky";
-  return p || "facebook";
+  if (p.includes("pinterest")) return "pinterest";
+  if (p.includes("reddit")) return "reddit";
+  if (p.includes("google")) return "googlebusiness";
+  if (p.includes("telegram")) return "telegram";
+  if (p.includes("snap")) return "snapchat";
+  if (p.includes("whatsapp")) return "whatsapp";
+  if (p.includes("discord")) return "discord";
+  return p;
 };
+
+// Everything the platform styling needs for a network the view has no palette for.
+// Metrics the engagement chart can actually plot. Every entry maps to a field on
+// the daily buckets — the old legend had "Reach" and "Clicks" pills whose curves
+// were never drawn.
+const METRIC_SERIES = [
+  { id: "likes", en: "Likes", sk: "Lajky", hu: "Lájkok", stroke: "#f43f5e", pill: "bg-rose-500 text-white" },
+  { id: "comments", en: "Comments", sk: "Komentáre", hu: "Kommentek", stroke: "#3b82f6", pill: "bg-blue-500 text-white" },
+  { id: "shares", en: "Shares", sk: "Zdieľania", hu: "Megosztások", stroke: "#10b981", pill: "bg-emerald-500 text-white" },
+  { id: "impressions", en: "Impressions", sk: "Zobrazenia", hu: "Megjelenések", stroke: "#6366f1", pill: "bg-indigo-500 text-white" },
+  { id: "clicks", en: "Clicks", sk: "Kliknutia", hu: "Kattintások", stroke: "#f59e0b", pill: "bg-amber-500 text-white" }
+];
+
+const UNKNOWN_PLATFORM = { name: "Other", color: "#64748b", bg: "bg-slate-500", border: "border-slate-400", text: "text-white", icon: "Globe" };
+const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFORM;
 
   // Fetch Zernio Data if API Key configured
   const fetchZernioPosts = async () => {
     setIsSyncing(true);
+    setSyncError(null);
     try {
-      const apiKeyParam = integrationsConfig?.zernioApiKey ? `&zernioApiKey=${encodeURIComponent(integrationsConfig.zernioApiKey)}` : "";
-      
+      // The API key is never sent from the browser: it is a write-only secret that
+      // sync.php masks, and a query string would put it in the server access log.
+      // zernio.php resolves the stored key server-side.
+
       // 1. Fetch connected social accounts from Zernio
       let activeAccList: string[] = [];
-      let accountObjects: any[] = [];
       try {
-        const accRes = await fetch(`/api/zernio.php?action=get_accounts${apiKeyParam}`, { cache: "no-store" });
+        const accRes = await fetch("/api/zernio.php?action=get_accounts", { cache: "no-store" });
+        if (!accRes.ok) throw new Error(`HTTP ${accRes.status}`);
         const accData = await accRes.json();
         if (accData.success && Array.isArray(accData.accounts)) {
-          accountObjects = accData.accounts;
           activeAccList = accData.accounts.map((a: any) => normalizePlatformKey(a.platform || a.provider || a.type || ""));
           setConnectedPlatforms(activeAccList);
+        } else {
+          // A revoked key must not leave the sidebar claiming those networks are live.
+          setConnectedPlatforms([]);
+          if (accData.message) setSyncError(String(accData.message));
         }
       } catch (e) {
+        setConnectedPlatforms([]);
         console.warn("Zernio get_accounts fetch notice:", e);
       }
 
       // 2. Fetch posts (both native Zernio and platform synced external posts)
-      const res = await fetch(`/api/zernio.php?action=get_posts${apiKeyParam}`, { cache: "no-store" });
+      const res = await fetch("/api/zernio.php?action=get_posts", { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+
+      if (!data.success) {
+        setSyncError(String(data.message || "Zernio did not return any posts."));
+        setRealPosts([]);
+        return;
+      }
+      if (data.partial && Array.isArray(data.warnings) && data.warnings[0]) {
+        setSyncError(String(data.warnings[0].message || "Some Zernio sources could not be read."));
+      }
+
       let fetchedPosts: SocialPost[] = [];
-      if (data.success && Array.isArray(data.posts) && data.posts.length > 0) {
+      if (Array.isArray(data.posts) && data.posts.length > 0) {
         fetchedPosts = data.posts.map((p: any, idx: number) => {
           const platData = p.platforms?.[0] || {};
-          const accData = typeof platData.accountId === "object" ? (platData.accountId || {}) : {};
-          const platName = platData.platform || p.platform || "facebook";
+          const rawAccount = platData.accountId;
+          const accData = (rawAccount && typeof rawAccount === "object") ? rawAccount : {};
+          const accountId = typeof rawAccount === "string" ? rawAccount : (accData._id || accData.id || p.accountId || "");
+          const platName = platData.platform || p.platform || "";
           const media = (Array.isArray(p.mediaItems) && p.mediaItems.length > 0)
             ? p.mediaItems.map((m: any) => m.url || m.mediaUrl || m.src).filter(Boolean)
             : (p.mediaUrls || (p.media ? [p.media] : (p.imageUrl ? [p.imageUrl] : [])));
@@ -243,82 +304,141 @@ const normalizePlatformKey = (raw: string): any => {
           return {
             id: p._id || p.id || `zernio_${idx}`,
             platform: normalizePlatformKey(platName),
-            accountName: accData.displayName || accData.name || p.accountName || p.author || p.displayName || "Connected Social Page",
-            accountHandle: accData.username ? `@${accData.username}` : (p.accountHandle || p.username || "@facebook_page"),
-            content: p.content || p.text || p.caption || "Connected social post synced via Social Engine.",
+            accountId,
+            accountName: accData.displayName || accData.name || p.accountName || p.author || p.displayName || "Connected account",
+            accountHandle: accData.username ? `@${accData.username}` : (p.accountHandle || p.username || ""),
+            content: p.content || p.text || p.caption || "",
             mediaUrls: media,
             status: p.status || "published",
-            publishedAt: platData.publishedAt || p.publishedAt || p.scheduledFor || p.createdAt || new Date().toISOString(),
+            publishedAt: platData.publishedAt || p.publishedAt || p.scheduledFor || p.createdAt || "",
             scheduledFor: p.scheduledFor,
             platformPostUrl: platData.platformPostUrl || p.platformPostUrl || p.url || p.permalink,
+            // ?? not ||: Zernio legitimately reports 0 until the platform's insights
+            // land, and a falsy-0 fallback would invent engagement that never happened.
             stats: {
-              likes: p.analytics?.likes || p.stats?.likes || p.likeCount || 28,
-              comments: p.analytics?.comments || p.stats?.comments || p.commentsCount || 4,
-              shares: p.analytics?.shares || p.stats?.shares || p.retweetCount || 2,
-              impressions: p.analytics?.impressions || p.stats?.views || p.viewCount || 340,
-              clicks: p.analytics?.clicks || 18,
-              engagementRate: p.analytics?.engagementRate || 4.2
+              likes: p.analytics?.likes ?? p.stats?.likes ?? p.likeCount ?? 0,
+              comments: p.analytics?.comments ?? p.stats?.comments ?? p.commentsCount ?? 0,
+              shares: p.analytics?.shares ?? p.stats?.shares ?? p.retweetCount ?? 0,
+              impressions: p.analytics?.impressions ?? p.stats?.views ?? p.viewCount ?? 0,
+              clicks: p.analytics?.clicks ?? 0,
+              engagementRate: p.analytics?.engagementRate ?? 0
             }
           };
         });
-        
+
         fetchedPosts.sort((a, b) => new Date(b.publishedAt || 0).getTime() - new Date(a.publishedAt || 0).getTime());
       }
 
-      // Fallback: If social accounts are connected (e.g. Facebook) but 0 posts are returned,
-      // generate initial posts for the connected accounts so Real Data mode displays active content!
-      if (fetchedPosts.length === 0 && activeAccList.length > 0) {
-        fetchedPosts = activeAccList.map((plat, idx) => {
-          const accObj = accountObjects.find(a => normalizePlatformKey(a.platform || a.provider || "") === plat);
-          const platMeta = PLATFORM_CONFIG[plat] || PLATFORM_CONFIG.facebook;
-          return {
-            id: `real_acc_${plat}_${idx}`,
-            platform: plat as any,
-            accountName: accObj?.name || accObj?.displayName || accObj?.username || `${platMeta.name} Channel`,
-            accountHandle: accObj?.username ? `@${accObj.username}` : `@${plat}_official`,
-            content: `Welcome to our official ${platMeta.name} channel! Connected seamlessly via Social Engine. All real-time engagement and comments are actively monitored in CCRM.`,
-            mediaUrls: ["https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=800&auto=format&fit=crop&q=80"],
-            status: "published",
-            publishedAt: new Date().toISOString(),
-            platformPostUrl: accObj?.url || "https://facebook.com",
-            stats: {
-              likes: 122,
-              comments: 18,
-              shares: 9,
-              impressions: 2120,
-              clicks: 85,
-              engagementRate: 6.8
-            }
-          };
-        });
-      }
-
       setRealPosts(fetchedPosts);
-    } catch (err) {
+    } catch (err: any) {
+      setSyncError(err?.message ? String(err.message) : String(err));
       console.error("Zernio fetch error:", err);
     } finally {
       setIsSyncing(false);
     }
   };
 
+  const fetchPostComments = async (post: SocialPost) => {
+    // Demo posts have no counterpart upstream; asking Zernio about them would 404.
+    if (isDemoMode && showDemoData) {
+      setPostComments(prev => ({ ...prev, [post.id]: [] }));
+      return;
+    }
+    if (!post.accountId) {
+      setCommentsError(t(
+        "This post has no connected account, so its comments cannot be read.",
+        "Tento príspevok nemá pripojený účet, komentáre sa nedajú načítať.",
+        "Ehhez a bejegyzéshez nincs csatlakoztatott fiók, a kommentek nem olvashatók."
+      ));
+      return;
+    }
+    setCommentsLoading(true);
+    setCommentsError(null);
+    try {
+      const res = await fetch(
+        `/api/zernio.php?action=get_comments&postId=${encodeURIComponent(post.id)}&accountId=${encodeURIComponent(post.accountId)}`,
+        { cache: "no-store" }
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (!data.success) {
+        setCommentsError(String(data.message || "Could not load comments."));
+        return;
+      }
+      const raw = Array.isArray(data.comments) ? data.comments : [];
+      const mapped: SocialComment[] = raw.map((c: any, idx: number) => ({
+        id: String(c.id ?? c._id ?? `c_${idx}`),
+        author: c.from?.name || c.from?.username || c.author || "Unknown",
+        handle: c.from?.username ? `@${c.from.username}` : "",
+        text: c.message ?? c.text ?? "",
+        time: c.createdTime || c.created_at || "",
+        likes: Number(c.likeCount ?? 0) || 0
+      }));
+      setPostComments(prev => ({ ...prev, [post.id]: mapped }));
+    } catch (err: any) {
+      setCommentsError(err?.message ? String(err.message) : String(err));
+    } finally {
+      setCommentsLoading(false);
+    }
+  };
+
+  const handleSubmitComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const post = selectedPostModal;
+    const message = newCommentInput.trim();
+    if (!post || !message || isPostingComment) return;
+    if (!post.accountId) return;
+
+    setIsPostingComment(true);
+    try {
+      const res = await fetch("/api/zernio.php?action=reply_comment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ postId: post.id, accountId: post.accountId, message })
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (!data.success) {
+        (window as any).showToast?.(
+          data.message || t("Reply could not be sent.", "Odpoveď sa nepodarilo odoslať.", "A válasz elküldése nem sikerült."),
+          "error"
+        );
+        return;
+      }
+      setNewCommentInput("");
+      (window as any).showToast?.(t("Reply published.", "Odpoveď bola zverejnená.", "A válasz közzétéve."));
+      // Re-read the thread so what is on screen is what the platform actually has.
+      await fetchPostComments(post);
+    } catch (err: any) {
+      (window as any).showToast?.(
+        t("Network error sending the reply.", "Sieťová chyba pri odosielaní odpovede.", "Hálózati hiba a válasz küldésekor."),
+        "error"
+      );
+      console.error("Zernio reply error:", err);
+    } finally {
+      setIsPostingComment(false);
+    }
+  };
+
   useEffect(() => {
     fetchZernioPosts();
-  }, [integrationsConfig?.zernioConnected, integrationsConfig?.zernioApiKey, showDemoData]);
+  }, [integrationsConfig?.zernioConnected, showDemoData]);
 
   // Hash Navigation Listener for linkable post URLs (#social_media/post/{postId})
   useEffect(() => {
     const parseHashPost = () => {
       const hash = window.location.hash;
-      if (hash.includes("/post/")) {
-        const parts = hash.split("/post/");
-        const targetId = parts[1];
-        if (targetId) {
-          const found = posts.find(p => p.id === targetId);
-          if (found) {
-            setSelectedPostModal(found);
-          }
-        }
+      // Leaving the deep link (Back button, or navigating to the hub) has to close
+      // the detail view — without the else branch it stayed open over the hub.
+      if (!hash.includes("/post/")) {
+        setSelectedPostModal(null);
+        setDeepLinkMiss(null);
+        return;
       }
+      const targetId = hash.split("/post/")[1];
+      const found = targetId ? posts.find(p => p.id === targetId) : undefined;
+      setSelectedPostModal(found ?? null);
+      setDeepLinkMiss(found ? null : (targetId || null));
     };
     parseHashPost();
     window.addEventListener("hashchange", parseHashPost);
@@ -327,13 +447,41 @@ const normalizePlatformKey = (raw: string): any => {
 
   const handleOpenPostDetails = (post: SocialPost) => {
     setSelectedPostModal(post);
+    setDeepLinkMiss(null);
+    setNewCommentInput("");
+    setCommentsError(null);
     window.location.hash = `social_media/post/${post.id}`;
+    fetchPostComments(post);
   };
 
   const handleClosePostDetails = () => {
     setSelectedPostModal(null);
+    setDeepLinkMiss(null);
     window.location.hash = "social_media";
   };
+
+  // A deep link that arrives before the posts finish loading, or points at a post
+  // that no longer exists, gets an explicit panel instead of a blank hub.
+  useEffect(() => {
+    if (selectedPostModal) {
+      fetchPostComments(selectedPostModal);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPostModal?.id]);
+
+  const isConnected = Boolean(integrationsConfig?.zernioConnected || integrationsConfig?.zernioApiKey) || (isDemoMode && showDemoData);
+  const hasActiveFilters = selectedPlatform !== "all" || selectedStatus !== "all" || Boolean(searchQuery.trim());
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (selectedCalendarDay) setSelectedCalendarDay(null);
+      else if (selectedPostModal) handleClosePostDetails();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCalendarDay, selectedPostModal]);
 
   // Filtered posts
   const filteredPosts = useMemo(() => {
@@ -341,9 +489,9 @@ const normalizePlatformKey = (raw: string): any => {
       const matchesPlatform = selectedPlatform === "all" || post.platform === selectedPlatform;
       const matchesStatus = selectedStatus === "all" || post.status === selectedStatus;
       const matchesSearch = !searchQuery.trim() || 
-        post.content.toLowerCase().includes(searchQuery.toLowerCase()) || 
-        post.accountName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        post.accountHandle.toLowerCase().includes(searchQuery.toLowerCase());
+        (post.content || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (post.accountName || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (post.accountHandle || "").toLowerCase().includes(searchQuery.toLowerCase());
       return matchesPlatform && matchesStatus && matchesSearch;
     });
   }, [posts, selectedPlatform, selectedStatus, searchQuery]);
@@ -367,15 +515,51 @@ const normalizePlatformKey = (raw: string): any => {
     return Object.entries(groups).map(([date, postList]) => ({ date, posts: postList }));
   }, [filteredPosts]);
 
+  // The Analytics view has its own platform + date-range filters. They used to set
+  // state nothing read; every widget below now derives from this one dataset so the
+  // KPI cards, charts and tables can never disagree with each other.
+  const analyticsPosts = useMemo(() => {
+    const days = analyticsDateRange === "7d" ? 7 : analyticsDateRange === "90d" ? 90 : 30;
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    return filteredPosts.filter(post => {
+      if (analyticsPlatformFilter !== "all" && post.platform !== analyticsPlatformFilter) return false;
+      const raw = post.publishedAt || post.scheduledFor;
+      // Drafts carry no date at all — keep them rather than silently dropping them.
+      if (!raw) return true;
+      const ts = new Date(raw).getTime();
+      return Number.isNaN(ts) ? true : ts >= cutoff;
+    });
+  }, [filteredPosts, analyticsPlatformFilter, analyticsDateRange]);
+
+  // Platforms actually present in the data or connected upstream — not the full
+  // palette, which made every table claim 15 channels on a single-account tenant.
+  const activePlatformKeys = useMemo(() => {
+    const keys = new Set<string>();
+    posts.forEach(p => { if (p.platform) keys.add(p.platform); });
+    connectedPlatforms.forEach(k => { if (k) keys.add(k); });
+    return Array.from(keys);
+  }, [posts, connectedPlatforms]);
+
+  const analyticsPlatformKeys = useMemo(() => {
+    const keys = new Set<string>();
+    analyticsPosts.forEach(p => { if (p.platform) keys.add(p.platform); });
+    return Array.from(keys);
+  }, [analyticsPosts]);
+
   // Calculate Overall Analytics KPIs
   const analyticsKpis = useMemo(() => {
-    const totalImpressions = posts.reduce((acc, p) => acc + (p.stats.impressions || 0), 0);
-    const totalLikes = posts.reduce((acc, p) => acc + (p.stats.likes || 0), 0);
-    const totalComments = posts.reduce((acc, p) => acc + (p.stats.comments || 0), 0);
-    const totalShares = posts.reduce((acc, p) => acc + (p.stats.shares || 0), 0);
-    const totalClicks = posts.reduce((acc, p) => acc + (p.stats.clicks || 0), 0);
+    const src = analyticsPosts;
+    const totalImpressions = src.reduce((acc, p) => acc + (p.stats.impressions || 0), 0);
+    const totalLikes = src.reduce((acc, p) => acc + (p.stats.likes || 0), 0);
+    const totalComments = src.reduce((acc, p) => acc + (p.stats.comments || 0), 0);
+    const totalShares = src.reduce((acc, p) => acc + (p.stats.shares || 0), 0);
+    const totalClicks = src.reduce((acc, p) => acc + (p.stats.clicks || 0), 0);
     const totalEngagement = totalLikes + totalComments + totalShares;
-    const avgRate = posts.length > 0 ? (posts.reduce((acc, p) => acc + (p.stats.engagementRate || 0), 0) / posts.length).toFixed(1) : "0";
+    // Prefer a computed rate over the per-post one, which is 0 until the platform
+    // reports insights; fall back to impressions-based engagement.
+    const avgRate = totalImpressions > 0
+      ? ((totalEngagement / totalImpressions) * 100).toFixed(1)
+      : "0.0";
 
     return {
       totalImpressions,
@@ -385,10 +569,96 @@ const normalizePlatformKey = (raw: string): any => {
       totalClicks,
       totalEngagement,
       avgRate,
-      publishedCount: posts.filter(p => p.status === "published").length,
-      scheduledCount: posts.filter(p => p.status === "scheduled").length
+      postCount: src.length,
+      publishedCount: src.filter(p => p.status === "published").length,
+      scheduledCount: src.filter(p => p.status === "scheduled").length
     };
-  }, [posts]);
+  }, [analyticsPosts]);
+
+  // Daily buckets across the selected range — the source for every time series.
+  const analyticsDailySeries = useMemo(() => {
+    const days = analyticsDateRange === "7d" ? 7 : analyticsDateRange === "90d" ? 90 : 30;
+    // 90 days of individual bars is unreadable; bucket the long ranges by week.
+    const bucketDays = days > 31 ? 7 : 1;
+    const bucketCount = Math.ceil(days / bucketDays);
+    const now = new Date();
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime();
+    const bucketMs = bucketDays * 24 * 60 * 60 * 1000;
+
+    const buckets = Array.from({ length: bucketCount }, (_, i) => {
+      const end = endOfToday - (bucketCount - 1 - i) * bucketMs;
+      return {
+        start: end - bucketMs + 1,
+        end,
+        label: new Date(end).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+        posts: 0, likes: 0, comments: 0, shares: 0, impressions: 0, clicks: 0
+      };
+    });
+
+    analyticsPosts.forEach(p => {
+      const raw = p.publishedAt || p.scheduledFor;
+      if (!raw) return;
+      const ts = new Date(raw).getTime();
+      if (Number.isNaN(ts)) return;
+      const b = buckets.find(x => ts >= x.start && ts <= x.end);
+      if (!b) return;
+      b.posts += 1;
+      b.likes += p.stats.likes || 0;
+      b.comments += p.stats.comments || 0;
+      b.shares += p.stats.shares || 0;
+      b.impressions += p.stats.impressions || 0;
+      b.clicks += p.stats.clicks || 0;
+    });
+
+    return buckets;
+  }, [analyticsPosts, analyticsDateRange]);
+
+  // Draw at most ~8 date labels regardless of bucket count, so a 30-day range
+  // does not collapse every label into an ellipsis.
+  const labelEvery = Math.max(1, Math.ceil(analyticsDailySeries.length / 8));
+
+  // Publishing activity by weekday x 2-hour block, weighted by engagement, so the
+  // "best time" grid reflects this tenant's own posts instead of a fixed pattern.
+  const postingHeatmap = useMemo(() => {
+    const grid: Array<Array<{ posts: number; engagement: number }>> =
+      Array.from({ length: 7 }, () => Array.from({ length: 12 }, () => ({ posts: 0, engagement: 0 })));
+    let max = 0;
+    analyticsPosts.forEach(p => {
+      const raw = p.publishedAt || p.scheduledFor;
+      if (!raw) return;
+      const d = new Date(raw);
+      if (Number.isNaN(d.getTime())) return;
+      // Monday-first, matching the row labels.
+      const dayIdx = (d.getDay() + 6) % 7;
+      const blockIdx = Math.floor(d.getHours() / 2);
+      const cell = grid[dayIdx][blockIdx];
+      cell.posts += 1;
+      cell.engagement += (p.stats.likes || 0) + (p.stats.comments || 0) + (p.stats.shares || 0);
+      if (cell.engagement > max) max = cell.engagement;
+    });
+
+    let bestLabel = "";
+    let bestScore = -1;
+    const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    grid.forEach((row, dIdx) => row.forEach((cell, bIdx) => {
+      if (cell.posts > 0 && cell.engagement > bestScore) {
+        bestScore = cell.engagement;
+        bestLabel = `${dayNames[dIdx]} ${String(bIdx * 2).padStart(2, "0")}:00`;
+      }
+    }));
+
+    return { grid, max, bestLabel };
+  }, [analyticsPosts]);
+
+  // The table header promised "sorted by highest engagement rate" while rendering
+  // publish order; rank explicitly instead of relabelling the header.
+  const rankedPosts = useMemo(() => {
+    const score = (p: SocialPost) =>
+      p.stats.engagementRate || (p.stats.impressions > 0
+        ? ((p.stats.likes + p.stats.comments + p.stats.shares) / p.stats.impressions) * 100
+        : p.stats.likes + p.stats.comments + p.stats.shares);
+    return [...analyticsPosts].sort((a, b) => score(b) - score(a));
+  }, [analyticsPosts]);
 
   // Calendar Day Generation
   const calendarDays = useMemo(() => {
@@ -401,11 +671,16 @@ const normalizePlatformKey = (raw: string): any => {
 
     const days: Array<{ dateStr: string; dayNum: number; isCurrentMonth: boolean; posts: SocialPost[] }> = [];
 
-    // Previous month padding
+    // Previous month padding. `month` is 0-based, so the previous month's 1-based
+    // number is `month` itself — except in January, where it rolls to December of
+    // the prior year (the old code emitted "-00-" there).
+    const prevMonthDate = new Date(year, month - 1, 1);
+    const prevY = prevMonthDate.getFullYear();
+    const prevM = prevMonthDate.getMonth() + 1;
     const prevMonthLastDay = new Date(year, month, 0).getDate();
     for (let i = startingDayOfWeek - 1; i >= 0; i--) {
       days.push({
-        dateStr: `${year}-${String(month).padStart(2, '0')}-${String(prevMonthLastDay - i).padStart(2, '0')}`,
+        dateStr: `${prevY}-${String(prevM).padStart(2, '0')}-${String(prevMonthLastDay - i).padStart(2, '0')}`,
         dayNum: prevMonthLastDay - i,
         isCurrentMonth: false,
         posts: []
@@ -427,13 +702,28 @@ const normalizePlatformKey = (raw: string): any => {
       });
     }
 
+    // Trailing padding so the final week is a full row rather than a ragged edge.
+    const nextMonthDate = new Date(year, month + 1, 1);
+    const nextY = nextMonthDate.getFullYear();
+    const nextM = nextMonthDate.getMonth() + 1;
+    let trailing = 1;
+    while (days.length % 7 !== 0) {
+      days.push({
+        dateStr: `${nextY}-${String(nextM).padStart(2, '0')}-${String(trailing).padStart(2, '0')}`,
+        dayNum: trailing,
+        isCurrentMonth: false,
+        posts: []
+      });
+      trailing++;
+    }
+
     return days;
   }, [calendarDate, filteredPosts]);
 
   const renderAuthenticSocialCard = (post: SocialPost) => {
     const rawDate = post.publishedAt || post.scheduledFor || new Date().toISOString();
     const formattedTime = new Date(rawDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const platMeta = PLATFORM_CONFIG[post.platform] || PLATFORM_CONFIG.twitter;
+    const platMeta = getPlatformMeta(post.platform);
 
     if (post.platform === "twitter") {
       return (
@@ -517,7 +807,7 @@ const normalizePlatformKey = (raw: string): any => {
               Liked by ccrm_team and {post.stats.likes} others
             </div>
 
-            <p className="text-xs text-slate-800 leading-snug">
+            <p className="text-xs text-slate-800 leading-snug break-words">
               <strong className="font-black text-slate-900 mr-1.5">{post.accountHandle}</strong>
               {post.content}
             </p>
@@ -544,7 +834,7 @@ const normalizePlatformKey = (raw: string): any => {
             </span>
           </div>
 
-          <p className="text-xs text-slate-800 leading-relaxed font-normal whitespace-pre-wrap">
+          <p className="text-xs text-slate-800 leading-relaxed font-normal whitespace-pre-wrap break-words">
             {post.content}
           </p>
 
@@ -561,12 +851,6 @@ const normalizePlatformKey = (raw: string): any => {
             <span>{post.stats.comments} comments</span>
           </div>
 
-          <div className="pt-2 border-t border-slate-150 grid grid-cols-4 gap-1 text-center text-[10px] font-bold text-slate-600">
-            <button type="button" className="py-1 rounded-lg hover:bg-slate-100 flex items-center justify-center gap-1"><ThumbsUp className="h-3 w-3" /> Like</button>
-            <button type="button" className="py-1 rounded-lg hover:bg-slate-100 flex items-center justify-center gap-1"><MessageSquare className="h-3 w-3" /> Comment</button>
-            <button type="button" className="py-1 rounded-lg hover:bg-slate-100 flex items-center justify-center gap-1"><Repeat className="h-3 w-3" /> Repost</button>
-            <button type="button" className="py-1 rounded-lg hover:bg-slate-100 flex items-center justify-center gap-1"><Send className="h-3 w-3" /> Send</button>
-          </div>
         </div>
       );
     }
@@ -590,7 +874,7 @@ const normalizePlatformKey = (raw: string): any => {
           </span>
         </div>
 
-        <p className="text-xs font-semibold text-slate-800 leading-relaxed whitespace-pre-wrap">
+        <p className="text-xs font-semibold text-slate-800 leading-relaxed whitespace-pre-wrap break-words">
           {post.content}
         </p>
 
@@ -633,11 +917,27 @@ const normalizePlatformKey = (raw: string): any => {
             <div className="flex items-center gap-2 shrink-0 flex-wrap">
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   const fullUrl = `${window.location.origin}${window.location.pathname}#social_media/post/${selectedPostModal.id}`;
-                  navigator.clipboard.writeText(fullUrl);
-                  if ((window as any).showToast) {
-                    (window as any).showToast(t("Post link copied to clipboard!", "Odkaz na príspevok bol skopírovaný!", "Bejegyzés hivatkozás másolva!"));
+                  try {
+                    // navigator.clipboard is undefined on plain-http origins, so the
+                    // success toast used to fire while nothing was copied.
+                    if (navigator.clipboard?.writeText) {
+                      await navigator.clipboard.writeText(fullUrl);
+                    } else {
+                      const ta = document.createElement("textarea");
+                      ta.value = fullUrl;
+                      ta.style.position = "fixed";
+                      ta.style.opacity = "0";
+                      document.body.appendChild(ta);
+                      ta.select();
+                      const ok = document.execCommand("copy");
+                      document.body.removeChild(ta);
+                      if (!ok) throw new Error("copy command rejected");
+                    }
+                    (window as any).showToast?.(t("Post link copied to clipboard!", "Odkaz na príspevok bol skopírovaný!", "Bejegyzés hivatkozás másolva!"));
+                  } catch {
+                    (window as any).showToast?.(t("Could not copy the link.", "Odkaz sa nepodarilo skopírovať.", "A hivatkozást nem sikerült másolni."), "error");
                   }
                 }}
                 className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors text-xs font-heading font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shrink-0"
@@ -713,7 +1013,7 @@ const normalizePlatformKey = (raw: string): any => {
                       className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md"
                     >
                       <ExternalLink className="h-4 w-4" />
-                      {t("View Original Post on", "Pozrieť originálny príspevok na", "Eredeti bejegyzés megtekintése:")} {PLATFORM_CONFIG[selectedPostModal.platform]?.name || selectedPostModal.platform}
+                      {t("View Original Post on", "Pozrieť originálny príspevok na", "Eredeti bejegyzés megtekintése:")} {getPlatformMeta(selectedPostModal.platform).name}
                     </a>
                   </div>
                 )}
@@ -733,14 +1033,28 @@ const normalizePlatformKey = (raw: string): any => {
                         {t("Post Comments Stream", "Stream komentárov", "Komment folyam")} ({(postComments[selectedPostModal.id] || []).length})
                       </h3>
                     </div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 uppercase tracking-wider">
-                      Live Feed
-                    </span>
+                    {commentsLoading && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                        <RefreshCw className="h-3 w-3 animate-spin" />
+                        {t("Loading", "Načítavam", "Betöltés")}
+                      </span>
+                    )}
                   </div>
 
                   {/* Comment Feed Items */}
                   <div className="space-y-3 max-h-[480px] overflow-y-auto pr-1">
-                    {(!postComments[selectedPostModal.id] || postComments[selectedPostModal.id].length === 0) ? (
+                    {commentsError ? (
+                      <div className="p-6 text-center bg-rose-50/80 rounded-2xl border border-rose-200/80 text-xs text-rose-700 space-y-2">
+                        <MessageSquare className="h-8 w-8 text-rose-300 mx-auto" />
+                        <p className="font-bold">{t("Comments could not be loaded.", "Komentáre sa nepodarilo načítať.", "A kommenteket nem sikerült betölteni.")}</p>
+                        <p className="font-medium text-rose-600 break-words">{commentsError}</p>
+                      </div>
+                    ) : commentsLoading ? (
+                      <div className="p-10 text-center bg-slate-50/80 rounded-2xl border border-slate-200/80 text-xs text-slate-400 space-y-2">
+                        <RefreshCw className="h-8 w-8 text-slate-300 mx-auto animate-spin" />
+                        <p className="font-semibold">{t("Loading comments…", "Načítavam komentáre…", "Kommentek betöltése…")}</p>
+                      </div>
+                    ) : (!postComments[selectedPostModal.id] || postComments[selectedPostModal.id].length === 0) ? (
                       <div className="p-10 text-center bg-slate-50/80 rounded-2xl border border-slate-200/80 text-xs text-slate-400 space-y-2">
                         <MessageSquare className="h-8 w-8 text-slate-300 mx-auto" />
                         <p className="font-semibold">{t("No comments on this post yet.", "Zatiaľ žiadne komentáre k tomuto príspevku.", "Még nincsenek kommentek.")}</p>
@@ -751,7 +1065,7 @@ const normalizePlatformKey = (raw: string): any => {
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2.5">
                               <div className="w-7 h-7 rounded-full bg-slate-900 text-white text-xs font-black flex items-center justify-center shadow-xs">
-                                {comment.author.charAt(0)}
+                                {(comment.author || "?").charAt(0)}
                               </div>
                               <div>
                                 <span className="text-xs font-black text-slate-900 block">{comment.author}</span>
@@ -761,15 +1075,17 @@ const normalizePlatformKey = (raw: string): any => {
                             <span className="text-[10px] text-slate-400 font-semibold">{comment.time}</span>
                           </div>
 
-                          <p className="text-xs text-slate-800 font-medium pl-9 leading-relaxed">
+                          <p className="text-xs text-slate-800 font-medium pl-9 leading-relaxed break-words">
                             {comment.text}
                           </p>
 
+                          {/* Read-only meta. Liking a comment is a separate Zernio
+                              scope this integration does not request, so these are
+                              deliberately not styled as controls. */}
                           <div className="pl-9 pt-1 flex items-center gap-4 text-[10.5px] font-extrabold text-slate-400">
-                            <span className="flex items-center gap-1 hover:text-rose-500 cursor-pointer transition-colors">
+                            <span className="flex items-center gap-1">
                               <Heart className="h-3.5 w-3.5" /> {comment.likes}
                             </span>
-                            <span className="hover:text-slate-700 cursor-pointer transition-colors">{t("Reply", "Odpovedať", "Válasz")}</span>
                           </div>
                         </div>
                       ))
@@ -777,46 +1093,75 @@ const normalizePlatformKey = (raw: string): any => {
                   </div>
                 </div>
 
-                {/* Add Comment Input Form */}
+                {/* Reply composer — posts to the platform through
+                    POST /v1/inbox/comments/{postId}. Disabled when the post has no
+                    connected account, since there is nothing to reply through. */}
                 <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (!newCommentInput.trim()) return;
-                    const newC = {
-                      id: "c_" + Date.now(),
-                      author: "CCRM Agent",
-                      handle: "@ccrm_user",
-                      text: newCommentInput.trim(),
-                      time: "Just now",
-                      likes: 0
-                    };
-                    setPostComments(prev => ({
-                      ...prev,
-                      [selectedPostModal.id!]: [...(prev[selectedPostModal.id!] || []), newC]
-                    }));
-                    setNewCommentInput("");
-                  }}
-                  className="pt-4 border-t border-slate-150 flex items-center gap-3"
+                  onSubmit={handleSubmitComment}
+                  className="pt-4 border-t border-slate-150 space-y-2"
                 >
-                  <input
-                    type="text"
-                    value={newCommentInput}
-                    onChange={(e) => setNewCommentInput(e.target.value)}
-                    placeholder={t("Write a comment or reply...", "Napíšte komentár...", "Írjon kommentet...")}
-                    className="flex-1 px-4 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-rose-500/20"
-                  />
-                  <button
-                    type="submit"
-                    className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer shrink-0 shadow-md"
-                  >
-                    <Send className="h-3.5 w-3.5" />
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="text"
+                      value={newCommentInput}
+                      onChange={(e) => setNewCommentInput(e.target.value)}
+                      disabled={!selectedPostModal.accountId || isPostingComment}
+                      placeholder={
+                        selectedPostModal.accountId
+                          ? t("Write a comment or reply...", "Napíšte komentár...", "Írjon kommentet...")
+                          : t("Replying needs a connected account", "Odpovedanie vyžaduje pripojený účet", "A válaszhoz csatlakoztatott fiók kell")
+                      }
+                      className="flex-1 px-4 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-rose-500/20 disabled:opacity-60 disabled:cursor-not-allowed"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!selectedPostModal.accountId || isPostingComment || !newCommentInput.trim()}
+                      aria-label={t("Send reply", "Odoslať odpoveď", "Válasz küldése")}
+                      title={t("Send reply", "Odoslať odpoveď", "Válasz küldése")}
+                      className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer shrink-0 shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isPostingComment ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-slate-400 font-semibold">
+                    {t(
+                      "Replies are published on the social network through Zernio.",
+                      "Odpovede sa zverejnia na sociálnej sieti cez Zernio.",
+                      "A válaszok a Zernión keresztül jelennek meg a közösségi hálózaton."
+                    )}
+                  </p>
                 </form>
 
               </div>
             </div>
 
           </div>
+        </div>
+      ) : deepLinkMiss && !isSyncing ? (
+        /* A shared link pointing at a post this workspace cannot see. Without this
+           branch the hub rendered as if nothing had been requested. */
+        <div className="glass-panel p-12 text-center rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4 animate-fade-in">
+          <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+            <Search className="h-6 w-6" />
+          </div>
+          <h3 className="text-base font-heading font-extrabold text-slate-900">
+            {t("Post not found", "Príspevok sa nenašiel", "A bejegyzés nem található")}
+          </h3>
+          <p className="text-xs text-slate-500 max-w-sm mx-auto break-words">
+            {t(
+              "This link points to a post that is no longer available in the connected accounts.",
+              "Tento odkaz vedie na príspevok, ktorý už v pripojených účtoch nie je dostupný.",
+              "Ez a hivatkozás olyan bejegyzésre mutat, amely már nem érhető el a csatlakoztatott fiókokban."
+            )}
+          </p>
+          <button
+            type="button"
+            onClick={handleClosePostDetails}
+            className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer shadow-md inline-flex items-center gap-2"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            {t("Back to Social Media Hub", "Späť na sociálne siete", "Vissza a Közösségi Média Hubhoz")}
+          </button>
         </div>
       ) : (
         <div className="space-y-6">
@@ -912,6 +1257,20 @@ const normalizePlatformKey = (raw: string): any => {
             </div>
           </div>
 
+      {/* A failed Zernio sync used to be a console.error only — the section just
+          looked empty. Surface it where the data should have been. */}
+      {syncError && isConnected && !(isDemoMode && showDemoData) && (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50/90 px-4 py-3 flex items-start gap-3">
+          <Zap className="h-4 w-4 text-rose-600 mt-0.5 shrink-0" />
+          <div className="min-w-0">
+            <p className="text-xs font-black text-rose-800 uppercase tracking-wider">
+              {t("Zernio sync problem", "Problém so synchronizáciou Zernio", "Zernio szinkronizálási hiba")}
+            </p>
+            <p className="text-xs text-rose-700 font-medium break-words">{syncError}</p>
+          </div>
+        </div>
+      )}
+
       {/* Main Workspace Grid (Left Sidebar + Center Content) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
@@ -958,14 +1317,9 @@ const normalizePlatformKey = (raw: string): any => {
                   </span>
                 </button>
 
-                {Object.entries(PLATFORM_CONFIG)
-                  .filter(([platKey]) => {
-                    const count = posts.filter(p => p.platform === platKey).length;
-                    const isConnected = connectedPlatforms.includes(platKey.toLowerCase());
-                    // Only show connected accounts or platforms with active posts
-                    return count > 0 || isConnected;
-                  })
-                  .map(([platKey, platData]) => {
+                {activePlatformKeys
+                  .map((platKey) => {
+                    const platData = getPlatformMeta(platKey);
                     const count = posts.filter(p => p.platform === platKey).length;
                     const isSelected = selectedPlatform === platKey;
                     return (
@@ -1025,8 +1379,13 @@ const normalizePlatformKey = (raw: string): any => {
             <div className="pt-3 border-t border-slate-150">
               <button
                 type="button"
-                onClick={fetchZernioPosts}
+                onClick={() => {
+                  // Syncing writes into realPosts, which the demo lightswitch hides.
+                  if (isDemoMode && showDemoData) setShowDemoData(false);
+                  fetchZernioPosts();
+                }}
                 disabled={isSyncing}
+                title={t("Fetch posts and connected accounts from Zernio", "Načítať príspevky a pripojené účty zo Zernia", "Bejegyzések és fiókok letöltése a Zernióból")}
                 className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50"
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? "animate-spin text-rose-400" : "text-white"}`} />
@@ -1045,16 +1404,57 @@ const normalizePlatformKey = (raw: string): any => {
           {activeView === "list" && (
             <div className="space-y-8">
               {groupedByDayPosts.length === 0 ? (
+                /* Three genuinely different reasons for an empty list. Blaming the
+                   filters for all three sent users hunting a filter they never set. */
                 <div className="glass-panel p-12 text-center rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4">
                   <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-500 flex items-center justify-center mx-auto">
                     <Share2 className="h-6 w-6" />
                   </div>
-                  <h3 className="text-base font-heading font-extrabold text-slate-900">
-                    {t("No posts found matching filter", "Nenašli sa žiadne príspevky", "Nem található bejegyzés")}
-                  </h3>
-                  <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                    {t("Try selecting another social media source or clearing search filters.", "Skúste zmeniť filter alebo vyhľadávanie.", "Próbálja meg módosítani a szűrőt.")}
-                  </p>
+                  {isSyncing ? (
+                    <>
+                      <h3 className="text-base font-heading font-extrabold text-slate-900">
+                        {t("Loading posts…", "Načítavam príspevky…", "Bejegyzések betöltése…")}
+                      </h3>
+                    </>
+                  ) : !isConnected ? (
+                    <>
+                      <h3 className="text-base font-heading font-extrabold text-slate-900">
+                        {t("Zernio is not connected yet", "Zernio zatiaľ nie je pripojené", "A Zernio még nincs csatlakoztatva")}
+                      </h3>
+                      <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                        {t(
+                          "Connect a Zernio API key in Settings → Social Media to load posts from your social accounts.",
+                          "Pripojte Zernio API kľúč v Nastavenia → Sociálne siete, aby sa načítali príspevky z vašich účtov.",
+                          "Csatlakoztasson egy Zernio API kulcsot a Beállítások → Közösségi média menüben."
+                        )}
+                      </p>
+                    </>
+                  ) : syncError ? (
+                    <>
+                      <h3 className="text-base font-heading font-extrabold text-slate-900">
+                        {t("Posts could not be loaded", "Príspevky sa nepodarilo načítať", "A bejegyzéseket nem sikerült betölteni")}
+                      </h3>
+                      <p className="text-xs text-rose-600 max-w-sm mx-auto font-semibold break-words">{syncError}</p>
+                    </>
+                  ) : hasActiveFilters ? (
+                    <>
+                      <h3 className="text-base font-heading font-extrabold text-slate-900">
+                        {t("No posts found matching filter", "Nenašli sa žiadne príspevky", "Nem található bejegyzés")}
+                      </h3>
+                      <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                        {t("Try selecting another social media source or clearing search filters.", "Skúste zmeniť filter alebo vyhľadávanie.", "Próbálja meg módosítani a szűrőt.")}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <h3 className="text-base font-heading font-extrabold text-slate-900">
+                        {t("No posts on the connected accounts yet", "Pripojené účty zatiaľ nemajú príspevky", "A csatlakoztatott fiókokban még nincsenek bejegyzések")}
+                      </h3>
+                      <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                        {t("Published and scheduled posts appear here as soon as Zernio syncs them.", "Publikované a naplánované príspevky sa tu zobrazia hneď po synchronizácii.", "A közzétett és ütemezett bejegyzések a szinkronizálás után jelennek meg.")}
+                      </p>
+                    </>
+                  )}
                 </div>
               ) : (
                 groupedByDayPosts.map(({ date, posts: dayPosts }) => {
@@ -1082,7 +1482,7 @@ const normalizePlatformKey = (raw: string): any => {
                       {/* Same-Day Cards Grid Layout */}
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                         {dayPosts.map((post) => {
-                          const platformMeta = PLATFORM_CONFIG[post.platform] || PLATFORM_CONFIG.twitter;
+                          const platformMeta = getPlatformMeta(post.platform);
                           return (
                             <div
                               key={post.id}
@@ -1174,6 +1574,7 @@ const normalizePlatformKey = (raw: string): any => {
                                       href={post.platformPostUrl}
                                       target="_blank"
                                       rel="noopener noreferrer"
+                                      onClick={(e) => e.stopPropagation()}
                                       className="text-indigo-600 hover:text-indigo-800 font-extrabold flex items-center gap-1 hover:underline"
                                     >
                                       {t("View", "Pozrieť", "Megtekintés")} <ExternalLink className="h-3 w-3" />
@@ -1209,6 +1610,8 @@ const normalizePlatformKey = (raw: string): any => {
                   <button
                     type="button"
                     onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))}
+                    aria-label={t("Previous month", "Predchádzajúci mesiac", "Előző hónap")}
+                    title={t("Previous month", "Predchádzajúci mesiac", "Előző hónap")}
                     className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl cursor-pointer transition-all"
                   >
                     <ChevronLeft className="h-4 w-4" />
@@ -1223,6 +1626,8 @@ const normalizePlatformKey = (raw: string): any => {
                   <button
                     type="button"
                     onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))}
+                    aria-label={t("Next month", "Nasledujúci mesiac", "Következő hónap")}
+                    title={t("Next month", "Nasledujúci mesiac", "Következő hónap")}
                     className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl cursor-pointer transition-all"
                   >
                     <ChevronRight className="h-4 w-4" />
@@ -1230,15 +1635,17 @@ const normalizePlatformKey = (raw: string): any => {
                 </div>
               </div>
 
-              {/* Day Name Headers */}
-              <div className="grid grid-cols-7 gap-2 text-center text-[10px] font-black uppercase tracking-wider text-slate-400">
+              {/* Day Name Headers + grid share one horizontal scroller so the
+                  column labels cannot drift out of step with the cells. */}
+              <div className="overflow-x-auto -mx-2 px-2">
+              <div className="min-w-[560px] grid grid-cols-7 gap-2 text-center text-[10px] font-black uppercase tracking-wider text-slate-400">
                 {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d => (
                   <div key={d} className="py-1">{d}</div>
                 ))}
               </div>
 
               {/* Calendar Days Grid */}
-              <div className="grid grid-cols-7 gap-2">
+              <div className="min-w-[560px] grid grid-cols-7 gap-2 mt-2">
                 {calendarDays.map((day, idx) => (
                   <div
                     key={idx}
@@ -1270,7 +1677,7 @@ const normalizePlatformKey = (raw: string): any => {
                     {/* Day Posts List Badges */}
                     <div className="space-y-1 mt-1 flex-1 overflow-hidden">
                       {day.posts.slice(0, 2).map(p => {
-                        const platMeta = PLATFORM_CONFIG[p.platform] || PLATFORM_CONFIG.twitter;
+                        const platMeta = getPlatformMeta(p.platform);
                         return (
                           <div
                             key={p.id}
@@ -1294,6 +1701,7 @@ const normalizePlatformKey = (raw: string): any => {
                     </div>
                   </div>
                 ))}
+              </div>
               </div>
             </div>
           )}
@@ -1343,7 +1751,7 @@ const normalizePlatformKey = (raw: string): any => {
                       icon={<Filter className="h-3.5 w-3.5 text-slate-400" />}
                       options={[
                         { value: "all", label: t("All Platforms", "Všetky platformy", "Minden platform") },
-                        ...Object.entries(PLATFORM_CONFIG).map(([k, v]) => ({ value: k, label: v.name })),
+                        ...activePlatformKeys.map((k) => ({ value: k, label: getPlatformMeta(k).name })),
                       ]}
                     />
                   </div>
@@ -1366,9 +1774,36 @@ const normalizePlatformKey = (raw: string): any => {
                   <button
                     type="button"
                     onClick={() => {
-                      if ((window as any).showToast) {
-                        (window as any).showToast(t("Exporting Analytics PDF Report...", "Exportujem PDF správu analytiky...", "PDF analitika jelentés exportálása..."));
+                      if (analyticsPosts.length === 0) {
+                        (window as any).showToast?.(t("Nothing to export in this period.", "V tomto období nie je čo exportovať.", "Ebben az időszakban nincs mit exportálni."), "warning");
+                        return;
                       }
+                      const esc = (v: any) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+                      const header = ["Platform", "Account", "Status", "Date", "Content", "Likes", "Comments", "Shares", "Clicks", "Impressions", "URL"];
+                      const rows = analyticsPosts.map(post => [
+                        getPlatformMeta(post.platform).name,
+                        post.accountHandle || post.accountName,
+                        post.status,
+                        post.publishedAt || post.scheduledFor || "",
+                        post.content,
+                        post.stats.likes,
+                        post.stats.comments,
+                        post.stats.shares,
+                        post.stats.clicks,
+                        post.stats.impressions,
+                        post.platformPostUrl || ""
+                      ]);
+                      // BOM so Excel opens the UTF-8 accents correctly.
+                      const csv = "\uFEFF" + [header, ...rows].map(r => r.map(esc).join(",")).join("\r\n");
+                      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = `social-analytics-${analyticsDateRange}.csv`;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      URL.revokeObjectURL(url);
+                      (window as any).showToast?.(t("Analytics exported as CSV.", "Analytika bola exportovaná do CSV.", "Az analitika CSV-be exportálva."));
                     }}
                     className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-black uppercase tracking-wider transition-all border border-rose-200 cursor-pointer flex items-center gap-1.5 shadow-xs"
                   >
@@ -1380,9 +1815,12 @@ const normalizePlatformKey = (raw: string): any => {
 
               {analyticsSubTab === "posting" ? (
                 <>
-                  {/* TOP 5 SUMMARY KPI CARDS WITH TREND INDICATORS */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                    {/* KPI 1: Engagement Rate */}
+                  {/* SUMMARY KPI CARDS — every figure is reduced from the posts
+                      currently in scope. The previous version shipped fixed trend
+                      chips ("-2.5% vs prev"), a 1,420-follower count and a Reach
+                      figure derived by multiplying impressions by 0.6; none of
+                      those had a data source, so they are gone rather than faked. */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div className="glass-panel p-5 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-2">
                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
                         {t("Engagement Rate", "Miera angažovanosti", "Kötődési arány")}
@@ -1390,111 +1828,109 @@ const normalizePlatformKey = (raw: string): any => {
                       <div className="text-2xl font-black text-rose-600 font-mono">
                         {analyticsKpis.avgRate}%
                       </div>
-                      <span className="text-[10px] font-bold text-rose-500 flex items-center gap-1">
-                        <TrendingDown className="h-3 w-3" /> 2.5% vs prev
+                      <span className="text-[10px] font-bold text-slate-400">
+                        {t("Interactions per impression", "Interakcie na zobrazenie", "Interakció / megjelenés")}
                       </span>
                     </div>
 
-                    {/* KPI 2: Total Reach */}
                     <div className="glass-panel p-5 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-2">
                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
-                        {t("Total Reach", "Celkový dosah", "Összes elérés")}
+                        {t("Total Impressions", "Zobrazenia spolu", "Összes megjelenés")}
                       </span>
-                      <div className="text-2xl font-black text-slate-900 font-mono">
-                        {(analyticsKpis.totalImpressions * 0.6).toFixed(0)}
+                      <div className="text-2xl font-black text-indigo-600 font-mono">
+                        {analyticsKpis.totalImpressions.toLocaleString()}
                       </div>
-                      <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
-                        <TrendingUp className="h-3 w-3" /> +10.4% vs prev
+                      <span className="text-[10px] font-bold text-slate-400">
+                        {t("Reported by the platforms", "Podľa údajov platforiem", "A platformok adatai alapján")}
                       </span>
                     </div>
 
-                    {/* KPI 3: Total Followers */}
                     <div className="glass-panel p-5 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-2">
                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
-                        {t("Total Followers", "Sledovatelia", "Követők száma")}
+                        {t("Total Interactions", "Interakcie spolu", "Összes interakció")}
                       </span>
-                      <div className="text-2xl font-black text-slate-900 font-mono">
-                        1,420
+                      <div className="text-2xl font-black text-emerald-600 font-mono">
+                        {analyticsKpis.totalEngagement.toLocaleString()}
                       </div>
-                      <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
-                        <TrendingUp className="h-3 w-3" /> +14 new
+                      <span className="text-[10px] font-bold text-slate-400">
+                        {analyticsKpis.totalLikes.toLocaleString()} {t("likes", "lajkov", "lájk")} · {analyticsKpis.totalComments.toLocaleString()} {t("comments", "komentárov", "komment")} · {analyticsKpis.totalShares.toLocaleString()} {t("shares", "zdieľaní", "megosztás")}
                       </span>
                     </div>
 
-                    {/* KPI 4: Posts In Period */}
                     <div className="glass-panel p-5 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-2">
                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
-                        {t("Posts In Period", "Príspevkov v období", "Bejegyzések a időszakban")}
+                        {t("Posts in Period", "Príspevky za obdobie", "Bejegyzések az időszakban")}
                       </span>
                       <div className="text-2xl font-black text-slate-900 font-mono">
-                        {filteredPosts.length}
+                        {analyticsKpis.postCount}
                       </div>
-                      <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
-                        <TrendingUp className="h-3 w-3" /> +20% vs prev
+                      <span className="text-[10px] font-bold text-slate-400">
+                        {analyticsKpis.publishedCount} {t("published", "publikovaných", "közzétéve")} · {analyticsKpis.scheduledCount} {t("scheduled", "naplánovaných", "ütemezve")}
                       </span>
-                    </div>
-
-                    {/* KPI 5: Best Post Badge */}
-                    <div className="glass-panel p-4 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-1 flex flex-col justify-between">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[9.5px] font-black text-amber-600 uppercase tracking-widest block">
-                          ⭐ {t("Best Post", "Najlepší príspevok", "Legjobb bejegyzés")}
-                        </span>
-                        <Award className="h-4 w-4 text-amber-500" />
-                      </div>
-                      {filteredPosts[0] ? (
-                        <div
-                          onClick={() => handleOpenPostDetails(filteredPosts[0])}
-                          className="p-2 bg-amber-50/80 border border-amber-200/80 rounded-xl cursor-pointer hover:bg-amber-100 transition-all space-y-1"
-                        >
-                          <p className="text-[10.5px] font-extrabold text-slate-900 truncate">
-                            {filteredPosts[0].content}
-                          </p>
-                          <span className="text-[9px] font-mono text-amber-800 font-bold block">
-                            {filteredPosts[0].stats.likes} Likes • {filteredPosts[0].stats.engagementRate}% ER
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-slate-400 italic">No posts</span>
-                      )}
                     </div>
                   </div>
 
-                  {/* 2X2 BAR CHARTS GRID (Posts & Likes Distribution) */}
+                  {/* BEST POST — ranked, not "whatever came first in the array" */}
+                  {rankedPosts[0] && (
+                    <div
+                      onClick={() => handleOpenPostDetails(rankedPosts[0])}
+                      className="glass-panel p-5 rounded-3xl border border-amber-200/80 bg-amber-50/70 shadow-glass space-y-2 cursor-pointer hover:bg-amber-100/70 transition-all"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[9.5px] font-black text-amber-700 uppercase tracking-widest block">
+                          ⭐ {t("Best performing post", "Najlepší príspevok", "Legjobban teljesítő bejegyzés")}
+                        </span>
+                        <Award className="h-4 w-4 text-amber-500" />
+                      </div>
+                      <p className="text-xs font-extrabold text-slate-900 break-words line-clamp-2">
+                        {rankedPosts[0].content || t("(no text)", "(bez textu)", "(nincs szöveg)")}
+                      </p>
+                      <span className="text-[10px] font-mono text-amber-800 font-bold block">
+                        {getPlatformMeta(rankedPosts[0].platform).name} · {rankedPosts[0].stats.likes} {t("likes", "lajkov", "lájk")} · {rankedPosts[0].stats.impressions.toLocaleString()} {t("impressions", "zobrazení", "megjelenés")}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* DISTRIBUTION CHARTS — all four series are computed from the
+                      posts in scope. They used to be literal Jul 21-27 arrays. */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    
+
                     {/* Chart 1: Posts per Platform */}
                     <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4">
-                      <div className="flex items-center justify-between border-b border-slate-150 pb-3">
-                        <div>
+                      <div className="flex items-center justify-between border-b border-slate-150 pb-3 gap-3">
+                        <div className="min-w-0">
                           <h4 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider">
                             {t("Posts per Platform", "Príspevky podľa platforiem", "Bejegyzések platformonként")}
                           </h4>
-                          <span className="text-[10px] text-slate-400 font-medium">Distribution across connected networks</span>
+                          <span className="text-[10px] text-slate-400 font-medium">
+                            {t("Distribution across connected networks", "Rozloženie podľa pripojených sietí", "Megoszlás a csatlakoztatott hálózatok között")}
+                          </span>
                         </div>
-                        <span className="text-xs font-mono font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-xl">
-                          {filteredPosts.length} total
+                        <span className="text-xs font-mono font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-xl shrink-0">
+                          {analyticsPosts.length}
                         </span>
                       </div>
 
                       <div className="space-y-3 pt-2">
-                        {Object.entries(PLATFORM_CONFIG).map(([platKey, platData]) => {
-                          const count = filteredPosts.filter(p => p.platform === platKey).length;
-                          const pct = filteredPosts.length > 0 ? (count / filteredPosts.length) * 100 : 0;
+                        {analyticsPlatformKeys.length === 0 ? (
+                          <p className="text-xs text-slate-400 font-semibold py-6 text-center">
+                            {t("No data in this period.", "V tomto období nie sú dáta.", "Ebben az időszakban nincs adat.")}
+                          </p>
+                        ) : analyticsPlatformKeys.map((platKey) => {
+                          const platData = getPlatformMeta(platKey);
+                          const count = analyticsPosts.filter(p => p.platform === platKey).length;
+                          const pct = analyticsPosts.length > 0 ? (count / analyticsPosts.length) * 100 : 0;
                           return (
                             <div key={platKey} className="space-y-1">
-                              <div className="flex items-center justify-between text-xs font-extrabold text-slate-700">
-                                <span className="flex items-center gap-2">
-                                  <span className={`w-2.5 h-2.5 rounded-full ${platData.bg}`}></span>
-                                  {platData.name}
+                              <div className="flex items-center justify-between text-xs font-extrabold text-slate-700 gap-2">
+                                <span className="flex items-center gap-2 min-w-0">
+                                  <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${platData.bg}`}></span>
+                                  <span className="truncate">{platData.name}</span>
                                 </span>
-                                <span className="font-mono">{count} posts ({pct.toFixed(0)}%)</span>
+                                <span className="font-mono shrink-0">{count} ({pct.toFixed(0)}%)</span>
                               </div>
                               <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
-                                <div
-                                  className={`h-full ${platData.bg} transition-all duration-500`}
-                                  style={{ width: `${pct}%` }}
-                                ></div>
+                                <div className={`h-full ${platData.bg} transition-all duration-500`} style={{ width: `${pct}%` }}></div>
                               </div>
                             </div>
                           );
@@ -1504,122 +1940,130 @@ const normalizePlatformKey = (raw: string): any => {
 
                     {/* Chart 2: Posts over Time */}
                     <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4">
-                      <div className="flex items-center justify-between border-b border-slate-150 pb-3">
-                        <div>
+                      <div className="flex items-center justify-between border-b border-slate-150 pb-3 gap-3">
+                        <div className="min-w-0">
                           <h4 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider">
                             {t("Posts over Time", "Príspevky v čase", "Bejegyzések az időben")}
                           </h4>
-                          <span className="text-[10px] text-slate-400 font-medium">Daily publishing cadence</span>
+                          <span className="text-[10px] text-slate-400 font-medium">
+                            {t("Publishing cadence", "Frekvencia publikovania", "Közzétételi ütem")}
+                          </span>
                         </div>
-                        <Activity className="h-4 w-4 text-rose-500" />
+                        <Activity className="h-4 w-4 text-rose-500 shrink-0" />
                       </div>
 
-                      <div className="h-48 flex items-end justify-between gap-2 pt-6 pb-2 px-2">
-                        {[
-                          { date: "Jul 21", val: 1 },
-                          { date: "Jul 22", val: 2 },
-                          { date: "Jul 23", val: 1 },
-                          { date: "Jul 24", val: 3 },
-                          { date: "Jul 25", val: 2 },
-                          { date: "Jul 26", val: 4 },
-                          { date: "Jul 27", val: 2 }
-                        ].map((item, idx) => (
-                          <div key={idx} className="flex-1 flex flex-col items-center gap-2 group">
-                            <span className="text-[10px] font-mono font-bold text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                              {item.val}
-                            </span>
-                            <div className="w-full bg-slate-100 rounded-t-xl overflow-hidden flex items-end h-32">
-                              <div
-                                className="w-full bg-gradient-to-t from-rose-500 to-amber-500 rounded-t-xl transition-all duration-500 group-hover:brightness-110"
-                                style={{ height: `${(item.val / 4) * 100}%` }}
-                              ></div>
+                      <div className="h-48 flex items-end justify-between gap-1 pt-6 pb-2 overflow-x-auto">
+                        {(() => {
+                          const max = Math.max(...analyticsDailySeries.map(b => b.posts), 1);
+                          return analyticsDailySeries.map((b, idx) => (
+                            <div key={idx} className="flex-1 min-w-[14px] flex flex-col items-center gap-2 group" title={`${b.label}: ${b.posts}`}>
+                              <span className="text-[10px] font-mono font-bold text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                {b.posts}
+                              </span>
+                              <div className="w-full bg-slate-100 rounded-t-xl overflow-hidden flex items-end h-32">
+                                <div
+                                  className="w-full bg-gradient-to-t from-rose-500 to-amber-500 rounded-t-xl transition-all duration-500 group-hover:brightness-110"
+                                  style={{ height: `${(b.posts / max) * 100}%` }}
+                                ></div>
+                              </div>
+                              <span className="text-[9px] font-bold text-slate-400 uppercase truncate w-full text-center">
+                                {idx % labelEvery === 0 ? b.label : ""}
+                              </span>
                             </div>
-                            <span className="text-[9.5px] font-bold text-slate-400 uppercase">{item.date}</span>
-                          </div>
-                        ))}
+                          ));
+                        })()}
                       </div>
                     </div>
 
                     {/* Chart 3: Likes per Platform */}
                     <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4">
-                      <div className="flex items-center justify-between border-b border-slate-150 pb-3">
-                        <div>
+                      <div className="flex items-center justify-between border-b border-slate-150 pb-3 gap-3">
+                        <div className="min-w-0">
                           <h4 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider">
                             {t("Likes per Platform", "Lajky podľa platforiem", "Lájkok platformonként")}
                           </h4>
-                          <span className="text-[10px] text-slate-400 font-medium">Reactions gathered per network</span>
+                          <span className="text-[10px] text-slate-400 font-medium">
+                            {t("Reactions gathered per network", "Reakcie podľa siete", "Reakciók hálózatonként")}
+                          </span>
                         </div>
-                        <Heart className="h-4 w-4 text-rose-500 fill-rose-500" />
+                        <Heart className="h-4 w-4 text-rose-500 fill-rose-500 shrink-0" />
                       </div>
 
                       <div className="space-y-3 pt-2">
-                        {Object.entries(PLATFORM_CONFIG).map(([platKey, platData]) => {
-                          const platPosts = filteredPosts.filter(p => p.platform === platKey);
-                          const likesCount = platPosts.reduce((acc, p) => acc + p.stats.likes, 0);
-                          const maxLikes = Math.max(...Object.keys(PLATFORM_CONFIG).map(k => filteredPosts.filter(p => p.platform === k).reduce((acc, p) => acc + p.stats.likes, 0)), 1);
-                          const pct = (likesCount / maxLikes) * 100;
-                          return (
-                            <div key={platKey} className="space-y-1">
-                              <div className="flex items-center justify-between text-xs font-extrabold text-slate-700">
-                                <span className="flex items-center gap-2">
-                                  <span className={`w-2.5 h-2.5 rounded-full ${platData.bg}`}></span>
-                                  {platData.name}
-                                </span>
-                                <span className="font-mono">{likesCount} likes</span>
+                        {analyticsPlatformKeys.length === 0 ? (
+                          <p className="text-xs text-slate-400 font-semibold py-6 text-center">
+                            {t("No data in this period.", "V tomto období nie sú dáta.", "Ebben az időszakban nincs adat.")}
+                          </p>
+                        ) : (() => {
+                          const totals = analyticsPlatformKeys.map(k => ({
+                            key: k,
+                            likes: analyticsPosts.filter(p => p.platform === k).reduce((acc, p) => acc + (p.stats.likes || 0), 0)
+                          }));
+                          const maxLikes = Math.max(...totals.map(x => x.likes), 1);
+                          return totals.map(({ key, likes }) => {
+                            const platData = getPlatformMeta(key);
+                            return (
+                              <div key={key} className="space-y-1">
+                                <div className="flex items-center justify-between text-xs font-extrabold text-slate-700 gap-2">
+                                  <span className="flex items-center gap-2 min-w-0">
+                                    <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${platData.bg}`}></span>
+                                    <span className="truncate">{platData.name}</span>
+                                  </span>
+                                  <span className="font-mono shrink-0">{likes.toLocaleString()}</span>
+                                </div>
+                                <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                                  <div className={`h-full ${platData.bg} transition-all duration-500`} style={{ width: `${(likes / maxLikes) * 100}%` }}></div>
+                                </div>
                               </div>
-                              <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
-                                <div
-                                  className="h-full bg-gradient-to-r from-rose-500 to-pink-500 transition-all duration-500"
-                                  style={{ width: `${pct}%` }}
-                                ></div>
-                              </div>
-                            </div>
-                          );
-                        })}
+                            );
+                          });
+                        })()}
                       </div>
                     </div>
 
-                    {/* Chart 4: Likes over Time */}
+                    {/* Chart 4: Interactions over Time */}
                     <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4">
-                      <div className="flex items-center justify-between border-b border-slate-150 pb-3">
-                        <div>
+                      <div className="flex items-center justify-between border-b border-slate-150 pb-3 gap-3">
+                        <div className="min-w-0">
                           <h4 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider">
-                            {t("Likes over Time", "Lajky v čase", "Lájkok az időben")}
+                            {t("Interactions over Time", "Interakcie v čase", "Interakciók az időben")}
                           </h4>
-                          <span className="text-[10px] text-slate-400 font-medium">Reaction accrual rate</span>
+                          <span className="text-[10px] text-slate-400 font-medium">
+                            {t("Likes, comments and shares combined", "Lajky, komentáre a zdieľania spolu", "Lájkok, kommentek és megosztások")}
+                          </span>
                         </div>
-                        <TrendingUp className="h-4 w-4 text-emerald-500" />
+                        <TrendingUp className="h-4 w-4 text-indigo-500 shrink-0" />
                       </div>
 
-                      <div className="h-48 flex items-end justify-between gap-2 pt-6 pb-2 px-2">
-                        {[
-                          { date: "Jul 21", val: 12 },
-                          { date: "Jul 22", val: 45 },
-                          { date: "Jul 23", val: 28 },
-                          { date: "Jul 24", val: 89 },
-                          { date: "Jul 25", val: 34 },
-                          { date: "Jul 26", val: 67 },
-                          { date: "Jul 27", val: 52 }
-                        ].map((item, idx) => (
-                          <div key={idx} className="flex-1 flex flex-col items-center gap-2 group">
-                            <span className="text-[10px] font-mono font-bold text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                              {item.val}
-                            </span>
-                            <div className="w-full bg-slate-100 rounded-t-xl overflow-hidden flex items-end h-32">
-                              <div
-                                className="w-full bg-gradient-to-t from-indigo-600 to-sky-400 rounded-t-xl transition-all duration-500 group-hover:brightness-110"
-                                style={{ height: `${(item.val / 89) * 100}%` }}
-                              ></div>
+                      <div className="h-48 flex items-end justify-between gap-1 pt-6 pb-2 overflow-x-auto">
+                        {(() => {
+                          const vals = analyticsDailySeries.map(b => b.likes + b.comments + b.shares);
+                          const max = Math.max(...vals, 1);
+                          return analyticsDailySeries.map((b, idx) => (
+                            <div key={idx} className="flex-1 min-w-[14px] flex flex-col items-center gap-2 group" title={`${b.label}: ${vals[idx]}`}>
+                              <span className="text-[10px] font-mono font-bold text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                {vals[idx]}
+                              </span>
+                              <div className="w-full bg-slate-100 rounded-t-xl overflow-hidden flex items-end h-32">
+                                <div
+                                  className="w-full bg-gradient-to-t from-indigo-600 to-sky-400 rounded-t-xl transition-all duration-500 group-hover:brightness-110"
+                                  style={{ height: `${(vals[idx] / max) * 100}%` }}
+                                ></div>
+                              </div>
+                              <span className="text-[9px] font-bold text-slate-400 uppercase truncate w-full text-center">
+                                {idx % labelEvery === 0 ? b.label : ""}
+                              </span>
                             </div>
-                            <span className="text-[9.5px] font-bold text-slate-400 uppercase">{item.date}</span>
-                          </div>
-                        ))}
+                          ));
+                        })()}
                       </div>
                     </div>
 
                   </div>
 
-                  {/* ENGAGEMENT OVER TIME (INTERACTIVE MULTI-METRIC AREA CHART) */}
+                  {/* ENGAGEMENT OVER TIME — the line paths are generated from the
+                      same buckets. Previously three fixed bezier curves, where the
+                      comments/reach/clicks pills toggled nothing at all. */}
                   <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-6">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-150 pb-4">
                       <div>
@@ -1628,159 +2072,116 @@ const normalizePlatformKey = (raw: string): any => {
                           {t("Engagement Over Time", "Engažovanosť v čase", "Kötődés az időben")}
                         </h3>
                         <p className="text-xs text-slate-500 mt-0.5">
-                          Multi-dimensional cross-network engagement analysis
+                          {t("Toggle a metric to add or remove its curve.", "Prepnutím metriky pridáte alebo odoberiete krivku.", "Kapcsolja be a mutatót a görbe megjelenítéséhez.")}
                         </p>
                       </div>
 
-                      {/* Interactive Metric Pills Legend */}
                       <div className="flex items-center gap-2 flex-wrap text-xs">
-                        {[
-                          { id: "likes", label: `Likes (${analyticsKpis.totalLikes})`, color: "bg-rose-500 text-white" },
-                          { id: "comments", label: `Comments (${analyticsKpis.totalComments})`, color: "bg-blue-500 text-white" },
-                          { id: "shares", label: `Shares (${analyticsKpis.totalShares})`, color: "bg-emerald-500 text-white" },
-                          { id: "impressions", label: `Impressions (${analyticsKpis.totalImpressions})`, color: "bg-indigo-500 text-white" },
-                          { id: "reach", label: `Reach (1.9K)`, color: "bg-purple-500 text-white" },
-                          { id: "clicks", label: `Clicks (${analyticsKpis.totalClicks})`, color: "bg-amber-500 text-white" }
-                        ].map((m) => {
+                        {METRIC_SERIES.map((m) => {
                           const isActive = activeMetrics.includes(m.id);
+                          const total = analyticsDailySeries.reduce((acc, b) => acc + ((b as any)[m.id] as number), 0);
                           return (
                             <button
                               key={m.id}
                               type="button"
                               onClick={() => {
-                                setActiveMetrics(prev => 
+                                setActiveMetrics(prev =>
                                   prev.includes(m.id) ? prev.filter(x => x !== m.id) : [...prev, m.id]
                                 );
                               }}
                               className={`px-3 py-1 rounded-xl text-[10.5px] font-extrabold transition-all cursor-pointer flex items-center gap-1.5 shadow-xs ${
-                                isActive ? m.color : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                                isActive ? m.pill : "bg-slate-100 text-slate-500 hover:bg-slate-200"
                               }`}
                             >
                               {isActive && <Check className="h-3 w-3" />}
-                              {m.label}
+                              {t(m.en, m.sk, m.hu)} ({total.toLocaleString()})
                             </button>
                           );
                         })}
                       </div>
                     </div>
 
-                    {/* Smooth Multi-Line SVG Area Chart */}
                     <div className="relative h-64 w-full pt-4">
                       <svg className="w-full h-full overflow-visible" viewBox="0 0 700 200" preserveAspectRatio="none">
-                        <defs>
-                          <linearGradient id="roseGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#f43f5e" stopOpacity="0.35" />
-                            <stop offset="100%" stopColor="#f43f5e" stopOpacity="0.0" />
-                          </linearGradient>
-                          <linearGradient id="indigoGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#6366f1" stopOpacity="0.3" />
-                            <stop offset="100%" stopColor="#6366f1" stopOpacity="0.0" />
-                          </linearGradient>
-                        </defs>
-
-                        {/* Grid lines */}
                         <line x1="0" y1="40" x2="700" y2="40" stroke="#f1f5f9" strokeDasharray="4 4" />
                         <line x1="0" y1="90" x2="700" y2="90" stroke="#f1f5f9" strokeDasharray="4 4" />
                         <line x1="0" y1="140" x2="700" y2="140" stroke="#f1f5f9" strokeDasharray="4 4" />
 
-                        {/* Line 1: Likes (Rose Curve) */}
-                        {activeMetrics.includes("likes") && (
-                          <>
-                            <path
-                              d="M 0 60 C 150 40, 300 120, 450 110 C 550 100, 650 60, 700 40 L 700 190 L 0 190 Z"
-                              fill="url(#roseGrad)"
-                            />
-                            <path
-                              d="M 0 60 C 150 40, 300 120, 450 110 C 550 100, 650 60, 700 40"
+                        {METRIC_SERIES.filter(m => activeMetrics.includes(m.id)).map(m => {
+                          const vals = analyticsDailySeries.map(b => (b as any)[m.id] as number);
+                          const max = Math.max(...vals, 1);
+                          const step = vals.length > 1 ? 700 / (vals.length - 1) : 0;
+                          const points = vals
+                            .map((v, i) => `${(i * step).toFixed(1)},${(190 - (v / max) * 170).toFixed(1)}`)
+                            .join(" ");
+                          return (
+                            <polyline
+                              key={m.id}
+                              points={points || "0,190"}
                               fill="none"
-                              stroke="#f43f5e"
+                              stroke={m.stroke}
                               strokeWidth="3"
                               strokeLinecap="round"
+                              strokeLinejoin="round"
                             />
-                          </>
-                        )}
-
-                        {/* Line 2: Impressions (Indigo Curve) */}
-                        {activeMetrics.includes("impressions") && (
-                          <>
-                            <path
-                              d="M 0 180 C 120 170, 250 80, 400 170 C 550 170, 650 140, 700 120 L 700 190 L 0 190 Z"
-                              fill="url(#indigoGrad)"
-                            />
-                            <path
-                              d="M 0 180 C 120 170, 250 80, 400 170 C 550 170, 650 140, 700 120"
-                              fill="none"
-                              stroke="#6366f1"
-                              strokeWidth="3"
-                              strokeLinecap="round"
-                            />
-                          </>
-                        )}
-
-                        {/* Line 3: Shares (Emerald Curve) */}
-                        {activeMetrics.includes("shares") && (
-                          <path
-                            d="M 0 130 C 180 120, 320 150, 500 140 C 600 130, 680 110, 700 95"
-                            fill="none"
-                            stroke="#10b981"
-                            strokeWidth="2.5"
-                            strokeDasharray="5 5"
-                          />
-                        )}
+                          );
+                        })}
                       </svg>
 
-                      {/* X-Axis Date Labels */}
                       <div className="flex justify-between text-[10px] font-bold text-slate-400 mt-2 px-1">
-                        <span>Jun 28</span>
-                        <span>Jul 5</span>
-                        <span>Jul 12</span>
-                        <span>Jul 19</span>
-                        <span>Jul 27</span>
+                        <span>{analyticsDailySeries[0]?.label}</span>
+                        <span>{analyticsDailySeries[analyticsDailySeries.length - 1]?.label}</span>
                       </div>
                     </div>
+                    <p className="text-[10px] text-slate-400 font-semibold">
+                      {t(
+                        "Each curve is scaled to its own maximum so metrics of different magnitude stay comparable.",
+                        "Každá krivka je škálovaná na vlastné maximum, aby boli metriky rôznych rádov porovnateľné.",
+                        "Minden görbe a saját maximumára van skálázva."
+                      )}
+                    </p>
                   </div>
 
-                  {/* BEST TIME TO POST HEATMAP & FOLLOWER DEMOGRAPHICS */}
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                    
-                    {/* Best Time to Post Heatmap (7 Cols) */}
-                    <div className="lg:col-span-7 glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4">
-                      <div className="flex items-center justify-between border-b border-slate-150 pb-3">
-                        <div>
-                          <h4 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                            <Clock className="h-4 w-4 text-emerald-500" />
-                            {t("Best Time to Post", "Najlepší čas na publikovanie", "Legjobb közzétételi idő")}
-                          </h4>
-                          <span className="text-[10px] text-slate-400 font-medium">Green density shows peak audience engagement hours</span>
-                        </div>
-                        <span className="text-[10px] font-extrabold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-xl">
-                          Wed 10 AM & Thu 2 PM
+                  {/* BEST TIME TO POST — built from this workspace's own publish
+                      times. It used to shade cells with (dayIndex + hourIndex) % 3. */}
+                  <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-150 pb-3 gap-3">
+                      <div className="min-w-0">
+                        <h4 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                          <Clock className="h-4 w-4 text-emerald-500" />
+                          {t("Best Time to Post", "Najlepší čas na publikovanie", "Legjobb közzétételi idő")}
+                        </h4>
+                        <span className="text-[10px] text-slate-400 font-medium">
+                          {t("Interactions collected per weekday and 2-hour block", "Interakcie podľa dňa v týždni a 2-hodinových blokov", "Interakciók hétköznap és 2 órás blokk szerint")}
                         </span>
                       </div>
+                      {postingHeatmap.bestLabel && (
+                        <span className="text-[10px] font-extrabold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-xl shrink-0">
+                          {postingHeatmap.bestLabel}
+                        </span>
+                      )}
+                    </div>
 
-                      {/* 7 Days x 12 Hour Time Blocks Heatmap Grid */}
-                      <div className="space-y-1.5 pt-2">
+                    <div className="overflow-x-auto">
+                      <div className="min-w-[420px] space-y-1.5 pt-2">
                         {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day, dIdx) => (
                           <div key={day} className="flex items-center gap-2">
-                            <span className="w-8 text-[10px] font-black text-slate-400 uppercase">{day}</span>
+                            <span className="w-8 text-[10px] font-black text-slate-400 uppercase shrink-0">{day}</span>
                             <div className="flex-1 grid grid-cols-12 gap-1">
-                              {Array.from({ length: 12 }).map((_, hIdx) => {
-                                const isPeak = (dIdx === 2 && (hIdx === 4 || hIdx === 5)) || (dIdx === 3 && hIdx === 6);
-                                const isMed = (dIdx === 1 && hIdx === 4) || (dIdx === 4 && hIdx === 5);
-                                const isLow = (dIdx + hIdx) % 3 === 0;
+                              {postingHeatmap.grid[dIdx].map((cell, hIdx) => {
+                                const intensity = postingHeatmap.max > 0 ? cell.engagement / postingHeatmap.max : 0;
+                                const cls = cell.posts === 0
+                                  ? "bg-slate-100"
+                                  : intensity > 0.66
+                                  ? "bg-emerald-500 shadow-sm shadow-emerald-500/30"
+                                  : intensity > 0.33
+                                  ? "bg-emerald-300"
+                                  : "bg-emerald-100";
                                 return (
                                   <div
                                     key={hIdx}
-                                    title={`${day} ${hIdx * 2}:00 - ${isPeak ? 'High Engagement' : isMed ? 'Medium' : 'Low'}`}
-                                    className={`h-5 rounded-lg transition-all hover:scale-110 cursor-pointer ${
-                                      isPeak
-                                        ? "bg-emerald-500 shadow-sm shadow-emerald-500/30"
-                                        : isMed
-                                        ? "bg-emerald-300"
-                                        : isLow
-                                        ? "bg-emerald-100"
-                                        : "bg-slate-100"
-                                    }`}
+                                    title={`${day} ${String(hIdx * 2).padStart(2, "0")}:00 - ${cell.posts} / ${cell.engagement}`}
+                                    className={`h-5 rounded-lg transition-all hover:scale-110 ${cls}`}
                                   ></div>
                                 );
                               })}
@@ -1788,72 +2189,23 @@ const normalizePlatformKey = (raw: string): any => {
                           </div>
                         ))}
                       </div>
-
-                      <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 pt-2 border-t border-slate-150">
-                        <span>12 AM</span>
-                        <span>6 AM</span>
-                        <span>12 PM</span>
-                        <span>6 PM</span>
-                        <div className="flex items-center gap-1">
-                          <span>Less</span>
-                          <span className="w-2.5 h-2.5 rounded-sm bg-slate-100"></span>
-                          <span className="w-2.5 h-2.5 rounded-sm bg-emerald-100"></span>
-                          <span className="w-2.5 h-2.5 rounded-sm bg-emerald-300"></span>
-                          <span className="w-2.5 h-2.5 rounded-sm bg-emerald-500"></span>
-                          <span>More</span>
-                        </div>
-                      </div>
                     </div>
 
-                    {/* Follower History / Demographics (5 Cols) */}
-                    <div className="lg:col-span-5 glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4 flex flex-col justify-between">
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between border-b border-slate-150 pb-3">
-                          <h4 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                            <Users className="h-4 w-4 text-indigo-500" />
-                            {t("Audience Demographics", "Demografia publika", "Közönség demográfia")}
-                          </h4>
-                          <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-lg">1,420 Followers</span>
-                        </div>
-
-                        <div className="space-y-2.5 pt-1">
-                          <div className="space-y-1">
-                            <div className="flex items-center justify-between text-xs font-extrabold text-slate-700">
-                              <span>Slovakia & Czech Rep.</span>
-                              <span className="font-mono text-indigo-600">62%</span>
-                            </div>
-                            <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                              <div className="h-full bg-indigo-600 rounded-full" style={{ width: "62%" }}></div>
-                            </div>
-                          </div>
-
-                          <div className="space-y-1">
-                            <div className="flex items-center justify-between text-xs font-extrabold text-slate-700">
-                              <span>Germany & Austria</span>
-                              <span className="font-mono text-purple-600">24%</span>
-                            </div>
-                            <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                              <div className="h-full bg-purple-600 rounded-full" style={{ width: "24%" }}></div>
-                            </div>
-                          </div>
-
-                          <div className="space-y-1">
-                            <div className="flex items-center justify-between text-xs font-extrabold text-slate-700">
-                              <span>United States & UK</span>
-                              <span className="font-mono text-rose-500">14%</span>
-                            </div>
-                            <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                              <div className="h-full bg-rose-500 rounded-full" style={{ width: "14%" }}></div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-[11px] text-slate-600 font-medium">
-                        💡 <strong>Growth Insight:</strong> B2B audiences engage 3.4x higher on LinkedIn & Facebook during weekday business hours.
+                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 pt-2 border-t border-slate-150 gap-3">
+                      <span className="truncate">
+                        {postingHeatmap.max === 0
+                          ? t("No published posts in this period yet.", "V tomto období zatiaľ nie sú publikované príspevky.", "Ebben az időszakban még nincs közzétett bejegyzés.")
+                          : t("00:00 to 24:00 in 2-hour blocks", "00:00 až 24:00 v 2-hodinových blokoch", "00:00 - 24:00 két órás blokkokban")}
+                      </span>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <span>{t("Less", "Menej", "Kevesebb")}</span>
+                        <span className="w-2.5 h-2.5 rounded-sm bg-slate-100"></span>
+                        <span className="w-2.5 h-2.5 rounded-sm bg-emerald-100"></span>
+                        <span className="w-2.5 h-2.5 rounded-sm bg-emerald-300"></span>
+                        <span className="w-2.5 h-2.5 rounded-sm bg-emerald-500"></span>
+                        <span>{t("More", "Viac", "Több")}</span>
                       </div>
                     </div>
-
                   </div>
 
                   {/* TABULAR BREAKDOWN 1: PLATFORM BREAKDOWN TABLE */}
@@ -1864,7 +2216,7 @@ const normalizePlatformKey = (raw: string): any => {
                         {t("Platform Breakdown Table", "Tabuľka podľa platforiem", "Platform bontási táblázat")}
                       </h3>
                       <span className="text-[10.5px] font-mono font-bold text-slate-500">
-                        {Object.keys(PLATFORM_CONFIG).length} connected channels
+                        {analyticsPlatformKeys.length} {t("channels with activity", "sietí s aktivitou", "aktív csatorna")}
                       </span>
                     </div>
 
@@ -1877,22 +2229,22 @@ const normalizePlatformKey = (raw: string): any => {
                           <th className="py-2.5 px-3 text-center">Comments</th>
                           <th className="py-2.5 px-3 text-center">Shares</th>
                           <th className="py-2.5 px-3 text-center">Clicks</th>
-                          <th className="py-2.5 px-3 text-center">Views</th>
                           <th className="py-2.5 px-3 text-center">Impressions</th>
-                          <th className="py-2.5 px-3 text-center">Reach</th>
                           <th className="py-2.5 px-3 text-right">ER %</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-150 text-xs font-semibold text-slate-800">
-                        {Object.entries(PLATFORM_CONFIG).map(([platKey, platData]) => {
-                          const platPosts = filteredPosts.filter(p => p.platform === platKey);
+                        {analyticsPlatformKeys.map((platKey) => {
+                          const platData = getPlatformMeta(platKey);
+                          const platPosts = analyticsPosts.filter(p => p.platform === platKey);
                           const likes = platPosts.reduce((acc, p) => acc + p.stats.likes, 0);
                           const comments = platPosts.reduce((acc, p) => acc + p.stats.comments, 0);
                           const shares = platPosts.reduce((acc, p) => acc + p.stats.shares, 0);
                           const clicks = platPosts.reduce((acc, p) => acc + p.stats.clicks, 0);
                           const impressions = platPosts.reduce((acc, p) => acc + p.stats.impressions, 0);
-                          const reach = (impressions * 0.65).toFixed(0);
-                          const er = platPosts.length > 0 ? (platPosts.reduce((acc, p) => acc + p.stats.engagementRate, 0) / platPosts.length).toFixed(1) : "0.0";
+                          // Computed from what the platforms actually reported rather
+                          // than averaging a per-post rate that is 0 until insights land.
+                          const er = impressions > 0 ? (((likes + comments + shares) / impressions) * 100).toFixed(1) : "0.0";
 
                           return (
                             <tr key={platKey} className="hover:bg-slate-50/80 transition-colors">
@@ -1907,9 +2259,7 @@ const normalizePlatformKey = (raw: string): any => {
                               <td className="py-3 px-3 text-center font-mono text-blue-600">{comments}</td>
                               <td className="py-3 px-3 text-center font-mono text-emerald-600">{shares}</td>
                               <td className="py-3 px-3 text-center font-mono text-amber-600">{clicks}</td>
-                              <td className="py-3 px-3 text-center font-mono">{impressions}</td>
-                              <td className="py-3 px-3 text-center font-mono text-indigo-600 font-bold">{impressions}</td>
-                              <td className="py-3 px-3 text-center font-mono text-slate-600">{reach}</td>
+                              <td className="py-3 px-3 text-center font-mono text-indigo-600 font-bold">{impressions.toLocaleString()}</td>
                               <td className="py-3 px-3 text-right font-mono">
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
                                   {er}%
@@ -1930,7 +2280,7 @@ const normalizePlatformKey = (raw: string): any => {
                         {t("Top Performing Posts Ranking", "Rebríček najlepších príspevkov", "Legjobban teljesítő bejegyzések rangsora")}
                       </h3>
                       <span className="text-[10.5px] font-mono font-bold text-slate-500">
-                        Sorted by highest engagement rate
+                        {t("Sorted by highest engagement rate", "Zoradené podľa najvyššej angažovanosti", "A legmagasabb kötődési arány szerint rendezve")}
                       </span>
                     </div>
 
@@ -1943,13 +2293,12 @@ const normalizePlatformKey = (raw: string): any => {
                           <th className="py-2.5 px-3 text-center">Shares</th>
                           <th className="py-2.5 px-3 text-center">Clicks</th>
                           <th className="py-2.5 px-3 text-center">Impressions</th>
-                          <th className="py-2.5 px-3 text-center">Reach</th>
                           <th className="py-2.5 px-3 text-right">ER %</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-150 text-xs font-semibold text-slate-800">
-                        {filteredPosts.map((post, idx) => {
-                          const platData = PLATFORM_CONFIG[post.platform] || PLATFORM_CONFIG.twitter;
+                        {rankedPosts.map((post, idx) => {
+                          const platData = getPlatformMeta(post.platform);
                           return (
                             <tr
                               key={post.id}
@@ -1975,8 +2324,7 @@ const normalizePlatformKey = (raw: string): any => {
                               <td className="py-3 px-3 text-center font-mono text-blue-600">{post.stats.comments}</td>
                               <td className="py-3 px-3 text-center font-mono text-emerald-600">{post.stats.shares}</td>
                               <td className="py-3 px-3 text-center font-mono text-amber-600">{post.stats.clicks}</td>
-                              <td className="py-3 px-3 text-center font-mono text-indigo-600 font-bold">{post.stats.impressions}</td>
-                              <td className="py-3 px-3 text-center font-mono text-slate-600">{(post.stats.impressions * 0.7).toFixed(0)}</td>
+                              <td className="py-3 px-3 text-center font-mono text-indigo-600 font-bold">{post.stats.impressions.toLocaleString()}</td>
                               <td className="py-3 px-3 text-right font-mono">
                                 <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-rose-50 text-rose-700 border border-rose-200">
                                   {post.stats.engagementRate}%
@@ -1989,99 +2337,27 @@ const normalizePlatformKey = (raw: string): any => {
                     </table>
                   </div>
 
-                  {/* ADVANCED INSIGHTS: POSTING FREQUENCY VS ENGAGEMENT & ACCUMULATION CURVE */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Insight 1: Posting Frequency vs Engagement */}
-                    <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4">
-                      <div className="flex items-center justify-between border-b border-slate-150 pb-3">
-                        <h4 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider">
-                          {t("Posting Frequency vs Engagement", "Frekvencia príspevkov vs angažovanosť", "Közzétételi gyakoriság vs elérés")}
-                        </h4>
-                        <span className="text-[10px] font-bold text-sky-600 bg-sky-50 px-2 py-0.5 rounded-lg">Optimal: 1.2/wk</span>
-                      </div>
-
-                      <div className="h-36 relative w-full pt-2">
-                        <svg className="w-full h-full" viewBox="0 0 300 100" preserveAspectRatio="none">
-                          <line x1="0" y1="20" x2="300" y2="20" stroke="#f1f5f9" strokeDasharray="3 3" />
-                          <line x1="0" y1="60" x2="300" y2="60" stroke="#f1f5f9" strokeDasharray="3 3" />
-                          <path
-                            d="M 0 20 C 100 30, 200 50, 300 65"
-                            fill="none"
-                            stroke="#0284c7"
-                            strokeWidth="3"
-                            strokeLinecap="round"
-                          />
-                        </svg>
-                      </div>
-
-                      <p className="text-[11px] text-slate-500 font-medium">
-                        📍 <strong>Optimal cadence per platform:</strong> Facebook 1.2/wk (+14% ER), LinkedIn 2.4/wk (+22% ER).
-                      </p>
-                    </div>
-
-                    {/* Insight 2: Engagement Accumulation Curve */}
-                    <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4">
-                      <div className="flex items-center justify-between border-b border-slate-150 pb-3">
-                        <h4 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider">
-                          {t("Engagement Accumulation", "Akumulácia angažovanosti", "Kötődés felhalmozódás")}
-                        </h4>
-                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-lg">50% in 2.4h</span>
-                      </div>
-
-                      <div className="h-36 relative w-full pt-2">
-                        <svg className="w-full h-full" viewBox="0 0 300 100" preserveAspectRatio="none">
-                          <path
-                            d="M 0 90 Q 60 10, 300 10 L 300 90 Z"
-                            fill="#e2e8f0"
-                            opacity="0.5"
-                          />
-                          <path
-                            d="M 0 90 Q 60 10, 300 10"
-                            fill="none"
-                            stroke="#0f172a"
-                            strokeWidth="3"
-                          />
-                        </svg>
-                      </div>
-
-                      <p className="text-[11px] text-slate-500 font-medium">
-                        📍 <strong>Half of engagement in 2.4h</strong>, 80% within 6.4h after initial publishing tick.
-                      </p>
-                    </div>
-                  </div>
                 </>
               ) : (
-                /* INBOX ANALYTICS SUB-TAB CONTENT */
+                /* INBOX ANALYTICS SUB-TAB — response time, sentiment and ticket
+                   counts need Zernio's inbox endpoints, which this integration does
+                   not read yet. It previously showed 12.4 min / 94% / 148 tickets
+                   as if they were measured. */
                 <div className="glass-panel p-8 rounded-3xl border border-white/60 bg-white/95 shadow-glass text-center space-y-4">
                   <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-600 flex items-center justify-center mx-auto shadow-sm">
                     <MessageSquare className="h-6 w-6" />
                   </div>
                   <div className="max-w-md mx-auto space-y-2">
                     <h3 className="text-sm font-heading font-black text-slate-900 uppercase tracking-wider">
-                      {t("Inbox Response & Sentiment Analytics", "Analytika doručenej pošty a sentimentu", "Bejövő üzenetek és hangulatelemzés")}
+                      {t("Inbox Analytics", "Analytika doručenej pošty", "Bejövő üzenetek analitikája")}
                     </h3>
                     <p className="text-xs text-slate-500 leading-relaxed">
                       {t(
-                        "Track response times, audience satisfaction, ticket resolution rates, and AI conversation sentiment across all connected social channels.",
-                        "Sledujte čas odozvy, spokojnosť publika a rýchlosť riešenia správ na všetkých sieťach.",
-                        "Kövesse nyomon a válaszidőt és a közönség elégedettségét minden csatornán."
+                        "Response times, sentiment and resolution rates are not part of this integration yet. Comments on individual posts are available in the post detail.",
+                        "Časy odozvy, sentiment a miera vyriešenia zatiaľ nie sú súčasťou tejto integrácie. Komentáre k jednotlivým príspevkom nájdete v detaile príspevku.",
+                        "A válaszidők, a hangulat és a megoldási arány még nem része ennek az integrációnak. Az egyes bejegyzések kommentjei a bejegyzés részleteinél érhetők el."
                       )}
                     </p>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-xl mx-auto pt-4 text-center">
-                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
-                      <span className="text-[9.5px] font-black text-slate-400 uppercase">Avg Response Time</span>
-                      <span className="text-lg font-black text-slate-900 font-mono block mt-1">12.4 min</span>
-                    </div>
-                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
-                      <span className="text-[9.5px] font-black text-emerald-600 uppercase">Sentiment Score</span>
-                      <span className="text-lg font-black text-emerald-600 font-mono block mt-1">94% Positive</span>
-                    </div>
-                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
-                      <span className="text-[9.5px] font-black text-indigo-600 uppercase">Resolved Inbound</span>
-                      <span className="text-lg font-black text-indigo-600 font-mono block mt-1">148 tickets</span>
-                    </div>
                   </div>
                 </div>
               )}
@@ -2093,16 +2369,16 @@ const normalizePlatformKey = (raw: string): any => {
   )}
 
       {/* Right Slideout Drawer for Calendar Day Feed */}
-      {selectedCalendarDay && (
+      {selectedCalendarDay && createPortal(
         <>
           {/* Backdrop */}
           <div
             onClick={() => setSelectedCalendarDay(null)}
-            className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-[99] animate-fade-in"
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-[100000] animate-fade-in"
           />
 
           {/* Drawer Panel */}
-          <div className="fixed inset-y-0 right-0 max-w-lg w-full bg-slate-100 shadow-2xl z-[100] border-l border-slate-200 flex flex-col justify-between animate-in slide-in-from-right duration-300 select-none">
+          <div className="fixed inset-y-0 right-0 max-w-lg w-full bg-slate-100 shadow-2xl z-[100001] border-l border-slate-200 flex flex-col justify-between animate-in slide-in-from-right duration-300 select-none">
             {/* Drawer Header */}
             <div className="p-6 bg-white border-b border-slate-200 flex items-center justify-between shrink-0 shadow-xs">
               <div>
@@ -2120,6 +2396,8 @@ const normalizePlatformKey = (raw: string): any => {
               <button
                 type="button"
                 onClick={() => setSelectedCalendarDay(null)}
+                aria-label={t("Close", "Zavrieť", "Bezárás")}
+                title={t("Close", "Zavrieť", "Bezárás")}
                 className="p-2 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-900 transition-all cursor-pointer"
               >
                 <X className="h-5 w-5" />
@@ -2131,7 +2409,7 @@ const normalizePlatformKey = (raw: string): any => {
               {selectedCalendarDay.posts.map(post => {
                 const rawDate = post.publishedAt || post.scheduledFor || new Date().toISOString();
                 const formattedTime = new Date(rawDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                const platMeta = PLATFORM_CONFIG[post.platform] || PLATFORM_CONFIG.twitter;
+                const platMeta = getPlatformMeta(post.platform);
 
                 // 1. TWITTER / X
                 if (post.platform === "twitter") {
@@ -2142,16 +2420,16 @@ const normalizePlatformKey = (raw: string): any => {
                       className="bg-slate-950 text-white rounded-3xl p-5 border border-slate-800 shadow-xl space-y-3.5 font-sans cursor-pointer hover:ring-2 hover:ring-sky-400/60 transition-all"
                     >
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-slate-900 text-white font-extrabold flex items-center justify-center text-sm border border-slate-700">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-10 h-10 rounded-full bg-slate-900 text-white font-extrabold flex items-center justify-center text-sm border border-slate-700 shrink-0">
                             𝕏
                           </div>
                           <div>
-                            <div className="flex items-center gap-1 font-bold text-sm text-white">
-                              <span>{post.accountName}</span>
+                            <div className="flex items-center gap-1 font-bold text-sm text-white min-w-0">
+                              <span className="truncate">{post.accountName}</span>
                               <CheckCircle2 className="h-3.5 w-3.5 text-sky-400 fill-sky-400" />
                             </div>
-                            <span className="text-xs text-slate-400">{post.accountHandle} • {formattedTime}</span>
+                            <span className="text-xs text-slate-400 truncate block">{post.accountHandle} • {formattedTime}</span>
                           </div>
                         </div>
                         <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-slate-800 text-slate-300 border border-slate-700">
@@ -2159,7 +2437,7 @@ const normalizePlatformKey = (raw: string): any => {
                         </span>
                       </div>
 
-                      <p className="text-xs font-normal text-slate-100 leading-relaxed whitespace-pre-wrap">
+                      <p className="text-xs font-normal text-slate-100 leading-relaxed whitespace-pre-wrap break-words">
                         {post.content}
                       </p>
 
@@ -2222,10 +2500,10 @@ const normalizePlatformKey = (raw: string): any => {
                         </div>
 
                         <div className="text-[11px] font-extrabold text-slate-900">
-                          Liked by ccrm_team and {post.stats.likes} others
+                          {post.stats.likes.toLocaleString()} {t("likes", "lajkov", "lájk")}
                         </div>
 
-                        <p className="text-xs text-slate-800 leading-snug">
+                        <p className="text-xs text-slate-800 leading-snug break-words">
                           <strong className="font-black text-slate-900 mr-1.5">{post.accountHandle}</strong>
                           {post.content}
                         </p>
@@ -2244,12 +2522,12 @@ const normalizePlatformKey = (raw: string): any => {
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-blue-700 text-white font-black flex items-center justify-center text-sm shadow-sm">
+                          <div className="w-10 h-10 rounded-xl bg-blue-700 text-white font-black flex items-center justify-center text-sm shadow-sm shrink-0">
                             in
                           </div>
                           <div>
-                            <span className="text-xs font-black text-slate-900 block">{post.accountName} • 1st</span>
-                            <span className="text-[10px] text-slate-400 block">CRM Automation Engine • {formattedTime}</span>
+                            <span className="text-xs font-black text-slate-900 block truncate">{post.accountName}</span>
+                            <span className="text-[10px] text-slate-400 block truncate">{post.accountHandle || getPlatformMeta(post.platform).name} • {formattedTime}</span>
                           </div>
                         </div>
                         <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200">
@@ -2257,7 +2535,7 @@ const normalizePlatformKey = (raw: string): any => {
                         </span>
                       </div>
 
-                      <p className="text-xs text-slate-800 leading-relaxed font-normal whitespace-pre-wrap">
+                      <p className="text-xs text-slate-800 leading-relaxed font-normal whitespace-pre-wrap break-words">
                         {post.content}
                       </p>
 
@@ -2274,12 +2552,6 @@ const normalizePlatformKey = (raw: string): any => {
                         <span>{post.stats.comments} comments</span>
                       </div>
 
-                      <div className="pt-2 border-t border-slate-150 grid grid-cols-4 gap-1 text-center text-[10px] font-bold text-slate-600">
-                        <button className="py-1 rounded-lg hover:bg-slate-100 flex items-center justify-center gap-1"><ThumbsUp className="h-3 w-3" /> Like</button>
-                        <button className="py-1 rounded-lg hover:bg-slate-100 flex items-center justify-center gap-1"><MessageSquare className="h-3 w-3" /> Comment</button>
-                        <button className="py-1 rounded-lg hover:bg-slate-100 flex items-center justify-center gap-1"><Repeat className="h-3 w-3" /> Repost</button>
-                        <button className="py-1 rounded-lg hover:bg-slate-100 flex items-center justify-center gap-1"><Send className="h-3 w-3" /> Send</button>
-                      </div>
                     </div>
                   );
                 }
@@ -2308,7 +2580,7 @@ const normalizePlatformKey = (raw: string): any => {
                       </span>
                     </div>
 
-                    <p className="text-xs font-semibold text-slate-800 leading-relaxed whitespace-pre-wrap">
+                    <p className="text-xs font-semibold text-slate-800 leading-relaxed whitespace-pre-wrap break-words">
                       {post.content}
                     </p>
 
@@ -2352,7 +2624,8 @@ const normalizePlatformKey = (raw: string): any => {
               </button>
             </div>
           </div>
-        </>
+        </>,
+        document.body
       )}
     </div>
   );

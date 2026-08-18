@@ -716,7 +716,7 @@ HTACCESS;
             'smtpPassword', 'exchClientSecret', 'exchPassword',
             'metaAppSecret', 'metaAccessToken', 'googleClientSecret',
             'googleRefreshToken', 'googleDevToken', 'mariaDbPassword',
-            'qdrantApiKey', 'pineconeApiKey',
+            'qdrantApiKey', 'pineconeApiKey', 'zernioApiKey',
         ];
     }
 
