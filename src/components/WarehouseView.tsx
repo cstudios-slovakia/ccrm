@@ -2253,24 +2253,24 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             {/* TAB 1: STATISTICS & PRICING */}
             {productDetailTab === "statistics" && (
               <div className="space-y-6">
-                {/* PROFIT MARGIN & FINANCIAL PERFORMANCE CALCULATOR */}
+                {/* CARD 1: DEDICATED PROFITABILITY CALCULATOR */}
                 <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-5">
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-2">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
-                        <TrendingUp className="w-4 h-4" />
+                      <div className="w-9 h-9 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
+                        <TrendingUp className="w-5 h-5" />
                       </div>
                       <div>
                         <h3 className="font-bold text-slate-900 text-base">
-                          {t("Profitability & Margin Analysis", "Analýza ziskovosti a obchodná marža", "Jövedelmezőség és árrés elemzés")}
+                          {t("Profitability Calculator", "Kalkulátor ziskovosti a marže", "Jövedelmezőségi kalkulátor")}
                         </h3>
                         <p className="text-[11px] text-slate-400">
-                          {t("Real-time margin calculation based on suggested sale price and weighted purchase cost", "Výpočet marže a ziskovosti na základe predajnej ceny a váženého nákupného priemeru", "Árrés és haszon számítása az eladási ár és a WAP alapján")}
+                          {t("Real-time margin, markup, and unit gross profit analysis", "Výpočet marže, cenovej prirážky a hrubého zisku na jednotku", "Árrés, árréskulcs és egységhaszon valós idejű számítása")}
                         </p>
                       </div>
                     </div>
 
-                    <span className={`px-3 py-1 rounded-full text-xs font-black ${
+                    <span className={`self-start sm:self-center px-3 py-1 rounded-full text-xs font-black ${
                       marginPct >= 40 
                         ? "bg-emerald-50 text-emerald-700 border border-emerald-200" 
                         : marginPct >= 20 
@@ -2281,7 +2281,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     </span>
                   </div>
 
-                  {/* LIVE MARGIN & PROFITABILITY CARDS */}
+                  {/* 3 LIVE PROFITABILITY METRIC CARDS */}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     {/* Metric 1: Gross Profit */}
                     <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-100">
@@ -2351,6 +2351,51 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       <span className="flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-emerald-500" />
                         {t("Gross Profit", "Zisk", "Haszon")}: <span className="font-bold text-emerald-700">+{formatCurrency(unitProfit, systemLanguage, systemCurrency)}</span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* CARD 2: REVENUE POTENTIAL & INVENTORY VALUE PROJECTION */}
+                <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-2xl bg-blue-50 text-blue-900 flex items-center justify-center font-bold">
+                        <BarChart3 className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-slate-900 text-base">
+                          {t("Inventory Revenue Potential", "Potenciál tržieb a výnosov zásoby", "Készletbevételi potenciál")}
+                        </h3>
+                        <p className="text-[11px] text-slate-400">
+                          {t("Projected total revenue and gross profit if all current stock is sold at suggested price", "Predpokladané tržby a hrubý zisk pri úplnom odpredaji zásob za predajnú cenu", "Várható bevétel és haszon a teljes készlet eladásakor")}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/70">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                        {t("Total Potential Revenue", "Celkové potenciálne tržby", "Összes várható bevétel")}
+                      </span>
+                      <div className="text-xl font-black text-slate-900 font-mono">
+                        {formatCurrency(totalStock * itemForm.defaultSellPrice, systemLanguage, systemCurrency)}
+                      </div>
+                      <span className="text-[10px] text-slate-400 mt-1 block">
+                        {totalStock} {itemForm.unit} × {formatCurrency(itemForm.defaultSellPrice, systemLanguage, systemCurrency)}
+                      </span>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-emerald-50/60 border border-emerald-100">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 block mb-1">
+                        {t("Total Potential Gross Profit", "Celkový očakávaný zisk", "Várható bruttó haszon")}
+                      </span>
+                      <div className="text-xl font-black text-emerald-900 font-mono">
+                        +{formatCurrency(totalStock * unitProfit, systemLanguage, systemCurrency)}
+                      </div>
+                      <span className="text-[10px] text-emerald-700 mt-1 block">
+                        {t("Net of average purchase cost", "Po odpočítaní nákupných nákladov", "Beszerzés levonása után")}
                       </span>
                     </div>
                   </div>
