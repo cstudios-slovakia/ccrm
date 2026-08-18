@@ -1,1 +1,1 @@
-export const VERSION = "1.8.5-Imbe";
+export const VERSION = "1.8.6-Imbe";

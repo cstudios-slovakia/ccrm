@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import {
   Package,
   Boxes,
@@ -37,7 +37,9 @@ import {
   Tag,
   Upload,
   Camera,
-  Loader2
+  Loader2,
+  Lock,
+  Unlock
 } from "lucide-react";
 import { formatMoney } from "../utils/currency";
 import type { Language } from "../utils/translations";
@@ -148,6 +150,13 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   // Product Image Upload State
   const [isImageUploading, setIsImageUploading] = useState(false);
   const [imageUploadError, setImageUploadError] = useState<string | null>(null);
+
+  // Card Lock State (Hold 1s to unlock fixed product data)
+  const [isProductCardLocked, setIsProductCardLocked] = useState(true);
+  const [lockHoldProgress, setLockHoldProgress] = useState(0);
+  const [isHoldingLock, setIsHoldingLock] = useState(false);
+  const holdTimerRef = useRef<any>(null);
+  const holdIntervalRef = useRef<any>(null);
 
   // Form states for Product Modal
   const [itemForm, setItemForm] = useState<{
@@ -492,6 +501,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       avgPurchasePrice: 0,
       description: ""
     });
+    setIsProductCardLocked(false);
+    setIsCategoryDropdownOpen(false);
+    setCategorySearchQuery("");
     setSelectedProductDetailId("new");
   };
 
@@ -512,6 +524,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       avgPurchasePrice: item.avgPurchasePrice,
       description: item.description || ""
     });
+    setIsProductCardLocked(true);
+    setIsCategoryDropdownOpen(false);
+    setCategorySearchQuery("");
     setSelectedProductDetailId(item.id);
   };
 
@@ -555,6 +570,47 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     } finally {
       setIsImageUploading(false);
     }
+  };
+
+  const startHoldToUnlock = () => {
+    if (!isProductCardLocked) return;
+    setIsHoldingLock(true);
+    setLockHoldProgress(0);
+
+    const startTime = Date.now();
+    const duration = 1000;
+
+    if (holdIntervalRef.current) clearInterval(holdIntervalRef.current);
+    if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+
+    holdIntervalRef.current = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(100, (elapsed / duration) * 100);
+      setLockHoldProgress(progress);
+    }, 20);
+
+    holdTimerRef.current = setTimeout(() => {
+      setIsProductCardLocked(false);
+      setIsHoldingLock(false);
+      setLockHoldProgress(0);
+      if (holdIntervalRef.current) clearInterval(holdIntervalRef.current);
+      if (typeof (window as any).showToast === "function") {
+        (window as any).showToast(t("Product details unlocked for editing.", "Údaje tovaru boli odomknuté na úpravu.", "A termékadatok feloldva szerkesztésre."));
+      }
+    }, duration);
+  };
+
+  const cancelHoldToUnlock = () => {
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+    if (holdIntervalRef.current) {
+      clearInterval(holdIntervalRef.current);
+      holdIntervalRef.current = null;
+    }
+    setIsHoldingLock(false);
+    setLockHoldProgress(0);
   };
 
   const handleDeleteItem = (itemId: string) => {
@@ -1190,14 +1246,64 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             {/* CARD: FIXED PRODUCT SPECIFICATIONS */}
             <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
               
+              {/* LOCK / UNLOCK BAR */}
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  <Package className="w-4 h-4 text-blue-900" />
+                  <span>{t("Fixed Product Data", "Pevné údaje tovaru", "Fix termékadatok")}</span>
+                </div>
+
+                {isProductCardLocked ? (
+                  <button
+                    type="button"
+                    onMouseDown={startHoldToUnlock}
+                    onMouseUp={cancelHoldToUnlock}
+                    onMouseLeave={cancelHoldToUnlock}
+                    onTouchStart={startHoldToUnlock}
+                    onTouchEnd={cancelHoldToUnlock}
+                    className={`relative overflow-hidden px-3 py-1.5 rounded-xl border text-xs font-bold transition select-none flex items-center gap-1.5 ${
+                      isHoldingLock 
+                        ? "bg-amber-100 border-amber-300 text-amber-900 scale-95 shadow-inner" 
+                        : "bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700 cursor-pointer"
+                    }`}
+                    title={t("Hold for 1 second to unlock fixed data", "Podržte 1 sekundu na odomknutie", "Tartsa nyomva 1 másodpercig a feloldáshoz")}
+                  >
+                    {isHoldingLock && (
+                      <div 
+                        className="absolute left-0 top-0 bottom-0 bg-amber-400/40 transition-all duration-75"
+                        style={{ width: `${lockHoldProgress}%` }}
+                      />
+                    )}
+                    <Lock className="w-3.5 h-3.5 text-amber-600 relative z-10" />
+                    <span className="relative z-10 text-[11px] font-bold">
+                      {isHoldingLock ? `${Math.round(lockHoldProgress)}%` : t("Locked (Hold 1s)", "Zamknuté (Držte 1s)", "Zárolva (Tartsa 1s)")}
+                    </span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsProductCardLocked(true)}
+                    className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                    title={t("Click to lock fixed data", "Kliknite pre zamknutie údajov", "Kattintson a zároláshoz")}
+                  >
+                    <Unlock className="w-3.5 h-3.5 text-emerald-600" />
+                    <span className="text-[11px] font-bold">{t("Unlocked", "Odomknuté", "Feloldva")}</span>
+                  </button>
+                )}
+              </div>
+
               {/* TOP HEADER: SMALL IMAGE (WITH UPLOAD) ON LEFT, NAME ON RIGHT (WEBSHOP STYLE) */}
               <div className="flex items-start gap-3 pb-3 border-b border-slate-100">
                 {/* Small thumbnail with upload trigger on the left */}
                 <div className="relative group shrink-0">
                   <div 
-                    onClick={() => document.getElementById("product-image-upload-input")?.click()}
-                    className="w-20 h-20 rounded-2xl overflow-hidden bg-slate-100 border-2 border-dashed border-slate-300 group-hover:border-blue-900 shadow-inner flex flex-col items-center justify-center cursor-pointer relative transition"
-                    title={t("Click to upload product image", "Kliknite pre nahratie obrázka tovaru", "Kattintson a kép feltöltéséhez")}
+                    onClick={() => !isProductCardLocked && document.getElementById("product-image-upload-input")?.click()}
+                    className={`w-20 h-20 rounded-2xl overflow-hidden bg-slate-100 border-2 border-dashed shadow-inner flex flex-col items-center justify-center relative transition ${
+                      isProductCardLocked 
+                        ? "border-slate-200 cursor-not-allowed opacity-90" 
+                        : "border-slate-300 group-hover:border-blue-900 cursor-pointer"
+                    }`}
+                    title={isProductCardLocked ? t("Locked. Hold lock button for 1s to edit.", "Zamknuté. Podržte tlačidlo zámku 1s na úpravu.", "Zárolva.") : t("Click to upload product image", "Kliknite pre nahratie obrázka tovaru", "Kattintson a kép feltöltéséhez")}
                   >
                     {itemForm.imageUrl ? (
                       <>
@@ -1209,15 +1315,17 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                             (e.target as any).src = "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=200&h=200&fit=crop";
                           }}
                         />
-                        {/* Hover Overlay */}
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex flex-col items-center justify-center text-white">
-                          <Camera className="w-5 h-5 mb-0.5" />
-                          <span className="text-[9px] font-bold uppercase tracking-wider">{t("Change", "Zmeniť", "Csere")}</span>
-                        </div>
+                        {/* Hover Overlay only when unlocked */}
+                        {!isProductCardLocked && (
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex flex-col items-center justify-center text-white">
+                            <Camera className="w-5 h-5 mb-0.5" />
+                            <span className="text-[9px] font-bold uppercase tracking-wider">{t("Change", "Zmeniť", "Csere")}</span>
+                          </div>
+                        )}
                       </>
                     ) : (
                       <div className="flex flex-col items-center justify-center text-slate-400 p-1 text-center">
-                        <Upload className="w-5 h-5 mb-1 text-slate-400 group-hover:text-blue-900 group-hover:scale-110 transition" />
+                        <Upload className={`w-5 h-5 mb-1 ${isProductCardLocked ? "text-slate-300" : "text-slate-400 group-hover:text-blue-900 group-hover:scale-110"} transition`} />
                         <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tight leading-none">{t("Upload", "Nahrať", "Feltöltés")}</span>
                       </div>
                     )}
@@ -1234,20 +1342,21 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   <input
                     id="product-image-upload-input"
                     type="file"
+                    disabled={isProductCardLocked}
                     accept="image/png,image/jpeg,image/jpg,image/webp,image/svg+xml"
                     onChange={handleProductImageUpload}
                     className="hidden"
                   />
 
-                  {/* Quick Remove Image Button */}
-                  {itemForm.imageUrl && !isImageUploading && (
+                  {/* Quick Remove Image Button (when unlocked) */}
+                  {itemForm.imageUrl && !isImageUploading && !isProductCardLocked && (
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         setItemForm(prev => ({ ...prev, imageUrl: "" }));
                       }}
-                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-rose-500 hover:bg-rose-600 text-white flex items-center justify-center shadow-md transition"
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-rose-500 hover:bg-rose-600 text-white flex items-center justify-center shadow-md transition cursor-pointer"
                       title={t("Remove image", "Odstrániť obrázok", "Kép törlése")}
                     >
                       <X className="w-3 h-3" />
@@ -1262,21 +1371,24 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   </label>
                   <input
                     type="text"
+                    disabled={isProductCardLocked}
                     value={itemForm.name}
                     onChange={(e) => setItemForm({ ...itemForm, name: e.target.value })}
                     placeholder="napr. Calacatta Gold 20mm"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition leading-tight"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition leading-tight disabled:bg-slate-100/70 disabled:cursor-not-allowed disabled:text-slate-700"
                   />
-                  <div className="flex items-center gap-1.5 mt-1.5">
-                    <button
-                      type="button"
-                      onClick={() => document.getElementById("product-image-upload-input")?.click()}
-                      className="text-[10px] font-bold text-blue-900 hover:text-blue-950 flex items-center gap-1 transition"
-                    >
-                      <Upload className="w-3 h-3" />
-                      <span>{itemForm.imageUrl ? t("Change photo", "Zmeniť foto", "Fotó cseréje") : t("Upload photo", "Nahrať foto", "Fotó feltöltése")}</span>
-                    </button>
-                  </div>
+                  {!isProductCardLocked && (
+                    <div className="flex items-center gap-1.5 mt-1.5">
+                      <button
+                        type="button"
+                        onClick={() => document.getElementById("product-image-upload-input")?.click()}
+                        className="text-[10px] font-bold text-blue-900 hover:text-blue-950 flex items-center gap-1 transition"
+                      >
+                        <Upload className="w-3 h-3" />
+                        <span>{itemForm.imageUrl ? t("Change photo", "Zmeniť foto", "Fotó cseréje") : t("Upload photo", "Nahrať foto", "Fotó feltöltése")}</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1295,9 +1407,10 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   <input
                     type="number"
                     step="0.01"
+                    disabled={isProductCardLocked}
                     value={itemForm.defaultSellPrice}
                     onChange={(e) => setItemForm({ ...itemForm, defaultSellPrice: Number(e.target.value) })}
-                    className="w-full pl-3.5 pr-14 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-black text-blue-950 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition"
+                    className="w-full pl-3.5 pr-14 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-black text-blue-950 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition disabled:bg-slate-100/70 disabled:cursor-not-allowed"
                   />
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
                     {systemCurrency || "EUR"} / {itemForm.unit}
@@ -1313,10 +1426,11 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 <div className="relative">
                   <input
                     type="text"
+                    disabled={isProductCardLocked}
                     value={itemForm.barcode}
                     onChange={(e) => setItemForm({ ...itemForm, barcode: e.target.value })}
                     placeholder="858800123401"
-                    className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-semibold text-slate-800 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition"
+                    className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-semibold text-slate-800 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition disabled:bg-slate-100/70 disabled:cursor-not-allowed"
                   />
                   <Barcode className="w-4 h-4 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                 </div>
@@ -1330,10 +1444,11 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 <div className="relative">
                   <input
                     type="text"
+                    disabled={isProductCardLocked}
                     value={itemForm.sku}
                     onChange={(e) => setItemForm({ ...itemForm, sku: e.target.value })}
                     placeholder="SKU-CQ-01"
-                    className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition"
+                    className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition disabled:bg-slate-100/70 disabled:cursor-not-allowed"
                   />
                   <Tag className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                 </div>
@@ -1348,10 +1463,15 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 {/* Category Button & Trigger */}
                 <div
                   onClick={() => {
+                    if (isProductCardLocked) return;
                     setIsCategoryDropdownOpen(!isCategoryDropdownOpen);
                     setCategorySearchQuery("");
                   }}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 flex items-center justify-between cursor-pointer hover:bg-slate-100/80 transition"
+                  className={`w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-semibold flex items-center justify-between transition ${
+                    isProductCardLocked 
+                      ? "bg-slate-100/70 text-slate-700 cursor-not-allowed" 
+                      : "bg-slate-50 text-slate-800 cursor-pointer hover:bg-slate-100/80"
+                  }`}
                 >
                   <span className={itemForm.category ? "text-slate-900" : "text-slate-400"}>
                     {itemForm.category || t("Select or add category...", "Vyberte alebo pridajte kategóriu...", "Válasszon vagy adjon hozzá kategóriát...")}
@@ -1360,7 +1480,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 </div>
 
                 {/* Dropdown Menu */}
-                {isCategoryDropdownOpen && (
+                {isCategoryDropdownOpen && !isProductCardLocked && (
                   <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl z-30 p-2 space-y-1.5">
                     {/* Search inside categories */}
                     <div className="relative">
@@ -1395,7 +1515,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                           setIsCategoryDropdownOpen(false);
                           setCategorySearchQuery("");
                         }}
-                        className="w-full px-2.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 text-xs font-bold flex items-center gap-1.5 transition text-left"
+                        className="w-full px-2.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 text-xs font-bold flex items-center gap-1.5 transition text-left cursor-pointer"
                       >
                         <Plus className="w-3.5 h-3.5" />
                         <span>{t("Add", "Pridať novú", "Hozzáadás")}: <span className="font-extrabold text-blue-950">"{categorySearchQuery.trim()}"</span></span>
@@ -1435,9 +1555,10 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   {t("Unit of Measure", "Merná jednotka (MJ)", "Mértékegység")}
                 </label>
                 <select
+                  disabled={isProductCardLocked}
                   value={itemForm.unit}
                   onChange={(e) => setItemForm({ ...itemForm, unit: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition cursor-pointer"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition cursor-pointer disabled:bg-slate-100/70 disabled:cursor-not-allowed"
                 >
                   <option value="ks">ks (Kusy)</option>
                   <option value="m²">m² (Štvorcové metre)</option>
@@ -1458,22 +1579,26 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 <div className="relative">
                   <input
                     type="text"
+                    disabled={isProductCardLocked}
                     value={itemForm.defaultLocation}
                     onChange={(e) => setItemForm({ ...itemForm, defaultLocation: e.target.value })}
                     placeholder="A-01-RACK"
-                    className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition"
+                    className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition disabled:bg-slate-100/70 disabled:cursor-not-allowed"
                   />
                   <MapPin className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                 </div>
               </div>
 
               {/* 7. EXPIRATION TOGGLE */}
-              <label className="flex items-start gap-2.5 p-3 rounded-2xl bg-slate-50 border border-slate-200/80 cursor-pointer hover:bg-slate-100/60 transition">
+              <label className={`flex items-start gap-2.5 p-3 rounded-2xl bg-slate-50 border border-slate-200/80 transition ${
+                isProductCardLocked ? "cursor-not-allowed opacity-80" : "cursor-pointer hover:bg-slate-100/60"
+              }`}>
                 <input
                   type="checkbox"
+                  disabled={isProductCardLocked}
                   checked={itemForm.hasExpiration}
                   onChange={(e) => setItemForm({ ...itemForm, hasExpiration: e.target.checked })}
-                  className="w-4 h-4 rounded text-blue-900 focus:ring-blue-900 mt-0.5"
+                  className="w-4 h-4 rounded text-blue-900 focus:ring-blue-900 mt-0.5 disabled:cursor-not-allowed"
                 />
                 <div>
                   <span className="font-bold text-xs text-slate-900 block">
@@ -1492,10 +1617,11 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 </label>
                 <textarea
                   rows={2}
+                  disabled={isProductCardLocked}
                   value={itemForm.description}
                   onChange={(e) => setItemForm({ ...itemForm, description: e.target.value })}
                   placeholder={t("Technical notes...", "Technické parametre a popis...", "Műszaki adatok...")}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition resize-y"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition resize-y disabled:bg-slate-100/70 disabled:cursor-not-allowed"
                 />
               </div>
 
