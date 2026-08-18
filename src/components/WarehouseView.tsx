@@ -1482,23 +1482,22 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   </p>
                 </div>
 
-                {/* Default Selling Price */}
+                {/* Selling Price Summary (Configured in Left Sidebar) */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    {t("Default Selling Price (excl. VAT)", "Predvolená predajná cena (bez DPH)", "Alapértelmezett eladási ár")}
+                    {t("Suggested Sale Price", "Predajná cena (zadaná vľavo)", "Eladási ár")}
                   </label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={itemForm.defaultSellPrice}
-                      onChange={(e) => setItemForm({ ...itemForm, defaultSellPrice: Number(e.target.value) })}
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-base font-mono font-black text-blue-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition"
-                    />
-                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
-                      {systemCurrency || "EUR"} / {itemForm.unit}
+                  <div className="px-4 py-2.5 bg-blue-50/50 border border-blue-100 rounded-2xl flex items-center justify-between">
+                    <span className="text-base font-mono font-black text-blue-950">
+                      {formatCurrency(itemForm.defaultSellPrice, systemLanguage, systemCurrency)}
+                    </span>
+                    <span className="text-xs font-semibold text-blue-800/70">
+                      / {itemForm.unit}
                     </span>
                   </div>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    {t("Configured in left sidebar", "Upraviteľná v ľavom paneli tovaru", "A bal oldali panelen szerkeszthető")}
+                  </p>
                 </div>
               </div>
 
