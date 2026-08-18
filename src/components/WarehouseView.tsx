@@ -2226,7 +2226,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 }`}
               >
                 <Building2 className="w-4 h-4" />
-                <span>{t("Warehouses & FEFO Map", "Sklady a FEFO mapa", "Raktárak és FEFO térkép")}</span>
+                <span>{itemForm.hasExpiration ? t("Warehouses & FEFO Map", "Sklady a FEFO mapa", "Raktárak és FEFO térkép") : t("Warehouse Stock", "Stavy na skladoch", "Raktári készletek")}</span>
               </button>
 
               <button
@@ -2407,153 +2407,257 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             {productDetailTab === "warehouse" && (
               <div className="space-y-5">
                 
-                {/* WAREHOUSE DISTRIBUTION & PER-WAREHOUSE FEFO MAP */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="font-bold text-slate-900 text-base">
-                        {t("Warehouse Stock Balances & FEFO Map", "Stavy na skladoch a FEFO mapa šarží", "Raktári készletek és FEFO térkép")}
-                      </h3>
-                      <p className="text-[11px] text-slate-400">
-                        {t("Detailed physical inventory & batch expiration tracking for each individual warehouse", "Podrobný prehľad zásob a exspirácií šarží pre každý sklad osobitne", "Részletes készlet- és lejáratiidő-nyilvántartás raktáranként")}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* CARDS FOR EACH WAREHOUSE WITH ITS OWN FEFO MAP */}
-                  {warehouses.map(wh => {
-                    const st = warehouseStock.find(s => s.warehouseId === wh.id && s.itemId === currentItem?.id);
-                    const onHand = st?.quantity || 0;
-                    const res = st?.reservedQuantity || 0;
-                    const avail = Math.max(0, onHand - res);
-                    const whBatches = warehouseBatches.filter(b => b.itemId === currentItem?.id && b.warehouseId === wh.id && b.currentQuantity > 0);
-
-                    return (
-                      <div key={wh.id} className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
-                        {/* WAREHOUSE HEADER */}
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-2">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-900 flex items-center justify-center font-bold">
-                              <Building2 className="w-5 h-5 text-blue-900" />
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <h4 className="font-bold text-slate-900 text-sm">{wh.name}</h4>
-                                <span className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-600 font-mono text-[10px] font-bold">
-                                  {wh.code}
-                                </span>
-                              </div>
-                              <span className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
-                                <MapPin className="w-3 h-3 text-slate-400" />
-                                {st?.location || itemForm.defaultLocation || t("Main Floor", "Hlavná plocha", "Fő raktárhely")}
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* BALANCES BADGES */}
-                          <div className="flex items-center gap-3 self-end sm:self-center">
-                            <div className="text-right">
-                              <span className="text-[10px] text-slate-400 uppercase font-bold block">{t("Physical", "Fyzicky", "Fizikai")}</span>
-                              <span className="font-mono font-bold text-slate-900 text-xs">{onHand} {itemForm.unit}</span>
-                            </div>
-                            <div className="text-right">
-                              <span className="text-[10px] text-slate-400 uppercase font-bold block">{t("Reserved", "Rezervované", "Foglalt")}</span>
-                              <span className="font-mono font-bold text-slate-500 text-xs">{res} {itemForm.unit}</span>
-                            </div>
-                            <div className="text-right pl-2 border-l border-slate-100">
-                              <span className="text-[10px] text-emerald-600 uppercase font-bold block">{t("Available", "K dispozícii", "Szabad")}</span>
-                              <span className={`font-mono font-black text-sm ${avail > 0 ? "text-emerald-700" : "text-slate-400"}`}>
-                                {avail} {itemForm.unit}
-                              </span>
-                            </div>
-                          </div>
+                {/* WAREHOUSE DISTRIBUTION: TABLE VIEW IF NOT FEFO, CARDS WITH FEFO MAP IF FEFO ACTIVE */}
+                {!itemForm.hasExpiration ? (
+                  /* CLEAN TABLE VIEW FOR STANDARD NON-EXPIRABLE PRODUCTS */
+                  <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden">
+                    <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-2xl bg-blue-50 text-blue-900 flex items-center justify-center font-bold">
+                          <Building2 className="w-5 h-5" />
                         </div>
-
-                        {/* FEFO MAP SECTION FOR THIS WAREHOUSE */}
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="font-bold text-slate-700 flex items-center gap-1.5 text-[11px] uppercase tracking-wider">
-                              <Layers className="w-3.5 h-3.5 text-amber-600" />
-                              {t("FEFO Batch Map", "FEFO mapa šarží v tomto sklade", "FEFO tételtérkép ezen a raktáron")} ({whBatches.length})
-                            </span>
-                            {whBatches.length > 0 && (
-                              <span className="text-[10px] font-semibold text-slate-400">
-                                {t("Sorted by earliest expiration first", "Zoradené od najstaršej exspirácie", "Lejárati sorrendben")}
-                              </span>
-                            )}
-                          </div>
-
-                          {whBatches.length === 0 ? (
-                            <div className="p-3.5 rounded-2xl bg-slate-50/70 border border-dashed border-slate-200 text-center text-xs text-slate-400">
-                              {t("No active lots in this warehouse. Inventory tracked as unbatched bulk stock.", "V tomto sklade nie sú zaevidované žiadne konkrétne šarže. Tovar sa eviduje ako voľná zásoba.", "Ezen a raktáron nincsenek aktív tételek.")}
-                            </div>
-                          ) : (
-                            <div className="overflow-x-auto rounded-2xl border border-slate-100">
-                              <table className="w-full text-left text-xs">
-                                <thead className="bg-slate-50 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
-                                  <tr>
-                                    <th className="py-2 px-3">{t("Batch / Lot #", "Číslo šarže", "Tételszám")}</th>
-                                    <th className="py-2 px-3">{t("Expiration Date", "Dátum exspirácie", "Lejárat")}</th>
-                                    <th className="py-2 px-3">{t("FEFO Health", "FEFO stav", "Állapot")}</th>
-                                    <th className="py-2 px-3 text-right">{t("Quantity Available", "Zostatok šarže", "Készlet")}</th>
-                                    <th className="py-2 px-3 text-right">{t("Purchase Cost", "Nákupná cena", "Beszerzési ár")}</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100 font-medium">
-                                  {whBatches
-                                    .sort((a, b) => {
-                                      if (!a.expirationDate) return 1;
-                                      if (!b.expirationDate) return -1;
-                                      return new Date(a.expirationDate).getTime() - new Date(b.expirationDate).getTime();
-                                    })
-                                    .map((batch, bIdx) => {
-                                      const expStatus = getExpirationStatus(batch.expirationDate);
-                                      return (
-                                        <tr key={batch.id} className="hover:bg-slate-50/60 transition">
-                                          <td className="py-2.5 px-3">
-                                            <div className="flex items-center gap-1.5">
-                                              <span className="font-mono font-bold text-slate-900">{batch.batchNumber}</span>
-                                              {bIdx === 0 && (
-                                                <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-blue-100 text-blue-900 border border-blue-200 uppercase">
-                                                  FEFO #1
-                                                </span>
-                                              )}
-                                            </div>
-                                          </td>
-                                          <td className="py-2.5 px-3 font-mono text-slate-700">
-                                            {batch.expirationDate ? batch.expirationDate.slice(0, 10) : "-"}
-                                          </td>
-                                          <td className="py-2.5 px-3">
-                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 ${
-                                              expStatus.status === "expired"
-                                                ? "bg-rose-100 text-rose-800"
-                                                : expStatus.status === "warning"
-                                                ? "bg-amber-100 text-amber-800"
-                                                : "bg-emerald-100 text-emerald-800"
-                                            }`}>
-                                              {expStatus.daysRemaining < 0 
-                                                ? t("Expired", "Exspirované", "Lejárt") 
-                                                : `${expStatus.daysRemaining} ${t("days remaining", "dní do exspirácie", "nap van hátra")}`}
-                                            </span>
-                                          </td>
-                                          <td className="py-2.5 px-3 text-right font-bold text-slate-900 font-mono">
-                                            {batch.currentQuantity} <span className="text-[10px] font-normal text-slate-400">{itemForm.unit}</span>
-                                          </td>
-                                          <td className="py-2.5 px-3 text-right font-mono text-slate-700">
-                                            {formatCurrency(batch.purchasePrice, systemLanguage, systemCurrency)}
-                                          </td>
-                                        </tr>
-                                      );
-                                    })}
-                                </tbody>
-                              </table>
-                            </div>
-                          )}
+                        <div>
+                          <h3 className="font-bold text-slate-900 text-base">
+                            {t("Warehouse Stock Balances", "Prehľad skladových zásob", "Raktári készletkimutatás")}
+                          </h3>
+                          <p className="text-[11px] text-slate-400">
+                            {t("Physical inventory, reservations, and available stock per warehouse", "Fyzické stavy, rezervácie a disponibilné množstvo podľa jednotlivých skladov", "Fizikai, foglalt és szabad készlet raktáranként")}
+                          </p>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider text-[10px] border-b border-slate-100">
+                          <tr>
+                            <th className="py-3.5 px-5">{t("Warehouse", "Sklad", "Raktár")}</th>
+                            <th className="py-3.5 px-4">{t("Location / Bin", "Pozícia / Regál", "Raktári hely")}</th>
+                            <th className="py-3.5 px-4 text-right">{t("Physical Stock", "Fyzicky", "Fizikai készlet")}</th>
+                            <th className="py-3.5 px-4 text-right">{t("Reserved", "Rezervované", "Foglalt")}</th>
+                            <th className="py-3.5 px-4 text-right">{t("Available", "K dispozícii", "Szabad")}</th>
+                            <th className="py-3.5 px-5 text-right">{t("Valuation (WAP)", "Hodnota zásob", "Készletérték")}</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-medium">
+                          {warehouses.map(wh => {
+                            const st = warehouseStock.find(s => s.warehouseId === wh.id && s.itemId === currentItem?.id);
+                            const onHand = st?.quantity || 0;
+                            const res = st?.reservedQuantity || 0;
+                            const avail = Math.max(0, onHand - res);
+                            const whVal = onHand * (itemForm.avgPurchasePrice || 0);
+
+                            return (
+                              <tr key={wh.id} className="hover:bg-slate-50/70 transition">
+                                <td className="py-4 px-5">
+                                  <div className="flex items-center gap-2.5">
+                                    <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-900 flex items-center justify-center font-bold text-xs">
+                                      <Building2 className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                      <span className="font-bold text-slate-900 block">{wh.name}</span>
+                                      <span className="font-mono text-[10px] font-bold text-slate-400">{wh.code}</span>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="py-4 px-4 text-slate-600">
+                                  <div className="flex items-center gap-1.5 font-medium">
+                                    <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                                    <span>{st?.location || itemForm.defaultLocation || t("Main Floor", "Hlavná plocha", "Fő raktárhely")}</span>
+                                  </div>
+                                </td>
+                                <td className="py-4 px-4 text-right font-mono font-bold text-slate-900 text-sm">
+                                  {onHand} <span className="text-xs font-normal text-slate-400">{itemForm.unit}</span>
+                                </td>
+                                <td className="py-4 px-4 text-right font-mono text-slate-500">
+                                  {res} <span className="text-xs font-normal text-slate-400">{itemForm.unit}</span>
+                                </td>
+                                <td className="py-4 px-4 text-right font-mono font-black text-sm">
+                                  <span className={avail > 0 ? "text-emerald-700" : "text-slate-400"}>
+                                    {avail}
+                                  </span>{" "}
+                                  <span className="text-xs font-normal text-slate-400">{itemForm.unit}</span>
+                                </td>
+                                <td className="py-4 px-5 text-right font-mono font-bold text-slate-900">
+                                  {formatCurrency(whVal, systemLanguage, systemCurrency)}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                        <tfoot className="bg-slate-50 font-bold border-t-2 border-slate-200/80">
+                          <tr>
+                            <td className="py-3.5 px-5 text-slate-800 text-xs uppercase tracking-wider" colSpan={2}>
+                              {t("Total Across All Warehouses", "Spolu na všetkých skladoch", "Összesen")}
+                            </td>
+                            <td className="py-3.5 px-4 text-right font-mono text-slate-900 text-sm">
+                              {totalStock} <span className="text-xs font-normal text-slate-500">{itemForm.unit}</span>
+                            </td>
+                            <td className="py-3.5 px-4 text-right font-mono text-slate-500">
+                              {warehouseStock.filter(s => s.itemId === currentItem?.id).reduce((sum, s) => sum + (s.reservedQuantity || 0), 0)}{" "}
+                              <span className="text-xs font-normal text-slate-400">{itemForm.unit}</span>
+                            </td>
+                            <td className="py-3.5 px-4 text-right font-mono text-emerald-800 text-sm">
+                              {Math.max(0, totalStock - warehouseStock.filter(s => s.itemId === currentItem?.id).reduce((sum, s) => sum + (s.reservedQuantity || 0), 0))}{" "}
+                              <span className="text-xs font-normal text-slate-400">{itemForm.unit}</span>
+                            </td>
+                            <td className="py-3.5 px-5 text-right font-mono text-emerald-700 text-sm">
+                              {formatCurrency(totalStock * itemForm.avgPurchasePrice, systemLanguage, systemCurrency)}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+                ) : (
+                  /* PER-WAREHOUSE CARDS WITH DEDICATED FEFO MAPS (WHEN EXPIRATION IS TRACKED) */
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="font-bold text-slate-900 text-base">
+                          {t("Warehouse Stock Balances & FEFO Map", "Stavy na skladoch a FEFO mapa šarží", "Raktári készletek és FEFO térkép")}
+                        </h3>
+                        <p className="text-[11px] text-slate-400">
+                          {t("Detailed physical inventory & batch expiration tracking for each individual warehouse", "Podrobný prehľad zásob a exspirácií šarží pre každý sklad osobitne", "Részletes készlet- és lejáratiidő-nyilvántartás raktáranként")}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* CARDS FOR EACH WAREHOUSE WITH ITS OWN FEFO MAP */}
+                    {warehouses.map(wh => {
+                      const st = warehouseStock.find(s => s.warehouseId === wh.id && s.itemId === currentItem?.id);
+                      const onHand = st?.quantity || 0;
+                      const res = st?.reservedQuantity || 0;
+                      const avail = Math.max(0, onHand - res);
+                      const whBatches = warehouseBatches.filter(b => b.itemId === currentItem?.id && b.warehouseId === wh.id && b.currentQuantity > 0);
+
+                      return (
+                        <div key={wh.id} className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
+                          {/* WAREHOUSE HEADER */}
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-2">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-900 flex items-center justify-center font-bold">
+                                <Building2 className="w-5 h-5 text-blue-900" />
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <h4 className="font-bold text-slate-900 text-sm">{wh.name}</h4>
+                                  <span className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-600 font-mono text-[10px] font-bold">
+                                    {wh.code}
+                                  </span>
+                                </div>
+                                <span className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
+                                  <MapPin className="w-3 h-3 text-slate-400" />
+                                  {st?.location || itemForm.defaultLocation || t("Main Floor", "Hlavná plocha", "Fő raktárhely")}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* BALANCES BADGES */}
+                            <div className="flex items-center gap-3 self-end sm:self-center">
+                              <div className="text-right">
+                                <span className="text-[10px] text-slate-400 uppercase font-bold block">{t("Physical", "Fyzicky", "Fizikai")}</span>
+                                <span className="font-mono font-bold text-slate-900 text-xs">{onHand} {itemForm.unit}</span>
+                              </div>
+                              <div className="text-right">
+                                <span className="text-[10px] text-slate-400 uppercase font-bold block">{t("Reserved", "Rezervované", "Foglalt")}</span>
+                                <span className="font-mono font-bold text-slate-500 text-xs">{res} {itemForm.unit}</span>
+                              </div>
+                              <div className="text-right pl-2 border-l border-slate-100">
+                                <span className="text-[10px] text-emerald-600 uppercase font-bold block">{t("Available", "K dispozícii", "Szabad")}</span>
+                                <span className={`font-mono font-black text-sm ${avail > 0 ? "text-emerald-700" : "text-slate-400"}`}>
+                                  {avail} {itemForm.unit}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* FEFO MAP SECTION FOR THIS WAREHOUSE */}
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-bold text-slate-700 flex items-center gap-1.5 text-[11px] uppercase tracking-wider">
+                                <Layers className="w-3.5 h-3.5 text-amber-600" />
+                                {t("FEFO Batch Map", "FEFO mapa šarží v tomto sklade", "FEFO tételtérkép ezen a raktáron")} ({whBatches.length})
+                              </span>
+                              {whBatches.length > 0 && (
+                                <span className="text-[10px] font-semibold text-slate-400">
+                                  {t("Sorted by earliest expiration first", "Zoradené od najstaršej exspirácie", "Lejárati sorrendben")}
+                                </span>
+                              )}
+                            </div>
+
+                            {whBatches.length === 0 ? (
+                              <div className="p-3.5 rounded-2xl bg-slate-50/70 border border-dashed border-slate-200 text-center text-xs text-slate-400">
+                                {t("No active lots in this warehouse. Inventory tracked as unbatched bulk stock.", "V tomto sklade nie sú zaevidované žiadne konkrétne šarže. Tovar sa eviduje ako voľná zásoba.", "Ezen a raktáron nincsenek aktív tételek.")}
+                              </div>
+                            ) : (
+                              <div className="overflow-x-auto rounded-2xl border border-slate-100">
+                                <table className="w-full text-left text-xs">
+                                  <thead className="bg-slate-50 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+                                    <tr>
+                                      <th className="py-2 px-3">{t("Batch / Lot #", "Číslo šarže", "Tételszám")}</th>
+                                      <th className="py-2 px-3">{t("Expiration Date", "Dátum exspirácie", "Lejárat")}</th>
+                                      <th className="py-2 px-3">{t("FEFO Health", "FEFO stav", "Állapot")}</th>
+                                      <th className="py-2 px-3 text-right">{t("Quantity Available", "Zostatok šarže", "Készlet")}</th>
+                                      <th className="py-2 px-3 text-right">{t("Purchase Cost", "Nákupná cena", "Beszerzési ár")}</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100 font-medium">
+                                    {whBatches
+                                      .sort((a, b) => {
+                                        if (!a.expirationDate) return 1;
+                                        if (!b.expirationDate) return -1;
+                                        return new Date(a.expirationDate).getTime() - new Date(b.expirationDate).getTime();
+                                      })
+                                      .map((batch, bIdx) => {
+                                        const expStatus = getExpirationStatus(batch.expirationDate);
+                                        return (
+                                          <tr key={batch.id} className="hover:bg-slate-50/60 transition">
+                                            <td className="py-2.5 px-3">
+                                              <div className="flex items-center gap-1.5">
+                                                <span className="font-mono font-bold text-slate-900">{batch.batchNumber}</span>
+                                                {bIdx === 0 && (
+                                                  <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-blue-100 text-blue-900 border border-blue-200 uppercase">
+                                                    FEFO #1
+                                                  </span>
+                                                )}
+                                              </div>
+                                            </td>
+                                            <td className="py-2.5 px-3 font-mono text-slate-700">
+                                              {batch.expirationDate ? batch.expirationDate.slice(0, 10) : "-"}
+                                            </td>
+                                            <td className="py-2.5 px-3">
+                                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 ${
+                                                expStatus.status === "expired"
+                                                  ? "bg-rose-100 text-rose-800"
+                                                  : expStatus.status === "warning"
+                                                  ? "bg-amber-100 text-amber-800"
+                                                  : "bg-emerald-100 text-emerald-800"
+                                              }`}>
+                                                {expStatus.daysRemaining < 0 
+                                                  ? t("Expired", "Exspirované", "Lejárt") 
+                                                  : `${expStatus.daysRemaining} ${t("days remaining", "dní do exspirácie", "nap van hátra")}`}
+                                              </span>
+                                            </td>
+                                            <td className="py-2.5 px-3 text-right font-bold text-slate-900 font-mono">
+                                              {batch.currentQuantity} <span className="text-[10px] font-normal text-slate-400">{itemForm.unit}</span>
+                                            </td>
+                                            <td className="py-2.5 px-3 text-right font-mono text-slate-700">
+                                              {formatCurrency(batch.purchasePrice, systemLanguage, systemCurrency)}
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
 
               </div>
             )}
