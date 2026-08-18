@@ -1461,8 +1461,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
     return (
       <div className="space-y-6 pb-12 animate-fadeIn">
-        {/* TOP BAR / BREADCRUMB HEADER */}
-        <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        {/* TOP BAR / BREADCRUMB HEADER (STICKY ON TOP) */}
+        <div className="sticky top-2 z-40 bg-white/95 backdrop-blur-md p-4 md:p-5 rounded-3xl border border-slate-200/80 shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all">
           <div className="flex items-center gap-4">
             <button
               onClick={() => {
