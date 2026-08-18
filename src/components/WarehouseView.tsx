@@ -382,18 +382,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     discountPct: number;
     unitSellPrice: number;
     note: string;
-  }[]>([
-    {
-      id: "gi-row-1",
-      itemId: warehouseItems[0]?.id || "",
-      batchId: "",
-      quantity: 1,
-      baseSellPrice: warehouseItems[0]?.defaultSellPrice || 0,
-      discountPct: 0,
-      unitSellPrice: warehouseItems[0]?.defaultSellPrice || 0,
-      note: ""
-    }
-  ]);
+  }[]>([]);
 
   const [transferSourceWh, setTransferSourceWh] = useState<string>(warehouses[0]?.id || "");
   const [transferTargetWh, setTransferTargetWh] = useState<string>(warehouses[1]?.id || "");
@@ -1323,22 +1312,29 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   const handleOpenGoodsIssue = (prefillItemId?: string) => {
     setIsGoodsIssueOpen(true);
     setSelectedProductDetailId(null);
-    const initialItem = prefillItemId 
-      ? warehouseItems.find(i => i.id === prefillItemId)
-      : warehouseItems[0];
     
-    setIssueItems([
-      {
-        id: `gi-row-${Date.now()}-1`,
-        itemId: initialItem?.id || "",
-        batchId: "",
-        quantity: 1,
-        baseSellPrice: initialItem?.defaultSellPrice || 0,
-        discountPct: 0,
-        unitSellPrice: initialItem?.defaultSellPrice || 0,
-        note: ""
+    if (prefillItemId) {
+      const initialItem = warehouseItems.find(i => i.id === prefillItemId);
+      if (initialItem) {
+        setIssueItems([
+          {
+            id: `gi-row-${Date.now()}-1`,
+            itemId: initialItem.id,
+            batchId: "",
+            quantity: 1,
+            baseSellPrice: initialItem.defaultSellPrice || 0,
+            discountPct: 0,
+            unitSellPrice: initialItem.defaultSellPrice || 0,
+            note: ""
+          }
+        ]);
+      } else {
+        setIssueItems([]);
       }
-    ]);
+    } else {
+      setIssueItems([]);
+    }
+
     const nextSeq = warehouseMovements.filter(m => m.type === "outward").length + 1;
     setIssueDocumentNumber(`VYD-${new Date().getFullYear()}-${String(nextSeq).padStart(4, "0")}`);
     setIssueDate(new Date().toISOString().slice(0, 10));
@@ -1433,11 +1429,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   };
 
   const handleRemoveIssueRow = (rowId: string) => {
-    if (issueItems.length > 1) {
-      setIssueItems(prev => prev.filter(r => r.id !== rowId));
-    } else {
-      alert(t("At least one product row is required in the issue.", "Výdajka musí obsahovať aspoň jeden tovar.", "Legalább egy tétel szükséges a kiadáshoz."));
-    }
+    setIssueItems(prev => prev.filter(r => r.id !== rowId));
   };
 
   // Submit New Issue (Výdajka - VYD)
@@ -2215,206 +2207,234 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {issueItems.map((row, idx) => {
-                      const selItem = warehouseItems.find(i => i.id === row.itemId);
-                      const stock = getStockInfoForItem(row.itemId, issueWarehouseId);
-                      const isStockExceeded = Number(row.quantity) > stock.available;
-                      const itemBatches = warehouseBatches.filter(b => b.itemId === row.itemId && b.warehouseId === issueWarehouseId && b.currentQuantity > 0);
-                      const lineTotal = Number(row.quantity) * Number(row.unitSellPrice);
-
-                      return (
-                        <tr key={row.id} className="hover:bg-slate-50/80 transition">
-                          {/* 1. Index */}
-                          <td className="py-3 px-3 text-center font-bold text-slate-400 text-[11px]">
-                            {idx + 1}
-                          </td>
-
-                          {/* 2. Product Selector & Live Availability */}
-                          <td className="py-3 px-3">
-                            <div className="space-y-1.5">
-                              <select
-                                value={row.itemId}
-                                onChange={(e) => handleUpdateIssueRow(row.id, { itemId: e.target.value })}
-                                className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-blue-700 focus:outline-none"
-                              >
-                                {warehouseItems.map(it => (
-                                  <option key={it.id} value={it.id}>
-                                    {it.name} ({it.sku}) - {it.unit}
-                                  </option>
-                                ))}
-                              </select>
-
-                              {/* Availability Pill & Warnings */}
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                  isStockExceeded
-                                    ? "bg-rose-50 text-rose-700 border border-rose-200"
-                                    : stock.available > 0
-                                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                    : "bg-amber-50 text-amber-700 border border-amber-200"
-                                }`}>
-                                  {isStockExceeded && <AlertTriangle className="w-3 h-3 inline mr-1 -mt-0.5" />}
-                                  {t("Available", "Dostupné", "Elérhető")}: {stock.available} {selItem?.unit || "ks"}
-                                </span>
-
-                                {selItem?.defaultLocation && (
-                                  <span className="text-[10px] text-slate-400 flex items-center gap-1 font-mono">
-                                    <MapPin className="w-3 h-3 text-slate-400" />
-                                    {stock.locations || selItem.defaultLocation}
-                                  </span>
-                                )}
-                              </div>
-
-                              {/* FEFO Batch lot picker if expiration tracking is on */}
-                              {selItem?.hasExpiration && itemBatches.length > 0 && (
-                                <div className="pt-1 flex items-center gap-1.5">
-                                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">
-                                    {t("Batch (FEFO)", "Šarža", "Tétel")}:
-                                  </span>
-                                  <select
-                                    value={row.batchId}
-                                    onChange={(e) => handleUpdateIssueRow(row.id, { batchId: e.target.value })}
-                                    className="w-full px-2 py-1 bg-amber-50/50 border border-amber-200 rounded-lg text-[11px] font-mono text-amber-900"
-                                  >
-                                    <option value="">{t("Auto: Earliest Expiration (FEFO)", "Auto: Najskoršia exspirácia (FEFO)", "Legkorábbi lejárat")}</option>
-                                    {itemBatches.map(b => (
-                                      <option key={b.id} value={b.id}>
-                                        {b.batchNumber} (Exp: {b.expirationDate}, {b.currentQuantity} {selItem.unit})
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-                              )}
+                    {issueItems.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="py-12 px-4 text-center">
+                          <div className="max-w-sm mx-auto space-y-3">
+                            <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-700 mx-auto flex items-center justify-center border border-blue-100 shadow-sm">
+                              <ShoppingCart className="w-6 h-6" />
                             </div>
-                          </td>
-
-                          {/* 3. Quantity & Unit Stepper */}
-                          <td className="py-3 px-3">
-                            <div className="flex items-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => handleUpdateIssueRow(row.id, { quantity: Math.max(0.01, Number((Number(row.quantity) - 1).toFixed(2))) })}
-                                className="w-6 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center justify-center transition shrink-0"
-                              >
-                                -
-                              </button>
-                              <input
-                                type="number"
-                                min="0.01"
-                                step="0.01"
-                                value={row.quantity}
-                                onChange={(e) => handleUpdateIssueRow(row.id, { quantity: Number(e.target.value) })}
-                                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 text-center focus:ring-2 focus:ring-blue-700 focus:outline-none"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => handleUpdateIssueRow(row.id, { quantity: Number((Number(row.quantity) + 1).toFixed(2)) })}
-                                className="w-6 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center justify-center transition shrink-0"
-                              >
-                                +
-                              </button>
+                            <div>
+                              <h4 className="font-bold text-slate-800 text-sm">
+                                {t("No products in goods issue yet", "Zoznam položiek je prázdny", "Még nincsenek tételek a kiadásban")}
+                              </h4>
+                              <p className="text-xs text-slate-400 mt-1">
+                                {t("Use the quick search bar above to find and add products, or click '+ Add Empty Row'.", "Vyhľadajte tovar vo vyhľadávacom paneli vyššie alebo kliknite na '+ Pridať prázdny riadok'.", "Keressen a fenti keresővel vagy adjon hozzá egy üres sort.")}
+                              </p>
                             </div>
-                            <div className="text-center text-[10px] font-semibold text-slate-400 mt-1">
-                              {selItem?.unit || "ks"}
-                            </div>
-                          </td>
-
-                          {/* 4. Base Catalog Price */}
-                          <td className="py-3 px-3 text-right">
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={row.baseSellPrice}
-                              onChange={(e) => handleUpdateIssueRow(row.id, { baseSellPrice: Number(e.target.value) })}
-                              className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-700 text-right focus:ring-2 focus:ring-blue-700 focus:outline-none"
-                            />
-                            <span className="text-[10px] text-slate-400 mt-1 block">/{selItem?.unit || "ks"}</span>
-                          </td>
-
-                          {/* 5. Discount (%) */}
-                          <td className="py-3 px-3">
-                            <div className="space-y-1">
-                              <div className="relative">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max="100"
-                                  step="0.5"
-                                  value={row.discountPct}
-                                  onChange={(e) => handleUpdateIssueRow(row.id, { discountPct: Number(e.target.value) })}
-                                  className="w-full pl-2 pr-5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-center text-rose-600 focus:ring-2 focus:ring-blue-700 focus:outline-none"
-                                />
-                                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400">%</span>
-                              </div>
-                              {/* Quick presets */}
-                              <div className="flex items-center justify-center gap-1">
-                                {[0, 5, 10, 15].map(pct => (
-                                  <button
-                                    key={pct}
-                                    type="button"
-                                    onClick={() => handleUpdateIssueRow(row.id, { discountPct: pct })}
-                                    className={`px-1 py-0.5 rounded text-[9px] font-bold transition ${
-                                      row.discountPct === pct ? "bg-rose-100 text-rose-700" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-                                    }`}
-                                  >
-                                    {pct}%
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          </td>
-
-                          {/* 6. Sale Price after Discount */}
-                          <td className="py-3 px-3 text-right">
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={row.unitSellPrice}
-                              onChange={(e) => handleUpdateIssueRow(row.id, { unitSellPrice: Number(e.target.value) })}
-                              className="w-full px-2 py-1.5 bg-blue-50/50 border border-blue-200 rounded-xl text-xs font-mono font-bold text-blue-950 text-right focus:bg-white focus:ring-2 focus:ring-blue-700 focus:outline-none"
-                            />
-                            <span className="text-[10px] text-slate-400 mt-1 block">/{selItem?.unit || "ks"}</span>
-                          </td>
-
-                          {/* 7. Line Total */}
-                          <td className="py-3 px-3 text-right">
-                            <div className="font-mono font-black text-sm text-slate-900">
-                              {formatCurrency(lineTotal, systemLanguage, systemCurrency)}
-                            </div>
-                            {row.discountPct > 0 && (
-                              <span className="text-[10px] text-rose-600 font-semibold block">
-                                -{formatCurrency((Number(row.quantity) * Number(row.baseSellPrice)) - lineTotal, systemLanguage, systemCurrency)}
-                              </span>
-                            )}
-                          </td>
-
-                          {/* 8. Note */}
-                          <td className="py-3 px-3">
-                            <input
-                              type="text"
-                              value={row.note}
-                              onChange={(e) => handleUpdateIssueRow(row.id, { note: e.target.value })}
-                              placeholder={t("Line note...", "Poznámka...", "Megjegyzés...")}
-                              className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-700 focus:outline-none"
-                            />
-                          </td>
-
-                          {/* 9. Actions */}
-                          <td className="py-3 px-2 text-center">
                             <button
                               type="button"
-                              onClick={() => handleRemoveIssueRow(row.id)}
-                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition"
-                              title={t("Remove Row", "Odstrániť riadok", "Sor törlése")}
+                              onClick={handleAddEmptyIssueRow}
+                              className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-950 hover:bg-blue-900 text-white rounded-xl text-xs font-bold transition shadow-sm"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Plus className="w-4 h-4" />
+                              <span>{t("Add Line Item", "Pridať položku", "Tétel hozzáadása")}</span>
                             </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      issueItems.map((row, idx) => {
+                        const selItem = warehouseItems.find(i => i.id === row.itemId);
+                        const stock = getStockInfoForItem(row.itemId, issueWarehouseId);
+                        const isStockExceeded = Number(row.quantity) > stock.available;
+                        const itemBatches = warehouseBatches.filter(b => b.itemId === row.itemId && b.warehouseId === issueWarehouseId && b.currentQuantity > 0);
+                        const lineTotal = Number(row.quantity) * Number(row.unitSellPrice);
+
+                        return (
+                          <tr key={row.id} className="hover:bg-slate-50/80 transition">
+                            {/* 1. Index */}
+                            <td className="py-3 px-3 text-center font-bold text-slate-400 text-[11px]">
+                              {idx + 1}
+                            </td>
+
+                            {/* 2. Product Selector & Live Availability */}
+                            <td className="py-3 px-3">
+                              <div className="space-y-1.5">
+                                <select
+                                  value={row.itemId}
+                                  onChange={(e) => handleUpdateIssueRow(row.id, { itemId: e.target.value })}
+                                  className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-blue-700 focus:outline-none"
+                                >
+                                  {warehouseItems.map(it => (
+                                    <option key={it.id} value={it.id}>
+                                      {it.name} ({it.sku}) - {it.unit}
+                                    </option>
+                                  ))}
+                                </select>
+
+                                {/* Availability Pill & Warnings */}
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                    isStockExceeded
+                                      ? "bg-rose-50 text-rose-700 border border-rose-200"
+                                      : stock.available > 0
+                                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                      : "bg-amber-50 text-amber-700 border border-amber-200"
+                                  }`}>
+                                    {isStockExceeded && <AlertTriangle className="w-3 h-3 inline mr-1 -mt-0.5" />}
+                                    {t("Available", "Dostupné", "Elérhető")}: {stock.available} {selItem?.unit || "ks"}
+                                  </span>
+
+                                  {selItem?.defaultLocation && (
+                                    <span className="text-[10px] text-slate-400 flex items-center gap-1 font-mono">
+                                      <MapPin className="w-3 h-3 text-slate-400" />
+                                      {stock.locations || selItem.defaultLocation}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* FEFO Batch lot picker if expiration tracking is on */}
+                                {selItem?.hasExpiration && itemBatches.length > 0 && (
+                                  <div className="pt-1 flex items-center gap-1.5">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">
+                                      {t("Batch (FEFO)", "Šarža", "Tétel")}:
+                                    </span>
+                                    <select
+                                      value={row.batchId}
+                                      onChange={(e) => handleUpdateIssueRow(row.id, { batchId: e.target.value })}
+                                      className="w-full px-2 py-1 bg-amber-50/50 border border-amber-200 rounded-lg text-[11px] font-mono text-amber-900"
+                                    >
+                                      <option value="">{t("Auto: Earliest Expiration (FEFO)", "Auto: Najskoršia exspirácia (FEFO)", "Legkorábbi lejárat")}</option>
+                                      {itemBatches.map(b => (
+                                        <option key={b.id} value={b.id}>
+                                          {b.batchNumber} (Exp: {b.expirationDate}, {b.currentQuantity} {selItem.unit})
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+
+                            {/* 3. Quantity & Unit Stepper */}
+                            <td className="py-3 px-3">
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateIssueRow(row.id, { quantity: Math.max(0.01, Number((Number(row.quantity) - 1).toFixed(2))) })}
+                                  className="w-6 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center justify-center transition shrink-0"
+                                >
+                                  -
+                                </button>
+                                <input
+                                  type="number"
+                                  min="0.01"
+                                  step="0.01"
+                                  value={row.quantity}
+                                  onChange={(e) => handleUpdateIssueRow(row.id, { quantity: Number(e.target.value) })}
+                                  className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 text-center focus:ring-2 focus:ring-blue-700 focus:outline-none"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateIssueRow(row.id, { quantity: Number((Number(row.quantity) + 1).toFixed(2)) })}
+                                  className="w-6 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center justify-center transition shrink-0"
+                                >
+                                  +
+                                </button>
+                              </div>
+                              <div className="text-center text-[10px] font-semibold text-slate-400 mt-1">
+                                {selItem?.unit || "ks"}
+                              </div>
+                            </td>
+
+                            {/* 4. Base Catalog Price */}
+                            <td className="py-3 px-3 text-right">
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={row.baseSellPrice}
+                                onChange={(e) => handleUpdateIssueRow(row.id, { baseSellPrice: Number(e.target.value) })}
+                                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-700 text-right focus:ring-2 focus:ring-blue-700 focus:outline-none"
+                              />
+                              <span className="text-[10px] text-slate-400 mt-1 block">/{selItem?.unit || "ks"}</span>
+                            </td>
+
+                            {/* 5. Discount (%) */}
+                            <td className="py-3 px-3">
+                              <div className="space-y-1">
+                                <div className="relative">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="100"
+                                    step="0.5"
+                                    value={row.discountPct}
+                                    onChange={(e) => handleUpdateIssueRow(row.id, { discountPct: Number(e.target.value) })}
+                                    className="w-full pl-2 pr-5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-center text-rose-600 focus:ring-2 focus:ring-blue-700 focus:outline-none"
+                                  />
+                                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400">%</span>
+                                </div>
+                                {/* Quick presets */}
+                                <div className="flex items-center justify-center gap-1">
+                                  {[0, 5, 10, 15].map(pct => (
+                                    <button
+                                      key={pct}
+                                      type="button"
+                                      onClick={() => handleUpdateIssueRow(row.id, { discountPct: pct })}
+                                      className={`px-1 py-0.5 rounded text-[9px] font-bold transition ${
+                                        row.discountPct === pct ? "bg-rose-100 text-rose-700" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                                      }`}
+                                    >
+                                      {pct}%
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* 6. Sale Price after Discount */}
+                            <td className="py-3 px-3 text-right">
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={row.unitSellPrice}
+                                onChange={(e) => handleUpdateIssueRow(row.id, { unitSellPrice: Number(e.target.value) })}
+                                className="w-full px-2 py-1.5 bg-blue-50/50 border border-blue-200 rounded-xl text-xs font-mono font-bold text-blue-950 text-right focus:bg-white focus:ring-2 focus:ring-blue-700 focus:outline-none"
+                              />
+                              <span className="text-[10px] text-slate-400 mt-1 block">/{selItem?.unit || "ks"}</span>
+                            </td>
+
+                            {/* 7. Line Total */}
+                            <td className="py-3 px-3 text-right">
+                              <div className="font-mono font-black text-sm text-slate-900">
+                                {formatCurrency(lineTotal, systemLanguage, systemCurrency)}
+                              </div>
+                              {row.discountPct > 0 && (
+                                <span className="text-[10px] text-rose-600 font-semibold block">
+                                  -{formatCurrency((Number(row.quantity) * Number(row.baseSellPrice)) - lineTotal, systemLanguage, systemCurrency)}
+                                </span>
+                              )}
+                            </td>
+
+                            {/* 8. Note */}
+                            <td className="py-3 px-3">
+                              <input
+                                type="text"
+                                value={row.note}
+                                onChange={(e) => handleUpdateIssueRow(row.id, { note: e.target.value })}
+                                placeholder={t("Line note...", "Poznámka...", "Megjegyzés...")}
+                                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-700 focus:outline-none"
+                              />
+                            </td>
+
+                            {/* 9. Actions */}
+                            <td className="py-3 px-2 text-center">
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveIssueRow(row.id)}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition"
+                                title={t("Remove Row", "Odstrániť riadok", "Sor törlése")}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>
