@@ -39,7 +39,8 @@ import {
   Camera,
   Loader2,
   Lock,
-  Unlock
+  Unlock,
+  Activity
 } from "lucide-react";
 import { formatMoney } from "../utils/currency";
 import type { Language } from "../utils/translations";
@@ -157,6 +158,34 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   const [isHoldingLock, setIsHoldingLock] = useState(false);
   const holdTimerRef = useRef<any>(null);
   const holdIntervalRef = useRef<any>(null);
+
+  // Product Detail Tab Selector
+  const [productDetailTab, setProductDetailTab] = useState<"statistics" | "warehouse" | "movements">("statistics");
+
+  // Product Specific Purchase Modal (Príjem tovaru / Nákup)
+  const [isProductPurchaseModalOpen, setIsProductPurchaseModalOpen] = useState(false);
+  const [productPurchasePartnerId, setProductPurchasePartnerId] = useState<string>("");
+  const [productPurchasePartnerSearch, setProductPurchasePartnerSearch] = useState<string>("");
+  const [isProductPurchasePartnerOpen, setIsProductPurchasePartnerOpen] = useState(false);
+  const [productPurchaseWarehouseId, setProductPurchaseWarehouseId] = useState<string>("");
+  const [productPurchaseAmount, setProductPurchaseAmount] = useState<number>(1);
+  const [productPurchasePrice, setProductPurchasePrice] = useState<number>(0);
+  const [productPurchaseBatchNumber, setProductPurchaseBatchNumber] = useState<string>("");
+  const [productPurchaseExpirationDate, setProductPurchaseExpirationDate] = useState<string>("");
+  const [productPurchaseNote, setProductPurchaseNote] = useState<string>("");
+
+  // Product Specific Sale Modal (Výdaj tovaru / Predaj)
+  const [isProductSaleModalOpen, setIsProductSaleModalOpen] = useState(false);
+  const [productSalePartnerId, setProductSalePartnerId] = useState<string>("");
+  const [productSalePartnerSearch, setProductSalePartnerSearch] = useState<string>("");
+  const [isProductSalePartnerOpen, setIsProductSalePartnerOpen] = useState(false);
+  const [productSaleWarehouseId, setProductSaleWarehouseId] = useState<string>("");
+  const [productSaleAmount, setProductSaleAmount] = useState<number>(1);
+  const [productSalePrice, setProductSalePrice] = useState<number>(0);
+  const [productSaleBatchId, setProductSaleBatchId] = useState<string>("");
+  const [productSaleExpirationSearch, setProductSaleExpirationSearch] = useState<string>("");
+  const [isProductSaleExpirationOpen, setIsProductSaleExpirationOpen] = useState(false);
+  const [productSaleNote, setProductSaleNote] = useState<string>("");
 
   // Form states for Product Modal
   const [itemForm, setItemForm] = useState<{
@@ -611,6 +640,261 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     }
     setIsHoldingLock(false);
     setLockHoldProgress(0);
+  };
+
+  // Joint Partners (Suppliers) & Clients (Leads) List
+  const jointPartnersAndClients = useMemo(() => {
+    const list: Array<{ id: string; name: string; type: "partner" | "client"; subtext: string }> = [];
+    suppliers.forEach(s => {
+      list.push({
+        id: `sup_${s.id}`,
+        name: s.name,
+        type: "partner",
+        subtext: s.companyId ? `IČO: ${s.companyId} · ${s.city || t("Supplier / Partner", "Dodávateľ / Partner", "Beszállító / Partner")}` : (s.city || t("Supplier / Partner", "Dodávateľ / Partner", "Beszállító / Partner"))
+      });
+    });
+    leads.forEach(l => {
+      list.push({
+        id: `lead_${l.id}`,
+        name: l.name,
+        type: "client",
+        subtext: l.clientType === "partner" ? t("B2B Partner", "B2B Partner", "Partner") : (l.city ? `${l.city} · ${t("Client / Customer", "Klient / Odberateľ", "Ügyfél")}` : t("Client / Customer", "Klient / Odberateľ", "Ügyfél"))
+      });
+    });
+    return list;
+  }, [suppliers, leads, t]);
+
+  const handleOpenProductPurchaseModal = () => {
+    const currentItem = warehouseItems.find(i => i.id === selectedProductDetailId);
+    if (!currentItem) return;
+    setProductPurchasePartnerId(suppliers[0] ? `sup_${suppliers[0].id}` : (leads[0] ? `lead_${leads[0].id}` : ""));
+    setProductPurchasePartnerSearch("");
+    setIsProductPurchasePartnerOpen(false);
+    setProductPurchaseWarehouseId(warehouses[0]?.id || "");
+    setProductPurchaseAmount(1);
+    setProductPurchasePrice(currentItem.avgPurchasePrice || 0);
+    setProductPurchaseBatchNumber(`BAT-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`);
+    setProductPurchaseExpirationDate("");
+    setProductPurchaseNote("");
+    setIsProductPurchaseModalOpen(true);
+  };
+
+  const handleOpenProductSaleModal = () => {
+    const currentItem = warehouseItems.find(i => i.id === selectedProductDetailId);
+    if (!currentItem) return;
+    setProductSalePartnerId(leads[0] ? `lead_${leads[0].id}` : (suppliers[0] ? `sup_${suppliers[0].id}` : ""));
+    setProductSalePartnerSearch("");
+    setIsProductSalePartnerOpen(false);
+    setProductSaleWarehouseId(warehouses[0]?.id || "");
+    setProductSaleAmount(1);
+    setProductSalePrice(currentItem.defaultSellPrice || 0);
+    setProductSaleBatchId("");
+    setProductSaleExpirationSearch("");
+    setIsProductSaleExpirationOpen(false);
+    setProductSaleNote("");
+    setIsProductSaleModalOpen(true);
+  };
+
+  const handleSaveProductPurchase = () => {
+    const currentItem = warehouseItems.find(i => i.id === selectedProductDetailId);
+    if (!currentItem) return;
+    if (productPurchaseAmount <= 0) {
+      alert(t("Please enter a valid quantity.", "Zadajte platné množstvo.", "Kérjük, adjon meg érvényes mennyiséget."));
+      return;
+    }
+
+    let supplierId: string | null = null;
+    let leadId: string | null = null;
+    if (productPurchasePartnerId.startsWith("sup_")) {
+      supplierId = productPurchasePartnerId.replace("sup_", "");
+    } else if (productPurchasePartnerId.startsWith("lead_")) {
+      leadId = productPurchasePartnerId.replace("lead_", "");
+    }
+
+    const docNum = `PRI-${new Date().getFullYear()}-${String(warehouseMovements.filter(m => m.type === "inward").length + 1).padStart(4, "0")}`;
+    const movId = `mov-${Date.now()}`;
+    const totalCost = Number(productPurchaseAmount) * Number(productPurchasePrice);
+
+    const movementItem: WarehouseMovementItem = {
+      id: `mvi-${Date.now()}-0`,
+      movementId: movId,
+      itemId: currentItem.id,
+      batchId: productPurchaseBatchNumber.trim() ? `bat-${Date.now()}` : null,
+      quantity: Number(productPurchaseAmount),
+      unitPurchasePrice: Number(productPurchasePrice),
+      unitSellPrice: currentItem.defaultSellPrice || 0,
+      totalPrice: totalCost,
+      expirationDate: productPurchaseExpirationDate || null,
+      note: productPurchaseNote || null
+    };
+
+    const newMovement: WarehouseMovement = {
+      id: movId,
+      documentNumber: docNum,
+      type: "inward",
+      status: "confirmed",
+      warehouseId: productPurchaseWarehouseId,
+      targetWarehouseId: null,
+      supplierId: supplierId,
+      leadId: leadId,
+      totalCostValue: totalCost,
+      totalSellValue: 0,
+      totalProfitValue: 0,
+      createdBy: currentUser.email,
+      note: productPurchaseNote.trim() || null,
+      fileName: null,
+      filePath: null,
+      issuedAt: new Date().toISOString().slice(0, 19).replace("T", " "),
+      createdAt: new Date().toISOString().slice(0, 19).replace("T", " "),
+      items: [movementItem]
+    };
+
+    setWarehouseMovements(prev => [newMovement, ...prev]);
+
+    const currentStock = warehouseStock.find(s => s.warehouseId === productPurchaseWarehouseId && s.itemId === currentItem.id);
+    const existingQty = currentStock?.quantity || 0;
+    const oldAvgPrice = currentItem.avgPurchasePrice || 0;
+    const newTotalQty = existingQty + Number(productPurchaseAmount);
+    const newWapPrice = newTotalQty > 0 
+      ? ((existingQty * oldAvgPrice) + (Number(productPurchaseAmount) * Number(productPurchasePrice))) / newTotalQty 
+      : Number(productPurchasePrice);
+
+    setWarehouseItems(prev => prev.map(i => i.id === currentItem.id ? {
+      ...i,
+      avgPurchasePrice: Number(newWapPrice.toFixed(2)),
+      lastPurchasePrice: Number(productPurchasePrice)
+    } : i));
+    setItemForm(prev => ({ ...prev, avgPurchasePrice: Number(newWapPrice.toFixed(2)) }));
+
+    setWarehouseStock(prev => {
+      const exists = prev.some(s => s.warehouseId === productPurchaseWarehouseId && s.itemId === currentItem.id);
+      if (exists) {
+        return prev.map(s => s.warehouseId === productPurchaseWarehouseId && s.itemId === currentItem.id ? {
+          ...s,
+          quantity: s.quantity + Number(productPurchaseAmount)
+        } : s);
+      } else {
+        return [...prev, {
+          id: `stk-${Date.now()}`,
+          warehouseId: productPurchaseWarehouseId,
+          itemId: currentItem.id,
+          quantity: Number(productPurchaseAmount),
+          reservedQuantity: 0,
+          location: currentItem.defaultLocation || "A-01-RACK"
+        }];
+      }
+    });
+
+    if (productPurchaseBatchNumber.trim() || productPurchaseExpirationDate) {
+      const newBatch: WarehouseBatch = {
+        id: movementItem.batchId || `bat-${Date.now()}`,
+        itemId: currentItem.id,
+        warehouseId: productPurchaseWarehouseId,
+        batchNumber: productPurchaseBatchNumber.trim() || `BAT-${Date.now().toString().slice(-4)}`,
+        expirationDate: productPurchaseExpirationDate || new Date(Date.now() + 365*24*60*60*1000).toISOString().slice(0, 10),
+        initialQuantity: Number(productPurchaseAmount),
+        currentQuantity: Number(productPurchaseAmount),
+        purchasePrice: Number(productPurchasePrice),
+        createdAt: new Date().toISOString().slice(0, 19).replace("T", " ")
+      };
+      setWarehouseBatches(prev => [newBatch, ...prev]);
+    }
+
+    if (typeof (window as any).showToast === "function") {
+      (window as any).showToast(t(`Purchase receipt ${docNum} logged successfully.`, `Príjemka ${docNum} bola úspešne zaevidovaná.`, `A(z) ${docNum} bevételezés rögzítve.`));
+    }
+
+    setIsProductPurchaseModalOpen(false);
+    setProductPurchaseNote("");
+  };
+
+  const handleSaveProductSale = () => {
+    const currentItem = warehouseItems.find(i => i.id === selectedProductDetailId);
+    if (!currentItem) return;
+    if (productSaleAmount <= 0) {
+      alert(t("Please enter a valid quantity.", "Zadajte platné množstvo.", "Kérjük, adjon meg érvényes mennyiséget."));
+      return;
+    }
+
+    const stock = getStockInfoForItem(currentItem.id, productSaleWarehouseId);
+    if (productSaleAmount > stock.available) {
+      alert(t(
+        `Insufficient stock for "${currentItem.name}". Available: ${stock.available} ${currentItem.unit}, Requested: ${productSaleAmount}`,
+        `Nedostatočný stav zásob pre "${currentItem.name}". Dostupné: ${stock.available} ${currentItem.unit}, Požadované: ${productSaleAmount}`,
+        `Nincs elegendő készlet a(z) "${currentItem.name}" termékből.`
+      ));
+      return;
+    }
+
+    let supplierId: string | null = null;
+    let leadId: string | null = null;
+    if (productSalePartnerId.startsWith("sup_")) {
+      supplierId = productSalePartnerId.replace("sup_", "");
+    } else if (productSalePartnerId.startsWith("lead_")) {
+      leadId = productSalePartnerId.replace("lead_", "");
+    }
+
+    const docNum = `VYD-${new Date().getFullYear()}-${String(warehouseMovements.filter(m => m.type === "outward").length + 1).padStart(4, "0")}`;
+    const movId = `mov-${Date.now()}`;
+    const unitCost = currentItem.avgPurchasePrice || 0;
+    const totalCost = Number(productSaleAmount) * unitCost;
+    const totalSell = Number(productSaleAmount) * Number(productSalePrice);
+
+    const movementItem: WarehouseMovementItem = {
+      id: `mvi-${Date.now()}-0`,
+      movementId: movId,
+      itemId: currentItem.id,
+      batchId: productSaleBatchId || null,
+      quantity: Number(productSaleAmount),
+      unitPurchasePrice: unitCost,
+      unitSellPrice: Number(productSalePrice),
+      totalPrice: totalSell,
+      expirationDate: null,
+      note: productSaleNote || null
+    };
+
+    const newMovement: WarehouseMovement = {
+      id: movId,
+      documentNumber: docNum,
+      type: "outward",
+      status: "confirmed",
+      warehouseId: productSaleWarehouseId,
+      targetWarehouseId: null,
+      supplierId: supplierId,
+      leadId: leadId,
+      totalCostValue: totalCost,
+      totalSellValue: totalSell,
+      totalProfitValue: totalSell - totalCost,
+      createdBy: currentUser.email,
+      note: productSaleNote.trim() || null,
+      fileName: null,
+      filePath: null,
+      issuedAt: new Date().toISOString().slice(0, 19).replace("T", " "),
+      createdAt: new Date().toISOString().slice(0, 19).replace("T", " "),
+      items: [movementItem]
+    };
+
+    setWarehouseMovements(prev => [newMovement, ...prev]);
+
+    setWarehouseStock(prev => prev.map(s => s.warehouseId === productSaleWarehouseId && s.itemId === currentItem.id ? {
+      ...s,
+      quantity: Math.max(0, s.quantity - Number(productSaleAmount))
+    } : s));
+
+    if (productSaleBatchId) {
+      setWarehouseBatches(prev => prev.map(b => b.id === productSaleBatchId ? {
+        ...b,
+        currentQuantity: Math.max(0, b.currentQuantity - Number(productSaleAmount))
+      } : b));
+    }
+
+    if (typeof (window as any).showToast === "function") {
+      (window as any).showToast(t(`Sale issue ${docNum} logged successfully.`, `Výdajka ${docNum} bola úspešne zaevidovaná.`, `A(z) ${docNum} kiadás rögzítve.`));
+    }
+
+    setIsProductSaleModalOpen(false);
+    setProductSaleNote("");
+    setProductSaleBatchId("");
   };
 
   const handleDeleteItem = (itemId: string) => {
@@ -1119,6 +1403,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     const isNew = selectedProductDetailId === "new";
     const currentItem = isNew ? null : warehouseItems.find(i => i.id === selectedProductDetailId);
     const overallStock = currentItem ? getStockInfoForItem(currentItem.id, "all") : { onHand: 0, reserved: 0, available: 0, locations: "" };
+    const totalStock = overallStock.onHand;
     
     // Live Profit & Margin computations
     const sellPrice = Number(itemForm.defaultSellPrice) || 0;
@@ -1126,9 +1411,6 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     const unitProfit = sellPrice - buyPrice;
     const marginPct = sellPrice > 0 ? (unitProfit / sellPrice) * 100 : 0;
     const markupPct = buyPrice > 0 ? (unitProfit / buyPrice) * 100 : 0;
-
-    // Item-specific batches
-    const itemBatches = currentItem ? warehouseBatches.filter(b => b.itemId === currentItem.id) : [];
 
     // Item-specific movements
     const itemMovements = currentItem ? warehouseMovements.filter(m => m.items?.some(it => it.itemId === currentItem.id)) : [];
@@ -1710,284 +1992,1142 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             )}
           </div>
 
-          {/* RIGHT WIDER COLUMN (2/3 width): FINANCIALS, WAREHOUSE BALANCES, LOTS & MOVEMENTS */}
+          {/* RIGHT WIDER COLUMN (2/3 width): TAB SELECTOR WORKSPACE */}
           <div className="lg:col-span-2 space-y-6">
             
-            {/* CARD 1: PRICING, WAP COSTING & PROFIT MARGIN CALCULATOR */}
-            <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-5">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
-                    <DollarSign className="w-4 h-4" />
+            {/* TAB SELECTOR BAR */}
+            <div className="bg-white p-1.5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setProductDetailTab("statistics")}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  productDetailTab === "statistics"
+                    ? "bg-blue-950 text-white shadow-md shadow-blue-950/20"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/70"
+                }`}
+              >
+                <BarChart3 className="w-4 h-4" />
+                <span>{t("Statistics & Pricing", "Štatistiky a Cenotvorba", "Statisztika és Árképzés")}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setProductDetailTab("warehouse")}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  productDetailTab === "warehouse"
+                    ? "bg-blue-950 text-white shadow-md shadow-blue-950/20"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/70"
+                }`}
+              >
+                <Building2 className="w-4 h-4" />
+                <span>{t("Warehouses & FEFO Map", "Sklady a FEFO mapa", "Raktárak és FEFO térkép")}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setProductDetailTab("movements")}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  productDetailTab === "movements"
+                    ? "bg-blue-950 text-white shadow-md shadow-blue-950/20"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/70"
+                }`}
+              >
+                <ArrowLeftRight className="w-4 h-4" />
+                <span>{t("Movements", "Pohyby tovaru", "Mozgások")}</span>
+                {itemMovements.length > 0 && (
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                    productDetailTab === "movements" ? "bg-blue-800 text-blue-100" : "bg-slate-200 text-slate-700"
+                  }`}>
+                    {itemMovements.length}
+                  </span>
+                )}
+              </button>
+            </div>
+
+            {/* TAB 1: STATISTICS & PRICING */}
+            {productDetailTab === "statistics" && (
+              <div className="space-y-6">
+                
+                {/* WAREHOUSE TREND & INVENTORY FLOW METRICS */}
+                <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-5">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-900 flex items-center justify-center">
+                        <Activity className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-slate-900 text-base">
+                          {t("Warehouse Trend & Inventory Analytics", "Vývoj zásob a skladový trend", "Raktári trend és készletelemzés")}
+                        </h3>
+                        <p className="text-[11px] text-slate-400">
+                          {t("Real-time stock velocity, 30-day inflow/outflow & valuation", "Rýchlosť obrátky, prírastky/úbytky za posledných 30 dní a ocenenie", "Valós idejű készletmozgás és értékelés")}
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-bold text-slate-900 text-base">
-                      {t("Financials, WAP & Margins", "Cenotvorba, Vážený nákupný priemer (WAP) a Marža", "Árképzés, WAP és árrés")}
-                    </h3>
-                    <p className="text-[11px] text-slate-400">
-                      {t("Weighted average cost recalculated automatically on each receipt", "Vážený nákupný priemer sa automaticky prepočítava pri každej príjemke", "Az átlagos beszerzési ár minden bevételezéskor frissül")}
-                    </p>
+
+                  {/* 4 SUMMARY STAT CARDS */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {/* Stat 1: Total Stock */}
+                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/70">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                        {t("Total Stock", "Celková zásoba", "Összkészlet")}
+                      </span>
+                      <div className="text-lg font-black text-slate-900 font-mono">
+                        {totalStock} <span className="text-xs font-normal text-slate-500">{itemForm.unit}</span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 mt-0.5 block">
+                        {t("Across all warehouses", "Na všetkých skladoch", "Összes raktárban")}
+                      </span>
+                    </div>
+
+                    {/* Stat 2: Total Value at WAP */}
+                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/70">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                        {t("Inventory Value", "Hodnota zásob (WAP)", "Készletérték")}
+                      </span>
+                      <div className="text-lg font-black text-emerald-700 font-mono">
+                        {formatCurrency(totalStock * itemForm.avgPurchasePrice, systemLanguage, systemCurrency)}
+                      </div>
+                      <span className="text-[10px] text-slate-400 mt-0.5 block">
+                        {t("At avg purchase cost", "Podľa nákupných cien", "Beszerzési áron")}
+                      </span>
+                    </div>
+
+                    {/* Stat 3: 30d Inflow */}
+                    <div className="p-3.5 rounded-2xl bg-emerald-50/60 border border-emerald-100">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 block mb-1 flex items-center gap-1">
+                        <ArrowDownLeft className="w-3 h-3" />
+                        {t("Purchases (30d)", "Nákup (30 dní)", "Beszerzés (30n)")}
+                      </span>
+                      <div className="text-lg font-black text-emerald-900 font-mono">
+                        +{itemMovements
+                          .filter(m => m.type === "inward" && new Date(m.issuedAt || m.createdAt || "").getTime() >= Date.now() - 30 * 86400000)
+                          .reduce((sum, m) => sum + (m.items?.find(it => it.itemId === currentItem?.id)?.quantity || 0), 0)}{" "}
+                        <span className="text-xs font-normal text-emerald-700">{itemForm.unit}</span>
+                      </div>
+                      <span className="text-[10px] text-emerald-600 mt-0.5 block">
+                        {t("Inward receipts", "Príjemky na sklad", "Bevételezések")}
+                      </span>
+                    </div>
+
+                    {/* Stat 4: 30d Outflow */}
+                    <div className="p-3.5 rounded-2xl bg-blue-50/60 border border-blue-100">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 block mb-1 flex items-center gap-1">
+                        <ArrowUpRight className="w-3 h-3" />
+                        {t("Sales (30d)", "Predaj (30 dní)", "Értékesítés (30n)")}
+                      </span>
+                      <div className="text-lg font-black text-blue-900 font-mono">
+                        -{itemMovements
+                          .filter(m => m.type === "outward" && new Date(m.issuedAt || m.createdAt || "").getTime() >= Date.now() - 30 * 86400000)
+                          .reduce((sum, m) => sum + (m.items?.find(it => it.itemId === currentItem?.id)?.quantity || 0), 0)}{" "}
+                        <span className="text-xs font-normal text-blue-700">{itemForm.unit}</span>
+                      </div>
+                      <span className="text-[10px] text-blue-600 mt-0.5 block">
+                        {t("Issued to clients", "Vydané zákazníkom", "Kiadások")}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* FLOW TRAJECTORY & HEALTH BAR */}
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className={`w-3 h-3 rounded-full ${totalStock > (itemForm.minStock || 0) ? "bg-emerald-500 animate-pulse" : "bg-amber-500 animate-bounce"}`} />
+                      <div>
+                        <span className="text-xs font-bold text-slate-800 block">
+                          {totalStock > (itemForm.minStock || 0) 
+                            ? t("Stock Status: Optimal & Healthy", "Stav zásob: Optimálny a v norme", "Készletállapot: Megfelelő")
+                            : t("Stock Status: Low Inventory Alert!", "Stav zásob: Nízka zásoba — potrebné doobjednať!", "Készletállapot: Alacsony készlet!")}
+                        </span>
+                        <span className="text-[11px] text-slate-400">
+                          {t("Min Alert threshold", "Minimálny limit", "Minimális limit")}: {itemForm.minStock} {itemForm.unit} · {t("Target", "Cieľ", "Cél")}: {itemForm.optimalStock} {itemForm.unit}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono font-bold text-slate-700">
+                        {Math.min(100, Math.round((totalStock / (itemForm.optimalStock || 1)) * 100))}%
+                      </span>
+                      <div className="w-28 h-2.5 bg-slate-200 rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full rounded-full transition-all ${totalStock > (itemForm.minStock || 0) ? "bg-emerald-600" : "bg-amber-500"}`}
+                          style={{ width: `${Math.min(100, (totalStock / (itemForm.optimalStock || 1)) * 100)}%` }}
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
+
+                {/* CARD 1: PRICING, WAP COSTING & PROFIT MARGIN CALCULATOR */}
+                <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-5">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
+                        <DollarSign className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-slate-900 text-base">
+                          {t("Financials, WAP & Margins", "Cenotvorba, Vážený nákupný priemer (WAP) a Marža", "Árképzés, WAP és árrés")}
+                        </h3>
+                        <p className="text-[11px] text-slate-400">
+                          {t("Weighted average cost recalculated automatically on each receipt", "Vážený nákupný priemer sa automaticky prepočítava pri každej príjemke", "Az átlagos beszerzési ár minden bevételezéskor frissül")}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* WAP Purchase Price */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                        {t("Average Purchase Price (WAP)", "Priemerná nákupná cena (WAP)", "Átlagos beszerzési ár")}
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={itemForm.avgPurchasePrice}
+                          onChange={(e) => setItemForm({ ...itemForm, avgPurchasePrice: Number(e.target.value) })}
+                          className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-base font-mono font-black text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition"
+                        />
+                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                          {systemCurrency || "EUR"} / {itemForm.unit}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        {t("Last purchase", "Posledný nákup", "Utolsó beszerzés")}: <span className="font-semibold text-slate-600">{formatCurrency(currentItem?.lastPurchasePrice || itemForm.avgPurchasePrice, systemLanguage, systemCurrency)}</span>
+                      </p>
+                    </div>
+
+                    {/* Selling Price Summary (Configured in Left Sidebar) */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                        {t("Suggested Sale Price", "Predajná cena (zadaná vľavo)", "Eladási ár")}
+                      </label>
+                      <div className="px-4 py-2.5 bg-blue-50/50 border border-blue-100 rounded-2xl flex items-center justify-between">
+                        <span className="text-base font-mono font-black text-blue-950">
+                          {formatCurrency(itemForm.defaultSellPrice, systemLanguage, systemCurrency)}
+                        </span>
+                        <span className="text-xs font-semibold text-blue-800/70">
+                          / {itemForm.unit}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        {t("Configured in left sidebar", "Upraviteľná v ľavom paneli tovaru", "A bal oldali panelen szerkeszthető")}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* LIVE MARGIN & PROFITABILITY WIDGET */}
+                  <div className="bg-gradient-to-br from-slate-900 to-blue-950 p-5 rounded-2xl text-white shadow-md">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs font-bold tracking-wider uppercase text-blue-200 flex items-center gap-1.5">
+                        <TrendingUp className="w-4 h-4 text-emerald-400" />
+                        {t("Profitability Calculator", "Kalkulátor ziskovosti a marže", "Jövedelmezőségi kalkulátor")}
+                      </span>
+                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-black ${
+                        marginPct >= 40 
+                          ? "bg-emerald-500/20 text-emerald-300 border border-emerald-400/30" 
+                          : marginPct >= 20 
+                          ? "bg-blue-500/20 text-blue-300 border border-blue-400/30" 
+                          : "bg-amber-500/20 text-amber-300 border border-amber-400/30"
+                      }`}>
+                        {marginPct >= 40 ? t("High Profit", "Vysoká ziskovosť", "Magas árrés") : marginPct >= 20 ? t("Standard Margin", "Štandardná marža", "Normál árrés") : t("Low Margin", "Nízka marža", "Alacsony árrés")}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-4 pt-2 border-t border-white/10 text-center">
+                      <div>
+                        <span className="text-[11px] text-slate-300 font-medium block">{t("Gross Profit", "Hrubý zisk", "Bruttó haszon")}</span>
+                        <span className="text-lg md:text-xl font-black text-emerald-400 tracking-tight">
+                          +{formatCurrency(unitProfit, systemLanguage, systemCurrency)}
+                        </span>
+                        <span className="text-[10px] text-slate-400 block">/ {itemForm.unit}</span>
+                      </div>
+
+                      <div>
+                        <span className="text-[11px] text-slate-300 font-medium block">{t("Gross Margin", "Obchodná marža", "Kereskedelmi árrés")}</span>
+                        <span className="text-lg md:text-xl font-black text-white tracking-tight">
+                          {marginPct.toFixed(1)}%
+                        </span>
+                        <span className="text-[10px] text-slate-400 block">{(marginPct / 100).toFixed(2)} coeff</span>
+                      </div>
+
+                      <div>
+                        <span className="text-[11px] text-slate-300 font-medium block">{t("Markup", "Cenová prirážka", "Árréskulcs")}</span>
+                        <span className="text-lg md:text-xl font-black text-blue-300 tracking-tight">
+                          +{markupPct.toFixed(1)}%
+                        </span>
+                        <span className="text-[10px] text-slate-400 block">{t("over cost", "nad nákup", "beszerzés felett")}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            )}
+
+            {/* TAB 2: WAREHOUSES & FEFO MAP */}
+            {productDetailTab === "warehouse" && (
+              <div className="space-y-5">
+                
+                {/* WAREHOUSE DISTRIBUTION & PER-WAREHOUSE FEFO MAP */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-bold text-slate-900 text-base">
+                        {t("Warehouse Stock Balances & FEFO Map", "Stavy na skladoch a FEFO mapa šarží", "Raktári készletek és FEFO térkép")}
+                      </h3>
+                      <p className="text-[11px] text-slate-400">
+                        {t("Detailed physical inventory & batch expiration tracking for each individual warehouse", "Podrobný prehľad zásob a exspirácií šarží pre každý sklad osobitne", "Részletes készlet- és lejáratiidő-nyilvántartás raktáranként")}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* CARDS FOR EACH WAREHOUSE WITH ITS OWN FEFO MAP */}
+                  {warehouses.map(wh => {
+                    const st = warehouseStock.find(s => s.warehouseId === wh.id && s.itemId === currentItem?.id);
+                    const onHand = st?.quantity || 0;
+                    const res = st?.reservedQuantity || 0;
+                    const avail = Math.max(0, onHand - res);
+                    const whBatches = warehouseBatches.filter(b => b.itemId === currentItem?.id && b.warehouseId === wh.id && b.currentQuantity > 0);
+
+                    return (
+                      <div key={wh.id} className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
+                        {/* WAREHOUSE HEADER */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-2">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-900 flex items-center justify-center font-bold">
+                              <Building2 className="w-5 h-5 text-blue-900" />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h4 className="font-bold text-slate-900 text-sm">{wh.name}</h4>
+                                <span className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-600 font-mono text-[10px] font-bold">
+                                  {wh.code}
+                                </span>
+                              </div>
+                              <span className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
+                                <MapPin className="w-3 h-3 text-slate-400" />
+                                {st?.location || itemForm.defaultLocation || t("Main Floor", "Hlavná plocha", "Fő raktárhely")}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* BALANCES BADGES */}
+                          <div className="flex items-center gap-3 self-end sm:self-center">
+                            <div className="text-right">
+                              <span className="text-[10px] text-slate-400 uppercase font-bold block">{t("Physical", "Fyzicky", "Fizikai")}</span>
+                              <span className="font-mono font-bold text-slate-900 text-xs">{onHand} {itemForm.unit}</span>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-[10px] text-slate-400 uppercase font-bold block">{t("Reserved", "Rezervované", "Foglalt")}</span>
+                              <span className="font-mono font-bold text-slate-500 text-xs">{res} {itemForm.unit}</span>
+                            </div>
+                            <div className="text-right pl-2 border-l border-slate-100">
+                              <span className="text-[10px] text-emerald-600 uppercase font-bold block">{t("Available", "K dispozícii", "Szabad")}</span>
+                              <span className={`font-mono font-black text-sm ${avail > 0 ? "text-emerald-700" : "text-slate-400"}`}>
+                                {avail} {itemForm.unit}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* FEFO MAP SECTION FOR THIS WAREHOUSE */}
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-bold text-slate-700 flex items-center gap-1.5 text-[11px] uppercase tracking-wider">
+                              <Layers className="w-3.5 h-3.5 text-amber-600" />
+                              {t("FEFO Batch Map", "FEFO mapa šarží v tomto sklade", "FEFO tételtérkép ezen a raktáron")} ({whBatches.length})
+                            </span>
+                            {whBatches.length > 0 && (
+                              <span className="text-[10px] font-semibold text-slate-400">
+                                {t("Sorted by earliest expiration first", "Zoradené od najstaršej exspirácie", "Lejárati sorrendben")}
+                              </span>
+                            )}
+                          </div>
+
+                          {whBatches.length === 0 ? (
+                            <div className="p-3.5 rounded-2xl bg-slate-50/70 border border-dashed border-slate-200 text-center text-xs text-slate-400">
+                              {t("No active lots in this warehouse. Inventory tracked as unbatched bulk stock.", "V tomto sklade nie sú zaevidované žiadne konkrétne šarže. Tovar sa eviduje ako voľná zásoba.", "Ezen a raktáron nincsenek aktív tételek.")}
+                            </div>
+                          ) : (
+                            <div className="overflow-x-auto rounded-2xl border border-slate-100">
+                              <table className="w-full text-left text-xs">
+                                <thead className="bg-slate-50 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+                                  <tr>
+                                    <th className="py-2 px-3">{t("Batch / Lot #", "Číslo šarže", "Tételszám")}</th>
+                                    <th className="py-2 px-3">{t("Expiration Date", "Dátum exspirácie", "Lejárat")}</th>
+                                    <th className="py-2 px-3">{t("FEFO Health", "FEFO stav", "Állapot")}</th>
+                                    <th className="py-2 px-3 text-right">{t("Quantity Available", "Zostatok šarže", "Készlet")}</th>
+                                    <th className="py-2 px-3 text-right">{t("Purchase Cost", "Nákupná cena", "Beszerzési ár")}</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 font-medium">
+                                  {whBatches
+                                    .sort((a, b) => {
+                                      if (!a.expirationDate) return 1;
+                                      if (!b.expirationDate) return -1;
+                                      return new Date(a.expirationDate).getTime() - new Date(b.expirationDate).getTime();
+                                    })
+                                    .map((batch, bIdx) => {
+                                      const expStatus = getExpirationStatus(batch.expirationDate);
+                                      return (
+                                        <tr key={batch.id} className="hover:bg-slate-50/60 transition">
+                                          <td className="py-2.5 px-3">
+                                            <div className="flex items-center gap-1.5">
+                                              <span className="font-mono font-bold text-slate-900">{batch.batchNumber}</span>
+                                              {bIdx === 0 && (
+                                                <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-blue-100 text-blue-900 border border-blue-200 uppercase">
+                                                  FEFO #1
+                                                </span>
+                                              )}
+                                            </div>
+                                          </td>
+                                          <td className="py-2.5 px-3 font-mono text-slate-700">
+                                            {batch.expirationDate ? batch.expirationDate.slice(0, 10) : "-"}
+                                          </td>
+                                          <td className="py-2.5 px-3">
+                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 ${
+                                              expStatus.status === "expired"
+                                                ? "bg-rose-100 text-rose-800"
+                                                : expStatus.status === "warning"
+                                                ? "bg-amber-100 text-amber-800"
+                                                : "bg-emerald-100 text-emerald-800"
+                                            }`}>
+                                              {expStatus.daysRemaining < 0 
+                                                ? t("Expired", "Exspirované", "Lejárt") 
+                                                : `${expStatus.daysRemaining} ${t("days remaining", "dní do exspirácie", "nap van hátra")}`}
+                                            </span>
+                                          </td>
+                                          <td className="py-2.5 px-3 text-right font-bold text-slate-900 font-mono">
+                                            {batch.currentQuantity} <span className="text-[10px] font-normal text-slate-400">{itemForm.unit}</span>
+                                          </td>
+                                          <td className="py-2.5 px-3 text-right font-mono text-slate-700">
+                                            {formatCurrency(batch.purchasePrice, systemLanguage, systemCurrency)}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+              </div>
+            )}
+
+            {/* TAB 3: MOVEMENTS */}
+            {productDetailTab === "movements" && (
+              <div className="space-y-4">
+                
+                {/* TOP HEADER WITH LOG PURCHASE & LOG SALE BUTTONS */}
+                <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-blue-900" />
+                      {t("Product Stock Movements", "Pohyby tovaru na sklade", "Termékmozgások")}
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      {t("Complete chronological audit trail of receipts, issues and transfers for this product", "Chronologická evidencia príjemiek a výdajok pre tento tovar", "Teljes bevételezési és kiadási előzmény")}
+                    </p>
+                  </div>
+
+                  {/* ACTION BUTTONS */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={handleOpenProductPurchaseModal}
+                      className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                    >
+                      <ArrowDownLeft className="w-4 h-4" />
+                      <span>{t("Log Purchase (PRI)", "+ Zaznamenať nákup (PRI)", "+ Bevételezés (PRI)")}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleOpenProductSaleModal}
+                      className="px-3.5 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                    >
+                      <ArrowUpRight className="w-4 h-4" />
+                      <span>{t("Log Sale (VYD)", "- Zaznamenať predaj (VYD)", "- Kiadás (VYD)")}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* MOVEMENTS TABLE */}
+                <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm space-y-3">
+                  {itemMovements.length === 0 ? (
+                    <div className="p-8 text-center space-y-3">
+                      <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                        <Clock className="w-6 h-6" />
+                      </div>
+                      <p className="text-sm font-semibold text-slate-600">
+                        {t("No stock movements recorded for this product yet.", "Pre tento tovar zatiaľ neboli zaevidované žiadne skladové pohyby.", "Még nincsenek rögzített mozgások.")}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleOpenProductPurchaseModal}
+                        className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition inline-flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <ArrowDownLeft className="w-4 h-4" />
+                        <span>{t("Log First Purchase", "Zaznamenať prvý nákup", "Első bevételezés")}</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto rounded-2xl border border-slate-100">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+                          <tr>
+                            <th className="py-3 px-3.5">{t("Date & Time", "Dátum a čas", "Dátum")}</th>
+                            <th className="py-3 px-3.5">{t("Type", "Typ", "Típus")}</th>
+                            <th className="py-3 px-3.5">{t("Document #", "Číslo dokladu", "Bizonylatszám")}</th>
+                            <th className="py-3 px-3.5">{t("Partner / Client", "Partner / Klient", "Partner / Ügyfél")}</th>
+                            <th className="py-3 px-3.5">{t("Warehouse", "Sklad", "Raktár")}</th>
+                            <th className="py-3 px-3.5 text-right">{t("Quantity", "Množstvo", "Mennyiség")}</th>
+                            <th className="py-3 px-3.5 text-right">{t("Price / Unit", "Cena / MJ", "Egységár")}</th>
+                            <th className="py-3 px-3.5 text-right">{t("Total Value", "Celková suma", "Összérték")}</th>
+                            <th className="py-3 px-3.5 text-center">{t("Action", "Akcia", "Művelet")}</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-medium">
+                          {itemMovements.map(mov => {
+                            const mvItem = mov.items?.find(it => it.itemId === currentItem?.id);
+                            const wh = warehouses.find(w => w.id === mov.warehouseId);
+                            const supplier = suppliers.find(s => s.id === mov.supplierId);
+                            const lead = leads.find(l => l.id === mov.leadId);
+
+                            return (
+                              <tr key={mov.id} className="hover:bg-slate-50/60 transition">
+                                <td className="py-3 px-3.5 font-mono text-slate-500 text-[11px]">
+                                  {mov.issuedAt ? mov.issuedAt.slice(0, 16) : mov.createdAt?.slice(0, 16)}
+                                </td>
+                                <td className="py-3 px-3.5">
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                    mov.type === "inward"
+                                      ? "bg-emerald-100 text-emerald-800"
+                                      : mov.type === "outward"
+                                      ? "bg-blue-100 text-blue-800"
+                                      : "bg-purple-100 text-purple-800"
+                                  }`}>
+                                    {mov.type === "inward" ? "PRI (Príjem)" : mov.type === "outward" ? "VYD (Výdaj)" : "PRE (Prevod)"}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-3.5 font-mono font-bold text-slate-900">
+                                  {mov.documentNumber}
+                                </td>
+                                <td className="py-3 px-3.5">
+                                  {supplier ? (
+                                    <div className="flex items-center gap-1 text-slate-800">
+                                      <span className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 text-[9px] font-bold">{t("Partner", "Partner", "Partner")}</span>
+                                      <span className="font-semibold">{supplier.name}</span>
+                                    </div>
+                                  ) : lead ? (
+                                    <div className="flex items-center gap-1 text-slate-800">
+                                      <span className="px-1.5 py-0.2 rounded bg-blue-100 text-blue-800 text-[9px] font-bold">{t("Client", "Klient", "Ügyfél")}</span>
+                                      <span className="font-semibold">{lead.name}</span>
+                                    </div>
+                                  ) : (
+                                    <span className="text-slate-400">-</span>
+                                  )}
+                                </td>
+                                <td className="py-3 px-3.5 text-slate-600">
+                                  {wh?.name || "-"}
+                                </td>
+                                <td className="py-3 px-3.5 text-right font-mono font-black">
+                                  <span className={mov.type === "inward" ? "text-emerald-700" : "text-blue-700"}>
+                                    {mov.type === "outward" ? "-" : "+"}{mvItem?.quantity || 0} {itemForm.unit}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-3.5 text-right font-mono text-slate-700">
+                                  {formatCurrency(mov.type === "inward" ? (mvItem?.unitPurchasePrice || 0) : (mvItem?.unitSellPrice || 0), systemLanguage, systemCurrency)}
+                                </td>
+                                <td className="py-3 px-3.5 text-right font-mono font-bold text-slate-900">
+                                  {formatCurrency((mvItem?.quantity || 0) * (mov.type === "inward" ? (mvItem?.unitPurchasePrice || 0) : (mvItem?.unitSellPrice || 0)), systemLanguage, systemCurrency)}
+                                </td>
+                                <td className="py-3 px-3.5 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedMovementForPrint(mov)}
+                                    className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+                                    title={t("Print document", "Vytlačiť doklad", "Nyomtatás")}
+                                  >
+                                    <Printer className="w-3.5 h-3.5" />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+              </div>
+            )}
+
+          </div>
+        </div>
+
+        {/* MODAL: LOG PURCHASE (PRI) FOR CURRENT PRODUCT */}
+        {isProductPurchaseModalOpen && currentItem && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+            <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-6 space-y-4 border border-slate-100 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
+                    <ArrowDownLeft className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-900 text-base">{t("Log Purchase (Receipt PRI)", "Zaznamenať nákup (Príjemka PRI)", "Beszerzés rögzítése (PRI)")}</h3>
+                    <p className="text-xs text-slate-400 font-medium">{currentItem.name} ({currentItem.sku})</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsProductPurchaseModalOpen(false)}
+                  className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* WAP Purchase Price */}
+              {/* JOINT PARTNER & CLIENT SELECTOR */}
+              <div className="relative">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  {t("Supplier / Partner / Client", "Dodávateľ / Partner / Klient", "Beszállító / Partner")} *
+                </label>
+                <div
+                  onClick={() => {
+                    setIsProductPurchasePartnerOpen(!isProductPurchasePartnerOpen);
+                    setProductPurchasePartnerSearch("");
+                  }}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold flex items-center justify-between cursor-pointer hover:bg-slate-100/70 transition"
+                >
+                  {productPurchasePartnerId ? (
+                    (() => {
+                      const sel = jointPartnersAndClients.find(p => p.id === productPurchasePartnerId);
+                      return sel ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${sel.type === "partner" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"}`}>
+                            {sel.type === "partner" ? t("Partner", "Partner", "Partner") : t("Client", "Klient", "Ügyfél")}
+                          </span>
+                          <span className="font-bold text-slate-900">{sel.name}</span>
+                        </div>
+                      ) : <span className="text-slate-400">{t("Select partner...", "Vyberte partnera...", "Válasszon partner...")}</span>;
+                    })()
+                  ) : (
+                    <span className="text-slate-400">{t("Select supplier or client...", "Vyberte dodávateľa alebo klienta...", "Válasszon partnert...")}</span>
+                  )}
+                  <ChevronDown className="w-4 h-4 text-slate-400" />
+                </div>
+
+                {isProductPurchasePartnerOpen && (
+                  <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl z-30 p-2 space-y-1.5 max-h-56 overflow-y-auto">
+                    <div className="relative">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={productPurchasePartnerSearch}
+                        onChange={(e) => setProductPurchasePartnerSearch(e.target.value)}
+                        placeholder={t("Search partner or client...", "Hľadať partnera alebo klienta...", "Keresés...")}
+                        className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+                      />
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                    </div>
+
+                    <div className="space-y-1 pt-1">
+                      {jointPartnersAndClients
+                        .filter(p => p.name.toLowerCase().includes(productPurchasePartnerSearch.toLowerCase()) || p.subtext.toLowerCase().includes(productPurchasePartnerSearch.toLowerCase()))
+                        .map(p => (
+                          <div
+                            key={p.id}
+                            onClick={() => {
+                              setProductPurchasePartnerId(p.id);
+                              setIsProductPurchasePartnerOpen(false);
+                            }}
+                            className={`p-2 rounded-xl text-xs cursor-pointer flex items-center justify-between transition ${
+                              productPurchasePartnerId === p.id ? "bg-emerald-600 text-white font-bold" : "hover:bg-slate-100 text-slate-800"
+                            }`}
+                          >
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
+                                  productPurchasePartnerId === p.id ? "bg-white/20 text-white" : p.type === "partner" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"
+                                }`}>
+                                  {p.type === "partner" ? t("Partner", "Partner", "Partner") : t("Client", "Klient", "Ügyfél")}
+                                </span>
+                                <span>{p.name}</span>
+                              </div>
+                              <p className={`text-[10px] ${productPurchasePartnerId === p.id ? "text-emerald-100" : "text-slate-400"}`}>{p.subtext}</p>
+                            </div>
+                            {productPurchasePartnerId === p.id && <Check className="w-4 h-4 text-white" />}
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* DESTINATION WAREHOUSE */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  {t("Destination Warehouse", "Cieľový sklad", "Célraktár")} *
+                </label>
+                <select
+                  value={productPurchaseWarehouseId}
+                  onChange={(e) => setProductPurchaseWarehouseId(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-emerald-600 focus:bg-white focus:outline-none transition"
+                >
+                  {warehouses.map(w => (
+                    <option key={w.id} value={w.id}>{w.name} ({w.code})</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* QUANTITY & PURCHASE PRICE */}
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    {t("Average Purchase Price (WAP)", "Priemerná nákupná cena (WAP)", "Átlagos beszerzési ár")}
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    {t("Quantity", "Množstvo", "Mennyiség")} *
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="any"
+                      min="0.01"
+                      value={productPurchaseAmount}
+                      onChange={(e) => setProductPurchaseAmount(Number(e.target.value))}
+                      className="w-full pl-3.5 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900 focus:ring-2 focus:ring-emerald-600 focus:bg-white focus:outline-none transition"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                      {currentItem.unit}
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    {t("Unit Purchase Price", "Nákupná cena / MJ", "Beszerzési egységár")} *
                   </label>
                   <div className="relative">
                     <input
                       type="number"
                       step="0.01"
-                      value={itemForm.avgPurchasePrice}
-                      onChange={(e) => setItemForm({ ...itemForm, avgPurchasePrice: Number(e.target.value) })}
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-base font-mono font-black text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition"
+                      value={productPurchasePrice}
+                      onChange={(e) => setProductPurchasePrice(Number(e.target.value))}
+                      className="w-full pl-3.5 pr-14 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900 focus:ring-2 focus:ring-emerald-600 focus:bg-white focus:outline-none transition"
                     />
-                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
-                      {systemCurrency || "EUR"} / {itemForm.unit}
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                      {systemCurrency || "EUR"}
                     </span>
                   </div>
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    {t("Last purchase", "Posledný nákup", "Utolsó beszerzés")}: <span className="font-semibold text-slate-600">{formatCurrency(currentItem?.lastPurchasePrice || itemForm.avgPurchasePrice, systemLanguage, systemCurrency)}</span>
-                  </p>
-                </div>
-
-                {/* Selling Price Summary (Configured in Left Sidebar) */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    {t("Suggested Sale Price", "Predajná cena (zadaná vľavo)", "Eladási ár")}
-                  </label>
-                  <div className="px-4 py-2.5 bg-blue-50/50 border border-blue-100 rounded-2xl flex items-center justify-between">
-                    <span className="text-base font-mono font-black text-blue-950">
-                      {formatCurrency(itemForm.defaultSellPrice, systemLanguage, systemCurrency)}
-                    </span>
-                    <span className="text-xs font-semibold text-blue-800/70">
-                      / {itemForm.unit}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    {t("Configured in left sidebar", "Upraviteľná v ľavom paneli tovaru", "A bal oldali panelen szerkeszthető")}
-                  </p>
                 </div>
               </div>
 
-              {/* LIVE MARGIN & PROFITABILITY WIDGET */}
-              <div className="bg-gradient-to-br from-slate-900 to-blue-950 p-5 rounded-2xl text-white shadow-md">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-bold tracking-wider uppercase text-blue-200 flex items-center gap-1.5">
-                    <TrendingUp className="w-4 h-4 text-emerald-400" />
-                    {t("Profitability Calculator", "Kalkulátor ziskovosti a marže", "Jövedelmezőségi kalkulátor")}
-                  </span>
-                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-black ${
-                    marginPct >= 40 
-                      ? "bg-emerald-500/20 text-emerald-300 border border-emerald-400/30" 
-                      : marginPct >= 20 
-                      ? "bg-blue-500/20 text-blue-300 border border-blue-400/30" 
-                      : "bg-amber-500/20 text-amber-300 border border-amber-400/30"
-                  }`}>
-                    {marginPct >= 40 ? t("High Profit", "Vysoká ziskovosť", "Magas árrés") : marginPct >= 20 ? t("Standard Margin", "Štandardná marža", "Normál árrés") : t("Low Margin", "Nízka marža", "Alacsony árrés")}
+              {/* FEFO: BATCH & EXPIRATION */}
+              <div className="grid grid-cols-2 gap-3 p-3 rounded-2xl bg-amber-50/50 border border-amber-200/70">
+                <div>
+                  <label className="block text-[10px] font-bold text-amber-900 uppercase tracking-wider mb-1">
+                    {t("Batch / Lot #", "Číslo šarže", "Tételszám")}
+                  </label>
+                  <input
+                    type="text"
+                    value={productPurchaseBatchNumber}
+                    onChange={(e) => setProductPurchaseBatchNumber(e.target.value)}
+                    placeholder="BAT-2026-01"
+                    className="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-emerald-600 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-amber-900 uppercase tracking-wider mb-1">
+                    {t("Expiration Date", "Dátum exspirácie", "Lejárati dátum")}
+                  </label>
+                  <input
+                    type="date"
+                    value={productPurchaseExpirationDate}
+                    onChange={(e) => setProductPurchaseExpirationDate(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-emerald-600 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* NOTE */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  {t("Note / Invoice Reference", "Poznámka / Číslo faktúry dodávateľa", "Megjegyzés / Számlaszám")}
+                </label>
+                <input
+                  type="text"
+                  value={productPurchaseNote}
+                  onChange={(e) => setProductPurchaseNote(e.target.value)}
+                  placeholder="napr. Faktúra FP-2026-0412"
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:ring-2 focus:ring-emerald-600 focus:bg-white focus:outline-none transition"
+                />
+              </div>
+
+              {/* TOTAL PREVIEW & SUBMIT */}
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">{t("Total Purchase Value", "Celková suma nákupu", "Összérték")}</span>
+                  <span className="text-base font-black text-emerald-800 font-mono">
+                    {formatCurrency(Number(productPurchaseAmount) * Number(productPurchasePrice), systemLanguage, systemCurrency)}
                   </span>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4 pt-2 border-t border-white/10 text-center">
-                  <div>
-                    <span className="text-[11px] text-slate-300 font-medium block">{t("Gross Profit", "Hrubý zisk", "Bruttó haszon")}</span>
-                    <span className="text-lg md:text-xl font-black text-emerald-400 tracking-tight">
-                      +{formatCurrency(unitProfit, systemLanguage, systemCurrency)}
-                    </span>
-                    <span className="text-[10px] text-slate-400 block">/ {itemForm.unit}</span>
-                  </div>
-
-                  <div>
-                    <span className="text-[11px] text-slate-300 font-medium block">{t("Gross Margin", "Obchodná marža", "Kereskedelmi árrés")}</span>
-                    <span className="text-lg md:text-xl font-black text-white tracking-tight">
-                      {marginPct.toFixed(1)}%
-                    </span>
-                    <span className="text-[10px] text-slate-400 block">{(marginPct / 100).toFixed(2)} coeff</span>
-                  </div>
-
-                  <div>
-                    <span className="text-[11px] text-slate-300 font-medium block">{t("Markup", "Cenová prirážka", "Árréskulcs")}</span>
-                    <span className="text-lg md:text-xl font-black text-blue-300 tracking-tight">
-                      +{markupPct.toFixed(1)}%
-                    </span>
-                    <span className="text-[10px] text-slate-400 block">{t("over cost", "nad nákup", "beszerzés felett")}</span>
-                  </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsProductPurchaseModalOpen(false)}
+                    className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-100 transition cursor-pointer"
+                  >
+                    {t("Cancel", "Zrušiť", "Mégse")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveProductPurchase}
+                    className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-emerald-600/20 cursor-pointer"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>{t("Confirm Receipt", "Potvrdiť príjemku", "Bevételezés rögzítése")}</span>
+                  </button>
                 </div>
               </div>
             </div>
-
-            {/* CARD 3: MULTI-WAREHOUSE STOCK DISTRIBUTION (If Editing Existing) */}
-            {!isNew && currentItem && (
-              <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-900 flex items-center justify-center">
-                      <Building2 className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-slate-900 text-base">
-                        {t("Stock Balances by Warehouse", "Stav zásob na jednotlivých skladoch", "Raktárankénti készletállomány")}
-                      </h3>
-                      <p className="text-[11px] text-slate-400">
-                        {t("Real-time physical, reserved, and available quantities across all locations", "Aktuálna fyzická, rezervovaná a voľná zásoba na každej pobočke", "Valós idejű készletinformáció")}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="overflow-x-auto rounded-2xl border border-slate-100">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-50 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
-                      <tr>
-                        <th className="py-2.5 px-4">{t("Warehouse", "Sklad", "Raktár")}</th>
-                        <th className="py-2.5 px-4">{t("Location", "Pozícia", "Hely")}</th>
-                        <th className="py-2.5 px-4 text-right">{t("On Hand", "Fyzicky", "Készleten")}</th>
-                        <th className="py-2.5 px-4 text-right">{t("Reserved", "Rezervované", "Foglalt")}</th>
-                        <th className="py-2.5 px-4 text-right">{t("Available", "K dispozícii", "Szabad")}</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 font-medium">
-                      {warehouses.map(wh => {
-                        const st = warehouseStock.find(s => s.warehouseId === wh.id && s.itemId === currentItem.id);
-                        const onHand = st?.quantity || 0;
-                        const res = st?.reservedQuantity || 0;
-                        const avail = Math.max(0, onHand - res);
-
-                        return (
-                          <tr key={wh.id} className="hover:bg-slate-50/50 transition">
-                            <td className="py-3 px-4">
-                              <div className="font-bold text-slate-900">{wh.name}</div>
-                              <span className="text-[10px] font-mono text-slate-400">{wh.code}</span>
-                            </td>
-                            <td className="py-3 px-4">
-                              <span className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 font-mono text-[11px]">
-                                {st?.location || itemForm.defaultLocation || "-"}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4 text-right font-bold text-slate-900">
-                              {onHand} <span className="text-[10px] font-normal text-slate-400">{itemForm.unit}</span>
-                            </td>
-                            <td className="py-3 px-4 text-right text-slate-500 font-semibold">
-                              {res} <span className="text-[10px] font-normal text-slate-400">{itemForm.unit}</span>
-                            </td>
-                            <td className="py-3 px-4 text-right">
-                              <span className={`font-black ${avail > 0 ? "text-emerald-700" : "text-rose-600"}`}>
-                                {avail} <span className="text-[10px] font-normal">{itemForm.unit}</span>
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* CARD 4: ACTIVE BATCHES & EXPIRATIONS (FEFO) */}
-            {!isNew && itemForm.hasExpiration && (
-              <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                  <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                    <Layers className="w-4 h-4 text-amber-600" />
-                    {t("Active Batches & Lots", "Aktívne šarže (FEFO)", "Aktív tételek")}
-                  </h3>
-                  <span className="text-[11px] font-bold text-slate-400 font-mono">
-                    {itemBatches.length} {t("lots", "šarží", "tétel")}
-                  </span>
-                </div>
-
-                {itemBatches.length === 0 ? (
-                  <p className="text-xs text-slate-400 py-3 text-center">
-                    {t("No batches registered for this product yet.", "Pre tento tovar zatiaľ nie sú zaevidované žiadne šarže.", "Még nincsenek rögzített tételek.")}
-                  </p>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {itemBatches.map(batch => {
-                      const expStatus = getExpirationStatus(batch.expirationDate);
-                      const wh = warehouses.find(w => w.id === batch.warehouseId);
-
-                      return (
-                        <div key={batch.id} className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs space-y-1">
-                          <div className="flex items-center justify-between">
-                            <span className="font-mono font-bold text-slate-900">{batch.batchNumber}</span>
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              expStatus.status === "expired"
-                                ? "bg-rose-100 text-rose-800"
-                                : expStatus.status === "warning"
-                                ? "bg-amber-100 text-amber-800"
-                                : "bg-emerald-100 text-emerald-800"
-                            }`}>
-                              {expStatus.daysRemaining < 0 
-                                ? t("Expired", "Expirované", "Lejárt") 
-                                : `${expStatus.daysRemaining} ${t("days", "dní", "nap")}`}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between text-slate-500 text-[11px]">
-                            <span>{wh?.name || "Sklad"}</span>
-                            <span className="font-bold text-slate-800">{batch.currentQuantity} {itemForm.unit}</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* CARD 5: RECENT STOCK MOVEMENTS (If editing) */}
-            {!isNew && currentItem && (
-              <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                  <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-blue-900" />
-                    {t("Recent Movement History", "Posledné pohyby na sklade", "Legutóbbi mozgások")}
-                  </h3>
-                  <span className="text-[11px] font-bold text-slate-400 font-mono">
-                    {itemMovements.length}
-                  </span>
-                </div>
-
-                {itemMovements.length === 0 ? (
-                  <p className="text-xs text-slate-400 py-3 text-center">
-                    {t("No stock movements recorded yet.", "Zatiaľ žiadne zaznamenané pohyby.", "Még nincsenek mozgások.")}
-                  </p>
-                ) : (
-                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                    {itemMovements.slice(0, 5).map(mov => {
-                      const mvItem = mov.items?.find(it => it.itemId === currentItem.id);
-                      return (
-                        <div key={mov.id} className="p-3 rounded-2xl bg-slate-50 hover:bg-slate-100/80 transition border border-slate-200/80 text-xs space-y-1">
-                          <div className="flex items-center justify-between">
-                            <span className="font-mono font-bold text-slate-900">{mov.documentNumber}</span>
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              mov.type === "inward"
-                                ? "bg-emerald-100 text-emerald-800"
-                                : mov.type === "outward"
-                                ? "bg-blue-100 text-blue-800"
-                                : "bg-purple-100 text-purple-800"
-                            }`}>
-                              {mov.type === "inward" ? t("PRI (Receipt)", "PRI (Príjem)", "Bevétel") : mov.type === "outward" ? t("VYD (Issue)", "VYD (Výdaj)", "Kiadás") : t("PRE (Transfer)", "PRE (Prevod)", "Átadás")}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between text-slate-500 text-[11px]">
-                            <span>{mov.issuedAt?.slice(0, 10)}</span>
-                            <span className="font-bold text-slate-800">
-                              {mov.type === "outward" ? "-" : "+"}{mvItem?.quantity || 0} {itemForm.unit}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
-        </div>
+        )}
+
+        {/* MODAL: LOG SALE (VYD) FOR CURRENT PRODUCT */}
+        {isProductSaleModalOpen && currentItem && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+            <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-6 space-y-4 border border-slate-100 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-2xl bg-blue-50 text-blue-900 flex items-center justify-center">
+                    <ArrowUpRight className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-900 text-base">{t("Log Sale (Issue VYD)", "Zaznamenať predaj (Výdajka VYD)", "Értékesítés rögzítése (VYD)")}</h3>
+                    <p className="text-xs text-slate-400 font-medium">{currentItem.name} ({currentItem.sku})</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsProductSaleModalOpen(false)}
+                  className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* JOINT PARTNER & CLIENT SELECTOR */}
+              <div className="relative">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  {t("Client / Customer / Partner", "Klient / Odberateľ / Partner", "Ügyfél / Partner")} *
+                </label>
+                <div
+                  onClick={() => {
+                    setIsProductSalePartnerOpen(!isProductSalePartnerOpen);
+                    setProductSalePartnerSearch("");
+                  }}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold flex items-center justify-between cursor-pointer hover:bg-slate-100/70 transition"
+                >
+                  {productSalePartnerId ? (
+                    (() => {
+                      const sel = jointPartnersAndClients.find(p => p.id === productSalePartnerId);
+                      return sel ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${sel.type === "partner" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"}`}>
+                            {sel.type === "partner" ? t("Partner", "Partner", "Partner") : t("Client", "Klient", "Ügyfél")}
+                          </span>
+                          <span className="font-bold text-slate-900">{sel.name}</span>
+                        </div>
+                      ) : <span className="text-slate-400">{t("Select partner...", "Vyberte partnera...", "Válasszon...")}</span>;
+                    })()
+                  ) : (
+                    <span className="text-slate-400">{t("Select client or partner...", "Vyberte klienta alebo partnera...", "Válasszon ügyfelet...")}</span>
+                  )}
+                  <ChevronDown className="w-4 h-4 text-slate-400" />
+                </div>
+
+                {isProductSalePartnerOpen && (
+                  <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl z-30 p-2 space-y-1.5 max-h-56 overflow-y-auto">
+                    <div className="relative">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={productSalePartnerSearch}
+                        onChange={(e) => setProductSalePartnerSearch(e.target.value)}
+                        placeholder={t("Search client or partner...", "Hľadať klienta alebo partnera...", "Keresés...")}
+                        className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-900"
+                      />
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                    </div>
+
+                    <div className="space-y-1 pt-1">
+                      {jointPartnersAndClients
+                        .filter(p => p.name.toLowerCase().includes(productSalePartnerSearch.toLowerCase()) || p.subtext.toLowerCase().includes(productSalePartnerSearch.toLowerCase()))
+                        .map(p => (
+                          <div
+                            key={p.id}
+                            onClick={() => {
+                              setProductSalePartnerId(p.id);
+                              setIsProductSalePartnerOpen(false);
+                            }}
+                            className={`p-2 rounded-xl text-xs cursor-pointer flex items-center justify-between transition ${
+                              productSalePartnerId === p.id ? "bg-blue-900 text-white font-bold" : "hover:bg-slate-100 text-slate-800"
+                            }`}
+                          >
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
+                                  productSalePartnerId === p.id ? "bg-white/20 text-white" : p.type === "partner" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"
+                                }`}>
+                                  {p.type === "partner" ? t("Partner", "Partner", "Partner") : t("Client", "Klient", "Ügyfél")}
+                                </span>
+                                <span>{p.name}</span>
+                              </div>
+                              <p className={`text-[10px] ${productSalePartnerId === p.id ? "text-blue-100" : "text-slate-400"}`}>{p.subtext}</p>
+                            </div>
+                            {productSalePartnerId === p.id && <Check className="w-4 h-4 text-white" />}
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* SOURCE WAREHOUSE */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  {t("Source Warehouse", "Zdrojový sklad", "Forrásraktár")} *
+                </label>
+                <select
+                  value={productSaleWarehouseId}
+                  onChange={(e) => {
+                    setProductSaleWarehouseId(e.target.value);
+                    setProductSaleBatchId("");
+                  }}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition"
+                >
+                  {warehouses.map(w => {
+                    const st = getStockInfoForItem(currentItem.id, w.id);
+                    return (
+                      <option key={w.id} value={w.id}>
+                        {w.name} ({w.code}) — {t("Available", "Dostupné", "Szabad")}: {st.available} {currentItem.unit}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              {/* QUANTITY & SALE PRICE */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    {t("Quantity", "Množstvo", "Mennyiség")} *
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="any"
+                      min="0.01"
+                      value={productSaleAmount}
+                      onChange={(e) => setProductSaleAmount(Number(e.target.value))}
+                      className="w-full pl-3.5 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                      {currentItem.unit}
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    {t("Unit Selling Price (excl. VAT)", "Predajná cena bez DPH / MJ", "Eladási egységár")} *
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={productSalePrice}
+                      onChange={(e) => setProductSalePrice(Number(e.target.value))}
+                      className="w-full pl-3.5 pr-14 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-blue-950 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                      {systemCurrency || "EUR"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* SEARCHABLE EXPIRATION DATE & BATCH SELECTOR (FEFO) */}
+              <div className="relative">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  {t("Select Expiration Date / Batch (FEFO)", "Dátum exspirácie / Šarža (FEFO výber)", "Lejárati dátum / Tétel kiválasztása (FEFO)")}
+                </label>
+                <div
+                  onClick={() => {
+                    setIsProductSaleExpirationOpen(!isProductSaleExpirationOpen);
+                    setProductSaleExpirationSearch("");
+                  }}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold flex items-center justify-between cursor-pointer hover:bg-slate-100/70 transition"
+                >
+                  {productSaleBatchId ? (
+                    (() => {
+                      const selBatch = warehouseBatches.find(b => b.id === productSaleBatchId);
+                      const expStatus = selBatch ? getExpirationStatus(selBatch.expirationDate) : null;
+                      return selBatch ? (
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-slate-900">{selBatch.batchNumber}</span>
+                          <span className="text-slate-500 font-mono">({selBatch.expirationDate?.slice(0, 10)})</span>
+                          {expStatus && (
+                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                              expStatus.status === "expired" ? "bg-rose-100 text-rose-800" : expStatus.status === "warning" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"
+                            }`}>
+                              {expStatus.daysRemaining < 0 ? t("Expired", "Exspirované", "Lejárt") : `${expStatus.daysRemaining}d`}
+                            </span>
+                          )}
+                        </div>
+                      ) : <span className="text-slate-400">{t("Default / No batch", "Voľný výdaj bez šarže", "Nincs tétel")}</span>;
+                    })()
+                  ) : (
+                    <span className="text-slate-400">{t("Select expiration date / lot (or leave free stock)...", "Vyberte dátum exspirácie / šaržu...", "Válasszon lejárati dátumot...")}</span>
+                  )}
+                  <ChevronDown className="w-4 h-4 text-slate-400" />
+                </div>
+
+                {isProductSaleExpirationOpen && (
+                  <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl z-30 p-2 space-y-1.5 max-h-56 overflow-y-auto">
+                    <div className="relative">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={productSaleExpirationSearch}
+                        onChange={(e) => setProductSaleExpirationSearch(e.target.value)}
+                        placeholder={t("Search by expiration date or lot number...", "Hľadať podľa dátumu exspirácie alebo šarže...", "Keresés dátum vagy szám szerint...")}
+                        className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-900"
+                      />
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                    </div>
+
+                    <div className="space-y-1 pt-1">
+                      {/* Option for free stock */}
+                      <div
+                        onClick={() => {
+                          setProductSaleBatchId("");
+                          setIsProductSaleExpirationOpen(false);
+                        }}
+                        className={`p-2 rounded-xl text-xs cursor-pointer flex items-center justify-between transition ${
+                          !productSaleBatchId ? "bg-slate-900 text-white font-bold" : "hover:bg-slate-100 text-slate-600"
+                        }`}
+                      >
+                        <span>{t("Free bulk stock (No specific batch/expiration)", "Voľný skladový výdaj (bez viazanej šarže)", "Szabad készlet")}</span>
+                        {!productSaleBatchId && <Check className="w-4 h-4 text-white" />}
+                      </div>
+
+                      {/* Batches sorted by FEFO */}
+                      {warehouseBatches
+                        .filter(b => b.itemId === currentItem.id && b.warehouseId === productSaleWarehouseId && b.currentQuantity > 0)
+                        .filter(b => (b.expirationDate && b.expirationDate.includes(productSaleExpirationSearch)) || b.batchNumber.toLowerCase().includes(productSaleExpirationSearch.toLowerCase()))
+                        .sort((a, b) => {
+                          if (!a.expirationDate) return 1;
+                          if (!b.expirationDate) return -1;
+                          return new Date(a.expirationDate).getTime() - new Date(b.expirationDate).getTime();
+                        })
+                        .map((b, bIdx) => {
+                          const expStatus = getExpirationStatus(b.expirationDate);
+                          return (
+                            <div
+                              key={b.id}
+                              onClick={() => {
+                                setProductSaleBatchId(b.id);
+                                setIsProductSaleExpirationOpen(false);
+                              }}
+                              className={`p-2.5 rounded-xl text-xs cursor-pointer flex items-center justify-between transition ${
+                                productSaleBatchId === b.id ? "bg-blue-900 text-white font-bold" : "hover:bg-slate-100 text-slate-800"
+                              }`}
+                            >
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono font-bold">{b.batchNumber}</span>
+                                  <span className="font-mono text-[11px] opacity-80">({b.expirationDate?.slice(0, 10)})</span>
+                                  {bIdx === 0 && (
+                                    <span className="px-1.5 py-0.2 rounded bg-amber-200 text-amber-900 text-[9px] font-black uppercase">
+                                      FEFO
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-[10px] opacity-70">
+                                  {t("Available", "K dispozícii", "Szabad")}: {b.currentQuantity} {currentItem.unit}
+                                </span>
+                              </div>
+
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                expStatus.status === "expired" ? "bg-rose-100 text-rose-800" : expStatus.status === "warning" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"
+                              }`}>
+                                {expStatus.daysRemaining < 0 ? t("Expired", "Exspirované", "Lejárt") : `${expStatus.daysRemaining}d`}
+                              </span>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* NOTE */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  {t("Note / Order Reference", "Poznámka / Číslo objednávky", "Megjegyzés / Rendelésszám")}
+                </label>
+                <input
+                  type="text"
+                  value={productSaleNote}
+                  onChange={(e) => setProductSaleNote(e.target.value)}
+                  placeholder="napr. Zákazka OBJ-2026-081"
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition"
+                />
+              </div>
+
+              {/* TOTAL PREVIEW & SUBMIT */}
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">{t("Total Sale Price", "Celková predajná suma", "Összesen")}</span>
+                  <span className="text-base font-black text-blue-950 font-mono">
+                    {formatCurrency(Number(productSaleAmount) * Number(productSalePrice), systemLanguage, systemCurrency)}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsProductSaleModalOpen(false)}
+                    className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-100 transition cursor-pointer"
+                  >
+                    {t("Cancel", "Zrušiť", "Mégse")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveProductSale}
+                    className="px-5 py-2.5 rounded-xl bg-blue-900 hover:bg-blue-950 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-blue-900/20 cursor-pointer"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>{t("Confirm Issue", "Potvrdiť výdajku", "Kiadás megerősítése")}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
