@@ -2212,8 +2212,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/70"
                 }`}
               >
-                <BarChart3 className="w-4 h-4" />
-                <span>{t("Statistics & Pricing", "Štatistiky a Cenotvorba", "Statisztika és Árképzés")}</span>
+                <TrendingUp className="w-4 h-4" />
+                <span>{t("Profitability & Statistics", "Ziskovosť a Štatistiky", "Jövedelmezőség és Statisztika")}</span>
               </button>
 
               <button
