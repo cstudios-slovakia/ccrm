@@ -7776,7 +7776,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     onChange={(v) => setSelectedOwner(v)}
                                     size="sm"
                                     unstyled
-                                    className="text-[11px] font-bold text-slate-700 uppercase tracking-wider w-full"
+                                    className="text-[11px] font-bold text-slate-700 uppercase tracking-wider w-full justify-between gap-2"
                                     options={[
                                         {
                                             value: "all",
@@ -7809,7 +7809,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     onChange={(v) => setSelectedCity(v)}
                                     size="sm"
                                     unstyled
-                                    className="text-[11px] font-bold text-slate-700 uppercase tracking-wider w-full"
+                                    className="text-[11px] font-bold text-slate-700 uppercase tracking-wider w-full justify-between gap-2"
                                     options={[
                                         {
                                             value: "all",
@@ -7842,7 +7842,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     onChange={(v) => setSelectedSource(v)}
                                     size="sm"
                                     unstyled
-                                    className="text-[11px] font-bold text-slate-700 uppercase tracking-wider w-full"
+                                    className="text-[11px] font-bold text-slate-700 uppercase tracking-wider w-full justify-between gap-2"
                                     options={[
                                         {
                                             value: "all",
@@ -7877,7 +7877,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     }
                                     size="sm"
                                     unstyled
-                                    className="text-[11px] font-bold text-slate-700 uppercase tracking-wider w-full"
+                                    className="text-[11px] font-bold text-slate-700 uppercase tracking-wider w-full justify-between gap-2"
                                     options={[
                                         {
                                             value: "all",
@@ -7933,7 +7933,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     onChange={(v) => setSelectedState(v)}
                                     size="sm"
                                     unstyled
-                                    className="text-[11px] font-bold text-slate-700 uppercase tracking-wider w-full"
+                                    className="text-[11px] font-bold text-slate-700 uppercase tracking-wider w-full justify-between gap-2"
                                     options={[
                                         {
                                             value: "all",
@@ -8507,7 +8507,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     onChange={(v) => setSelectedRating(v)}
                                     size="sm"
                                     unstyled
-                                    className="text-[11px] font-bold text-slate-700 uppercase tracking-wider w-full"
+                                    className="text-[11px] font-bold text-slate-700 uppercase tracking-wider w-full justify-between gap-2"
                                     options={[
                                         {
                                             value: "all",
