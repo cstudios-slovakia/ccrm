@@ -39,8 +39,7 @@ import {
   Camera,
   Loader2,
   Lock,
-  Unlock,
-  Activity
+  Unlock
 } from "lucide-react";
 import { formatMoney } from "../utils/currency";
 import type { Language } from "../utils/translations";
@@ -1559,6 +1558,101 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
           </div>
         </div>
 
+        {/* TOP WAREHOUSE TREND & INVENTORY FLOW STATS OVERVIEW */}
+        <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
+          {/* 4 SUMMARY STAT CARDS */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {/* Stat 1: Total Stock */}
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/70">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                {t("Total Stock", "Celková zásoba", "Összkészlet")}
+              </span>
+              <div className="text-lg font-black text-slate-900 font-mono">
+                {totalStock} <span className="text-xs font-normal text-slate-500">{itemForm.unit}</span>
+              </div>
+              <span className="text-[10px] text-slate-400 mt-0.5 block">
+                {t("Across all warehouses", "Na všetkých skladoch", "Összes raktárban")}
+              </span>
+            </div>
+
+            {/* Stat 2: Total Value at WAP */}
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/70">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                {t("Inventory Value", "Hodnota zásob (WAP)", "Készletérték")}
+              </span>
+              <div className="text-lg font-black text-emerald-700 font-mono">
+                {formatCurrency(totalStock * itemForm.avgPurchasePrice, systemLanguage, systemCurrency)}
+              </div>
+              <span className="text-[10px] text-slate-400 mt-0.5 block">
+                {t("At avg purchase cost", "Podľa nákupných cien", "Beszerzési áron")}
+              </span>
+            </div>
+
+            {/* Stat 3: 30d Inflow */}
+            <div className="p-3.5 rounded-2xl bg-emerald-50/60 border border-emerald-100">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 block mb-1 flex items-center gap-1">
+                <ArrowDownLeft className="w-3 h-3" />
+                {t("Purchases (30d)", "Nákup (30 dní)", "Beszerzés (30n)")}
+              </span>
+              <div className="text-lg font-black text-emerald-900 font-mono">
+                +{itemMovements
+                  .filter(m => m.type === "inward" && new Date(m.issuedAt || m.createdAt || "").getTime() >= Date.now() - 30 * 86400000)
+                  .reduce((sum, m) => sum + (m.items?.find(it => it.itemId === currentItem?.id)?.quantity || 0), 0)}{" "}
+                <span className="text-xs font-normal text-emerald-700">{itemForm.unit}</span>
+              </div>
+              <span className="text-[10px] text-emerald-600 mt-0.5 block">
+                {t("Inward receipts", "Príjemky na sklad", "Bevételezések")}
+              </span>
+            </div>
+
+            {/* Stat 4: 30d Outflow */}
+            <div className="p-3.5 rounded-2xl bg-blue-50/60 border border-blue-100">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 block mb-1 flex items-center gap-1">
+                <ArrowUpRight className="w-3 h-3" />
+                {t("Sales (30d)", "Predaj (30 dní)", "Értékesítés (30n)")}
+              </span>
+              <div className="text-lg font-black text-blue-900 font-mono">
+                -{itemMovements
+                  .filter(m => m.type === "outward" && new Date(m.issuedAt || m.createdAt || "").getTime() >= Date.now() - 30 * 86400000)
+                  .reduce((sum, m) => sum + (m.items?.find(it => it.itemId === currentItem?.id)?.quantity || 0), 0)}{" "}
+                <span className="text-xs font-normal text-blue-700">{itemForm.unit}</span>
+              </div>
+              <span className="text-[10px] text-blue-600 mt-0.5 block">
+                {t("Issued to clients", "Vydané zákazníkom", "Kiadások")}
+              </span>
+            </div>
+          </div>
+
+          {/* FLOW TRAJECTORY & HEALTH BAR */}
+          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className={`w-3 h-3 rounded-full ${totalStock > (itemForm.minStock || 0) ? "bg-emerald-500 animate-pulse" : "bg-amber-500 animate-bounce"}`} />
+              <div>
+                <span className="text-xs font-bold text-slate-800 block">
+                  {totalStock > (itemForm.minStock || 0) 
+                    ? t("Stock Status: Optimal & Healthy", "Stav zásob: Optimálny a v norme", "Készletállapot: Megfelelő")
+                    : t("Stock Status: Low Inventory Alert!", "Stav zásob: Nízka zásoba — potrebné doobjednať!", "Készletállapot: Alacsony készlet!")}
+                </span>
+                <span className="text-[11px] text-slate-400">
+                  {t("Min Alert threshold", "Minimálny limit", "Minimális limit")}: {itemForm.minStock} {itemForm.unit} · {t("Target", "Cieľ", "Cél")}: {itemForm.optimalStock} {itemForm.unit}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono font-bold text-slate-700">
+                {Math.min(100, Math.round((totalStock / (itemForm.optimalStock || 1)) * 100))}%
+              </span>
+              <div className="w-28 h-2.5 bg-slate-200 rounded-full overflow-hidden">
+                <div 
+                  className={`h-full rounded-full transition-all ${totalStock > (itemForm.minStock || 0) ? "bg-emerald-600" : "bg-amber-500"}`}
+                  style={{ width: `${Math.min(100, (totalStock / (itemForm.optimalStock || 1)) * 100)}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* 2-COLUMN WORKSPACE: LEFT NARROWER SIDEBAR (FIXED DATA) & RIGHT MAIN CONTENT */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
           
@@ -2159,224 +2253,108 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             {/* TAB 1: STATISTICS & PRICING */}
             {productDetailTab === "statistics" && (
               <div className="space-y-6">
-                
-                {/* WAREHOUSE TREND & INVENTORY FLOW METRICS */}
-                <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-5">
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-900 flex items-center justify-center">
-                        <Activity className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-slate-900 text-base">
-                          {t("Warehouse Trend & Inventory Analytics", "Vývoj zásob a skladový trend", "Raktári trend és készletelemzés")}
-                        </h3>
-                        <p className="text-[11px] text-slate-400">
-                          {t("Real-time stock velocity, 30-day inflow/outflow & valuation", "Rýchlosť obrátky, prírastky/úbytky za posledných 30 dní a ocenenie", "Valós idejű készletmozgás és értékelés")}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 4 SUMMARY STAT CARDS */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {/* Stat 1: Total Stock */}
-                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/70">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
-                        {t("Total Stock", "Celková zásoba", "Összkészlet")}
-                      </span>
-                      <div className="text-lg font-black text-slate-900 font-mono">
-                        {totalStock} <span className="text-xs font-normal text-slate-500">{itemForm.unit}</span>
-                      </div>
-                      <span className="text-[10px] text-slate-400 mt-0.5 block">
-                        {t("Across all warehouses", "Na všetkých skladoch", "Összes raktárban")}
-                      </span>
-                    </div>
-
-                    {/* Stat 2: Total Value at WAP */}
-                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/70">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
-                        {t("Inventory Value", "Hodnota zásob (WAP)", "Készletérték")}
-                      </span>
-                      <div className="text-lg font-black text-emerald-700 font-mono">
-                        {formatCurrency(totalStock * itemForm.avgPurchasePrice, systemLanguage, systemCurrency)}
-                      </div>
-                      <span className="text-[10px] text-slate-400 mt-0.5 block">
-                        {t("At avg purchase cost", "Podľa nákupných cien", "Beszerzési áron")}
-                      </span>
-                    </div>
-
-                    {/* Stat 3: 30d Inflow */}
-                    <div className="p-3.5 rounded-2xl bg-emerald-50/60 border border-emerald-100">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 block mb-1 flex items-center gap-1">
-                        <ArrowDownLeft className="w-3 h-3" />
-                        {t("Purchases (30d)", "Nákup (30 dní)", "Beszerzés (30n)")}
-                      </span>
-                      <div className="text-lg font-black text-emerald-900 font-mono">
-                        +{itemMovements
-                          .filter(m => m.type === "inward" && new Date(m.issuedAt || m.createdAt || "").getTime() >= Date.now() - 30 * 86400000)
-                          .reduce((sum, m) => sum + (m.items?.find(it => it.itemId === currentItem?.id)?.quantity || 0), 0)}{" "}
-                        <span className="text-xs font-normal text-emerald-700">{itemForm.unit}</span>
-                      </div>
-                      <span className="text-[10px] text-emerald-600 mt-0.5 block">
-                        {t("Inward receipts", "Príjemky na sklad", "Bevételezések")}
-                      </span>
-                    </div>
-
-                    {/* Stat 4: 30d Outflow */}
-                    <div className="p-3.5 rounded-2xl bg-blue-50/60 border border-blue-100">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 block mb-1 flex items-center gap-1">
-                        <ArrowUpRight className="w-3 h-3" />
-                        {t("Sales (30d)", "Predaj (30 dní)", "Értékesítés (30n)")}
-                      </span>
-                      <div className="text-lg font-black text-blue-900 font-mono">
-                        -{itemMovements
-                          .filter(m => m.type === "outward" && new Date(m.issuedAt || m.createdAt || "").getTime() >= Date.now() - 30 * 86400000)
-                          .reduce((sum, m) => sum + (m.items?.find(it => it.itemId === currentItem?.id)?.quantity || 0), 0)}{" "}
-                        <span className="text-xs font-normal text-blue-700">{itemForm.unit}</span>
-                      </div>
-                      <span className="text-[10px] text-blue-600 mt-0.5 block">
-                        {t("Issued to clients", "Vydané zákazníkom", "Kiadások")}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* FLOW TRAJECTORY & HEALTH BAR */}
-                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="flex items-center gap-2.5">
-                      <div className={`w-3 h-3 rounded-full ${totalStock > (itemForm.minStock || 0) ? "bg-emerald-500 animate-pulse" : "bg-amber-500 animate-bounce"}`} />
-                      <div>
-                        <span className="text-xs font-bold text-slate-800 block">
-                          {totalStock > (itemForm.minStock || 0) 
-                            ? t("Stock Status: Optimal & Healthy", "Stav zásob: Optimálny a v norme", "Készletállapot: Megfelelő")
-                            : t("Stock Status: Low Inventory Alert!", "Stav zásob: Nízka zásoba — potrebné doobjednať!", "Készletállapot: Alacsony készlet!")}
-                        </span>
-                        <span className="text-[11px] text-slate-400">
-                          {t("Min Alert threshold", "Minimálny limit", "Minimális limit")}: {itemForm.minStock} {itemForm.unit} · {t("Target", "Cieľ", "Cél")}: {itemForm.optimalStock} {itemForm.unit}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono font-bold text-slate-700">
-                        {Math.min(100, Math.round((totalStock / (itemForm.optimalStock || 1)) * 100))}%
-                      </span>
-                      <div className="w-28 h-2.5 bg-slate-200 rounded-full overflow-hidden">
-                        <div 
-                          className={`h-full rounded-full transition-all ${totalStock > (itemForm.minStock || 0) ? "bg-emerald-600" : "bg-amber-500"}`}
-                          style={{ width: `${Math.min(100, (totalStock / (itemForm.optimalStock || 1)) * 100)}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* CARD 1: PRICING, WAP COSTING & PROFIT MARGIN CALCULATOR */}
+                {/* PROFIT MARGIN & FINANCIAL PERFORMANCE CALCULATOR */}
                 <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-5">
                   <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
-                        <DollarSign className="w-4 h-4" />
+                        <TrendingUp className="w-4 h-4" />
                       </div>
                       <div>
                         <h3 className="font-bold text-slate-900 text-base">
-                          {t("Financials, WAP & Margins", "Cenotvorba, Vážený nákupný priemer (WAP) a Marža", "Árképzés, WAP és árrés")}
+                          {t("Profitability & Margin Analysis", "Analýza ziskovosti a obchodná marža", "Jövedelmezőség és árrés elemzés")}
                         </h3>
                         <p className="text-[11px] text-slate-400">
-                          {t("Weighted average cost recalculated automatically on each receipt", "Vážený nákupný priemer sa automaticky prepočítava pri každej príjemke", "Az átlagos beszerzési ár minden bevételezéskor frissül")}
+                          {t("Real-time margin calculation based on suggested sale price and weighted purchase cost", "Výpočet marže a ziskovosti na základe predajnej ceny a váženého nákupného priemeru", "Árrés és haszon számítása az eladási ár és a WAP alapján")}
                         </p>
                       </div>
                     </div>
+
+                    <span className={`px-3 py-1 rounded-full text-xs font-black ${
+                      marginPct >= 40 
+                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200" 
+                        : marginPct >= 20 
+                        ? "bg-blue-50 text-blue-900 border border-blue-200" 
+                        : "bg-amber-50 text-amber-700 border border-amber-200"
+                    }`}>
+                      {marginPct >= 40 ? t("High Profit", "Vysoká ziskovosť", "Magas árrés") : marginPct >= 20 ? t("Standard Margin", "Štandardná marža", "Normál árrés") : t("Low Margin", "Nízka marža", "Alacsony árrés")}
+                    </span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {/* WAP Purchase Price */}
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                        {t("Average Purchase Price (WAP)", "Priemerná nákupná cena (WAP)", "Átlagos beszerzési ár")}
-                      </label>
-                      <div className="relative">
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={itemForm.avgPurchasePrice}
-                          onChange={(e) => setItemForm({ ...itemForm, avgPurchasePrice: Number(e.target.value) })}
-                          className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-base font-mono font-black text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition"
-                        />
-                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
-                          {systemCurrency || "EUR"} / {itemForm.unit}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-400 mt-1">
-                        {t("Last purchase", "Posledný nákup", "Utolsó beszerzés")}: <span className="font-semibold text-slate-600">{formatCurrency(currentItem?.lastPurchasePrice || itemForm.avgPurchasePrice, systemLanguage, systemCurrency)}</span>
-                      </p>
-                    </div>
-
-                    {/* Selling Price Summary (Configured in Left Sidebar) */}
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                        {t("Suggested Sale Price", "Predajná cena (zadaná vľavo)", "Eladási ár")}
-                      </label>
-                      <div className="px-4 py-2.5 bg-blue-50/50 border border-blue-100 rounded-2xl flex items-center justify-between">
-                        <span className="text-base font-mono font-black text-blue-950">
-                          {formatCurrency(itemForm.defaultSellPrice, systemLanguage, systemCurrency)}
-                        </span>
-                        <span className="text-xs font-semibold text-blue-800/70">
-                          / {itemForm.unit}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-400 mt-1">
-                        {t("Configured in left sidebar", "Upraviteľná v ľavom paneli tovaru", "A bal oldali panelen szerkeszthető")}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* LIVE MARGIN & PROFITABILITY WIDGET */}
-                  <div className="bg-gradient-to-br from-slate-900 to-blue-950 p-5 rounded-2xl text-white shadow-md">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-xs font-bold tracking-wider uppercase text-blue-200 flex items-center gap-1.5">
-                        <TrendingUp className="w-4 h-4 text-emerald-400" />
-                        {t("Profitability Calculator", "Kalkulátor ziskovosti a marže", "Jövedelmezőségi kalkulátor")}
+                  {/* LIVE MARGIN & PROFITABILITY CARDS */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {/* Metric 1: Gross Profit */}
+                    <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-100">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 block mb-1">
+                        {t("Gross Profit per Unit", "Hrubý zisk na jednotku", "Haszon egységenként")}
                       </span>
-                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-black ${
-                        marginPct >= 40 
-                          ? "bg-emerald-500/20 text-emerald-300 border border-emerald-400/30" 
-                          : marginPct >= 20 
-                          ? "bg-blue-500/20 text-blue-300 border border-blue-400/30" 
-                          : "bg-amber-500/20 text-amber-300 border border-amber-400/30"
-                      }`}>
-                        {marginPct >= 40 ? t("High Profit", "Vysoká ziskovosť", "Magas árrés") : marginPct >= 20 ? t("Standard Margin", "Štandardná marža", "Normál árrés") : t("Low Margin", "Nízka marža", "Alacsony árrés")}
+                      <div className="text-xl md:text-2xl font-black text-emerald-900 font-mono tracking-tight">
+                        +{formatCurrency(unitProfit, systemLanguage, systemCurrency)}
+                      </div>
+                      <span className="text-[10px] text-emerald-700 mt-1 block">
+                        / {itemForm.unit}
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-4 pt-2 border-t border-white/10 text-center">
-                      <div>
-                        <span className="text-[11px] text-slate-300 font-medium block">{t("Gross Profit", "Hrubý zisk", "Bruttó haszon")}</span>
-                        <span className="text-lg md:text-xl font-black text-emerald-400 tracking-tight">
-                          +{formatCurrency(unitProfit, systemLanguage, systemCurrency)}
-                        </span>
-                        <span className="text-[10px] text-slate-400 block">/ {itemForm.unit}</span>
+                    {/* Metric 2: Gross Margin */}
+                    <div className="p-4 rounded-2xl bg-slate-900 text-white">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-blue-200 block mb-1">
+                        {t("Gross Margin %", "Obchodná marža", "Kereskedelmi árrés")}
+                      </span>
+                      <div className="text-xl md:text-2xl font-black text-white font-mono tracking-tight">
+                        {marginPct.toFixed(1)}%
                       </div>
+                      <span className="text-[10px] text-slate-300 mt-1 block">
+                        {(marginPct / 100).toFixed(2)} coeff
+                      </span>
+                    </div>
 
-                      <div>
-                        <span className="text-[11px] text-slate-300 font-medium block">{t("Gross Margin", "Obchodná marža", "Kereskedelmi árrés")}</span>
-                        <span className="text-lg md:text-xl font-black text-white tracking-tight">
-                          {marginPct.toFixed(1)}%
-                        </span>
-                        <span className="text-[10px] text-slate-400 block">{(marginPct / 100).toFixed(2)} coeff</span>
+                    {/* Metric 3: Markup */}
+                    <div className="p-4 rounded-2xl bg-blue-50/70 border border-blue-100">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-blue-800 block mb-1">
+                        {t("Markup over Cost", "Cenová prirážka (Markup)", "Árréskulcs")}
+                      </span>
+                      <div className="text-xl md:text-2xl font-black text-blue-950 font-mono tracking-tight">
+                        +{markupPct.toFixed(1)}%
                       </div>
+                      <span className="text-[10px] text-blue-700 mt-1 block">
+                        {t("above purchase price", "nad nákupnou cenou", "beszerzés felett")}
+                      </span>
+                    </div>
+                  </div>
 
-                      <div>
-                        <span className="text-[11px] text-slate-300 font-medium block">{t("Markup", "Cenová prirážka", "Árréskulcs")}</span>
-                        <span className="text-lg md:text-xl font-black text-blue-300 tracking-tight">
-                          +{markupPct.toFixed(1)}%
-                        </span>
-                        <span className="text-[10px] text-slate-400 block">{t("over cost", "nad nákup", "beszerzés felett")}</span>
-                      </div>
+                  {/* PRICE COMPOSITION DISTRIBUTION BAR */}
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                      <span>{t("Sale Price Composition", "Štruktúra predajnej ceny", "Eladási ár összetétele")}</span>
+                      <span className="font-mono text-slate-900">{formatCurrency(itemForm.defaultSellPrice, systemLanguage, systemCurrency)}</span>
+                    </div>
+
+                    <div className="w-full h-3 rounded-full bg-slate-200 overflow-hidden flex">
+                      <div
+                        className="h-full bg-slate-500 transition-all"
+                        style={{ width: `${itemForm.defaultSellPrice > 0 ? Math.min(100, Math.max(0, (itemForm.avgPurchasePrice / itemForm.defaultSellPrice) * 100)) : 0}%` }}
+                        title={`${t("Purchase Cost (WAP)", "Nákupný náklad (WAP)", "Beszerzés")}: ${formatCurrency(itemForm.avgPurchasePrice, systemLanguage, systemCurrency)}`}
+                      />
+                      <div
+                        className="h-full bg-emerald-500 transition-all"
+                        style={{ width: `${itemForm.defaultSellPrice > 0 ? Math.min(100, Math.max(0, (unitProfit / itemForm.defaultSellPrice) * 100)) : 0}%` }}
+                        title={`${t("Gross Profit Margin", "Marža / Zisk", "Haszon")}: ${formatCurrency(unitProfit, systemLanguage, systemCurrency)}`}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between text-[10px] text-slate-500 font-semibold pt-0.5">
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-slate-500" />
+                        {t("WAP Purchase Cost", "Nákup (WAP)", "Beszerzési ár")}: <span className="font-bold text-slate-700">{formatCurrency(itemForm.avgPurchasePrice, systemLanguage, systemCurrency)}</span>
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                        {t("Gross Profit", "Zisk", "Haszon")}: <span className="font-bold text-emerald-700">+{formatCurrency(unitProfit, systemLanguage, systemCurrency)}</span>
+                      </span>
                     </div>
                   </div>
                 </div>
-
               </div>
             )}
 
