@@ -34,7 +34,10 @@ import {
   ArrowLeft,
   Save,
   Check,
-  Tag
+  Tag,
+  Upload,
+  Camera,
+  Loader2
 } from "lucide-react";
 import { formatMoney } from "../utils/currency";
 import type { Language } from "../utils/translations";
@@ -141,6 +144,10 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
   const [categorySearchQuery, setCategorySearchQuery] = useState("");
   const [customCategories, setCustomCategories] = useState<string[]>([]);
+
+  // Product Image Upload State
+  const [isImageUploading, setIsImageUploading] = useState(false);
+  const [imageUploadError, setImageUploadError] = useState<string | null>(null);
 
   // Form states for Product Modal
   const [itemForm, setItemForm] = useState<{
@@ -506,6 +513,48 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       description: item.description || ""
     });
     setSelectedProductDetailId(item.id);
+  };
+
+  const handleProductImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      alert(t("Please select an image file (PNG, JPG, WEBP, SVG).", "Vyberte obrázkový súbor (PNG, JPG, WEBP, SVG).", "Kérjük, válasszon képfájlt."));
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(file);
+    setItemForm(prev => ({ ...prev, imageUrl: previewUrl }));
+    setIsImageUploading(true);
+    setImageUploadError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("eventId", `wh_item_${Date.now()}`);
+
+      const res = await fetch("/upload.php", {
+        method: "POST",
+        body: formData
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || t("Upload failed", "Nahrávanie zlyhalo", "Feltöltés sikertelen"));
+      }
+
+      const data = await res.json();
+      if (data.success && (data.filePath || data.fileName)) {
+        const finalPath = data.filePath || `/uploads/${data.fileName}`;
+        setItemForm(prev => ({ ...prev, imageUrl: finalPath }));
+      }
+    } catch (err: any) {
+      console.error("Product image upload failed:", err);
+      setImageUploadError(err.message || "Upload failed");
+    } finally {
+      setIsImageUploading(false);
+    }
   };
 
   const handleDeleteItem = (itemId: string) => {
@@ -1141,24 +1190,69 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             {/* CARD: FIXED PRODUCT SPECIFICATIONS */}
             <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
               
-              {/* TOP HEADER: SMALL IMAGE ON LEFT, NAME ON RIGHT (WEBSHOP STYLE) */}
+              {/* TOP HEADER: SMALL IMAGE (WITH UPLOAD) ON LEFT, NAME ON RIGHT (WEBSHOP STYLE) */}
               <div className="flex items-start gap-3 pb-3 border-b border-slate-100">
-                {/* Small thumbnail on the left */}
+                {/* Small thumbnail with upload trigger on the left */}
                 <div className="relative group shrink-0">
-                  <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 shadow-inner flex items-center justify-center">
+                  <div 
+                    onClick={() => document.getElementById("product-image-upload-input")?.click()}
+                    className="w-20 h-20 rounded-2xl overflow-hidden bg-slate-100 border-2 border-dashed border-slate-300 group-hover:border-blue-900 shadow-inner flex flex-col items-center justify-center cursor-pointer relative transition"
+                    title={t("Click to upload product image", "Kliknite pre nahratie obrázka tovaru", "Kattintson a kép feltöltéséhez")}
+                  >
                     {itemForm.imageUrl ? (
-                      <img
-                        src={itemForm.imageUrl}
-                        alt={itemForm.name || "Product"}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          (e.target as any).src = "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=200&h=200&fit=crop";
-                        }}
-                      />
+                      <>
+                        <img
+                          src={itemForm.imageUrl}
+                          alt={itemForm.name || "Product"}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.target as any).src = "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=200&h=200&fit=crop";
+                          }}
+                        />
+                        {/* Hover Overlay */}
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex flex-col items-center justify-center text-white">
+                          <Camera className="w-5 h-5 mb-0.5" />
+                          <span className="text-[9px] font-bold uppercase tracking-wider">{t("Change", "Zmeniť", "Csere")}</span>
+                        </div>
+                      </>
                     ) : (
-                      <Package className="w-7 h-7 text-slate-300" />
+                      <div className="flex flex-col items-center justify-center text-slate-400 p-1 text-center">
+                        <Upload className="w-5 h-5 mb-1 text-slate-400 group-hover:text-blue-900 group-hover:scale-110 transition" />
+                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tight leading-none">{t("Upload", "Nahrať", "Feltöltés")}</span>
+                      </div>
+                    )}
+
+                    {/* Uploading spinner overlay */}
+                    {isImageUploading && (
+                      <div className="absolute inset-0 bg-white/80 backdrop-blur-xs flex items-center justify-center">
+                        <Loader2 className="w-5 h-5 text-blue-900 animate-spin" />
+                      </div>
                     )}
                   </div>
+
+                  {/* Hidden File Input */}
+                  <input
+                    id="product-image-upload-input"
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,image/webp,image/svg+xml"
+                    onChange={handleProductImageUpload}
+                    className="hidden"
+                  />
+
+                  {/* Quick Remove Image Button */}
+                  {itemForm.imageUrl && !isImageUploading && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setItemForm(prev => ({ ...prev, imageUrl: "" }));
+                      }}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-rose-500 hover:bg-rose-600 text-white flex items-center justify-center shadow-md transition"
+                      title={t("Remove image", "Odstrániť obrázok", "Kép törlése")}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
                 </div>
 
                 {/* Name on the right */}
@@ -1173,22 +1267,24 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     placeholder="napr. Calacatta Gold 20mm"
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition leading-tight"
                   />
+                  <div className="flex items-center gap-1.5 mt-1.5">
+                    <button
+                      type="button"
+                      onClick={() => document.getElementById("product-image-upload-input")?.click()}
+                      className="text-[10px] font-bold text-blue-900 hover:text-blue-950 flex items-center gap-1 transition"
+                    >
+                      <Upload className="w-3 h-3" />
+                      <span>{itemForm.imageUrl ? t("Change photo", "Zmeniť foto", "Fotó cseréje") : t("Upload photo", "Nahrať foto", "Fotó feltöltése")}</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              {/* IMAGE URL INPUT */}
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                  {t("Image URL", "URL adresa obrázka", "Kép URL")}
-                </label>
-                <input
-                  type="text"
-                  value={itemForm.imageUrl}
-                  onChange={(e) => setItemForm({ ...itemForm, imageUrl: e.target.value })}
-                  placeholder="https://..."
-                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] text-slate-700 font-mono focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition"
-                />
-              </div>
+              {imageUploadError && (
+                <div className="p-2 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
+                  {imageUploadError}
+                </div>
+              )}
 
               {/* 1. SUGGESTED SALE PRICE */}
               <div>
