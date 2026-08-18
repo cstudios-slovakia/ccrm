@@ -192,7 +192,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     name: string;
     sku: string;
     barcode: string;
-    category: string;
+    categories: string[];
     unit: string;
     minStock: number;
     optimalStock: number;
@@ -206,7 +206,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     name: "",
     sku: "",
     barcode: "",
-    category: "Veľkoformátové dosky",
+    categories: ["Veľkoformátové dosky"],
     unit: "m²",
     minStock: 10,
     optimalStock: 50,
@@ -293,14 +293,38 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   ]);
   const [transferNote, setTransferNote] = useState<string>("");
 
-  // Categories list derived from items
+  // Helper to get category list for an item (supports both array and comma-separated string)
+  const getItemCategories = (item: { category?: string | null; categories?: string[] } | null | undefined): string[] => {
+    if (!item) return [];
+    if (Array.isArray(item.categories) && item.categories.length > 0) {
+      return item.categories.filter(c => Boolean(c && c.trim()));
+    }
+    if (item.category) {
+      return item.category.split(",").map(c => c.trim()).filter(Boolean);
+    }
+    return [];
+  };
+
+  // Categories list derived from items + defaults + custom categories
   const allCategories = useMemo(() => {
-    const set = new Set<string>();
+    const set = new Set<string>([
+      "Veľkoformátové dosky",
+      "Prírodný kameň",
+      "Technický kameň",
+      "Keramika & Gres",
+      "Stavebná chémia",
+      "Lepidlá a tmely",
+      "Ošetrenie a údržba",
+      "Náradie a spotrebný materiál"
+    ]);
     warehouseItems.forEach(item => {
-      if (item.category) set.add(item.category);
+      getItemCategories(item).forEach(c => set.add(c));
     });
-    return Array.from(set);
-  }, [warehouseItems]);
+    customCategories.forEach(c => {
+      if (c && c.trim()) set.add(c.trim());
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [warehouseItems, customCategories]);
 
   // Aggregate quantities helper per item (optionally filtered by warehouse)
   const getStockInfoForItem = (itemId: string, warehouseId?: string) => {
@@ -384,8 +408,11 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       if (stockStatusFilter === "low_stock" && (stock.onHand > item.minStock || stock.onHand === 0)) return false;
       if (stockStatusFilter === "out_of_stock" && stock.onHand > 0) return false;
 
-      // Category filter
-      if (selectedCategory !== "all" && item.category !== selectedCategory) return false;
+      // Category filter (supports multiple categories per item)
+      if (selectedCategory !== "all") {
+        const itemCats = getItemCategories(item);
+        if (!itemCats.includes(selectedCategory)) return false;
+      }
 
       // Search query
       if (searchQuery.trim()) {
@@ -393,7 +420,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
         const matchName = item.name.toLowerCase().includes(q);
         const matchSku = item.sku.toLowerCase().includes(q);
         const matchBarcode = item.barcode?.toLowerCase().includes(q);
-        const matchCat = item.category?.toLowerCase().includes(q);
+        const itemCats = getItemCategories(item);
+        const matchCat = itemCats.some(c => c.toLowerCase().includes(q)) || (item.category?.toLowerCase().includes(q));
         if (!matchName && !matchSku && !matchBarcode && !matchCat) return false;
       }
 
@@ -519,7 +547,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       name: "",
       sku: `SKU-${Date.now().toString().slice(-4)}`,
       barcode: "",
-      category: allCategories[0] || "Materiál",
+      categories: [allCategories[0] || "Veľkoformátové dosky"],
       unit: "ks",
       minStock: 10,
       optimalStock: 50,
@@ -538,11 +566,12 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
   const handleOpenEditItem = (item: WarehouseItem) => {
     setEditingItem(item);
+    const itemCats = getItemCategories(item);
     setItemForm({
       name: item.name,
       sku: item.sku,
       barcode: item.barcode || "",
-      category: item.category || "",
+      categories: itemCats.length > 0 ? itemCats : ["Veľkoformátové dosky"],
       unit: item.unit,
       minStock: item.minStock,
       optimalStock: item.optimalStock,
@@ -931,7 +960,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
         name: itemForm.name.trim(),
         sku: itemForm.sku.trim(),
         barcode: itemForm.barcode.trim() || null,
-        category: itemForm.category.trim() || null,
+        category: itemForm.categories.join(", ") || null,
+        categories: itemForm.categories.length > 0 ? itemForm.categories : [t("Uncategorized", "Bez kategórie", "Kategória nélkül")],
         unit: itemForm.unit.trim() || "ks",
         minStock: Number(itemForm.minStock) || 0,
         optimalStock: Number(itemForm.optimalStock) || 0,
@@ -955,7 +985,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
         name: itemForm.name.trim(),
         sku: itemForm.sku.trim(),
         barcode: itemForm.barcode.trim() || null,
-        category: itemForm.category.trim() || null,
+        category: itemForm.categories.join(", ") || null,
+        categories: itemForm.categories.length > 0 ? itemForm.categories : [t("Uncategorized", "Bez kategórie", "Kategória nélkül")],
         unit: itemForm.unit.trim() || "ks",
         minStock: Number(itemForm.minStock) || 0,
         optimalStock: Number(itemForm.optimalStock) || 0,
@@ -1426,7 +1457,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       "Ošetrenie a údržba",
       "Náradie a spotrebný materiál"
     ];
-    const itemCats = warehouseItems.map(i => i.category).filter((c): c is string => Boolean(c && c.trim()));
+    const itemCats = warehouseItems.flatMap(i => getItemCategories(i));
     const allAvailableCategories = Array.from(new Set([...defaultCats, ...itemCats, ...customCategories])).sort((a, b) => a.localeCompare(b));
 
     return (
@@ -1464,9 +1495,17 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-slate-100 text-slate-700 border border-slate-200">
                       {itemForm.sku}
                     </span>
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-900 border border-blue-200">
-                      {itemForm.category || t("Uncategorized", "Bez kategórie", "Kategória nélkül")}
-                    </span>
+                    {itemForm.categories.length === 0 ? (
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-500 border border-slate-200">
+                        {t("Uncategorized", "Bez kategórie", "Kategória nélkül")}
+                      </span>
+                    ) : (
+                      itemForm.categories.map(cat => (
+                        <span key={cat} className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-900 border border-blue-200">
+                          {cat}
+                        </span>
+                      ))
+                    )}
                     <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
                       overallStock.onHand === 0 
                         ? "bg-rose-50 text-rose-700 border border-rose-200" 
@@ -1736,11 +1775,18 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 </div>
               </div>
 
-              {/* 4. CATEGORY (SEARCHABLE LIST WITH POSSIBILITY TO ADD OPTIONS) */}
+              {/* 4. CATEGORIES (MULTI-SELECT SEARCHABLE LIST WITH POSSIBILITY TO ADD OPTIONS) */}
               <div className="relative">
-                <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  {t("Category", "Kategória", "Kategória")}
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                    {t("Categories", "Kategórie", "Kategóriák")}
+                  </label>
+                  {itemForm.categories.length > 0 && (
+                    <span className="text-[10px] font-bold text-blue-900 font-mono">
+                      {itemForm.categories.length} {t("selected", "vybraté", "kiválasztva")}
+                    </span>
+                  )}
+                </div>
                 
                 {/* Category Button & Trigger */}
                 <div
@@ -1749,21 +1795,50 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     setIsCategoryDropdownOpen(!isCategoryDropdownOpen);
                     setCategorySearchQuery("");
                   }}
-                  className={`w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-semibold flex items-center justify-between transition ${
+                  className={`w-full p-2 border border-slate-200 rounded-xl text-xs font-semibold flex items-center justify-between transition min-h-[38px] ${
                     isProductCardLocked 
                       ? "bg-slate-100/70 text-slate-700 cursor-not-allowed" 
                       : "bg-slate-50 text-slate-800 cursor-pointer hover:bg-slate-100/80"
                   }`}
                 >
-                  <span className={itemForm.category ? "text-slate-900" : "text-slate-400"}>
-                    {itemForm.category || t("Select or add category...", "Vyberte alebo pridajte kategóriu...", "Válasszon vagy adjon hozzá kategóriát...")}
-                  </span>
-                  <ChevronDown className={`w-4 h-4 text-slate-400 transition transform ${isCategoryDropdownOpen ? "rotate-180" : ""}`} />
+                  <div className="flex flex-wrap items-center gap-1.5 flex-1 pr-2">
+                    {itemForm.categories.length === 0 ? (
+                      <span className="text-slate-400 py-0.5 px-1">
+                        {t("Select categories...", "Vyberte kategórie...", "Válasszon kategóriákat...")}
+                      </span>
+                    ) : (
+                      itemForm.categories.map(cat => (
+                        <span
+                          key={cat}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-blue-50 text-blue-950 border border-blue-200 text-[11px] font-bold"
+                        >
+                          <span>{cat}</span>
+                          {!isProductCardLocked && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setItemForm(prev => ({
+                                  ...prev,
+                                  categories: prev.categories.filter(c => c !== cat)
+                                }));
+                              }}
+                              className="hover:bg-blue-200/60 rounded p-0.5 text-blue-800 transition"
+                              title={t("Remove category", "Odstrániť kategóriu", "Kategória eltávolítása")}
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          )}
+                        </span>
+                      ))
+                    )}
+                  </div>
+                  <ChevronDown className={`w-4 h-4 text-slate-400 shrink-0 transition transform ${isCategoryDropdownOpen ? "rotate-180" : ""}`} />
                 </div>
 
                 {/* Dropdown Menu */}
                 {isCategoryDropdownOpen && !isProductCardLocked && (
-                  <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl z-30 p-2 space-y-1.5">
+                  <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl z-30 p-2.5 space-y-2">
                     {/* Search inside categories */}
                     <div className="relative">
                       <input
@@ -1776,9 +1851,10 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         onKeyDown={(e) => {
                           if (e.key === "Enter" && categorySearchQuery.trim()) {
                             const newCat = categorySearchQuery.trim();
-                            setItemForm({ ...itemForm, category: newCat });
+                            if (!itemForm.categories.includes(newCat)) {
+                              setItemForm(prev => ({ ...prev, categories: [...prev.categories, newCat] }));
+                            }
                             setCustomCategories(prev => prev.includes(newCat) ? prev : [...prev, newCat]);
-                            setIsCategoryDropdownOpen(false);
                             setCategorySearchQuery("");
                           }
                         }}
@@ -1792,40 +1868,76 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         type="button"
                         onClick={() => {
                           const newCat = categorySearchQuery.trim();
-                          setItemForm({ ...itemForm, category: newCat });
+                          if (!itemForm.categories.includes(newCat)) {
+                            setItemForm(prev => ({ ...prev, categories: [...prev.categories, newCat] }));
+                          }
                           setCustomCategories(prev => prev.includes(newCat) ? prev : [...prev, newCat]);
-                          setIsCategoryDropdownOpen(false);
                           setCategorySearchQuery("");
                         }}
                         className="w-full px-2.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 text-xs font-bold flex items-center gap-1.5 transition text-left cursor-pointer"
                       >
                         <Plus className="w-3.5 h-3.5" />
-                        <span>{t("Add", "Pridať novú", "Hozzáadás")}: <span className="font-extrabold text-blue-950">"{categorySearchQuery.trim()}"</span></span>
+                        <span>{t("Add & Select", "Pridať a vybrať", "Hozzáadás")}: <span className="font-extrabold text-blue-950">"{categorySearchQuery.trim()}"</span></span>
                       </button>
                     )}
 
-                    {/* Filtered category options */}
-                    <div className="max-h-48 overflow-y-auto space-y-0.5 pt-1">
+                    {/* Filtered category options with checkboxes */}
+                    <div className="max-h-48 overflow-y-auto space-y-1 pt-1">
                       {allAvailableCategories
                         .filter(c => c.toLowerCase().includes(categorySearchQuery.toLowerCase()))
-                        .map(cat => (
-                          <div
-                            key={cat}
-                            onClick={() => {
-                              setItemForm({ ...itemForm, category: cat });
-                              setIsCategoryDropdownOpen(false);
-                              setCategorySearchQuery("");
-                            }}
-                            className={`px-2.5 py-1.5 rounded-xl text-xs cursor-pointer flex items-center justify-between transition ${
-                              itemForm.category === cat 
-                                ? "bg-blue-900 text-white font-bold" 
-                                : "hover:bg-slate-100 text-slate-700 font-medium"
-                            }`}
-                          >
-                            <span>{cat}</span>
-                            {itemForm.category === cat && <Check className="w-3.5 h-3.5" />}
-                          </div>
-                        ))}
+                        .map(cat => {
+                          const isSelected = itemForm.categories.includes(cat);
+                          return (
+                            <div
+                              key={cat}
+                              onClick={() => {
+                                setItemForm(prev => ({
+                                  ...prev,
+                                  categories: isSelected 
+                                    ? prev.categories.filter(c => c !== cat)
+                                    : [...prev.categories, cat]
+                                }));
+                              }}
+                              className={`px-2.5 py-1.5 rounded-xl text-xs cursor-pointer flex items-center justify-between transition ${
+                                isSelected 
+                                  ? "bg-blue-900 text-white font-bold" 
+                                  : "hover:bg-slate-100 text-slate-700 font-medium"
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <div className={`w-4 h-4 rounded-md border flex items-center justify-center transition ${
+                                  isSelected ? "bg-white border-white text-blue-900" : "border-slate-300 bg-white"
+                                }`}>
+                                  {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                                </div>
+                                <span>{cat}</span>
+                              </div>
+                              {isSelected && (
+                                <span className="text-[10px] text-blue-200 uppercase font-bold">
+                                  {t("Active", "Aktívna", "Aktív")}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                    </div>
+
+                    {/* Bottom Done button */}
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                      <button
+                        type="button"
+                        onClick={() => setItemForm(prev => ({ ...prev, categories: [] }))}
+                        className="text-[11px] font-bold text-slate-400 hover:text-rose-600 transition"
+                      >
+                        {t("Clear all", "Zrušiť výber", "Összes törlése")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsCategoryDropdownOpen(false)}
+                        className="px-3 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition cursor-pointer"
+                      >
+                        {t("Done", "Hotovo", "Kész")}
+                      </button>
                     </div>
                   </div>
                 )}
@@ -3505,9 +3617,19 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                           {/* Category & Location */}
                           <td className="py-3 px-4">
                             <div>
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-                                {item.category || t("General", "Všeobecné", "Általános")}
-                              </span>
+                              <div className="flex flex-wrap gap-1 max-w-[200px]">
+                                {getItemCategories(item).length === 0 ? (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                                    {t("General", "Všeobecné", "Általános")}
+                                  </span>
+                                ) : (
+                                  getItemCategories(item).map(cat => (
+                                    <span key={cat} className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-900 border border-blue-100">
+                                      {cat}
+                                    </span>
+                                  ))
+                                )}
+                              </div>
                               <div className="flex items-center gap-1 text-[11px] text-slate-500 mt-1">
                                 <MapPin className="w-3 h-3 text-slate-400" />
                                 <span>{stock.locations || item.defaultLocation || t("Unassigned", "Nepriradené", "Nincs")}</span>
@@ -4068,7 +4190,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             <div className="space-y-3">
               {allCategories.map(cat => {
                 let catVal = 0;
-                warehouseItems.filter(it => it.category === cat).forEach(it => {
+                warehouseItems.filter(it => getItemCategories(it).includes(cat)).forEach(it => {
                   const s = getStockInfoForItem(it.id);
                   catVal += s.onHand * it.avgPurchasePrice;
                 });

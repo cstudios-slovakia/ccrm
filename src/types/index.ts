@@ -446,6 +446,7 @@ export interface WarehouseItem {
   name: string;
   description?: string | null;
   category?: string | null;
+  categories?: string[];
   unit: string; // 'ks' | 'm²' | 'bm' | 'm³' | 'kg' | 'l' | 'balenie' | string
   minStock: number;
   optimalStock: number;
