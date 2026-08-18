@@ -30,13 +30,32 @@ import {
   MapPin,
   AlertCircle,
   Barcode,
-  ArrowUpDown
+  ArrowUpDown,
+  ArrowLeft,
+  Save
 } from "lucide-react";
 import { formatMoney } from "../utils/currency";
 import type { Language } from "../utils/translations";
 
 const formatCurrency = (val: number, lang: Language, currency?: string | null) =>
   formatMoney(val, currency, lang, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const getExpirationStatus = (expirationDate: string): { status: "expired" | "warning" | "ok"; daysRemaining: number } => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const expDate = new Date(expirationDate);
+  const diffTime = expDate.getTime() - today.getTime();
+  const daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+  let status: "expired" | "warning" | "ok" = "ok";
+  if (daysRemaining <= 0) {
+    status = "expired";
+  } else if (daysRemaining <= 30) {
+    status = "warning";
+  }
+
+  return { status, daysRemaining };
+};
 import type {
   Warehouse,
   Supplier,
@@ -102,8 +121,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   const [stockStatusFilter, setStockStatusFilter] = useState<"all" | "in_stock" | "low_stock" | "out_of_stock">("all");
   const [movementTypeFilter, setMovementTypeFilter] = useState<string>("all");
 
-  // Modals state
-  const [isItemModalOpen, setIsItemModalOpen] = useState(false);
+  // Modals & Navigation state
+  const [selectedProductDetailId, setSelectedProductDetailId] = useState<string | "new" | null>(null);
   const [editingItem, setEditingItem] = useState<WarehouseItem | null>(null);
 
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
@@ -442,6 +461,66 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     }
   };
 
+  const handleOpenCreateItem = () => {
+    setEditingItem(null);
+    setItemForm({
+      name: "",
+      sku: `SKU-${Date.now().toString().slice(-4)}`,
+      barcode: "",
+      category: allCategories[0] || "Materiál",
+      unit: "ks",
+      minStock: 10,
+      optimalStock: 50,
+      defaultLocation: "A-01-RACK",
+      hasExpiration: false,
+      imageUrl: "",
+      defaultSellPrice: 0,
+      avgPurchasePrice: 0,
+      description: ""
+    });
+    setSelectedProductDetailId("new");
+  };
+
+  const handleOpenEditItem = (item: WarehouseItem) => {
+    setEditingItem(item);
+    setItemForm({
+      name: item.name,
+      sku: item.sku,
+      barcode: item.barcode || "",
+      category: item.category || "",
+      unit: item.unit,
+      minStock: item.minStock,
+      optimalStock: item.optimalStock,
+      defaultLocation: item.defaultLocation || "",
+      hasExpiration: item.hasExpiration,
+      imageUrl: item.imageUrl || "",
+      defaultSellPrice: item.defaultSellPrice,
+      avgPurchasePrice: item.avgPurchasePrice,
+      description: item.description || ""
+    });
+    setSelectedProductDetailId(item.id);
+  };
+
+  const handleDeleteItem = (itemId: string) => {
+    const item = warehouseItems.find(i => i.id === itemId);
+    if (!window.confirm(t(
+      `Are you sure you want to delete product "${item?.name || itemId}"? This will remove all associated stock records.`,
+      `Naozaj chcete vymazať tovar "${item?.name || itemId}"? Odstránia sa aj všetky priradené skladové záznamy.`,
+      `Biztosan törli a "${item?.name || itemId}" terméket? Az összes kapcsolódó készletadat is törlődik.`
+    ))) {
+      return;
+    }
+
+    setWarehouseItems(prev => prev.filter(i => i.id !== itemId));
+    setWarehouseStock(prev => prev.filter(s => s.itemId !== itemId));
+    setSelectedProductDetailId(null);
+    setEditingItem(null);
+
+    if (typeof (window as any).showToast === "function") {
+      (window as any).showToast(t("Product was deleted successfully.", "Tovar bol úspešne vymazaný.", "A termék sikeresen törölve."));
+    }
+  };
+
   // Save / Update Item handler
   const handleSaveItem = () => {
     if (!itemForm.name.trim() || !itemForm.sku.trim()) {
@@ -469,6 +548,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       };
 
       setWarehouseItems(prev => prev.map(it => it.id === editingItem.id ? updated : it));
+      if (typeof (window as any).showToast === "function") {
+        (window as any).showToast(t("Product updated successfully.", "Tovar bol úspešne upravený.", "A termék sikeresen módosítva."));
+      }
     } else {
       // Create new item
       const newItemId = `item-${Date.now()}`;
@@ -504,9 +586,13 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
         }));
         return [...prev, ...newStockEntries];
       });
+
+      if (typeof (window as any).showToast === "function") {
+        (window as any).showToast(t("New product created successfully.", "Nový tovar bol úspešne pridaný.", "Új termék sikeresen hozzáadva."));
+      }
     }
 
-    setIsItemModalOpen(false);
+    setSelectedProductDetailId(null);
     setEditingItem(null);
   };
 
@@ -914,6 +1000,687 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     setTransferNote("");
   };
 
+  // ---------------------------------------------------------------------------
+  // DEDICATED FULL VIEW: PRODUCT CREATE / EDIT & 360° INVENTORY MANAGEMENT
+  // ---------------------------------------------------------------------------
+  if (selectedProductDetailId !== null) {
+    const isNew = selectedProductDetailId === "new";
+    const currentItem = isNew ? null : warehouseItems.find(i => i.id === selectedProductDetailId);
+    const overallStock = currentItem ? getStockInfoForItem(currentItem.id, "all") : { onHand: 0, reserved: 0, available: 0, locations: "" };
+    
+    // Live Profit & Margin computations
+    const sellPrice = Number(itemForm.defaultSellPrice) || 0;
+    const buyPrice = Number(itemForm.avgPurchasePrice) || 0;
+    const unitProfit = sellPrice - buyPrice;
+    const marginPct = sellPrice > 0 ? (unitProfit / sellPrice) * 100 : 0;
+    const markupPct = buyPrice > 0 ? (unitProfit / buyPrice) * 100 : 0;
+
+    // Item-specific batches
+    const itemBatches = currentItem ? warehouseBatches.filter(b => b.itemId === currentItem.id) : [];
+
+    // Item-specific movements
+    const itemMovements = currentItem ? warehouseMovements.filter(m => m.items?.some(it => it.itemId === currentItem.id)) : [];
+
+    // Predefined category quick-picker suggestions
+    const categorySuggestions = [
+      "Veľkoformátové dosky",
+      "Prírodný kameň",
+      "Technický kameň",
+      "Keramika & Gres",
+      "Stavebná chémia",
+      "Lepidlá a tmely",
+      "Ošetrenie a údržba",
+      "Náradie a spotrebný materiál"
+    ];
+
+    return (
+      <div className="space-y-6 pb-12 animate-fadeIn">
+        {/* TOP BAR / BREADCRUMB HEADER */}
+        <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setSelectedProductDetailId(null)}
+              className="p-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition flex items-center justify-center shrink-0"
+              title={t("Back to Inventory", "Späť na skladové zásoby", "Vissza a készlethez")}
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+
+            <div>
+              <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 mb-1">
+                <span>{t("Warehouse", "Sklad", "Raktár")}</span>
+                <span>/</span>
+                <span>{t("Product Catalog", "Katalóg tovaru", "Termékkatalógus")}</span>
+                <span>/</span>
+                <span className="text-blue-900 font-bold">{isNew ? t("New Product", "Nový tovar", "Új termék") : currentItem?.name}</span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight">
+                  {isNew ? t("New Product / Material", "Pridať nový tovar do katalógu", "Új termék felvitele") : itemForm.name || currentItem?.name}
+                </h1>
+                {!isNew && (
+                  <>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                      {itemForm.sku}
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-900 border border-blue-200">
+                      {itemForm.category || t("Uncategorized", "Bez kategórie", "Kategória nélkül")}
+                    </span>
+                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                      overallStock.onHand === 0 
+                        ? "bg-rose-50 text-rose-700 border border-rose-200" 
+                        : overallStock.onHand <= itemForm.minStock 
+                        ? "bg-amber-50 text-amber-700 border border-amber-200" 
+                        : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                    }`}>
+                      {overallStock.onHand === 0
+                        ? t("Out of stock", "Vypredané", "Kifogyott")
+                        : overallStock.onHand <= itemForm.minStock
+                        ? t("Low stock", "Nízka zásoba", "Alacsony készlet")
+                        : t("In stock", "Na sklade", "Készleten")} ({overallStock.onHand} {itemForm.unit})
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSelectedProductDetailId(null)}
+              className="px-4 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition"
+            >
+              {t("Cancel", "Zrušiť", "Mégse")}
+            </button>
+
+            {!isNew && (
+              <button
+                onClick={() => currentItem && handleDeleteItem(currentItem.id)}
+                className="p-2.5 rounded-2xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-bold transition flex items-center gap-1.5"
+                title={t("Delete Product", "Vymazať tovar", "Termék törlése")}
+              >
+                <Trash2 className="w-4 h-4" />
+                <span className="hidden sm:inline">{t("Delete", "Vymazať", "Törlés")}</span>
+              </button>
+            )}
+
+            <button
+              onClick={handleSaveItem}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-blue-950 hover:bg-blue-900 text-white text-xs font-black shadow-lg shadow-blue-950/20 transition"
+            >
+              <Save className="w-4 h-4" />
+              <span>{isNew ? t("Create Product", "Vytvoriť tovar", "Termék létrehozása") : t("Save Changes", "Uložiť zmeny", "Módosítások mentése")}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 2-COLUMN LUXURY EDITING WORKSPACE */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* LEFT 2 COLUMNS: SPECIFICATIONS, THRESHOLDS, FINANCIALS & WAREHOUSE BALANCES */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* CARD 1: GENERAL PRODUCT INFORMATION */}
+            <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-5">
+              <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
+                <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-900 flex items-center justify-center">
+                  <Package className="w-4 h-4" />
+                </div>
+                <h3 className="font-bold text-slate-900 text-base">
+                  {t("Product Specifications", "Základné informácie a parametre", "Termékadatok és specifikáció")}
+                </h3>
+              </div>
+
+              <div className="space-y-4">
+                {/* Product Name */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    {t("Product Name", "Názov tovaru / materiálu", "Terméknév")} *
+                  </label>
+                  <input
+                    type="text"
+                    value={itemForm.name}
+                    onChange={(e) => setItemForm({ ...itemForm, name: e.target.value })}
+                    placeholder="napr. Calacatta Gold Quartz doska 20mm"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition"
+                  />
+                </div>
+
+                {/* SKU Code, Barcode & Unit */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      SKU {t("Code", "Kód", "Kód")} *
+                    </label>
+                    <input
+                      type="text"
+                      value={itemForm.sku}
+                      onChange={(e) => setItemForm({ ...itemForm, sku: e.target.value })}
+                      placeholder="SKU-CQ-01"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      {t("Barcode / EAN", "Čiarový kód / EAN", "Vonalkód")}
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={itemForm.barcode}
+                        onChange={(e) => setItemForm({ ...itemForm, barcode: e.target.value })}
+                        placeholder="858800123401"
+                        className="w-full pl-9 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition"
+                      />
+                      <Barcode className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      {t("Unit of Measure", "Merná jednotka (MJ)", "Mértékegység")}
+                    </label>
+                    <select
+                      value={itemForm.unit}
+                      onChange={(e) => setItemForm({ ...itemForm, unit: e.target.value })}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition cursor-pointer"
+                    >
+                      <option value="ks">ks (Kusy)</option>
+                      <option value="m²">m² (Štvorcové metre)</option>
+                      <option value="bm">bm (Bežné metre)</option>
+                      <option value="m³">m³ (Kubické metre)</option>
+                      <option value="kg">kg (Kilogramy)</option>
+                      <option value="l">l (Litre)</option>
+                      <option value="balenie">balenie (Balenia)</option>
+                      <option value="paleta">paleta (Palety)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Category with Quick Suggestions */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    {t("Category", "Kategória", "Kategória")}
+                  </label>
+                  <input
+                    type="text"
+                    value={itemForm.category}
+                    onChange={(e) => setItemForm({ ...itemForm, category: e.target.value })}
+                    placeholder="Veľkoformátové dosky"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition"
+                  />
+                  <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                    <span className="text-[11px] text-slate-400 mr-1">{t("Suggestions", "Rýchly výber", "Javaslatok")}:</span>
+                    {categorySuggestions.map(cat => (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setItemForm({ ...itemForm, category: cat })}
+                        className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold transition ${
+                          itemForm.category === cat 
+                            ? "bg-blue-900 text-white" 
+                            : "bg-slate-100 hover:bg-slate-200 text-slate-600"
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Detailed Description */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    {t("Description & Technical Details", "Popis tovaru a technické vlastnosti", "Leírás és műszaki adatok")}
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={itemForm.description}
+                    onChange={(e) => setItemForm({ ...itemForm, description: e.target.value })}
+                    placeholder={t("Detailed product characteristics, surface finishes, slab dimensions...", "Detailný popis materiálu, rozmery dosiek, povrchová úprava...", "Részletes termékleírás...")}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition leading-relaxed resize-y"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* CARD 2: PRICING, WAP COSTING & PROFIT MARGIN CALCULATOR */}
+            <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-5">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
+                    <DollarSign className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-900 text-base">
+                      {t("Financials, WAP & Margins", "Cenotvorba, Vážený nákupný priemer (WAP) a Marža", "Árképzés, WAP és árrés")}
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      {t("Weighted average cost recalculated automatically on each receipt", "Vážený nákupný priemer sa automaticky prepočítava pri každej príjemke", "Az átlagos beszerzési ár minden bevételezéskor frissül")}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* WAP Purchase Price */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    {t("Average Purchase Price (WAP)", "Priemerná nákupná cena (WAP)", "Átlagos beszerzési ár")}
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={itemForm.avgPurchasePrice}
+                      onChange={(e) => setItemForm({ ...itemForm, avgPurchasePrice: Number(e.target.value) })}
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-base font-mono font-black text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition"
+                    />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                      {systemCurrency || "EUR"} / {itemForm.unit}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    {t("Last purchase", "Posledný nákup", "Utolsó beszerzés")}: <span className="font-semibold text-slate-600">{formatCurrency(currentItem?.lastPurchasePrice || itemForm.avgPurchasePrice, systemLanguage, systemCurrency)}</span>
+                  </p>
+                </div>
+
+                {/* Default Selling Price */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    {t("Default Selling Price (excl. VAT)", "Predvolená predajná cena (bez DPH)", "Alapértelmezett eladási ár")}
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={itemForm.defaultSellPrice}
+                      onChange={(e) => setItemForm({ ...itemForm, defaultSellPrice: Number(e.target.value) })}
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-base font-mono font-black text-blue-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition"
+                    />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                      {systemCurrency || "EUR"} / {itemForm.unit}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* LIVE MARGIN & PROFITABILITY WIDGET */}
+              <div className="bg-gradient-to-br from-slate-900 to-blue-950 p-5 rounded-2xl text-white shadow-md">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-bold tracking-wider uppercase text-blue-200 flex items-center gap-1.5">
+                    <TrendingUp className="w-4 h-4 text-emerald-400" />
+                    {t("Profitability Calculator", "Kalkulátor ziskovosti a marže", "Jövedelmezőségi kalkulátor")}
+                  </span>
+                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-black ${
+                    marginPct >= 40 
+                      ? "bg-emerald-500/20 text-emerald-300 border border-emerald-400/30" 
+                      : marginPct >= 20 
+                      ? "bg-blue-500/20 text-blue-300 border border-blue-400/30" 
+                      : "bg-amber-500/20 text-amber-300 border border-amber-400/30"
+                  }`}>
+                    {marginPct >= 40 ? t("High Profit", "Vysoká ziskovosť", "Magas árrés") : marginPct >= 20 ? t("Standard Margin", "Štandardná marža", "Normál árrés") : t("Low Margin", "Nízka marža", "Alacsony árrés")}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4 pt-2 border-t border-white/10 text-center">
+                  <div>
+                    <span className="text-[11px] text-slate-300 font-medium block">{t("Gross Profit", "Hrubý zisk", "Bruttó haszon")}</span>
+                    <span className="text-lg md:text-xl font-black text-emerald-400 tracking-tight">
+                      +{formatCurrency(unitProfit, systemLanguage, systemCurrency)}
+                    </span>
+                    <span className="text-[10px] text-slate-400 block">/ {itemForm.unit}</span>
+                  </div>
+
+                  <div>
+                    <span className="text-[11px] text-slate-300 font-medium block">{t("Gross Margin", "Obchodná marža", "Kereskedelmi árrés")}</span>
+                    <span className="text-lg md:text-xl font-black text-white tracking-tight">
+                      {marginPct.toFixed(1)}%
+                    </span>
+                    <span className="text-[10px] text-slate-400 block">{(marginPct / 100).toFixed(2)} coeff</span>
+                  </div>
+
+                  <div>
+                    <span className="text-[11px] text-slate-300 font-medium block">{t("Markup", "Cenová prirážka", "Árréskulcs")}</span>
+                    <span className="text-lg md:text-xl font-black text-blue-300 tracking-tight">
+                      +{markupPct.toFixed(1)}%
+                    </span>
+                    <span className="text-[10px] text-slate-400 block">{t("over cost", "nad nákup", "beszerzés felett")}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* CARD 3: STOCK THRESHOLDS & RACK LOCATION */}
+            <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-5">
+              <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
+                <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center">
+                  <Boxes className="w-4 h-4" />
+                </div>
+                <h3 className="font-bold text-slate-900 text-base">
+                  {t("Stock Thresholds & Storage Location", "Skladové limity a umiestnenie v regáli", "Készletlimitek és raktári hely")}
+                </h3>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    {t("Default Storage Rack / Bin", "Predvolený regál / Pozícia", "Raktári hely / Polc")}
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={itemForm.defaultLocation}
+                      onChange={(e) => setItemForm({ ...itemForm, defaultLocation: e.target.value })}
+                      placeholder="A-01-RACK"
+                      className="w-full pl-9 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition"
+                    />
+                    <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    {t("Minimum Stock Alert", "Minimálna zásoba (Alert)", "Minimális készlet")}
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      value={itemForm.minStock}
+                      onChange={(e) => setItemForm({ ...itemForm, minStock: Number(e.target.value) })}
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition"
+                    />
+                    <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-400">
+                      {itemForm.unit}
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    {t("Optimal Target Stock", "Optimálna cieľová zásoba", "Optimális készlet")}
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      value={itemForm.optimalStock}
+                      onChange={(e) => setItemForm({ ...itemForm, optimalStock: Number(e.target.value) })}
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition"
+                    />
+                    <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-400">
+                      {itemForm.unit}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Expiration toggle */}
+              <label className="flex items-start gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-200/80 cursor-pointer hover:bg-slate-100/60 transition">
+                <input
+                  type="checkbox"
+                  checked={itemForm.hasExpiration}
+                  onChange={(e) => setItemForm({ ...itemForm, hasExpiration: e.target.checked })}
+                  className="w-4 h-4 rounded text-blue-900 focus:ring-blue-900 mt-0.5"
+                />
+                <div>
+                  <span className="font-bold text-xs text-slate-900 block">
+                    {t("Track Expiration Dates & Batches (FEFO)", "Sledovať šarže a dátumy exspirácie (FEFO)", "Lejárati idők és tételek követése (FEFO)")}
+                  </span>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    {t("Enables batch number entry on receipt and alerts for perishable chemicals, impregnations, and adhesives", "Umožňuje zadávať čísla šarží pri príjme a upozorňuje na blížiacu sa exspiráciu stavebnej chémie a lepidiel", "Tételszám és lejárati idő rögzítése bevételezéskor")}
+                  </p>
+                </div>
+              </label>
+            </div>
+
+            {/* CARD 4: MULTI-WAREHOUSE STOCK DISTRIBUTION (If Editing Existing) */}
+            {!isNew && currentItem && (
+              <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-900 flex items-center justify-center">
+                      <Building2 className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-slate-900 text-base">
+                        {t("Stock Balances by Warehouse", "Stav zásob na jednotlivých skladoch", "Raktárankénti készletállomány")}
+                      </h3>
+                      <p className="text-[11px] text-slate-400">
+                        {t("Real-time physical, reserved, and available quantities across all locations", "Aktuálna fyzická, rezervovaná a voľná zásoba na každej pobočke", "Valós idejű készletinformáció")}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto rounded-2xl border border-slate-100">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+                      <tr>
+                        <th className="py-2.5 px-4">{t("Warehouse", "Sklad", "Raktár")}</th>
+                        <th className="py-2.5 px-4">{t("Location", "Pozícia", "Hely")}</th>
+                        <th className="py-2.5 px-4 text-right">{t("On Hand", "Fyzicky", "Készleten")}</th>
+                        <th className="py-2.5 px-4 text-right">{t("Reserved", "Rezervované", "Foglalt")}</th>
+                        <th className="py-2.5 px-4 text-right">{t("Available", "K dispozícii", "Szabad")}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium">
+                      {warehouses.map(wh => {
+                        const st = warehouseStock.find(s => s.warehouseId === wh.id && s.itemId === currentItem.id);
+                        const onHand = st?.quantity || 0;
+                        const res = st?.reservedQuantity || 0;
+                        const avail = Math.max(0, onHand - res);
+
+                        return (
+                          <tr key={wh.id} className="hover:bg-slate-50/50 transition">
+                            <td className="py-3 px-4">
+                              <div className="font-bold text-slate-900">{wh.name}</div>
+                              <span className="text-[10px] font-mono text-slate-400">{wh.code}</span>
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 font-mono text-[11px]">
+                                {st?.location || itemForm.defaultLocation || "-"}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-right font-bold text-slate-900">
+                              {onHand} <span className="text-[10px] font-normal text-slate-400">{itemForm.unit}</span>
+                            </td>
+                            <td className="py-3 px-4 text-right text-slate-500 font-semibold">
+                              {res} <span className="text-[10px] font-normal text-slate-400">{itemForm.unit}</span>
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              <span className={`font-black ${avail > 0 ? "text-emerald-700" : "text-rose-600"}`}>
+                                {avail} <span className="text-[10px] font-normal">{itemForm.unit}</span>
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* RIGHT 1 COLUMN: PRODUCT MEDIA, BATCHES & MOVEMENTS */}
+          <div className="space-y-6">
+            {/* CARD 1: PRODUCT IMAGE PREVIEW */}
+            <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
+              <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-blue-900" />
+                {t("Product Media & Photo", "Fotografia a vizuál tovaru", "Termékkép")}
+              </h3>
+
+              <div className="w-full h-56 rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 flex items-center justify-center relative group">
+                {itemForm.imageUrl ? (
+                  <img
+                    src={itemForm.imageUrl}
+                    alt={itemForm.name || "Product preview"}
+                    className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                    onError={(e) => {
+                      (e.target as any).src = "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=400&h=400&fit=crop";
+                    }}
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center text-slate-400 gap-2 p-4 text-center">
+                    <Package className="w-12 h-12 text-slate-300 stroke-[1.5]" />
+                    <span className="text-xs font-semibold">{t("No image specified", "Zatiaľ bez obrázka", "Nincs kép")}</span>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  {t("Image URL", "URL adresa obrázka", "Kép URL")}
+                </label>
+                <input
+                  type="text"
+                  value={itemForm.imageUrl}
+                  onChange={(e) => setItemForm({ ...itemForm, imageUrl: e.target.value })}
+                  placeholder="https://images.unsplash.com/..."
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition"
+                />
+              </div>
+            </div>
+
+            {/* CARD 2: QUICK OPERATIONS (If editing) */}
+            {!isNew && currentItem && (
+              <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-3">
+                <h3 className="font-bold text-slate-900 text-sm">
+                  {t("Quick Warehouse Actions", "Rýchle skladové operácie", "Gyors műveletek")}
+                </h3>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => {
+                      setReceiptItems([{ itemId: currentItem.id, batchNumber: "", expirationDate: "", quantity: 1, unitPurchasePrice: currentItem.avgPurchasePrice || 0, note: "" }]);
+                      setIsReceiptModalOpen(true);
+                    }}
+                    className="flex flex-col items-center justify-center p-3 rounded-2xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition text-center gap-1.5"
+                  >
+                    <ArrowDownLeft className="w-5 h-5 text-emerald-600" />
+                    <span>{t("Receipt (PRI)", "Príjemka (PRI)", "Bevételezés")}</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setIssueItems([{ itemId: currentItem.id, batchId: "", quantity: 1, unitSellPrice: currentItem.defaultSellPrice || 0, note: "" }]);
+                      setIsIssueModalOpen(true);
+                    }}
+                    className="flex flex-col items-center justify-center p-3 rounded-2xl bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 text-xs font-bold transition text-center gap-1.5"
+                  >
+                    <ArrowUpRight className="w-5 h-5 text-blue-700" />
+                    <span>{t("Issue (VYD)", "Výdajka (VYD)", "Kiadás")}</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* CARD 3: ACTIVE BATCHES & EXPIRATIONS (FEFO) */}
+            {!isNew && itemForm.hasExpiration && (
+              <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                  <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-amber-600" />
+                    {t("Active Batches & Lots", "Aktívne šarže (FEFO)", "Aktív tételek")}
+                  </h3>
+                  <span className="text-[11px] font-bold text-slate-400 font-mono">
+                    {itemBatches.length} {t("lots", "šarží", "tétel")}
+                  </span>
+                </div>
+
+                {itemBatches.length === 0 ? (
+                  <p className="text-xs text-slate-400 py-3 text-center">
+                    {t("No batches registered for this product yet.", "Pre tento tovar zatiaľ nie sú zaevidované žiadne šarže.", "Még nincsenek rögzített tételek.")}
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {itemBatches.map(batch => {
+                      const expStatus = getExpirationStatus(batch.expirationDate);
+                      const wh = warehouses.find(w => w.id === batch.warehouseId);
+
+                      return (
+                        <div key={batch.id} className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-mono font-bold text-slate-900">{batch.batchNumber}</span>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              expStatus.status === "expired"
+                                ? "bg-rose-100 text-rose-800"
+                                : expStatus.status === "warning"
+                                ? "bg-amber-100 text-amber-800"
+                                : "bg-emerald-100 text-emerald-800"
+                            }`}>
+                              {expStatus.daysRemaining < 0 
+                                ? t("Expired", "Expirované", "Lejárt") 
+                                : `${expStatus.daysRemaining} ${t("days", "dní", "nap")}`}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-slate-500 text-[11px]">
+                            <span>{wh?.name || "Sklad"}</span>
+                            <span className="font-bold text-slate-800">{batch.currentQuantity} {itemForm.unit}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* CARD 4: RECENT STOCK MOVEMENTS (If editing) */}
+            {!isNew && currentItem && (
+              <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                  <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-blue-900" />
+                    {t("Recent Movement History", "Posledné pohyby na sklade", "Legutóbbi mozgások")}
+                  </h3>
+                  <span className="text-[11px] font-bold text-slate-400 font-mono">
+                    {itemMovements.length}
+                  </span>
+                </div>
+
+                {itemMovements.length === 0 ? (
+                  <p className="text-xs text-slate-400 py-3 text-center">
+                    {t("No stock movements recorded yet.", "Zatiaľ žiadne zaznamenané pohyby.", "Még nincsenek mozgások.")}
+                  </p>
+                ) : (
+                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                    {itemMovements.slice(0, 5).map(mov => {
+                      const mvItem = mov.items?.find(it => it.itemId === currentItem.id);
+                      return (
+                        <div key={mov.id} className="p-3 rounded-2xl bg-slate-50 hover:bg-slate-100/80 transition border border-slate-200/80 text-xs space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-mono font-bold text-slate-900">{mov.documentNumber}</span>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              mov.type === "inward"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : mov.type === "outward"
+                                ? "bg-blue-100 text-blue-800"
+                                : "bg-purple-100 text-purple-800"
+                            }`}>
+                              {mov.type === "inward" ? t("PRI (Receipt)", "PRI (Príjem)", "Bevétel") : mov.type === "outward" ? t("VYD (Issue)", "VYD (Výdaj)", "Kiadás") : t("PRE (Transfer)", "PRE (Prevod)", "Átadás")}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-slate-500 text-[11px]">
+                            <span>{mov.issuedAt?.slice(0, 10)}</span>
+                            <span className="font-bold text-slate-800">
+                              {mov.type === "outward" ? "-" : "+"}{mvItem?.quantity || 0} {itemForm.unit}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 pb-12">
       {/* Header & Controls */}
@@ -955,25 +1722,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
           </div>
 
           <button
-            onClick={() => {
-              setItemForm({
-                name: "",
-                sku: `SKU-${Date.now().toString().slice(-4)}`,
-                barcode: "",
-                category: allCategories[0] || "Materiál",
-                unit: "ks",
-                minStock: 10,
-                optimalStock: 50,
-                defaultLocation: "A-01-RACK",
-                hasExpiration: false,
-                imageUrl: "",
-                defaultSellPrice: 0,
-                avgPurchasePrice: 0,
-                description: ""
-              });
-              setEditingItem(null);
-              setIsItemModalOpen(true);
-            }}
+            onClick={handleOpenCreateItem}
             className="flex items-center gap-1.5 px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold shadow-sm transition"
           >
             <Plus className="w-4 h-4" />
@@ -1259,7 +2008,11 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         : 0;
 
                       return (
-                        <tr key={item.id} className="hover:bg-slate-50/80 transition group">
+                        <tr 
+                          key={item.id} 
+                          onClick={() => handleOpenEditItem(item)}
+                          className="hover:bg-slate-50/80 transition group cursor-pointer"
+                        >
                           {/* Product Info */}
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-3">
@@ -1372,24 +2125,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                           <td className="py-3 px-4 text-right">
                             <div className="flex items-center justify-end gap-1">
                               <button
-                                onClick={() => {
-                                  setEditingItem(item);
-                                  setItemForm({
-                                    name: item.name,
-                                    sku: item.sku,
-                                    barcode: item.barcode || "",
-                                    category: item.category || "",
-                                    unit: item.unit,
-                                    minStock: item.minStock,
-                                    optimalStock: item.optimalStock,
-                                    defaultLocation: item.defaultLocation || "",
-                                    hasExpiration: item.hasExpiration,
-                                    imageUrl: item.imageUrl || "",
-                                    defaultSellPrice: item.defaultSellPrice,
-                                    avgPurchasePrice: item.avgPurchasePrice,
-                                    description: item.description || ""
-                                  });
-                                  setIsItemModalOpen(true);
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenEditItem(item);
                                 }}
                                 className="p-1.5 text-slate-400 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition"
                                 title={t("Edit Product", "Upraviť tovar", "Termék szerkesztése")}
@@ -1902,205 +2640,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* MODAL 1: ADD / EDIT PRODUCT */}
-      {/* ========================================================================= */}
-      {isItemModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 my-8">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-blue-900 text-white flex items-center justify-center">
-                  <Package className="w-5 h-5" />
-                </div>
-                <h3 className="font-bold text-slate-900 text-base">
-                  {editingItem ? t("Edit Product", "Upraviť tovar", "Termék szerkesztése") : t("New Product / Material", "Nový tovar / materiál", "Új termék / alapanyag")}
-                </h3>
-              </div>
-              <button
-                onClick={() => setIsItemModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
-            <div className="mt-5 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    {t("Product Name", "Názov tovaru / materiálu", "Terméknév")} *
-                  </label>
-                  <input
-                    type="text"
-                    value={itemForm.name}
-                    onChange={(e) => setItemForm({ ...itemForm, name: e.target.value })}
-                    placeholder="napr. Calacatta Gold Quartz doska 20mm"
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    SKU {t("Code", "Kód", "Kód")} *
-                  </label>
-                  <input
-                    type="text"
-                    value={itemForm.sku}
-                    onChange={(e) => setItemForm({ ...itemForm, sku: e.target.value })}
-                    placeholder="SKU-CQ-01"
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    {t("Barcode / EAN", "Čiarový kód / EAN", "Vonalkód")}
-                  </label>
-                  <input
-                    type="text"
-                    value={itemForm.barcode}
-                    onChange={(e) => setItemForm({ ...itemForm, barcode: e.target.value })}
-                    placeholder="858800123401"
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    {t("Category", "Kategória", "Kategória")}
-                  </label>
-                  <input
-                    type="text"
-                    value={itemForm.category}
-                    onChange={(e) => setItemForm({ ...itemForm, category: e.target.value })}
-                    placeholder="Veľkoformátové dosky"
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    {t("Unit of Measure", "Merná jednotka (MJ)", "Mértékegység")}
-                  </label>
-                  <select
-                    value={itemForm.unit}
-                    onChange={(e) => setItemForm({ ...itemForm, unit: e.target.value })}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-semibold focus:ring-2 focus:ring-blue-900 focus:outline-none"
-                  >
-                    <option value="ks">ks (Kusy)</option>
-                    <option value="m²">m² (Štvorcové metre)</option>
-                    <option value="bm">bm (Bežné metre)</option>
-                    <option value="m³">m³ (Kubické metre)</option>
-                    <option value="kg">kg (Kilogramy)</option>
-                    <option value="l">l (Litre)</option>
-                    <option value="balenie">balenie (Balenia)</option>
-                    <option value="paleta">paleta (Palety)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    {t("Average Purchase Price (WAP)", "Priemerná nákupná cena (WAP)", "Átlagos beszerzési ár")}
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={itemForm.avgPurchasePrice}
-                    onChange={(e) => setItemForm({ ...itemForm, avgPurchasePrice: Number(e.target.value) })}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    {t("Default Selling Price", "Predvolená predajná cena", "Alapértelmezett eladási ár")}
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={itemForm.defaultSellPrice}
-                    onChange={(e) => setItemForm({ ...itemForm, defaultSellPrice: Number(e.target.value) })}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-blue-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    {t("Minimum Stock Alert", "Minimálny limit zásob", "Minimális készlet")}
-                  </label>
-                  <input
-                    type="number"
-                    value={itemForm.minStock}
-                    onChange={(e) => setItemForm({ ...itemForm, minStock: Number(e.target.value) })}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    {t("Default Storage Location / Rack", "Skladová pozícia / Regál", "Raktári hely")}
-                  </label>
-                  <input
-                    type="text"
-                    value={itemForm.defaultLocation}
-                    onChange={(e) => setItemForm({ ...itemForm, defaultLocation: e.target.value })}
-                    placeholder="A-01-RACK"
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
-                  />
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    {t("Product Image URL", "URL obrázka produktu", "Termékkép URL")}
-                  </label>
-                  <input
-                    type="text"
-                    value={itemForm.imageUrl}
-                    onChange={(e) => setItemForm({ ...itemForm, imageUrl: e.target.value })}
-                    placeholder="https://..."
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
-                  />
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="flex items-center gap-2.5 cursor-pointer bg-slate-50 p-3 rounded-xl border border-slate-200">
-                    <input
-                      type="checkbox"
-                      checked={itemForm.hasExpiration}
-                      onChange={(e) => setItemForm({ ...itemForm, hasExpiration: e.target.checked })}
-                      className="w-4 h-4 rounded text-blue-900 focus:ring-blue-900"
-                    />
-                    <div>
-                      <span className="font-bold text-xs text-slate-800">
-                        {t("Track Expiration Dates & Batches (FEFO)", "Sledovať šarže a dátumy exspirácie (FEFO)", "Lejárati idők és tételek követése")}
-                      </span>
-                      <p className="text-[11px] text-slate-500">
-                        {t("Enables lot numbers and expiration alerts for chemicals and adhesives", "Aktivuje zadávanie šarží a stráženie trvanlivosti pre stavebnú chémiu a lepidlá", "Tételszám és lejárati idő rögzítése")}
-                      </p>
-                    </div>
-                  </label>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-end gap-2">
-              <button
-                onClick={() => setIsItemModalOpen(false)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition"
-              >
-                {t("Cancel", "Zrušiť", "Mégse")}
-              </button>
-              <button
-                onClick={handleSaveItem}
-                className="px-5 py-2 bg-blue-900 hover:bg-blue-800 text-white rounded-xl text-xs font-bold transition shadow-sm"
-              >
-                {editingItem ? t("Save Changes", "Uložiť zmeny", "Mentés") : t("Create Product", "Vytvoriť položku", "Létrehozás")}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ========================================================================= */}
       {/* MODAL 2: NEW RECEIPT (PRÍJEMKA - PRI) */}
