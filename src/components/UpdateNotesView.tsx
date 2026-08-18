@@ -3,6 +3,8 @@ import { Sparkles, Calendar, Loader2 } from "lucide-react";
 import type { Language } from "../utils/translations";
 import type { UpdateEntry } from "./UpdateNotesModal";
 import { useUserPref } from "../utils/userPrefs";
+import { bundledUpdateNotes, mergeBundledUpdateNotes } from "../utils/bundledUpdateNotes";
+import { useUpdateFancybox, ZoomableUpdateImage } from "./ZoomableUpdateImage";
 
 interface UpdateNotesViewProps {
   systemLanguage: Language;
@@ -18,6 +20,9 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({ systemLanguage
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  const contentRef = React.useRef<HTMLDivElement>(null);
+  const activeUpdate = updates[activeIndex];
+  useUpdateFancybox(contentRef, activeUpdate?.id);
 
   const t = (en: string, sk: string, hu: string) => {
     if (systemLanguage === "sk") return sk;
@@ -90,17 +95,20 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({ systemLanguage
           if (best) localizedList.push(best);
         });
 
-        localizedList.sort((a, b) => new Date(b.postDate).getTime() - new Date(a.postDate).getTime());
-        setUpdates(localizedList);
+        const allUpdates = mergeBundledUpdateNotes(localizedList);
+        setUpdates(allUpdates);
         
         // Mark as read when entering this view. The header reads the same
         // preference out of context, so its badge clears without an event hop.
-        if (localizedList.length > 0) {
-          setSeenUpdateIdRef.current(localizedList[0].id);
+        if (allUpdates.length > 0) {
+          setSeenUpdateIdRef.current(allUpdates[0].id);
         }
       } catch (err: any) {
         console.error("Error fetching release notes:", err);
-        setError(err.message || "Failed to fetch updates");
+        // The historical CMS note is unavailable offline, but the bundled
+        // release notes remain useful and should not leave this screen empty.
+        setUpdates(bundledUpdateNotes);
+        setError(null);
       } finally {
         setLoading(false);
       }
@@ -132,8 +140,6 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({ systemLanguage
       </div>
     );
   }
-
-  const activeUpdate = updates[activeIndex];
 
   return (
     <div className="flex-1 flex flex-col gap-6 w-full max-w-6xl mx-auto">
@@ -204,7 +210,7 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({ systemLanguage
         </div>
 
         {/* Release Detail */}
-        <div className="flex-1 p-6 md:p-8 flex flex-col overflow-y-auto">
+        <div ref={contentRef} className="flex-1 p-6 md:p-8 flex flex-col overflow-y-auto">
           {activeUpdate && (
             <>
               <div className="border-b border-slate-100 pb-4 mb-6">
@@ -234,7 +240,7 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({ systemLanguage
                     return (
                       <div
                         key={idx}
-                        className="prose prose-slate max-w-none text-xs text-slate-600 leading-relaxed font-sans ck-content"
+                        className="prose prose-slate max-w-none text-sm text-slate-600 leading-relaxed font-sans ck-content"
                         dangerouslySetInnerHTML={{ __html: block.text.html }}
                       />
                     );
@@ -243,13 +249,16 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({ systemLanguage
                   if (block.__typename === "image_Entry" && block.image && block.image[0]) {
                     const img = block.image[0];
                     return (
-                      <div key={idx} className="rounded-2xl overflow-hidden border border-slate-200/80 shadow-md">
-                        <img
+                      <ZoomableUpdateImage
+                        key={idx}
                           src={img.url}
                           alt={img.title || t("Update Image", "Obrázok novinky", "Frissítés képe")}
-                          className="w-full h-auto object-cover max-h-[350px]"
-                        />
-                      </div>
+                          caption={img.title}
+                          group={`update-${activeUpdate.id}`}
+                          openLabel={t("Open full size", "Otvoriť v plnej veľkosti", "Megnyitás teljes méretben")}
+                          className="border border-slate-200/80 shadow-md"
+                          imageClassName="h-auto max-h-[480px]"
+                      />
                     );
                   }
 
@@ -263,17 +272,20 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({ systemLanguage
                       >
                         {img && (
                           <div className="w-full md:w-1/2 rounded-2xl overflow-hidden border border-slate-200/80 shadow-sm shrink-0">
-                            <img
+                            <ZoomableUpdateImage
                               src={img.url}
                               alt={img.title || t("Update Image", "Obrázok novinky", "Frissítés képe")}
-                              className="w-full h-auto object-cover max-h-[220px]"
+                              caption={img.title}
+                              group={`update-${activeUpdate.id}`}
+                              openLabel={t("Open full size", "Otvoriť v plnej veľkosti", "Megnyitás teljes méretben")}
+                              imageClassName="h-auto max-h-[320px]"
                             />
                           </div>
                         )}
                         <div className="flex-1">
                           {block.text?.html && (
                             <div
-                              className="prose prose-slate max-w-none text-xs text-slate-600 leading-relaxed font-sans ck-content"
+                              className="prose prose-slate max-w-none text-sm text-slate-600 leading-relaxed font-sans ck-content"
                               dangerouslySetInnerHTML={{ __html: block.text.html }}
                             />
                           )}

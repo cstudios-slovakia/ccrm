@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { X, Sparkles, ChevronLeft, ChevronRight, Calendar } from "lucide-react";
 import type { Language } from "../utils/translations";
+import { useUpdateFancybox, ZoomableUpdateImage } from "./ZoomableUpdateImage";
 
 export interface UpdateEntry {
   id: string;
@@ -30,10 +31,11 @@ export const UpdateNotesModal: React.FC<UpdateNotesModalProps> = ({
   systemLanguage,
 }) => {
   const [activeIndex, setActiveIndex] = useState(0);
+  const contentRef = React.useRef<HTMLDivElement>(null);
+  const activeUpdate = updates[activeIndex];
+  useUpdateFancybox(contentRef, activeUpdate?.id);
 
   if (!isOpen || updates.length === 0) return null;
-
-  const activeUpdate = updates[activeIndex];
 
   const t = (en: string, sk: string, hu: string) => {
     if (systemLanguage === "sk") return sk;
@@ -88,7 +90,7 @@ export const UpdateNotesModal: React.FC<UpdateNotesModalProps> = ({
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto p-6 md:p-8 scrollbar-thin">
+        <div ref={contentRef} className="flex-1 overflow-y-auto p-6 md:p-8 scrollbar-thin">
           <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
             <div className="flex flex-col gap-1">
               <div className="flex items-center gap-2">
@@ -118,7 +120,7 @@ export const UpdateNotesModal: React.FC<UpdateNotesModalProps> = ({
                 return (
                   <div 
                     key={idx}
-                    className="prose prose-slate max-w-none text-xs text-slate-600 leading-relaxed font-sans ck-content"
+                    className="prose prose-slate max-w-none text-sm text-slate-600 leading-relaxed font-sans ck-content"
                     dangerouslySetInnerHTML={{ __html: block.text.html }}
                   />
                 );
@@ -127,13 +129,16 @@ export const UpdateNotesModal: React.FC<UpdateNotesModalProps> = ({
               if (block.__typename === "image_Entry" && block.image && block.image[0]) {
                 const img = block.image[0];
                 return (
-                  <div key={idx} className="rounded-2xl overflow-hidden border border-slate-200/80 shadow-md">
-                    <img 
+                  <ZoomableUpdateImage
+                    key={idx}
                       src={img.url} 
                       alt={img.title || t("Update Image", "Obrázok novinky", "Frissítés képe")} 
-                      className="w-full h-auto object-cover max-h-[350px]"
-                    />
-                  </div>
+                      caption={img.title}
+                      group={`update-${activeUpdate.id}`}
+                      openLabel={t("Open full size", "Otvoriť v plnej veľkosti", "Megnyitás teljes méretben")}
+                      className="border border-slate-200/80 shadow-md"
+                      imageClassName="h-auto max-h-[480px]"
+                  />
                 );
               }
 
@@ -147,17 +152,20 @@ export const UpdateNotesModal: React.FC<UpdateNotesModalProps> = ({
                   >
                     {img && (
                       <div className="w-full md:w-1/2 rounded-2xl overflow-hidden border border-slate-200/80 shadow-sm shrink-0">
-                        <img 
+                        <ZoomableUpdateImage
                           src={img.url} 
                           alt={img.title || t("Update Image", "Obrázok novinky", "Frissítés képe")} 
-                          className="w-full h-auto object-cover max-h-[220px]"
+                          caption={img.title}
+                          group={`update-${activeUpdate.id}`}
+                          openLabel={t("Open full size", "Otvoriť v plnej veľkosti", "Megnyitás teljes méretben")}
+                          imageClassName="h-auto max-h-[320px]"
                         />
                       </div>
                     )}
                     <div className="flex-1">
                       {block.text?.html && (
                         <div 
-                          className="prose prose-slate max-w-none text-xs text-slate-600 leading-relaxed font-sans ck-content"
+                          className="prose prose-slate max-w-none text-sm text-slate-600 leading-relaxed font-sans ck-content"
                           dangerouslySetInnerHTML={{ __html: block.text.html }}
                         />
                       )}

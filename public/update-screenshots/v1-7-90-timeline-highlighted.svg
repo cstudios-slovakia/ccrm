@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="650" height="880" viewBox="0 0 650 880">
+  <image href="v1-7-90-timeline.png" width="650" height="880"/>
+  <g font-family="Inter, Arial, sans-serif" font-size="13" font-weight="700">
+    <rect x="226" y="74" width="405" height="344" rx="20" fill="none" stroke="#6d28d9" stroke-width="4"/>
+    <rect x="226" y="35" width="257" height="29" rx="14" fill="#6d28d9"/>
+    <text x="355" y="55" text-anchor="middle" fill="white">Jednotná výška a autor udalosti</text>
+    <rect x="371" y="366" width="145" height="35" rx="12" fill="none" stroke="#db2777" stroke-width="4"/>
+    <rect x="371" y="408" width="176" height="28" rx="14" fill="#db2777"/>
+    <text x="459" y="427" text-anchor="middle" fill="white">Zobraziť viac / menej</text>
+    <rect x="226" y="787" width="405" height="90" rx="18" fill="none" stroke="#2563eb" stroke-width="4"/>
+    <rect x="318" y="751" width="251" height="28" rx="14" fill="#2563eb"/>
+    <text x="444" y="770" text-anchor="middle" fill="white">Samostatný záznam zmeny stavu</text>
+  </g>
+</svg>

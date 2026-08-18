@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1278" height="1220" viewBox="0 0 1278 1220">
+  <image href="v1-6-33-task-drawer.png" width="1278" height="1220"/>
+  <g font-family="Inter, Arial, sans-serif" font-size="16" font-weight="700">
+    <rect x="1054" y="348" width="203" height="58" rx="14" fill="none" stroke="#6d28d9" stroke-width="5"/>
+    <rect x="958" y="314" width="299" height="32" rx="16" fill="#6d28d9"/>
+    <text x="1107" y="336" text-anchor="middle" fill="white">Vlastný čas termínu</text>
+    <rect x="849" y="849" width="410" height="53" rx="14" fill="none" stroke="#6d28d9" stroke-width="5"/>
+    <rect x="849" y="908" width="260" height="32" rx="16" fill="#6d28d9"/>
+    <text x="979" y="930" text-anchor="middle" fill="white">Archivovať priamo z detailu</text>
+  </g>
+</svg>

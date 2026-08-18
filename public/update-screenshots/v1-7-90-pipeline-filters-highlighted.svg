@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="610" viewBox="0 0 1180 610">
+  <image href="v1-7-90-pipeline-filters.png" width="1180" height="610"/>
+  <g font-family="Inter, Arial, sans-serif" font-size="14" font-weight="700">
+    <rect x="256" y="126" width="860" height="80" rx="18" fill="none" stroke="#2563eb" stroke-width="4"/>
+    <rect x="256" y="92" width="226" height="28" rx="14" fill="#2563eb"/>
+    <text x="369" y="111" text-anchor="middle" fill="white">Prehľad všetkých fáz</text>
+    <rect x="599" y="445" width="269" height="54" rx="13" fill="none" stroke="#eab308" stroke-width="4"/>
+    <rect x="599" y="510" width="269" height="28" rx="14" fill="#ca8a04"/>
+    <text x="734" y="529" text-anchor="middle" fill="white">Filter podľa hodnotenia klienta</text>
+  </g>
+</svg>

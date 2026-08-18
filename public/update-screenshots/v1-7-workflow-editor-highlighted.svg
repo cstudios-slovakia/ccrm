@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1278" height="1220" viewBox="0 0 1278 1220">
+  <image href="v1-7-workflow-editor.png" width="1278" height="1220"/>
+  <g font-family="Inter, Arial, sans-serif" font-size="16" font-weight="700">
+    <rect x="196" y="530" width="381" height="238" rx="20" fill="none" stroke="#6d28d9" stroke-width="5"/>
+    <rect x="196" y="492" width="235" height="32" rx="16" fill="#6d28d9"/>
+    <text x="314" y="514" text-anchor="middle" fill="white">Spúšťač a jeho filtre</text>
+    <rect x="601" y="530" width="274" height="349" rx="20" fill="none" stroke="#db2777" stroke-width="5"/>
+    <rect x="601" y="886" width="274" height="32" rx="16" fill="#db2777"/>
+    <text x="738" y="908" text-anchor="middle" fill="white">Vizuálna podmienka Ak/Inak</text>
+  </g>
+</svg>
