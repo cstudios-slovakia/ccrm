@@ -132,6 +132,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   const [selectedProductDetailId, setSelectedProductDetailId] = useState<string | "new" | null>(null);
   const [editingItem, setEditingItem] = useState<WarehouseItem | null>(null);
 
+  // Compact Sticky Header state
+  const [isHeaderStuck, setIsHeaderStuck] = useState(false);
+
   // Sync hash navigation with product detail selection (e.g. from Universal Search)
   useEffect(() => {
     const handleHash = () => {
@@ -151,6 +154,25 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     window.addEventListener("hashchange", handleHash);
     return () => window.removeEventListener("hashchange", handleHash);
   }, []);
+
+  // Monitor scroll on <main> scroll container to compact the sticky header
+  useEffect(() => {
+    if (selectedProductDetailId === null) {
+      setIsHeaderStuck(false);
+      return;
+    }
+
+    const mainEl = document.querySelector("main");
+    if (!mainEl) return;
+
+    const handleScroll = () => {
+      setIsHeaderStuck(mainEl.scrollTop > 15);
+    };
+
+    setIsHeaderStuck(mainEl.scrollTop > 15);
+    mainEl.addEventListener("scroll", handleScroll, { passive: true });
+    return () => mainEl.removeEventListener("scroll", handleScroll);
+  }, [selectedProductDetailId]);
 
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
   const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
@@ -1481,51 +1503,74 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
     return (
       <div className="space-y-6 pb-12 animate-fadeIn">
-        {/* TOP BAR / BREADCRUMB HEADER (STICKY FLUSH UNDER MAIN HEADER) */}
-        <div className="sticky -top-4 md:-top-6 z-40 -mt-4 md:-mt-6 -mx-4 md:-mx-6 px-4 md:px-6 py-3.5 md:py-4 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all">
-          <div className="flex items-center gap-4">
+        {/* TOP BAR / BREADCRUMB HEADER (STICKY FLUSH UNDER MAIN HEADER - DYNAMIC COMPACT ON SCROLL) */}
+        <div className={`sticky -top-4 md:-top-6 z-40 -mt-4 md:-mt-6 -mx-4 md:-mx-6 px-4 md:px-6 bg-white/95 backdrop-blur-md border-b transition-all duration-200 flex flex-col md:flex-row md:items-center justify-between gap-3 ${
+          isHeaderStuck
+            ? "py-2 md:py-2.5 border-slate-200/90 shadow-md"
+            : "py-3.5 md:py-4 border-slate-200/80 shadow-sm"
+        }`}>
+          <div className="flex items-center gap-3 md:gap-4 min-w-0">
             <button
               onClick={() => {
                 setSelectedProductDetailId(null);
                 setIsCategoryDropdownOpen(false);
                 setCategorySearchQuery("");
               }}
-              className="p-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition flex items-center justify-center shrink-0"
+              className={`rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all flex items-center justify-center shrink-0 ${
+                isHeaderStuck ? "p-1.5 md:p-2" : "p-2.5 rounded-2xl"
+              }`}
               title={t("Back to Inventory", "Späť na skladové zásoby", "Vissza a készlethez")}
             >
-              <ArrowLeft className="w-5 h-5" />
+              <ArrowLeft className={isHeaderStuck ? "w-4 h-4" : "w-5 h-5"} />
             </button>
 
-            <div>
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 mb-1">
-                <span>{t("Warehouse", "Sklad", "Raktár")}</span>
-                <span>/</span>
-                <span>{t("Product Catalog", "Katalóg tovaru", "Termékkatalógus")}</span>
-                <span>/</span>
-                <span className="text-blue-900 font-bold">{isNew ? t("New Product", "Nový tovar", "Új termék") : currentItem?.name}</span>
-              </div>
+            <div className="min-w-0">
+              {!isHeaderStuck && (
+                <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 mb-1 transition-all">
+                  <span>{t("Warehouse", "Sklad", "Raktár")}</span>
+                  <span>/</span>
+                  <span>{t("Product Catalog", "Katalóg tovaru", "Termékkatalógus")}</span>
+                  <span>/</span>
+                  <span className="text-blue-900 font-bold truncate max-w-[200px] sm:max-w-xs">{isNew ? t("New Product", "Nový tovar", "Új termék") : currentItem?.name}</span>
+                </div>
+              )}
 
-              <div className="flex flex-wrap items-center gap-3">
-                <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight">
+              <div className="flex flex-wrap items-center gap-2 md:gap-3">
+                <h1 className={`font-black text-slate-900 tracking-tight transition-all truncate ${
+                  isHeaderStuck ? "text-base md:text-lg" : "text-xl md:text-2xl"
+                }`}>
                   {isNew ? t("New Product / Material", "Pridať nový tovar do katalógu", "Új termék felvitele") : itemForm.name || currentItem?.name}
                 </h1>
                 {!isNew && (
                   <>
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                    <span className={`rounded-full font-mono font-bold bg-slate-100 text-slate-700 border border-slate-200 transition-all ${
+                      isHeaderStuck ? "px-2 py-0.5 text-[10px]" : "px-2.5 py-0.5 text-xs"
+                    }`}>
                       {itemForm.sku}
                     </span>
                     {itemForm.categories.length === 0 ? (
-                      <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-500 border border-slate-200">
+                      <span className={`rounded-full font-bold bg-slate-100 text-slate-500 border border-slate-200 transition-all ${
+                        isHeaderStuck ? "px-2 py-0.5 text-[10px]" : "px-2.5 py-0.5 text-xs"
+                      }`}>
                         {t("Uncategorized", "Bez kategórie", "Kategória nélkül")}
                       </span>
                     ) : (
-                      itemForm.categories.map(cat => (
-                        <span key={cat} className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-900 border border-blue-200">
+                      itemForm.categories.slice(0, isHeaderStuck ? 2 : 10).map(cat => (
+                        <span key={cat} className={`rounded-full font-bold bg-blue-50 text-blue-900 border border-blue-200 transition-all ${
+                          isHeaderStuck ? "px-2 py-0.5 text-[10px]" : "px-2.5 py-0.5 text-xs"
+                        }`}>
                           {cat}
                         </span>
                       ))
                     )}
-                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                    {isHeaderStuck && itemForm.categories.length > 2 && (
+                      <span className="text-[10px] font-bold text-slate-400">
+                        +{itemForm.categories.length - 2}
+                      </span>
+                    )}
+                    <span className={`rounded-full font-bold transition-all ${
+                      isHeaderStuck ? "px-2 py-0.5 text-[10px]" : "px-2.5 py-0.5 text-xs"
+                    } ${
                       overallStock.onHand === 0 
                         ? "bg-rose-50 text-rose-700 border border-rose-200" 
                         : overallStock.onHand <= itemForm.minStock 
@@ -1545,14 +1590,16 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => {
                 setSelectedProductDetailId(null);
                 setIsCategoryDropdownOpen(false);
                 setCategorySearchQuery("");
               }}
-              className="px-4 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition"
+              className={`rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-all ${
+                isHeaderStuck ? "px-3 py-1.5 text-xs" : "px-4 py-2.5 text-xs rounded-2xl"
+              }`}
             >
               {t("Cancel", "Zrušiť", "Mégse")}
             </button>
@@ -1560,19 +1607,23 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             {!isNew && (
               <button
                 onClick={() => currentItem && handleDeleteItem(currentItem.id)}
-                className="p-2.5 rounded-2xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-bold transition flex items-center gap-1.5"
+                className={`rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold transition-all flex items-center gap-1.5 ${
+                  isHeaderStuck ? "p-1.5 md:px-2.5 md:py-1.5 text-xs" : "p-2.5 text-xs rounded-2xl"
+                }`}
                 title={t("Delete Product", "Vymazať tovar", "Termék törlése")}
               >
-                <Trash2 className="w-4 h-4" />
+                <Trash2 className={isHeaderStuck ? "w-3.5 h-3.5" : "w-4 h-4"} />
                 <span className="hidden sm:inline">{t("Delete", "Vymazať", "Törlés")}</span>
               </button>
             )}
 
             <button
               onClick={handleSaveItem}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-blue-950 hover:bg-blue-900 text-white text-xs font-black shadow-lg shadow-blue-950/20 transition"
+              className={`flex items-center gap-1.5 md:gap-2 rounded-xl bg-blue-950 hover:bg-blue-900 text-white font-black shadow-lg shadow-blue-950/20 transition-all ${
+                isHeaderStuck ? "px-3.5 py-1.5 text-xs" : "px-5 py-2.5 text-xs rounded-2xl"
+              }`}
             >
-              <Save className="w-4 h-4" />
+              <Save className={isHeaderStuck ? "w-3.5 h-3.5" : "w-4 h-4"} />
               <span>{isNew ? t("Create Product", "Vytvoriť tovar", "Termék létrehozása") : t("Save Changes", "Uložiť zmeny", "Módosítások mentése")}</span>
             </button>
           </div>
