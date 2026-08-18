@@ -247,7 +247,9 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
             'file_size' => $te['fileSize'] ?? null,
             'file_type' => $te['fileType'] ?? null,
             'attachments_json' => ccrm_encode_attachments($te['attachments'] ?? null),
-            'extra_time' => $te['extraTime'] ?? $te['extra_time'] ?? null
+            'extra_time' => $te['extraTime'] ?? $te['extra_time'] ?? null,
+            'audio_file' => $te['audioFile'] ?? $te['audio_file'] ?? null,
+            'transcription' => $te['transcription'] ?? null
         ];
         
         foreach ($teFields as $col => $val) {
@@ -596,6 +598,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         // the column existed — those render without a name rather than guessing one.
         if (isset($te['author']) && $te['author'] !== '' && $te['author'] !== null) {
             $event['author'] = $te['author'];
+        }
+        // A voice note recorded onto the entry, plus its transcript. Only note
+        // events ever carry them, so they are left out entirely rather than sent
+        // as nulls the client would have to filter out again.
+        if (isset($te['audio_file']) && $te['audio_file'] !== '' && $te['audio_file'] !== null) {
+            $event['audioFile'] = $te['audio_file'];
+        }
+        if (isset($te['transcription']) && $te['transcription'] !== '' && $te['transcription'] !== null) {
+            $event['transcription'] = $te['transcription'];
         }
         $timelineByLead[$te['lead_id']][] = $event;
     }
@@ -2009,7 +2020,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $delTimeline->execute([$leadId]);
 
                 if (isset($l['timeline']) && is_array($l['timeline'])) {
-                    $insTimeline = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`, `amount`, `file_name`, `file_size`, `file_type`, `attachments_json`, `extra_time`, `author`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                    $insTimeline = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`, `amount`, `file_name`, `file_size`, `file_type`, `attachments_json`, `extra_time`, `author`, `audio_file`, `transcription`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
                     $allowedEventTypes = ['phone', 'email', 'note', 'offer', 'appointment', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note', 'status_change'];
                     foreach ($l['timeline'] as $te) {
                         $teId = $te['id'] ?? ('ev-' . uniqid());
@@ -2041,6 +2052,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         if (function_exists('mb_substr')) { $teAuthor = mb_substr($teAuthor, 0, 100, 'UTF-8'); }
                         if ($teAuthor === '') { $teAuthor = null; }
 
+                        // Voice note attached to the entry. audio_file = VARCHAR(255)
+                        // and holds a server path; transcription = TEXT and holds free
+                        // text, so both get the same scrubbing as the fields above.
+                        $teAudioFile = trim((string) ccrm_sanitize_db_text($te['audioFile'] ?? $te['audio_file'] ?? '', 1020));
+                        if (function_exists('mb_substr')) { $teAudioFile = mb_substr($teAudioFile, 0, 255, 'UTF-8'); }
+                        if ($teAudioFile === '') { $teAudioFile = null; }
+
+                        $teTranscription = ccrm_sanitize_db_text($te['transcription'] ?? null, 63000);
+                        if ($teTranscription === '') { $teTranscription = null; }
+
                         // An unknown type would be truncated to '' by MySQL (or abort
                         // the whole transaction under strict mode), so anything not in
                         // the ENUM is filed as a plain note rather than killing the sync.
@@ -2062,7 +2083,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $te['fileType'] ?? null,
                             ccrm_encode_attachments($te['attachments'] ?? null),
                             $te['extraTime'] ?? $te['extra_time'] ?? null,
-                            $teAuthor
+                            $teAuthor,
+                            $teAudioFile,
+                            $teTranscription
                         ];
 
                         $isNewTe = true;

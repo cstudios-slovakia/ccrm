@@ -108,6 +108,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `extra_time` VARCHAR(10) NULL,
               `is_outgoing` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'email events only: 1 = we sent it, 0 = the client did',
               `author` VARCHAR(100) NULL COMMENT 'CRM user whose action produced this entry. NULL for entries nobody triggered here (incoming mail, public-form inquiries, imports)',
+              `audio_file` VARCHAR(255) NULL COMMENT 'Voice note recorded onto the timeline: the path api/upload_audio.php stored the recording at',
+              `transcription` TEXT NULL COMMENT 'Speech-to-text transcript of `audio_file`, produced by api/transcribe_meeting.php',
               PRIMARY KEY (`id`),
               FOREIGN KEY (`lead_id`) REFERENCES `leads` (`id`) ON DELETE CASCADE,
               INDEX idx_event_timestamp (`timestamp`),
@@ -535,6 +537,17 @@ if (!function_exists('ccrm_schema_statements')) {
         // before the column existed; those simply render without a name.
         if (!ccrm_column_exists($pdo, 'timeline_events', 'author')) {
             $pdo->exec("ALTER TABLE `timeline_events` ADD COLUMN `author` VARCHAR(100) NULL AFTER `is_outgoing`");
+        }
+        // Voice notes logged straight onto a lead's timeline. api/upload_audio.php
+        // stores the recording and hands back its path, but the timeline had
+        // nowhere to keep that path: it only ever lived in the client's memory, so
+        // the player appeared right after recording and then vanished the moment
+        // the timeline was re-read from the DB.
+        if (!ccrm_column_exists($pdo, 'timeline_events', 'audio_file')) {
+            $pdo->exec("ALTER TABLE `timeline_events` ADD COLUMN `audio_file` VARCHAR(255) NULL AFTER `author`");
+        }
+        if (!ccrm_column_exists($pdo, 'timeline_events', 'transcription')) {
+            $pdo->exec("ALTER TABLE `timeline_events` ADD COLUMN `transcription` TEXT NULL AFTER `audio_file`");
         }
         // `tasks`.`status` was originally a fixed ENUM, but task states are
         // user-customizable free text (see Settings > task states / taskStates
