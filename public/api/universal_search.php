@@ -371,6 +371,72 @@ try {
     error_log('[ccrm universal_search] source failed: ' . $e->getMessage());
 }
 
+// 5. WAREHOUSE PRODUCTS & INVENTORY
+try {
+    $stmt = $pdo->query("
+        SELECT wi.`id`, wi.`name`, wi.`sku`, wi.`barcode`, wi.`category`, wi.`categories`, wi.`unit`, wi.`default_sell_price`, wi.`default_location`, wi.`description`
+        FROM `warehouse_items` wi
+        WHERE (wi.`is_archived` = 0 OR wi.`is_archived` IS NULL)
+    ");
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $cats = !empty($row['categories']) ? json_decode($row['categories'], true) : [];
+        if (empty($cats) && !empty($row['category'])) {
+            $cats = array_map('trim', explode(',', $row['category']));
+        }
+        $catStr = !empty($cats) ? implode(", ", $cats) : ($row['category'] ?? '');
+
+        $fieldsToMatch = [
+            $row['name'] ?? '',
+            $row['sku'] ?? '',
+            $row['barcode'] ?? '',
+            $catStr,
+            $row['default_location'] ?? '',
+            $row['description'] ?? ''
+        ];
+        
+        $maxScore = 0;
+        foreach ($fieldsToMatch as $f) {
+            $score = get_fuzzy_score($query, $f);
+            if ($score > $maxScore) {
+                $maxScore = $score;
+            }
+        }
+        
+        if ($maxScore >= 15) {
+            $onHand = 0;
+            try {
+                $stQuery = $pdo->prepare("SELECT SUM(`quantity`) as `total_qty` FROM `warehouse_stock` WHERE `item_id` = ?");
+                $stQuery->execute([$row['id']]);
+                $onHand = (float)$stQuery->fetchColumn();
+            } catch (\Exception $e) {}
+
+            $subtitle = "Warehouse Product" . 
+                        ($row['sku'] ? " | SKU: " . $row['sku'] : "") . 
+                        ($catStr ? " | " . $catStr : "") . 
+                        " | Stock: " . $onHand . " " . ($row['unit'] ?: 'ks') . 
+                        " | €" . number_format($row['default_sell_price'] ?? 0, 2);
+
+            $excerptText = ($row['description'] ? $row['description'] : "Product: " . $row['name']) . 
+                          ($row['default_location'] ? " | Location: " . $row['default_location'] : "");
+
+            $candidates[] = [
+                'score' => $maxScore,
+                'item' => [
+                    'id' => 'product-' . $row['id'],
+                    'type' => 'product',
+                    'title' => $row['name'],
+                    'subtitle' => $subtitle,
+                    'excerpt' => get_excerpt($excerptText, $query),
+                    'url' => '#warehouse/item-' . $row['id']
+                ]
+            ];
+        }
+    }
+} catch (\Exception $e) {
+    $searchErrors[] = $e->getMessage();
+    error_log('[ccrm universal_search] product source failed: ' . $e->getMessage());
+}
+
 // Sort candidates by score descending
 usort($candidates, function($a, $b) {
     return $b['score'] <=> $a['score'];

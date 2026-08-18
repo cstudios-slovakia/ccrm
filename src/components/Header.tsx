@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { User, PencilLine, Mic, Plus, List, CheckSquare, Search, Mail, Database, FileText, Loader2, X, Sparkles, Workflow, Play } from "lucide-react";
+import { User, PencilLine, Mic, Plus, List, CheckSquare, Search, Mail, Database, FileText, Loader2, X, Sparkles, Workflow, Play, Package } from "lucide-react";
 import * as Icons from "lucide-react";
 import type { UserProfile } from "../types";
 import { getTranslation } from "../utils/translations";
@@ -332,6 +332,8 @@ export const Header: React.FC<HeaderProps> = ({
         return <User className="h-4 w-4 text-emerald-600" />;
       case "lead":
         return <User className="h-4 w-4 text-indigo-500" />;
+      case "product":
+        return <Package className="h-4 w-4 text-blue-900" />;
       case "email":
         return <Mail className="h-4 w-4 text-pink-500" />;
       case "meeting":
@@ -349,6 +351,8 @@ export const Header: React.FC<HeaderProps> = ({
         return systemLanguage === "sk" ? "Klient" : systemLanguage === "hu" ? "Ügyfél" : "Client";
       case "lead":
         return systemLanguage === "sk" ? "Záujemca" : systemLanguage === "hu" ? "Érdeklődő" : "Lead";
+      case "product":
+        return systemLanguage === "sk" ? "Tovar" : systemLanguage === "hu" ? "Termék" : "Product";
       case "email":
         return "Email";
       case "meeting":
@@ -364,6 +368,7 @@ export const Header: React.FC<HeaderProps> = ({
     switch (type) {
       case "client": return "bg-emerald-50 text-emerald-700 border-emerald-200";
       case "lead": return "bg-indigo-50 text-indigo-700 border-indigo-200";
+      case "product": return "bg-blue-50 text-blue-900 border-blue-200";
       case "email": return "bg-pink-50 text-pink-700 border-pink-200";
       case "meeting": return "bg-amber-50 text-amber-700 border-amber-200";
       case "unified_entry": return "bg-purple-50 text-purple-700 border-purple-200";

@@ -70,6 +70,13 @@ if ($action === 'stats') {
                 }
             }
         } catch (\Exception $e) {}
+
+        // Count warehouse products / materials
+        $productsCount = 0;
+        try {
+            $stmt = $pdo->query("SELECT COUNT(*) FROM `warehouse_items` WHERE (`is_archived` = 0 OR `is_archived` IS NULL)");
+            $productsCount = (int)$stmt->fetchColumn();
+        } catch (\Exception $e) {}
         
         echo json_encode([
             'success' => true,
@@ -81,7 +88,8 @@ if ($action === 'stats') {
                 'meeting_notes' => $meetingsCount,
                 'documents' => $documentsCount,
                 'unified_entries' => $unifiedEntriesCount,
-                'total_items' => $leadsCount + $clientsCount + $emailsCount + $chatsCount + $meetingsCount + $documentsCount + $unifiedEntriesCount
+                'products' => $productsCount,
+                'total_items' => $leadsCount + $clientsCount + $emailsCount + $chatsCount + $meetingsCount + $documentsCount + $unifiedEntriesCount + $productsCount
             ]
         ]);
     } catch (\Exception $e) {
@@ -141,6 +149,16 @@ if ($action === 'train') {
                     }
                 }
             }
+        } catch (\Exception $e) {}
+
+        $products = [];
+        try {
+            $products = $pdo->query("
+                SELECT wi.`id`, wi.`sku`, wi.`barcode`, wi.`name`, wi.`description`, wi.`category`, wi.`categories`, wi.`unit`, wi.`min_stock`, wi.`optimal_stock`, wi.`default_location`, wi.`has_expiration`, wi.`default_sell_price`, wi.`avg_purchase_price`
+                FROM `warehouse_items` wi
+                WHERE (`is_archived` = 0 OR `is_archived` IS NULL)
+                LIMIT 50
+            ")->fetchAll(PDO::FETCH_ASSOC);
         } catch (\Exception $e) {}
 
         $allSourceItems = [];
@@ -250,6 +268,62 @@ if ($action === 'train') {
                 'type' => 'unified_entry',
                 'id' => $ue['registry_id'] . '-' . $ue['id'],
                 'label' => ($ue['title'] ?: 'Untitled'),
+                'text' => $text
+            ];
+        }
+
+        foreach ($products as $p) {
+            $cats = !empty($p['categories']) ? json_decode($p['categories'], true) : [];
+            if (empty($cats) && !empty($p['category'])) {
+                $cats = array_map('trim', explode(',', $p['category']));
+            }
+            $catStr = !empty($cats) ? implode(", ", $cats) : ($p['category'] ?? 'N/A');
+            
+            $onHand = 0;
+            $reserved = 0;
+            try {
+                $stQuery = $pdo->prepare("SELECT SUM(`quantity`) as `total_qty`, SUM(`reserved_quantity`) as `total_res` FROM `warehouse_stock` WHERE `item_id` = ?");
+                $stQuery->execute([$p['id']]);
+                $stRow = $stQuery->fetch(PDO::FETCH_ASSOC);
+                $onHand = (float)($stRow['total_qty'] ?? 0);
+                $reserved = (float)($stRow['total_res'] ?? 0);
+            } catch (\Exception $e) {}
+            $avail = max(0, $onHand - $reserved);
+
+            $batchesList = [];
+            try {
+                $bQuery = $pdo->prepare("SELECT `batch_number`, `expiration_date`, `current_quantity` FROM `warehouse_batches` WHERE `item_id` = ? AND `current_quantity` > 0 ORDER BY `expiration_date` ASC LIMIT 5");
+                $bQuery->execute([$p['id']]);
+                $batchesList = $bQuery->fetchAll(PDO::FETCH_ASSOC);
+            } catch (\Exception $e) {}
+
+            $text = "Warehouse Product / Material Profile:\n" .
+                    "- Product Name: " . $p['name'] . "\n" .
+                    "- SKU Code: " . ($p['sku'] ?: 'N/A') . "\n" .
+                    "- EAN / Barcode: " . ($p['barcode'] ?: 'N/A') . "\n" .
+                    "- Categories: " . $catStr . "\n" .
+                    "- Unit of Measure: " . ($p['unit'] ?: 'ks') . "\n" .
+                    "- Suggested Selling Price (excl. VAT): €" . number_format($p['default_sell_price'] ?? 0, 2) . "\n" .
+                    "- Weighted Average Purchase Price (WAP): €" . number_format($p['avg_purchase_price'] ?? 0, 2) . "\n" .
+                    "- Total Physical Stock: " . $onHand . " " . ($p['unit'] ?: 'ks') . " (Available to sell: " . $avail . ", Reserved: " . $reserved . ")\n" .
+                    "- Default Storage Bin / Location: " . ($p['default_location'] ?: 'Main Floor') . "\n" .
+                    "- Expiration Tracking (FEFO): " . (!empty($p['has_expiration']) ? 'Enabled' : 'Disabled') . "\n";
+            
+            if (!empty($batchesList)) {
+                $text .= "- Active FEFO Batches & Lots:\n";
+                foreach ($batchesList as $b) {
+                    $text .= "  * Batch #" . $b['batch_number'] . " (Qty: " . $b['current_quantity'] . " " . ($p['unit'] ?: 'ks') . ", Exp: " . ($b['expiration_date'] ? substr($b['expiration_date'], 0, 10) : 'N/A') . ")\n";
+                }
+            }
+
+            if (!empty($p['description'])) {
+                $text .= "- Technical Description / Specs: " . strip_tags($p['description']) . "\n";
+            }
+
+            $allSourceItems[] = [
+                'type' => 'product',
+                'id' => $p['id'],
+                'label' => $p['name'] . ($p['sku'] ? " (" . $p['sku'] . ")" : ""),
                 'text' => $text
             ];
         }

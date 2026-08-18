@@ -278,8 +278,8 @@ function App() {
     const rawHash = window.location.hash.replace("#", "");
     const baseHash = rawHash.split(/[/?]/)[0];
     const hashLower = baseHash.toLowerCase();
-    if (hashLower.startsWith("client-") || hashLower.startsWith("lead-") || hashLower.startsWith("user-") || hashLower.startsWith("ue_") || hashLower.startsWith("dash_") || hashLower.startsWith("settings")) {
-      return rawHash; // Keep case sensitivity and allow sub-tabs for settings
+    if (hashLower.startsWith("client-") || hashLower.startsWith("lead-") || hashLower.startsWith("user-") || hashLower.startsWith("ue_") || hashLower.startsWith("dash_") || hashLower.startsWith("settings") || hashLower.startsWith("warehouse")) {
+      return rawHash; // Keep case sensitivity and allow sub-tabs for settings and warehouse
     }
     const validTabs = ["dashboard", "overview", "leads", "clients", "tasks", "files", "personal-settings", "email", "rag_ai", "automation", "meetings", "projects", "updates", "warehouse", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
     return validTabs.includes(hashLower) ? rawHash : "dashboard";

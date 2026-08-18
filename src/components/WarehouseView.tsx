@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import {
   Package,
   Boxes,
@@ -131,6 +131,26 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   // Modals & Navigation state
   const [selectedProductDetailId, setSelectedProductDetailId] = useState<string | "new" | null>(null);
   const [editingItem, setEditingItem] = useState<WarehouseItem | null>(null);
+
+  // Sync hash navigation with product detail selection (e.g. from Universal Search)
+  useEffect(() => {
+    const handleHash = () => {
+      const hash = window.location.hash;
+      if (hash.startsWith("#warehouse/item-")) {
+        const itemId = hash.replace("#warehouse/item-", "");
+        if (itemId) {
+          setSelectedProductDetailId(itemId);
+          setActiveSubTab("items");
+        }
+      } else if (hash === "#warehouse/new") {
+        setSelectedProductDetailId("new");
+        setActiveSubTab("items");
+      }
+    };
+    handleHash();
+    window.addEventListener("hashchange", handleHash);
+    return () => window.removeEventListener("hashchange", handleHash);
+  }, []);
 
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
   const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);

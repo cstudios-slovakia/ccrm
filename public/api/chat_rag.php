@@ -463,6 +463,85 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         }
+    // RAG from Warehouse Products & Inventory
+    try {
+        $products_stmt = $pdo->query("
+            SELECT wi.`id`, wi.`name`, wi.`sku`, wi.`barcode`, wi.`category`, wi.`categories`, wi.`unit`, wi.`default_sell_price`, wi.`avg_purchase_price`, wi.`min_stock`, wi.`optimal_stock`, wi.`description`, wi.`default_location`, wi.`has_expiration`
+            FROM `warehouse_items` wi
+            WHERE (wi.`is_archived` = 0 OR wi.`is_archived` IS NULL)
+            LIMIT 100
+        ");
+        $products_all = $products_stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($products_all as $p) {
+            $matches = false;
+            $pName = mb_strtolower($p['name'] ?? '');
+            $pSku = mb_strtolower($p['sku'] ?? '');
+            $pEan = mb_strtolower($p['barcode'] ?? '');
+            $pCat = mb_strtolower($p['category'] ?? '');
+            $pDesc = mb_strtolower($p['description'] ?? '');
+            $pLoc = mb_strtolower($p['default_location'] ?? '');
+
+            if ((!empty($pName) && mb_strpos($normalized_query, $pName) !== false) ||
+                (!empty($pSku) && mb_strpos($normalized_query, $pSku) !== false) ||
+                (!empty($pEan) && mb_strpos($normalized_query, $pEan) !== false) ||
+                (!empty($pCat) && mb_strpos($normalized_query, $pCat) !== false) ||
+                (!empty($pLoc) && mb_strpos($normalized_query, $pLoc) !== false) ||
+                (!empty($pDesc) && mb_strpos($normalized_query, $pDesc) !== false)) {
+                $matches = true;
+            }
+
+            // Also match general warehouse/inventory questions if specific keywords appear
+            if (mb_strpos($normalized_query, 'sklad') !== false ||
+                mb_strpos($normalized_query, 'zásob') !== false ||
+                mb_strpos($normalized_query, 'tovar') !== false ||
+                mb_strpos($normalized_query, 'produkt') !== false ||
+                mb_strpos($normalized_query, 'cenník') !== false ||
+                mb_strpos($normalized_query, 'materiál') !== false ||
+                mb_strpos($normalized_query, 'inventory') !== false ||
+                mb_strpos($normalized_query, 'stock') !== false ||
+                mb_strpos($normalized_query, 'product') !== false ||
+                mb_strpos($normalized_query, 'fefo') !== false ||
+                mb_strpos($normalized_query, 'šarž') !== false) {
+                $matches = true;
+            }
+
+            $cats = !empty($p['categories']) ? json_decode($p['categories'], true) : [];
+            if (empty($cats) && !empty($p['category'])) {
+                $cats = array_map('trim', explode(',', $p['category']));
+            }
+            $catStr = !empty($cats) ? implode(", ", $cats) : ($p['category'] ?? 'N/A');
+
+            $onHand = 0;
+            $reserved = 0;
+            try {
+                $stQuery = $pdo->prepare("SELECT SUM(`quantity`) as `total_qty`, SUM(`reserved_quantity`) as `total_res` FROM `warehouse_stock` WHERE `item_id` = ?");
+                $stQuery->execute([$p['id']]);
+                $stRow = $stQuery->fetch(PDO::FETCH_ASSOC);
+                $onHand = (float)($stRow['total_qty'] ?? 0);
+                $reserved = (float)($stRow['total_res'] ?? 0);
+            } catch (\Exception $e) {}
+            $avail = max(0, $onHand - $reserved);
+
+            $block = "Warehouse Product / Material Profile:\n";
+            $block .= "- Name: " . $p['name'] . "\n";
+            $block .= "- SKU Code: " . ($p['sku'] ?: 'N/A') . "\n";
+            if (!empty($p['barcode'])) {
+                $block .= "- EAN / Barcode: " . $p['barcode'] . "\n";
+            }
+            $block .= "- Categories: " . $catStr . "\n";
+            $block .= "- Selling Price: €" . number_format($p['default_sell_price'] ?? 0, 2) . " (excl. VAT)\n";
+            $block .= "- Purchase Cost (WAP): €" . number_format($p['avg_purchase_price'] ?? 0, 2) . "\n";
+            $block .= "- Physical Inventory: " . $onHand . " " . ($p['unit'] ?: 'ks') . " (Available: " . $avail . ", Reserved: " . $reserved . ")\n";
+            $block .= "- Location / Bin: " . ($p['default_location'] ?: 'Main Floor') . "\n";
+            if (!empty($p['description'])) {
+                $block .= "- Specs & Description: " . strip_tags($p['description']) . "\n";
+            }
+
+            $context_blocks[] = [
+                'text' => $block,
+                'is_match' => $matches
+            ];
+        }
     } catch (\Exception $ex) {
         // Fallback
     }

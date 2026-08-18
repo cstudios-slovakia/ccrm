@@ -4948,22 +4948,38 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </h4>
                   
                   {trainingStats ? (
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                      <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-150">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-150">
                         <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">{t("Leads Chunks", "Časti leadov", "Lead darabok")}</span>
                         <span className="text-base font-extrabold text-slate-800">{trainingStats.leads}</span>
                       </div>
-                      <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-150">
+                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-150">
                         <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">{t("Clients Chunks", "Časti klientov", "Ügyfél darabok")}</span>
                         <span className="text-base font-extrabold text-slate-800">{trainingStats.clients}</span>
                       </div>
-                      <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-150">
+                      <div className="p-3 bg-blue-50/70 rounded-2xl border border-blue-100">
+                        <span className="text-[9px] font-bold text-blue-900 uppercase tracking-wider block">{t("Products / Stock", "Skladový tovar", "Termékek / Készlet")}</span>
+                        <span className="text-base font-extrabold text-blue-950">{trainingStats.products || 0}</span>
+                      </div>
+                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-150">
                         <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">{t("Emails Indexed", "Indexované e-maily", "Indexelt e-mailek")}</span>
                         <span className="text-base font-extrabold text-slate-800">{trainingStats.emails}</span>
                       </div>
-                      <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-150">
+                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-150">
                         <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">{t("Chats / Notes", "Chaty / Poznámky", "Csevegések / Jegyzetek")}</span>
                         <span className="text-base font-extrabold text-slate-800">{trainingStats.chats}</span>
+                      </div>
+                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-150">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">{t("Meeting Notes", "Zápisy zo stretnutí", "Megbeszélések")}</span>
+                        <span className="text-base font-extrabold text-slate-800">{trainingStats.meeting_notes || 0}</span>
+                      </div>
+                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-150">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">{t("Unified Entries", "Univerzálne záznamy", "Egységes bejegyzések")}</span>
+                        <span className="text-base font-extrabold text-slate-800">{trainingStats.unified_entries || 0}</span>
+                      </div>
+                      <div className="p-3 bg-purple-50 rounded-2xl border border-purple-100">
+                        <span className="text-[9px] font-bold text-purple-700 uppercase tracking-wider block">{t("Total Items", "Celkovo entít", "Összes elem")}</span>
+                        <span className="text-base font-extrabold text-purple-900">{trainingStats.total_items || 0}</span>
                       </div>
                     </div>
                   ) : (
