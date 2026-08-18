@@ -1627,6 +1627,56 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
             </div>
 
+            {/* CARD 2: STOCK THRESHOLDS & TARGETS */}
+            <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
+              <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                <div className="w-6 h-6 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center">
+                  <Boxes className="w-3.5 h-3.5" />
+                </div>
+                <h3 className="font-bold text-slate-900 text-xs uppercase tracking-wider">
+                  {t("Stock Thresholds & Targets", "Skladové limity a cieľové stavy", "Készletlimitek és célértékek")}
+                </h3>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    {t("Minimum Stock Alert", "Minimálna zásoba (Alert)", "Minimális készlet")}
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      disabled={isProductCardLocked}
+                      value={itemForm.minStock}
+                      onChange={(e) => setItemForm({ ...itemForm, minStock: Number(e.target.value) })}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition disabled:bg-slate-100/70 disabled:cursor-not-allowed"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                      {itemForm.unit}
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    {t("Optimal Target Stock", "Optimálna cieľová zásoba", "Optimális készlet")}
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      disabled={isProductCardLocked}
+                      value={itemForm.optimalStock}
+                      onChange={(e) => setItemForm({ ...itemForm, optimalStock: Number(e.target.value) })}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition disabled:bg-slate-100/70 disabled:cursor-not-allowed"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                      {itemForm.unit}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* QUICK ACTIONS CARD (IF EDITING) */}
             {!isNew && currentItem && (
               <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm space-y-3">
@@ -1639,7 +1689,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       setReceiptItems([{ itemId: currentItem.id, batchNumber: "", expirationDate: "", quantity: 1, unitPurchasePrice: currentItem.avgPurchasePrice || 0, note: "" }]);
                       setIsReceiptModalOpen(true);
                     }}
-                    className="flex flex-col items-center justify-center p-3 rounded-2xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition text-center gap-1"
+                    className="flex flex-col items-center justify-center p-3 rounded-2xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition text-center gap-1 cursor-pointer"
                   >
                     <ArrowDownLeft className="w-4 h-4 text-emerald-600" />
                     <span>{t("Receipt (PRI)", "Príjemka (PRI)", "Bevételezés")}</span>
@@ -1650,7 +1700,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       setIssueItems([{ itemId: currentItem.id, batchId: "", quantity: 1, unitSellPrice: currentItem.defaultSellPrice || 0, note: "" }]);
                       setIsIssueModalOpen(true);
                     }}
-                    className="flex flex-col items-center justify-center p-3 rounded-2xl bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 text-xs font-bold transition text-center gap-1"
+                    className="flex flex-col items-center justify-center p-3 rounded-2xl bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 text-xs font-bold transition text-center gap-1 cursor-pointer"
                   >
                     <ArrowUpRight className="w-4 h-4 text-blue-700" />
                     <span>{t("Issue (VYD)", "Výdajka (VYD)", "Kiadás")}</span>
@@ -1764,54 +1814,6 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       +{markupPct.toFixed(1)}%
                     </span>
                     <span className="text-[10px] text-slate-400 block">{t("over cost", "nad nákup", "beszerzés felett")}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* CARD 2: STOCK THRESHOLDS & TARGETS */}
-            <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-5">
-              <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
-                <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center">
-                  <Boxes className="w-4 h-4" />
-                </div>
-                <h3 className="font-bold text-slate-900 text-base">
-                  {t("Stock Thresholds & Targets", "Skladové limity a cieľové stavy", "Készletlimitek és célértékek")}
-                </h3>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    {t("Minimum Stock Alert", "Minimálna zásoba (Alert)", "Minimális készlet")}
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      value={itemForm.minStock}
-                      onChange={(e) => setItemForm({ ...itemForm, minStock: Number(e.target.value) })}
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition"
-                    />
-                    <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-400">
-                      {itemForm.unit}
-                    </span>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    {t("Optimal Target Stock", "Optimálna cieľová zásoba", "Optimális készlet")}
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      value={itemForm.optimalStock}
-                      onChange={(e) => setItemForm({ ...itemForm, optimalStock: Number(e.target.value) })}
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition"
-                    />
-                    <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-400">
-                      {itemForm.unit}
-                    </span>
                   </div>
                 </div>
               </div>
