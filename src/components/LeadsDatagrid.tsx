@@ -1486,6 +1486,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const [showFilters, setShowFilters] = useState(false);
     const [selectedOwner, setSelectedOwner] = useState("all");
     const [selectedCity, setSelectedCity] = useState("all");
+    // Client importance filter. "all" = off, "none" = leads nobody rated yet,
+    // "5".."1" = that exact star count, "min4"/"min3" = that many stars and up.
+    const [selectedRating, setSelectedRating] = useState("all");
 
     // Category visibility toggle (local storage support)
     const majorStates = useMemo(() => {
@@ -1567,6 +1570,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             selectedSource !== "all" ||
             selectedType !== "all" ||
             selectedState !== "all" ||
+            selectedRating !== "all" ||
             offerPresetName !== "All Time"
         );
     }, [
@@ -1575,6 +1579,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         selectedSource,
         selectedType,
         selectedState,
+        selectedRating,
         offerPresetName,
     ]);
 
@@ -3591,6 +3596,18 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     (lead.city || "").toLowerCase() ===
                         selectedCity.toLowerCase();
 
+                // Rating is optional on a lead, so an unrated one counts as 0
+                // and only matches the explicit "not rated" option.
+                const leadRatingValue = lead.rating || 0;
+                const matchesRating =
+                    selectedRating === "all" ||
+                    (selectedRating === "none"
+                        ? leadRatingValue === 0
+                        : selectedRating.startsWith("min")
+                          ? leadRatingValue >=
+                            Number(selectedRating.slice(3))
+                          : leadRatingValue === Number(selectedRating));
+
                 let matchesOfferDate = true;
                 if (
                     offerPresetName !== "All Time" &&
@@ -3653,6 +3670,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     matchesType &&
                     matchesOwner &&
                     matchesCity &&
+                    matchesRating &&
                     matchesOfferDate
                 );
             })
@@ -3665,6 +3683,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         selectedType,
         selectedOwner,
         selectedCity,
+        selectedRating,
         filterOfferStartDate,
         filterOfferEndDate,
         offerPresetName,
@@ -7572,6 +7591,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     setSelectedSource("all");
                                     setSelectedType("all");
                                     setSelectedState("all");
+                                    setSelectedRating("all");
                                     setFilterOfferStartDate(null);
                                     setFilterOfferEndDate(null);
                                     setOfferPresetName("All Time");
@@ -7738,9 +7758,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     </div>
                 </div>
 
-                {/* Collapsible 6-column filter panels */}
+                {/* Collapsible 7-column filter panels */}
                 {showFilters && (
-                    <div className="grid grid-cols-2 md:grid-cols-6 gap-3 bg-blue-50/10 p-3 rounded-2xl border border-blue-50 animate-fade-in relative z-40">
+                    <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3 bg-blue-50/10 p-3 rounded-2xl border border-blue-50 animate-fade-in relative z-40">
                         {/* Filter 1: Project Manager */}
                         <div className="flex flex-col gap-1">
                             <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider pl-1">
@@ -8468,6 +8488,57 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         </div>
                                     </div>
                                 )}
+                            </div>
+                        </div>
+
+                        {/* Filter 7: Client rating / importance */}
+                        <div className="flex flex-col gap-1">
+                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider pl-1">
+                                {t(
+                                    "Rating",
+                                    "Hodnotenie",
+                                    "Értékelés",
+                                )}
+                            </span>
+                            <div className="flex items-center gap-1.5 bg-white border border-slate-200/70 rounded-xl px-2.5 py-1.5">
+                                <Star className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                                <CustomSelect
+                                    value={selectedRating}
+                                    onChange={(v) => setSelectedRating(v)}
+                                    size="sm"
+                                    unstyled
+                                    className="text-[11px] font-bold text-slate-700 uppercase tracking-wider w-full"
+                                    options={[
+                                        {
+                                            value: "all",
+                                            label: t(
+                                                "All ratings",
+                                                "Všetky hodnotenia",
+                                                "Minden értékelés",
+                                            ),
+                                        },
+                                        {
+                                            value: "min4",
+                                            label: `★★★★ ${t("and up", "a viac", "és felette")}`,
+                                        },
+                                        {
+                                            value: "min3",
+                                            label: `★★★ ${t("and up", "a viac", "és felette")}`,
+                                        },
+                                        ...[5, 4, 3, 2, 1].map((stars) => ({
+                                            value: String(stars),
+                                            label: `${"★".repeat(stars)}${"☆".repeat(5 - stars)}`,
+                                        })),
+                                        {
+                                            value: "none",
+                                            label: t(
+                                                "Not rated",
+                                                "Bez hodnotenia",
+                                                "Nincs értékelve",
+                                            ),
+                                        },
+                                    ]}
+                                />
                             </div>
                         </div>
                     </div>
