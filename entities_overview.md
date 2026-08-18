@@ -288,3 +288,112 @@ Security and privilege tracking log.
 * `action` VARCHAR(100)
 * `detail` TEXT
 * `created_at` TIMESTAMP
+
+---
+
+## 8. Warehouse & Inventory Management
+
+### `warehouses`
+Multi-warehouse storage locations and branches.
+* `id` VARCHAR(50) [PK]
+* `name` VARCHAR(150) (e.g. Hlavný sklad Bratislava)
+* `code` VARCHAR(50) [UNIQUE] (e.g. WH-BA-01)
+* `address` VARCHAR(255)
+* `manager_user_id` VARCHAR(50)
+* `is_default` TINYINT(1)
+* `created_at` TIMESTAMP
+
+### `suppliers`
+B2B material and goods suppliers with invoicing data.
+* `id` VARCHAR(50) [PK]
+* `name` VARCHAR(255)
+* `company_id` VARCHAR(50) (IČO)
+* `tax_id` VARCHAR(50) (DIČ)
+* `vat_id` VARCHAR(50) (IČ DPH)
+* `street` VARCHAR(255)
+* `city` VARCHAR(100)
+* `postal_code` VARCHAR(20)
+* `country` VARCHAR(100)
+* `email` VARCHAR(150)
+* `phone` VARCHAR(50)
+* `website` VARCHAR(255)
+* `iban` VARCHAR(50)
+* `swift` VARCHAR(20)
+* `payment_due_days` INT
+* `notes` TEXT
+* `contacts_json` TEXT (Array of contact persons: name, phone, email, position)
+* `created_at` TIMESTAMP
+
+### `warehouse_items`
+Master catalog of goods, products, raw materials, and supplies.
+* `id` VARCHAR(50) [PK]
+* `sku` VARCHAR(100) [UNIQUE]
+* `barcode` VARCHAR(100) (EAN/QR)
+* `name` VARCHAR(255)
+* `description` TEXT
+* `category` VARCHAR(100)
+* `unit` VARCHAR(20) (ks, m², bm, m³, kg, l, balenie)
+* `min_stock` DECIMAL(12,2)
+* `optimal_stock` DECIMAL(12,2)
+* `default_location` VARCHAR(100) (Rack/Shelf/Position)
+* `has_expiration` TINYINT(1) (Enables batch & lot tracking)
+* `image_url` VARCHAR(500)
+* `default_sell_price` DECIMAL(12,2)
+* `avg_purchase_price` DECIMAL(12,4) (Weighted average purchase price - WAP)
+* `last_purchase_price` DECIMAL(12,2)
+* `created_at` TIMESTAMP
+
+### `warehouse_stock`
+Current inventory balances partitioned per warehouse location.
+* `warehouse_id` VARCHAR(50)
+* `item_id` VARCHAR(50)
+* `quantity` DECIMAL(12,2) (Physical stock on hand)
+* `reserved_quantity` DECIMAL(12,2) (Reserved for active client deals)
+* `location` VARCHAR(100)
+* Primary Key: (`warehouse_id`, `item_id`)
+
+### `warehouse_batches`
+Lot and expiration date tracking for perishable or batch-controlled goods.
+* `id` VARCHAR(50) [PK]
+* `item_id` VARCHAR(50)
+* `warehouse_id` VARCHAR(50)
+* `batch_number` VARCHAR(100)
+* `expiration_date` DATE
+* `initial_quantity` DECIMAL(12,2)
+* `current_quantity` DECIMAL(12,2)
+* `purchase_price` DECIMAL(12,2)
+* `created_at` TIMESTAMP
+
+### `warehouse_movements`
+Stock transaction documents (Receipts, Issues, Transfers, Adjustments).
+* `id` VARCHAR(50) [PK]
+* `document_number` VARCHAR(100) [UNIQUE] (e.g. PRI-2026-0001, VYD-2026-0001)
+* `type` ENUM('inward', 'outward', 'transfer', 'adjustment')
+* `status` ENUM('draft', 'confirmed', 'cancelled')
+* `warehouse_id` VARCHAR(50)
+* `target_warehouse_id` VARCHAR(50) (Used for transfers)
+* `supplier_id` VARCHAR(50) (Used for inward receipts)
+* `lead_id` VARCHAR(50) (Used for outward client issues)
+* `total_cost_value` DECIMAL(15,2)
+* `total_sell_value` DECIMAL(15,2)
+* `total_profit_value` DECIMAL(15,2)
+* `created_by` VARCHAR(100) (Author CRM user)
+* `note` TEXT
+* `file_name` VARCHAR(255)
+* `file_path` VARCHAR(500)
+* `issued_at` DATETIME
+* `created_at` TIMESTAMP
+
+### `warehouse_movement_items`
+Individual line items attached to a movement document.
+* `id` VARCHAR(50) [PK]
+* `movement_id` VARCHAR(50)
+* `item_id` VARCHAR(50)
+* `batch_id` VARCHAR(50)
+* `quantity` DECIMAL(12,2)
+* `unit_purchase_price` DECIMAL(12,2)
+* `unit_sell_price` DECIMAL(12,2)
+* `total_price` DECIMAL(15,2)
+* `expiration_date` DATE
+* `note` VARCHAR(255)
+

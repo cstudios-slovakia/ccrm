@@ -399,4 +399,121 @@ export interface Project {
   gantt?: ProjectGanttRow[];
 }
 
+// Warehouse & Inventory Management Types
+
+export interface Warehouse {
+  id: string;
+  name: string;
+  code: string;
+  address?: string | null;
+  managerUserId?: string | null;
+  isDefault: boolean;
+  createdAt?: string;
+}
+
+export interface SupplierContact {
+  name: string;
+  position?: string;
+  phone?: string;
+  email?: string;
+}
+
+export interface Supplier {
+  id: string;
+  name: string;
+  companyId?: string | null; // IČO
+  taxId?: string | null;     // DIČ
+  vatId?: string | null;     // IČ DPH
+  street?: string | null;
+  city?: string | null;
+  postalCode?: string | null;
+  country?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  website?: string | null;
+  iban?: string | null;
+  swift?: string | null;
+  paymentDueDays: number;
+  notes?: string | null;
+  contacts: SupplierContact[];
+  createdAt?: string;
+}
+
+export interface WarehouseItem {
+  id: string;
+  sku: string;
+  barcode?: string | null;
+  name: string;
+  description?: string | null;
+  category?: string | null;
+  unit: string; // 'ks' | 'm²' | 'bm' | 'm³' | 'kg' | 'l' | 'balenie' | string
+  minStock: number;
+  optimalStock: number;
+  defaultLocation?: string | null;
+  hasExpiration: boolean;
+  imageUrl?: string | null;
+  defaultSellPrice: number;
+  avgPurchasePrice: number; // Weighted Average Purchase price (WAP)
+  lastPurchasePrice: number;
+  createdAt?: string;
+}
+
+export interface WarehouseStock {
+  warehouseId: string;
+  itemId: string;
+  quantity: number;
+  reservedQuantity: number;
+  location?: string | null;
+}
+
+export interface WarehouseBatch {
+  id: string;
+  itemId: string;
+  warehouseId: string;
+  batchNumber: string;
+  expirationDate: string; // YYYY-MM-DD
+  initialQuantity: number;
+  currentQuantity: number;
+  purchasePrice: number;
+  createdAt?: string;
+}
+
+export type WarehouseMovementType = 'inward' | 'outward' | 'transfer' | 'adjustment';
+export type WarehouseMovementStatus = 'draft' | 'confirmed' | 'cancelled';
+
+export interface WarehouseMovementItem {
+  id: string;
+  movementId?: string;
+  itemId: string;
+  batchId?: string | null;
+  quantity: number;
+  unitPurchasePrice: number;
+  unitSellPrice: number;
+  totalPrice: number;
+  expirationDate?: string | null;
+  note?: string | null;
+}
+
+export interface WarehouseMovement {
+  id: string;
+  documentNumber: string; // e.g. PRI-2026-0001, VYD-2026-0001
+  type: WarehouseMovementType;
+  status: WarehouseMovementStatus;
+  warehouseId: string;
+  targetWarehouseId?: string | null;
+  supplierId?: string | null;
+  leadId?: string | null;
+  totalCostValue: number;
+  totalSellValue: number;
+  totalProfitValue: number;
+  createdBy: string;
+  note?: string | null;
+  fileName?: string | null;
+  filePath?: string | null;
+  issuedAt: string;
+  createdAt?: string;
+  items: WarehouseMovementItem[];
+}
+
+
 

@@ -3,7 +3,7 @@ import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { LoginView } from "./components/LoginView";
 import { TaskDashboardView } from "./components/TaskDashboardView";
-import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project } from "./types";
+import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement } from "./types";
 import { VERSION } from "./utils/version";
 import { SOCIAL_MEDIA_ENABLED } from "./utils/featureFlags";
 import type { MeetingNote } from "./components/MeetingRoomView";
@@ -75,6 +75,7 @@ const DynamicDashboardView = safeLazy(() => import("./components/DynamicDashboar
 const UpdateNotesView = safeLazy(() => import("./components/UpdateNotesView").then(m => ({ default: m.UpdateNotesView })));
 const AutomationView = safeLazy(() => import("./components/AutomationView").then(m => ({ default: m.AutomationView })));
 const SocialMediaView = safeLazy(() => import("./components/SocialMediaView").then(m => ({ default: m.SocialMediaView })));
+const WarehouseView = safeLazy(() => import("./components/WarehouseView").then(m => ({ default: m.WarehouseView })));
 
 const ShaderGradientAny = ShaderGradient as any;
 
@@ -121,12 +122,16 @@ const computeSettingsSig = (o: any): string => JSON.stringify([
 // Used to tell a genuine unsaved edit apart from an automatic background push
 // (e.g. the settings-resync effect) that happens to land after the session died.
 const computePushSig = (p: {
-  leads: unknown; tasks: unknown; users: unknown; roles: unknown;
-  meetingNotes: unknown; unifiedEntries: unknown; unifiedEntriesData: unknown;
-  customDashboards: unknown; projectTypes: unknown; projects: unknown; settings: any;
+  leads?: unknown; tasks?: unknown; users?: unknown; roles?: unknown;
+  meetingNotes?: unknown; unifiedEntries?: unknown; unifiedEntriesData?: unknown;
+  customDashboards?: unknown; projectTypes?: unknown; projects?: unknown;
+  warehouses?: unknown; suppliers?: unknown; warehouseItems?: unknown;
+  warehouseStock?: unknown; warehouseBatches?: unknown; warehouseMovements?: unknown;
+  settings?: any;
 }): string => JSON.stringify([
   p.leads, p.tasks, p.users, p.roles, p.meetingNotes, p.unifiedEntries,
   p.unifiedEntriesData, p.customDashboards, p.projectTypes, p.projects,
+  p.warehouses, p.suppliers, p.warehouseItems, p.warehouseStock, p.warehouseBatches, p.warehouseMovements,
   computeSettingsSig(p.settings),
 ]);
 
@@ -221,6 +226,12 @@ function App() {
   const customDashboardsRef = useRef<CustomDashboard[]>([]);
   const projectTypesRef = useRef<ProjectType[]>([]);
   const projectsRef = useRef<Project[]>([]);
+  const warehousesRef = useRef<Warehouse[]>([]);
+  const suppliersRef = useRef<Supplier[]>([]);
+  const warehouseItemsRef = useRef<WarehouseItem[]>([]);
+  const warehouseStockRef = useRef<WarehouseStock[]>([]);
+  const warehouseBatchesRef = useRef<WarehouseBatch[]>([]);
+  const warehouseMovementsRef = useRef<WarehouseMovement[]>([]);
   // DB clock from the last GET/POST. Sent back as baseSyncedAt so the server can
   // avoid deleting records a concurrent user added after our snapshot.
   const baseSyncedAtRef = useRef<string | null>(null);
@@ -270,7 +281,7 @@ function App() {
     if (hashLower.startsWith("client-") || hashLower.startsWith("lead-") || hashLower.startsWith("user-") || hashLower.startsWith("ue_") || hashLower.startsWith("dash_") || hashLower.startsWith("settings")) {
       return rawHash; // Keep case sensitivity and allow sub-tabs for settings
     }
-    const validTabs = ["dashboard", "overview", "leads", "clients", "tasks", "files", "personal-settings", "email", "rag_ai", "automation", "meetings", "projects", "updates", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
+    const validTabs = ["dashboard", "overview", "leads", "clients", "tasks", "files", "personal-settings", "email", "rag_ai", "automation", "meetings", "projects", "updates", "warehouse", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
     return validTabs.includes(hashLower) ? rawHash : "dashboard";
   };
 
@@ -388,6 +399,14 @@ function App() {
   // Project Management state
   const [projectTypes, setProjectTypes] = useState<ProjectType[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+
+  // Warehouse & Inventory Management state
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [warehouseItems, setWarehouseItems] = useState<WarehouseItem[]>([]);
+  const [warehouseStock, setWarehouseStock] = useState<WarehouseStock[]>([]);
+  const [warehouseBatches, setWarehouseBatches] = useState<WarehouseBatch[]>([]);
+  const [warehouseMovements, setWarehouseMovements] = useState<WarehouseMovement[]>([]);
 
   // Initial states set to empty / defaults without localStorage or mockData loaders
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -698,6 +717,9 @@ ${log.payload || ''}
         case "personal-settings":
           viewName = t("Personal Settings", "Osobné nastavenia", "Személyes beállítások");
           break;
+        case "warehouse":
+          viewName = t("Warehouse & Inventory", "Sklad a zásoby", "Raktár és készlet");
+          break;
         case "dashboard":
         default:
           viewName = t("Task Dashboard", "Panel úloh", "Feladat Irányítópult");
@@ -781,6 +803,12 @@ ${log.payload || ''}
   customDashboardsRef.current = customDashboards;
   projectTypesRef.current = projectTypes;
   projectsRef.current = projects;
+  warehousesRef.current = warehouses;
+  suppliersRef.current = suppliers;
+  warehouseItemsRef.current = warehouseItems;
+  warehouseStockRef.current = warehouseStock;
+  warehouseBatchesRef.current = warehouseBatches;
+  warehouseMovementsRef.current = warehouseMovements;
 
   // --- REAL-TIME SERVER SYNCHRONIZER ENGINE ---
   const pushStateToServer = (
@@ -795,6 +823,12 @@ ${log.payload || ''}
     nextCustomDashboards?: CustomDashboard[],
     nextProjectTypes?: ProjectType[],
     nextProjects?: Project[],
+    nextWarehouses?: Warehouse[],
+    nextSuppliers?: Supplier[],
+    nextWarehouseItems?: WarehouseItem[],
+    nextWarehouseStock?: WarehouseStock[],
+    nextWarehouseBatches?: WarehouseBatch[],
+    nextWarehouseMovements?: WarehouseMovement[],
     options?: { showIndicator?: boolean }
   ): Promise<void> => {
     if (!isInstalled || !currentUser || !isInitialSyncResolved) return pushChainRef.current;
@@ -824,6 +858,12 @@ ${log.payload || ''}
     const liveCustomDashboards = nextCustomDashboards ?? customDashboardsRef.current;
     const liveProjectTypes = nextProjectTypes ?? projectTypesRef.current;
     const liveProjects = nextProjects ?? projectsRef.current;
+    const liveWarehouses = nextWarehouses ?? warehousesRef.current;
+    const liveSuppliers = nextSuppliers ?? suppliersRef.current;
+    const liveWarehouseItems = nextWarehouseItems ?? warehouseItemsRef.current;
+    const liveWarehouseStock = nextWarehouseStock ?? warehouseStockRef.current;
+    const liveWarehouseBatches = nextWarehouseBatches ?? warehouseBatchesRef.current;
+    const liveWarehouseMovements = nextWarehouseMovements ?? warehouseMovementsRef.current;
 
     const payload: any = {
       baseSyncedAt: baseSyncedAtRef.current,
@@ -837,6 +877,12 @@ ${log.payload || ''}
       customDashboards: liveCustomDashboards,
       projectTypes: liveProjectTypes,
       projects: liveProjects,
+      warehouses: liveWarehouses,
+      suppliers: liveSuppliers,
+      warehouseItems: liveWarehouseItems,
+      warehouseStock: liveWarehouseStock,
+      warehouseBatches: liveWarehouseBatches,
+      warehouseMovements: liveWarehouseMovements,
       settings: {
         systemName,
         systemLanguage,
@@ -877,6 +923,12 @@ ${log.payload || ''}
       narrow("customDashboards", liveCustomDashboards);
       narrow("projectTypes", liveProjectTypes);
       narrow("projects", liveProjects);
+      narrow("warehouses", liveWarehouses);
+      narrow("suppliers", liveSuppliers);
+      narrow("warehouseItems", liveWarehouseItems);
+      narrow("warehouseStock", liveWarehouseStock);
+      narrow("warehouseBatches", liveWarehouseBatches);
+      narrow("warehouseMovements", liveWarehouseMovements);
 
       // The registry list stays whole on purpose: sync.php walks unifiedEntries to
       // reach each entry's dynamic table, so an entry omitted here would silently
@@ -1071,6 +1123,54 @@ ${log.payload || ''}
       const nextTypes = typeof newTypes === "function" ? newTypes(prev) : newTypes;
       pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, nextTypes);
       return nextTypes;
+    });
+  };
+
+  const updateWarehousesAndSync = (newWarehouses: Warehouse[] | ((prev: Warehouse[]) => Warehouse[])) => {
+    setWarehouses(prev => {
+      const next = typeof newWarehouses === "function" ? newWarehouses(prev) : newWarehouses;
+      pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
+      return next;
+    });
+  };
+
+  const updateSuppliersAndSync = (newSuppliers: Supplier[] | ((prev: Supplier[]) => Supplier[])) => {
+    setSuppliers(prev => {
+      const next = typeof newSuppliers === "function" ? newSuppliers(prev) : newSuppliers;
+      pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
+      return next;
+    });
+  };
+
+  const updateWarehouseItemsAndSync = (newItems: WarehouseItem[] | ((prev: WarehouseItem[]) => WarehouseItem[])) => {
+    setWarehouseItems(prev => {
+      const next = typeof newItems === "function" ? newItems(prev) : newItems;
+      pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
+      return next;
+    });
+  };
+
+  const updateWarehouseStockAndSync = (newStock: WarehouseStock[] | ((prev: WarehouseStock[]) => WarehouseStock[])) => {
+    setWarehouseStock(prev => {
+      const next = typeof newStock === "function" ? newStock(prev) : newStock;
+      pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
+      return next;
+    });
+  };
+
+  const updateWarehouseBatchesAndSync = (newBatches: WarehouseBatch[] | ((prev: WarehouseBatch[]) => WarehouseBatch[])) => {
+    setWarehouseBatches(prev => {
+      const next = typeof newBatches === "function" ? newBatches(prev) : newBatches;
+      pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
+      return next;
+    });
+  };
+
+  const updateWarehouseMovementsAndSync = (newMovements: WarehouseMovement[] | ((prev: WarehouseMovement[]) => WarehouseMovement[])) => {
+    setWarehouseMovements(prev => {
+      const next = typeof newMovements === "function" ? newMovements(prev) : newMovements;
+      pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
+      return next;
     });
   };
 
@@ -1436,6 +1536,24 @@ ${log.payload || ''}
       if (data.projects && Array.isArray(data.projects)) {
         setProjects(data.projects);
       }
+      if (data.warehouses && Array.isArray(data.warehouses)) {
+        setWarehouses(data.warehouses);
+      }
+      if (data.suppliers && Array.isArray(data.suppliers)) {
+        setSuppliers(data.suppliers);
+      }
+      if (data.warehouseItems && Array.isArray(data.warehouseItems)) {
+        setWarehouseItems(data.warehouseItems);
+      }
+      if (data.warehouseStock && Array.isArray(data.warehouseStock)) {
+        setWarehouseStock(data.warehouseStock);
+      }
+      if (data.warehouseBatches && Array.isArray(data.warehouseBatches)) {
+        setWarehouseBatches(data.warehouseBatches);
+      }
+      if (data.warehouseMovements && Array.isArray(data.warehouseMovements)) {
+        setWarehouseMovements(data.warehouseMovements);
+      }
       if (data.settings) {
         const s = data.settings;
         if (s.systemName && s.systemName !== systemName) setSystemName(s.systemName);
@@ -1476,6 +1594,12 @@ ${log.payload || ''}
         customDashboards: baselineOf(data.customDashboards ?? customDashboardsRef.current),
         projectTypes: baselineOf(data.projectTypes ?? projectTypesRef.current),
         projects: baselineOf(data.projects ?? projectsRef.current),
+        warehouses: baselineOf(data.warehouses ?? warehousesRef.current),
+        suppliers: baselineOf(data.suppliers ?? suppliersRef.current),
+        warehouseItems: baselineOf(data.warehouseItems ?? warehouseItemsRef.current),
+        warehouseStock: baselineOf(data.warehouseStock ?? warehouseStockRef.current),
+        warehouseBatches: baselineOf(data.warehouseBatches ?? warehouseBatchesRef.current),
+        warehouseMovements: baselineOf(data.warehouseMovements ?? warehouseMovementsRef.current),
       };
       const ueData = data.unifiedEntriesData ?? unifiedEntriesDataRef.current ?? {};
       const nextUeBaselines: Record<string, RecordBaseline> = {};
@@ -1496,6 +1620,12 @@ ${log.payload || ''}
         customDashboards: data.customDashboards ?? customDashboardsRef.current,
         projectTypes: data.projectTypes ?? projectTypesRef.current,
         projects: data.projects ?? projectsRef.current,
+        warehouses: data.warehouses ?? warehousesRef.current,
+        suppliers: data.suppliers ?? suppliersRef.current,
+        warehouseItems: data.warehouseItems ?? warehouseItemsRef.current,
+        warehouseStock: data.warehouseStock ?? warehouseStockRef.current,
+        warehouseBatches: data.warehouseBatches ?? warehouseBatchesRef.current,
+        warehouseMovements: data.warehouseMovements ?? warehouseMovementsRef.current,
         settings: data.settings ?? {},
       });
     };
@@ -2003,6 +2133,39 @@ ${log.payload || ''}
         return (
           <UpdateNotesView systemLanguage={userLanguage} />
         );
+      case "warehouse":
+        return (
+          <WarehouseView
+            systemLanguage={userLanguage}
+            systemCurrency={currencyCode}
+            currentUser={activeUser}
+            warehouses={warehouses}
+            setWarehouses={updateWarehousesAndSync}
+            suppliers={suppliers}
+            setSuppliers={updateSuppliersAndSync}
+            warehouseItems={warehouseItems}
+            setWarehouseItems={updateWarehouseItemsAndSync}
+            warehouseStock={warehouseStock}
+            setWarehouseStock={updateWarehouseStockAndSync}
+            warehouseBatches={warehouseBatches}
+            setWarehouseBatches={updateWarehouseBatchesAndSync}
+            warehouseMovements={warehouseMovements}
+            setWarehouseMovements={updateWarehouseMovementsAndSync}
+            leads={leads}
+            onAddTimelineEvent={(leadId, event) => {
+              setLeads(prev => prev.map(l => {
+                if (l.id === leadId) {
+                  return {
+                    ...l,
+                    timeline: [event, ...(l.timeline || [])]
+                  };
+                }
+                return l;
+              }));
+              pushStateToServer();
+            }}
+          />
+        );
       default:
         return (
           <TaskDashboardView 
@@ -2180,6 +2343,7 @@ ${log.payload || ''}
               pushStateToServer(
                 undefined, undefined, undefined, undefined, undefined, undefined,
                 undefined, undefined, undefined, undefined, undefined,
+                undefined, undefined, undefined, undefined, undefined, undefined,
                 { showIndicator: false }
               );
             }, 0);

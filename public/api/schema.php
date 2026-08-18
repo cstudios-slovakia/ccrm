@@ -385,6 +385,133 @@ if (!function_exists('ccrm_schema_statements')) {
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               INDEX `idx_wfl_workflow` (`workflow_id`),
               INDEX `idx_wfl_created` (`created_at`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Warehouses (Multi-warehouse support)
+            "CREATE TABLE IF NOT EXISTS `warehouses` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `name` VARCHAR(150) NOT NULL,
+              `code` VARCHAR(50) NOT NULL UNIQUE,
+              `address` VARCHAR(255) NULL,
+              `manager_user_id` VARCHAR(50) NULL,
+              `is_default` TINYINT(1) NOT NULL DEFAULT 0,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Suppliers (Dodávatelia)
+            "CREATE TABLE IF NOT EXISTS `suppliers` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `name` VARCHAR(255) NOT NULL,
+              `company_id` VARCHAR(50) NULL,
+              `tax_id` VARCHAR(50) NULL,
+              `vat_id` VARCHAR(50) NULL,
+              `street` VARCHAR(255) NULL,
+              `city` VARCHAR(100) NULL,
+              `postal_code` VARCHAR(20) NULL,
+              `country` VARCHAR(100) NULL DEFAULT 'Slovakia',
+              `email` VARCHAR(150) NULL,
+              `phone` VARCHAR(50) NULL,
+              `website` VARCHAR(255) NULL,
+              `iban` VARCHAR(50) NULL,
+              `swift` VARCHAR(20) NULL,
+              `payment_due_days` INT NOT NULL DEFAULT 14,
+              `notes` TEXT NULL,
+              `contacts_json` TEXT NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              INDEX `idx_supplier_name` (`name`),
+              INDEX `idx_supplier_ico` (`company_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Warehouse Items (Katalóg tovaru a materiálu)
+            "CREATE TABLE IF NOT EXISTS `warehouse_items` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `sku` VARCHAR(100) NOT NULL UNIQUE,
+              `barcode` VARCHAR(100) NULL,
+              `name` VARCHAR(255) NOT NULL,
+              `description` TEXT NULL,
+              `category` VARCHAR(100) NULL,
+              `unit` VARCHAR(20) NOT NULL DEFAULT 'ks',
+              `min_stock` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+              `optimal_stock` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+              `default_location` VARCHAR(100) NULL,
+              `has_expiration` TINYINT(1) NOT NULL DEFAULT 0,
+              `image_url` VARCHAR(500) NULL,
+              `default_sell_price` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+              `avg_purchase_price` DECIMAL(12,4) NOT NULL DEFAULT 0.0000,
+              `last_purchase_price` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              INDEX `idx_item_sku` (`sku`),
+              INDEX `idx_item_category` (`category`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Warehouse Stock (Stav zásob podľa skladov)
+            "CREATE TABLE IF NOT EXISTS `warehouse_stock` (
+              `warehouse_id` VARCHAR(50) NOT NULL,
+              `item_id` VARCHAR(50) NOT NULL,
+              `quantity` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+              `reserved_quantity` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+              `location` VARCHAR(100) NULL,
+              PRIMARY KEY (`warehouse_id`, `item_id`),
+              FOREIGN KEY (`warehouse_id`) REFERENCES `warehouses` (`id`) ON DELETE CASCADE,
+              FOREIGN KEY (`item_id`) REFERENCES `warehouse_items` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Warehouse Batches & Expiry (Šarže a exspirácie)
+            "CREATE TABLE IF NOT EXISTS `warehouse_batches` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `item_id` VARCHAR(50) NOT NULL,
+              `warehouse_id` VARCHAR(50) NOT NULL,
+              `batch_number` VARCHAR(100) NOT NULL,
+              `expiration_date` DATE NOT NULL,
+              `initial_quantity` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+              `current_quantity` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+              `purchase_price` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY (`item_id`) REFERENCES `warehouse_items` (`id`) ON DELETE CASCADE,
+              FOREIGN KEY (`warehouse_id`) REFERENCES `warehouses` (`id`) ON DELETE CASCADE,
+              INDEX `idx_batch_exp` (`expiration_date`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Warehouse Movements (Pohybové doklady - Príjemka, Výdajka, Prevodka, Inventúra)
+            "CREATE TABLE IF NOT EXISTS `warehouse_movements` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `document_number` VARCHAR(100) NOT NULL UNIQUE,
+              `type` ENUM('inward', 'outward', 'transfer', 'adjustment') NOT NULL,
+              `status` ENUM('draft', 'confirmed', 'cancelled') NOT NULL DEFAULT 'confirmed',
+              `warehouse_id` VARCHAR(50) NOT NULL,
+              `target_warehouse_id` VARCHAR(50) NULL,
+              `supplier_id` VARCHAR(50) NULL,
+              `lead_id` VARCHAR(50) NULL,
+              `total_cost_value` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+              `total_sell_value` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+              `total_profit_value` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+              `created_by` VARCHAR(100) NOT NULL,
+              `note` TEXT NULL,
+              `file_name` VARCHAR(255) NULL,
+              `file_path` VARCHAR(500) NULL,
+              `issued_at` DATETIME NOT NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY (`warehouse_id`) REFERENCES `warehouses` (`id`) ON DELETE RESTRICT,
+              INDEX `idx_mov_doc` (`document_number`),
+              INDEX `idx_mov_type` (`type`),
+              INDEX `idx_mov_lead` (`lead_id`),
+              INDEX `idx_mov_issued` (`issued_at`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Warehouse Movement Items (Položky pohybového dokladu)
+            "CREATE TABLE IF NOT EXISTS `warehouse_movement_items` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `movement_id` VARCHAR(50) NOT NULL,
+              `item_id` VARCHAR(50) NOT NULL,
+              `batch_id` VARCHAR(50) NULL,
+              `quantity` DECIMAL(12,2) NOT NULL,
+              `unit_purchase_price` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+              `unit_sell_price` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+              `total_price` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+              `expiration_date` DATE NULL,
+              `note` VARCHAR(255) NULL,
+              FOREIGN KEY (`movement_id`) REFERENCES `warehouse_movements` (`id`) ON DELETE CASCADE,
+              FOREIGN KEY (`item_id`) REFERENCES `warehouse_items` (`id`) ON DELETE RESTRICT
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
         ];
     }

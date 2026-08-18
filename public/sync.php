@@ -71,7 +71,7 @@ function fetch_system_settings($pdo) {
 // the multi-MB snapshot, and it is immune to no-op re-saves (a sync POST that
 // writes identical rows leaves the checksum untouched).
 function ccrm_compute_data_version($pdo) {
-    $candidates = ['leads', 'timeline_events', 'lead_categories', 'tasks', 'task_assignees', 'users', 'roles', 'meeting_notes', 'meeting_tasks', 'unified_entries', 'system_settings', 'project_types', 'projects', 'project_managers'];
+    $candidates = ['leads', 'timeline_events', 'lead_categories', 'tasks', 'task_assignees', 'users', 'roles', 'meeting_notes', 'meeting_tasks', 'unified_entries', 'system_settings', 'project_types', 'projects', 'project_managers', 'warehouses', 'suppliers', 'warehouse_items', 'warehouse_stock', 'warehouse_batches', 'warehouse_movements', 'warehouse_movement_items'];
     try {
         $existing = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
         $existingSet = array_flip($existing);
@@ -1052,6 +1052,163 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         // Fallback if tables don't exist
     }
 
+    // 3.7. Fetch Warehouse Data (Warehouses, Suppliers, Items, Stock, Batches, Movements)
+    $warehouses = [];
+    $suppliers = [];
+    $warehouseItems = [];
+    $warehouseStock = [];
+    $warehouseBatches = [];
+    $warehouseMovements = [];
+
+    try {
+        if ($pdo->query("SHOW TABLES LIKE 'warehouses'")->rowCount() > 0) {
+            $whStmt = $pdo->query("SELECT * FROM `warehouses` ORDER BY `name` ASC");
+            while ($row = $whStmt->fetch()) {
+                $warehouses[] = [
+                    'id' => $row['id'],
+                    'name' => $row['name'],
+                    'code' => $row['code'],
+                    'address' => $row['address'],
+                    'managerUserId' => $row['manager_user_id'],
+                    'isDefault' => (int)$row['is_default'] === 1,
+                    'createdAt' => $row['created_at'],
+                ];
+            }
+        }
+
+        if ($pdo->query("SHOW TABLES LIKE 'suppliers'")->rowCount() > 0) {
+            $supStmt = $pdo->query("SELECT * FROM `suppliers` ORDER BY `name` ASC");
+            while ($row = $supStmt->fetch()) {
+                $suppliers[] = [
+                    'id' => $row['id'],
+                    'name' => $row['name'],
+                    'companyId' => $row['company_id'],
+                    'taxId' => $row['tax_id'],
+                    'vatId' => $row['vat_id'],
+                    'street' => $row['street'],
+                    'city' => $row['city'],
+                    'postalCode' => $row['postal_code'],
+                    'country' => $row['country'] ?? 'Slovakia',
+                    'email' => $row['email'],
+                    'phone' => $row['phone'],
+                    'website' => $row['website'],
+                    'iban' => $row['iban'],
+                    'swift' => $row['swift'],
+                    'paymentDueDays' => (int)($row['payment_due_days'] ?? 14),
+                    'notes' => $row['notes'],
+                    'contacts' => json_decode($row['contacts_json'] ?? '[]', true) ?: [],
+                    'createdAt' => $row['created_at'],
+                ];
+            }
+        }
+
+        if ($pdo->query("SHOW TABLES LIKE 'warehouse_items'")->rowCount() > 0) {
+            $itemStmt = $pdo->query("SELECT * FROM `warehouse_items` ORDER BY `name` ASC");
+            while ($row = $itemStmt->fetch()) {
+                $warehouseItems[] = [
+                    'id' => $row['id'],
+                    'sku' => $row['sku'],
+                    'barcode' => $row['barcode'],
+                    'name' => $row['name'],
+                    'description' => $row['description'],
+                    'category' => $row['category'],
+                    'unit' => $row['unit'] ?? 'ks',
+                    'minStock' => (float)($row['min_stock'] ?? 0),
+                    'optimalStock' => (float)($row['optimal_stock'] ?? 0),
+                    'defaultLocation' => $row['default_location'],
+                    'hasExpiration' => (int)$row['has_expiration'] === 1,
+                    'imageUrl' => $row['image_url'],
+                    'defaultSellPrice' => (float)($row['default_sell_price'] ?? 0),
+                    'avgPurchasePrice' => (float)($row['avg_purchase_price'] ?? 0),
+                    'lastPurchasePrice' => (float)($row['last_purchase_price'] ?? 0),
+                    'createdAt' => $row['created_at'],
+                ];
+            }
+        }
+
+        if ($pdo->query("SHOW TABLES LIKE 'warehouse_stock'")->rowCount() > 0) {
+            $stockStmt = $pdo->query("SELECT * FROM `warehouse_stock`");
+            while ($row = $stockStmt->fetch()) {
+                $warehouseStock[] = [
+                    'warehouseId' => $row['warehouse_id'],
+                    'itemId' => $row['item_id'],
+                    'quantity' => (float)($row['quantity'] ?? 0),
+                    'reservedQuantity' => (float)($row['reserved_quantity'] ?? 0),
+                    'location' => $row['location'],
+                ];
+            }
+        }
+
+        if ($pdo->query("SHOW TABLES LIKE 'warehouse_batches'")->rowCount() > 0) {
+            $batchStmt = $pdo->query("SELECT * FROM `warehouse_batches` ORDER BY `expiration_date` ASC");
+            while ($row = $batchStmt->fetch()) {
+                $warehouseBatches[] = [
+                    'id' => $row['id'],
+                    'itemId' => $row['item_id'],
+                    'warehouseId' => $row['warehouse_id'],
+                    'batchNumber' => $row['batch_number'],
+                    'expirationDate' => $row['expiration_date'],
+                    'initialQuantity' => (float)($row['initial_quantity'] ?? 0),
+                    'currentQuantity' => (float)($row['current_quantity'] ?? 0),
+                    'purchasePrice' => (float)($row['purchase_price'] ?? 0),
+                    'createdAt' => $row['created_at'],
+                ];
+            }
+        }
+
+        if ($pdo->query("SHOW TABLES LIKE 'warehouse_movements'")->rowCount() > 0) {
+            $movStmt = $pdo->query("SELECT * FROM `warehouse_movements` ORDER BY `issued_at` DESC, `created_at` DESC");
+            $movementsMap = [];
+            while ($row = $movStmt->fetch()) {
+                $movId = $row['id'];
+                $movementsMap[$movId] = [
+                    'id' => $movId,
+                    'documentNumber' => $row['document_number'],
+                    'type' => $row['type'],
+                    'status' => $row['status'],
+                    'warehouseId' => $row['warehouse_id'],
+                    'targetWarehouseId' => $row['target_warehouse_id'],
+                    'supplierId' => $row['supplier_id'],
+                    'leadId' => $row['lead_id'],
+                    'totalCostValue' => (float)($row['total_cost_value'] ?? 0),
+                    'totalSellValue' => (float)($row['total_sell_value'] ?? 0),
+                    'totalProfitValue' => (float)($row['total_profit_value'] ?? 0),
+                    'createdBy' => $row['created_by'],
+                    'note' => $row['note'],
+                    'fileName' => $row['file_name'],
+                    'filePath' => $row['file_path'],
+                    'issuedAt' => $row['issued_at'],
+                    'createdAt' => $row['created_at'],
+                    'items' => [],
+                ];
+            }
+
+            if (!empty($movementsMap) && $pdo->query("SHOW TABLES LIKE 'warehouse_movement_items'")->rowCount() > 0) {
+                $itemsStmt = $pdo->query("SELECT * FROM `warehouse_movement_items` ORDER BY `id` ASC");
+                while ($itemRow = $itemsStmt->fetch()) {
+                    $mId = $itemRow['movement_id'];
+                    if (isset($movementsMap[$mId])) {
+                        $movementsMap[$mId]['items'][] = [
+                            'id' => $itemRow['id'],
+                            'movementId' => $mId,
+                            'itemId' => $itemRow['item_id'],
+                            'batchId' => $itemRow['batch_id'],
+                            'quantity' => (float)($itemRow['quantity'] ?? 0),
+                            'unitPurchasePrice' => (float)($itemRow['unit_purchase_price'] ?? 0),
+                            'unitSellPrice' => (float)($itemRow['unit_sell_price'] ?? 0),
+                            'totalPrice' => (float)($itemRow['total_price'] ?? 0),
+                            'expirationDate' => $itemRow['expiration_date'],
+                            'note' => $itemRow['note'],
+                        ];
+                    }
+                }
+            }
+            $warehouseMovements = array_values($movementsMap);
+        }
+    } catch (\Throwable $e) {
+        error_log('[ccrm sync] warehouse fetch error: ' . $e->getMessage());
+    }
+
     // DB clock at read time. The client echoes this back as baseSyncedAt on the
     // next POST so the server can tell "the user deleted this" apart from "the
     // client never saw this newer row" (see ccrm_delete_omitted).
@@ -1106,6 +1263,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'customDashboards' => $customDashboards,
         'projectTypes' => $projectTypes,
         'projects' => $projects,
+        'warehouses' => $warehouses,
+        'suppliers' => $suppliers,
+        'warehouseItems' => $warehouseItems,
+        'warehouseStock' => $warehouseStock,
+        'warehouseBatches' => $warehouseBatches,
+        'warehouseMovements' => $warehouseMovements,
         'settings' => [
             'systemName' => $settings['SYSTEM_NAME'] ?? 'CCRM',
             'systemLanguage' => $settings['SYSTEM_LANGUAGE'] ?? 'sk',
@@ -2519,6 +2682,212 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 : array_diff($existingDashIds, $processedDashIds);
             if (!empty($dashesToDelete)) {
                 ccrm_delete_omitted($pdo, 'custom_dashboards', $dashesToDelete, null);
+            }
+        }
+
+        // 4.8. Synchronize Warehouses
+        if (isset($payload['warehouses']) && is_array($payload['warehouses'])) {
+            $stmt = $pdo->query("SELECT `id` FROM `warehouses`");
+            $existingWhIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $processedWhIds = [];
+
+            $insWh = $pdo->prepare("INSERT INTO `warehouses` (`id`, `name`, `code`, `address`, `manager_user_id`, `is_default`) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `code` = VALUES(`code`), `address` = VALUES(`address`), `manager_user_id` = VALUES(`manager_user_id`), `is_default` = VALUES(`is_default`)");
+
+            foreach ($payload['warehouses'] as $wh) {
+                $whId = $wh['id'];
+                $insWh->execute([
+                    $whId,
+                    $wh['name'] ?? '',
+                    $wh['code'] ?? $whId,
+                    $wh['address'] ?? null,
+                    $wh['managerUserId'] ?? null,
+                    ($wh['isDefault'] ?? false) ? 1 : 0
+                ]);
+                $processedWhIds[] = $whId;
+            }
+
+            $whToDelete = $isDeltaSync ? $deletionsFor('warehouses', $existingWhIds) : array_diff($existingWhIds, $processedWhIds);
+            if (!empty($whToDelete)) {
+                ccrm_delete_omitted($pdo, 'warehouses', $whToDelete, null);
+            }
+        }
+
+        // 4.9. Synchronize Suppliers
+        if (isset($payload['suppliers']) && is_array($payload['suppliers'])) {
+            $stmt = $pdo->query("SELECT `id` FROM `suppliers`");
+            $existingSupIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $processedSupIds = [];
+
+            $insSup = $pdo->prepare("INSERT INTO `suppliers` (`id`, `name`, `company_id`, `tax_id`, `vat_id`, `street`, `city`, `postal_code`, `country`, `email`, `phone`, `website`, `iban`, `swift`, `payment_due_days`, `notes`, `contacts_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `company_id` = VALUES(`company_id`), `tax_id` = VALUES(`tax_id`), `vat_id` = VALUES(`vat_id`), `street` = VALUES(`street`), `city` = VALUES(`city`), `postal_code` = VALUES(`postal_code`), `country` = VALUES(`country`), `email` = VALUES(`email`), `phone` = VALUES(`phone`), `website` = VALUES(`website`), `iban` = VALUES(`iban`), `swift` = VALUES(`swift`), `payment_due_days` = VALUES(`payment_due_days`), `notes` = VALUES(`notes`), `contacts_json` = VALUES(`contacts_json`)");
+
+            foreach ($payload['suppliers'] as $sup) {
+                $supId = $sup['id'];
+                $insSup->execute([
+                    $supId,
+                    $sup['name'] ?? '',
+                    $sup['companyId'] ?? null,
+                    $sup['taxId'] ?? null,
+                    $sup['vatId'] ?? null,
+                    $sup['street'] ?? null,
+                    $sup['city'] ?? null,
+                    $sup['postalCode'] ?? null,
+                    $sup['country'] ?? 'Slovakia',
+                    $sup['email'] ?? null,
+                    $sup['phone'] ?? null,
+                    $sup['website'] ?? null,
+                    $sup['iban'] ?? null,
+                    $sup['swift'] ?? null,
+                    (int)($sup['paymentDueDays'] ?? 14),
+                    $sup['notes'] ?? null,
+                    json_encode($sup['contacts'] ?? [])
+                ]);
+                $processedSupIds[] = $supId;
+            }
+
+            $supToDelete = $isDeltaSync ? $deletionsFor('suppliers', $existingSupIds) : array_diff($existingSupIds, $processedSupIds);
+            if (!empty($supToDelete)) {
+                ccrm_delete_omitted($pdo, 'suppliers', $supToDelete, null);
+            }
+        }
+
+        // 4.10. Synchronize Warehouse Items
+        if (isset($payload['warehouseItems']) && is_array($payload['warehouseItems'])) {
+            $stmt = $pdo->query("SELECT `id` FROM `warehouse_items`");
+            $existingItemIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $processedItemIds = [];
+
+            $insItem = $pdo->prepare("INSERT INTO `warehouse_items` (`id`, `sku`, `barcode`, `name`, `description`, `category`, `unit`, `min_stock`, `optimal_stock`, `default_location`, `has_expiration`, `image_url`, `default_sell_price`, `avg_purchase_price`, `last_purchase_price`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `sku` = VALUES(`sku`), `barcode` = VALUES(`barcode`), `name` = VALUES(`name`), `description` = VALUES(`description`), `category` = VALUES(`category`), `unit` = VALUES(`unit`), `min_stock` = VALUES(`min_stock`), `optimal_stock` = VALUES(`optimal_stock`), `default_location` = VALUES(`default_location`), `has_expiration` = VALUES(`has_expiration`), `image_url` = VALUES(`image_url`), `default_sell_price` = VALUES(`default_sell_price`), `avg_purchase_price` = VALUES(`avg_purchase_price`), `last_purchase_price` = VALUES(`last_purchase_price`)");
+
+            foreach ($payload['warehouseItems'] as $item) {
+                $itemId = $item['id'];
+                $insItem->execute([
+                    $itemId,
+                    $item['sku'] ?? $itemId,
+                    $item['barcode'] ?? null,
+                    $item['name'] ?? '',
+                    $item['description'] ?? null,
+                    $item['category'] ?? null,
+                    $item['unit'] ?? 'ks',
+                    (float)($item['minStock'] ?? 0),
+                    (float)($item['optimalStock'] ?? 0),
+                    $item['defaultLocation'] ?? null,
+                    ($item['hasExpiration'] ?? false) ? 1 : 0,
+                    $item['imageUrl'] ?? null,
+                    (float)($item['defaultSellPrice'] ?? 0),
+                    (float)($item['avgPurchasePrice'] ?? 0),
+                    (float)($item['lastPurchasePrice'] ?? 0)
+                ]);
+                $processedItemIds[] = $itemId;
+            }
+
+            $itemsToDelete = $isDeltaSync ? $deletionsFor('warehouseItems', $existingItemIds) : array_diff($existingItemIds, $processedItemIds);
+            if (!empty($itemsToDelete)) {
+                ccrm_delete_omitted($pdo, 'warehouse_items', $itemsToDelete, null);
+            }
+        }
+
+        // 4.11. Synchronize Warehouse Stock & Batches
+        if (isset($payload['warehouseStock']) && is_array($payload['warehouseStock'])) {
+            $insStock = $pdo->prepare("INSERT INTO `warehouse_stock` (`warehouse_id`, `item_id`, `quantity`, `reserved_quantity`, `location`) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `quantity` = VALUES(`quantity`), `reserved_quantity` = VALUES(`reserved_quantity`), `location` = VALUES(`location`)");
+            foreach ($payload['warehouseStock'] as $stk) {
+                if (!empty($stk['warehouseId']) && !empty($stk['itemId'])) {
+                    $insStock->execute([
+                        $stk['warehouseId'],
+                        $stk['itemId'],
+                        (float)($stk['quantity'] ?? 0),
+                        (float)($stk['reservedQuantity'] ?? 0),
+                        $stk['location'] ?? null
+                    ]);
+                }
+            }
+        }
+
+        if (isset($payload['warehouseBatches']) && is_array($payload['warehouseBatches'])) {
+            $stmt = $pdo->query("SELECT `id` FROM `warehouse_batches`");
+            $existingBatchIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $processedBatchIds = [];
+
+            $insBatch = $pdo->prepare("INSERT INTO `warehouse_batches` (`id`, `item_id`, `warehouse_id`, `batch_number`, `expiration_date`, `initial_quantity`, `current_quantity`, `purchase_price`) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `item_id` = VALUES(`item_id`), `warehouse_id` = VALUES(`warehouse_id`), `batch_number` = VALUES(`batch_number`), `expiration_date` = VALUES(`expiration_date`), `initial_quantity` = VALUES(`initial_quantity`), `current_quantity` = VALUES(`current_quantity`), `purchase_price` = VALUES(`purchase_price`)");
+
+            foreach ($payload['warehouseBatches'] as $batch) {
+                $batchId = $batch['id'];
+                $insBatch->execute([
+                    $batchId,
+                    $batch['itemId'],
+                    $batch['warehouseId'],
+                    $batch['batchNumber'],
+                    $batch['expirationDate'],
+                    (float)($batch['initialQuantity'] ?? 0),
+                    (float)($batch['currentQuantity'] ?? 0),
+                    (float)($batch['purchasePrice'] ?? 0)
+                ]);
+                $processedBatchIds[] = $batchId;
+            }
+
+            $batchesToDelete = $isDeltaSync ? $deletionsFor('warehouseBatches', $existingBatchIds) : array_diff($existingBatchIds, $processedBatchIds);
+            if (!empty($batchesToDelete)) {
+                ccrm_delete_omitted($pdo, 'warehouse_batches', $batchesToDelete, null);
+            }
+        }
+
+        // 4.12. Synchronize Warehouse Movements
+        if (isset($payload['warehouseMovements']) && is_array($payload['warehouseMovements'])) {
+            $stmt = $pdo->query("SELECT `id` FROM `warehouse_movements`");
+            $existingMovIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $processedMovIds = [];
+
+            $insMov = $pdo->prepare("INSERT INTO `warehouse_movements` (`id`, `document_number`, `type`, `status`, `warehouse_id`, `target_warehouse_id`, `supplier_id`, `lead_id`, `total_cost_value`, `total_sell_value`, `total_profit_value`, `created_by`, `note`, `file_name`, `file_path`, `issued_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `document_number` = VALUES(`document_number`), `type` = VALUES(`type`), `status` = VALUES(`status`), `warehouse_id` = VALUES(`warehouse_id`), `target_warehouse_id` = VALUES(`target_warehouse_id`), `supplier_id` = VALUES(`supplier_id`), `lead_id` = VALUES(`lead_id`), `total_cost_value` = VALUES(`total_cost_value`), `total_sell_value` = VALUES(`total_sell_value`), `total_profit_value` = VALUES(`total_profit_value`), `created_by` = VALUES(`created_by`), `note` = VALUES(`note`), `file_name` = VALUES(`file_name`), `file_path` = VALUES(`file_path`), `issued_at` = VALUES(`issued_at`)");
+
+            $insMovItem = $pdo->prepare("INSERT INTO `warehouse_movement_items` (`id`, `movement_id`, `item_id`, `batch_id`, `quantity`, `unit_purchase_price`, `unit_sell_price`, `total_price`, `expiration_date`, `note`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `quantity` = VALUES(`quantity`), `unit_purchase_price` = VALUES(`unit_purchase_price`), `unit_sell_price` = VALUES(`unit_sell_price`), `total_price` = VALUES(`total_price`), `expiration_date` = VALUES(`expiration_date`), `note` = VALUES(`note`)");
+
+            $delMovItems = $pdo->prepare("DELETE FROM `warehouse_movement_items` WHERE `movement_id` = ?");
+
+            foreach ($payload['warehouseMovements'] as $mov) {
+                $movId = $mov['id'];
+                $insMov->execute([
+                    $movId,
+                    $mov['documentNumber'] ?? $movId,
+                    $mov['type'] ?? 'inward',
+                    $mov['status'] ?? 'confirmed',
+                    $mov['warehouseId'],
+                    $mov['targetWarehouseId'] ?? null,
+                    $mov['supplierId'] ?? null,
+                    $mov['leadId'] ?? null,
+                    (float)($mov['totalCostValue'] ?? 0),
+                    (float)($mov['totalSellValue'] ?? 0),
+                    (float)($mov['totalProfitValue'] ?? 0),
+                    $mov['createdBy'] ?? $sessionEmail,
+                    $mov['note'] ?? null,
+                    $mov['fileName'] ?? null,
+                    $mov['filePath'] ?? null,
+                    $mov['issuedAt'] ?? date('Y-m-d H:i:s')
+                ]);
+                $processedMovIds[] = $movId;
+
+                // Sync items of this movement
+                if (isset($mov['items']) && is_array($mov['items'])) {
+                    $delMovItems->execute([$movId]);
+                    foreach ($mov['items'] as $mItem) {
+                        $itemId = $mItem['id'] ?? ('mi-' . bin2hex(random_bytes(8)));
+                        $insMovItem->execute([
+                            $itemId,
+                            $movId,
+                            $mItem['itemId'],
+                            $mItem['batchId'] ?? null,
+                            (float)($mItem['quantity'] ?? 0),
+                            (float)($mItem['unitPurchasePrice'] ?? 0),
+                            (float)($mItem['unitSellPrice'] ?? 0),
+                            (float)($mItem['totalPrice'] ?? 0),
+                            !empty($mItem['expirationDate']) ? $mItem['expirationDate'] : null,
+                            $mItem['note'] ?? null
+                        ]);
+                    }
+                }
+            }
+
+            $movToDelete = $isDeltaSync ? $deletionsFor('warehouseMovements', $existingMovIds) : array_diff($existingMovIds, $processedMovIds);
+            if (!empty($movToDelete)) {
+                ccrm_delete_omitted($pdo, 'warehouse_movements', $movToDelete, null);
             }
         }
 

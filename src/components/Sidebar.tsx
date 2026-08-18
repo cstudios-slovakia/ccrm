@@ -227,6 +227,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       "rag_ai", 
       "leads", 
       "clients", 
+      "warehouse",
       "meetings", 
       ...dynamicUeItems.map(item => item.id),
       ...dynamicDashItems.map(item => item.id),
@@ -403,6 +404,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       { id: "rag_ai", label: systemLanguage === "sk" ? "RAG AI Asistent" : systemLanguage === "hu" ? "RAG AI Asszisztens" : "RAG AI Assistant", icon: Brain, color: "#8b5cf6", isPurple: true },
       { id: "leads", label: getTranslation(systemLanguage, "sidebar.leads"), icon: TableProperties, color: "#2563eb" },
       { id: "clients", label: getTranslation(systemLanguage, "sidebar.clients"), icon: Users, color: "#059669" },
+      { id: "warehouse", label: getTranslation(systemLanguage, "sidebar.warehouse"), icon: Icons.Package || Icons.Boxes || FolderOpen, color: "#1e3a8a", isNavy: true },
       { id: "meetings", label: getTranslation(systemLanguage, "sidebar.meetings"), icon: PencilLine, color: "#4f46e5", isNightBlue: true },
       ...dynamicUeItems,
       ...dynamicDashItems,
@@ -520,6 +522,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         ? (isActive
                             ? "bg-purple-500 text-white font-bold shadow-lg shadow-purple-500/30 border border-purple-400/20"
                             : "text-purple-500 hover:text-purple-650 hover:bg-purple-50/50")
+                        : item.isNavy
+                          ? (isActive
+                              ? "bg-blue-950 text-white font-bold shadow-lg shadow-blue-950/30 border border-blue-900/20"
+                              : "text-blue-950 hover:text-blue-900 hover:bg-blue-50/50")
                         : item.isNightBlue
                           ? (isActive
                               ? "bg-slate-900 text-white font-bold shadow-lg shadow-slate-900/30 border border-slate-800/20"
@@ -571,9 +577,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           ? (isActive ? "text-white font-bold" : "text-purple-600 font-bold")
                           : item.isLavender
                             ? (isActive ? "text-white font-bold" : "text-purple-500 font-semibold")
-                            : item.isNightBlue
-                              ? (isActive ? "text-white font-bold" : "text-slate-800 font-semibold")
-                              : isActive ? "text-white font-bold" : "text-slate-500 font-semibold"
+                            : item.isNavy
+                              ? (isActive ? "text-white font-bold" : "text-blue-950 font-semibold")
+                              : item.isNightBlue
+                                ? (isActive ? "text-white font-bold" : "text-slate-800 font-semibold")
+                                : isActive ? "text-white font-bold" : "text-slate-500 font-semibold"
                   )}>
                     {item.label}
                   </span>
