@@ -60,12 +60,17 @@ if (file_exists($configFile)) {
 // authenticated user could overwrite another meeting's audio just by naming its id.
 // Only an existing note (which the caller may edit) or a brand-new id is accepted;
 // the DB is the authority on which of the two it is.
-$pdo = null;
+// NOTE: config.php stores the live connection in the GLOBAL $pdo and
+// get_db_connection() simply hands that same variable back. This file runs at
+// global scope, so a local `$pdo = null` would wipe the connection out and make
+// the very next get_db_connection() throw "Database connection failed" — which is
+// exactly what used to break every voice note upload. Keep the handle in $db.
+$db = null;
 $meetingExists = false;
 try {
     if (function_exists('get_db_connection')) {
-        $pdo = get_db_connection();
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM `meeting_notes` WHERE `id` = ?");
+        $db = get_db_connection();
+        $stmt = $db->prepare("SELECT COUNT(*) FROM `meeting_notes` WHERE `id` = ?");
         $stmt->execute([$meetingId]);
         $meetingExists = (int)$stmt->fetchColumn() > 0;
     }
@@ -83,12 +88,12 @@ if (move_uploaded_file($file['tmp_name'], $targetPath)) {
     // here used to be swallowed, so the client was told the recording was saved
     // while the note had no reference to it and the audio was effectively lost.
     try {
-        if ($pdo !== null) {
+        if ($db !== null) {
             if ($meetingExists) {
-                $stmt = $pdo->prepare("UPDATE `meeting_notes` SET `audio_file` = ? WHERE `id` = ?");
+                $stmt = $db->prepare("UPDATE `meeting_notes` SET `audio_file` = ? WHERE `id` = ?");
                 $stmt->execute([$filePath, $meetingId]);
             } else {
-                $stmt = $pdo->prepare("INSERT INTO `meeting_notes` (`id`, `title`, `date`, `duration`, `notes`, `audio_file`) VALUES (?, ?, ?, ?, ?, ?)");
+                $stmt = $db->prepare("INSERT INTO `meeting_notes` (`id`, `title`, `date`, `duration`, `notes`, `audio_file`) VALUES (?, ?, ?, ?, ?, ?)");
                 $stmt->execute([
                     $meetingId,
                     'Untitled Note',
