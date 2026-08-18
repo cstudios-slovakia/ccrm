@@ -377,10 +377,10 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     id: string;
     itemId: string;
     batchId: string;
-    quantity: number;
-    baseSellPrice: number;
-    discountPct: number;
-    unitSellPrice: number;
+    quantity: number | string;
+    baseSellPrice: number | string;
+    discountPct: number | string;
+    unitSellPrice: number | string;
     note: string;
   }[]>([]);
 
@@ -1354,10 +1354,10 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   const handleUpdateIssueRow = (rowId: string, patch: Partial<{
     itemId: string;
     batchId: string;
-    quantity: number;
-    baseSellPrice: number;
-    discountPct: number;
-    unitSellPrice: number;
+    quantity: number | string;
+    baseSellPrice: number | string;
+    discountPct: number | string;
+    unitSellPrice: number | string;
     note: string;
   }>) => {
     setIssueItems(prev => prev.map(row => {
@@ -1373,19 +1373,35 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
           updated.batchId = "";
         }
       } else if ("discountPct" in patch) {
-        const disc = Math.min(100, Math.max(0, Number(patch.discountPct) || 0));
-        updated.discountPct = disc;
-        updated.unitSellPrice = Number((updated.baseSellPrice * (1 - disc / 100)).toFixed(2));
+        if (patch.discountPct === "" || patch.discountPct === undefined) {
+          updated.discountPct = "";
+          updated.unitSellPrice = updated.baseSellPrice;
+        } else {
+          const disc = Math.min(100, Math.max(0, Number(patch.discountPct) || 0));
+          updated.discountPct = patch.discountPct;
+          const base = Number(updated.baseSellPrice) || 0;
+          updated.unitSellPrice = Number((base * (1 - disc / 100)).toFixed(2));
+        }
       } else if ("unitSellPrice" in patch) {
-        const price = Math.max(0, Number(patch.unitSellPrice) || 0);
-        updated.unitSellPrice = price;
-        updated.discountPct = updated.baseSellPrice > 0 
-          ? Number((((updated.baseSellPrice - price) / updated.baseSellPrice) * 100).toFixed(1))
-          : 0;
+        if (patch.unitSellPrice === "" || patch.unitSellPrice === undefined) {
+          updated.unitSellPrice = "";
+        } else {
+          const price = Math.max(0, Number(patch.unitSellPrice) || 0);
+          updated.unitSellPrice = patch.unitSellPrice;
+          const base = Number(updated.baseSellPrice) || 0;
+          updated.discountPct = base > 0 
+            ? Number((((base - price) / base) * 100).toFixed(1))
+            : 0;
+        }
       } else if ("baseSellPrice" in patch) {
-        const base = Math.max(0, Number(patch.baseSellPrice) || 0);
-        updated.baseSellPrice = base;
-        updated.unitSellPrice = Number((base * (1 - (updated.discountPct || 0) / 100)).toFixed(2));
+        if (patch.baseSellPrice === "" || patch.baseSellPrice === undefined) {
+          updated.baseSellPrice = "";
+        } else {
+          const base = Math.max(0, Number(patch.baseSellPrice) || 0);
+          updated.baseSellPrice = patch.baseSellPrice;
+          const disc = Number(updated.discountPct) || 0;
+          updated.unitSellPrice = Number((base * (1 - disc / 100)).toFixed(2));
+        }
       }
 
       return updated;
@@ -1529,8 +1545,11 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       const client = leads.find(l => l.id === issueLeadId);
       const itemsSummary = validItems.map(v => {
         const it = warehouseItems.find(i => i.id === v.itemId);
-        const discountText = v.discountPct > 0 ? ` (zľava ${v.discountPct}%)` : "";
-        return `• ${v.quantity} ${it?.unit || "ks"} × ${it?.name || v.itemId} @ ${formatCurrency(v.unitSellPrice, systemLanguage, systemCurrency)}${discountText} = ${formatCurrency(Number(v.quantity) * Number(v.unitSellPrice), systemLanguage, systemCurrency)}`;
+        const discountVal = Number(v.discountPct) || 0;
+        const discountText = discountVal > 0 ? ` (zľava ${discountVal}%)` : "";
+        const unitPrice = Number(v.unitSellPrice) || 0;
+        const qty = Number(v.quantity) || 0;
+        return `• ${qty} ${it?.unit || "ks"} × ${it?.name || v.itemId} @ ${formatCurrency(unitPrice, systemLanguage, systemCurrency)}${discountText} = ${formatCurrency(qty * unitPrice, systemLanguage, systemCurrency)}`;
       }).join("\n");
 
       const sourceWh = warehouses.find(w => w.id === issueWarehouseId);
@@ -2196,13 +2215,13 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   <thead className="bg-slate-100/60 border-b border-slate-200/80 text-[11px] font-bold uppercase tracking-wider text-slate-500">
                     <tr>
                       <th className="py-3 px-3 w-10 text-center">#</th>
-                      <th className="py-3 px-3 min-w-[240px]">{t("Product & Stock", "Tovar a skladový stav", "Termék & Készlet")}</th>
-                      <th className="py-3 px-3 w-32">{t("Quantity", "Množstvo", "Mennyiség")}</th>
-                      <th className="py-3 px-3 w-28 text-right">{t("Base Price", "Cenníková cena", "Alapár")}</th>
-                      <th className="py-3 px-3 w-28 text-center">{t("Discount %", "Zľava %", "Kedvezmény %")}</th>
-                      <th className="py-3 px-3 w-28 text-right">{t("Sale Price", "Predajná cena", "Eladási ár")}</th>
+                      <th className="py-3 px-3 min-w-[220px]">{t("Product & Stock", "Tovar a skladový stav", "Termék & Készlet")}</th>
+                      <th className="py-3 px-3 w-36 min-w-[130px]">{t("Quantity", "Množstvo", "Mennyiség")}</th>
+                      <th className="py-3 px-3 w-32 text-right">{t("Base Price", "Cenníková cena", "Alapár")}</th>
+                      <th className="py-3 px-3 w-32 text-center">{t("Discount %", "Zľava %", "Kedvezmény %")}</th>
+                      <th className="py-3 px-3 w-32 text-right">{t("Sale Price", "Predajná cena", "Eladási ár")}</th>
                       <th className="py-3 px-3 w-32 text-right">{t("Line Total", "Spolu s DPH", "Összesen")}</th>
-                      <th className="py-3 px-3 w-36">{t("Note", "Poznámka", "Megjegyzés")}</th>
+                      <th className="py-3 px-3 min-w-[140px]">{t("Note", "Poznámka", "Megjegyzés")}</th>
                       <th className="py-3 px-2 w-10 text-center"></th>
                     </tr>
                   </thead>
@@ -2227,9 +2246,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       issueItems.map((row, idx) => {
                         const selItem = warehouseItems.find(i => i.id === row.itemId);
                         const stock = getStockInfoForItem(row.itemId, issueWarehouseId);
-                        const isStockExceeded = Number(row.quantity) > stock.available;
+                        const isStockExceeded = (Number(row.quantity) || 0) > stock.available;
                         const itemBatches = warehouseBatches.filter(b => b.itemId === row.itemId && b.warehouseId === issueWarehouseId && b.currentQuantity > 0);
-                        const lineTotal = Number(row.quantity) * Number(row.unitSellPrice);
+                        const lineTotal = (Number(row.quantity) || 0) * (Number(row.unitSellPrice) || 0);
 
                         return (
                           <tr key={row.id} className="hover:bg-slate-50/80 transition">
@@ -2297,34 +2316,21 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                               </div>
                             </td>
 
-                            {/* 3. Quantity & Unit Stepper */}
+                            {/* 3. Quantity (Wider input with unit badge, no incrementers) */}
                             <td className="py-3 px-3">
-                              <div className="flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => handleUpdateIssueRow(row.id, { quantity: Math.max(0.01, Number((Number(row.quantity) - 1).toFixed(2))) })}
-                                  className="w-6 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center justify-center transition shrink-0"
-                                >
-                                  -
-                                </button>
+                              <div className="relative w-full">
                                 <input
                                   type="number"
-                                  min="0.01"
-                                  step="0.01"
+                                  min="0.001"
+                                  step="any"
                                   value={row.quantity}
-                                  onChange={(e) => handleUpdateIssueRow(row.id, { quantity: Number(e.target.value) })}
-                                  className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 text-center focus:ring-2 focus:ring-blue-700 focus:outline-none"
+                                  onChange={(e) => handleUpdateIssueRow(row.id, { quantity: e.target.value })}
+                                  placeholder="0"
+                                  className="w-full pl-3 pr-9 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-blue-700 focus:outline-none transition shadow-sm"
                                 />
-                                <button
-                                  type="button"
-                                  onClick={() => handleUpdateIssueRow(row.id, { quantity: Number((Number(row.quantity) + 1).toFixed(2)) })}
-                                  className="w-6 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center justify-center transition shrink-0"
-                                >
-                                  +
-                                </button>
-                              </div>
-                              <div className="text-center text-[10px] font-semibold text-slate-400 mt-1">
-                                {selItem?.unit || "ks"}
+                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-slate-400 pointer-events-none">
+                                  {selItem?.unit || "ks"}
+                                </span>
                               </div>
                             </td>
 
@@ -2333,26 +2339,28 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                               <input
                                 type="number"
                                 min="0"
-                                step="0.01"
+                                step="any"
                                 value={row.baseSellPrice}
-                                onChange={(e) => handleUpdateIssueRow(row.id, { baseSellPrice: Number(e.target.value) })}
-                                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-700 text-right focus:ring-2 focus:ring-blue-700 focus:outline-none"
+                                onChange={(e) => handleUpdateIssueRow(row.id, { baseSellPrice: e.target.value })}
+                                placeholder="0.00"
+                                className="w-full px-2.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-700 text-right focus:ring-2 focus:ring-blue-700 focus:outline-none transition shadow-sm"
                               />
-                              <span className="text-[10px] text-slate-400 mt-1 block">/{selItem?.unit || "ks"}</span>
+                              <span className="text-[10px] text-slate-400 mt-0.5 block">/{selItem?.unit || "ks"}</span>
                             </td>
 
                             {/* 5. Discount (%) */}
                             <td className="py-3 px-3">
-                              <div className="space-y-1">
+                              <div className="space-y-1.5">
                                 <div className="relative">
                                   <input
                                     type="number"
                                     min="0"
                                     max="100"
-                                    step="0.5"
+                                    step="any"
                                     value={row.discountPct}
-                                    onChange={(e) => handleUpdateIssueRow(row.id, { discountPct: Number(e.target.value) })}
-                                    className="w-full pl-2 pr-5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-center text-rose-600 focus:ring-2 focus:ring-blue-700 focus:outline-none"
+                                    onChange={(e) => handleUpdateIssueRow(row.id, { discountPct: e.target.value })}
+                                    placeholder="0"
+                                    className="w-full pl-2.5 pr-6 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-center text-rose-600 focus:ring-2 focus:ring-blue-700 focus:outline-none transition shadow-sm"
                                   />
                                   <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400">%</span>
                                 </div>
@@ -2363,8 +2371,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                       key={pct}
                                       type="button"
                                       onClick={() => handleUpdateIssueRow(row.id, { discountPct: pct })}
-                                      className={`px-1 py-0.5 rounded text-[9px] font-bold transition ${
-                                        row.discountPct === pct ? "bg-rose-100 text-rose-700" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                                      className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition ${
+                                        Number(row.discountPct) === pct && row.discountPct !== "" ? "bg-rose-100 text-rose-700" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
                                       }`}
                                     >
                                       {pct}%
@@ -2379,12 +2387,13 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                               <input
                                 type="number"
                                 min="0"
-                                step="0.01"
+                                step="any"
                                 value={row.unitSellPrice}
-                                onChange={(e) => handleUpdateIssueRow(row.id, { unitSellPrice: Number(e.target.value) })}
-                                className="w-full px-2 py-1.5 bg-blue-50/50 border border-blue-200 rounded-xl text-xs font-mono font-bold text-blue-950 text-right focus:bg-white focus:ring-2 focus:ring-blue-700 focus:outline-none"
+                                onChange={(e) => handleUpdateIssueRow(row.id, { unitSellPrice: e.target.value })}
+                                placeholder="0.00"
+                                className="w-full px-2.5 py-2 bg-blue-50/60 border border-blue-200 rounded-xl text-xs font-mono font-bold text-blue-950 text-right focus:bg-white focus:ring-2 focus:ring-blue-700 focus:outline-none transition shadow-sm"
                               />
-                              <span className="text-[10px] text-slate-400 mt-1 block">/{selItem?.unit || "ks"}</span>
+                              <span className="text-[10px] text-slate-400 mt-0.5 block">/{selItem?.unit || "ks"}</span>
                             </td>
 
                             {/* 7. Line Total */}
@@ -2392,9 +2401,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                               <div className="font-mono font-black text-sm text-slate-900">
                                 {formatCurrency(lineTotal, systemLanguage, systemCurrency)}
                               </div>
-                              {row.discountPct > 0 && (
+                              {Number(row.discountPct) > 0 && (
                                 <span className="text-[10px] text-rose-600 font-semibold block">
-                                  -{formatCurrency((Number(row.quantity) * Number(row.baseSellPrice)) - lineTotal, systemLanguage, systemCurrency)}
+                                  -{formatCurrency(((Number(row.quantity) || 0) * (Number(row.baseSellPrice) || 0)) - lineTotal, systemLanguage, systemCurrency)}
                                 </span>
                               )}
                             </td>
@@ -2406,7 +2415,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                 value={row.note}
                                 onChange={(e) => handleUpdateIssueRow(row.id, { note: e.target.value })}
                                 placeholder={t("Line note...", "Poznámka...", "Megjegyzés...")}
-                                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-700 focus:outline-none"
+                                className="w-full px-2.5 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-700 focus:outline-none transition shadow-sm"
                               />
                             </td>
 
