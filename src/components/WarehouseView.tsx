@@ -2209,27 +2209,17 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   <tbody className="divide-y divide-slate-100">
                     {issueItems.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className="py-12 px-4 text-center">
-                          <div className="max-w-sm mx-auto space-y-3">
+                        <td colSpan={9} className="py-14 px-4 text-center">
+                          <div className="max-w-md mx-auto space-y-2.5">
                             <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-700 mx-auto flex items-center justify-center border border-blue-100 shadow-sm">
-                              <ShoppingCart className="w-6 h-6" />
+                              <Search className="w-6 h-6" />
                             </div>
-                            <div>
-                              <h4 className="font-bold text-slate-800 text-sm">
-                                {t("No products in goods issue yet", "Zoznam položiek je prázdny", "Még nincsenek tételek a kiadásban")}
-                              </h4>
-                              <p className="text-xs text-slate-400 mt-1">
-                                {t("Use the quick search bar above to find and add products, or click '+ Add Empty Row'.", "Vyhľadajte tovar vo vyhľadávacom paneli vyššie alebo kliknite na '+ Pridať prázdny riadok'.", "Keressen a fenti keresővel vagy adjon hozzá egy üres sort.")}
-                              </p>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={handleAddEmptyIssueRow}
-                              className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-950 hover:bg-blue-900 text-white rounded-xl text-xs font-bold transition shadow-sm"
-                            >
-                              <Plus className="w-4 h-4" />
-                              <span>{t("Add Line Item", "Pridať položku", "Tétel hozzáadása")}</span>
-                            </button>
+                            <h4 className="font-bold text-slate-800 text-sm">
+                              {t("Search & add products from the top search bar", "Vyhľadajte tovar vo vyhľadávacom paneli vyššie", "Keresse meg és adja hozzá a termékeket a fenti keresővel")}
+                            </h4>
+                            <p className="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto">
+                              {t("Type product name, SKU, or barcode in the search bar above to add items row by row to this issue.", "Zadajte názov produktu, SKU alebo čiarový kód do vyhľadávacieho panela vyššie a tovar sa automaticky pridá do zoznamu výdajky.", "Gépelje be a termék nevét vagy cikkszámát a fenti keresőmezőbe a hozzáadáshoz.")}
+                            </p>
                           </div>
                         </td>
                       </tr>
