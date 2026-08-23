@@ -43,9 +43,11 @@ try {
     $pdo->exec("DELETE FROM `leads`;");
     $pdo->exec("DELETE FROM `task_assignees`;");
     $pdo->exec("DELETE FROM `tasks`;");
+    $pdo->exec("DELETE FROM `financial_records`;");
 
     // Wipe customizable lists if "Keep Configs" was false
     if (!$keepConfigs) {
+        $pdo->exec("DELETE FROM `financial_categories`;");
         // Preserve the language the CRM was installed in BEFORE dropping the
         // settings, so the reset re-seeds the pipeline labels in that language
         // (mirrors setup.php) instead of forcing English/Slovak defaults.
@@ -75,6 +77,7 @@ try {
         foreach ($settings as $k => $v) {
             $insSet->execute([$k, $v]);
         }
+        ccrm_seed_default_financial_categories($pdo);
     } else {
         // Keep custom configurations, but toggle DEMO_MODE setting to false
         $stmt = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('DEMO_MODE', 'false') ON DUPLICATE KEY UPDATE `value` = 'false'");

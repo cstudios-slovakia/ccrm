@@ -397,3 +397,51 @@ Individual line items attached to a movement document.
 * `expiration_date` DATE
 * `note` VARCHAR(255)
 
+---
+
+## 9. Financial Management & Invoicing
+
+### `financial_categories`
+3-level hierarchical category tree tracking income and expense classifications separately.
+* `id` VARCHAR(50) [PK] (e.g. `fc-inc-sales`, `fc-exp-cogs`)
+* `type` ENUM('income', 'expense')
+* `name` VARCHAR(150) (e.g. Laminam Ceramic Slabs, Marketing, Online Ads)
+* `parent_id` VARCHAR(50) [NULLable FK to `financial_categories.id`]
+* `level` INT (1 = Root/Main category, 2 = Subcategory, 3 = Sub-subcategory)
+* `color` VARCHAR(30) (Hex code for UI badges)
+* `icon` VARCHAR(50) (Lucide icon name)
+* `created_at` TIMESTAMP
+* `updated_at` TIMESTAMP
+
+### `financial_records`
+Core financial movement records representing current and planned/future incomes, invoices, and expenses (single and recurring).
+* `id` VARCHAR(50) [PK] (e.g. `fr-2026-0001`)
+* `type` ENUM('income', 'expense')
+* `subtype` VARCHAR(50) (e.g. `invoice`, `expense`, `tax`, `salary`, `material`, `overhead`)
+* `title` VARCHAR(255)
+* `description` TEXT
+* `category_id` VARCHAR(50) (References `financial_categories.id`)
+* `category_path` VARCHAR(255) (Pre-calculated breadcrumb path for quick filtering)
+* `amount_planned` DECIMAL(15,2) (Planned / budgeted amount)
+* `amount_real` DECIMAL(15,2) (Actual / realized transaction amount)
+* `currency` VARCHAR(10) (Default `EUR`)
+* `status` ENUM('planned', 'pending', 'paid', 'partially_paid', 'overdue', 'cancelled')
+* `issue_date` DATE (Date invoice issued or expense scheduled)
+* `due_date` DATE (Settlement due date)
+* `paid_date` DATE (Date funds cleared)
+* `payment_method` VARCHAR(50) (e.g. bank_transfer, card, cash, credit)
+* `is_recurring` TINYINT(1) (1 = Recurring rule active, 0 = Single transaction)
+* `recurring_frequency` ENUM('weekly', 'monthly', 'yearly')
+* `recurring_config_json` TEXT (Recurrence rule configuration: `dayOfWeek`, `dayOfMonth`, `weekOfMonth`, `month`)
+* `recurring_start_date` DATE
+* `recurring_end_date` DATE
+* `project_id` VARCHAR(50) [NULLable, links to `projects.id`; NULL means Global company-wide record]
+* `client_id` VARCHAR(50) [NULLable, links to `leads.id` / client; NULL means Global company-wide record]
+* `invoice_number` VARCHAR(100) (e.g. `FA-2026-0001`)
+* `tax_rate` DECIMAL(5,2) (VAT rate, default 20.00)
+* `attachments_json` TEXT (JSON list of receipt/invoice file attachments)
+* `created_by` VARCHAR(100) (Author user)
+* `created_at` TIMESTAMP
+* `updated_at` TIMESTAMP
+
+

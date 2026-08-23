@@ -1,11 +1,12 @@
 import React, { useState } from "react";
 import * as Icons from "lucide-react";
-import { LayoutDashboard, ChevronLeft, ChevronRight, Settings, LogOut, TableProperties, Users, FolderOpen, BarChart3, Mail, Brain, PencilLine, Pencil, X, GripVertical, Download, Upload, Save, Trash2, Sparkles } from "lucide-react";
+import { LayoutDashboard, ChevronLeft, ChevronRight, Settings, LogOut, TableProperties, Users, FolderOpen, BarChart3, Mail, Brain, PencilLine, Pencil, X, GripVertical, Download, Upload, Save, Trash2, Sparkles, Coins } from "lucide-react";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { cn } from "../utils/cn";
 import { SOCIAL_MEDIA_ENABLED } from "../utils/featureFlags";
 import type { UserProfile, RolePermission, UnifiedEntryRegistry, CustomDashboard } from "../types";
+import { StartMenu } from "./StartMenu";
 
 const ALL_LUCIDE_ICONS = Object.keys(Icons).filter(key => {
   return /^[A-Z][a-zA-Z0-9]*$/.test(key) && 
@@ -56,6 +57,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
   const [isCollapsed, setIsCollapsed] = useState(true); // Default collapsed for the minimalist aesthetic
+  const [isStartMenuOpen, setIsStartMenuOpen] = useState(false);
   const sidebarRef = React.useRef<HTMLElement>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -175,6 +177,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     // Reset and close
     setDashName("");
     setIsDashModalOpen(false);
+    setIsStartMenuOpen(false);
     
     // Switch to it immediately
     setActiveTab(itemNavId);
@@ -228,6 +231,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       "leads", 
       "clients", 
       "warehouse",
+      "financial",
       "meetings", 
       ...dynamicUeItems.map(item => item.id),
       ...dynamicDashItems.map(item => item.id),
@@ -257,17 +261,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const resolvedLayout = React.useMemo(() => {
     if (canEditNav && Array.isArray(userMetadata?.navLayout)) {
       const stored: string[] = userMetadata.navLayout;
-      const hidden: string[] = Array.isArray(userMetadata?.navHidden) ? userMetadata.navHidden : [];
-      // Ids in neither list did not exist when this layout was saved — surface
-      // them once instead of leaving a newly shipped module permanently invisible.
-      const introduced = defaultSystemLayout.filter(id => !stored.includes(id) && !hidden.includes(id));
-      return introduced.length ? [...stored, ...introduced] : stored;
+      return stored;
     }
-    if (userRole?.defaultNavLayout) {
+    if (userRole?.defaultNavLayout && Array.isArray(userRole.defaultNavLayout)) {
       return userRole.defaultNavLayout;
     }
-    return defaultSystemLayout;
-  }, [canEditNav, userMetadata, userRole, defaultSystemLayout]);
+    // Freshly installed: start with nothing on the sidebar
+    return [];
+  }, [canEditNav, userMetadata, userRole]);
 
   // Initialize active/hidden items when edit mode starts
   React.useEffect(() => {
@@ -355,6 +356,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
     setDragOverIndex(null);
   };
 
+  // Toggle Pin item to Left Sidebar (Original Navigation)
+  const handleTogglePin = (itemId: string) => {
+    const currentActive = isEditingNav ? activeItems : resolvedLayout;
+    const isPinned = currentActive.includes(itemId);
+    let newActive: string[];
+    let newHidden: string[];
+
+    if (isPinned) {
+      newActive = currentActive.filter((id: string) => id !== itemId);
+      const currentHidden = isEditingNav ? hiddenItems : (userMetadata?.navHidden || defaultSystemLayout.filter((id: string) => !newActive.includes(id)));
+      newHidden = Array.from(new Set([...currentHidden, itemId]));
+    } else {
+      newActive = [...currentActive, itemId];
+      const currentHidden = isEditingNav ? hiddenItems : (userMetadata?.navHidden || []);
+      newHidden = currentHidden.filter((id: string) => id !== itemId);
+    }
+
+    setActiveItems(newActive);
+    setHiddenItems(newHidden);
+    onSaveUserLayout(newActive, newHidden);
+  };
+
   // Download Layout JSON file
   const handleDownloadLayout = () => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({ layout: activeItems, hidden: hiddenItems }, null, 2));
@@ -405,6 +428,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       { id: "leads", label: getTranslation(systemLanguage, "sidebar.leads"), icon: TableProperties, color: "#2563eb" },
       { id: "clients", label: getTranslation(systemLanguage, "sidebar.clients"), icon: Users, color: "#059669" },
       { id: "warehouse", label: getTranslation(systemLanguage, "sidebar.warehouse"), icon: Icons.Package || Icons.Boxes || FolderOpen, color: "#1e3a8a", isNavy: true },
+      { id: "financial", label: getTranslation(systemLanguage, "sidebar.financial"), icon: Coins, color: "#10b981", isEmerald: true },
       { id: "meetings", label: getTranslation(systemLanguage, "sidebar.meetings"), icon: PencilLine, color: "#4f46e5", isNightBlue: true },
       ...dynamicUeItems,
       ...dynamicDashItems,
@@ -450,30 +474,40 @@ export const Sidebar: React.FC<SidebarProps> = ({
             : "w-64 shadow-[10px_0_30px_rgba(0,0,0,0.06)] border-r-transparent"
         )}
       >
-        {/* Brand Header */}
+        {/* Brand Header / Start Menu Launcher */}
         <div className={cn(
           "h-20 flex items-center relative select-none transition-all duration-300",
-          isCollapsed ? "justify-center px-0" : "px-6"
+          isCollapsed ? "justify-center px-0" : "px-3"
         )}>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center gap-1 shrink-0">
-              <span className="h-2 w-2 rounded-full bg-orange-500" />
-              <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              <span className="h-2 w-2 rounded-full bg-slate-300" />
+          <button
+            type="button"
+            onClick={() => setIsStartMenuOpen(true)}
+            className="flex items-center gap-3 p-1.5 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800/80 active:scale-95 transition-all cursor-pointer group text-left w-full focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+            title={t("Start Menu (All Modules)", "Štart menu (Všetky moduly)", "Start menü (Összes modul)")}
+          >
+            {/* 3 Dots Container with small START label directly underneath */}
+            <div className="flex flex-col items-center justify-center gap-1 py-1.5 px-2 rounded-2xl bg-slate-50 dark:bg-slate-850 border border-slate-200/90 dark:border-slate-700 shadow-2xs group-hover:border-indigo-400 group-hover:shadow-md group-hover:bg-indigo-50/50 dark:group-hover:bg-indigo-950/40 transition-all shrink-0">
+              <div className="flex items-center justify-center gap-1">
+                <span className="h-2 w-2 rounded-full bg-orange-500 group-hover:scale-125 transition-transform" />
+                <span className="h-2 w-2 rounded-full bg-emerald-500 group-hover:scale-125 transition-transform" />
+                <span className="h-2 w-2 rounded-full bg-indigo-500 group-hover:scale-125 transition-transform" />
+              </div>
+              <span className="text-[7.5px] font-black tracking-widest text-slate-500 dark:text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors uppercase leading-none">
+                START
+              </span>
             </div>
+
             {!isCollapsed && (
-              <div className="flex flex-col animate-in fade-in duration-300">
-                {/* leading-snug, not leading-none: `truncate` clips anything
-                    growing past the line box, which eats accents (Laminám) */}
-                <span className="font-heading font-bold text-sm leading-snug bg-gradient-to-r from-slate-800 to-slate-950 bg-clip-text text-transparent truncate max-w-[150px]">
+              <div className="flex flex-col animate-in fade-in duration-300 min-w-0 flex-1">
+                <span className="font-heading font-bold text-sm leading-snug bg-gradient-to-r from-slate-800 to-slate-950 dark:from-slate-100 dark:to-white bg-clip-text text-transparent truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
                   {systemName}
                 </span>
-                <span className="text-[10px] text-slate-400 tracking-wider font-semibold uppercase mt-0.5">
+                <span className="text-[10px] text-slate-400 tracking-wider font-semibold uppercase mt-0.5 truncate">
                   {getTranslation(systemLanguage, "sidebar.command_center")}
                 </span>
               </div>
             )}
-          </div>
+          </button>
         </div>
 
         {/* Nav List */}
@@ -526,6 +560,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           ? (isActive
                               ? "bg-blue-950 text-white font-bold shadow-lg shadow-blue-950/30 border border-blue-900/20"
                               : "text-blue-950 hover:text-blue-900 hover:bg-blue-50/50")
+                        : item.isEmerald
+                          ? (isActive
+                              ? "bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-600/30 border border-emerald-500/20"
+                              : "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50/50")
                         : item.isNightBlue
                           ? (isActive
                               ? "bg-slate-900 text-white font-bold shadow-lg shadow-slate-900/30 border border-slate-800/20"
@@ -854,21 +892,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Brand Header: Only visible when fullscreen drawer is open */}
         {isMobileMenuOpen && (
-          <div className="flex items-center gap-3.5 mb-8 animate-in fade-in slide-in-from-top-4 duration-300 shrink-0">
-            <div className="h-10 w-10 flex items-center justify-center gap-1.5 shrink-0 select-none">
-              <span className="h-2 w-2 rounded-full bg-orange-500" />
-              <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              <span className="h-2 w-2 rounded-full bg-slate-300" />
+          <button
+            type="button"
+            onClick={() => {
+              setIsMobileMenuOpen(false);
+              setIsStartMenuOpen(true);
+            }}
+            className="flex items-center gap-3.5 mb-8 animate-in fade-in slide-in-from-top-4 duration-300 shrink-0 text-left p-2 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer w-full"
+          >
+            <div className="h-10 w-10 flex items-center justify-center gap-1.5 shrink-0 select-none rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+              <span className="h-2.5 w-2.5 rounded-full bg-orange-500" />
+              <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+              <span className="h-2.5 w-2.5 rounded-full bg-indigo-500" />
             </div>
             <div className="flex flex-col text-left">
-              <span className="font-heading font-bold text-sm leading-none bg-gradient-to-r from-slate-800 to-slate-950 bg-clip-text text-transparent">
+              <span className="font-heading font-bold text-sm leading-none bg-gradient-to-r from-slate-800 to-slate-950 dark:from-slate-100 dark:to-white bg-clip-text text-transparent">
                 {systemName}
               </span>
-              <span className="text-[9px] text-slate-400 tracking-wider font-extrabold uppercase mt-0.5">
-                {getTranslation(systemLanguage, "sidebar.command_center")}
+              <span className="text-[9px] text-indigo-600 dark:text-indigo-400 tracking-wider font-extrabold uppercase mt-1">
+                {t("Open Start Menu", "Otvoriť Štart menu", "Start menü megnyitása")} ➔
               </span>
             </div>
-          </div>
+          </button>
         )}
 
         {/* Reorganizing flex container */}
@@ -914,6 +959,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           : (isMobileMenuOpen
                               ? "bg-purple-50 border-purple-100 text-purple-500"
                               : "bg-purple-50/50 border-purple-100 text-purple-500 hover:bg-purple-100 hover:text-purple-650"))
+                      : item.isEmerald
+                        ? (isActive
+                            ? "bg-emerald-600 border-emerald-700 text-white"
+                            : (isMobileMenuOpen
+                                ? "bg-emerald-50 border-emerald-200 text-emerald-600"
+                                : "bg-emerald-50/50 border-emerald-100 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-700"))
                       : item.isNightBlue
                         ? (isActive
                             ? "bg-slate-900 border-slate-950 text-white"
@@ -1025,7 +1076,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* New Custom Dashboard Modal */}
       {isDashModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100000] flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-[32px] shadow-2xl border border-slate-200/80 w-full max-w-md overflow-hidden flex flex-col p-6 space-y-6 animate-in zoom-in-95 duration-200 text-left">
             {/* Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -1132,7 +1183,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Icon Search Picker Modal */}
       {isIconSearchOpen && (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[100005] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col text-left overflow-hidden m-4 animate-in zoom-in-95 duration-200">
             {/* Header */}
             <div className="p-6 border-b border-slate-100 flex items-center justify-between">
@@ -1217,6 +1268,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
       )}
+
+      {/* Start Menu Modal Launcher (Windows-style multi-column grouped menu) */}
+      <StartMenu
+        isOpen={isStartMenuOpen}
+        onClose={() => setIsStartMenuOpen(false)}
+        activeTab={activeTab}
+        onSelectTab={(tabId) => {
+          setActiveTab(tabId);
+          setIsCollapsed(true);
+        }}
+        systemName={systemName}
+        systemLanguage={systemLanguage}
+        currentUser={currentUser}
+        roles={roles}
+        showSettings={showSettings}
+        showMailIcon={showMailIcon}
+        showRagAi={showRagAi}
+        customDashboards={customDashboards}
+        unifiedEntries={unifiedEntries}
+        onOpenCreateDashboard={() => setIsDashModalOpen(true)}
+        pinnedSidebarItems={isEditingNav ? activeItems : resolvedLayout}
+        onTogglePinToSidebar={handleTogglePin}
+        onLogout={onLogout}
+      />
     </>
   );
 };

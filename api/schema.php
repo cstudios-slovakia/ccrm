@@ -512,6 +512,61 @@ if (!function_exists('ccrm_schema_statements')) {
               `note` VARCHAR(255) NULL,
               FOREIGN KEY (`movement_id`) REFERENCES `warehouse_movements` (`id`) ON DELETE CASCADE,
               FOREIGN KEY (`item_id`) REFERENCES `warehouse_items` (`id`) ON DELETE RESTRICT
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Financial Categories (3-level hierarchical category tree for Incomes and Expenses)
+            "CREATE TABLE IF NOT EXISTS `financial_categories` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `type` ENUM('income', 'expense') NOT NULL,
+              `name` VARCHAR(150) NOT NULL,
+              `parent_id` VARCHAR(50) NULL,
+              `level` INT NOT NULL DEFAULT 1,
+              `color` VARCHAR(30) NULL,
+              `icon` VARCHAR(50) NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX idx_fc_type (`type`),
+              INDEX idx_fc_parent (`parent_id`),
+              INDEX idx_fc_level (`level`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Financial Records (Incomes, Invoices, Expenses, Recurring and Single movements)
+            "CREATE TABLE IF NOT EXISTS `financial_records` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `type` ENUM('income', 'expense') NOT NULL,
+              `subtype` VARCHAR(50) NOT NULL DEFAULT 'regular' COMMENT 'invoice, expense, tax, salary, material, overhead',
+              `title` VARCHAR(255) NOT NULL,
+              `description` TEXT NULL,
+              `category_id` VARCHAR(50) NULL,
+              `category_path` VARCHAR(255) NULL COMMENT 'Hierarchical breadcrumb e.g. Level1 > Level2 > Level3',
+              `amount_planned` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+              `amount_real` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+              `currency` VARCHAR(10) NOT NULL DEFAULT 'EUR',
+              `status` ENUM('planned', 'pending', 'paid', 'partially_paid', 'overdue', 'cancelled') NOT NULL DEFAULT 'planned',
+              `issue_date` DATE NOT NULL COMMENT 'Date invoice issued or expense scheduled',
+              `due_date` DATE NULL COMMENT 'Due date for settlement',
+              `paid_date` DATE NULL COMMENT 'Actual payment date if settled',
+              `payment_method` VARCHAR(50) NULL,
+              `is_recurring` TINYINT(1) NOT NULL DEFAULT 0,
+              `recurring_frequency` ENUM('weekly', 'monthly', 'yearly') NULL,
+              `recurring_config_json` TEXT NULL,
+              `recurring_start_date` DATE NULL,
+              `recurring_end_date` DATE NULL,
+              `project_id` VARCHAR(50) NULL COMMENT 'NULL for Global company-wide record, or linked project ID',
+              `client_id` VARCHAR(50) NULL COMMENT 'NULL for Global company-wide record, or linked client ID',
+              `invoice_number` VARCHAR(100) NULL,
+              `tax_rate` DECIMAL(5,2) NOT NULL DEFAULT 20.00,
+              `attachments_json` TEXT NULL,
+              `created_by` VARCHAR(100) NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX idx_fr_type (`type`),
+              INDEX idx_fr_status (`status`),
+              INDEX idx_fr_issue_date (`issue_date`),
+              INDEX idx_fr_due_date (`due_date`),
+              INDEX idx_fr_project (`project_id`),
+              INDEX idx_fr_client (`client_id`),
+              INDEX idx_fr_recurring (`is_recurring`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
         ];
     }
@@ -714,6 +769,7 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_migrate_updated_at_precision($pdo);
         ccrm_migrate_task_states($pdo);
         ccrm_backfill_task_completion_attribution($pdo);
+        ccrm_seed_default_financial_categories($pdo);
     }
 
     /**
@@ -969,6 +1025,160 @@ if (!function_exists('ccrm_schema_statements')) {
     }
 
     /**
+     * Seed default 3-level financial categories hierarchy for Incomes and Expenses.
+     */
+    function ccrm_default_financial_categories(string $language): array {
+        if (!in_array($language, ['en', 'sk', 'hu'], true)) {
+            $language = 'sk';
+        }
+
+        if ($language === 'en') {
+            return [
+                // Incomes (Level 1)
+                ['id' => 'fc-inc-sales', 'type' => 'income', 'name' => 'Sales of Goods & Materials', 'parent_id' => null, 'level' => 1, 'color' => '#10b981', 'icon' => 'Package'],
+                ['id' => 'fc-inc-slabs', 'type' => 'income', 'name' => 'Laminam Ceramic Slabs', 'parent_id' => 'fc-inc-sales', 'level' => 2, 'color' => '#059669', 'icon' => 'Layers'],
+                ['id' => 'fc-inc-slabs-3', 'type' => 'income', 'name' => 'LAM 3+ (approx 80 €/m²)', 'parent_id' => 'fc-inc-slabs', 'level' => 3, 'color' => '#34d399', 'icon' => 'Circle'],
+                ['id' => 'fc-inc-slabs-5', 'type' => 'income', 'name' => 'LAM 5+ (approx 90 €/m²)', 'parent_id' => 'fc-inc-slabs', 'level' => 3, 'color' => '#10b981', 'icon' => 'Circle'],
+                ['id' => 'fc-inc-slabs-12', 'type' => 'income', 'name' => 'LAM 12+ (approx 250 €/m²)', 'parent_id' => 'fc-inc-slabs', 'level' => 3, 'color' => '#047857', 'icon' => 'Circle'],
+                ['id' => 'fc-inc-supplements', 'type' => 'income', 'name' => 'Adhesives & Accessories', 'parent_id' => 'fc-inc-sales', 'level' => 2, 'color' => '#6ee7b7', 'icon' => 'Box'],
+                ['id' => 'fc-inc-services', 'type' => 'income', 'name' => 'Installation & Realization Services', 'parent_id' => null, 'level' => 1, 'color' => '#3b82f6', 'icon' => 'Wrench'],
+                ['id' => 'fc-inc-assembly', 'type' => 'income', 'name' => 'Assembly & Tiling Works', 'parent_id' => 'fc-inc-services', 'level' => 2, 'color' => '#2563eb', 'icon' => 'Hammer'],
+                ['id' => 'fc-inc-logistics', 'type' => 'income', 'name' => 'Transport & Crane Logistics', 'parent_id' => 'fc-inc-services', 'level' => 2, 'color' => '#60a5fa', 'icon' => 'Truck'],
+                ['id' => 'fc-inc-other', 'type' => 'income', 'name' => 'Other Financial Incomes', 'parent_id' => null, 'level' => 1, 'color' => '#8b5cf6', 'icon' => 'Coins'],
+
+                // Expenses (Level 1)
+                ['id' => 'fc-exp-cogs', 'type' => 'expense', 'name' => 'COGS - Direct Material Purchases (ELÁBÉ)', 'parent_id' => null, 'level' => 1, 'color' => '#ef4444', 'icon' => 'Package'],
+                ['id' => 'fc-exp-mat-lam', 'type' => 'expense', 'name' => 'Laminam Material Purchase (Italy)', 'parent_id' => 'fc-exp-cogs', 'level' => 2, 'color' => '#dc2626', 'icon' => 'Layers'],
+                ['id' => 'fc-exp-mat-lam3', 'type' => 'expense', 'name' => 'Material LAM 3+', 'parent_id' => 'fc-exp-mat-lam', 'level' => 3, 'color' => '#f87171', 'icon' => 'Circle'],
+                ['id' => 'fc-exp-mat-lam5', 'type' => 'expense', 'name' => 'Material LAM 5+', 'parent_id' => 'fc-exp-mat-lam', 'level' => 3, 'color' => '#ef4444', 'icon' => 'Circle'],
+                ['id' => 'fc-exp-mat-lam12', 'type' => 'expense', 'name' => 'Material LAM 12+', 'parent_id' => 'fc-exp-mat-lam', 'level' => 3, 'color' => '#b91c1c', 'icon' => 'Circle'],
+                ['id' => 'fc-exp-mat-pack', 'type' => 'expense', 'name' => 'Packaging & Pallets', 'parent_id' => 'fc-exp-cogs', 'level' => 2, 'color' => '#fca5a5', 'icon' => 'Box'],
+                ['id' => 'fc-exp-freight', 'type' => 'expense', 'name' => 'International Freight & Transport', 'parent_id' => 'fc-exp-cogs', 'level' => 2, 'color' => '#ea580c', 'icon' => 'Truck'],
+                ['id' => 'fc-exp-marketing', 'type' => 'expense', 'name' => 'Marketing & Advertising', 'parent_id' => null, 'level' => 1, 'color' => '#f59e0b', 'icon' => 'Megaphone'],
+                ['id' => 'fc-exp-mkt-online', 'type' => 'expense', 'name' => 'Online Ads & Performance', 'parent_id' => 'fc-exp-marketing', 'level' => 2, 'color' => '#d97706', 'icon' => 'Globe'],
+                ['id' => 'fc-exp-mkt-meta', 'type' => 'expense', 'name' => 'Meta FB / IG Ads', 'parent_id' => 'fc-exp-mkt-online', 'level' => 3, 'color' => '#fbbf24', 'icon' => 'Share2'],
+                ['id' => 'fc-exp-mkt-google', 'type' => 'expense', 'name' => 'Google Ads', 'parent_id' => 'fc-exp-mkt-online', 'level' => 3, 'color' => '#f59e0b', 'icon' => 'Search'],
+                ['id' => 'fc-exp-mkt-seo', 'type' => 'expense', 'name' => 'SEO Optimization', 'parent_id' => 'fc-exp-mkt-online', 'level' => 3, 'color' => '#b45309', 'icon' => 'TrendingUp'],
+                ['id' => 'fc-exp-mkt-creative', 'type' => 'expense', 'name' => 'Agency, Graphic & Copywriting', 'parent_id' => 'fc-exp-marketing', 'level' => 2, 'color' => '#fb923c', 'icon' => 'PenTool'],
+                ['id' => 'fc-exp-payroll', 'type' => 'expense', 'name' => 'Payroll & Subcontractors', 'parent_id' => null, 'level' => 1, 'color' => '#8b5cf6', 'icon' => 'Users'],
+                ['id' => 'fc-exp-pay-exec', 'type' => 'expense', 'name' => 'Executive & Management Salary', 'parent_id' => 'fc-exp-payroll', 'level' => 2, 'color' => '#7c3aed', 'icon' => 'Briefcase'],
+                ['id' => 'fc-exp-pay-staff', 'type' => 'expense', 'name' => 'Staff & Assemblers Payroll', 'parent_id' => 'fc-exp-payroll', 'level' => 2, 'color' => '#6d28d9', 'icon' => 'UserCheck'],
+                ['id' => 'fc-exp-pay-comm', 'type' => 'expense', 'name' => 'Sales & Partner Commissions', 'parent_id' => 'fc-exp-payroll', 'level' => 2, 'color' => '#a78bfa', 'icon' => 'Percent'],
+                ['id' => 'fc-exp-overhead', 'type' => 'expense', 'name' => 'Overhead, Facility & Rent', 'parent_id' => null, 'level' => 1, 'color' => '#0891b2', 'icon' => 'Building'],
+                ['id' => 'fc-exp-ovh-rent', 'type' => 'expense', 'name' => 'Showroom & Warehouse Rent', 'parent_id' => 'fc-exp-overhead', 'level' => 2, 'color' => '#0e7490', 'icon' => 'Home'],
+                ['id' => 'fc-exp-ovh-util', 'type' => 'expense', 'name' => 'Utilities & Office Accounting', 'parent_id' => 'fc-exp-overhead', 'level' => 2, 'color' => '#06b6d4', 'icon' => 'FileText'],
+                ['id' => 'fc-exp-ovh-sec', 'type' => 'expense', 'name' => 'Security & Insurance', 'parent_id' => 'fc-exp-overhead', 'level' => 2, 'color' => '#67e8f9', 'icon' => 'Shield']
+            ];
+        }
+
+        if ($language === 'hu') {
+            return [
+                // Incomes (Level 1)
+                ['id' => 'fc-inc-sales', 'type' => 'income', 'name' => 'Termék- és anyagértékesítés', 'parent_id' => null, 'level' => 1, 'color' => '#10b981', 'icon' => 'Package'],
+                ['id' => 'fc-inc-slabs', 'type' => 'income', 'name' => 'Laminam kerámia lapok', 'parent_id' => 'fc-inc-sales', 'level' => 2, 'color' => '#059669', 'icon' => 'Layers'],
+                ['id' => 'fc-inc-slabs-3', 'type' => 'income', 'name' => 'LAM 3+ (kb. 80 €/m²)', 'parent_id' => 'fc-inc-slabs', 'level' => 3, 'color' => '#34d399', 'icon' => 'Circle'],
+                ['id' => 'fc-inc-slabs-5', 'type' => 'income', 'name' => 'LAM 5+ (kb. 90 €/m²)', 'parent_id' => 'fc-inc-slabs', 'level' => 3, 'color' => '#10b981', 'icon' => 'Circle'],
+                ['id' => 'fc-inc-slabs-12', 'type' => 'income', 'name' => 'LAM 12+ (kb. 250 €/m²)', 'parent_id' => 'fc-inc-slabs', 'level' => 3, 'color' => '#047857', 'icon' => 'Circle'],
+                ['id' => 'fc-inc-supplements', 'type' => 'income', 'name' => 'Kiegészítő anyagok és ragasztók', 'parent_id' => 'fc-inc-sales', 'level' => 2, 'color' => '#6ee7b7', 'icon' => 'Box'],
+                ['id' => 'fc-inc-services', 'type' => 'income', 'name' => 'Szolgáltatások és kivitelezés', 'parent_id' => null, 'level' => 1, 'color' => '#3b82f6', 'icon' => 'Wrench'],
+                ['id' => 'fc-inc-assembly', 'type' => 'income', 'name' => 'Beépítés és burkolási munkák', 'parent_id' => 'fc-inc-services', 'level' => 2, 'color' => '#2563eb', 'icon' => 'Hammer'],
+                ['id' => 'fc-inc-logistics', 'type' => 'income', 'name' => 'Szállítás és logisztika', 'parent_id' => 'fc-inc-services', 'level' => 2, 'color' => '#60a5fa', 'icon' => 'Truck'],
+                ['id' => 'fc-inc-other', 'type' => 'income', 'name' => 'Egyéb bevételek', 'parent_id' => null, 'level' => 1, 'color' => '#8b5cf6', 'icon' => 'Coins'],
+
+                // Expenses (Level 1)
+                ['id' => 'fc-exp-cogs', 'type' => 'expense', 'name' => 'ELÁBÉ - Közvetlen anyagbeszerzés', 'parent_id' => null, 'level' => 1, 'color' => '#ef4444', 'icon' => 'Package'],
+                ['id' => 'fc-exp-mat-lam', 'type' => 'expense', 'name' => 'Laminam anyagbeszerzés (Olaszország)', 'parent_id' => 'fc-exp-cogs', 'level' => 2, 'color' => '#dc2626', 'icon' => 'Layers'],
+                ['id' => 'fc-exp-mat-lam3', 'type' => 'expense', 'name' => 'Anyag LAM 3+', 'parent_id' => 'fc-exp-mat-lam', 'level' => 3, 'color' => '#f87171', 'icon' => 'Circle'],
+                ['id' => 'fc-exp-mat-lam5', 'type' => 'expense', 'name' => 'Anyag LAM 5+', 'parent_id' => 'fc-exp-mat-lam', 'level' => 3, 'color' => '#ef4444', 'icon' => 'Circle'],
+                ['id' => 'fc-exp-mat-lam12', 'type' => 'expense', 'name' => 'Anyag LAM 12+', 'parent_id' => 'fc-exp-mat-lam', 'level' => 3, 'color' => '#b91c1c', 'icon' => 'Circle'],
+                ['id' => 'fc-exp-mat-pack', 'type' => 'expense', 'name' => 'Raklapok és csomagolóanyag', 'parent_id' => 'fc-exp-cogs', 'level' => 2, 'color' => '#fca5a5', 'icon' => 'Box'],
+                ['id' => 'fc-exp-freight', 'type' => 'expense', 'name' => 'Fuvar és kamionos szállítás', 'parent_id' => 'fc-exp-cogs', 'level' => 2, 'color' => '#ea580c', 'icon' => 'Truck'],
+                ['id' => 'fc-exp-marketing', 'type' => 'expense', 'name' => 'Marketing és hirdetés', 'parent_id' => null, 'level' => 1, 'color' => '#f59e0b', 'icon' => 'Megaphone'],
+                ['id' => 'fc-exp-mkt-online', 'type' => 'expense', 'name' => 'Online hirdetések', 'parent_id' => 'fc-exp-marketing', 'level' => 2, 'color' => '#d97706', 'icon' => 'Globe'],
+                ['id' => 'fc-exp-mkt-meta', 'type' => 'expense', 'name' => 'Meta FB / IG hirdetés', 'parent_id' => 'fc-exp-mkt-online', 'level' => 3, 'color' => '#fbbf24', 'icon' => 'Share2'],
+                ['id' => 'fc-exp-mkt-google', 'type' => 'expense', 'name' => 'Google Ads', 'parent_id' => 'fc-exp-mkt-online', 'level' => 3, 'color' => '#f59e0b', 'icon' => 'Search'],
+                ['id' => 'fc-exp-mkt-seo', 'type' => 'expense', 'name' => 'SEO optimalizáció', 'parent_id' => 'fc-exp-mkt-online', 'level' => 3, 'color' => '#b45309', 'icon' => 'TrendingUp'],
+                ['id' => 'fc-exp-mkt-creative', 'type' => 'expense', 'name' => 'Ügynökség, grafika és szövegírás', 'parent_id' => 'fc-exp-marketing', 'level' => 2, 'color' => '#fb923c', 'icon' => 'PenTool'],
+                ['id' => 'fc-exp-payroll', 'type' => 'expense', 'name' => 'Munkabér és jutalékok', 'parent_id' => null, 'level' => 1, 'color' => '#8b5cf6', 'icon' => 'Users'],
+                ['id' => 'fc-exp-pay-exec', 'type' => 'expense', 'name' => 'Vezér bére', 'parent_id' => 'fc-exp-payroll', 'level' => 2, 'color' => '#7c3aed', 'icon' => 'Briefcase'],
+                ['id' => 'fc-exp-pay-staff', 'type' => 'expense', 'name' => 'Munkatársak és szerelők bére', 'parent_id' => 'fc-exp-payroll', 'level' => 2, 'color' => '#6d28d9', 'icon' => 'UserCheck'],
+                ['id' => 'fc-exp-pay-comm', 'type' => 'expense', 'name' => 'Értékesítési jutalékok és partnerek', 'parent_id' => 'fc-exp-payroll', 'level' => 2, 'color' => '#a78bfa', 'icon' => 'Percent'],
+                ['id' => 'fc-exp-overhead', 'type' => 'expense', 'name' => 'Rezsi és bérleti díj', 'parent_id' => null, 'level' => 1, 'color' => '#0891b2', 'icon' => 'Building'],
+                ['id' => 'fc-exp-ovh-rent', 'type' => 'expense', 'name' => 'Showroom és raktár bérleti díj', 'parent_id' => 'fc-exp-overhead', 'level' => 2, 'color' => '#0e7490', 'icon' => 'Home'],
+                ['id' => 'fc-exp-ovh-util', 'type' => 'expense', 'name' => 'Irodai rezsi, utazás és könyvelés', 'parent_id' => 'fc-exp-overhead', 'level' => 2, 'color' => '#06b6d4', 'icon' => 'FileText'],
+                ['id' => 'fc-exp-ovh-sec', 'type' => 'expense', 'name' => 'Biztonsági szolgálat és biztosítás', 'parent_id' => 'fc-exp-overhead', 'level' => 2, 'color' => '#67e8f9', 'icon' => 'Shield']
+            ];
+        }
+
+        // Slovak (default)
+        return [
+            // Incomes (Level 1)
+            ['id' => 'fc-inc-sales', 'type' => 'income', 'name' => 'Predaj tovaru a materiálu', 'parent_id' => null, 'level' => 1, 'color' => '#10b981', 'icon' => 'Package'],
+            ['id' => 'fc-inc-slabs', 'type' => 'income', 'name' => 'Laminam keramické dosky', 'parent_id' => 'fc-inc-sales', 'level' => 2, 'color' => '#059669', 'icon' => 'Layers'],
+            ['id' => 'fc-inc-slabs-3', 'type' => 'income', 'name' => 'Dosky LAM 3+ (cca 80 €/m²)', 'parent_id' => 'fc-inc-slabs', 'level' => 3, 'color' => '#34d399', 'icon' => 'Circle'],
+            ['id' => 'fc-inc-slabs-5', 'type' => 'income', 'name' => 'Dosky LAM 5+ (cca 90 €/m²)', 'parent_id' => 'fc-inc-slabs', 'level' => 3, 'color' => '#10b981', 'icon' => 'Circle'],
+            ['id' => 'fc-inc-slabs-12', 'type' => 'income', 'name' => 'Dosky LAM 12+ (cca 250 €/m²)', 'parent_id' => 'fc-inc-slabs', 'level' => 3, 'color' => '#047857', 'icon' => 'Circle'],
+            ['id' => 'fc-inc-supplements', 'type' => 'income', 'name' => 'Doplnkový materiál a lepidlá', 'parent_id' => 'fc-inc-sales', 'level' => 2, 'color' => '#6ee7b7', 'icon' => 'Box'],
+            ['id' => 'fc-inc-services', 'type' => 'income', 'name' => 'Služby a realizácie', 'parent_id' => null, 'level' => 1, 'color' => '#3b82f6', 'icon' => 'Wrench'],
+            ['id' => 'fc-inc-assembly', 'type' => 'income', 'name' => 'Montážne a obkladačské práce', 'parent_id' => 'fc-inc-services', 'level' => 2, 'color' => '#2563eb', 'icon' => 'Hammer'],
+            ['id' => 'fc-inc-logistics', 'type' => 'income', 'name' => 'Doprava a logistika', 'parent_id' => 'fc-inc-services', 'level' => 2, 'color' => '#60a5fa', 'icon' => 'Truck'],
+            ['id' => 'fc-inc-other', 'type' => 'income', 'name' => 'Ostatné príjmy', 'parent_id' => null, 'level' => 1, 'color' => '#8b5cf6', 'icon' => 'Coins'],
+
+            // Expenses (Level 1)
+            ['id' => 'fc-exp-cogs', 'type' => 'expense', 'name' => 'ELÁBÉ - Priamy nákup tovaru a materiálu', 'parent_id' => null, 'level' => 1, 'color' => '#ef4444', 'icon' => 'Package'],
+            ['id' => 'fc-exp-mat-lam', 'type' => 'expense', 'name' => 'Nákup materiálu Laminam (Taliansko)', 'parent_id' => 'fc-exp-cogs', 'level' => 2, 'color' => '#dc2626', 'icon' => 'Layers'],
+            ['id' => 'fc-exp-mat-lam3', 'type' => 'expense', 'name' => 'Materiál LAM 3+', 'parent_id' => 'fc-exp-mat-lam', 'level' => 3, 'color' => '#f87171', 'icon' => 'Circle'],
+            ['id' => 'fc-exp-mat-lam5', 'type' => 'expense', 'name' => 'Materiál LAM 5+', 'parent_id' => 'fc-exp-mat-lam', 'level' => 3, 'color' => '#ef4444', 'icon' => 'Circle'],
+            ['id' => 'fc-exp-mat-lam12', 'type' => 'expense', 'name' => 'Materiál LAM 12+', 'parent_id' => 'fc-exp-mat-lam', 'level' => 3, 'color' => '#b91c1c', 'icon' => 'Circle'],
+            ['id' => 'fc-exp-mat-pack', 'type' => 'expense', 'name' => 'Palety a obalový materiál', 'parent_id' => 'fc-exp-cogs', 'level' => 2, 'color' => '#fca5a5', 'icon' => 'Box'],
+            ['id' => 'fc-exp-freight', 'type' => 'expense', 'name' => 'Kamiónová preprava a clo', 'parent_id' => 'fc-exp-cogs', 'level' => 2, 'color' => '#ea580c', 'icon' => 'Truck'],
+            ['id' => 'fc-exp-marketing', 'type' => 'expense', 'name' => 'Marketing a reklama', 'parent_id' => null, 'level' => 1, 'color' => '#f59e0b', 'icon' => 'Megaphone'],
+            ['id' => 'fc-exp-mkt-online', 'type' => 'expense', 'name' => 'Online reklama a výkon', 'parent_id' => 'fc-exp-marketing', 'level' => 2, 'color' => '#d97706', 'icon' => 'Globe'],
+            ['id' => 'fc-exp-mkt-meta', 'type' => 'expense', 'name' => 'Meta FB / IG reklama', 'parent_id' => 'fc-exp-mkt-online', 'level' => 3, 'color' => '#fbbf24', 'icon' => 'Share2'],
+            ['id' => 'fc-exp-mkt-google', 'type' => 'expense', 'name' => 'Google Ads', 'parent_id' => 'fc-exp-mkt-online', 'level' => 3, 'color' => '#f59e0b', 'icon' => 'Search'],
+            ['id' => 'fc-exp-mkt-seo', 'type' => 'expense', 'name' => 'SEO optimalizácia webu', 'parent_id' => 'fc-exp-mkt-online', 'level' => 3, 'color' => '#b45309', 'icon' => 'TrendingUp'],
+            ['id' => 'fc-exp-mkt-creative', 'type' => 'expense', 'name' => 'Agentúra, grafika a copywriting', 'parent_id' => 'fc-exp-marketing', 'level' => 2, 'color' => '#fb923c', 'icon' => 'PenTool'],
+            ['id' => 'fc-exp-payroll', 'type' => 'expense', 'name' => 'Mzdové náklady a provízie', 'parent_id' => null, 'level' => 1, 'color' => '#8b5cf6', 'icon' => 'Users'],
+            ['id' => 'fc-exp-pay-exec', 'type' => 'expense', 'name' => 'Vedenie a manažment (Vezér bére)', 'parent_id' => 'fc-exp-payroll', 'level' => 2, 'color' => '#7c3aed', 'icon' => 'Briefcase'],
+            ['id' => 'fc-exp-pay-staff', 'type' => 'expense', 'name' => 'Montážnici, technici a skladníci', 'parent_id' => 'fc-exp-payroll', 'level' => 2, 'color' => '#6d28d9', 'icon' => 'UserCheck'],
+            ['id' => 'fc-exp-pay-comm', 'type' => 'expense', 'name' => 'Provízie architektom a predajcom', 'parent_id' => 'fc-exp-payroll', 'level' => 2, 'color' => '#a78bfa', 'icon' => 'Percent'],
+            ['id' => 'fc-exp-overhead', 'type' => 'expense', 'name' => 'Prevádzková réžia a priestory', 'parent_id' => null, 'level' => 1, 'color' => '#0891b2', 'icon' => 'Building'],
+            ['id' => 'fc-exp-ovh-rent', 'type' => 'expense', 'name' => 'Nájom showroomu a skladu', 'parent_id' => 'fc-exp-overhead', 'level' => 2, 'color' => '#0e7490', 'icon' => 'Home'],
+            ['id' => 'fc-exp-ovh-util', 'type' => 'expense', 'name' => 'Energie, cestovné a účtovníctvo', 'parent_id' => 'fc-exp-overhead', 'level' => 2, 'color' => '#06b6d4', 'icon' => 'FileText'],
+            ['id' => 'fc-exp-ovh-sec', 'type' => 'expense', 'name' => 'Bezpečnostná služba a poistenie', 'parent_id' => 'fc-exp-overhead', 'level' => 2, 'color' => '#67e8f9', 'icon' => 'Shield']
+        ];
+    }
+
+    /**
+     * Seeds default financial categories into financial_categories table if table exists and is empty.
+     */
+    function ccrm_seed_default_financial_categories(PDO $pdo): void {
+        try {
+            $hasTable = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'financial_categories'")->fetchColumn();
+            if ($hasTable === 0) return;
+
+            $count = (int)$pdo->query("SELECT COUNT(*) FROM `financial_categories`")->fetchColumn();
+            if ($count > 0) return;
+
+            $systemLanguage = 'sk';
+            $stmtLang = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'SYSTEM_LANGUAGE'");
+            if ($stmtLang && ($val = $stmtLang->fetchColumn()) !== false) {
+                if (in_array($val, ['en', 'sk', 'hu'], true)) {
+                    $systemLanguage = $val;
+                }
+            }
+
+            $categories = ccrm_default_financial_categories($systemLanguage);
+            $ins = $pdo->prepare("INSERT INTO `financial_categories` (`id`, `type`, `name`, `parent_id`, `level`, `color`, `icon`) VALUES (?, ?, ?, ?, ?, ?, ?)");
+            foreach ($categories as $c) {
+                $ins->execute([$c['id'], $c['type'], $c['name'], $c['parent_id'], $c['level'], $c['color'], $c['icon']]);
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm schema] financial categories seed skipped: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * Create all tables (idempotent) and apply in-place migrations.
      */
     function ccrm_apply_schema(PDO $pdo): void {
@@ -978,3 +1188,4 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_apply_migrations($pdo);
     }
 }
+

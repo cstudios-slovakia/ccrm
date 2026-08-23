@@ -71,7 +71,7 @@ function fetch_system_settings($pdo) {
 // the multi-MB snapshot, and it is immune to no-op re-saves (a sync POST that
 // writes identical rows leaves the checksum untouched).
 function ccrm_compute_data_version($pdo) {
-    $candidates = ['leads', 'timeline_events', 'lead_categories', 'tasks', 'task_assignees', 'users', 'roles', 'meeting_notes', 'meeting_tasks', 'unified_entries', 'system_settings', 'project_types', 'projects', 'project_managers', 'warehouses', 'suppliers', 'warehouse_items', 'warehouse_stock', 'warehouse_batches', 'warehouse_movements', 'warehouse_movement_items'];
+    $candidates = ['leads', 'timeline_events', 'lead_categories', 'tasks', 'task_assignees', 'users', 'roles', 'meeting_notes', 'meeting_tasks', 'unified_entries', 'system_settings', 'project_types', 'projects', 'project_managers', 'warehouses', 'suppliers', 'warehouse_items', 'warehouse_stock', 'warehouse_batches', 'warehouse_movements', 'warehouse_movement_items', 'financial_categories', 'financial_records'];
     try {
         $existing = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
         $existingSet = array_flip($existing);
@@ -1209,6 +1209,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         error_log('[ccrm sync] warehouse fetch error: ' . $e->getMessage());
     }
 
+    // 3.8. Fetch Financial Categories and Records
+    $financialCategories = [];
+    $financialRecords = [];
+    try {
+        if ($pdo->query("SHOW TABLES LIKE 'financial_categories'")->rowCount() > 0) {
+            $fcStmt = $pdo->query("SELECT * FROM `financial_categories` ORDER BY `level` ASC, `name` ASC");
+            while ($row = $fcStmt->fetch()) {
+                $financialCategories[] = [
+                    'id' => $row['id'],
+                    'type' => $row['type'],
+                    'name' => $row['name'],
+                    'parentId' => $row['parent_id'],
+                    'level' => (int)($row['level'] ?? 1),
+                    'color' => $row['color'],
+                    'icon' => $row['icon'],
+                    'createdAt' => $row['created_at'],
+                    'updatedAt' => $row['updated_at'],
+                ];
+            }
+        }
+
+        if ($pdo->query("SHOW TABLES LIKE 'financial_records'")->rowCount() > 0) {
+            $frStmt = $pdo->query("SELECT * FROM `financial_records` ORDER BY `issue_date` DESC, `created_at` DESC");
+            while ($row = $frStmt->fetch()) {
+                $financialRecords[] = [
+                    'id' => $row['id'],
+                    'type' => $row['type'],
+                    'subtype' => $row['subtype'] ?? 'regular',
+                    'title' => $row['title'],
+                    'description' => $row['description'],
+                    'categoryId' => $row['category_id'],
+                    'categoryPath' => $row['category_path'],
+                    'amountPlanned' => (float)($row['amount_planned'] ?? 0),
+                    'amountReal' => (float)($row['amount_real'] ?? 0),
+                    'currency' => $row['currency'] ?? 'EUR',
+                    'status' => $row['status'] ?? 'planned',
+                    'issueDate' => $row['issue_date'],
+                    'dueDate' => $row['due_date'],
+                    'paidDate' => $row['paid_date'],
+                    'paymentMethod' => $row['payment_method'],
+                    'isRecurring' => (int)($row['is_recurring'] ?? 0) === 1,
+                    'recurringFrequency' => $row['recurring_frequency'],
+                    'recurringConfig' => !empty($row['recurring_config_json']) ? json_decode($row['recurring_config_json'], true) : null,
+                    'recurringStartDate' => $row['recurring_start_date'],
+                    'recurringEndDate' => $row['recurring_end_date'],
+                    'projectId' => $row['project_id'],
+                    'clientId' => $row['client_id'],
+                    'invoiceNumber' => $row['invoice_number'],
+                    'taxRate' => (float)($row['tax_rate'] ?? 20),
+                    'attachments' => !empty($row['attachments_json']) ? json_decode($row['attachments_json'], true) : [],
+                    'createdBy' => $row['created_by'],
+                    'createdAt' => $row['created_at'],
+                    'updatedAt' => $row['updated_at'],
+                ];
+            }
+        }
+    } catch (\Throwable $e) {
+        error_log('[ccrm sync] financial fetch error: ' . $e->getMessage());
+    }
+
     // DB clock at read time. The client echoes this back as baseSyncedAt on the
     // next POST so the server can tell "the user deleted this" apart from "the
     // client never saw this newer row" (see ccrm_delete_omitted).
@@ -1269,6 +1329,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'warehouseStock' => $warehouseStock,
         'warehouseBatches' => $warehouseBatches,
         'warehouseMovements' => $warehouseMovements,
+        'financialCategories' => $financialCategories,
+        'financialRecords' => $financialRecords,
         'settings' => [
             'systemName' => $settings['SYSTEM_NAME'] ?? 'CCRM',
             'systemLanguage' => $settings['SYSTEM_LANGUAGE'] ?? 'sk',
@@ -2888,6 +2950,81 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $movToDelete = $isDeltaSync ? $deletionsFor('warehouseMovements', $existingMovIds) : array_diff($existingMovIds, $processedMovIds);
             if (!empty($movToDelete)) {
                 ccrm_delete_omitted($pdo, 'warehouse_movements', $movToDelete, null);
+            }
+        }
+
+        // 4.13. Synchronize Financial Categories
+        if (isset($payload['financialCategories']) && is_array($payload['financialCategories'])) {
+            $stmt = $pdo->query("SELECT `id` FROM `financial_categories`");
+            $existingFcIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $processedFcIds = [];
+
+            $insFc = $pdo->prepare("INSERT INTO `financial_categories` (`id`, `type`, `name`, `parent_id`, `level`, `color`, `icon`) VALUES (?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `type` = VALUES(`type`), `name` = VALUES(`name`), `parent_id` = VALUES(`parent_id`), `level` = VALUES(`level`), `color` = VALUES(`color`), `icon` = VALUES(`icon`)");
+
+            foreach ($payload['financialCategories'] as $fc) {
+                $fcId = $fc['id'];
+                $insFc->execute([
+                    $fcId,
+                    $fc['type'] ?? 'expense',
+                    $fc['name'] ?? '',
+                    !empty($fc['parentId']) ? $fc['parentId'] : null,
+                    (int)($fc['level'] ?? 1),
+                    $fc['color'] ?? null,
+                    $fc['icon'] ?? null
+                ]);
+                $processedFcIds[] = $fcId;
+            }
+
+            $fcToDelete = $isDeltaSync ? $deletionsFor('financialCategories', $existingFcIds) : array_diff($existingFcIds, $processedFcIds);
+            if (!empty($fcToDelete)) {
+                ccrm_delete_omitted($pdo, 'financial_categories', $fcToDelete, null);
+            }
+        }
+
+        // 4.14. Synchronize Financial Records
+        if (isset($payload['financialRecords']) && is_array($payload['financialRecords'])) {
+            $stmt = $pdo->query("SELECT `id` FROM `financial_records`");
+            $existingFrIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $processedFrIds = [];
+
+            $insFr = $pdo->prepare("INSERT INTO `financial_records` (`id`, `type`, `subtype`, `title`, `description`, `category_id`, `category_path`, `amount_planned`, `amount_real`, `currency`, `status`, `issue_date`, `due_date`, `paid_date`, `payment_method`, `is_recurring`, `recurring_frequency`, `recurring_config_json`, `recurring_start_date`, `recurring_end_date`, `project_id`, `client_id`, `invoice_number`, `tax_rate`, `attachments_json`, `created_by`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `type` = VALUES(`type`), `subtype` = VALUES(`subtype`), `title` = VALUES(`title`), `description` = VALUES(`description`), `category_id` = VALUES(`category_id`), `category_path` = VALUES(`category_path`), `amount_planned` = VALUES(`amount_planned`), `amount_real` = VALUES(`amount_real`), `currency` = VALUES(`currency`), `status` = VALUES(`status`), `issue_date` = VALUES(`issue_date`), `due_date` = VALUES(`due_date`), `paid_date` = VALUES(`paid_date`), `payment_method` = VALUES(`payment_method`), `is_recurring` = VALUES(`is_recurring`), `recurring_frequency` = VALUES(`recurring_frequency`), `recurring_config_json` = VALUES(`recurring_config_json`), `recurring_start_date` = VALUES(`recurring_start_date`), `recurring_end_date` = VALUES(`recurring_end_date`), `project_id` = VALUES(`project_id`), `client_id` = VALUES(`client_id`), `invoice_number` = VALUES(`invoice_number`), `tax_rate` = VALUES(`tax_rate`), `attachments_json` = VALUES(`attachments_json`), `created_by` = VALUES(`created_by`)");
+
+            foreach ($payload['financialRecords'] as $fr) {
+                $frId = $fr['id'];
+                $insFr->execute([
+                    $frId,
+                    $fr['type'] ?? 'expense',
+                    $fr['subtype'] ?? 'regular',
+                    $fr['title'] ?? '',
+                    $fr['description'] ?? null,
+                    !empty($fr['categoryId']) ? $fr['categoryId'] : null,
+                    $fr['categoryPath'] ?? null,
+                    (float)($fr['amountPlanned'] ?? 0),
+                    (float)($fr['amountReal'] ?? 0),
+                    $fr['currency'] ?? 'EUR',
+                    $fr['status'] ?? 'planned',
+                    !empty($fr['issueDate']) ? $fr['issueDate'] : date('Y-m-d'),
+                    !empty($fr['dueDate']) ? $fr['dueDate'] : null,
+                    !empty($fr['paidDate']) ? $fr['paidDate'] : null,
+                    $fr['paymentMethod'] ?? null,
+                    !empty($fr['isRecurring']) ? 1 : 0,
+                    $fr['recurringFrequency'] ?? null,
+                    !empty($fr['recurringConfig']) ? json_encode($fr['recurringConfig'], JSON_UNESCAPED_UNICODE) : null,
+                    !empty($fr['recurringStartDate']) ? $fr['recurringStartDate'] : null,
+                    !empty($fr['recurringEndDate']) ? $fr['recurringEndDate'] : null,
+                    !empty($fr['projectId']) ? $fr['projectId'] : null,
+                    !empty($fr['clientId']) ? $fr['clientId'] : null,
+                    $fr['invoiceNumber'] ?? null,
+                    (float)($fr['taxRate'] ?? 20),
+                    !empty($fr['attachments']) ? json_encode($fr['attachments'], JSON_UNESCAPED_UNICODE) : null,
+                    $fr['createdBy'] ?? $sessionEmail
+                ]);
+                $processedFrIds[] = $frId;
+            }
+
+            $frToDelete = $isDeltaSync ? $deletionsFor('financialRecords', $existingFrIds) : array_diff($existingFrIds, $processedFrIds);
+            if (!empty($frToDelete)) {
+                ccrm_delete_omitted($pdo, 'financial_records', $frToDelete, null);
             }
         }
 

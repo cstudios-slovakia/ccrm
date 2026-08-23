@@ -516,5 +516,81 @@ export interface WarehouseMovement {
   items: WarehouseMovementItem[];
 }
 
+// ==========================================
+// Financial Management & Invoicing Types
+// ==========================================
+
+export type FinancialType = 'income' | 'expense';
+export type FinancialStatus = 'planned' | 'pending' | 'paid' | 'partially_paid' | 'overdue' | 'cancelled';
+export type FinancialRecurringFrequency = 'weekly' | 'monthly' | 'yearly';
+
+export interface FinancialCategory {
+  id: string;
+  type: FinancialType;
+  name: string;
+  parentId?: string | null;
+  level: 1 | 2 | 3;
+  color?: string | null;
+  icon?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface FinancialRecurrenceConfig {
+  dayOfWeek?: number; // 0 = Sunday, 1 = Monday, ..., 6 = Saturday (for weekly)
+  monthlyType?: 'day_of_month' | 'nth_weekday'; // for monthly
+  dayOfMonth?: number; // 1-31 (for monthly day_of_month)
+  weekOfMonth?: number; // 1 = 1st, 2 = 2nd, 3 = 3rd, 4 = 4th, -1 = last (for monthly nth_weekday)
+  month?: number; // 1-12 (for yearly)
+}
+
+export interface FinancialRecord {
+  id: string;
+  type: FinancialType;
+  subtype?: string; // 'regular' | 'invoice' | 'expense' | 'tax' | 'salary' | 'material' | 'overhead'
+  title: string;
+  description?: string | null;
+  categoryId?: string | null;
+  categoryPath?: string | null;
+  amountPlanned: number;
+  amountReal: number;
+  currency?: string; // default 'EUR'
+  status: FinancialStatus;
+  issueDate: string; // YYYY-MM-DD
+  dueDate?: string | null; // YYYY-MM-DD
+  paidDate?: string | null; // YYYY-MM-DD
+  paymentMethod?: string | null; // 'bank_transfer' | 'card' | 'cash' | 'credit'
+  isRecurring: boolean;
+  recurringFrequency?: FinancialRecurringFrequency | null;
+  recurringConfig?: FinancialRecurrenceConfig | null;
+  recurringStartDate?: string | null;
+  recurringEndDate?: string | null;
+  projectId?: string | null; // NULL for Global Company-Wide record
+  clientId?: string | null;  // NULL for Global Company-Wide record
+  invoiceNumber?: string | null;
+  taxRate?: number; // e.g. 20 for 20%
+  attachments?: TimelineAttachment[];
+  createdBy?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ProjectRevenueAnalysis {
+  projectId: string;
+  totalPlannedIncome: number;
+  totalRealIncome: number;
+  totalPlannedExpenses: number;
+  totalRealExpenses: number;
+  plannedProfit: number;
+  realProfit: number;
+  plannedMarginPct: number;
+  realMarginPct: number;
+  invoicesCount: number;
+  paidInvoicesCount: number;
+  expensesCount: number;
+  expensesByCategory: Record<string, { planned: number; real: number; categoryName: string; color: string }>;
+}
+
+
 
 

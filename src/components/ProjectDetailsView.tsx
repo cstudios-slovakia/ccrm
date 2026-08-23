@@ -1,9 +1,18 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import * as Icons from "lucide-react";
-import { Plus, Trash2, Upload, FileText, ArrowLeft, Mail, Phone } from "lucide-react";
-import type { Project, ProjectType, Lead, UserProfile, ProjectTimelineEvent, ProjectGanttRow } from "../types";
+import {
+  Plus, Trash2, Upload, FileText, ArrowLeft, Mail, Phone,
+  Coins, TrendingUp, TrendingDown, DollarSign,
+  PieChart, X, Edit3
+} from "lucide-react";
+import type {
+  Project, ProjectType, Lead, UserProfile,
+  ProjectTimelineEvent, ProjectGanttRow,
+  FinancialRecord, FinancialCategory, FinancialStatus, FinancialType
+} from "../types";
 import type { Language } from "../utils/translations";
-import { nowLocalStamp, formatTimestampLocalized, formatDateLocalized } from "../utils/localTime";
+import { nowLocalStamp, formatTimestampLocalized, formatDateLocalized, todayLocal } from "../utils/localTime";
+import { formatMoney } from "../utils/currency";
 import { CustomSelect } from "./ui/CustomSelect";
 
 const SearchableClientSelect: React.FC<{
@@ -90,6 +99,11 @@ interface ProjectDetailsViewProps {
   leads: Lead[];
   users: UserProfile[];
   userLanguage: Language;
+  financialRecords?: FinancialRecord[];
+  setFinancialRecords?: React.Dispatch<React.SetStateAction<FinancialRecord[]>>;
+  financialCategories?: FinancialCategory[];
+  setFinancialCategories?: React.Dispatch<React.SetStateAction<FinancialCategory[]>>;
+  currencyCode?: string | null;
   onClose: () => void;
   onSave: (updatedProject: Project) => void;
 }
@@ -100,10 +114,15 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   leads,
   users,
   userLanguage,
+  financialRecords = [],
+  setFinancialRecords,
+  financialCategories = [],
+  currencyCode,
   onClose,
   onSave
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
+  const money = (v: number) => formatMoney(v, currencyCode, userLanguage);
 
   // Global state wiring
   const [status, setStatus] = useState("active");
@@ -114,8 +133,40 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const [timeline, setTimeline] = useState<ProjectTimelineEvent[]>([]);
   const [gantt, setGantt] = useState<ProjectGanttRow[]>([]);
 
-  // Right Side tab control
-  const [activeRightTab, setActiveRightTab] = useState<"timeline" | "gantt">("timeline");
+  // Right Side tab control with URL sync
+  const getInitialRightTab = (): "timeline" | "gantt" | "finances" => {
+    const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
+    const tabParam = params.get("tab");
+    if (tabParam === "finances" || tabParam === "gantt" || tabParam === "timeline") {
+      return tabParam;
+    }
+    return "timeline";
+  };
+
+  const [activeRightTab, setActiveRightTab] = useState<"timeline" | "gantt" | "finances">(getInitialRightTab);
+
+  const handleRightTabChange = (tab: "timeline" | "gantt" | "finances") => {
+    setActiveRightTab(tab);
+    const hash = window.location.hash;
+    const [base, query] = hash.split("?");
+    const params = new URLSearchParams(query || "");
+    params.set("tab", tab);
+    window.location.hash = `${base}?${params.toString()}`;
+  };
+
+  // Project Financial Modal & Form
+  const [isFinModalOpen, setIsFinModalOpen] = useState(false);
+  const [finEditingRecord, setFinEditingRecord] = useState<FinancialRecord | null>(null);
+  const [finFormType, setFinFormType] = useState<FinancialType>("income");
+  const [finFormTitle, setFinFormTitle] = useState("");
+  const [finFormInvoiceNumber, setFinFormInvoiceNumber] = useState("");
+  const [finFormAmountPlanned, setFinFormAmountPlanned] = useState<number | "">("");
+  const [finFormAmountReal, setFinFormAmountReal] = useState<number | "">("");
+  const [finFormCategoryId, setFinFormCategoryId] = useState("");
+  const [finFormStatus, setFinFormStatus] = useState<FinancialStatus>("pending");
+  const [finFormIssueDate, setFinFormIssueDate] = useState(todayLocal());
+  const [finFormDueDate, setFinFormDueDate] = useState("");
+  const [finFormDescription, setFinFormDescription] = useState("");
 
   // Timeline Event Form
   const [newTeTitle, setNewTeTitle] = useState("");
@@ -153,13 +204,169 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       setTimeline(project.timeline || []);
       setGantt(project.gantt || []);
 
-      // Resolve default right tab
-      if (projectType) {
+      // Resolve right tab from URL or defaults
+      const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
+      const tabParam = params.get("tab");
+      if (tabParam === "finances" || tabParam === "gantt" || tabParam === "timeline") {
+        setActiveRightTab(tabParam);
+      } else if (projectType) {
         if (projectType.hasTimeline) setActiveRightTab("timeline");
         else if (projectType.hasGantt) setActiveRightTab("gantt");
+        else setActiveRightTab("finances");
       }
     }
   }, [project, projectType]);
+
+  // Project Financials Calculation & Revenue Analysis
+  const projectFinancials = useMemo(() => {
+    return financialRecords.filter((r) => r.projectId === project?.id);
+  }, [financialRecords, project?.id]);
+
+  const projectInvoices = useMemo(() => {
+    return projectFinancials.filter((r) => r.type === "income");
+  }, [projectFinancials]);
+
+  const projectExpenses = useMemo(() => {
+    return projectFinancials.filter((r) => r.type === "expense");
+  }, [projectFinancials]);
+
+  const revenueAnalysis = useMemo(() => {
+    let totalPlannedIncome = 0;
+    let totalRealIncome = 0;
+    let totalPlannedExpenses = 0;
+    let totalRealExpenses = 0;
+
+    projectFinancials.forEach((r) => {
+      if (r.type === "income") {
+        totalPlannedIncome += r.amountPlanned || 0;
+        totalRealIncome += r.amountReal || 0;
+      } else {
+        totalPlannedExpenses += r.amountPlanned || 0;
+        totalRealExpenses += r.amountReal || 0;
+      }
+    });
+
+    const plannedProfit = totalPlannedIncome - totalPlannedExpenses;
+    const realProfit = totalRealIncome - totalRealExpenses;
+    const plannedMarginPct = totalPlannedIncome > 0 ? (plannedProfit / totalPlannedIncome) * 100 : 0;
+    const realMarginPct = totalRealIncome > 0 ? (realProfit / totalRealIncome) * 100 : 0;
+
+    // Expenses by category
+    const catMap: Record<string, { name: string; planned: number; real: number; color: string }> = {};
+    projectExpenses.forEach((e) => {
+      const catId = e.categoryId || "uncat";
+      const cat = financialCategories.find((c) => c.id === catId);
+      const name = e.categoryPath || cat?.name || t("Uncategorized", "Bez kategórie", "Kategória nélkül");
+      const color = cat?.color || "#ef4444";
+      if (!catMap[catId]) {
+        catMap[catId] = { name, planned: 0, real: 0, color };
+      }
+      catMap[catId].planned += e.amountPlanned || 0;
+      catMap[catId].real += e.amountReal || 0;
+    });
+
+    return {
+      totalPlannedIncome,
+      totalRealIncome,
+      totalPlannedExpenses,
+      totalRealExpenses,
+      plannedProfit,
+      realProfit,
+      plannedMarginPct,
+      realMarginPct,
+      invoicesCount: projectInvoices.length,
+      expensesCount: projectExpenses.length,
+      expensesByCategory: Object.values(catMap).sort((a, b) => b.planned - a.planned)
+    };
+  }, [projectFinancials, projectInvoices, projectExpenses, financialCategories, userLanguage]);
+
+  const handleOpenProjectFinModal = (type: FinancialType, record?: FinancialRecord) => {
+    if (record) {
+      setFinEditingRecord(record);
+      setFinFormType(record.type);
+      setFinFormTitle(record.title);
+      setFinFormInvoiceNumber(record.invoiceNumber || "");
+      setFinFormAmountPlanned(record.amountPlanned);
+      setFinFormAmountReal(record.amountReal);
+      setFinFormCategoryId(record.categoryId || "");
+      setFinFormStatus(record.status);
+      setFinFormIssueDate(record.issueDate || todayLocal());
+      setFinFormDueDate(record.dueDate || "");
+      setFinFormDescription(record.description || "");
+    } else {
+      setFinEditingRecord(null);
+      setFinFormType(type);
+      setFinFormTitle("");
+      setFinFormInvoiceNumber(type === "income" ? `FA-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}` : "");
+      setFinFormAmountPlanned("");
+      setFinFormAmountReal("");
+      setFinFormCategoryId("");
+      setFinFormStatus(type === "income" ? "pending" : "planned");
+      setFinFormIssueDate(todayLocal());
+      setFinFormDueDate("");
+      setFinFormDescription("");
+    }
+    setIsFinModalOpen(true);
+  };
+
+  const handleSaveProjectFinancial = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!finFormTitle.trim() || !project) return;
+
+    let path = "";
+    if (finFormCategoryId) {
+      const cat = financialCategories.find((c) => c.id === finFormCategoryId);
+      if (cat) {
+        path = cat.name;
+      }
+    }
+
+    const payload: FinancialRecord = {
+      id: finEditingRecord?.id || `fr-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      type: finFormType,
+      subtype: finFormType === "income" ? "invoice" : "material",
+      title: finFormTitle.trim(),
+      description: finFormDescription.trim() || null,
+      categoryId: finFormCategoryId || null,
+      categoryPath: path || null,
+      amountPlanned: Number(finFormAmountPlanned) || 0,
+      amountReal: Number(finFormAmountReal) || 0,
+      currency: currencyCode || "EUR",
+      status: finFormStatus,
+      issueDate: finFormIssueDate,
+      dueDate: finFormDueDate || null,
+      paidDate: finFormStatus === "paid" ? todayLocal() : null,
+      paymentMethod: "bank_transfer",
+      isRecurring: false,
+      projectId: project.id,
+      clientId: associatedClientId || associatedLeadId || null,
+      invoiceNumber: finFormInvoiceNumber.trim() || null,
+      taxRate: 20,
+      createdBy: (window as any).ccrmCurrentUser?.email || "Admin",
+      createdAt: finEditingRecord?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    if (setFinancialRecords) {
+      setFinancialRecords((prev) => {
+        const exists = prev.some((r) => r.id === payload.id);
+        if (exists) {
+          return prev.map((r) => (r.id === payload.id ? payload : r));
+        }
+        return [payload, ...prev];
+      });
+    }
+
+    setIsFinModalOpen(false);
+  };
+
+  const handleDeleteProjectFinancial = (id: string) => {
+    if (confirm(t("Delete this financial record?", "Vymazať tento finančný záznam?", "Törli ezt a tételt?"))) {
+      if (setFinancialRecords) {
+        setFinancialRecords((prev) => prev.filter((r) => r.id !== id));
+      }
+    }
+  };
 
   if (!project || !projectType) return null;
 
@@ -789,7 +996,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             <div className="flex items-center gap-2 select-none">
               {projectType.hasTimeline && (
                 <button
-                  onClick={() => setActiveRightTab("timeline")}
+                  onClick={() => handleRightTabChange("timeline")}
                   className={`px-4 py-2 rounded-xl font-heading font-bold text-xs uppercase tracking-wider transition-all cursor-pointer ${
                     activeRightTab === "timeline"
                       ? "bg-slate-900 text-white"
@@ -801,7 +1008,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               )}
               {projectType.hasGantt && (
                 <button
-                  onClick={() => setActiveRightTab("gantt")}
+                  onClick={() => handleRightTabChange("gantt")}
                   className={`px-4 py-2 rounded-xl font-heading font-bold text-xs uppercase tracking-wider transition-all cursor-pointer ${
                     activeRightTab === "gantt"
                       ? "bg-slate-900 text-white"
@@ -811,6 +1018,20 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   {t("Gantt Chart", "Ganttov diagram", "Gantt diagram")}
                 </button>
               )}
+              <button
+                onClick={() => handleRightTabChange("finances")}
+                className={`px-4 py-2 rounded-xl font-heading font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 ${
+                  activeRightTab === "finances"
+                    ? "bg-slate-900 text-white shadow-sm"
+                    : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                }`}
+              >
+                <Coins className="h-3.5 w-3.5 text-emerald-400" />
+                <span>{t("Finances & Revenue", "Financie & Ziskovosť", "Pénzügyek & Jövedelmezőség")}</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${revenueAnalysis.realProfit >= 0 ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400"}`}>
+                  {money(revenueAnalysis.realProfit)}
+                </span>
+              </button>
             </div>
           </div>
 
@@ -1608,6 +1829,404 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     {t("Close", "Zatvoriť", "Bezárás")}
                   </button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB CONTENT: Finances & Revenue Analysis (CRITICAL REQUIREMENT #5, #6, #7) */}
+          {activeRightTab === "finances" && (
+            <div className="flex-1 overflow-y-auto space-y-6 scrollbar-thin pr-1 animate-in fade-in duration-150 text-left">
+              {/* 1. Project Revenue & Profitability Scorecard */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {/* Revenue Card */}
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase">
+                    <span>{t("Project Revenue", "Príjmy z projektu", "Projekt bevételek")}</span>
+                    <TrendingUp className="h-4 w-4 text-emerald-500" />
+                  </div>
+                  <div className="text-xl font-black text-slate-900 mt-1">
+                    {money(revenueAnalysis.totalRealIncome)}
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">
+                    {t("Planned:", "Plán:", "Terv:")} <strong>{money(revenueAnalysis.totalPlannedIncome)}</strong>
+                  </div>
+                </div>
+
+                {/* Costs Card */}
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase">
+                    <span>{t("Project Costs", "Priame náklady", "Közvetlen költségek")}</span>
+                    <TrendingDown className="h-4 w-4 text-rose-500" />
+                  </div>
+                  <div className="text-xl font-black text-slate-900 mt-1">
+                    {money(revenueAnalysis.totalRealExpenses)}
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">
+                    {t("Planned:", "Plán:", "Terv:")} <strong>{money(revenueAnalysis.totalPlannedExpenses)}</strong>
+                  </div>
+                </div>
+
+                {/* Net Profit Card */}
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase">
+                    <span>{t("Net Profit", "Čistý zisk", "Nettó nyereség")}</span>
+                    <DollarSign className="h-4 w-4 text-indigo-500" />
+                  </div>
+                  <div className={`text-xl font-black mt-1 ${revenueAnalysis.realProfit >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                    {money(revenueAnalysis.realProfit)}
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">
+                    {t("Planned:", "Plán:", "Terv:")} <strong>{money(revenueAnalysis.plannedProfit)}</strong>
+                  </div>
+                </div>
+
+                {/* Profit Margin Card */}
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase">
+                    <span>{t("Profit Margin", "Zisková marža", "Haszonkulcs")}</span>
+                    <Coins className="h-4 w-4 text-amber-500" />
+                  </div>
+                  <div className={`text-xl font-black mt-1 ${revenueAnalysis.realMarginPct >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                    {revenueAnalysis.realMarginPct.toFixed(1)}%
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">
+                    {t("Planned:", "Plán:", "Terv:")} <strong>{revenueAnalysis.plannedMarginPct.toFixed(1)}%</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. INVOICES SECTION */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-emerald-600" />
+                    <span className="text-xs font-bold text-slate-900 uppercase">
+                      {t("Issued & Scheduled Invoices", "Faktúry a vystavené doklady", "Kimenő és tervezett számlák")} ({projectInvoices.length})
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenProjectFinModal("income")}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    {t("+ Issue / Plan Invoice", "+ Vystaviť / naplánovať faktúru", "+ Új számla kiállítása")}
+                  </button>
+                </div>
+
+                {projectInvoices.length === 0 ? (
+                  <div className="py-6 text-center text-xs text-slate-400 font-medium">
+                    {t("No invoices issued for this project yet.", "K tomuto projektu zatiaľ neboli vystavené žiadne faktúry.", "Még nincsenek számlák rögzítve ehhez a projekthez.")}
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="text-slate-400 border-b border-slate-200">
+                        <tr>
+                          <th className="py-2 px-3 font-semibold">{t("Date", "Dátum", "Dátum")}</th>
+                          <th className="py-2 px-3 font-semibold">{t("Invoice # & Title", "Číslo FA a popis", "Számlaszám és tétel")}</th>
+                          <th className="py-2 px-3 font-semibold text-right">{t("Planned (€)", "Plánované (€)", "Tervezett (€)")}</th>
+                          <th className="py-2 px-3 font-semibold text-right">{t("Real (€)", "Uhradené (€)", "Fizetett (€)")}</th>
+                          <th className="py-2 px-3 font-semibold text-center">{t("Status", "Stav", "Állapot")}</th>
+                          <th className="py-2 px-3 font-semibold text-right">{t("Actions", "Akcie", "Műveletek")}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200/60 font-semibold text-slate-700">
+                        {projectInvoices.map((inv) => (
+                          <tr key={inv.id} className="hover:bg-white/80">
+                            <td className="py-2.5 px-3 whitespace-nowrap">
+                              <div>{formatDateLocalized(inv.issueDate, userLanguage)}</div>
+                              {inv.dueDate && <div className="text-[10px] text-slate-400">{t("Due:", "Splatné:", "Esedékes:")} {formatDateLocalized(inv.dueDate, userLanguage)}</div>}
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <div className="font-bold text-slate-900">{inv.title}</div>
+                              {inv.invoiceNumber && <span className="text-[10px] font-mono text-slate-500">#{inv.invoiceNumber}</span>}
+                            </td>
+                            <td className="py-2.5 px-3 text-right text-slate-500 font-normal">{money(inv.amountPlanned)}</td>
+                            <td className="py-2.5 px-3 text-right font-bold text-emerald-600">{money(inv.amountReal)}</td>
+                            <td className="py-2.5 px-3 text-center">
+                              <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                inv.status === "paid" ? "bg-emerald-100 text-emerald-800" : inv.status === "overdue" ? "bg-rose-100 text-rose-800" : "bg-amber-100 text-amber-800"
+                              }`}>
+                                {inv.status === "paid" ? t("Paid", "Uhradené", "Fizetve") : inv.status === "overdue" ? t("Overdue", "Po splatnosti", "Lejárt") : t("Pending", "Čaká na úhradu", "Függő")}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  onClick={() => handleOpenProjectFinModal("income", inv)}
+                                  className="p-1 text-slate-400 hover:text-indigo-600 rounded"
+                                >
+                                  <Edit3 className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteProjectFinancial(inv.id)}
+                                  className="p-1 text-slate-400 hover:text-rose-600 rounded"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* 3. EXPENSES SECTION */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <TrendingDown className="h-4 w-4 text-rose-600" />
+                    <span className="text-xs font-bold text-slate-900 uppercase">
+                      {t("Direct Project Costs & Materials", "Priame náklady a materiál projektu", "Közvetlen projektköltségek és anyagok")} ({projectExpenses.length})
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenProjectFinModal("expense")}
+                    className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    {t("+ Add Project Expense", "+ Pridať výdavok k projektu", "+ Új kiadás rögzítése")}
+                  </button>
+                </div>
+
+                {projectExpenses.length === 0 ? (
+                  <div className="py-6 text-center text-xs text-slate-400 font-medium">
+                    {t("No expenses logged for this project yet.", "K tomuto projektu zatiaľ neboli zaevidované žiadne výdavky.", "Még nincsenek kiadások rögzítve.")}
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="text-slate-400 border-b border-slate-200">
+                        <tr>
+                          <th className="py-2 px-3 font-semibold">{t("Date", "Dátum", "Dátum")}</th>
+                          <th className="py-2 px-3 font-semibold">{t("Expense Title & Category", "Názov a kategória", "Megnevezés és kategória")}</th>
+                          <th className="py-2 px-3 font-semibold text-right">{t("Planned (€)", "Plánované (€)", "Tervezett (€)")}</th>
+                          <th className="py-2 px-3 font-semibold text-right">{t("Real (€)", "Zaplatené (€)", "Kifizetett (€)")}</th>
+                          <th className="py-2 px-3 font-semibold text-center">{t("Status", "Stav", "Állapot")}</th>
+                          <th className="py-2 px-3 font-semibold text-right">{t("Actions", "Akcie", "Műveletek")}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200/60 font-semibold text-slate-700">
+                        {projectExpenses.map((exp) => (
+                          <tr key={exp.id} className="hover:bg-white/80">
+                            <td className="py-2.5 px-3 whitespace-nowrap">
+                              {formatDateLocalized(exp.issueDate, userLanguage)}
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <div className="font-bold text-slate-900">{exp.title}</div>
+                              {exp.categoryPath && <span className="text-[10px] text-slate-400">{exp.categoryPath}</span>}
+                            </td>
+                            <td className="py-2.5 px-3 text-right text-slate-500 font-normal">{money(exp.amountPlanned)}</td>
+                            <td className="py-2.5 px-3 text-right font-bold text-rose-600">{money(exp.amountReal)}</td>
+                            <td className="py-2.5 px-3 text-center">
+                              <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                exp.status === "paid" ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-700"
+                              }`}>
+                                {exp.status === "paid" ? t("Paid", "Zaplatené", "Kifizetve") : t("Planned", "Plánované", "Tervezett")}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  onClick={() => handleOpenProjectFinModal("expense", exp)}
+                                  className="p-1 text-slate-400 hover:text-indigo-600 rounded"
+                                >
+                                  <Edit3 className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteProjectFinancial(exp.id)}
+                                  className="p-1 text-slate-400 hover:text-rose-600 rounded"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* 4. Cost Structure Breakdown by Category */}
+              {revenueAnalysis.expensesByCategory.length > 0 && (
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2.5">
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase">
+                    <PieChart className="h-4 w-4 text-indigo-600" />
+                    <span>{t("Project Cost Breakdown by Category", "Štruktúra nákladov projektu podľa kategórií", "Költségstruktúra kategóriák szerint")}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {revenueAnalysis.expensesByCategory.map((cat, idx) => {
+                      const pct = revenueAnalysis.totalRealExpenses > 0 ? (cat.real / revenueAnalysis.totalRealExpenses) * 100 : 0;
+                      return (
+                        <div key={idx} className="p-2 bg-white rounded-xl border border-slate-100">
+                          <div className="flex items-center justify-between text-xs mb-1">
+                            <span className="font-semibold text-slate-800 flex items-center gap-1.5">
+                              <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: cat.color }} />
+                              {cat.name}
+                            </span>
+                            <span className="font-bold text-slate-900">
+                              {money(cat.real)} <span className="text-[10px] text-slate-400">({pct.toFixed(0)}%)</span>
+                            </span>
+                          </div>
+                          <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full transition-all" style={{ backgroundColor: cat.color, width: `${Math.min(pct, 100)}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* PROJECT FINANCIAL MODAL */}
+          {isFinModalOpen && (
+            <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div className="flex items-center gap-2">
+                    {finFormType === "income" ? <TrendingUp className="h-5 w-5 text-emerald-600" /> : <TrendingDown className="h-5 w-5 text-rose-600" />}
+                    <h3 className="text-sm font-bold text-slate-900">
+                      {finEditingRecord
+                        ? (finFormType === "income" ? t("Edit Project Invoice", "Upraviť faktúru projektu", "Számla szerkesztése") : t("Edit Project Expense", "Upraviť výdavok projektu", "Kiadás szerkesztése"))
+                        : (finFormType === "income" ? t("Issue Project Invoice", "Vystaviť faktúru pre projekt", "Számla kiállítása projekthez") : t("Add Project Expense", "Pridať výdavok k projektu", "Új kiadás hozzáadása"))}
+                    </h3>
+                  </div>
+                  <button onClick={() => setIsFinModalOpen(false)} className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleSaveProjectFinancial} className="space-y-3.5 text-xs font-semibold text-left">
+                  <div>
+                    <label className="block text-[10px] text-slate-400 uppercase mb-1">{t("Title / Description *", "Názov / Popis *", "Megnevezés *")}</label>
+                    <input
+                      required
+                      value={finFormTitle}
+                      onChange={(e) => setFinFormTitle(e.target.value)}
+                      placeholder={finFormType === "income" ? "e.g. Zálohová faktúra 50%..." : "e.g. Nákup dosiek Laminam Calce..."}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:outline-none focus:border-indigo-500 font-medium"
+                    />
+                  </div>
+
+                  {finFormType === "income" && (
+                    <div>
+                      <label className="block text-[10px] text-slate-400 uppercase mb-1">{t("Invoice Number", "Číslo faktúry", "Számlaszám")}</label>
+                      <input
+                        value={finFormInvoiceNumber}
+                        onChange={(e) => setFinFormInvoiceNumber(e.target.value)}
+                        placeholder="FA-2026-0001"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-mono"
+                      />
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] text-slate-400 uppercase mb-1">{t("Planned Amount (€) *", "Plánovaná suma (€) *", "Tervezett összeg (€) *")}</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        required
+                        value={finFormAmountPlanned}
+                        onChange={(e) => setFinFormAmountPlanned(e.target.value ? parseFloat(e.target.value) : "")}
+                        placeholder="0.00"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-400 uppercase mb-1">{t("Real / Paid Amount (€)", "Skutočná suma (€)", "Valós összeg (€)")}</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={finFormAmountReal}
+                        onChange={(e) => setFinFormAmountReal(e.target.value ? parseFloat(e.target.value) : "")}
+                        placeholder="0.00"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-bold text-emerald-600"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] text-slate-400 uppercase mb-1">{t("Category", "Kategória", "Kategória")}</label>
+                      <select
+                        value={finFormCategoryId}
+                        onChange={(e) => setFinFormCategoryId(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50"
+                      >
+                        <option value="">{t("-- Select Category --", "-- Vyberte kategóriu --", "-- Válasszon --")}</option>
+                        {financialCategories
+                          .filter((c) => c.type === finFormType)
+                          .map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.level === 1 ? `● ${c.name}` : `  ↳ ${c.name}`}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] text-slate-400 uppercase mb-1">{t("Status", "Stav", "Állapot")}</label>
+                      <select
+                        value={finFormStatus}
+                        onChange={(e) => setFinFormStatus(e.target.value as any)}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50"
+                      >
+                        <option value="planned">{t("Planned", "Plánované", "Tervezett")}</option>
+                        <option value="pending">{t("Pending", "Čaká na úhradu", "Függő")}</option>
+                        <option value="paid">{t("Paid", "Uhradené", "Fizetve")}</option>
+                        <option value="overdue">{t("Overdue", "Po splatnosti", "Lejárt")}</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] text-slate-400 uppercase mb-1">{t("Issue Date", "Dátum vystavenia", "Kiállítás dátuma")}</label>
+                      <input
+                        type="date"
+                        required
+                        value={finFormIssueDate}
+                        onChange={(e) => setFinFormIssueDate(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-400 uppercase mb-1">{t("Due Date", "Dátum splatnosti", "Esedékesség")}</label>
+                      <input
+                        type="date"
+                        value={finFormDueDate}
+                        onChange={(e) => setFinFormDueDate(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setIsFinModalOpen(false)}
+                      className="px-4 py-2 rounded-xl text-slate-500 hover:bg-slate-100 cursor-pointer"
+                    >
+                      {t("Cancel", "Zrušiť", "Mégsem")}
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold cursor-pointer shadow-sm"
+                    >
+                      {t("Save", "Uložiť", "Mentés")}
+                    </button>
+                  </div>
+                </form>
               </div>
             </div>
           )}

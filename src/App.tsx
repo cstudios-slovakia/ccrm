@@ -3,7 +3,7 @@ import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { LoginView } from "./components/LoginView";
 import { TaskDashboardView } from "./components/TaskDashboardView";
-import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement } from "./types";
+import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, FinancialRecord } from "./types";
 import { VERSION } from "./utils/version";
 import { SOCIAL_MEDIA_ENABLED } from "./utils/featureFlags";
 import type { MeetingNote } from "./components/MeetingRoomView";
@@ -76,6 +76,7 @@ const UpdateNotesView = safeLazy(() => import("./components/UpdateNotesView").th
 const AutomationView = safeLazy(() => import("./components/AutomationView").then(m => ({ default: m.AutomationView })));
 const SocialMediaView = safeLazy(() => import("./components/SocialMediaView").then(m => ({ default: m.SocialMediaView })));
 const WarehouseView = safeLazy(() => import("./components/WarehouseView").then(m => ({ default: m.WarehouseView })));
+const FinancialManagementView = safeLazy(() => import("./components/FinancialManagementView").then(m => ({ default: m.FinancialManagementView })));
 
 const ShaderGradientAny = ShaderGradient as any;
 
@@ -88,35 +89,29 @@ const ShaderGradientAny = ShaderGradient as any;
 // differently: the server falls back to `[]` for colour maps but `{}` for
 // leadStateParents/leadStateFollowUp (and `null` for a malformed column), while
 // the client defaults to `{}`. Without this an "empty" field would look different
-// on every load and trigger a spurious push (the saving indicator flashing).
-const normSettingVal = (v: any): any => {
-  if (v == null) return null;
-  if (Array.isArray(v)) return v.length ? v : null;
-  if (typeof v === "object") return Object.keys(v).length ? v : null;
-  return v;
+// depending on which side you asked, so saving settings from an empty field would
+// continuously fight with the initial sync.
+const computeSettingsSig = (s: any): string => {
+  if (!s || typeof s !== "object") return "null";
+  return JSON.stringify([
+    s.systemName ?? "",
+    s.systemLanguage ?? "",
+    s.systemCurrency ?? "",
+    s.leadStates ?? [],
+    s.leadSources ?? [],
+    s.leadCategories ?? [],
+    s.leadStateColors && Object.keys(s.leadStateColors).length ? s.leadStateColors : null,
+    s.leadSourceColors && Object.keys(s.leadSourceColors).length ? s.leadSourceColors : null,
+    s.leadCategoryColors && Object.keys(s.leadCategoryColors).length ? s.leadCategoryColors : null,
+    s.leadStageGroups && Object.keys(s.leadStageGroups).length ? s.leadStageGroups : null,
+    s.leadStateParents && Object.keys(s.leadStateParents).length ? s.leadStateParents : null,
+    s.leadStateFollowUp && Object.keys(s.leadStateFollowUp).length ? s.leadStateFollowUp : null,
+    s.taskStates ?? [],
+    s.taskStateColors && Object.keys(s.taskStateColors).length ? s.taskStateColors : null,
+    s.integrationsConfig ?? null,
+  ]);
 };
-const computeSettingsSig = (o: any): string => JSON.stringify([
-  normSettingVal(o?.leadStates),
-  normSettingVal(o?.leadSources),
-  normSettingVal(o?.leadCategories),
-  o?.systemName ?? null,
-  o?.systemLanguage ?? null,
-  // Empty string and "field absent" must hash identically: the server omits
-  // systemCurrency entirely, while local state defaults it to "". With `?? null`
-  // those differ ("" vs null), so the settings-sync effect saw a phantom diff and
-  // fired a push on every load — which 401'd on a dead session and produced the
-  // spurious "Re-saved your last change" toast. `|| null` collapses ""/null/absent
-  // to the same value so an unset currency never looks like an edit.
-  o?.systemCurrency || null,
-  normSettingVal(o?.leadStateColors),
-  normSettingVal(o?.leadSourceColors),
-  normSettingVal(o?.leadCategoryColors),
-  normSettingVal(o?.leadStageGroups),
-  normSettingVal(o?.leadStateParents),
-  normSettingVal(o?.leadStateFollowUp),
-  normSettingVal(o?.taskStates),
-  normSettingVal(o?.taskStateColors),
-]);
+
 // Signature of an entire sync.php push payload (minus baseSyncedAt, which is
 // just a concurrency token and changes on every request regardless of content).
 // Used to tell a genuine unsaved edit apart from an automatic background push
@@ -127,11 +122,13 @@ const computePushSig = (p: {
   customDashboards?: unknown; projectTypes?: unknown; projects?: unknown;
   warehouses?: unknown; suppliers?: unknown; warehouseItems?: unknown;
   warehouseStock?: unknown; warehouseBatches?: unknown; warehouseMovements?: unknown;
+  financialCategories?: unknown; financialRecords?: unknown;
   settings?: any;
 }): string => JSON.stringify([
   p.leads, p.tasks, p.users, p.roles, p.meetingNotes, p.unifiedEntries,
   p.unifiedEntriesData, p.customDashboards, p.projectTypes, p.projects,
   p.warehouses, p.suppliers, p.warehouseItems, p.warehouseStock, p.warehouseBatches, p.warehouseMovements,
+  p.financialCategories, p.financialRecords,
   computeSettingsSig(p.settings),
 ]);
 
@@ -232,6 +229,8 @@ function App() {
   const warehouseStockRef = useRef<WarehouseStock[]>([]);
   const warehouseBatchesRef = useRef<WarehouseBatch[]>([]);
   const warehouseMovementsRef = useRef<WarehouseMovement[]>([]);
+  const financialCategoriesRef = useRef<FinancialCategory[]>([]);
+  const financialRecordsRef = useRef<FinancialRecord[]>([]);
   // DB clock from the last GET/POST. Sent back as baseSyncedAt so the server can
   // avoid deleting records a concurrent user added after our snapshot.
   const baseSyncedAtRef = useRef<string | null>(null);
@@ -278,10 +277,10 @@ function App() {
     const rawHash = window.location.hash.replace("#", "");
     const baseHash = rawHash.split(/[/?]/)[0];
     const hashLower = baseHash.toLowerCase();
-    if (hashLower.startsWith("client-") || hashLower.startsWith("lead-") || hashLower.startsWith("user-") || hashLower.startsWith("ue_") || hashLower.startsWith("dash_") || hashLower.startsWith("settings") || hashLower.startsWith("warehouse")) {
-      return rawHash; // Keep case sensitivity and allow sub-tabs for settings and warehouse
+    if (hashLower.startsWith("client-") || hashLower.startsWith("lead-") || hashLower.startsWith("user-") || hashLower.startsWith("ue_") || hashLower.startsWith("dash_") || hashLower.startsWith("settings") || hashLower.startsWith("warehouse") || hashLower.startsWith("financial")) {
+      return rawHash; // Keep case sensitivity and allow sub-tabs for settings, warehouse, and financial
     }
-    const validTabs = ["dashboard", "overview", "leads", "clients", "tasks", "files", "personal-settings", "email", "rag_ai", "automation", "meetings", "projects", "updates", "warehouse", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
+    const validTabs = ["dashboard", "overview", "leads", "clients", "tasks", "files", "personal-settings", "email", "rag_ai", "automation", "meetings", "projects", "updates", "warehouse", "financial", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
     return validTabs.includes(hashLower) ? rawHash : "dashboard";
   };
 
@@ -407,6 +406,8 @@ function App() {
   const [warehouseStock, setWarehouseStock] = useState<WarehouseStock[]>([]);
   const [warehouseBatches, setWarehouseBatches] = useState<WarehouseBatch[]>([]);
   const [warehouseMovements, setWarehouseMovements] = useState<WarehouseMovement[]>([]);
+  const [financialCategories, setFinancialCategories] = useState<FinancialCategory[]>([]);
+  const [financialRecords, setFinancialRecords] = useState<FinancialRecord[]>([]);
 
   // Initial states set to empty / defaults without localStorage or mockData loaders
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -809,6 +810,8 @@ ${log.payload || ''}
   warehouseStockRef.current = warehouseStock;
   warehouseBatchesRef.current = warehouseBatches;
   warehouseMovementsRef.current = warehouseMovements;
+  financialCategoriesRef.current = financialCategories;
+  financialRecordsRef.current = financialRecords;
 
   // --- REAL-TIME SERVER SYNCHRONIZER ENGINE ---
   const pushStateToServer = (
@@ -829,6 +832,8 @@ ${log.payload || ''}
     nextWarehouseStock?: WarehouseStock[],
     nextWarehouseBatches?: WarehouseBatch[],
     nextWarehouseMovements?: WarehouseMovement[],
+    nextFinancialCategories?: FinancialCategory[],
+    nextFinancialRecords?: FinancialRecord[],
     options?: { showIndicator?: boolean }
   ): Promise<void> => {
     if (!isInstalled || !currentUser || !isInitialSyncResolved) return pushChainRef.current;
@@ -864,6 +869,8 @@ ${log.payload || ''}
     const liveWarehouseStock = nextWarehouseStock ?? warehouseStockRef.current;
     const liveWarehouseBatches = nextWarehouseBatches ?? warehouseBatchesRef.current;
     const liveWarehouseMovements = nextWarehouseMovements ?? warehouseMovementsRef.current;
+    const liveFinancialCategories = nextFinancialCategories ?? financialCategoriesRef.current;
+    const liveFinancialRecords = nextFinancialRecords ?? financialRecordsRef.current;
 
     const payload: any = {
       baseSyncedAt: baseSyncedAtRef.current,
@@ -883,6 +890,8 @@ ${log.payload || ''}
       warehouseStock: liveWarehouseStock,
       warehouseBatches: liveWarehouseBatches,
       warehouseMovements: liveWarehouseMovements,
+      financialCategories: liveFinancialCategories,
+      financialRecords: liveFinancialRecords,
       settings: {
         systemName,
         systemLanguage,
@@ -929,6 +938,8 @@ ${log.payload || ''}
       narrow("warehouseStock", liveWarehouseStock);
       narrow("warehouseBatches", liveWarehouseBatches);
       narrow("warehouseMovements", liveWarehouseMovements);
+      narrow("financialCategories", liveFinancialCategories);
+      narrow("financialRecords", liveFinancialRecords);
 
       // The registry list stays whole on purpose: sync.php walks unifiedEntries to
       // reach each entry's dynamic table, so an entry omitted here would silently
@@ -1170,6 +1181,22 @@ ${log.payload || ''}
     setWarehouseMovements(prev => {
       const next = typeof newMovements === "function" ? newMovements(prev) : newMovements;
       pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
+      return next;
+    });
+  };
+
+  const updateFinancialCategoriesAndSync = (newCats: FinancialCategory[] | ((prev: FinancialCategory[]) => FinancialCategory[])) => {
+    setFinancialCategories(prev => {
+      const next = typeof newCats === "function" ? newCats(prev) : newCats;
+      pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
+      return next;
+    });
+  };
+
+  const updateFinancialRecordsAndSync = (newRecs: FinancialRecord[] | ((prev: FinancialRecord[]) => FinancialRecord[])) => {
+    setFinancialRecords(prev => {
+      const next = typeof newRecs === "function" ? newRecs(prev) : newRecs;
+      pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
       return next;
     });
   };
@@ -1554,6 +1581,12 @@ ${log.payload || ''}
       if (data.warehouseMovements && Array.isArray(data.warehouseMovements)) {
         setWarehouseMovements(data.warehouseMovements);
       }
+      if (data.financialCategories && Array.isArray(data.financialCategories)) {
+        setFinancialCategories(data.financialCategories);
+      }
+      if (data.financialRecords && Array.isArray(data.financialRecords)) {
+        setFinancialRecords(data.financialRecords);
+      }
       if (data.settings) {
         const s = data.settings;
         if (s.systemName && s.systemName !== systemName) setSystemName(s.systemName);
@@ -1600,6 +1633,8 @@ ${log.payload || ''}
         warehouseStock: baselineOf(data.warehouseStock ?? warehouseStockRef.current),
         warehouseBatches: baselineOf(data.warehouseBatches ?? warehouseBatchesRef.current),
         warehouseMovements: baselineOf(data.warehouseMovements ?? warehouseMovementsRef.current),
+        financialCategories: baselineOf(data.financialCategories ?? financialCategoriesRef.current),
+        financialRecords: baselineOf(data.financialRecords ?? financialRecordsRef.current),
       };
       const ueData = data.unifiedEntriesData ?? unifiedEntriesDataRef.current ?? {};
       const nextUeBaselines: Record<string, RecordBaseline> = {};
@@ -1626,6 +1661,8 @@ ${log.payload || ''}
         warehouseStock: data.warehouseStock ?? warehouseStockRef.current,
         warehouseBatches: data.warehouseBatches ?? warehouseBatchesRef.current,
         warehouseMovements: data.warehouseMovements ?? warehouseMovementsRef.current,
+        financialCategories: data.financialCategories ?? financialCategoriesRef.current,
+        financialRecords: data.financialRecords ?? financialRecordsRef.current,
         settings: data.settings ?? {},
       });
     };
@@ -2020,6 +2057,11 @@ ${log.payload || ''}
             users={users}
             userLanguage={userLanguage}
             canEdit={getPermission("general_config") === "edit"}
+            financialRecords={financialRecords}
+            setFinancialRecords={updateFinancialRecordsAndSync}
+            financialCategories={financialCategories}
+            setFinancialCategories={updateFinancialCategoriesAndSync}
+            currencyCode={currencyCode}
           />
         );
       case "clients":
@@ -2038,6 +2080,35 @@ ${log.payload || ''}
             integrationsConfig={integrationsConfig}
             systemName={systemName}
             currencyCode={currencyCode}
+            financialRecords={financialRecords}
+            setFinancialRecords={updateFinancialRecordsAndSync}
+            financialCategories={financialCategories}
+            setFinancialCategories={updateFinancialCategoriesAndSync}
+          />
+        );
+      case "financial":
+        return (
+          <FinancialManagementView
+            financialRecords={financialRecords}
+            setFinancialRecords={updateFinancialRecordsAndSync}
+            financialCategories={financialCategories}
+            setFinancialCategories={updateFinancialCategoriesAndSync}
+            projects={projects}
+            leads={leads}
+            users={users}
+            userLanguage={userLanguage}
+            currencyCode={currencyCode}
+            onOpenProject={(projId) => {
+              window.location.hash = `projects?id=${projId}`;
+              setActiveTab("projects");
+            }}
+            onOpenClient={(clientId) => {
+              const cl = leads.find(l => l.id === clientId);
+              if (cl) {
+                window.location.hash = `clients?name=${encodeURIComponent(cl.name)}`;
+                setActiveTab("clients");
+              }
+            }}
           />
         );
       case "files":
@@ -2344,6 +2415,7 @@ ${log.payload || ''}
                 undefined, undefined, undefined, undefined, undefined, undefined,
                 undefined, undefined, undefined, undefined, undefined,
                 undefined, undefined, undefined, undefined, undefined, undefined,
+                undefined, undefined,
                 { showIndicator: false }
               );
             }, 0);

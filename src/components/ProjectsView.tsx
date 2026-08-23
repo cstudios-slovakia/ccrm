@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import * as Icons from "lucide-react";
 import { Plus, Trash2, Settings, Search, Users, Briefcase, ChevronDown } from "lucide-react";
-import type { Project, ProjectType, Lead, UserProfile } from "../types";
+import type { Project, ProjectType, Lead, UserProfile, FinancialRecord, FinancialCategory } from "../types";
 import { ProjectDetailsView } from "./ProjectDetailsView";
 import { ProjectSettings } from "./ProjectSettings";
 import { CustomSelect } from "./ui/CustomSelect";
@@ -16,6 +16,11 @@ interface ProjectsViewProps {
   users: UserProfile[];
   userLanguage: Language;
   canEdit: boolean;
+  financialRecords?: FinancialRecord[];
+  setFinancialRecords?: React.Dispatch<React.SetStateAction<FinancialRecord[]>>;
+  financialCategories?: FinancialCategory[];
+  setFinancialCategories?: React.Dispatch<React.SetStateAction<FinancialCategory[]>>;
+  currencyCode?: string | null;
 }
 
 export const ProjectsView: React.FC<ProjectsViewProps> = ({
@@ -26,7 +31,12 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   leads,
   users,
   userLanguage,
-  canEdit
+  canEdit,
+  financialRecords = [],
+  setFinancialRecords,
+  financialCategories = [],
+  setFinancialCategories,
+  currencyCode
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
 
@@ -127,6 +137,11 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         leads={leads}
         users={users}
         userLanguage={userLanguage}
+        financialRecords={financialRecords}
+        setFinancialRecords={setFinancialRecords}
+        financialCategories={financialCategories}
+        setFinancialCategories={setFinancialCategories}
+        currencyCode={currencyCode}
         onClose={() => {
           setEditingProject(null);
           setEditingProjectType(null);

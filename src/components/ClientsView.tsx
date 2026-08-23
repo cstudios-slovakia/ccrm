@@ -7,9 +7,9 @@ import {
   Calendar, ArrowLeft, Plus, TrendingUp, PencilLine, FileText,
   X, FolderOpen, Download, Trash2, SlidersHorizontal,
   CornerDownLeft, CornerLeftDown, Loader2, Brain,
-  ChevronLeft, ChevronRight, Milestone
+  ChevronLeft, ChevronRight, Milestone, Coins
 } from "lucide-react";
-import type { Lead, TimelineEvent, Task } from "../types";
+import type { Lead, TimelineEvent, Task, FinancialRecord, FinancialCategory, FinancialStatus } from "../types";
 import { cn } from "../utils/cn";
 import { BlockEditor } from "./BlockEditor";
 import { VoiceRecorderCard } from "./VoiceRecorderCard";
@@ -38,6 +38,10 @@ interface ClientsViewProps {
   taskStates: string[];
   systemName?: string;
   currencyCode?: string | null;
+  financialRecords?: FinancialRecord[];
+  setFinancialRecords?: React.Dispatch<React.SetStateAction<FinancialRecord[]>>;
+  financialCategories?: FinancialCategory[];
+  setFinancialCategories?: React.Dispatch<React.SetStateAction<FinancialCategory[]>>;
 }
 
 
@@ -342,7 +346,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   integrationsConfig,
   taskStates,
   systemName = "CCRM",
-  currencyCode
+  currencyCode,
+  financialRecords = [],
+  setFinancialRecords,
+  financialCategories = []
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
   const currencySymbol = resolveCurrencySymbol(currencyCode, systemLanguage);
@@ -1372,9 +1379,134 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     return d.toTimeString().substring(0, 5);
   });
 
-  // --- DETAIL TABS & DOCUMENT UPLOADER STATE ---
-  const [activeDetailTab, setActiveDetailTab] = useState<"timeline" | "files" | "leads" | "financial_status">("timeline");
+  // --- DETAIL TABS & DOCUMENT UPLOADER STATE WITH URL SYNC ---
+  const getInitialDetailTab = (): "timeline" | "files" | "leads" | "financial_status" | "invoices" => {
+    const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
+    const tabParam = params.get("tab");
+    if (tabParam === "invoices" || tabParam === "files" || tabParam === "leads" || tabParam === "financial_status" || tabParam === "timeline") {
+      return tabParam;
+    }
+    return "timeline";
+  };
+
+  const [activeDetailTab, setActiveDetailTab] = useState<"timeline" | "files" | "leads" | "financial_status" | "invoices">(getInitialDetailTab);
+
+  const handleDetailTabChange = (tab: "timeline" | "files" | "leads" | "financial_status" | "invoices") => {
+    setActiveDetailTab(tab);
+    const hash = window.location.hash;
+    const [base, query] = hash.split("?");
+    const params = new URLSearchParams(query || "");
+    params.set("tab", tab);
+    window.location.hash = `${base}?${params.toString()}`;
+  };
   const [isAnalyzingFinancial, setIsAnalyzingFinancial] = useState(false);
+
+  // Client Invoices Modal & State
+  const [isClientInvModalOpen, setIsClientInvModalOpen] = useState(false);
+  const [clientInvEditing, setClientInvEditing] = useState<FinancialRecord | null>(null);
+  const [clientInvTitle, setClientInvTitle] = useState("");
+  const [clientInvNumber, setClientInvNumber] = useState("");
+  const [clientInvPlanned, setClientInvPlanned] = useState<number | "">("");
+  const [clientInvReal, setClientInvReal] = useState<number | "">("");
+  const [clientInvStatus, setClientInvStatus] = useState<FinancialStatus>("pending");
+  const [clientInvIssueDate, setClientInvIssueDate] = useState(todayLocal());
+  const [clientInvDueDate, setClientInvDueDate] = useState("");
+  const [clientInvCategoryId, setClientInvCategoryId] = useState("");
+  const [clientInvDescription, setClientInvDescription] = useState("");
+
+  const clientInvoices = useMemo(() => {
+    if (!activeClient) return [];
+    const leadIds = (activeClient.associatedLeads || []).map((l: any) => l.id);
+    const primaryId = activeClient.associatedLeads?.[0]?.id;
+    return financialRecords.filter((r) => (primaryId && r.clientId === primaryId) || r.clientId === activeClient.name || (r.clientId && leadIds.includes(r.clientId)));
+  }, [financialRecords, activeClient]);
+
+  const handleOpenClientInvoiceModal = (inv?: FinancialRecord) => {
+    if (inv) {
+      setClientInvEditing(inv);
+      setClientInvTitle(inv.title);
+      setClientInvNumber(inv.invoiceNumber || "");
+      setClientInvPlanned(inv.amountPlanned);
+      setClientInvReal(inv.amountReal);
+      setClientInvStatus(inv.status);
+      setClientInvIssueDate(inv.issueDate || todayLocal());
+      setClientInvDueDate(inv.dueDate || "");
+      setClientInvCategoryId(inv.categoryId || "");
+      setClientInvDescription(inv.description || "");
+    } else {
+      setClientInvEditing(null);
+      setClientInvTitle("");
+      setClientInvNumber(`FA-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`);
+      setClientInvPlanned("");
+      setClientInvReal("");
+      setClientInvStatus("pending");
+      setClientInvIssueDate(todayLocal());
+      setClientInvDueDate("");
+      setClientInvCategoryId("");
+      setClientInvDescription("");
+    }
+    setIsClientInvModalOpen(true);
+  };
+
+  const handleSaveClientInvoice = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!clientInvTitle.trim() || !activeClient) return;
+
+    let path = "";
+    if (clientInvCategoryId) {
+      const cat = financialCategories.find((c) => c.id === clientInvCategoryId);
+      if (cat) path = cat.name;
+    }
+
+    const clientIdVal = activeClient.associatedLeads?.[0]?.id || activeClient.name;
+
+    const payload: FinancialRecord = {
+      id: clientInvEditing?.id || `fr-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      type: "income",
+      subtype: "invoice",
+      title: clientInvTitle.trim(),
+      description: clientInvDescription.trim() || null,
+      categoryId: clientInvCategoryId || null,
+      categoryPath: path || null,
+      amountPlanned: Number(clientInvPlanned) || 0,
+      amountReal: Number(clientInvReal) || 0,
+      currency: currencyCode || "EUR",
+      status: clientInvStatus,
+      issueDate: clientInvIssueDate,
+      dueDate: clientInvDueDate || null,
+      paidDate: clientInvStatus === "paid" ? todayLocal() : null,
+      paymentMethod: "bank_transfer",
+      isRecurring: false,
+      projectId: null,
+      clientId: clientIdVal,
+      invoiceNumber: clientInvNumber.trim() || null,
+      taxRate: 20,
+      createdBy: (window as any).ccrmCurrentUser?.email || "Admin",
+      createdAt: clientInvEditing?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    if (setFinancialRecords) {
+      setFinancialRecords((prev) => {
+        const exists = prev.some((r) => r.id === payload.id);
+        if (exists) return prev.map((r) => (r.id === payload.id ? payload : r));
+        return [payload, ...prev];
+      });
+    }
+
+    setIsClientInvModalOpen(false);
+    if (typeof (window as any).showToast === "function") {
+      (window as any).showToast(t("Invoice saved successfully!", "Faktúra bola úspešne uložená!", "Számla sikeresen mentve!"));
+    }
+  };
+
+  const handleDeleteClientInvoice = (id: string) => {
+    if (confirm(t("Delete this invoice?", "Vymazať túto faktúru?", "Törli ezt a számlát?"))) {
+      if (setFinancialRecords) {
+        setFinancialRecords((prev) => prev.filter((r) => r.id !== id));
+      }
+    }
+  };
 
   const handleDownloadStatement = async (statementId: string, client: any) => {
     if (!client) return;
@@ -3073,7 +3205,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               <div className="flex flex-wrap justify-start border-b-2 border-slate-100 pb-2.5 gap-2">
                 <button
                   type="button"
-                  onClick={() => setActiveDetailTab("timeline")}
+                  onClick={() => handleDetailTabChange("timeline")}
                   className={`px-5 py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all text-center flex items-center justify-center gap-2 border-2 ${
                     activeDetailTab === "timeline"
                       ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/10 border-emerald-700"
@@ -3084,7 +3216,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setActiveDetailTab("files")}
+                  onClick={() => handleDetailTabChange("files")}
                   className={`px-5 py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all text-center flex items-center justify-center gap-2 border-2 ${
                     activeDetailTab === "files"
                       ? "bg-[#5c4033] text-white shadow-md shadow-[#5c4033]/15 border-[#3d2b1f]"
@@ -3095,7 +3227,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setActiveDetailTab("leads")}
+                  onClick={() => handleDetailTabChange("leads")}
                   className={`px-5 py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all text-center flex items-center justify-center gap-2 border-2 ${
                     activeDetailTab === "leads"
                       ? "bg-blue-600 text-white shadow-md shadow-blue-500/10 border-blue-700"
@@ -3107,7 +3239,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 {activeClient.clientType !== "person" && (
                   <button
                     type="button"
-                    onClick={() => setActiveDetailTab("financial_status")}
+                    onClick={() => handleDetailTabChange("financial_status")}
                     className={`px-5 py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all text-center flex items-center justify-center gap-2 border-2 ${
                       activeDetailTab === "financial_status"
                         ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/10 border-indigo-700"
@@ -3117,6 +3249,17 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     <TrendingUp className="h-4.5 w-4.5 stroke-[2.5]" /> {t("Financial Report", "Finančný report", "Pénzügyi jelentés")}
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={() => handleDetailTabChange("invoices")}
+                  className={`px-5 py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all text-center flex items-center justify-center gap-2 border-2 ${
+                    activeDetailTab === "invoices"
+                      ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/10 border-emerald-700"
+                      : "text-slate-550 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border-slate-200"
+                  }`}
+                >
+                  <Coins className="h-4.5 w-4.5 stroke-[2.5]" /> {t("Invoices & Billing", "Faktúry a platby", "Számlák és fizetések")} ({clientInvoices.length})
+                </button>
               </div>
 
               {activeDetailTab === "timeline" && (
@@ -4104,6 +4247,288 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           })}
                         </div>
                       )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* INVOICES & BILLING TAB (CRITICAL REQUIREMENT #5 & #6) */}
+              {activeDetailTab === "invoices" && (
+                <div className="space-y-5 text-left animate-in fade-in duration-150">
+                  {/* Top Bar with Add Button */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b-2 border-slate-100 pb-3">
+                    <div>
+                      <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                        <Coins className="h-4.5 w-4.5 text-emerald-600 stroke-[2.5]" />
+                        {t("Client Invoices & Financial Movements", "Faktúry a finančné toky klienta", "Ügyfélszámlák és pénzügyi tételek")}
+                      </h3>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        {t("Overview of all issued and planned invoices associated with this client.", "Prehľad všetkých vystavených a plánovaných faktúr priradených k tomuto klientovi.", "Az ügyfélhez kapcsolódó összes kiállított és tervezett számla.")}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleOpenClientInvoiceModal()}
+                      className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md shadow-emerald-500/20 active:scale-95 cursor-pointer shrink-0"
+                    >
+                      <Plus className="h-4 w-4" />
+                      <span>{t("+ New Invoice", "+ Nová faktúra", "+ Új számla")}</span>
+                    </button>
+                  </div>
+
+                  {/* Client Financial Summary Cards */}
+                  {clientInvoices.length > 0 && (() => {
+                    const totalPlanned = clientInvoices.reduce((acc, r) => acc + (r.amountPlanned || 0), 0);
+                    const totalReal = clientInvoices.reduce((acc, r) => acc + (r.amountReal || 0), 0);
+                    const pendingAmount = clientInvoices.filter(r => r.status === "pending" || r.status === "planned").reduce((acc, r) => acc + (r.amountPlanned || 0), 0);
+                    const overdueAmount = clientInvoices.filter(r => r.status === "overdue").reduce((acc, r) => acc + (r.amountPlanned || 0), 0);
+
+                    return (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div className="p-3.5 rounded-2xl bg-emerald-50/50 border border-emerald-200">
+                          <span className="text-[10px] font-bold text-emerald-700 uppercase block">{t("Total Invoiced", "Celkom vyfakturované", "Összes számlázott")}</span>
+                          <div className="text-base font-black text-emerald-900 mt-0.5">{money(totalReal)}</div>
+                          <span className="text-[10px] text-emerald-600">{t("Plan:", "Plán:", "Terv:")} {money(totalPlanned)}</span>
+                        </div>
+                        <div className="p-3.5 rounded-2xl bg-amber-50/50 border border-amber-200">
+                          <span className="text-[10px] font-bold text-amber-700 uppercase block">{t("Pending Payment", "Čaká na úhradu", "Fizetésre vár")}</span>
+                          <div className="text-base font-black text-amber-900 mt-0.5">{money(pendingAmount)}</div>
+                          <span className="text-[10px] text-amber-600">{clientInvoices.filter(r => r.status === "pending" || r.status === "planned").length} {t("invoices", "faktúr", "számla")}</span>
+                        </div>
+                        <div className="p-3.5 rounded-2xl bg-rose-50/50 border border-rose-200">
+                          <span className="text-[10px] font-bold text-rose-700 uppercase block">{t("Overdue", "Po splatnosti", "Lejárt")}</span>
+                          <div className="text-base font-black text-rose-900 mt-0.5">{money(overdueAmount)}</div>
+                          <span className="text-[10px] text-rose-600">{clientInvoices.filter(r => r.status === "overdue").length} {t("overdue", "po splatnosti", "lejárt")}</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Invoices List Table */}
+                  {clientInvoices.length === 0 ? (
+                    <div className="py-12 text-center text-slate-400 text-xs font-semibold flex flex-col items-center justify-center gap-3 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                      <Coins className="h-8 w-8 text-slate-300 animate-bounce" />
+                      <div>{t("No invoices created for this client yet.", "Pre tohto klienta zatiaľ neboli vystavené žiadne faktúry.", "Még nincsenek számlák rögzítve ehhez az ügyfélhez.")}</div>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenClientInvoiceModal()}
+                        className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold shadow-sm"
+                      >
+                        {t("+ Issue First Invoice", "+ Vystaviť prvú faktúru", "+ Első számla kiállítása")}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto border border-slate-200 rounded-2xl">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
+                          <tr>
+                            <th className="py-2.5 px-3 font-bold">{t("Issue / Due Date", "Vystavenie / Splatnosť", "Kiállítás / Esedékesség")}</th>
+                            <th className="py-2.5 px-3 font-bold">{t("Invoice # & Title", "Číslo FA a názov", "Számlaszám és tétel")}</th>
+                            <th className="py-2.5 px-3 font-bold text-right">{t("Planned (€)", "Plánované", "Tervezett")}</th>
+                            <th className="py-2.5 px-3 font-bold text-right">{t("Real (€)", "Uhradené", "Fizetve")}</th>
+                            <th className="py-2.5 px-3 font-bold text-center">{t("Status", "Stav", "Állapot")}</th>
+                            <th className="py-2.5 px-3 font-bold text-right">{t("Actions", "Akcie", "Műveletek")}</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
+                          {clientInvoices.map((inv) => (
+                            <tr key={inv.id} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="py-3 px-3 whitespace-nowrap">
+                                <div>{formatDateLocalized(inv.issueDate, systemLanguage)}</div>
+                                {inv.dueDate && (
+                                  <div className="text-[10px] text-slate-400">
+                                    {t("Due:", "Splatnosť:", "Esedékes:")} {formatDateLocalized(inv.dueDate, systemLanguage)}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="py-3 px-3">
+                                <div className="font-bold text-slate-900">{inv.title}</div>
+                                {inv.invoiceNumber && (
+                                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+                                    {inv.invoiceNumber}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3 px-3 text-right text-slate-500 font-normal">{money(inv.amountPlanned)}</td>
+                              <td className="py-3 px-3 text-right font-bold text-emerald-600">{money(inv.amountReal)}</td>
+                              <td className="py-3 px-3 text-center">
+                                <span className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                                  inv.status === "paid"
+                                    ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                                    : inv.status === "overdue"
+                                    ? "bg-rose-100 text-rose-800 border border-rose-200 animate-pulse"
+                                    : "bg-amber-100 text-amber-800 border border-amber-200"
+                                }`}>
+                                  {inv.status === "paid" ? t("Paid", "Uhradené", "Fizetve") : inv.status === "overdue" ? t("Overdue", "Po splatnosti", "Lejárt") : t("Pending", "Čaká na úhradu", "Függő")}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3 text-right">
+                                <div className="flex items-center justify-end gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenClientInvoiceModal(inv)}
+                                    className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors cursor-pointer"
+                                    title={t("Edit invoice", "Upraviť faktúru", "Számla szerkesztése")}
+                                  >
+                                    <PencilLine className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteClientInvoice(inv.id)}
+                                    className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
+                                    title={t("Delete invoice", "Vymazať faktúru", "Számla törlése")}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* CLIENT INVOICE MODAL */}
+                  {isClientInvModalOpen && (
+                    <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+                      <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                          <div className="flex items-center gap-2">
+                            <Coins className="h-5 w-5 text-emerald-600" />
+                            <h3 className="text-sm font-bold text-slate-900">
+                              {clientInvEditing
+                                ? t("Edit Client Invoice", "Upraviť faktúru klienta", "Ügyfélszámla szerkesztése")
+                                : t("Issue Invoice for Client", "Vystaviť faktúru pre klienta", "Számla kiállítása ügyfélnek")}
+                            </h3>
+                          </div>
+                          <button onClick={() => setIsClientInvModalOpen(false)} className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer">
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+
+                        <form onSubmit={handleSaveClientInvoice} className="space-y-3.5 text-xs font-semibold text-left">
+                          <div>
+                            <label className="block text-[10px] text-slate-400 uppercase mb-1">{t("Invoice Title / Service Description *", "Názov faktúry / popis plnenia *", "Számla tárgya / leírás *")}</label>
+                            <input
+                              required
+                              value={clientInvTitle}
+                              onChange={(e) => setClientInvTitle(e.target.value)}
+                              placeholder="e.g. Záloha za kuchynskú dosku..."
+                              className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:outline-none focus:border-emerald-500 font-medium"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] text-slate-400 uppercase mb-1">{t("Invoice Number", "Číslo faktúry", "Számlaszám")}</label>
+                            <input
+                              value={clientInvNumber}
+                              onChange={(e) => setClientInvNumber(e.target.value)}
+                              placeholder="FA-2026-0001"
+                              className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-mono"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-[10px] text-slate-400 uppercase mb-1">{t("Planned Amount (€) *", "Plánovaná suma (€) *", "Tervezett összeg (€) *")}</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                required
+                                value={clientInvPlanned}
+                                onChange={(e) => setClientInvPlanned(e.target.value ? parseFloat(e.target.value) : "")}
+                                placeholder="0.00"
+                                className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-bold"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] text-slate-400 uppercase mb-1">{t("Real / Paid Amount (€)", "Skutočná suma (€)", "Valós összeg (€)")}</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={clientInvReal}
+                                onChange={(e) => setClientInvReal(e.target.value ? parseFloat(e.target.value) : "")}
+                                placeholder="0.00"
+                                className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-bold text-emerald-600"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-[10px] text-slate-400 uppercase mb-1">{t("Category", "Kategória", "Kategória")}</label>
+                              <select
+                                value={clientInvCategoryId}
+                                onChange={(e) => setClientInvCategoryId(e.target.value)}
+                                className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50"
+                              >
+                                <option value="">{t("-- Select Category --", "-- Vyberte kategóriu --", "-- Válasszon --")}</option>
+                                {financialCategories
+                                  .filter((c) => c.type === "income")
+                                  .map((c) => (
+                                    <option key={c.id} value={c.id}>
+                                      {c.level === 1 ? `● ${c.name}` : `  ↳ ${c.name}`}
+                                    </option>
+                                  ))}
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="block text-[10px] text-slate-400 uppercase mb-1">{t("Status", "Stav úhrady", "Fizetési állapot")}</label>
+                              <select
+                                value={clientInvStatus}
+                                onChange={(e) => setClientInvStatus(e.target.value as any)}
+                                className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50"
+                              >
+                                <option value="planned">{t("Planned", "Plánované", "Tervezett")}</option>
+                                <option value="pending">{t("Pending", "Čaká na úhradu", "Függő")}</option>
+                                <option value="paid">{t("Paid", "Uhradené", "Fizetve")}</option>
+                                <option value="overdue">{t("Overdue", "Po splatnosti", "Lejárt")}</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-[10px] text-slate-400 uppercase mb-1">{t("Issue Date", "Dátum vystavenia", "Kiállítás dátuma")}</label>
+                              <input
+                                type="date"
+                                required
+                                value={clientInvIssueDate}
+                                onChange={(e) => setClientInvIssueDate(e.target.value)}
+                                className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] text-slate-400 uppercase mb-1">{t("Due Date", "Dátum splatnosti", "Esedékesség")}</label>
+                              <input
+                                type="date"
+                                value={clientInvDueDate}
+                                onChange={(e) => setClientInvDueDate(e.target.value)}
+                                className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                            <button
+                              type="button"
+                              onClick={() => setIsClientInvModalOpen(false)}
+                              className="px-4 py-2 rounded-xl text-slate-500 hover:bg-slate-100 cursor-pointer"
+                            >
+                              {t("Cancel", "Zrušiť", "Mégsem")}
+                            </button>
+                            <button
+                              type="submit"
+                              className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold cursor-pointer shadow-sm"
+                            >
+                              {t("Save Invoice", "Uložiť faktúru", "Számla mentése")}
+                            </button>
+                          </div>
+                        </form>
+                      </div>
                     </div>
                   )}
                 </div>
