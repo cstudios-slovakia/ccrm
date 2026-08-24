@@ -23,6 +23,7 @@ import type {
   Lead,
   UserProfile
 } from "../types";
+import { CustomSelect } from "./ui/CustomSelect";
 import type { Language } from "../utils/translations";
 import { formatMoney } from "../utils/currency";
 import { todayLocal, formatDateLocalized } from "../utils/localTime";
@@ -2622,7 +2623,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             required
             value={formTitle}
             onChange={(e) => setFormTitle(e.target.value)}
-            placeholder={formType === "income" ? t("e.g. Countertop supply & installation", "napr. Dodávka a montáž kuchynskej linky", "pl. Konyhapult szállítása és beépítése") : t("e.g. Laminam slabs purchase (IT), Office rent...", "napr. Nákup dosiek Taliansko, Nájom skladu...", "pl. Lapok beszerzése, Irodabérlet...")}
+            placeholder={formType === "income" ? t("e.g. Countertop supply & installation", "napr. Dodávka a montáž kuchynskej linky", "pl. Konyhapult szállítása és beépítése") : t("e.g. Material purchase, Office rent...", "napr. Nákup materiálu, Nájom skladu...", "pl. Anyagbeszerzés, Irodabérlet...")}
             className="w-full px-3.5 py-2.5 bg-slate-50  border border-slate-200  rounded-xl text-xs text-slate-800  focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
         </div>
@@ -2693,22 +2694,23 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             <label className="text-[11px] font-bold text-slate-500 block mb-1">
               {t("Select Associated Project *", "Vyberte projekt *", "Válasszon projektet *")}
             </label>
-            <select
+            <CustomSelect
               value={formProjectId}
-              onChange={(e) => setFormProjectId(e.target.value)}
-              required
-              className="w-full px-3 py-2 bg-white  border border-slate-200  rounded-xl text-xs font-semibold text-slate-800  focus:outline-none"
-            >
-              <option value="">{t("-- Select Project --", "-- Vyberte projekt --", "-- Válasszon --")}</option>
-              {projects.map((p) => {
-                const lead = leads.find((l) => l.id === p.leadId || l.id === p.clientId);
-                return (
-                  <option key={p.id} value={p.id}>
-                    {lead ? `${lead.name} (${lead.city || ""})` : p.id}
-                  </option>
-                );
-              })}
-            </select>
+              onChange={(val) => setFormProjectId(val)}
+              placeholder={t("-- Select Project --", "-- Vyberte projekt --", "-- Válasszon --")}
+              options={[
+                { value: "", label: t("-- Select Project --", "-- Vyberte projekt --", "-- Válasszon --") },
+                ...projects.map((p) => {
+                  const lead = leads.find((l) => l.id === p.leadId || l.id === p.clientId);
+                  return {
+                    value: p.id,
+                    label: lead ? `${lead.name} (${lead.city || ""})` : p.id,
+                  };
+                }),
+              ]}
+              size="sm"
+              className="w-full text-xs font-semibold rounded-xl"
+            />
           </div>
         )}
 
@@ -2718,19 +2720,20 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             <label className="text-[11px] font-bold text-slate-500 block mb-1">
               {t("Select Associated Client *", "Vyberte klienta *", "Válasszon ügyfelet *")}
             </label>
-            <select
+            <CustomSelect
               value={formClientId}
-              onChange={(e) => setFormClientId(e.target.value)}
-              required
-              className="w-full px-3 py-2 bg-white  border border-slate-200  rounded-xl text-xs font-semibold text-slate-800  focus:outline-none"
-            >
-              <option value="">{t("-- Select Client --", "-- Vyberte klienta --", "-- Válasszon ügyfelet --")}</option>
-              {leads.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name} ({l.city || "N/A"})
-                </option>
-              ))}
-            </select>
+              onChange={(val) => setFormClientId(val)}
+              placeholder={t("-- Select Client --", "-- Vyberte klienta --", "-- Válasszon ügyfelet --")}
+              options={[
+                { value: "", label: t("-- Select Client --", "-- Vyberte klienta --", "-- Válasszon ügyfelet --") },
+                ...leads.map((l) => ({
+                  value: l.id,
+                  label: `${l.name} (${l.city || "N/A"})`,
+                })),
+              ]}
+              size="sm"
+              className="w-full text-xs font-semibold rounded-xl"
+            />
           </div>
         )}
       </div>
@@ -2791,24 +2794,26 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           <label className="text-xs font-bold text-slate-700  block mb-1">
             {t("Payment Status", "Stav úhrady", "Fizetési állapot")}
           </label>
-          <select
+          <CustomSelect
             value={formStatus}
-            onChange={(e) => {
-              const newSt = e.target.value as FinancialStatus;
+            onChange={(val) => {
+              const newSt = val as FinancialStatus;
               setFormStatus(newSt);
               if (newSt === "paid" && (!formAmountReal || formAmountReal === 0) && formAmountPlanned) {
                 setFormAmountReal(formAmountPlanned);
               }
             }}
-            className="w-full px-3 py-2 bg-slate-50  border border-slate-200  rounded-xl text-xs font-semibold text-slate-800  focus:outline-none"
-          >
-            <option value="planned">{t("Planned / Scheduled", "Plánované", "Tervezett")}</option>
-            <option value="pending">{t("Pending / Issued", "Čaká na úhradu", "Fizetésre vár")}</option>
-            <option value="paid">{t("Paid / Settled", "Uhradené", "Fizetve")}</option>
-            <option value="partially_paid">{t("Partially Paid", "Čiastočne uhradené", "Részben fizetve")}</option>
-            <option value="overdue">{t("Overdue", "Po splatnosti", "Lejárt")}</option>
-            <option value="cancelled">{t("Cancelled", "Zrušené", "Törölve")}</option>
-          </select>
+            options={[
+              { value: "planned", label: t("Planned / Scheduled", "Plánované", "Tervezett") },
+              { value: "pending", label: t("Pending / Issued", "Čaká na úhradu", "Fizetésre vár") },
+              { value: "paid", label: t("Paid / Settled", "Uhradené", "Fizetve") },
+              { value: "partially_paid", label: t("Partially Paid", "Čiastočne uhradené", "Részben fizetve") },
+              { value: "overdue", label: t("Overdue", "Po splatnosti", "Lejárt") },
+              { value: "cancelled", label: t("Cancelled", "Zrušené", "Törölve") },
+            ]}
+            size="sm"
+            className="w-full text-xs font-semibold rounded-xl bg-slate-50 border-slate-200"
+          />
         </div>
 
         <div>
@@ -2892,19 +2897,21 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 <label className="text-[11px] font-bold text-slate-600  block mb-1">
                   {t("Day of the Week", "Deň v týždni", "A hét napja")}
                 </label>
-                <select
-                  value={formWeeklyDay}
-                  onChange={(e) => setFormWeeklyDay(parseInt(e.target.value))}
-                  className="w-full px-3 py-2 bg-white  border border-slate-200  rounded-xl text-xs font-semibold text-slate-800  focus:outline-none"
-                >
-                  <option value="1">{t("Monday", "Pondelok", "Hétfő")}</option>
-                  <option value="2">{t("Tuesday", "Utorok", "Kedd")}</option>
-                  <option value="3">{t("Wednesday", "Streda", "Szerda")}</option>
-                  <option value="4">{t("Thursday", "Štvrtok", "Csütörtök")}</option>
-                  <option value="5">{t("Friday", "Piatok", "Péntek")}</option>
-                  <option value="6">{t("Saturday", "Sobota", "Szombat")}</option>
-                  <option value="0">{t("Sunday", "Nedeľa", "Vasárnap")}</option>
-                </select>
+                <CustomSelect
+                  value={String(formWeeklyDay)}
+                  onChange={(val) => setFormWeeklyDay(parseInt(val))}
+                  options={[
+                    { value: "1", label: t("Monday", "Pondelok", "Hétfő") },
+                    { value: "2", label: t("Tuesday", "Utorok", "Kedd") },
+                    { value: "3", label: t("Wednesday", "Streda", "Szerda") },
+                    { value: "4", label: t("Thursday", "Štvrtok", "Csütörtök") },
+                    { value: "5", label: t("Friday", "Piatok", "Péntek") },
+                    { value: "6", label: t("Saturday", "Sobota", "Szombat") },
+                    { value: "0", label: t("Sunday", "Nedeľa", "Vasárnap") },
+                  ]}
+                  size="sm"
+                  className="w-full text-xs font-semibold rounded-xl"
+                />
               </div>
             )}
 
@@ -2948,31 +2955,35 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="text-[11px] font-bold text-slate-500 block mb-1">{t("Week of Month", "Týždeň v mesiaci", "Hét a hónapban")}</label>
-                      <select
-                        value={formWeekOfMonth}
-                        onChange={(e) => setFormWeekOfMonth(parseInt(e.target.value))}
-                        className="w-full px-3 py-1.5 bg-white  border border-slate-200  rounded-xl text-xs font-semibold"
-                      >
-                        <option value="1">{t("1st (First)", "1. (Prvý)", "1. (Első)")}</option>
-                        <option value="2">{t("2nd (Second)", "2. (Druhý)", "2. (Második)")}</option>
-                        <option value="3">{t("3rd (Third)", "3. (Tretí)", "3. (Harmadik)")}</option>
-                        <option value="4">{t("4th (Fourth)", "4. (Štvrtý)", "4. (Negyedik)")}</option>
-                        <option value="-1">{t("Last", "Posledný", "Utolsó")}</option>
-                      </select>
+                      <CustomSelect
+                        value={String(formWeekOfMonth)}
+                        onChange={(val) => setFormWeekOfMonth(parseInt(val))}
+                        options={[
+                          { value: "1", label: t("1st (First)", "1. (Prvý)", "1. (Első)") },
+                          { value: "2", label: t("2nd (Second)", "2. (Druhý)", "2. (Második)") },
+                          { value: "3", label: t("3rd (Third)", "3. (Tretí)", "3. (Harmadik)") },
+                          { value: "4", label: t("4th (Fourth)", "4. (Štvrtý)", "4. (Negyedik)") },
+                          { value: "-1", label: t("Last", "Posledný", "Utolsó") },
+                        ]}
+                        size="sm"
+                        className="w-full text-xs font-semibold rounded-xl"
+                      />
                     </div>
                     <div>
                       <label className="text-[11px] font-bold text-slate-500 block mb-1">{t("Weekday", "Deň v týždni", "Hétköznap")}</label>
-                      <select
-                        value={formNthDayOfWeek}
-                        onChange={(e) => setFormNthDayOfWeek(parseInt(e.target.value))}
-                        className="w-full px-3 py-1.5 bg-white  border border-slate-200  rounded-xl text-xs font-semibold"
-                      >
-                        <option value="1">{t("Monday", "Pondelok", "Hétfő")}</option>
-                        <option value="2">{t("Tuesday", "Utorok", "Kedd")}</option>
-                        <option value="3">{t("Wednesday", "Streda", "Szerda")}</option>
-                        <option value="4">{t("Thursday", "Štvrtok", "Csütörtök")}</option>
-                        <option value="5">{t("Friday", "Piatok", "Péntek")}</option>
-                      </select>
+                      <CustomSelect
+                        value={String(formNthDayOfWeek)}
+                        onChange={(val) => setFormNthDayOfWeek(parseInt(val))}
+                        options={[
+                          { value: "1", label: t("Monday", "Pondelok", "Hétfő") },
+                          { value: "2", label: t("Tuesday", "Utorok", "Kedd") },
+                          { value: "3", label: t("Wednesday", "Streda", "Szerda") },
+                          { value: "4", label: t("Thursday", "Štvrtok", "Csütörtök") },
+                          { value: "5", label: t("Friday", "Piatok", "Péntek") },
+                        ]}
+                        size="sm"
+                        className="w-full text-xs font-semibold rounded-xl"
+                      />
                     </div>
                   </div>
                 )}
@@ -2984,18 +2995,19 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               <div className="grid grid-cols-2 gap-2 animate-in fade-in">
                 <div>
                   <label className="text-[11px] font-bold text-slate-500 block mb-1">{t("Month of Year", "Mesiac v roku", "Hónap")}</label>
-                  <select
-                    value={formYearlyMonth}
-                    onChange={(e) => setFormYearlyMonth(parseInt(e.target.value))}
-                    className="w-full px-3 py-1.5 bg-white  border border-slate-200  rounded-xl text-xs font-semibold"
-                  >
-                    {[
+                  <CustomSelect
+                    value={String(formYearlyMonth)}
+                    onChange={(val) => setFormYearlyMonth(parseInt(val))}
+                    options={[
                       "Január", "Február", "Marec", "Apríl", "Máj", "Jún",
                       "Júl", "August", "September", "Október", "November", "December"
-                    ].map((mName, idx) => (
-                      <option key={idx + 1} value={idx + 1}>{mName}</option>
-                    ))}
-                  </select>
+                    ].map((mName, idx) => ({
+                      value: String(idx + 1),
+                      label: mName,
+                    }))}
+                    size="sm"
+                    className="w-full text-xs font-semibold rounded-xl"
+                  />
                 </div>
                 <div>
                   <label className="text-[11px] font-bold text-slate-500 block mb-1">{t("Day of Month", "Deň v mesiaci", "Nap")}</label>
@@ -4310,18 +4322,20 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
               {/* 3. Date Range Preset */}
               <div className="md:col-span-3">
-                <select
+                <CustomSelect
                   value={movementsDatePreset}
-                  onChange={(e) => setMovementsDatePreset(e.target.value as any)}
-                  className="w-full py-1.5 px-3 bg-slate-50  border border-slate-200  rounded-xl text-xs text-slate-800  font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                >
-                  <option value="all">{t("📅 All Time", "📅 Celé obdobie", "📅 Teljes időszak")}</option>
-                  <option value="this_month">{t("📅 This Month", "📅 Tento mesiac", "📅 Ez a hónap")}</option>
-                  <option value="last_month">{t("📅 Last Month", "📅 Minulý mesiac", "📅 Előző hónap")}</option>
-                  <option value="this_quarter">{t("📅 This Quarter", "📅 Tento kvartál", "📅 Ez a negyedév")}</option>
-                  <option value="this_year">{t("📅 This Year", "📅 Tento rok", "📅 Ez az év")}</option>
-                  <option value="custom">{t("⚙️ Custom Date Range...", "⚙️ Vlastný rozsah dátumov...", "⚙️ Egyéni időszak...")}</option>
-                </select>
+                  onChange={(val) => setMovementsDatePreset(val as any)}
+                  options={[
+                    { value: "all", label: t("📅 All Time", "📅 Celé obdobie", "📅 Teljes időszak") },
+                    { value: "this_month", label: t("📅 This Month", "📅 Tento mesiac", "📅 Ez a hónap") },
+                    { value: "last_month", label: t("📅 Last Month", "📅 Minulý mesiac", "📅 Előző hónap") },
+                    { value: "this_quarter", label: t("📅 This Quarter", "📅 Tento kvartál", "📅 Ez a negyedév") },
+                    { value: "this_year", label: t("📅 This Year", "📅 Tento rok", "📅 Ez az év") },
+                    { value: "custom", label: t("⚙️ Custom Date Range...", "⚙️ Vlastný rozsah dátumov...", "⚙️ Egyéni időszak...") },
+                  ]}
+                  size="sm"
+                  className="w-full text-xs font-semibold rounded-xl bg-slate-50 border-slate-200"
+                />
               </div>
 
               {/* 4. Advanced Filters Toggle */}
@@ -4922,43 +4936,49 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
               {/* Frequency Selector */}
               <div className="lg:col-span-3">
-                <select
+                <CustomSelect
                   value={recurringFreqFilter}
-                  onChange={(e) => setRecurringFreqFilter(e.target.value)}
-                  className="w-full py-1.5 px-3 bg-slate-50  border border-slate-200  rounded-xl text-xs text-slate-800  font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500"
-                >
-                  <option value="all">{t("All Frequencies", "Všetky frekvencie", "Minden gyakoriság")}</option>
-                  <option value="weekly">{t("Weekly (Týždenne)", "Týždenne", "Heti")}</option>
-                  <option value="monthly">{t("Monthly (Mesačne)", "Mesačne", "Havi")}</option>
-                  <option value="yearly">{t("Yearly (Ročne)", "Ročne", "Éves")}</option>
-                </select>
+                  onChange={(val) => setRecurringFreqFilter(val)}
+                  options={[
+                    { value: "all", label: t("All Frequencies", "Všetky frekvencie", "Minden gyakoriság") },
+                    { value: "weekly", label: t("Weekly (Týždenne)", "Týždenne", "Heti") },
+                    { value: "monthly", label: t("Monthly (Mesačne)", "Mesačne", "Havi") },
+                    { value: "yearly", label: t("Yearly (Ročne)", "Ročne", "Éves") },
+                  ]}
+                  size="sm"
+                  className="w-full text-xs font-semibold rounded-xl bg-slate-50 border-slate-200"
+                />
               </div>
 
               {/* Status Filter */}
               <div className="lg:col-span-3">
-                <select
+                <CustomSelect
                   value={recurringStatusFilter}
-                  onChange={(e) => setRecurringStatusFilter(e.target.value as any)}
-                  className="w-full py-1.5 px-3 bg-slate-50  border border-slate-200  rounded-xl text-xs text-slate-800  font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500"
-                >
-                  <option value="all">{t("All Statuses (Active & Paused)", "Všetky stavy (Aktívne aj pozastavené)", "Minden állapot")}</option>
-                  <option value="active">{t("✓ Active Rules Only", "✓ Iba aktívne pravidlá", "✓ Csak aktív szabályok")}</option>
-                  <option value="paused">{t("⏸ Paused Rules Only", "⏸ Iba pozastavené", "⏸ Csak szüneteltetett")}</option>
-                </select>
+                  onChange={(val) => setRecurringStatusFilter(val as any)}
+                  options={[
+                    { value: "all", label: t("All Statuses (Active & Paused)", "Všetky stavy (Aktívne aj pozastavené)", "Minden állapot") },
+                    { value: "active", label: t("✓ Active Rules Only", "✓ Iba aktívne pravidlá", "✓ Csak aktív szabályok") },
+                    { value: "paused", label: t("⏸ Paused Rules Only", "⏸ Iba pozastavené", "⏸ Csak szüneteltetett") },
+                  ]}
+                  size="sm"
+                  className="w-full text-xs font-semibold rounded-xl bg-slate-50 border-slate-200"
+                />
               </div>
 
               {/* Entity Scope Filter */}
               <div className="lg:col-span-2">
-                <select
+                <CustomSelect
                   value={recurringScopeFilter}
-                  onChange={(e) => setRecurringScopeFilter(e.target.value)}
-                  className="w-full py-1.5 px-3 bg-slate-50  border border-slate-200  rounded-xl text-xs text-slate-800  font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500"
-                >
-                  <option value="all">{t("All Scopes", "Všetky rozsahy", "Minden hatókör")}</option>
-                  <option value="global">{t("🌐 Global Only", "🌐 Iba firemné", "🌐 Vállalati")}</option>
-                  <option value="project">{t("💼 Projects Only", "💼 Iba projekty", "💼 Projektek")}</option>
-                  <option value="client">{t("👤 Clients Only", "👤 Iba klienti", "👤 Ügyfelek")}</option>
-                </select>
+                  onChange={(val) => setRecurringScopeFilter(val)}
+                  options={[
+                    { value: "all", label: t("All Scopes", "Všetky rozsahy", "Minden hatókör") },
+                    { value: "global", label: t("🌐 Global Only", "🌐 Iba firemné", "🌐 Vállalati") },
+                    { value: "project", label: t("💼 Projects Only", "💼 Iba projekty", "💼 Projektek") },
+                    { value: "client", label: t("👤 Clients Only", "👤 Iba klienti", "👤 Ügyfelek") },
+                  ]}
+                  size="sm"
+                  className="w-full text-xs font-semibold rounded-xl bg-slate-50 border-slate-200"
+                />
               </div>
             </div>
           </div>
@@ -5268,20 +5288,21 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               <label className="text-[11px] font-bold text-slate-500 block mb-1">
                 {t("Parent Category (optional)", "Nadradená kategória (voliteľné)", "Szülő kategória (opcionális)")}
               </label>
-              <select
+              <CustomSelect
                 value={newCatParentId}
-                onChange={(e) => setNewCatParentId(e.target.value)}
-                className="w-full px-3 py-2 bg-white  border border-slate-200  rounded-xl text-xs font-semibold text-slate-700  focus:outline-none"
-              >
-                <option value="">{t("★ None (Create as Level 1 Root)", "★ Žiadna (Vytvoriť ako Hlavnú L1)", "★ Nincs (Fő L1 kategória)")}</option>
-                {financialCategories
-                  .filter((c) => c.type === catTreeType && c.level < 3)
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.level === 1 ? `● ${c.name} (L1)` : `  ↳ ${c.name} (L2)`}
-                    </option>
-                  ))}
-              </select>
+                onChange={(val) => setNewCatParentId(val)}
+                options={[
+                  { value: "", label: t("★ None (Create as Level 1 Root)", "★ Žiadna (Vytvoriť ako Hlavnú L1)", "★ Nincs (Fő L1 kategória)") },
+                  ...financialCategories
+                    .filter((c) => c.type === catTreeType && c.level < 3)
+                    .map((c) => ({
+                      value: c.id,
+                      label: c.level === 1 ? `● ${c.name} (L1)` : `  ↳ ${c.name} (L2)`,
+                    })),
+                ]}
+                size="sm"
+                className="w-full text-xs font-semibold rounded-xl bg-white border-slate-200"
+              />
             </div>
 
             <div>

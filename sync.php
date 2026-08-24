@@ -2853,13 +2853,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $insStock = $pdo->prepare("INSERT INTO `warehouse_stock` (`warehouse_id`, `item_id`, `quantity`, `reserved_quantity`, `location`) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `quantity` = VALUES(`quantity`), `reserved_quantity` = VALUES(`reserved_quantity`), `location` = VALUES(`location`)");
             foreach ($payload['warehouseStock'] as $stk) {
                 if (!empty($stk['warehouseId']) && !empty($stk['itemId'])) {
-                    $insStock->execute([
-                        $stk['warehouseId'],
-                        $stk['itemId'],
-                        (float)($stk['quantity'] ?? 0),
-                        (float)($stk['reservedQuantity'] ?? 0),
-                        $stk['location'] ?? null
-                    ]);
+                    try {
+                        $insStock->execute([
+                            $stk['warehouseId'],
+                            $stk['itemId'],
+                            (float)($stk['quantity'] ?? 0),
+                            (float)($stk['reservedQuantity'] ?? 0),
+                            $stk['location'] ?? null
+                        ]);
+                    } catch (\Throwable $stockErr) {
+                        error_log('[ccrm sync] warehouse_stock insert skipped: ' . $stockErr->getMessage());
+                    }
                 }
             }
         }
@@ -2873,17 +2877,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             foreach ($payload['warehouseBatches'] as $batch) {
                 $batchId = $batch['id'];
-                $insBatch->execute([
-                    $batchId,
-                    $batch['itemId'],
-                    $batch['warehouseId'],
-                    $batch['batchNumber'],
-                    $batch['expirationDate'],
-                    (float)($batch['initialQuantity'] ?? 0),
-                    (float)($batch['currentQuantity'] ?? 0),
-                    (float)($batch['purchasePrice'] ?? 0)
-                ]);
-                $processedBatchIds[] = $batchId;
+                try {
+                    $insBatch->execute([
+                        $batchId,
+                        $batch['itemId'],
+                        $batch['warehouseId'],
+                        $batch['batchNumber'],
+                        $batch['expirationDate'],
+                        (float)($batch['initialQuantity'] ?? 0),
+                        (float)($batch['currentQuantity'] ?? 0),
+                        (float)($batch['purchasePrice'] ?? 0)
+                    ]);
+                    $processedBatchIds[] = $batchId;
+                } catch (\Throwable $batchErr) {
+                    error_log('[ccrm sync] warehouse_batches insert skipped: ' . $batchErr->getMessage());
+                }
             }
 
             $batchesToDelete = $isDeltaSync ? $deletionsFor('warehouseBatches', $existingBatchIds) : array_diff($existingBatchIds, $processedBatchIds);

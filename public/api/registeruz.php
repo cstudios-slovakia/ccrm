@@ -56,9 +56,24 @@ if ($action === 'suggest') {
     $listResponse = json_decode(fetch_url($listUrl), true);
     
     if (isset($listResponse['id']) && is_array($listResponse['id']) && count($listResponse['id']) > 0) {
-        $id = $listResponse['id'][0];
-        $detailUrl = "https://www.registeruz.sk/cruz-public/api/uctovna-jednotka?id=" . urlencode($id);
-        echo fetch_url($detailUrl);
+        $foundDetail = null;
+        // Search through IDs (most recent first) to find an active record
+        foreach (array_reverse($listResponse['id']) as $id) {
+            $detailUrl = "https://www.registeruz.sk/cruz-public/api/uctovna-jednotka?id=" . urlencode($id);
+            $detailRaw = fetch_url($detailUrl);
+            $detail = json_decode($detailRaw, true);
+            if ($detail && (!isset($detail['stav']) || $detail['stav'] !== 'ZMAZANÉ') && (isset($detail['nazovUJ']) || isset($detail['ico']))) {
+                $foundDetail = $detailRaw;
+                break;
+            }
+        }
+        if ($foundDetail) {
+            echo $foundDetail;
+        } else {
+            $firstId = $listResponse['id'][0];
+            $detailUrl = "https://www.registeruz.sk/cruz-public/api/uctovna-jednotka?id=" . urlencode($firstId);
+            echo fetch_url($detailUrl);
+        }
     } else {
         http_response_code(404);
         echo json_encode(['success' => false, 'message' => 'Company not found in registry']);

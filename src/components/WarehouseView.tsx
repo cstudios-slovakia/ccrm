@@ -43,8 +43,11 @@ import {
   Link2,
   ShoppingCart,
   Calculator,
-  UserCheck
+  UserCheck,
+  Star,
+  Warehouse as WarehouseIcon
 } from "lucide-react";
+import { CustomSelect } from "./ui/CustomSelect";
 import { formatMoney } from "../utils/currency";
 import type { Language } from "../utils/translations";
 
@@ -96,6 +99,7 @@ interface WarehouseViewProps {
   warehouseMovements: WarehouseMovement[];
   setWarehouseMovements: (updater: WarehouseMovement[] | ((prev: WarehouseMovement[]) => WarehouseMovement[])) => void;
   leads: Lead[];
+  users?: UserProfile[];
   onAddTimelineEvent?: (leadId: string, event: any) => void;
 }
 
@@ -104,7 +108,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   systemCurrency,
   currentUser,
   warehouses,
-  setWarehouses: _setWarehouses,
+  setWarehouses,
   suppliers,
   setSuppliers,
   warehouseItems,
@@ -116,13 +120,14 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   warehouseMovements,
   setWarehouseMovements,
   leads,
+  users = [],
   onAddTimelineEvent
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
 
   // Active Tab
-  type TabType = "items" | "movements" | "suppliers" | "batches" | "analytics";
+  type TabType = "items" | "movements" | "warehouses" | "suppliers" | "batches" | "analytics";
   const [activeSubTab, setActiveSubTab] = useState<TabType>("items");
 
   // Filters
@@ -159,12 +164,12 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
           const itemId = sub.replace("item-", "");
           setSelectedProductDetailId(itemId);
           setActiveSubTab("items");
-        } else if (sub && sub !== "items" && sub !== "movements" && sub !== "suppliers" && sub !== "batches" && sub !== "analytics") {
+        } else if (sub && sub !== "items" && sub !== "movements" && sub !== "warehouses" && sub !== "suppliers" && sub !== "batches" && sub !== "analytics") {
           setSelectedProductDetailId(sub);
           setActiveSubTab("items");
         } else {
           setSelectedProductDetailId(null);
-          if (sub === "movements" || sub === "suppliers" || sub === "batches" || sub === "analytics") {
+          if (sub === "movements" || sub === "warehouses" || sub === "suppliers" || sub === "batches" || sub === "analytics") {
             setActiveSubTab(sub as TabType);
           }
         }
@@ -226,6 +231,22 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   
+  const [isWarehouseModalOpen, setIsWarehouseModalOpen] = useState(false);
+  const [editingWarehouse, setEditingWarehouse] = useState<Warehouse | null>(null);
+  const [warehouseForm, setWarehouseForm] = useState<{
+    name: string;
+    code: string;
+    address: string;
+    managerUserId: string;
+    isDefault: boolean;
+  }>({
+    name: "",
+    code: "",
+    address: "",
+    managerUserId: "",
+    isDefault: false
+  });
+
   const [isSupplierModalOpen, setIsSupplierModalOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   
@@ -588,52 +609,110 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
     setIsAresLoading(true);
     try {
-      const res = await fetch(`https://autoform.ekosystem.slovensko.digital/api/corporate_bodies/search?q=${ico}&limit=1`, {
-        headers: { "Accept": "application/json" }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data[0]) {
-          const company = data[0];
-          setSupplierForm(prev => ({
-            ...prev,
-            name: company.name || prev.name,
-            companyId: company.cin || ico,
-            taxId: company.tin || prev.taxId,
-            vatId: company.vatin || (company.tin ? `SK${company.tin}` : prev.vatId),
-            street: company.street ? `${company.street} ${company.building_number || ""}`.trim() : (company.formatted_address || prev.street),
-            city: company.municipality || prev.city,
-            postalCode: company.postal_code || prev.postalCode,
-            country: "Slovakia"
-          }));
-          return;
+      // 1. Try Slovak Register (RegisterUZ via /api/registeruz.php)
+      try {
+        const skRes = await fetch(`/api/registeruz.php?action=lookup&ico=${encodeURIComponent(ico)}`);
+        if (skRes.ok) {
+          const skData = await skRes.json();
+          if (skData && (skData.nazovUJ || skData.ico)) {
+            const nameVal = skData.nazovUJ || "";
+            const companyIdVal = skData.ico || ico;
+            const taxIdVal = skData.dic || "";
+            let vatVal = "";
+            if (skData.dic) {
+              vatVal = skData.dic.toUpperCase().startsWith("SK") ? skData.dic : `SK${skData.dic}`;
+            }
+
+            setSupplierForm(prev => ({
+              ...prev,
+              name: nameVal || prev.name,
+              companyId: companyIdVal,
+              taxId: taxIdVal || prev.taxId,
+              vatId: vatVal || prev.vatId,
+              street: skData.ulica || prev.street,
+              city: skData.mesto || prev.city,
+              postalCode: skData.psc || prev.postalCode,
+              country: "Slovakia"
+            }));
+
+            if (typeof (window as any).showToast === "function") {
+              (window as any).showToast(t("Supplier details loaded from Slovak Register.", "Údaje dodávateľa boli úspešne načítané z registra.", "A beszállító adatai sikeresen betöltve."));
+            }
+            return;
+          }
         }
+      } catch (skErr) {
+        console.warn("RegisterUZ lookup error:", skErr);
       }
 
-      // Fallback: ARES CZ/SK
-      const aresRes = await fetch(`https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/ekonomicke-subjekty/${ico}`);
-      if (aresRes.ok) {
-        const aresData = await aresRes.json();
-        if (aresData && aresData.obchodniJmeno) {
+      // 2. Try Czech Register (ARES CZ via /api/ares_cz.php or direct ARES fallback)
+      try {
+        let czData: any = null;
+        try {
+          const czRes = await fetch(`/api/ares_cz.php?action=detail&id=${encodeURIComponent(ico)}`);
+          if (czRes.ok) {
+            czData = await czRes.json();
+          }
+        } catch {}
+
+        if (!czData || !czData.obchodniJmeno) {
+          const directAres = await fetch(`https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/ekonomicke-subjekty/${encodeURIComponent(ico)}`);
+          if (directAres.ok) {
+            czData = await directAres.json();
+          }
+        }
+
+        if (czData && (czData.obchodniJmeno || czData.ico)) {
+          const nameVal = czData.obchodniJmeno || "";
+          const companyIdVal = czData.ico || ico;
+          let rawDic = czData.dic || "";
+          let cleanedTaxId = rawDic;
+          if (rawDic.toUpperCase().startsWith("CZ")) {
+            cleanedTaxId = rawDic.substring(2);
+          }
+          let vatVal = rawDic;
+          if (!vatVal && czData.ico) {
+            vatVal = `CZ${czData.ico}`;
+          }
+
+          const sidlo = czData.sidlo || {};
+          const cityVal = sidlo.nazevObce || "";
+          const streetPart = sidlo.nazevUlice || sidlo.nazevCastiObce || sidlo.nazevObce || "";
+          const houseNo = sidlo.cisloDomovni || "";
+          const orientNo = sidlo.cisloOrientacni || "";
+          let streetVal = streetPart;
+          if (houseNo || orientNo) {
+            streetVal += " " + houseNo + (orientNo ? "/" + orientNo : "");
+          }
+          if (!streetVal && czData.textovaAdresa) {
+            streetVal = czData.textovaAdresa;
+          }
+
           setSupplierForm(prev => ({
             ...prev,
-            name: aresData.obchodniJmeno,
-            companyId: aresData.ico || ico,
-            taxId: aresData.dic || prev.taxId,
-            vatId: aresData.dic ? `CZ${aresData.dic}` : prev.vatId,
-            street: aresData.textovaAdresa || prev.street,
-            city: aresData.sidlo?.nazevObce || prev.city,
-            postalCode: aresData.sidlo?.psc ? String(aresData.sidlo.psc) : prev.postalCode,
+            name: nameVal || prev.name,
+            companyId: companyIdVal,
+            taxId: cleanedTaxId || prev.taxId,
+            vatId: vatVal || prev.vatId,
+            street: streetVal.trim() || prev.street,
+            city: cityVal || prev.city,
+            postalCode: sidlo.psc ? String(sidlo.psc) : prev.postalCode,
             country: "Czech Republic"
           }));
+
+          if (typeof (window as any).showToast === "function") {
+            (window as any).showToast(t("Supplier details loaded from Czech ARES.", "Údaje dodávateľa boli úspešne načítané z ARES.", "A beszállító adatai sikeresen betöltve az ARES-ből."));
+          }
           return;
         }
+      } catch (czErr) {
+        console.warn("ARES fetch failed:", czErr);
       }
 
-      alert(t("Company not found in business register.", "Spoločnosť sa nenašla v obchodnom registri.", "A vállalat nem található a cégjegyzékben."));
+      alert(t("Company not found in Slovak (RegisterUZ) or Czech (ARES) register.", "Spoločnosť sa nenašla v obchodnom registri (SR ani ČR).", "A vállalat nem található a cégjegyzékben."));
     } catch (err) {
-      console.warn("ARES fetch failed", err);
-      alert(t("ARES lookup failed. Please enter details manually.", "Vyhľadávanie v ARES zlyhalo. Vyplňte údaje ručne.", "Az ARES lekérdezés sikertelen."));
+      console.warn("Register fetch failed", err);
+      alert(t("Lookup failed. Please enter details manually.", "Vyhľadávanie v registri zlyhalo. Vyplňte údaje ručne.", "A lekérdezés sikertelen."));
     } finally {
       setIsAresLoading(false);
     }
@@ -1103,18 +1182,6 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
       setWarehouseItems(prev => [newItem, ...prev]);
 
-      // Initialize zero stock record for all warehouses
-      setWarehouseStock(prev => {
-        const newStockEntries = warehouses.map(wh => ({
-          warehouseId: wh.id,
-          itemId: newItemId,
-          quantity: 0,
-          reservedQuantity: 0,
-          location: itemForm.defaultLocation.trim() || null
-        }));
-        return [...prev, ...newStockEntries];
-      });
-
       if (typeof (window as any).showToast === "function") {
         (window as any).showToast(t("New product created successfully.", "Nový tovar bol úspešne pridaný.", "Új termék sikeresen hozzáadva."));
       }
@@ -1182,6 +1249,151 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
     setIsSupplierModalOpen(false);
     setEditingSupplier(null);
+  };
+
+  // Delete Supplier handler
+  const handleDeleteSupplier = (supplierId: string) => {
+    const sup = suppliers.find(s => s.id === supplierId);
+    if (!sup) return;
+
+    const hasMovements = warehouseMovements.some(m => m.supplierId === supplierId);
+    const confirmMsg = hasMovements
+      ? t(
+          `Are you sure you want to delete supplier "${sup.name}"? They are associated with existing warehouse receipts/movements.`,
+          `Naozaj chcete vymazať dodávateľa "${sup.name}"? Tento dodávateľ je priradený k existujúcim príjemkám a pohybom.`,
+          `Biztosan törli a(z) "${sup.name}" beszállítót? Kapcsolódó raktári mozgások vannak hozzárendelve.`
+        )
+      : t(
+          `Are you sure you want to delete supplier "${sup.name}"?`,
+          `Naozaj chcete vymazať dodávateľa "${sup.name}"?`,
+          `Biztosan törli a(z) "${sup.name}" beszállítót?`
+        );
+
+    if (window.confirm(confirmMsg)) {
+      setSuppliers(prev => prev.filter(s => s.id !== supplierId));
+      if (editingSupplier?.id === supplierId) {
+        setIsSupplierModalOpen(false);
+        setEditingSupplier(null);
+      }
+    }
+  };
+
+  // Save / Update Warehouse handler
+  const handleSaveWarehouse = () => {
+    if (!warehouseForm.name.trim()) {
+      alert(t("Please enter warehouse name.", "Zadajte názov skladu.", "Adja meg a raktár nevét."));
+      return;
+    }
+    if (!warehouseForm.code.trim()) {
+      alert(t("Please enter warehouse code.", "Zadajte kód skladu.", "Adja meg a raktár kódját."));
+      return;
+    }
+
+    const sanitizedCode = warehouseForm.code.trim().toUpperCase();
+
+    // Check code uniqueness
+    const duplicate = warehouses.find(w => w.code.toUpperCase() === sanitizedCode && w.id !== editingWarehouse?.id);
+    if (duplicate) {
+      alert(t("A warehouse with this code already exists.", "Sklad s týmto kódom už existuje.", "Már létezik raktár ezzel a kóddal."));
+      return;
+    }
+
+    if (editingWarehouse) {
+      const updated: Warehouse = {
+        ...editingWarehouse,
+        name: warehouseForm.name.trim(),
+        code: sanitizedCode,
+        address: warehouseForm.address.trim() || null,
+        managerUserId: warehouseForm.managerUserId.trim() || null,
+        isDefault: warehouseForm.isDefault
+      };
+
+      setWarehouses(prev => prev.map(w => {
+        if (w.id === editingWarehouse.id) return updated;
+        if (warehouseForm.isDefault) return { ...w, isDefault: false };
+        return w;
+      }));
+    } else {
+      const newWhId = `wh-${Date.now()}`;
+      const newWh: Warehouse = {
+        id: newWhId,
+        name: warehouseForm.name.trim(),
+        code: sanitizedCode,
+        address: warehouseForm.address.trim() || null,
+        managerUserId: warehouseForm.managerUserId.trim() || null,
+        isDefault: warehouses.length === 0 ? true : warehouseForm.isDefault,
+        createdAt: new Date().toISOString().slice(0, 19).replace("T", " ")
+      };
+
+      setWarehouses(prev => {
+        const next = newWh.isDefault ? prev.map(w => ({ ...w, isDefault: false })) : prev;
+        return [...next, newWh];
+      });
+    }
+
+    setIsWarehouseModalOpen(false);
+    setEditingWarehouse(null);
+  };
+
+  // Delete Warehouse handler
+  const handleDeleteWarehouse = (warehouseId: string) => {
+    const wh = warehouses.find(w => w.id === warehouseId);
+    if (!wh) return;
+
+    if (warehouses.length <= 1) {
+      alert(t("You must keep at least one warehouse in the system.", "V systéme musí zostať aspoň jeden sklad.", "Legalább egy raktárnak kell lennie a rendszerben."));
+      return;
+    }
+
+    // Check if warehouse has active stock
+    const activeStock = warehouseStock.filter(s => s.warehouseId === warehouseId && s.quantity > 0);
+    if (activeStock.length > 0) {
+      const totalQty = activeStock.reduce((sum, s) => sum + s.quantity, 0);
+      alert(t(
+        `Cannot delete warehouse "${wh.name}" because it contains ${totalQty} units of stock. Please transfer or issue the stock first.`,
+        `Sklad "${wh.name}" nie je možné vymazať, pretože obsahuje ${totalQty} kusov tovaru. Najprv tovar presuňte alebo odpíšte.`,
+        `A(z) "${wh.name}" raktár nem törölhető, mert ${totalQty} db terméket tartalmaz. Előbb helyezze át a készletet.`
+      ));
+      return;
+    }
+
+    // Check if warehouse has movements
+    const hasMovements = warehouseMovements.some(m => m.warehouseId === warehouseId || m.targetWarehouseId === warehouseId);
+    const confirmMsg = hasMovements
+      ? t(
+          `Are you sure you want to delete warehouse "${wh.name}" (${wh.code})? It has past movement history recorded.`,
+          `Naozaj chcete vymazať sklad "${wh.name}" (${wh.code})? Sklad má evidovanú históriu pohybov.`,
+          `Biztosan törli a(z) "${wh.name}" (${wh.code}) raktárat? Történeti mozgások vannak rögzítve.`
+        )
+      : t(
+          `Are you sure you want to delete warehouse "${wh.name}" (${wh.code})?`,
+          `Naozaj chcete vymazať sklad "${wh.name}" (${wh.code})?`,
+          `Biztosan törli a(z) "${wh.name}" (${wh.code}) raktárat?`
+        );
+
+    if (window.confirm(confirmMsg)) {
+      setWarehouses(prev => {
+        const remaining = prev.filter(w => w.id !== warehouseId);
+        if (wh.isDefault && remaining.length > 0) {
+          remaining[0].isDefault = true;
+        }
+        return remaining;
+      });
+
+      setWarehouseStock(prev => prev.filter(s => s.warehouseId !== warehouseId));
+
+      if (selectedWarehouseId === warehouseId) {
+        setSelectedWarehouseId("all");
+      }
+    }
+  };
+
+  // Set Default Warehouse
+  const handleSetDefaultWarehouse = (warehouseId: string) => {
+    setWarehouses(prev => prev.map(w => ({
+      ...w,
+      isDefault: w.id === warehouseId
+    })));
   };
 
   // Submit New Receipt (Príjemka - PRI)
@@ -1977,17 +2189,16 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
                     {t("Source Warehouse", "Zdrojový sklad výdaja", "Kiadási raktár")} *
                   </label>
-                  <select
+                  <CustomSelect
                     value={issueWarehouseId}
-                    onChange={(e) => setIssueWarehouseId(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-700 focus:outline-none transition"
-                  >
-                    {warehouses.map(w => (
-                      <option key={w.id} value={w.id}>
-                        {w.name} ({w.code}) {w.isDefault ? "• Predvolený" : ""}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => setIssueWarehouseId(val)}
+                    options={warehouses.map(w => ({
+                      value: w.id,
+                      label: `${w.name} (${w.code})${w.isDefault ? " • Predvolený" : ""}`,
+                    }))}
+                    size="sm"
+                    className="w-full text-xs font-bold rounded-2xl"
+                  />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -2034,7 +2245,57 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               </div>
             </div>
 
-            {/* 3. FINANCIAL SUMMARY & PROFITABILITY CARD */}
+            {/* 3. FINANCIAL SUMMARY & PROFITABILITY CARD (LIGHT DESIGN) */}
+            <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                  <Calculator className="w-4 h-4 text-blue-700" />
+                  <span>{t("Financial Summary", "Finančná rekapitulácia", "Pénzügyi összesítés")}</span>
+                </span>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
+                  {issueItems.length} {t("items", "položiek", "tétel")}
+                </span>
+              </div>
+
+              <div className="space-y-2 text-xs">
+                <div className="flex items-center justify-between text-slate-600">
+                  <span>{t("Catalog Subtotal (Base)", "Cenníková suma (Základ)", "Katalógus ár")}</span>
+                  <span className="font-mono font-semibold text-slate-800">{formatCurrency(subtotalBase, systemLanguage, systemCurrency)}</span>
+                </div>
+
+                {totalDiscount > 0 && (
+                  <div className="flex items-center justify-between text-rose-600">
+                    <span>{t("Total Discount", "Celková zľava", "Kedvezmény")} ({totalDiscountPct.toFixed(1)}%)</span>
+                    <span className="font-mono font-bold">-{formatCurrency(totalDiscount, systemLanguage, systemCurrency)}</span>
+                  </div>
+                )}
+
+                <div className="pt-3 border-t border-slate-100 flex items-baseline justify-between">
+                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    {t("Final Sale Total", "Konečná cena predaja", "Végösszeg")}
+                  </span>
+                  <span className="text-2xl font-black text-emerald-600 font-mono tracking-tight">
+                    {formatCurrency(totalSellPrice, systemLanguage, systemCurrency)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Cost & Estimated Margin preview */}
+              <div className="pt-3 border-t border-slate-100 grid grid-cols-2 gap-2 text-[11px]">
+                <div className="p-2.5 rounded-2xl bg-slate-50 border border-slate-200/80">
+                  <span className="text-slate-400 block mb-0.5 text-[10px] uppercase font-bold tracking-wider">{t("WAP Cost", "Skladový náklad (WAP)", "Beszerzési költség")}</span>
+                  <span className="font-bold text-slate-800 font-mono">{formatCurrency(totalWapCost, systemLanguage, systemCurrency)}</span>
+                </div>
+                <div className="p-2.5 rounded-2xl bg-slate-50 border border-slate-200/80">
+                  <span className="text-slate-400 block mb-0.5 text-[10px] uppercase font-bold tracking-wider">{t("Gross Margin", "Hrubá marža", "Árrés")}</span>
+                  <span className={`font-bold font-mono ${totalEstimatedProfit >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                    {totalMarginPct.toFixed(1)}% (+{formatCurrency(totalEstimatedProfit, systemLanguage, systemCurrency)})
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* DARK VERSION (Commented out for future use)
             <div className="bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 text-white p-5 rounded-3xl border border-blue-900/50 shadow-xl shadow-blue-950/20 space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold uppercase tracking-wider text-blue-300 flex items-center gap-1.5">
@@ -2069,7 +2330,6 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 </div>
               </div>
 
-              {/* Cost & Estimated Margin preview */}
               <div className="pt-3 border-t border-blue-900/60 grid grid-cols-2 gap-2 text-[11px]">
                 <div className="p-2.5 rounded-xl bg-white/5 border border-white/10">
                   <span className="text-slate-400 block mb-0.5">{t("WAP Cost", "Skladový náklad (WAP)", "Beszerzési költség")}</span>
@@ -2083,6 +2343,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 </div>
               </div>
             </div>
+            */}
 
           </div>
 
@@ -2260,17 +2521,16 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                             {/* 2. Product Selector & Live Availability */}
                             <td className="py-3 px-3">
                               <div className="space-y-1.5">
-                                <select
+                                <CustomSelect
                                   value={row.itemId}
-                                  onChange={(e) => handleUpdateIssueRow(row.id, { itemId: e.target.value })}
-                                  className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-blue-700 focus:outline-none"
-                                >
-                                  {warehouseItems.map(it => (
-                                    <option key={it.id} value={it.id}>
-                                      {it.name} ({it.sku}) - {it.unit}
-                                    </option>
-                                  ))}
-                                </select>
+                                  onChange={(val) => handleUpdateIssueRow(row.id, { itemId: val })}
+                                  options={warehouseItems.map(it => ({
+                                    value: it.id,
+                                    label: `${it.name} (${it.sku}) - ${it.unit}`,
+                                  }))}
+                                  size="sm"
+                                  className="w-full text-xs font-bold"
+                                />
 
                                 {/* Availability Pill & Warnings */}
                                 <div className="flex flex-wrap items-center gap-2">
@@ -2299,18 +2559,21 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">
                                       {t("Batch (FEFO)", "Šarža", "Tétel")}:
                                     </span>
-                                    <select
-                                      value={row.batchId}
-                                      onChange={(e) => handleUpdateIssueRow(row.id, { batchId: e.target.value })}
-                                      className="w-full px-2 py-1 bg-amber-50/50 border border-amber-200 rounded-lg text-[11px] font-mono text-amber-900"
-                                    >
-                                      <option value="">{t("Auto: Earliest Expiration (FEFO)", "Auto: Najskoršia exspirácia (FEFO)", "Legkorábbi lejárat")}</option>
-                                      {itemBatches.map(b => (
-                                        <option key={b.id} value={b.id}>
-                                          {b.batchNumber} (Exp: {b.expirationDate}, {b.currentQuantity} {selItem.unit})
-                                        </option>
-                                      ))}
-                                    </select>
+                                    <div className="w-full">
+                                      <CustomSelect
+                                        value={row.batchId || ""}
+                                        onChange={(val) => handleUpdateIssueRow(row.id, { batchId: val })}
+                                        options={[
+                                          { value: "", label: t("Auto: Earliest Expiration (FEFO)", "Auto: Najskoršia exspirácia (FEFO)", "Legkorábbi lejárat") },
+                                          ...itemBatches.map(b => ({
+                                            value: b.id,
+                                            label: `${b.batchNumber} (Exp: ${b.expirationDate}, ${b.currentQuantity} ${selItem.unit})`,
+                                          })),
+                                        ]}
+                                        size="sm"
+                                        className="w-full bg-amber-50/50 border-amber-200 text-[11px] font-mono text-amber-900"
+                                      />
+                                    </div>
                                   </div>
                                 )}
                               </div>
@@ -3146,21 +3409,23 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-1">
                   {t("Unit of Measure", "Merná jednotka (MJ)", "Mértékegység")}
                 </label>
-                <select
+                <CustomSelect
                   disabled={isProductCardLocked}
                   value={itemForm.unit}
-                  onChange={(e) => setItemForm({ ...itemForm, unit: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition cursor-pointer disabled:bg-slate-100/70 disabled:cursor-not-allowed"
-                >
-                  <option value="ks">ks (Kusy)</option>
-                  <option value="m²">m² (Štvorcové metre)</option>
-                  <option value="bm">bm (Bežné metre)</option>
-                  <option value="m³">m³ (Kubické metre)</option>
-                  <option value="kg">kg (Kilogramy)</option>
-                  <option value="l">l (Litre)</option>
-                  <option value="balenie">balenie (Balenia)</option>
-                  <option value="paleta">paleta (Palety)</option>
-                </select>
+                  onChange={(val) => setItemForm({ ...itemForm, unit: val })}
+                  options={[
+                    { value: "ks", label: "ks (Kusy)" },
+                    { value: "m²", label: "m² (Štvorcové metre)" },
+                    { value: "bm", label: "bm (Bežné metre)" },
+                    { value: "m³", label: "m³ (Kubické metre)" },
+                    { value: "kg", label: "kg (Kilogramy)" },
+                    { value: "l", label: "l (Litre)" },
+                    { value: "balenie", label: "balenie (Balenia)" },
+                    { value: "paleta", label: "paleta (Palety)" },
+                  ]}
+                  size="sm"
+                  className="w-full text-xs font-bold rounded-xl"
+                />
               </div>
 
               {/* 6. STORAGE LOCATION */}
@@ -4021,15 +4286,16 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                   {t("Destination Warehouse", "Cieľový sklad", "Célraktár")} *
                 </label>
-                <select
+                <CustomSelect
                   value={productPurchaseWarehouseId}
-                  onChange={(e) => setProductPurchaseWarehouseId(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-emerald-600 focus:bg-white focus:outline-none transition"
-                >
-                  {warehouses.map(w => (
-                    <option key={w.id} value={w.id}>{w.name} ({w.code})</option>
-                  ))}
-                </select>
+                  onChange={(val) => setProductPurchaseWarehouseId(val)}
+                  options={warehouses.map(w => ({
+                    value: w.id,
+                    label: `${w.name} (${w.code})`,
+                  }))}
+                  size="sm"
+                  className="w-full text-xs font-bold rounded-xl"
+                />
               </div>
 
               {/* QUANTITY & PURCHASE PRICE */}
@@ -4250,23 +4516,22 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                   {t("Source Warehouse", "Zdrojový sklad", "Forrásraktár")} *
                 </label>
-                <select
+                <CustomSelect
                   value={productSaleWarehouseId}
-                  onChange={(e) => {
-                    setProductSaleWarehouseId(e.target.value);
+                  onChange={(val) => {
+                    setProductSaleWarehouseId(val);
                     setProductSaleBatchId("");
                   }}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:bg-white focus:outline-none transition"
-                >
-                  {warehouses.map(w => {
+                  options={warehouses.map(w => {
                     const st = getStockInfoForItem(currentItem.id, w.id);
-                    return (
-                      <option key={w.id} value={w.id}>
-                        {w.name} ({w.code}) — {t("Available", "Dostupné", "Szabad")}: {st.available} {currentItem.unit}
-                      </option>
-                    );
+                    return {
+                      value: w.id,
+                      label: `${w.name} (${w.code}) — ${t("Available", "Dostupné", "Szabad")}: ${st.available} ${currentItem.unit}`,
+                    };
                   })}
-                </select>
+                  size="sm"
+                  className="w-full text-xs font-bold rounded-xl"
+                />
               </div>
 
               {/* QUANTITY & SALE PRICE */}
@@ -4474,47 +4739,47 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Header & Controls */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-900 to-indigo-950 flex items-center justify-center text-white shadow-md shadow-blue-950/20">
-            <Package className="w-6 h-6 text-blue-200" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-                {t("Warehouse & Inventory Management", "Skladové hospodárstvo a zásoby", "Raktár és készletgazdálkodás")}
-              </h1>
-              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-900 border border-blue-200">
-                1.8 Imbe
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              {t("Catalog, Multi-Warehouse balances, WAP costing & FEFO lot tracking", "Katalóg tovaru, stavy skladov, vážené nákupné ceny a exspirácie", "Termékkatalóg, raktárkészletek, WAP önköltség és FEFO tételkövetés")}
-            </p>
-          </div>
+      {/* 1. TOP HEADER & COMMAND BAR */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-100 pb-4 select-none">
+        <div className="flex flex-col">
+          <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+            <Package className="h-6 w-6 text-blue-900" />
+            {t("Warehouse & Inventory Management", "Skladové hospodárstvo a zásoby", "Raktár és készletgazdálkodás")}
+          </h2>
+          <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
+            {t("Catalog, Multi-Warehouse balances, WAP costing & FEFO lot tracking", "Katalóg tovaru, stavy skladov, vážené nákupné ceny a exspirácie", "Termékkatalóg, raktárkészletek, WAP önköltség és FEFO tételkövetés")}
+          </p>
         </div>
 
         {/* Quick Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2.5">
           {/* Warehouse Selector */}
-          <div className="relative">
-            <select
+          <div className="flex items-center gap-1.5 min-w-[210px]">
+            <CustomSelect
               value={selectedWarehouseId}
-              onChange={(e) => setSelectedWarehouseId(e.target.value)}
-              className="appearance-none bg-slate-50 hover:bg-slate-100/80 border border-slate-200 text-slate-700 text-xs font-semibold py-2 pl-3 pr-8 rounded-xl cursor-pointer transition focus:outline-none focus:ring-2 focus:ring-blue-800"
+              onChange={(val) => setSelectedWarehouseId(val)}
+              options={[
+                { value: "all", label: t("All Warehouses", "Všetky sklady", "Minden raktár") },
+                ...warehouses.map((w) => ({
+                  value: w.id,
+                  label: `${w.name} (${w.code})`,
+                })),
+              ]}
+              size="sm"
+              className="bg-white border-slate-200 text-xs font-semibold rounded-2xl shadow-xs flex-1"
+            />
+            <button
+              onClick={() => setActiveSubTab("warehouses")}
+              title={t("Manage Warehouses", "Správa skladov", "Raktárak kezelése")}
+              className="p-2 bg-white hover:bg-slate-100 border border-slate-200 rounded-2xl text-slate-500 hover:text-blue-900 transition shadow-xs cursor-pointer"
             >
-              <option value="all">{t("All Warehouses", "Všetky sklady", "Minden raktár")}</option>
-              {warehouses.map(w => (
-                <option key={w.id} value={w.id}>{w.name} ({w.code})</option>
-              ))}
-            </select>
-            <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <WarehouseIcon className="w-4 h-4" />
+            </button>
           </div>
 
           <button
             onClick={handleOpenCreateItem}
-            className="flex items-center gap-1.5 px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold shadow-sm transition"
+            className="flex items-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-semibold shadow-md transition hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>{t("New Item", "Nový tovar", "Új termék")}</span>
@@ -4522,7 +4787,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
           <button
             onClick={() => setIsReceiptModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-sm transition"
+            className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-semibold shadow-md shadow-emerald-600/20 transition hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
           >
             <ArrowDownLeft className="w-4 h-4" />
             <span>{t("Receipt (PRI)", "Príjemka (PRI)", "Bevételezés")}</span>
@@ -4530,7 +4795,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
           <button
             onClick={() => handleOpenGoodsIssue()}
-            className="flex items-center gap-1.5 px-3 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs font-semibold shadow-sm transition"
+            className="flex items-center gap-2 px-4 py-2.5 bg-blue-900 hover:bg-blue-800 text-white rounded-2xl text-xs font-semibold shadow-md shadow-blue-900/20 transition hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
           >
             <ArrowUpRight className="w-4 h-4" />
             <span>{t("Issue (VYD)", "Výdajka (VYD)", "Kiadás")}</span>
@@ -4538,7 +4803,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
           <button
             onClick={() => setIsTransferModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200/80 text-slate-700 rounded-xl text-xs font-semibold transition"
+            className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl text-xs font-semibold transition hover:scale-[1.02] active:scale-[0.98] cursor-pointer border border-slate-200"
           >
             <ArrowLeftRight className="w-4 h-4" />
             <span>{t("Transfer", "Prevodka", "Átadás")}</span>
@@ -4671,6 +4936,21 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
         </button>
 
         <button
+          onClick={() => setActiveSubTab("warehouses")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+            activeSubTab === "warehouses"
+              ? "bg-blue-900 text-white shadow-sm"
+              : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/60"
+          }`}
+        >
+          <WarehouseIcon className="w-4 h-4" />
+          <span>{t("Warehouses & Locations", "Sklady a pobočky", "Raktárak és telephelyek")}</span>
+          <span className={`px-2 py-0.5 rounded-full text-[10px] ${activeSubTab === "warehouses" ? "bg-blue-800 text-blue-200" : "bg-slate-100 text-slate-600"}`}>
+            {warehouses.length}
+          </span>
+        </button>
+
+        <button
           onClick={() => setActiveSubTab("suppliers")}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${
             activeSubTab === "suppliers"
@@ -4737,30 +5017,36 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               )}
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {/* Category Filter */}
-              <select
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
-                className="bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold py-2 px-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-800"
-              >
-                <option value="all">{t("All Categories", "Všetky kategórie", "Minden kategória")}</option>
-                {allCategories.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
+              <div className="min-w-[170px]">
+                <CustomSelect
+                  value={selectedCategory}
+                  onChange={(val) => setSelectedCategory(val)}
+                  options={[
+                    { value: "all", label: t("All Categories", "Všetky kategórie", "Minden kategória") },
+                    ...allCategories.map((cat) => ({ value: cat, label: cat })),
+                  ]}
+                  size="sm"
+                  className="bg-slate-50 border-slate-200 text-xs font-semibold rounded-xl"
+                />
+              </div>
 
               {/* Stock Status Filter */}
-              <select
-                value={stockStatusFilter}
-                onChange={(e: any) => setStockStatusFilter(e.target.value)}
-                className="bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold py-2 px-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-800"
-              >
-                <option value="all">{t("All Stock Statuses", "Všetky stavy zásob", "Minden állapot")}</option>
-                <option value="in_stock">{t("In Stock", "Na sklade", "Raktáron")}</option>
-                <option value="low_stock">{t("Low Stock Alert", "Nízky stav zásob", "Alacsony készlet")}</option>
-                <option value="out_of_stock">{t("Out of Stock", "Vypredané (0)", "Elfogyott")}</option>
-              </select>
+              <div className="min-w-[170px]">
+                <CustomSelect
+                  value={stockStatusFilter}
+                  onChange={(val) => setStockStatusFilter(val as any)}
+                  options={[
+                    { value: "all", label: t("All Stock Statuses", "Všetky stavy zásob", "Minden állapot") },
+                    { value: "in_stock", label: t("In Stock", "Na sklade", "Raktáron") },
+                    { value: "low_stock", label: t("Low Stock Alert", "Nízky stav zásob", "Alacsony készlet") },
+                    { value: "out_of_stock", label: t("Out of Stock", "Vypredané (0)", "Elfogyott") },
+                  ]}
+                  size="sm"
+                  className="bg-slate-50 border-slate-200 text-xs font-semibold rounded-xl"
+                />
+              </div>
             </div>
           </div>
 
@@ -5173,7 +5459,180 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
         </div>
       )}
 
-      {/* TAB 3: SUPPLIERS DIRECTORY */}
+      {/* TAB 3: WAREHOUSES & LOCATIONS */}
+      {activeSubTab === "warehouses" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
+            <div>
+              <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                <WarehouseIcon className="w-4 h-4 text-blue-900" />
+                {t("Warehouses & Physical Locations", "Prehľad a správa skladov", "Raktárak és telephelyek")}
+              </h3>
+              <p className="text-xs text-slate-500">
+                {t("Manage storage facilities, location addresses, assigned warehouse managers, and defaults", "Správa skladových priestorov, pobočiek, adries a zodpovedných vedúcich", "Raktárak, címek, felelős vezetők és alapértelmezések kezelése")}
+              </p>
+            </div>
+
+            <button
+              onClick={() => {
+                setEditingWarehouse(null);
+                setWarehouseForm({
+                  name: "",
+                  code: "",
+                  address: "",
+                  managerUserId: "",
+                  isDefault: warehouses.length === 0
+                });
+                setIsWarehouseModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-900 hover:bg-blue-800 text-white rounded-xl text-xs font-semibold transition shadow-xs cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>{t("New Warehouse", "Pridať sklad", "Új raktár")}</span>
+            </button>
+          </div>
+
+          {/* Warehouses Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {warehouses.map(wh => {
+              const whStockItems = warehouseStock.filter(s => s.warehouseId === wh.id);
+              const stockedSkuCount = whStockItems.filter(s => s.quantity > 0).length;
+              const totalUnits = whStockItems.reduce((sum, s) => sum + s.quantity, 0);
+              const totalValuation = whStockItems.reduce((sum, s) => {
+                const item = warehouseItems.find(it => it.id === s.itemId);
+                return sum + (s.quantity * (item?.avgPurchasePrice || 0));
+              }, 0);
+
+              const manager = users.find(u => u.name === wh.managerUserId || u.email === wh.managerUserId);
+
+              return (
+                <div key={wh.id} className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition flex flex-col justify-between">
+                  <div>
+                    {/* Header */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm ${wh.isDefault ? "bg-amber-100 text-amber-900 border border-amber-200" : "bg-blue-50 text-blue-900"}`}>
+                          <WarehouseIcon className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-bold text-slate-900 text-sm">{wh.name}</h4>
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-[11px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
+                              {wh.code}
+                            </span>
+                            {wh.isDefault && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200/80">
+                                <Star className="w-2.5 h-2.5 fill-amber-500 text-amber-500" />
+                                {t("Default", "Predvolený", "Alapértelmezett")}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Action buttons */}
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => {
+                            setEditingWarehouse(wh);
+                            setWarehouseForm({
+                              name: wh.name,
+                              code: wh.code,
+                              address: wh.address || "",
+                              managerUserId: wh.managerUserId || "",
+                              isDefault: wh.isDefault
+                            });
+                            setIsWarehouseModalOpen(true);
+                          }}
+                          className="p-1.5 text-slate-400 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition"
+                          title={t("Edit Warehouse", "Upraviť sklad", "Raktár szerkesztése")}
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteWarehouse(wh.id)}
+                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                          title={t("Delete Warehouse", "Vymazať sklad", "Raktár törlése")}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Warehouse Details */}
+                    <div className="mt-4 space-y-2 text-xs text-slate-600">
+                      <div className="flex items-start gap-2">
+                        <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                        <span className={wh.address ? "text-slate-700" : "text-slate-400 italic"}>
+                          {wh.address || t("No address specified", "Bez zadanej adresy", "Nincs megadott cím")}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <UserCheck className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span className={wh.managerUserId ? "text-slate-700 font-medium" : "text-slate-400 italic"}>
+                          {manager?.name || wh.managerUserId || t("No manager assigned", "Bez prideleného vedúceho", "Nincs kijelölt vezető")}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Stock Metrics Box */}
+                    <div className="grid grid-cols-3 gap-2 mt-4 p-3 bg-slate-50 rounded-xl border border-slate-100 text-center">
+                      <div>
+                        <div className="text-[10px] uppercase font-bold text-slate-400">{t("Active SKUs", "Aktívne položky", "Termékek")}</div>
+                        <div className="text-sm font-bold text-slate-800 font-mono mt-0.5">{stockedSkuCount}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase font-bold text-slate-400">{t("Total Qty", "Kusov na sklade", "Darabszám")}</div>
+                        <div className="text-sm font-bold text-blue-900 font-mono mt-0.5">{totalUnits}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase font-bold text-slate-400">{t("Inventory Value", "Hodnota skladu", "Készletérték")}</div>
+                        <div className="text-xs font-bold text-emerald-700 font-mono mt-1 truncate">
+                          {formatCurrency(totalValuation, systemLanguage, systemCurrency)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card Footer Actions */}
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2 text-xs">
+                    {!wh.isDefault ? (
+                      <button
+                        onClick={() => handleSetDefaultWarehouse(wh.id)}
+                        className="text-[11px] font-semibold text-slate-500 hover:text-amber-700 flex items-center gap-1 transition cursor-pointer"
+                      >
+                        <Star className="w-3 h-3" />
+                        <span>{t("Set as default", "Nastaviť ako predvolený", "Legyen alapértelmezett")}</span>
+                      </button>
+                    ) : (
+                      <span className="text-[11px] font-semibold text-amber-700 flex items-center gap-1">
+                        <Check className="w-3 h-3" />
+                        <span>{t("Default warehouse", "Predvolený sklad", "Alapértelmezett raktár")}</span>
+                      </span>
+                    )}
+
+                    <button
+                      onClick={() => {
+                        setSelectedWarehouseId(wh.id);
+                        setActiveSubTab("items");
+                      }}
+                      className="text-[11px] font-bold text-blue-900 hover:text-blue-700 hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>{t("View stock", "Zobraziť zásoby", "Készlet megtekintése")}</span>
+                      <ChevronRight className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: SUPPLIERS DIRECTORY */}
       {activeSubTab === "suppliers" && (
         <div className="space-y-4">
           <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
@@ -5234,35 +5693,46 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       </div>
                     </div>
 
-                    <button
-                      onClick={() => {
-                        setEditingSupplier(sup);
-                        setSupplierForm({
-                          name: sup.name,
-                          companyId: sup.companyId || "",
-                          taxId: sup.taxId || "",
-                          vatId: sup.vatId || "",
-                          street: sup.street || "",
-                          city: sup.city || "",
-                          postalCode: sup.postalCode || "",
-                          country: sup.country || "Slovakia",
-                          email: sup.email || "",
-                          phone: sup.phone || "",
-                          website: sup.website || "",
-                          iban: sup.iban || "",
-                          swift: sup.swift || "",
-                          paymentDueDays: sup.paymentDueDays || 14,
-                          notes: sup.notes || "",
-                          contacts: sup.contacts?.length
-                            ? sup.contacts.map(c => ({ name: c.name, position: c.position || "", phone: c.phone || "", email: c.email || "" }))
-                            : [{ name: "", position: "", phone: "", email: "" }]
-                        });
-                        setIsSupplierModalOpen(true);
-                      }}
-                      className="p-1.5 text-slate-400 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => {
+                          setEditingSupplier(sup);
+                          setSupplierForm({
+                            name: sup.name,
+                            companyId: sup.companyId || "",
+                            taxId: sup.taxId || "",
+                            vatId: sup.vatId || "",
+                            street: sup.street || "",
+                            city: sup.city || "",
+                            postalCode: sup.postalCode || "",
+                            country: sup.country || "Slovakia",
+                            email: sup.email || "",
+                            phone: sup.phone || "",
+                            website: sup.website || "",
+                            iban: sup.iban || "",
+                            swift: sup.swift || "",
+                            paymentDueDays: sup.paymentDueDays || 14,
+                            notes: sup.notes || "",
+                            contacts: sup.contacts?.length
+                              ? sup.contacts.map(c => ({ name: c.name, position: c.position || "", phone: c.phone || "", email: c.email || "" }))
+                              : [{ name: "", position: "", phone: "", email: "" }]
+                          });
+                          setIsSupplierModalOpen(true);
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition"
+                        title={t("Edit Supplier", "Upraviť dodávateľa", "Beszállító szerkesztése")}
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+
+                      <button
+                        onClick={() => handleDeleteSupplier(sup.id)}
+                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                        title={t("Delete Supplier", "Vymazať dodávateľa", "Beszállító törlése")}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
 
                   <div className="mt-4 space-y-1.5 text-xs text-slate-600">
@@ -5509,30 +5979,32 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                     {t("Destination Warehouse", "Cieľový sklad príjmu", "Célraktár")} *
                   </label>
-                  <select
+                  <CustomSelect
                     value={receiptWarehouseId}
-                    onChange={(e) => setReceiptWarehouseId(e.target.value)}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-emerald-600 focus:outline-none"
-                  >
-                    {warehouses.map(w => (
-                      <option key={w.id} value={w.id}>{w.name} ({w.code})</option>
-                    ))}
-                  </select>
+                    onChange={(val) => setReceiptWarehouseId(val)}
+                    options={warehouses.map(w => ({
+                      value: w.id,
+                      label: `${w.name} (${w.code})`,
+                    }))}
+                    size="sm"
+                    className="w-full text-xs font-semibold rounded-xl"
+                  />
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                     {t("Supplier", "Dodávateľ", "Beszállító")} *
                   </label>
-                  <select
+                  <CustomSelect
                     value={receiptSupplierId}
-                    onChange={(e) => setReceiptSupplierId(e.target.value)}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-emerald-600 focus:outline-none"
-                  >
-                    {suppliers.map(s => (
-                      <option key={s.id} value={s.id}>{s.name} (IČO: {s.companyId || "—"})</option>
-                    ))}
-                  </select>
+                    onChange={(val) => setReceiptSupplierId(val)}
+                    options={suppliers.map(s => ({
+                      value: s.id,
+                      label: `${s.name} (IČO: ${s.companyId || "—"})`,
+                    }))}
+                    size="sm"
+                    className="w-full text-xs font-semibold rounded-xl"
+                  />
                 </div>
 
                 <div className="sm:col-span-2">
@@ -5572,21 +6044,22 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
                         <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
                           <div className="sm:col-span-2">
-                            <select
+                            <CustomSelect
                               value={row.itemId}
-                              onChange={(e) => {
-                                const it = warehouseItems.find(i => i.id === e.target.value);
+                              onChange={(val) => {
+                                const it = warehouseItems.find(i => i.id === val);
                                 const updated = [...receiptItems];
-                                updated[idx].itemId = e.target.value;
+                                updated[idx].itemId = val;
                                 updated[idx].unitPurchasePrice = it?.avgPurchasePrice || 0;
                                 setReceiptItems(updated);
                               }}
-                              className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-900"
-                            >
-                              {warehouseItems.map(it => (
-                                <option key={it.id} value={it.id}>{it.name} ({it.sku})</option>
-                              ))}
-                            </select>
+                              options={warehouseItems.map(it => ({
+                                value: it.id,
+                                label: `${it.name} (${it.sku})`,
+                              }))}
+                              size="sm"
+                              className="w-full text-xs font-semibold rounded-lg"
+                            />
                           </div>
 
                           <div>
@@ -5728,30 +6201,32 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                     {t("Source Warehouse (From)", "Zdrojový sklad (Odkiaľ)", "Forrásraktár")} *
                   </label>
-                  <select
+                  <CustomSelect
                     value={transferSourceWh}
-                    onChange={(e) => setTransferSourceWh(e.target.value)}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-purple-700 focus:outline-none"
-                  >
-                    {warehouses.map(w => (
-                      <option key={w.id} value={w.id}>{w.name} ({w.code})</option>
-                    ))}
-                  </select>
+                    onChange={(val) => setTransferSourceWh(val)}
+                    options={warehouses.map(w => ({
+                      value: w.id,
+                      label: `${w.name} (${w.code})`,
+                    }))}
+                    size="sm"
+                    className="w-full text-xs font-semibold rounded-xl"
+                  />
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                     {t("Destination Warehouse (To)", "Cieľový sklad (Kam)", "Célraktár")} *
                   </label>
-                  <select
+                  <CustomSelect
                     value={transferTargetWh}
-                    onChange={(e) => setTransferTargetWh(e.target.value)}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-purple-700 focus:outline-none"
-                  >
-                    {warehouses.map(w => (
-                      <option key={w.id} value={w.id}>{w.name} ({w.code})</option>
-                    ))}
-                  </select>
+                    onChange={(val) => setTransferTargetWh(val)}
+                    options={warehouses.map(w => ({
+                      value: w.id,
+                      label: `${w.name} (${w.code})`,
+                    }))}
+                    size="sm"
+                    className="w-full text-xs font-semibold rounded-xl"
+                  />
                 </div>
 
                 <div className="sm:col-span-2">
@@ -5792,19 +6267,20 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     return (
                       <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center gap-3">
                         <div className="flex-1">
-                          <select
+                          <CustomSelect
                             value={row.itemId}
-                            onChange={(e) => {
+                            onChange={(val) => {
                               const updated = [...transferItems];
-                              updated[idx].itemId = e.target.value;
+                              updated[idx].itemId = val;
                               setTransferItems(updated);
                             }}
-                            className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-900"
-                          >
-                            {warehouseItems.map(it => (
-                              <option key={it.id} value={it.id}>{it.name} ({it.sku})</option>
-                            ))}
-                          </select>
+                            options={warehouseItems.map(it => ({
+                              value: it.id,
+                              label: `${it.name} (${it.sku})`,
+                            }))}
+                            size="sm"
+                            className="w-full text-xs font-semibold rounded-lg"
+                          />
                         </div>
 
                         <div className="w-32 flex items-center gap-1">
@@ -5877,7 +6353,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     {editingSupplier ? t("Edit Supplier", "Upraviť dodávateľa", "Beszállító szerkesztése") : t("New Supplier", "Nový dodávateľ", "Új beszállító")}
                   </h3>
                   <p className="text-xs text-slate-500">
-                    {t("Enter IČO to auto-fill invoicing details from business register", "Zadajte IČO pre automatické načítanie údajov z ARES", "Adószám megadása az automatikus kitöltéshez")}
+                    {t("Enter IČO to auto-fill invoicing details from business register (SK/CZ)", "Zadajte IČO pre automatické načítanie údajov z registra (SR/ČR)", "Adószám megadása az automatikus kitöltéshez (SK/CZ)")}
                   </p>
                 </div>
               </div>
@@ -5910,7 +6386,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       className="px-3.5 py-2 bg-blue-900 hover:bg-blue-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shrink-0 transition"
                     >
                       {isAresLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                      <span>{t("ARES Fill", "Načítať z ARES", "ARES kitöltés")}</span>
+                      <span>{t("Auto-Fill", "Načítať z registra", "Kitöltés")}</span>
                     </button>
                   </div>
                 </div>
@@ -5938,7 +6414,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     type="text"
                     value={supplierForm.name}
                     onChange={(e) => setSupplierForm({ ...supplierForm, name: e.target.value })}
-                    placeholder="Laminam Slovakia s.r.o."
+                    placeholder={t("e.g. Supplier s.r.o.", "napr. Dodávateľ s.r.o.", "pl. Beszállító Kft.")}
                     className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
                   />
                 </div>
@@ -6043,26 +6519,182 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               </div>
             </div>
 
-            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-end gap-2">
-              <button
-                onClick={() => setIsSupplierModalOpen(false)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition"
-              >
-                {t("Cancel", "Zrušiť", "Mégse")}
-              </button>
-              <button
-                onClick={handleSaveSupplier}
-                className="px-5 py-2 bg-blue-900 hover:bg-blue-800 text-white rounded-xl text-xs font-bold transition shadow-sm"
-              >
-                {editingSupplier ? t("Save Changes", "Uložiť zmeny", "Mentés") : t("Create Supplier", "Vytvoriť dodávateľa", "Létrehozás")}
-              </button>
+            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between gap-2">
+              <div>
+                {editingSupplier && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteSupplier(editingSupplier.id)}
+                    className="px-3.5 py-2 text-red-600 hover:bg-red-50 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>{t("Delete Supplier", "Vymazať dodávateľa", "Beszállító törlése")}</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setIsSupplierModalOpen(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition cursor-pointer"
+                >
+                  {t("Cancel", "Zrušiť", "Mégse")}
+                </button>
+                <button
+                  onClick={handleSaveSupplier}
+                  className="px-5 py-2 bg-blue-900 hover:bg-blue-800 text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
+                >
+                  {editingSupplier ? t("Save Changes", "Uložiť zmeny", "Mentés") : t("Create Supplier", "Vytvoriť dodávateľa", "Létrehozás")}
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL 6: PRINT / VIEW DOCUMENT PREVIEW */}
+      {/* MODAL 6: NEW / EDIT WAREHOUSE */}
+      {/* ========================================================================= */}
+      {isWarehouseModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 my-8">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-blue-900 text-white flex items-center justify-center">
+                  <WarehouseIcon className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base">
+                    {editingWarehouse ? t("Edit Warehouse", "Upraviť sklad", "Raktár szerkesztése") : t("New Warehouse", "Nový sklad", "Új raktár")}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    {t("Configure storage location, identifier, address and responsible manager", "Nastavte skladový priestor, kód, adresu a vedúceho skladu", "Raktár kódjának, címének és vezetőjének beállítása")}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsWarehouseModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    {t("Warehouse Name", "Názov skladu", "Raktár neve")} *
+                  </label>
+                  <input
+                    type="text"
+                    value={warehouseForm.name}
+                    onChange={(e) => setWarehouseForm({ ...warehouseForm, name: e.target.value })}
+                    placeholder={t("e.g. Central Warehouse Bratislava", "napr. Centrálny sklad Bratislava", "pl. Központi raktár")}
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    {t("Warehouse Code", "Kód skladu", "Raktárkód")} *
+                  </label>
+                  <input
+                    type="text"
+                    value={warehouseForm.code}
+                    onChange={(e) => setWarehouseForm({ ...warehouseForm, code: e.target.value.toUpperCase() })}
+                    placeholder="WH-BA-01"
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 uppercase focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    {t("Warehouse Manager", "Vedúci skladu", "Raktárvezető")}
+                  </label>
+                  <select
+                    value={warehouseForm.managerUserId}
+                    onChange={(e) => setWarehouseForm({ ...warehouseForm, managerUserId: e.target.value })}
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  >
+                    <option value="">{t("— No manager assigned —", "— Bez prideleného vedúceho —", "— Nincs kijelölve —")}</option>
+                    {users.map(u => (
+                      <option key={u.email || u.name} value={u.name || u.email}>
+                        {u.name} {u.role ? `(${u.role})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    {t("Physical Address / Location", "Adresa / Umiestnenie skladu", "Fizikai cím / Elhelyezkedés")}
+                  </label>
+                  <input
+                    type="text"
+                    value={warehouseForm.address}
+                    onChange={(e) => setWarehouseForm({ ...warehouseForm, address: e.target.value })}
+                    placeholder="Vajnorská 100, 831 04 Bratislava"
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  />
+                </div>
+
+                <div className="sm:col-span-2 pt-2">
+                  <label className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200/80 cursor-pointer hover:bg-slate-100 transition select-none">
+                    <input
+                      type="checkbox"
+                      checked={warehouseForm.isDefault}
+                      onChange={(e) => setWarehouseForm({ ...warehouseForm, isDefault: e.target.checked })}
+                      className="w-4 h-4 rounded text-blue-900 focus:ring-blue-900"
+                    />
+                    <div>
+                      <span className="text-xs font-bold text-slate-900">
+                        {t("Set as default warehouse", "Nastaviť ako predvolený sklad", "Alapértelmezett raktárként beállítás")}
+                      </span>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        {t("Automatically selected when creating new receipts, goods issues, and product inventory records", "Automaticky predvybraný pri nových príjemkách, výdajkách a stavoch", "Automatikusan kiválasztva az új bizonylatoknál")}
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between gap-2">
+              <div>
+                {editingWarehouse && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteWarehouse(editingWarehouse.id)}
+                    className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>{t("Delete Warehouse", "Vymazať sklad", "Raktár törlése")}</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setIsWarehouseModalOpen(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition cursor-pointer"
+                >
+                  {t("Cancel", "Zrušiť", "Mégse")}
+                </button>
+                <button
+                  onClick={handleSaveWarehouse}
+                  className="px-5 py-2 bg-blue-900 hover:bg-blue-800 text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
+                >
+                  {editingWarehouse ? t("Save Changes", "Uložiť zmeny", "Mentés") : t("Create Warehouse", "Vytvoriť sklad", "Létrehozás")}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 7: PRINT / VIEW DOCUMENT PREVIEW */}
       {/* ========================================================================= */}
       {selectedMovementForPrint && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">

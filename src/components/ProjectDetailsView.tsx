@@ -2112,7 +2112,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                       required
                       value={finFormTitle}
                       onChange={(e) => setFinFormTitle(e.target.value)}
-                      placeholder={finFormType === "income" ? "e.g. Zálohová faktúra 50%..." : "e.g. Nákup dosiek Laminam Calce..."}
+                      placeholder={finFormType === "income" ? t("e.g. Advance invoice 50%...", "napr. Zálohová faktúra 50%...", "pl. Előlegszámla 50%...") : t("e.g. Material purchase, rental...", "napr. Nákup materiálu, prenájom...", "pl. Anyagbeszerzés, bérlet...")}
                       className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:outline-none focus:border-indigo-500 font-medium"
                     />
                   </div>

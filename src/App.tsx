@@ -1108,6 +1108,7 @@ ${log.payload || ''}
   const updateLeadsAndSync = async (updater: Lead[] | ((prev: Lead[]) => Lead[])) => {
     setLeads((prev) => {
       const nextLeads = typeof updater === "function" ? updater(prev) : updater;
+      leadsRef.current = nextLeads;
       pushStateToServer(nextLeads);
       return nextLeads;
     });
@@ -1116,6 +1117,7 @@ ${log.payload || ''}
   const updateTasksAndSync = (newTasks: Task[] | ((prev: Task[]) => Task[])) => {
     setTasks(prev => {
       const nextTasks = typeof newTasks === "function" ? newTasks(prev) : newTasks;
+      tasksRef.current = nextTasks;
       pushStateToServer(undefined, nextTasks);
       return nextTasks;
     });
@@ -1124,6 +1126,7 @@ ${log.payload || ''}
   const updateProjectsAndSync = (newProjects: Project[] | ((prev: Project[]) => Project[])) => {
     setProjects(prev => {
       const nextProjects = typeof newProjects === "function" ? newProjects(prev) : newProjects;
+      projectsRef.current = nextProjects;
       pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, nextProjects);
       return nextProjects;
     });
@@ -1132,6 +1135,7 @@ ${log.payload || ''}
   const updateProjectTypesAndSync = (newTypes: ProjectType[] | ((prev: ProjectType[]) => ProjectType[])) => {
     setProjectTypes(prev => {
       const nextTypes = typeof newTypes === "function" ? newTypes(prev) : newTypes;
+      projectTypesRef.current = nextTypes;
       pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, nextTypes);
       return nextTypes;
     });
@@ -1140,6 +1144,7 @@ ${log.payload || ''}
   const updateWarehousesAndSync = (newWarehouses: Warehouse[] | ((prev: Warehouse[]) => Warehouse[])) => {
     setWarehouses(prev => {
       const next = typeof newWarehouses === "function" ? newWarehouses(prev) : newWarehouses;
+      warehousesRef.current = next;
       pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
       return next;
     });
@@ -1148,6 +1153,7 @@ ${log.payload || ''}
   const updateSuppliersAndSync = (newSuppliers: Supplier[] | ((prev: Supplier[]) => Supplier[])) => {
     setSuppliers(prev => {
       const next = typeof newSuppliers === "function" ? newSuppliers(prev) : newSuppliers;
+      suppliersRef.current = next;
       pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
       return next;
     });
@@ -1156,6 +1162,7 @@ ${log.payload || ''}
   const updateWarehouseItemsAndSync = (newItems: WarehouseItem[] | ((prev: WarehouseItem[]) => WarehouseItem[])) => {
     setWarehouseItems(prev => {
       const next = typeof newItems === "function" ? newItems(prev) : newItems;
+      warehouseItemsRef.current = next;
       pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
       return next;
     });
@@ -1164,6 +1171,7 @@ ${log.payload || ''}
   const updateWarehouseStockAndSync = (newStock: WarehouseStock[] | ((prev: WarehouseStock[]) => WarehouseStock[])) => {
     setWarehouseStock(prev => {
       const next = typeof newStock === "function" ? newStock(prev) : newStock;
+      warehouseStockRef.current = next;
       pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
       return next;
     });
@@ -1172,6 +1180,7 @@ ${log.payload || ''}
   const updateWarehouseBatchesAndSync = (newBatches: WarehouseBatch[] | ((prev: WarehouseBatch[]) => WarehouseBatch[])) => {
     setWarehouseBatches(prev => {
       const next = typeof newBatches === "function" ? newBatches(prev) : newBatches;
+      warehouseBatchesRef.current = next;
       pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
       return next;
     });
@@ -1180,6 +1189,7 @@ ${log.payload || ''}
   const updateWarehouseMovementsAndSync = (newMovements: WarehouseMovement[] | ((prev: WarehouseMovement[]) => WarehouseMovement[])) => {
     setWarehouseMovements(prev => {
       const next = typeof newMovements === "function" ? newMovements(prev) : newMovements;
+      warehouseMovementsRef.current = next;
       pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
       return next;
     });
@@ -1188,6 +1198,7 @@ ${log.payload || ''}
   const updateFinancialCategoriesAndSync = (newCats: FinancialCategory[] | ((prev: FinancialCategory[]) => FinancialCategory[])) => {
     setFinancialCategories(prev => {
       const next = typeof newCats === "function" ? newCats(prev) : newCats;
+      financialCategoriesRef.current = next;
       pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
       return next;
     });
@@ -1196,6 +1207,7 @@ ${log.payload || ''}
   const updateFinancialRecordsAndSync = (newRecs: FinancialRecord[] | ((prev: FinancialRecord[]) => FinancialRecord[])) => {
     setFinancialRecords(prev => {
       const next = typeof newRecs === "function" ? newRecs(prev) : newRecs;
+      financialRecordsRef.current = next;
       pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
       return next;
     });
@@ -1204,6 +1216,7 @@ ${log.payload || ''}
   const updateMeetingNotesAndSync = (newNotes: MeetingNote[] | ((prev: MeetingNote[]) => MeetingNote[])) => {
     setMeetingNotes(prev => {
       const nextNotes = typeof newNotes === "function" ? newNotes(prev) : newNotes;
+      meetingNotesRef.current = nextNotes;
       pushStateToServer(undefined, undefined, undefined, undefined, undefined, nextNotes);
       return nextNotes;
     });
@@ -1212,6 +1225,7 @@ ${log.payload || ''}
   const updateUsersAndSync = (newUsers: UserProfile[] | ((prev: UserProfile[]) => UserProfile[])) => {
     setUsers(prev => {
       const nextUsers = typeof newUsers === "function" ? newUsers(prev) : newUsers;
+      usersRef.current = nextUsers;
       pushStateToServer(undefined, undefined, undefined, undefined, nextUsers);
       // Keep the logged-in profile in step, but hand out a new object only when
       // its own row actually changed — an unrelated user's edit must not reset
@@ -2223,6 +2237,7 @@ ${log.payload || ''}
             warehouseMovements={warehouseMovements}
             setWarehouseMovements={updateWarehouseMovementsAndSync}
             leads={leads}
+            users={users}
             onAddTimelineEvent={(leadId, event) => {
               setLeads(prev => prev.map(l => {
                 if (l.id === leadId) {
