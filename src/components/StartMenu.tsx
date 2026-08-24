@@ -105,25 +105,25 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       id: "operations",
       name: t("Operations & CRM", "Operatíva & CRM", "Operáció & CRM"),
       iconName: "Briefcase",
-      color: "text-indigo-600 dark:text-indigo-400"
+      color: "text-indigo-600 "
     },
     {
       id: "analytics",
       name: t("Analytics & Registries", "Analytika & Evidencie", "Analitika & Nyilvántartások"),
       iconName: "BarChart3",
-      color: "text-cyan-600 dark:text-cyan-400"
+      color: "text-cyan-600 "
     },
     {
       id: "collaboration",
       name: t("Collaboration & AI", "Spolupráca & AI", "Együttműködés & AI"),
       iconName: "Brain",
-      color: "text-purple-600 dark:text-purple-400"
+      color: "text-purple-600 "
     },
     {
       id: "system",
       name: t("System & Tools", "Systém & Nástroje", "Rendszer & Eszközök"),
       iconName: "Settings",
-      color: "text-slate-600 dark:text-slate-400"
+      color: "text-slate-600 "
     }
   ], [systemLanguage, t]);
 
@@ -519,7 +519,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       id: newId,
       name: newName,
       iconName: "FolderOpen",
-      color: "text-indigo-600 dark:text-indigo-400",
+      color: "text-indigo-600 ",
       isCustom: true
     };
     const nextGroups = [...groups, newGroup];
@@ -747,7 +747,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[99999] flex items-start justify-start p-4 sm:p-6 select-none">
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 sm:p-6 select-none">
       {/* Backdrop overlay */}
       <div
         className={`fixed inset-0 bg-slate-950/40 backdrop-blur-md transition-opacity duration-250 ease-out ${
@@ -759,33 +759,37 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       />
 
       {/* Start Menu Container */}
+      {/* 
+        Dark Theme Preset for Container:
+        className="... bg-slate-50  backdrop-blur-2xl border border-slate-200/90  ..."
+      */}
       <div
         ref={menuRef}
-        className={`relative z-10 w-full max-w-6xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl border border-slate-200/90 dark:border-slate-800 rounded-3xl shadow-[0_25px_70px_rgba(0,0,0,0.25)] overflow-hidden flex flex-col max-h-[92vh] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] transform ${
+        className={`relative z-10 w-full max-w-6xl bg-white backdrop-blur-2xl border border-slate-200/90 rounded-3xl shadow-[0_25px_70px_rgba(0,0,0,0.25)] overflow-hidden flex flex-col max-h-[92vh] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] transform ${
           isVisible
             ? "scale-100 opacity-100 translate-y-0 translate-x-0"
-            : "scale-95 opacity-0 -translate-y-4 -translate-x-2 pointer-events-none"
+            : "scale-95 opacity-0 pointer-events-none"
         }`}
       >
         {/* Top Header & Search Bar & Edit Button */}
-        <div className="p-5 sm:p-6 border-b border-slate-100 dark:border-slate-800/80 bg-gradient-to-b from-slate-50/80 dark:from-slate-800/40 to-transparent flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="p-5 sm:p-6 border-b border-slate-100  bg-gradient-to-b from-slate-50/80  to-transparent flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="flex flex-col items-center justify-center gap-1 p-2 rounded-2xl bg-white dark:bg-slate-800 shadow-sm border border-slate-200/80 dark:border-slate-700/80">
+            <div className="flex flex-col items-center justify-center gap-1 p-2 rounded-2xl bg-white  shadow-sm border border-slate-200/80 ">
               <div className="flex items-center justify-center gap-1.5">
                 <span className="h-2.5 w-2.5 rounded-full bg-orange-500 shadow-xs animate-pulse" />
                 <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-xs" />
                 <span className="h-2.5 w-2.5 rounded-full bg-indigo-500 shadow-xs" />
               </div>
-              <span className="text-[7.5px] font-black tracking-widest text-indigo-600 dark:text-indigo-400 uppercase leading-none">
+              <span className="text-[7.5px] font-black tracking-widest text-indigo-600  uppercase leading-none">
                 START
               </span>
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-heading font-black text-base text-slate-900 dark:text-white tracking-tight">
+                <span className="font-heading font-black text-base text-slate-900  tracking-tight">
                   {systemName}
                 </span>
-                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600  border border-indigo-500/20">
                   {t("Start Menu", "Štart menu", "Start menü")}
                 </span>
               </div>
@@ -807,13 +811,13 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={t("Search modules... (ESC)", "Hľadať v moduloch... (ESC)", "Keresés a modulok között...")}
-                className="w-full pl-10 pr-9 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-xs transition-all"
+                className="w-full pl-10 pr-9 py-2.5 bg-white  border border-slate-200  rounded-2xl text-xs text-slate-900  placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-xs transition-all"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600  cursor-pointer"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -825,7 +829,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               <button
                 type="button"
                 onClick={handleCreateGroup}
-                className="px-3 py-2 rounded-2xl text-xs font-bold bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-100 dark:hover:bg-purple-900 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+                className="px-3 py-2 rounded-2xl text-xs font-bold bg-purple-50  hover:bg-purple-100  text-purple-700  border border-purple-200  transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
                 title={t("Create New Group Column", "Vytvoriť novú skupinu", "Új csoport létrehozása")}
               >
                 <FolderPlus className="h-3.5 w-3.5" />
@@ -840,7 +844,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
                 isEditing
                   ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20 ring-2 ring-indigo-400/30"
-                  : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300"
+                  : "bg-slate-100  hover:bg-slate-200  text-slate-700 "
               }`}
               title={isEditing ? t("Finish Customization", "Ukončiť úpravy", "Módosítás befejezése") : t("Customize Order, Groups & Sidebar Pins", "Prispôsobiť menu a skupiny", "Menü és csoportok testreszabása")}
             >
@@ -862,7 +866,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               <button
                 type="button"
                 onClick={handleResetLayout}
-                className="p-2 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors cursor-pointer shrink-0"
+                className="p-2 rounded-2xl bg-slate-100  hover:bg-slate-200  text-slate-500 hover:text-slate-800  transition-colors cursor-pointer shrink-0"
                 title={t("Reset to Default Layout", "Obnoviť predvolené", "Alapértelmezett visszaállítása")}
               >
                 <RotateCcw className="h-4 w-4" />
@@ -873,7 +877,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             <button
               type="button"
               onClick={handleAnimatedClose}
-              className="p-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer shrink-0"
+              className="p-2.5 rounded-2xl bg-slate-100  hover:bg-slate-200  text-slate-500 hover:text-slate-900  transition-colors cursor-pointer shrink-0"
               title="Close (ESC)"
             >
               <X className="h-4 w-4" />
@@ -883,7 +887,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
         {/* Edit Mode Instructions Banner */}
         {isEditing && (
-          <div className="bg-indigo-50/90 dark:bg-indigo-950/60 border-b border-indigo-100 dark:border-indigo-900/60 px-6 py-2.5 flex items-center justify-between gap-3 text-xs text-indigo-900 dark:text-indigo-200 animate-in fade-in slide-in-from-top-1 duration-200">
+          <div className="bg-indigo-50/90  border-b border-indigo-100  px-6 py-2.5 flex items-center justify-between gap-3 text-xs text-indigo-900  animate-in fade-in slide-in-from-top-1 duration-200">
             <div className="flex items-center gap-2">
               <span className="flex h-2 w-2 rounded-full bg-indigo-500 animate-ping shrink-0" />
               <span className="font-bold shrink-0">
@@ -896,7 +900,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             <button
               type="button"
               onClick={() => setIsEditing(false)}
-              className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer shrink-0"
+              className="text-xs font-bold text-indigo-600  hover:underline cursor-pointer shrink-0"
             >
               {t("Done Editing ➔", "Hotovo ➔", "Kész ➔")}
             </button>
@@ -928,20 +932,28 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                       handleItemDropOnGroup(e, group.id);
                     }
                   }}
+                  /*
+                    Dark Theme Preset for Group:
+                    isEditing && dragOverGroupId === group.id
+                      ? "bg-purple-50/60  ring-2 ring-purple-500 ring-dashed"
+                      : isEditing && dragOverGroup === group.id
+                      ? "bg-indigo-50/50  ring-2 ring-indigo-400/50 ring-dashed"
+                      : "bg-white  border border-slate-200/50 "
+                  */
                   className={`space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300 fill-mode-both flex flex-col p-3 rounded-3xl transition-all ${
                     isEditing && dragOverGroupId === group.id
-                      ? "bg-purple-50/60 dark:bg-purple-950/40 ring-2 ring-purple-500 ring-dashed"
+                      ? "bg-purple-50/60 ring-2 ring-purple-500 ring-dashed"
                       : isEditing && dragOverGroup === group.id
-                      ? "bg-indigo-50/50 dark:bg-indigo-950/30 ring-2 ring-indigo-400/50 ring-dashed"
-                      : "bg-slate-50/40 dark:bg-slate-850/40 border border-slate-200/50 dark:border-slate-800/60"
+                      ? "bg-indigo-50/50 ring-2 ring-indigo-400/50 ring-dashed"
+                      : "bg-slate-50 border border-slate-200/50"
                   }`}
                 >
                   {/* Group Column Header (Draggable & Editable in Edit Mode) */}
                   <div
                     draggable={isEditing}
                     onDragStart={(e) => handleGroupDragStart(e, group.id)}
-                    className={`flex items-center justify-between pb-2.5 border-b border-slate-200/70 dark:border-slate-800 text-[11px] font-black uppercase tracking-wider ${
-                      group.color || "text-slate-700 dark:text-slate-300"
+                    className={`flex items-center justify-between pb-2.5 border-b border-slate-200/70  text-[11px] font-black uppercase tracking-wider ${
+                      group.color || "text-slate-700 "
                     } ${isEditing ? "cursor-grab active:cursor-grabbing hover:opacity-80" : ""}`}
                   >
                     <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -962,7 +974,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                               if (e.key === "Escape") setEditingGroupId(null);
                             }}
                             autoFocus
-                            className="w-full px-2 py-1 text-xs font-bold rounded-lg border border-indigo-400 bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            className="w-full px-2 py-1 text-xs font-bold rounded-lg border border-indigo-400 bg-white  text-slate-800  focus:outline-none focus:ring-1 focus:ring-indigo-500"
                           />
                           <button
                             type="button"
@@ -975,7 +987,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                           <button
                             type="button"
                             onClick={() => setEditingGroupId(null)}
-                            className="p-1 rounded-md bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 cursor-pointer shrink-0"
+                            className="p-1 rounded-md bg-slate-200  text-slate-600  hover:bg-slate-300 cursor-pointer shrink-0"
                             title="Cancel"
                           >
                             <X className="h-3 w-3" />
@@ -988,7 +1000,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
                     {/* Group Header Actions */}
                     <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                      <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold">
+                      <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-slate-200/70  text-slate-600  font-bold">
                         {filteredItems.length}
                       </span>
                       {isEditing && editingGroupId !== group.id && (
@@ -999,7 +1011,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                               setEditingGroupId(group.id);
                               setEditingGroupName(group.name);
                             }}
-                            className="p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                            className="p-1 rounded-lg hover:bg-slate-200  text-slate-400 hover:text-slate-700  transition-colors cursor-pointer"
                             title={t("Rename group", "Premenovať skupinu", "Csoport átnevezése")}
                           >
                             <Pencil className="h-3 w-3" />
@@ -1008,7 +1020,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                             <button
                               type="button"
                               onClick={() => handleDeleteGroup(group.id)}
-                              className="p-1 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-950/60 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                              className="p-1 rounded-lg hover:bg-rose-100  text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
                               title={t("Delete group", "Vymazať skupinu", "Csoport törlése")}
                             >
                               <Trash2 className="h-3 w-3" />
@@ -1032,21 +1044,21 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                             <div
                               onDragOver={(e) => handleItemDragOverItem(e, group.id, idx)}
                               onDrop={(e) => handleItemDropOnGroup(e, group.id, idx)}
-                              className="w-full p-2.5 rounded-2xl border-2 border-dashed border-indigo-500 bg-indigo-50/90 dark:bg-indigo-950/70 shadow-sm flex flex-col gap-2 animate-in fade-in zoom-in-95 duration-150 ring-2 ring-indigo-400/30"
+                              className="w-full p-2.5 rounded-2xl border-2 border-dashed border-indigo-500 bg-indigo-50/90  shadow-sm flex flex-col gap-2 animate-in fade-in zoom-in-95 duration-150 ring-2 ring-indigo-400/30"
                               style={{ minHeight: "72px" }}
                             >
                               <div className="flex items-center gap-2">
-                                <div className="p-1.5 rounded-xl bg-indigo-200/80 dark:bg-indigo-800/80 text-indigo-700 dark:text-indigo-200 shrink-0 animate-bounce">
+                                <div className="p-1.5 rounded-xl bg-indigo-200/80  text-indigo-700  shrink-0 animate-bounce">
                                   {draggedItemObj ? <draggedItemObj.icon className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
                                 </div>
-                                <span className="text-xs font-bold text-indigo-900 dark:text-indigo-200 truncate flex-1">
+                                <span className="text-xs font-bold text-indigo-900  truncate flex-1">
                                   {draggedItemObj?.label || t("Drop item here", "Pustiť sem", "Ide helyezés")}
                                 </span>
-                                <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-indigo-200 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 shrink-0">
+                                <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-indigo-200  text-indigo-800  shrink-0">
                                   {t("Landing slot", "Miesto vloženia", "Beillesztési hely")}
                                 </span>
                               </div>
-                              <div className="h-4 rounded-xl bg-indigo-200/40 dark:bg-indigo-800/30 w-full" />
+                              <div className="h-4 rounded-xl bg-indigo-200/40  w-full" />
                             </div>
                           )}
 
@@ -1077,26 +1089,26 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                         <div
                           onDragOver={(e) => handleItemDragOverContainer(e, group.id)}
                           onDrop={(e) => handleItemDropOnGroup(e, group.id, filteredItems.length)}
-                          className="w-full p-2.5 rounded-2xl border-2 border-dashed border-indigo-500 bg-indigo-50/90 dark:bg-indigo-950/70 shadow-sm flex flex-col gap-2 animate-in fade-in zoom-in-95 duration-150 ring-2 ring-indigo-400/30"
+                          className="w-full p-2.5 rounded-2xl border-2 border-dashed border-indigo-500 bg-indigo-50/90  shadow-sm flex flex-col gap-2 animate-in fade-in zoom-in-95 duration-150 ring-2 ring-indigo-400/30"
                           style={{ minHeight: "72px" }}
                         >
                           <div className="flex items-center gap-2">
-                            <div className="p-1.5 rounded-xl bg-indigo-200/80 dark:bg-indigo-800/80 text-indigo-700 dark:text-indigo-200 shrink-0 animate-bounce">
+                            <div className="p-1.5 rounded-xl bg-indigo-200/80  text-indigo-700  shrink-0 animate-bounce">
                               {draggedItemObj ? <draggedItemObj.icon className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
                             </div>
-                            <span className="text-xs font-bold text-indigo-900 dark:text-indigo-200 truncate flex-1">
+                            <span className="text-xs font-bold text-indigo-900  truncate flex-1">
                               {draggedItemObj?.label || t("Drop item here", "Pustiť sem", "Ide helyezés")}
                             </span>
-                            <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-indigo-200 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 shrink-0">
+                            <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-indigo-200  text-indigo-800  shrink-0">
                               {t("Landing slot", "Miesto vloženia", "Beillesztési hely")}
                             </span>
                           </div>
-                          <div className="h-4 rounded-xl bg-indigo-200/40 dark:bg-indigo-800/30 w-full" />
+                          <div className="h-4 rounded-xl bg-indigo-200/40  w-full" />
                         </div>
                       )}
 
                     {filteredItems.length === 0 && isEditing && (
-                      <div className="py-4 text-center border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl text-[10px] text-slate-400">
+                      <div className="py-4 text-center border border-dashed border-slate-200  rounded-2xl text-[10px] text-slate-400">
                         {t("Drop items here", "Sem presuňte položky", "Húzza ide az elemeket")}
                       </div>
                     )}
@@ -1106,9 +1118,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                       <button
                         type="button"
                         onClick={() => onOpenCreateDashboard()}
-                        className="w-full p-2.5 rounded-2xl text-left border-2 border-dashed border-purple-300/80 dark:border-purple-700/60 hover:border-purple-500 dark:hover:border-purple-400 bg-purple-50/30 hover:bg-purple-50/80 dark:bg-purple-950/20 dark:hover:bg-purple-950/40 text-purple-700 dark:text-purple-300 hover:scale-[1.015] hover:-translate-y-0.5 active:scale-[0.98] transition-all duration-200 cursor-pointer flex items-center gap-3 group shadow-2xs hover:shadow-sm"
+                        className="w-full p-2.5 rounded-2xl text-left border-2 border-dashed border-purple-300/80  hover:border-purple-500  bg-purple-50/30 hover:bg-purple-50/80   text-purple-700  hover:scale-[1.015] hover:-translate-y-0.5 active:scale-[0.98] transition-all duration-200 cursor-pointer flex items-center gap-3 group shadow-2xs hover:shadow-sm"
                       >
-                        <div className="p-2 rounded-xl bg-purple-100/70 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 shrink-0 group-hover:scale-110 transition-transform">
+                        <div className="p-2 rounded-xl bg-purple-100/70  text-purple-600  shrink-0 group-hover:scale-110 transition-transform">
                           <Brain className="h-4 w-4" />
                         </div>
                         <div className="flex-1 min-w-0">
@@ -1116,15 +1128,15 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                             <span className="text-xs font-bold truncate">
                               {t("New Dashboard", "Nový panel", "Új irányítópult")}
                             </span>
-                            <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded-md bg-purple-100/80 dark:bg-purple-900/60 text-purple-600 dark:text-purple-300">
+                            <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded-md bg-purple-100/80  text-purple-600 ">
                               +
                             </span>
                           </div>
-                          <p className="text-[10px] text-purple-600/70 dark:text-purple-400/70 line-clamp-1 mt-0.5 leading-snug">
+                          <p className="text-[10px] text-purple-600/70  line-clamp-1 mt-0.5 leading-snug">
                             {t("Create custom dashboard", "Vytvoriť vlastný panel", "Új irányítópult létrehozása")}
                           </p>
                         </div>
-                        <div className="shrink-0 text-purple-400 group-hover:text-purple-600 dark:group-hover:text-purple-200 transition-colors">
+                        <div className="shrink-0 text-purple-400 group-hover:text-purple-600  transition-colors">
                           <Plus className="h-4 w-4" />
                         </div>
                       </button>
@@ -1142,17 +1154,17 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               onDrop={handleDropOnUnused}
               className={`p-4 rounded-3xl border-2 transition-all duration-200 animate-in fade-in slide-in-from-bottom-3 ${
                 dragOverGroup === "unused"
-                  ? "bg-rose-50/70 dark:bg-rose-950/40 border-rose-400 ring-4 ring-rose-400/20"
-                  : "bg-slate-50/70 dark:bg-slate-850/50 border-dashed border-slate-300 dark:border-slate-700/80"
+                  ? "bg-rose-50/70  border-rose-400 ring-4 ring-rose-400/20"
+                  : "bg-slate-50/70  border-dashed border-slate-300 "
               }`}
             >
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 mb-3 border-b border-slate-200/80 dark:border-slate-700/60">
-                <div className="flex items-center gap-2 text-slate-700 dark:text-slate-200">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 mb-3 border-b border-slate-200/80 ">
+                <div className="flex items-center gap-2 text-slate-700 ">
                   <Archive className="h-4 w-4 text-amber-500" />
                   <span className="text-xs font-black uppercase tracking-wider">
                     {t("Unused / Hidden Modules", "Nepoužívané / Skryté moduly", "Nem használt / Rejtett modulok")}
                   </span>
-                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-slate-200  text-slate-600 ">
                     {resolvedGroupsData.unused.length}
                   </span>
                 </div>
@@ -1169,14 +1181,14 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                   {/* Landing Placeholder Slot in Unused Card */}
                   {isEditing && draggedItemId && dragOverGroup === "unused" && (
-                    <div className="p-3 rounded-2xl border-2 border-dashed border-rose-500 bg-rose-50/90 dark:bg-rose-950/70 shadow-sm flex items-center gap-2.5 animate-in fade-in zoom-in-95 duration-150 ring-2 ring-rose-400/30">
-                      <div className="p-1.5 rounded-xl bg-rose-200 dark:bg-rose-800 text-rose-700 dark:text-rose-200 shrink-0 animate-bounce">
+                    <div className="p-3 rounded-2xl border-2 border-dashed border-rose-500 bg-rose-50/90  shadow-sm flex items-center gap-2.5 animate-in fade-in zoom-in-95 duration-150 ring-2 ring-rose-400/30">
+                      <div className="p-1.5 rounded-xl bg-rose-200  text-rose-700  shrink-0 animate-bounce">
                         {draggedItemObj ? <draggedItemObj.icon className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
                       </div>
-                      <span className="text-xs font-bold text-rose-800 dark:text-rose-200 truncate flex-1">
+                      <span className="text-xs font-bold text-rose-800  truncate flex-1">
                         {draggedItemObj?.label || t("Hide item", "Skryť položku", "Elem elrejtése")}
                       </span>
-                      <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-rose-200 dark:bg-rose-900 text-rose-800 dark:text-rose-200 shrink-0">
+                      <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-rose-200  text-rose-800  shrink-0">
                         {t("Drop to hide", "Pustiť pre skrytie", "Elrejtés")}
                       </span>
                     </div>
@@ -1195,7 +1207,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                         className={`p-3 rounded-2xl border shadow-2xs flex flex-col gap-2 group transition-all ${
                           isBeingDragged
                             ? "opacity-25 scale-95 border-2 border-dashed border-rose-400 bg-rose-50/20"
-                            : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600"
+                            : "bg-white  border-slate-200  hover:border-slate-300 "
                         }`}
                       >
                         {/* Title Row (Full width) */}
@@ -1212,13 +1224,13 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                           >
                             <Icon className="h-3.5 w-3.5" />
                           </div>
-                          <span className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate flex-1">
+                          <span className="text-xs font-bold text-slate-700  truncate flex-1">
                             {item.label}
                           </span>
                         </div>
 
                         {/* Action Row Below Title */}
-                        <div className="flex items-center justify-between gap-1.5 pt-1 border-t border-slate-100 dark:border-slate-700/60">
+                        <div className="flex items-center justify-between gap-1.5 pt-1 border-t border-slate-100 ">
                           {/* Pin to Sidebar button */}
                           {onTogglePinToSidebar && (
                             <button
@@ -1230,7 +1242,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                               className={`flex-1 py-1.5 px-2 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
                                 isPinned
                                   ? "bg-indigo-600 text-white shadow-xs"
-                                  : "bg-slate-100 dark:bg-slate-700 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 dark:text-slate-300"
+                                  : "bg-slate-100  hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 "
                               }`}
                               title={isPinned ? t("Pinned to sidebar. Click to unpin.", "Pripnuté v bočnom paneli. Kliknite pre odopnutie.", "Kitűzve az oldalsávra.") : t("Pin to left sidebar", "Pripnúť na bočný panel", "Kitűzés a bal oldalsávra")}
                             >
@@ -1243,7 +1255,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                           <button
                             type="button"
                             onClick={() => handleRestoreItem(item)}
-                            className="py-1.5 px-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900 text-emerald-600 dark:text-emerald-300 text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                            className="py-1.5 px-2.5 rounded-xl bg-emerald-50  hover:bg-emerald-100  text-emerald-600  text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
                             title={t("Restore to menu", "Vrátiť do menu", "Visszaállítás a menübe")}
                           >
                             <Plus className="h-3 w-3" />
@@ -1260,13 +1272,13 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         </div>
 
         {/* Footer: User Profile & Quick Actions */}
-        <div className="p-4 sm:px-6 bg-slate-50/90 dark:bg-slate-850 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3 text-xs">
+        <div className="p-4 sm:px-6 bg-slate-50/90  border-t border-slate-100  flex items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-3">
             <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-indigo-600 to-indigo-400 text-white font-bold flex items-center justify-center text-xs shadow-sm">
               {currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : "U"}
             </div>
             <div>
-              <span className="font-bold text-slate-900 dark:text-white block leading-tight">
+              <span className="font-bold text-slate-800 block leading-tight">
                 {currentUser?.name || "User"}
               </span>
               <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
@@ -1279,7 +1291,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             <button
               type="button"
               onClick={() => handleItemClick("personal-settings")}
-              className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 text-slate-700 dark:text-slate-200 font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1.5"
+              className="px-3 py-1.5 rounded-xl bg-white  border border-slate-200  hover:bg-slate-100 text-slate-700  font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1.5"
             >
               <User className="h-3.5 w-3.5 text-slate-500" />
               <span>{t("Profile", "Profil", "Profil")}</span>
@@ -1288,7 +1300,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               <button
                 type="button"
                 onClick={onLogout}
-                className="px-3 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 hover:bg-rose-100 text-rose-600 dark:text-rose-300 font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1.5"
+                className="px-3 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm"
               >
                 <LogOut className="h-3.5 w-3.5" />
                 <span>{t("Sign Out", "Odhlásiť", "Kijelentkezés")}</span>
@@ -1343,13 +1355,13 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
         onDrop={onDrop}
         className={`w-full p-2.5 rounded-2xl transition-all flex flex-col gap-2 cursor-grab active:cursor-grabbing group ${
           isDragging
-            ? "opacity-25 scale-95 border-2 border-dashed border-indigo-400 bg-indigo-50/20 dark:bg-indigo-950/20"
-            : "bg-white dark:bg-slate-800 border border-slate-200/90 dark:border-slate-700 shadow-2xs hover:shadow-md hover:border-indigo-300 dark:hover:border-indigo-600"
+            ? "opacity-25 scale-95 border-2 border-dashed border-indigo-400 bg-indigo-50/20 "
+            : "bg-white  border border-slate-200/90  shadow-2xs hover:shadow-md hover:border-indigo-300 "
         }`}
       >
         {/* Top Row: Drag Handle + Icon + Full Title + Badge */}
         <div className="flex items-center gap-2 min-w-0">
-          <div className="shrink-0 text-slate-300 dark:text-slate-600 group-hover:text-slate-500">
+          <div className="shrink-0 text-slate-300  group-hover:text-slate-500">
             <GripVertical className="h-4 w-4" />
           </div>
           <div
@@ -1361,18 +1373,18 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
           >
             <Icon className="h-3.5 w-3.5" />
           </div>
-          <span className="text-xs font-bold text-slate-900 dark:text-white truncate flex-1">
+          <span className="text-xs font-bold text-slate-900  truncate flex-1">
             {item.label}
           </span>
           {item.badge && (
-            <span className="text-[8px] font-black uppercase px-1.5 py-0.2 rounded-md bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 shrink-0">
+            <span className="text-[8px] font-black uppercase px-1.5 py-0.2 rounded-md bg-slate-100  text-slate-500  shrink-0">
               {item.badge}
             </span>
           )}
         </div>
 
         {/* Bottom Actions Row (Below the title) */}
-        <div className="flex items-center gap-1.5 pt-1 border-t border-slate-100 dark:border-slate-700/50">
+        <div className="flex items-center gap-1.5 pt-1 border-t border-slate-100 ">
           {/* Pin to Sidebar button */}
           {onTogglePin && (
             <button
@@ -1384,7 +1396,7 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
               className={`flex-1 py-1 px-2 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
                 isPinned
                   ? "bg-indigo-600 text-white shadow-xs ring-1 ring-indigo-500 hover:bg-indigo-700"
-                  : "bg-slate-100 dark:bg-slate-700 hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300"
+                  : "bg-slate-100  hover:bg-indigo-50 hover:text-indigo-600  text-slate-600 "
               }`}
               title={isPinned ? "Pinned to left sidebar. Click to unpin." : "Pin to left sidebar"}
             >
@@ -1401,7 +1413,7 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
                 e.stopPropagation();
                 onHide();
               }}
-              className="py-1 px-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-rose-50 dark:hover:bg-rose-950/60 hover:text-rose-600 text-slate-500 dark:text-slate-300 text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+              className="py-1 px-2.5 rounded-xl bg-slate-100  hover:bg-rose-50  hover:text-rose-600 text-slate-500  text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
               title="Hide item (move to Unused)"
             >
               <EyeOff className="h-3 w-3" />
@@ -1413,16 +1425,22 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
     );
   }
 
-  // NORMAL MODE: Regular navigation card with title and description
   return (
-    <div
-      onClick={onClick}
-      className={`w-full p-2.5 rounded-2xl text-left transition-all duration-200 flex items-start gap-2.5 group relative border cursor-pointer ${
+    <>
+      {/*
+        Dark Theme Preset for Tile:
         isActive
-          ? "bg-indigo-50/90 dark:bg-indigo-950/60 border-indigo-400 dark:border-indigo-700 shadow-xs ring-1 ring-indigo-500/20"
-          : "bg-white/70 dark:bg-slate-800/40 border-transparent hover:border-slate-200 dark:hover:border-slate-700 hover:bg-white dark:hover:bg-slate-800 hover:shadow-md hover:scale-[1.015] hover:-translate-y-0.5 active:scale-[0.98]"
-      }`}
-    >
+          ? "bg-indigo-50/90  border-indigo-400  shadow-xs ring-1 ring-indigo-500/20"
+          : "bg-slate-50  border-transparent hover:border-slate-200  hover:bg-white  hover:shadow-md hover:scale-[1.015] hover:-translate-y-0.5 active:scale-[0.98]"
+      */}
+      <div
+        onClick={onClick}
+        className={`w-full p-2.5 rounded-2xl text-left transition-all duration-200 flex items-start gap-2.5 group relative border cursor-pointer ${
+          isActive
+            ? "bg-indigo-50/90 border-indigo-400 shadow-xs ring-1 ring-indigo-500/20"
+            : "bg-white border-transparent hover:border-slate-200 hover:bg-slate-50 hover:shadow-md hover:scale-[1.015] hover:-translate-y-0.5 active:scale-[0.98]"
+        }`}
+      >
       {/* Icon Badge with micro-bounce on tile hover */}
       <div
         className="p-2 rounded-xl shrink-0 transition-transform duration-200 group-hover:scale-110 shadow-2xs"
@@ -1437,11 +1455,11 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
       {/* Content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
-          <span className={`text-xs font-bold truncate transition-colors ${isActive ? "text-indigo-600 dark:text-indigo-400" : "text-slate-800 dark:text-slate-200 group-hover:text-slate-950 dark:group-hover:text-white"}`}>
+          <span className={`text-xs font-bold truncate transition-colors ${isActive ? "text-indigo-600 " : "text-slate-800  group-hover:text-slate-950 "}`}>
             {item.label}
           </span>
           {item.badge && (
-            <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded-md bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300">
+            <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded-md bg-slate-100  text-slate-500 ">
               {item.badge}
             </span>
           )}
@@ -1452,14 +1470,15 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
       </div>
 
       {/* Active Indicator or Hover Arrow */}
-      <div className="shrink-0 pt-1 text-slate-300 dark:text-slate-600 group-hover:text-indigo-500 dark:group-hover:text-indigo-400 transition-all group-hover:translate-x-0.5">
+      <div className="shrink-0 pt-1 text-slate-300  group-hover:text-indigo-500  transition-all group-hover:translate-x-0.5">
         {isActive ? (
-          <Check className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+          <Check className="h-3.5 w-3.5 text-indigo-600 " />
         ) : (
           <ChevronRight className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 transition-all" />
         )}
       </div>
     </div>
+    </>
   );
 };
 

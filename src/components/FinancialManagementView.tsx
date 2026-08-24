@@ -104,7 +104,7 @@ const SearchableCategorySelect: React.FC<SearchableCategorySelectProps> = ({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full py-1.5 px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 rounded-xl text-xs text-left flex items-center justify-between gap-2 transition-all cursor-pointer shadow-2xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+        className="w-full py-1.5 px-3 bg-slate-50  border border-slate-200  hover:border-emerald-500 rounded-xl text-xs text-left flex items-center justify-between gap-2 transition-all cursor-pointer shadow-2xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
       >
         <div className="flex items-center gap-2 truncate flex-1 min-w-0">
           {selectedCategory ? (
@@ -113,21 +113,21 @@ const SearchableCategorySelect: React.FC<SearchableCategorySelectProps> = ({
                 className="w-2.5 h-2.5 rounded-full shrink-0"
                 style={{ backgroundColor: selectedCategory.color || (selectedCategory.type === "income" ? "#10b981" : "#f43f5e") }}
               />
-              <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">
+              <span className="font-semibold text-slate-800  truncate">
                 {getCategoryPath(selectedCategory)}
               </span>
               <span
                 className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md shrink-0 ${
                   selectedCategory.type === "income"
-                    ? "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300"
-                    : "bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300"
+                    ? "bg-emerald-100  text-emerald-700 "
+                    : "bg-rose-100  text-rose-700 "
                 }`}
               >
                 {selectedCategory.type === "income" ? t("Income", "Príjem", "Bevétel") : t("Expense", "Výdavok", "Kiadás")}
               </span>
             </>
           ) : (
-            <span className="text-slate-600 dark:text-slate-400 font-medium truncate">
+            <span className="text-slate-600  font-medium truncate">
               {placeholder || (allowAll ? t("All Categories", "Všetky kategórie", "Minden kategória") : t("-- Select Category --", "-- Vyberte kategóriu --", "-- Válasszon kategóriát --"))}
             </span>
           )}
@@ -142,7 +142,7 @@ const SearchableCategorySelect: React.FC<SearchableCategorySelectProps> = ({
                 e.stopPropagation();
                 onChange(allowAll ? "all" : "");
               }}
-              className="p-0.5 hover:text-slate-600 dark:hover:text-slate-200 rounded-md"
+              className="p-0.5 hover:text-slate-600  rounded-md"
               title={t("Clear selection", "Zrušiť výber", "Törlés")}
             >
               <X className="h-3.5 w-3.5" />
@@ -154,9 +154,9 @@ const SearchableCategorySelect: React.FC<SearchableCategorySelectProps> = ({
 
       {/* Popover Dropdown */}
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1.5 z-[100] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150 flex flex-col min-w-[280px]">
+        <div className="absolute top-full left-0 right-0 mt-1.5 z-[100] bg-white  border border-slate-200  rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150 flex flex-col min-w-[280px]">
           {/* Search Header */}
-          <div className="p-2 border-b border-slate-100 dark:border-slate-800 flex items-center gap-2 bg-slate-50/70 dark:bg-slate-800/50">
+          <div className="p-2 border-b border-slate-100  flex items-center gap-2 bg-slate-50/70 ">
             <Search className="h-3.5 w-3.5 text-slate-400 shrink-0 ml-1" />
             <input
               ref={inputRef}
@@ -164,13 +164,13 @@ const SearchableCategorySelect: React.FC<SearchableCategorySelectProps> = ({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t("Search categories...", "Hľadať kategórie...", "Keresés a kategóriákban...")}
-              className="w-full bg-transparent text-xs text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none"
+              className="w-full bg-transparent text-xs text-slate-800  placeholder:text-slate-400 focus:outline-none"
             />
             {search && (
               <button
                 type="button"
                 onClick={() => setSearch("")}
-                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                className="p-1 text-slate-400 hover:text-slate-600 "
               >
                 <X className="h-3 w-3" />
               </button>
@@ -188,8 +188,8 @@ const SearchableCategorySelect: React.FC<SearchableCategorySelectProps> = ({
                 }}
                 className={`w-full px-2.5 py-1.5 text-left rounded-xl text-xs font-semibold flex items-center justify-between cursor-pointer transition-colors ${
                   value === "all" || !value
-                    ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-bold"
-                    : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                    ? "bg-emerald-50  text-emerald-700  font-bold"
+                    : "text-slate-700  hover:bg-slate-100 "
                 }`}
               >
                 <span>{t("All Categories", "Všetky kategórie", "Minden kategória")}</span>
@@ -217,8 +217,8 @@ const SearchableCategorySelect: React.FC<SearchableCategorySelectProps> = ({
                       }}
                       className={`w-full px-2.5 py-1.5 text-left rounded-xl text-xs flex items-center justify-between cursor-pointer transition-colors ${indent} ${
                         isSelected
-                          ? "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 font-bold"
-                          : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                          ? "bg-rose-50  text-rose-700  font-bold"
+                          : "text-slate-700  hover:bg-slate-100 "
                       }`}
                     >
                       <div className="flex items-center gap-2 truncate">
@@ -226,7 +226,7 @@ const SearchableCategorySelect: React.FC<SearchableCategorySelectProps> = ({
                           className="w-2 h-2 rounded-full shrink-0"
                           style={{ backgroundColor: c.color || "#f43f5e" }}
                         />
-                        <span className={c.level === 1 ? "font-bold text-slate-900 dark:text-white" : "font-normal"}>
+                        <span className={c.level === 1 ? "font-bold text-slate-900 " : "font-normal"}>
                           {c.level === 1 ? c.name : c.level === 2 ? `↳ ${c.name}` : `↳↳ ${c.name}`}
                         </span>
                       </div>
@@ -239,7 +239,7 @@ const SearchableCategorySelect: React.FC<SearchableCategorySelectProps> = ({
 
             {/* Income Categories Group */}
             {incomeCategories.length > 0 && (
-              <div className="pt-1.5 border-t border-slate-100 dark:border-slate-800 mt-1">
+              <div className="pt-1.5 border-t border-slate-100  mt-1">
                 <div className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-500 flex items-center gap-1.5">
                   <TrendingUp className="h-3 w-3" />
                   <span>{t("Incomes", "Príjmy", "Bevételek")}</span>
@@ -257,8 +257,8 @@ const SearchableCategorySelect: React.FC<SearchableCategorySelectProps> = ({
                       }}
                       className={`w-full px-2.5 py-1.5 text-left rounded-xl text-xs flex items-center justify-between cursor-pointer transition-colors ${indent} ${
                         isSelected
-                          ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-bold"
-                          : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                          ? "bg-emerald-50  text-emerald-700  font-bold"
+                          : "text-slate-700  hover:bg-slate-100 "
                       }`}
                     >
                       <div className="flex items-center gap-2 truncate">
@@ -266,7 +266,7 @@ const SearchableCategorySelect: React.FC<SearchableCategorySelectProps> = ({
                           className="w-2 h-2 rounded-full shrink-0"
                           style={{ backgroundColor: c.color || "#10b981" }}
                         />
-                        <span className={c.level === 1 ? "font-bold text-slate-900 dark:text-white" : "font-normal"}>
+                        <span className={c.level === 1 ? "font-bold text-slate-900 " : "font-normal"}>
                           {c.level === 1 ? c.name : c.level === 2 ? `↳ ${c.name}` : `↳↳ ${c.name}`}
                         </span>
                       </div>
@@ -401,7 +401,7 @@ const SearchableScopeSelect: React.FC<SearchableScopeSelectProps> = ({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full py-1.5 px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 rounded-xl text-xs text-left flex items-center justify-between gap-2 transition-all cursor-pointer shadow-2xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+        className="w-full py-1.5 px-3 bg-slate-50  border border-slate-200  hover:border-emerald-500 rounded-xl text-xs text-left flex items-center justify-between gap-2 transition-all cursor-pointer shadow-2xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
       >
         <div className="flex items-center gap-2 truncate flex-1 min-w-0">
           {selectedInfo.type === "global" ? (
@@ -413,7 +413,7 @@ const SearchableScopeSelect: React.FC<SearchableScopeSelectProps> = ({
           ) : (
             <Globe className="h-3.5 w-3.5 text-slate-400 shrink-0" />
           )}
-          <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">
+          <span className="font-semibold text-slate-800  truncate">
             {selectedInfo.label}
           </span>
           {selectedInfo.subtext && (
@@ -432,7 +432,7 @@ const SearchableScopeSelect: React.FC<SearchableScopeSelectProps> = ({
                 e.stopPropagation();
                 onChange(allowAll ? "all" : "");
               }}
-              className="p-0.5 hover:text-slate-600 dark:hover:text-slate-200 rounded-md"
+              className="p-0.5 hover:text-slate-600  rounded-md"
               title={t("Clear selection", "Zrušiť výber", "Törlés")}
             >
               <X className="h-3.5 w-3.5" />
@@ -444,9 +444,9 @@ const SearchableScopeSelect: React.FC<SearchableScopeSelectProps> = ({
 
       {/* Popover Dropdown */}
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1.5 z-[100] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150 flex flex-col min-w-[300px]">
+        <div className="absolute top-full left-0 right-0 mt-1.5 z-[100] bg-white  border border-slate-200  rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150 flex flex-col min-w-[300px]">
           {/* Search Header */}
-          <div className="p-2 border-b border-slate-100 dark:border-slate-800 flex items-center gap-2 bg-slate-50/70 dark:bg-slate-800/50">
+          <div className="p-2 border-b border-slate-100  flex items-center gap-2 bg-slate-50/70 ">
             <Search className="h-3.5 w-3.5 text-slate-400 shrink-0 ml-1" />
             <input
               ref={inputRef}
@@ -454,13 +454,13 @@ const SearchableScopeSelect: React.FC<SearchableScopeSelectProps> = ({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t("Search projects or clients...", "Hľadať projekty alebo klientov...", "Keresés projekt vagy ügyfél szerint...")}
-              className="w-full bg-transparent text-xs text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none"
+              className="w-full bg-transparent text-xs text-slate-800  placeholder:text-slate-400 focus:outline-none"
             />
             {search && (
               <button
                 type="button"
                 onClick={() => setSearch("")}
-                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                className="p-1 text-slate-400 hover:text-slate-600 "
               >
                 <X className="h-3 w-3" />
               </button>
@@ -478,8 +478,8 @@ const SearchableScopeSelect: React.FC<SearchableScopeSelectProps> = ({
                 }}
                 className={`w-full px-2.5 py-1.5 text-left rounded-xl text-xs font-semibold flex items-center justify-between cursor-pointer transition-colors ${
                   value === "all" || !value
-                    ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-bold"
-                    : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                    ? "bg-emerald-50  text-emerald-700  font-bold"
+                    : "text-slate-700  hover:bg-slate-100 "
                 }`}
               >
                 <div className="flex items-center gap-2">
@@ -499,8 +499,8 @@ const SearchableScopeSelect: React.FC<SearchableScopeSelectProps> = ({
                 }}
                 className={`w-full px-2.5 py-1.5 text-left rounded-xl text-xs font-semibold flex items-center justify-between cursor-pointer transition-colors ${
                   value === "global"
-                    ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-bold"
-                    : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                    ? "bg-emerald-50  text-emerald-700  font-bold"
+                    : "text-slate-700  hover:bg-slate-100 "
                 }`}
               >
                 <div className="flex items-center gap-2">
@@ -513,7 +513,7 @@ const SearchableScopeSelect: React.FC<SearchableScopeSelectProps> = ({
 
             {/* Projects Group */}
             {filteredProjects.length > 0 && (
-              <div className="pt-1.5 border-t border-slate-100 dark:border-slate-800 mt-1">
+              <div className="pt-1.5 border-t border-slate-100  mt-1">
                 <div className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-indigo-500 flex items-center gap-1.5">
                   <Briefcase className="h-3 w-3" />
                   <span>{t("Projects", "Projekty", "Projektek")}</span>
@@ -531,13 +531,13 @@ const SearchableScopeSelect: React.FC<SearchableScopeSelectProps> = ({
                       }}
                       className={`w-full px-2.5 py-1.5 text-left rounded-xl text-xs flex items-center justify-between cursor-pointer transition-colors ${
                         isSelected
-                          ? "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-bold"
-                          : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                          ? "bg-indigo-50  text-indigo-700  font-bold"
+                          : "text-slate-700  hover:bg-slate-100 "
                       }`}
                     >
                       <div className="flex items-center gap-2 truncate">
                         <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0" />
-                        <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">
+                        <span className="font-semibold text-slate-800  truncate">
                           {lead ? lead.name : `Projekt ${p.id.slice(0, 8)}`}
                         </span>
                         {lead?.city && (
@@ -545,7 +545,7 @@ const SearchableScopeSelect: React.FC<SearchableScopeSelectProps> = ({
                             • {lead.city}
                           </span>
                         )}
-                        <span className="text-[9px] font-mono text-slate-400 bg-slate-100 dark:bg-slate-800 px-1 rounded">
+                        <span className="text-[9px] font-mono text-slate-400 bg-slate-100  px-1 rounded">
                           #{p.id.slice(0, 6)}
                         </span>
                       </div>
@@ -558,7 +558,7 @@ const SearchableScopeSelect: React.FC<SearchableScopeSelectProps> = ({
 
             {/* Clients Group */}
             {filteredLeads.length > 0 && (
-              <div className="pt-1.5 border-t border-slate-100 dark:border-slate-800 mt-1">
+              <div className="pt-1.5 border-t border-slate-100  mt-1">
                 <div className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-teal-500 flex items-center gap-1.5">
                   <User className="h-3 w-3" />
                   <span>{t("Clients", "Klienti", "Ügyfelek")}</span>
@@ -575,13 +575,13 @@ const SearchableScopeSelect: React.FC<SearchableScopeSelectProps> = ({
                       }}
                       className={`w-full px-2.5 py-1.5 text-left rounded-xl text-xs flex items-center justify-between cursor-pointer transition-colors ${
                         isSelected
-                          ? "bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 font-bold"
-                          : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                          ? "bg-teal-50  text-teal-700  font-bold"
+                          : "text-slate-700  hover:bg-slate-100 "
                       }`}
                     >
                       <div className="flex items-center gap-2 truncate">
                         <span className="w-1.5 h-1.5 rounded-full bg-teal-500 shrink-0" />
-                        <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">
+                        <span className="font-semibold text-slate-800  truncate">
                           {l.name}
                         </span>
                         {l.city && (
@@ -2199,35 +2199,35 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     level: number = 1
   ) => {
     if (!val || (val.real === 0 && val.estimated === 0 && val.total === 0)) {
-      return <span className="text-slate-300 dark:text-slate-600 font-normal select-none">—</span>;
+      return <span className="text-slate-300  font-normal select-none">—</span>;
     }
 
     const isExpense = colorType === "expense";
     const isIncome = colorType === "income";
 
     const realColorClass = isExpense
-      ? "text-rose-600 dark:text-rose-400"
+      ? "text-rose-600 "
       : isIncome
-      ? "text-emerald-600 dark:text-emerald-400"
+      ? "text-emerald-600 "
       : val.real >= 0
-      ? "text-emerald-600 dark:text-emerald-400"
-      : "text-rose-600 dark:text-rose-400";
+      ? "text-emerald-600 "
+      : "text-rose-600 ";
 
     const estColorClass = isExpense
-      ? "text-rose-400 dark:text-rose-500"
+      ? "text-rose-400 "
       : isIncome
-      ? "text-emerald-400 dark:text-emerald-500"
+      ? "text-emerald-400 "
       : val.estimated >= 0
-      ? "text-emerald-400 dark:text-emerald-500"
-      : "text-rose-400 dark:text-rose-500";
+      ? "text-emerald-400 "
+      : "text-rose-400 ";
 
     const totalColorClass = isExpense
-      ? "text-rose-700 dark:text-rose-300"
+      ? "text-rose-700 "
       : isIncome
-      ? "text-emerald-700 dark:text-emerald-300"
+      ? "text-emerald-700 "
       : val.total >= 0
-      ? "text-emerald-700 dark:text-emerald-300"
-      : "text-rose-700 dark:text-rose-300";
+      ? "text-emerald-700 "
+      : "text-rose-700 ";
 
     // Typography size scaling: Level 1 = standard text-xs (12px), Level 2 = text-[10.5px], Level 3 = text-[9.5px]
     const mainTextSize = level === 1 ? "text-xs" : level === 2 ? "text-[10.5px]" : "text-[9.5px]";
@@ -2238,7 +2238,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       return val.real !== 0 ? (
         <span className={`${mainFontWeight} ${mainTextSize} ${realColorClass}`}>{money(val.real)}</span>
       ) : (
-        <span className="text-slate-300 dark:text-slate-600 font-normal select-none">—</span>
+        <span className="text-slate-300  font-normal select-none">—</span>
       );
     }
 
@@ -2246,7 +2246,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       return val.estimated !== 0 ? (
         <span className={`font-medium ${mainTextSize} ${estColorClass}`}>{money(val.estimated)}</span>
       ) : (
-        <span className="text-slate-300 dark:text-slate-600 font-normal select-none">—</span>
+        <span className="text-slate-300  font-normal select-none">—</span>
       );
     }
 
@@ -2260,7 +2260,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         {val.real !== 0 ? (
           <span className={`${mainFontWeight} ${mainTextSize} ${realColorClass}`}>{money(val.real)}</span>
         ) : (
-          <span className="text-slate-300 dark:text-slate-600 font-normal text-[10px]">—</span>
+          <span className="text-slate-300  font-normal text-[10px]">—</span>
         )}
         {val.estimated !== 0 && (
           <span className={`${estTextSize} font-medium ${estColorClass}`}>
@@ -2288,22 +2288,22 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     return (
       <React.Fragment key={"cat-row-" + cat.id}>
         <tr
-          className={`hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors ${
+          className={`hover:bg-slate-50  transition-colors ${
             level === 1
-              ? "bg-slate-50/60 dark:bg-slate-800/30 font-bold"
+              ? "bg-slate-50/60  font-bold"
               : level === 2
-              ? "bg-white dark:bg-slate-900/80 text-xs font-semibold"
-              : "bg-white dark:bg-slate-900 text-xs font-normal text-slate-600 dark:text-slate-400"
+              ? "bg-white  text-xs font-semibold"
+              : "bg-white  text-xs font-normal text-slate-600 "
           }`}
         >
           {/* Category Name Cell (Sticky Left with solid background and crisp right border) */}
           <td
-            className={`w-[320px] min-w-[320px] max-w-[320px] py-2 px-3 sticky left-0 z-20 border-r-2 border-slate-200 dark:border-slate-700 shadow-[2px_0_4px_rgba(0,0,0,0.04)] select-none ${
+            className={`w-[320px] min-w-[320px] max-w-[320px] py-2 px-3 sticky left-0 z-20 border-r-2 border-slate-200  shadow-[2px_0_4px_rgba(0,0,0,0.04)] select-none ${
               level === 1
-                ? "bg-slate-50 dark:bg-slate-900 font-bold text-xs text-slate-900 dark:text-white"
+                ? "bg-slate-50  font-bold text-xs text-slate-900 "
                 : level === 2
-                ? "bg-white dark:bg-slate-900 pl-7 font-semibold text-[11px] text-slate-800 dark:text-slate-200"
-                : "bg-white dark:bg-slate-900 pl-12 font-normal text-[10px] text-slate-600 dark:text-slate-400"
+                ? "bg-white  pl-7 font-semibold text-[11px] text-slate-800 "
+                : "bg-white  pl-12 font-normal text-[10px] text-slate-600 "
             }`}
           >
             <div
@@ -2313,7 +2313,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               {hasChildren ? (
                 <button
                   type="button"
-                  className="p-0.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-transform cursor-pointer"
+                  className="p-0.5 text-slate-400 hover:text-slate-700  transition-transform cursor-pointer"
                 >
                   <ChevronRight
                     className={`h-3.5 w-3.5 transition-transform duration-150 ${isExpanded ? "rotate-90 text-purple-600" : ""}`}
@@ -2329,7 +2329,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   style={{ backgroundColor: cat.color || (type === "expense" ? "#f43f5e" : "#10b981") }}
                 />
               ) : (
-                <span className="text-slate-400 dark:text-slate-600 text-[10px] shrink-0">
+                <span className="text-slate-400  text-[10px] shrink-0">
                   {level === 2 ? "↳" : "↳↳"}
                 </span>
               )}
@@ -2347,7 +2347,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               <td
                 key={cat.id + "-" + col.id}
                 className={`py-1.5 px-3 text-right ${
-                  col.isCurrent ? "bg-indigo-50/20 dark:bg-indigo-950/10 border-x border-indigo-100 dark:border-indigo-900/30" : ""
+                  col.isCurrent ? "bg-indigo-50/20  border-x border-indigo-100 " : ""
                 }`}
               >
                 {renderTableCellValue(cellVal, type, level)}
@@ -2356,7 +2356,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           })}
 
           {/* Row Total (Sticky Right with solid background) */}
-          <td className="py-1.5 px-4 text-right font-bold bg-slate-50 dark:bg-slate-800/90 border-l border-slate-200 dark:border-slate-700 sticky right-0 z-20">
+          <td className="py-1.5 px-4 text-right font-bold bg-slate-50  border-l border-slate-200  sticky right-0 z-20">
             {renderTableCellValue(catTotal, type, level)}
           </td>
         </tr>
@@ -2583,7 +2583,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   const renderTransactionFormFields = () => (
     <>
       {/* Type Switcher (Income vs Expense) */}
-      <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl">
+      <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100  rounded-2xl">
         <button
           type="button"
           onClick={() => {
@@ -2593,7 +2593,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             }
           }}
           className={`py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-            formType === "income" ? "bg-emerald-600 text-white shadow-sm" : "text-slate-600 dark:text-slate-400"
+            formType === "income" ? "bg-emerald-600 text-white shadow-sm" : "text-slate-600 "
           }`}
         >
           <TrendingUp className="h-4 w-4" />
@@ -2603,7 +2603,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           type="button"
           onClick={() => setFormType("expense")}
           className={`py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-            formType === "expense" ? "bg-rose-600 text-white shadow-sm" : "text-slate-600 dark:text-slate-400"
+            formType === "expense" ? "bg-rose-600 text-white shadow-sm" : "text-slate-600 "
           }`}
         >
           <TrendingDown className="h-4 w-4" />
@@ -2614,7 +2614,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       {/* Title & Invoice # */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="sm:col-span-2">
-          <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+          <label className="text-xs font-bold text-slate-700  block mb-1">
             {t("Movement Title *", "Názov finančného pohybu *", "Tétel megnevezése *")}
           </label>
           <input
@@ -2623,12 +2623,12 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             value={formTitle}
             onChange={(e) => setFormTitle(e.target.value)}
             placeholder={formType === "income" ? t("e.g. Countertop supply & installation", "napr. Dodávka a montáž kuchynskej linky", "pl. Konyhapult szállítása és beépítése") : t("e.g. Laminam slabs purchase (IT), Office rent...", "napr. Nákup dosiek Taliansko, Nájom skladu...", "pl. Lapok beszerzése, Irodabérlet...")}
-            className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            className="w-full px-3.5 py-2.5 bg-slate-50  border border-slate-200  rounded-xl text-xs text-slate-800  focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
         </div>
 
         <div>
-          <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+          <label className="text-xs font-bold text-slate-700  block mb-1">
             {t("Invoice # / Doc Ref", "Číslo faktúry / Dokladu", "Számlaszám")}
           </label>
           <input
@@ -2636,14 +2636,14 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             value={formInvoiceNumber}
             onChange={(e) => setFormInvoiceNumber(e.target.value)}
             placeholder="FA-2026-0001"
-            className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            className="w-full px-3.5 py-2.5 bg-slate-50  border border-slate-200  rounded-xl text-xs font-mono text-slate-800  focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
         </div>
       </div>
 
       {/* Scope (Global vs Project vs Client) */}
-      <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-3">
-        <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
+      <div className="p-4 rounded-2xl bg-slate-50  border border-slate-200  space-y-3">
+        <label className="text-xs font-bold text-slate-700  block">
           {t("Financial Scope & Association", "Rozsah a priradenie", "Hatókör és hozzárendelés")}
         </label>
         <div className="grid grid-cols-3 gap-2 text-xs font-semibold">
@@ -2652,8 +2652,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             onClick={() => setFormScope("global")}
             className={`py-2 px-3 rounded-xl border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
               formScope === "global"
-                ? "bg-emerald-50 border-emerald-500 text-emerald-700 font-bold dark:bg-emerald-950/40 dark:text-emerald-300"
-                : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600"
+                ? "bg-emerald-50 border-emerald-500 text-emerald-700 font-bold  "
+                : "bg-white  border-slate-200  text-slate-600"
             }`}
           >
             <Globe className="h-3.5 w-3.5" />
@@ -2665,8 +2665,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             onClick={() => setFormScope("project")}
             className={`py-2 px-3 rounded-xl border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
               formScope === "project"
-                ? "bg-indigo-50 border-indigo-500 text-indigo-700 font-bold dark:bg-indigo-950/40 dark:text-indigo-300"
-                : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600"
+                ? "bg-indigo-50 border-indigo-500 text-indigo-700 font-bold  "
+                : "bg-white  border-slate-200  text-slate-600"
             }`}
           >
             <Briefcase className="h-3.5 w-3.5" />
@@ -2678,8 +2678,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             onClick={() => setFormScope("client")}
             className={`py-2 px-3 rounded-xl border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
               formScope === "client"
-                ? "bg-teal-50 border-teal-500 text-teal-700 font-bold dark:bg-teal-950/40 dark:text-teal-300"
-                : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600"
+                ? "bg-teal-50 border-teal-500 text-teal-700 font-bold  "
+                : "bg-white  border-slate-200  text-slate-600"
             }`}
           >
             <User className="h-3.5 w-3.5" />
@@ -2697,7 +2697,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               value={formProjectId}
               onChange={(e) => setFormProjectId(e.target.value)}
               required
-              className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none"
+              className="w-full px-3 py-2 bg-white  border border-slate-200  rounded-xl text-xs font-semibold text-slate-800  focus:outline-none"
             >
               <option value="">{t("-- Select Project --", "-- Vyberte projekt --", "-- Válasszon --")}</option>
               {projects.map((p) => {
@@ -2722,7 +2722,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               value={formClientId}
               onChange={(e) => setFormClientId(e.target.value)}
               required
-              className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none"
+              className="w-full px-3 py-2 bg-white  border border-slate-200  rounded-xl text-xs font-semibold text-slate-800  focus:outline-none"
             >
               <option value="">{t("-- Select Client --", "-- Vyberte klienta --", "-- Válasszon ügyfelet --")}</option>
               {leads.map((l) => (
@@ -2737,7 +2737,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
       {/* 3-Level Category Selector */}
       <div>
-        <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+        <label className="text-xs font-bold text-slate-700  block mb-1">
           {t("Category Classification (3 Levels)", "Klasifikácia kategórie (3 úrovne)", "Kategória besorolás")}
         </label>
         <SearchableCategorySelect
@@ -2752,9 +2752,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       </div>
 
       {/* PLANNED & REAL AMOUNTS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 rounded-2xl bg-slate-50  border border-slate-200 ">
         <div>
-          <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1 flex items-center justify-between">
+          <label className="text-xs font-bold text-slate-700  block mb-1 flex items-center justify-between">
             <span>{t("Planned Amount (€) *", "Plánovaná suma (€) *", "Tervezett összeg (€) *")}</span>
             <span className="text-[10px] text-slate-400 font-normal">{t("Budget / Target", "Rozpočet / Cieľ", "Költségvetés")}</span>
           </label>
@@ -2765,12 +2765,12 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             value={formAmountPlanned}
             onChange={(e) => setFormAmountPlanned(e.target.value ? parseFloat(e.target.value) : "")}
             placeholder="0.00"
-            className="w-full px-3.5 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            className="w-full px-3.5 py-2 bg-white  border border-slate-200  rounded-xl text-sm font-bold text-slate-900  focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
         </div>
 
         <div>
-          <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1 flex items-center justify-between">
+          <label className="text-xs font-bold text-slate-700  block mb-1 flex items-center justify-between">
             <span>{t("Real / Paid Amount (€)", "Skutočná / Reálna suma (€)", "Valós / Fizetett összeg (€)")}</span>
             <span className="text-[10px] text-slate-400 font-normal">{t("Actual realized", "Skutočne zaplatené", "Tényleges")}</span>
           </label>
@@ -2780,7 +2780,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             value={formAmountReal}
             onChange={(e) => setFormAmountReal(e.target.value ? parseFloat(e.target.value) : "")}
             placeholder="0.00"
-            className="w-full px-3.5 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            className="w-full px-3.5 py-2 bg-white  border border-slate-200  rounded-xl text-sm font-bold text-slate-900  focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
         </div>
       </div>
@@ -2788,7 +2788,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       {/* Status, Dates, Payment Method */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
-          <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+          <label className="text-xs font-bold text-slate-700  block mb-1">
             {t("Payment Status", "Stav úhrady", "Fizetési állapot")}
           </label>
           <select
@@ -2800,7 +2800,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 setFormAmountReal(formAmountPlanned);
               }
             }}
-            className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none"
+            className="w-full px-3 py-2 bg-slate-50  border border-slate-200  rounded-xl text-xs font-semibold text-slate-800  focus:outline-none"
           >
             <option value="planned">{t("Planned / Scheduled", "Plánované", "Tervezett")}</option>
             <option value="pending">{t("Pending / Issued", "Čaká na úhradu", "Fizetésre vár")}</option>
@@ -2812,7 +2812,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         </div>
 
         <div>
-          <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+          <label className="text-xs font-bold text-slate-700  block mb-1">
             {t("Issue / Scheduled Date", "Dátum vystavenia / naplánovania", "Kiállítási / tervezett dátum")}
           </label>
           <input
@@ -2820,29 +2820,29 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             required
             value={formIssueDate}
             onChange={(e) => setFormIssueDate(e.target.value)}
-            className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs"
+            className="w-full px-3 py-2 bg-slate-50  border border-slate-200  rounded-xl text-xs"
           />
         </div>
 
         <div>
-          <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+          <label className="text-xs font-bold text-slate-700  block mb-1">
             {t("Due Date", "Dátum splatnosti", "Esedékesség dátuma")}
           </label>
           <input
             type="date"
             value={formDueDate}
             onChange={(e) => setFormDueDate(e.target.value)}
-            className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs"
+            className="w-full px-3 py-2 bg-slate-50  border border-slate-200  rounded-xl text-xs"
           />
         </div>
       </div>
 
       {/* RECURRING PAYMENT CONFIG */}
-      <div className="p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/50 space-y-3">
+      <div className="p-4 rounded-2xl bg-indigo-50/50  border border-indigo-100  space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <RefreshCw className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-            <span className="text-xs font-bold text-slate-900 dark:text-white">
+            <RefreshCw className="h-4 w-4 text-indigo-600 " />
+            <span className="text-xs font-bold text-slate-900 ">
               {t("Recurring Movement Schedule", "Pravidelná / opakujúca sa platba", "Rendszeres / ismétlődő tétel")}
             </span>
           </div>
@@ -2858,10 +2858,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         </div>
 
         {formIsRecurring && (
-          <div className="space-y-3 pt-2 border-t border-indigo-100 dark:border-indigo-900/50 animate-in fade-in">
+          <div className="space-y-3 pt-2 border-t border-indigo-100  animate-in fade-in">
             {/* Frequency selector: Weekly / Monthly / Yearly */}
             <div>
-              <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 block mb-1">
+              <label className="text-[11px] font-bold text-slate-600  block mb-1">
                 {t("Recurrence Frequency", "Periodicita opakovania", "Gyakoriság")}
               </label>
               <div className="grid grid-cols-3 gap-2">
@@ -2877,7 +2877,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                     className={`py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                       formRecurringFreq === f.id
                         ? "bg-indigo-600 text-white shadow-sm"
-                        : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
+                        : "bg-white  text-slate-700  border border-slate-200 "
                     }`}
                   >
                     {f.label}
@@ -2889,13 +2889,13 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             {/* WEEKLY: Select Day of Week */}
             {formRecurringFreq === "weekly" && (
               <div className="animate-in fade-in">
-                <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 block mb-1">
+                <label className="text-[11px] font-bold text-slate-600  block mb-1">
                   {t("Day of the Week", "Deň v týždni", "A hét napja")}
                 </label>
                 <select
                   value={formWeeklyDay}
                   onChange={(e) => setFormWeeklyDay(parseInt(e.target.value))}
-                  className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none"
+                  className="w-full px-3 py-2 bg-white  border border-slate-200  rounded-xl text-xs font-semibold text-slate-800  focus:outline-none"
                 >
                   <option value="1">{t("Monday", "Pondelok", "Hétfő")}</option>
                   <option value="2">{t("Tuesday", "Utorok", "Kedd")}</option>
@@ -2941,7 +2941,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                       max="31"
                       value={formDayOfMonth}
                       onChange={(e) => setFormDayOfMonth(parseInt(e.target.value) || 1)}
-                      className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold"
+                      className="w-full px-3 py-1.5 bg-white  border border-slate-200  rounded-xl text-xs font-bold"
                     />
                   </div>
                 ) : (
@@ -2951,7 +2951,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                       <select
                         value={formWeekOfMonth}
                         onChange={(e) => setFormWeekOfMonth(parseInt(e.target.value))}
-                        className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold"
+                        className="w-full px-3 py-1.5 bg-white  border border-slate-200  rounded-xl text-xs font-semibold"
                       >
                         <option value="1">{t("1st (First)", "1. (Prvý)", "1. (Első)")}</option>
                         <option value="2">{t("2nd (Second)", "2. (Druhý)", "2. (Második)")}</option>
@@ -2965,7 +2965,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                       <select
                         value={formNthDayOfWeek}
                         onChange={(e) => setFormNthDayOfWeek(parseInt(e.target.value))}
-                        className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold"
+                        className="w-full px-3 py-1.5 bg-white  border border-slate-200  rounded-xl text-xs font-semibold"
                       >
                         <option value="1">{t("Monday", "Pondelok", "Hétfő")}</option>
                         <option value="2">{t("Tuesday", "Utorok", "Kedd")}</option>
@@ -2987,7 +2987,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   <select
                     value={formYearlyMonth}
                     onChange={(e) => setFormYearlyMonth(parseInt(e.target.value))}
-                    className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold"
+                    className="w-full px-3 py-1.5 bg-white  border border-slate-200  rounded-xl text-xs font-semibold"
                   >
                     {[
                       "Január", "Február", "Marec", "Apríl", "Máj", "Jún",
@@ -3005,7 +3005,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                     max="31"
                     value={formDayOfMonth}
                     onChange={(e) => setFormDayOfMonth(parseInt(e.target.value) || 1)}
-                    className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold"
+                    className="w-full px-3 py-1.5 bg-white  border border-slate-200  rounded-xl text-xs font-bold"
                   />
                 </div>
               </div>
@@ -3016,7 +3016,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
       {/* Description */}
       <div>
-        <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+        <label className="text-xs font-bold text-slate-700  block mb-1">
           {t("Notes / Description", "Poznámka / Popis položiek", "Megjegyzés / leírás")}
         </label>
         <textarea
@@ -3024,7 +3024,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           value={formDescription}
           onChange={(e) => setFormDescription(e.target.value)}
           placeholder={t("Additional details, contract references, itemized breakdown...", "Podrobnosti o položkách, zmluve, podmienkach...", "További részletek...")}
-          className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none"
+          className="w-full px-3.5 py-2 bg-slate-50  border border-slate-200  rounded-xl text-xs text-slate-800  focus:outline-none"
         />
       </div>
     </>
@@ -3033,21 +3033,15 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   return (
     <div className="space-y-6 pb-16 font-sans">
       {/* 1. TOP HEADER & COMMAND BAR */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-white dark:bg-slate-900/90 backdrop-blur-md p-6 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm">
-        <div className="flex items-center gap-4">
-          <div className="h-14 w-14 rounded-2xl bg-gradient-to-tr from-emerald-600 via-teal-600 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-emerald-500/20 shrink-0">
-            <Coins className="h-7 w-7" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">
-                {t("Financial Management & Revenue Control", "Finančný manažment a riadenie výnosov", "Pénzügyi menedzsment és bevételkezelés")}
-              </h1>
-            </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              {t("Track planned vs real cash flows, project revenue profitability, single & recurring expenses, and 3-level categories.", "Sledovanie plánovaných a reálnych tokov, ziskovosti projektov, jednorazových a pravidelných výdavkov a 3 úrovní kategórií.", "Tervezett és valós pénzáramlások, projektjövedelmezőség, rendszeres kiadások és 3 szintű kategóriák.")}
-            </p>
-          </div>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-100 pb-4 select-none">
+        <div className="flex flex-col">
+          <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+            <Coins className="h-6 w-6 text-emerald-600" />
+            {t("Financial Management & Revenue Control", "Finančný manažment a riadenie výnosov", "Pénzügyi menedzsment és bevételkezelés")}
+          </h2>
+          <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
+            {t("Track planned vs real cash flows, project revenue profitability, single & recurring expenses, and 3-level categories.", "Sledovanie plánovaných a reálnych tokov, ziskovosti projektov, jednorazových a pravidelných výdavkov a 3 úrovní kategórií.", "Tervezett és valós pénzáramlások, projektjövedelmezőség, rendszeres kiadások és 3 szintű kategóriák.")}
+          </p>
         </div>
 
         {/* Quick Actions */}
@@ -3057,7 +3051,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-2xl shadow-md shadow-emerald-600/20 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
           >
             <Plus className="h-4 w-4" />
-            <span>{t("+ New Income / Invoice", "+ Nový príjem / Faktúra", "+ Új bevétel / Számla")}</span>
+            <span>{t("New Income / Invoice", "Nový príjem / Faktúra", "Új bevétel / Számla")}</span>
           </button>
 
           <button
@@ -3065,13 +3059,13 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             className="flex items-center gap-2 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-2xl shadow-md shadow-rose-600/20 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
           >
             <Plus className="h-4 w-4" />
-            <span>{t("+ New Expense", "+ Nový výdavok", "+ Új kiadás")}</span>
+            <span>{t("New Expense", "Nový výdavok", "Új kiadás")}</span>
           </button>
         </div>
       </div>
 
       {/* 2. SUB-NAVIGATION TABS */}
-      <div className="flex border-b border-slate-200 dark:border-slate-800 overflow-x-auto scrollbar-none gap-2">
+      <div className="flex border-b border-slate-200  overflow-x-auto scrollbar-none gap-2">
         {[
           { id: "overview", label: t("📊 Global Overview & Trend", "📊 Globálny prehľad & Trend", "📊 Globális áttekintés & Trend") },
           { id: "table", label: t("📋 Overview Table", "📋 Prehľadová tabuľka", "📋 Áttekintő táblázat") },
@@ -3084,8 +3078,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             onClick={() => handleTabChange(tab.id as any)}
             className={`px-4 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
               activeTab === tab.id
-                ? "border-emerald-500 text-emerald-600 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20 rounded-t-xl"
-                : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                ? "border-emerald-500 text-emerald-600  bg-emerald-50/50  rounded-t-xl"
+                : "border-transparent text-slate-500 hover:text-slate-700 "
             }`}
           >
             {tab.label}
@@ -3097,12 +3091,12 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       {activeTab === "overview" && (
         <div className="space-y-6 animate-in fade-in duration-200">
           {/* HYBRID WEEKLY TREND & 3-MONTH PROJECTION CHART */}
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-6">
+          <div className="bg-white  p-6 rounded-3xl border border-slate-200/80  shadow-sm space-y-6">
             {/* 1. Header with Mode Toggle & Bank Balance Calibrators */}
-            <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 pb-4 border-b border-slate-100 ">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <h3 className="text-base font-bold text-slate-900  flex items-center gap-2">
                     <BarChart3 className="h-5 w-5 text-emerald-500" />
                     {trendMode === "cumulative"
                       ? t("Weekly Trend & 3-Month Projection (Cumulative Bank Balance)", "Týždenný vývoj a 3-mesačná prognóza (Kumulatívny stav na účte)", "Heti trend és 3 hónapos előrejelzés (Kumulált bankszámla egyenleg)")
@@ -3110,13 +3104,13 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   </h3>
                   <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
                     trendMode === "cumulative" 
-                      ? "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800" 
-                      : "bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800"
+                      ? "bg-emerald-100  text-emerald-700  border border-emerald-200 " 
+                      : "bg-purple-100  text-purple-700  border border-purple-200 "
                   }`}>
                     {trendMode === "cumulative" ? t("🏦 Cumulative Funds", "🏦 Kumulatívny stav", "🏦 Kumulált egyenleg") : t("📊 Relative Cash Flow", "📊 Relatívny tok", "📊 Relatív folyam")}
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
+                <p className="text-xs text-slate-500 ">
                   {trendMode === "cumulative"
                     ? t(
                         "Bars display weekly income & expense. The continuous plotline projects running Bank Account Balance (cumulative cash reserves) forward for the next 3 months. Click any week to calibrate its balance independently.",
@@ -3134,14 +3128,14 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               {/* Controls: Mode Switcher Pill */}
               <div className="flex flex-wrap items-center gap-3">
                 {/* Mode Switcher Pill */}
-                <div className="bg-slate-100 dark:bg-slate-800/90 p-1 rounded-2xl flex items-center gap-1 border border-slate-200/80 dark:border-slate-700">
+                <div className="bg-slate-100  p-1 rounded-2xl flex items-center gap-1 border border-slate-200/80 ">
                   <button
                     type="button"
                     onClick={() => handleSetTrendMode("relative")}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                       trendMode === "relative"
-                        ? "bg-white dark:bg-slate-900 text-purple-600 dark:text-purple-400 shadow-sm border border-slate-200/80 dark:border-slate-700"
-                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                        ? "bg-white  text-purple-600  shadow-sm border border-slate-200/80 "
+                        : "text-slate-600  hover:text-slate-900 "
                     }`}
                   >
                     <BarChart3 className="h-3.5 w-3.5" />
@@ -3152,8 +3146,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                     onClick={() => handleSetTrendMode("cumulative")}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                       trendMode === "cumulative"
-                        ? "bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-sm border border-slate-200/80 dark:border-slate-700"
-                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                        ? "bg-white  text-emerald-600  shadow-sm border border-slate-200/80 "
+                        : "text-slate-600  hover:text-slate-900 "
                     }`}
                   >
                     <Landmark className="h-3.5 w-3.5" />
@@ -3166,30 +3160,30 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             {/* 2. Chart Legend Strip */}
             <div className="flex flex-wrap items-center justify-between gap-3 text-[11px] font-bold">
               <div className="flex flex-wrap items-center gap-3">
-                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50  text-emerald-700  rounded-lg border border-emerald-200 ">
                   <span className="h-3 w-3 rounded-sm bg-emerald-500" />
                   <span>{t("Income (Bar)", "Príjmy (Stĺpec)", "Bevétel (Oszlop)")}</span>
                 </div>
-                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 rounded-lg border border-rose-200 dark:border-rose-800">
+                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-rose-50  text-rose-700  rounded-lg border border-rose-200 ">
                   <span className="h-3 w-3 rounded-sm bg-rose-500" />
                   <span>{t("Expense (Bar)", "Výdavky (Stĺpec)", "Kiadás (Oszlop)")}</span>
                 </div>
                 {trendMode === "cumulative" ? (
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 rounded-lg border border-emerald-200 dark:border-emerald-800 shadow-sm">
-                    <span className="h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-emerald-300 dark:ring-emerald-900" />
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50  text-emerald-700  rounded-lg border border-emerald-200  shadow-sm">
+                    <span className="h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-emerald-300 " />
                     <span>{t("🏦 Total Available Bank Funds (Plotline)", "🏦 Zostatok na účte / Disponibilné financie (Krivka)", "🏦 Bankszámla egyenleg (Vonal)")}</span>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 rounded-lg border border-purple-200 dark:border-purple-800 shadow-sm">
-                    <span className="h-3 w-3 rounded-full bg-purple-600 ring-2 ring-purple-300 dark:ring-purple-900" />
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-purple-50  text-purple-700  rounded-lg border border-purple-200  shadow-sm">
+                    <span className="h-3 w-3 rounded-full bg-purple-600 ring-2 ring-purple-300 " />
                     <span>{t("Weekly Net Difference / Flow (Plotline)", "Týždenný čistý zisk / Tok (Krivka)", "Heti nettó különbözet (Vonal)")}</span>
                   </div>
                 )}
-                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 rounded-lg border border-amber-200 dark:border-amber-800">
+                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50  text-amber-700  rounded-lg border border-amber-200 ">
                   <Target className="h-3.5 w-3.5 text-amber-500" />
                   <span>{t("🎯 Reconciled Weekly Anchor", "🎯 Manuálne overený stav", "🎯 Manuálisan rögzített hét")}</span>
                 </div>
-                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg border border-slate-200 dark:border-slate-700">
+                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-100  text-slate-600  rounded-lg border border-slate-200 ">
                   <span className="h-2.5 w-2.5 rounded-full bg-indigo-400 animate-ping" />
                   <span>{t("Future 3-Mo Window", "3-Mesačné okno", "3 Hónapos ablak")}</span>
                 </div>
@@ -3349,7 +3343,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                               x={startX - 10}
                               y={y + 4}
                               textAnchor="end"
-                              className="fill-slate-400 dark:fill-slate-500 font-bold"
+                              className="fill-slate-400  font-bold"
                               fontSize="9"
                             >
                               {val >= 0 ? `+${(val / 1000).toFixed(val >= 10000 ? 0 : 1)}k` : `${(val / 1000).toFixed(val <= -10000 ? 0 : 1)}k`} €
@@ -3421,44 +3415,68 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                             {b.isManuallyCalibrated && (
                               <g transform={`translate(${cx}, ${topY + 6})`}>
                                 <circle r="5" fill="#f59e0b" />
-                                <circle r="8" fill="#f59e0b" fillOpacity="0.25" className="animate-ping" />
+                                {isHovered && (
+                                  <circle
+                                    r="8"
+                                    fill="#f59e0b"
+                                    fillOpacity="0.3"
+                                    style={{ transformOrigin: "center", transformBox: "fill-box" }}
+                                    className="animate-ping"
+                                  />
+                                )}
                                 <text y="3" textAnchor="middle" fill="#ffffff" fontSize="7" fontWeight="bold">✓</text>
-                              </g>
-                            )}
-
-                            {/* Current week highlight marker */}
-                            {b.isCurrent && (
-                              <g transform={`translate(${cx}, ${bottomY + 38})`}>
-                                <circle r="3" fill="#6366f1" />
-                                <text y="-8" textAnchor="middle" fill="#6366f1" fontSize="8" fontWeight="900">
-                                  {t("TODAY", "DNES", "MA")}
-                                </text>
                               </g>
                             )}
 
                             {/* X-Axis Week Labels */}
                             <text
                               x={cx}
-                              y={bottomY + 16}
+                              y={bottomY + 15}
                               textAnchor="middle"
                               className={`text-[9px] font-black uppercase ${
                                 b.isCurrent
-                                  ? "fill-indigo-600 dark:fill-indigo-400 font-extrabold"
+                                  ? "fill-indigo-600  font-extrabold"
                                   : b.isFuture
-                                  ? "fill-purple-600 dark:fill-purple-400"
-                                  : "fill-slate-600 dark:fill-slate-400"
+                                  ? "fill-purple-600 "
+                                  : "fill-slate-600 "
                               }`}
                             >
                               {b.weekLabel}
                             </text>
                             <text
                               x={cx}
-                              y={bottomY + 28}
+                              y={bottomY + 27}
                               textAnchor="middle"
-                              className="fill-slate-400 dark:fill-slate-500 text-[8px] font-medium"
+                              className={`text-[8px] font-medium ${
+                                b.isCurrent ? "fill-indigo-600 font-bold" : "fill-slate-400"
+                              }`}
                             >
                               {b.dateRangeLabel.split(" - ")[0]}
                             </text>
+
+                            {/* Current week highlight badge pill */}
+                            {b.isCurrent && (
+                              <g transform={`translate(${cx}, ${bottomY + 41})`}>
+                                <rect
+                                  x="-19"
+                                  y="-7"
+                                  width="38"
+                                  height="14"
+                                  rx="7"
+                                  fill="#6366f1"
+                                />
+                                <text
+                                  y="3.5"
+                                  textAnchor="middle"
+                                  fill="#ffffff"
+                                  fontSize="7.5"
+                                  fontWeight="900"
+                                  letterSpacing="0.04em"
+                                >
+                                  {t("TODAY", "DNES", "MA")}
+                                </text>
+                              </g>
+                            )}
                           </g>
                         );
                       })}
@@ -3496,15 +3514,30 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                             onMouseLeave={() => setHoveredWeekIdx(null)}
                             onClick={() => handleOpenCalibrator(pt.bucket)}
                           >
-                            {/* Outer pulsing ring when hovered or manually calibrated */}
-                            {(isHovered || pt.bucket.isManuallyCalibrated) && (
+                            {/* Outer pulsing ring on hover with proper SVG transform origin */}
+                            {isHovered && (
                               <circle
                                 cx={pt.x}
                                 cy={pt.y}
                                 r={pt.bucket.isManuallyCalibrated ? 10 : 12}
                                 fill={pt.bucket.isManuallyCalibrated ? "#f59e0b" : isPositive ? "#10b981" : "#f43f5e"}
-                                fillOpacity="0.25"
+                                fillOpacity="0.3"
+                                style={{ transformOrigin: "center", transformBox: "fill-box" }}
                                 className="animate-ping"
+                              />
+                            )}
+
+                            {/* Static ring indicator for manually calibrated weeks when not hovered */}
+                            {pt.bucket.isManuallyCalibrated && !isHovered && (
+                              <circle
+                                cx={pt.x}
+                                cy={pt.y}
+                                r={9}
+                                fill="none"
+                                stroke="#f59e0b"
+                                strokeWidth="1.5"
+                                strokeDasharray="2 2"
+                                opacity="0.75"
                               />
                             )}
 
@@ -3539,19 +3572,19 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
                   {/* Dynamic Hover Tooltip Card with Week-Specific Calibrator Action */}
                   {activeHoveredBucket && (
-                    <div className="mt-3 p-4 rounded-2xl bg-slate-900 text-white shadow-2xl border border-slate-700 flex flex-col md:flex-row md:items-center md:justify-between gap-4 animate-in fade-in slide-in-from-bottom-2 duration-150">
+                    <div className="mt-3 p-4 rounded-2xl bg-white text-slate-900 shadow-xl border border-slate-200/80 flex flex-col md:flex-row md:items-center md:justify-between gap-4 animate-in fade-in slide-in-from-bottom-2 duration-150">
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
                           <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${
                             activeHoveredBucket.isCurrent
                               ? "bg-indigo-500 text-white"
                               : activeHoveredBucket.isFuture
-                              ? "bg-purple-500/30 text-purple-300 border border-purple-400/40"
-                              : "bg-slate-800 text-slate-300"
+                              ? "bg-purple-100 text-purple-700 border border-purple-200"
+                              : "bg-slate-100 text-slate-600"
                           }`}>
                             {activeHoveredBucket.weekLabel} • {activeHoveredBucket.dateRangeLabel} ({activeHoveredBucket.year})
                           </span>
-                          <span className="text-xs text-slate-400 font-semibold">
+                          <span className="text-xs text-slate-500 font-semibold">
                             {activeHoveredBucket.isCurrent
                               ? t("Current Week (Reference)", "Aktuálny týždeň (Referenčný)", "Aktuális hét (Referencia)")
                               : activeHoveredBucket.isFuture
@@ -3559,13 +3592,13 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                               : t("Historical Week", "História", "Múltbéli hét")}
                           </span>
                           {activeHoveredBucket.isManuallyCalibrated && (
-                            <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold flex items-center gap-1">
+                            <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-700 border border-amber-200 text-[10px] font-bold flex items-center gap-1">
                               <Target className="h-3 w-3" />
                               {t("Reconciled Anchor", "Ručne overený stav", "Rögzített állapot")}
                             </span>
                           )}
                         </div>
-                        <div className="text-xs text-slate-300">
+                        <div className="text-xs text-slate-500">
                           {activeHoveredBucket.items.length}{" "}
                           {t("financial movement(s) in this week", "finančných pohybov v tomto týždni", "pénzügyi tétel ezen a héten")}
                         </div>
@@ -3574,38 +3607,38 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                       <div className="flex flex-wrap items-center gap-4 text-xs">
                         {/* Income */}
                         <div className="space-y-0.5">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t("Total Income", "Príjmy spolu", "Összes bevétel")}</span>
-                          <div className="text-sm font-black text-emerald-400">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Total Income", "Príjmy spolu", "Összes bevétel")}</span>
+                          <div className="text-sm font-black text-emerald-600">
                             +{money(activeHoveredBucket.totalIncome)}
                           </div>
                         </div>
 
                         {/* Expense */}
                         <div className="space-y-0.5">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t("Total Expense", "Výdavky spolu", "Összes kiadás")}</span>
-                          <div className="text-sm font-black text-rose-400">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t("Total Expense", "Výdavky spolu", "Összes kiadás")}</span>
+                          <div className="text-sm font-black text-rose-600">
                             -{money(activeHoveredBucket.totalExpense)}
                           </div>
                         </div>
 
                         {/* Weekly Net Difference */}
-                        <div className="space-y-0.5 pl-3 border-l border-slate-700">
-                          <span className="text-[10px] font-bold text-purple-300 uppercase tracking-wider">
+                        <div className="space-y-0.5 pl-3 border-l border-slate-200">
+                          <span className="text-[10px] font-bold text-purple-600 uppercase tracking-wider">
                             {activeHoveredBucket.isFuture ? t("Weekly Net Rev", "Týždenný zisk", "Heti nettó") : t("Weekly Net", "Týždenná zmena", "Heti egyenleg")}
                           </span>
-                          <div className={`text-sm font-black ${activeHoveredBucket.netDifference >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                          <div className={`text-sm font-black ${activeHoveredBucket.netDifference >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
                             {activeHoveredBucket.netDifference >= 0 ? "+" : ""}{money(activeHoveredBucket.netDifference)}
                           </div>
                         </div>
 
                         {/* Cumulative Bank Account Balance + Inline Calibrate Trigger */}
-                        <div className="space-y-0.5 pl-3 border-l border-slate-700 bg-emerald-950/40 px-3 py-1.5 rounded-xl border border-emerald-500/30 flex items-center gap-3">
+                        <div className="space-y-0.5 pl-3 border-l border-slate-200 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-100 flex items-center gap-3">
                           <div>
-                            <span className="text-[10px] font-black text-emerald-300 uppercase tracking-wider flex items-center gap-1">
+                            <span className="text-[10px] font-black text-emerald-700 uppercase tracking-wider flex items-center gap-1">
                               <Landmark className="h-3 w-3" />
                               {t("Bank Balance on Account", "Stav na účte", "Bankszámla egyenleg")}
                             </span>
-                            <div className={`text-base font-black ${activeHoveredBucket.cumulativeBalance >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                            <div className={`text-base font-black ${activeHoveredBucket.cumulativeBalance >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
                               {money(activeHoveredBucket.cumulativeBalance)}
                             </div>
                           </div>
@@ -3613,7 +3646,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                           <button
                             type="button"
                             onClick={() => handleOpenCalibrator(activeHoveredBucket)}
-                            className="p-1.5 bg-emerald-600/80 hover:bg-emerald-600 text-white rounded-lg transition-colors cursor-pointer"
+                            className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors cursor-pointer"
                             title={t(`Calibrate Bank Balance for ${activeHoveredBucket.weekLabel}`, `Nastaviť zostatok pre ${activeHoveredBucket.weekLabel}`, `Egyenleg beállítása: ${activeHoveredBucket.weekLabel}`)}
                           >
                             <Pencil className="h-3.5 w-3.5" />
@@ -3624,11 +3657,11 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   )}
 
                   {/* Expand / Collapse Weekly Data Breakdown Table */}
-                  <div className="mt-4 pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center">
+                  <div className="mt-4 pt-2 border-t border-slate-100  flex justify-between items-center">
                     <button
                       type="button"
                       onClick={() => setIsWeeklyTableOpen(!isWeeklyTableOpen)}
-                      className="flex items-center gap-2 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 cursor-pointer"
+                      className="flex items-center gap-2 text-xs font-bold text-indigo-600  hover:text-indigo-700 cursor-pointer"
                     >
                       <CalendarDays className="h-4 w-4" />
                       {isWeeklyTableOpen
@@ -3643,65 +3676,65 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
                   {/* 18-Week Data Table */}
                   {isWeeklyTableOpen && (
-                    <div className="mt-3 overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 animate-in fade-in duration-200">
+                    <div className="mt-3 overflow-x-auto rounded-2xl border border-slate-200  animate-in fade-in duration-200">
                       <table className="w-full text-left text-xs">
-                        <thead className="bg-slate-50 dark:bg-slate-800 text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
+                        <thead className="bg-slate-50  text-[10px] font-black uppercase tracking-wider text-slate-500  border-b border-slate-200 ">
                           <tr>
                             <th className="py-3 px-4">{t("Week / Period", "Týždeň / Obdobie", "Hét / Időszak")}</th>
                             <th className="py-3 px-4">{t("Type", "Typ", "Típus")}</th>
                             <th className="py-3 px-4 text-right">{t("Cumulative Income", "Príjmy", "Bevételek")}</th>
                             <th className="py-3 px-4 text-right">{t("Cumulative Expense", "Výdavky", "Kiadások")}</th>
                             <th className="py-3 px-4 text-right">{t("Weekly Net Flow", "Týždenný čistý tok", "Heti nettó folyam")}</th>
-                            <th className="py-3 px-4 text-right text-emerald-600 dark:text-emerald-400">{t("🏦 Bank Account Balance", "🏦 Stav na účte", "🏦 Bankszámla egyenleg")}</th>
+                            <th className="py-3 px-4 text-right text-emerald-600 ">{t("🏦 Bank Account Balance", "🏦 Stav na účte", "🏦 Bankszámla egyenleg")}</th>
                             <th className="py-3 px-4 text-center">{t("Calibration", "Nastavenie", "Kalibráció")}</th>
                             <th className="py-3 px-4 text-center">{t("Movements", "Pohyby", "Tételek")}</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
+                        <tbody className="divide-y divide-slate-100  font-medium">
                           {weeklyTrendData.map((w) => (
                             <tr
                               key={w.weekLabel + w.startIso}
-                              className={`hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors ${
+                              className={`hover:bg-slate-50  transition-colors ${
                                 w.isCurrent
-                                  ? "bg-indigo-50/50 dark:bg-indigo-950/20 font-bold"
+                                  ? "bg-indigo-50/50  font-bold"
                                   : w.isFuture
-                                  ? "bg-purple-50/20 dark:bg-purple-950/10"
+                                  ? "bg-purple-50/20 "
                                   : ""
                               }`}
                             >
                               <td className="py-2.5 px-4">
-                                <div className="font-bold text-slate-800 dark:text-slate-200">{w.weekLabel}</div>
+                                <div className="font-bold text-slate-800 ">{w.weekLabel}</div>
                                 <div className="text-[10px] text-slate-400">{w.dateRangeLabel} ({w.year})</div>
                               </td>
                               <td className="py-2.5 px-4">
                                 {w.isCurrent ? (
-                                  <span className="px-2 py-0.5 rounded-md bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold">
+                                  <span className="px-2 py-0.5 rounded-md bg-indigo-100  text-indigo-700  text-[10px] font-bold">
                                     {t("Current Week", "Tento týždeň", "Aktuális hét")}
                                   </span>
                                 ) : w.isFuture ? (
-                                  <span className="px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 text-[10px] font-bold">
+                                  <span className="px-2 py-0.5 rounded-md bg-purple-100  text-purple-700  text-[10px] font-bold">
                                     {t("🔮 Projected", "🔮 Prognóza", "🔮 Tervezett")}
                                   </span>
                                 ) : (
-                                  <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-[10px]">
+                                  <span className="px-2 py-0.5 rounded-md bg-slate-100  text-slate-600  text-[10px]">
                                     {t("Historical", "História", "Múltbéli")}
                                   </span>
                                 )}
                               </td>
-                              <td className="py-2.5 px-4 text-right font-bold text-emerald-600 dark:text-emerald-400">
+                              <td className="py-2.5 px-4 text-right font-bold text-emerald-600 ">
                                 {money(w.totalIncome)}
                               </td>
-                              <td className="py-2.5 px-4 text-right font-bold text-rose-600 dark:text-rose-400">
+                              <td className="py-2.5 px-4 text-right font-bold text-rose-600 ">
                                 {money(w.totalExpense)}
                               </td>
-                              <td className={`py-2.5 px-4 text-right font-black ${w.netDifference >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+                              <td className={`py-2.5 px-4 text-right font-black ${w.netDifference >= 0 ? "text-emerald-600 " : "text-rose-600 "}`}>
                                 {w.netDifference >= 0 ? "+" : ""}{money(w.netDifference)}
                               </td>
-                              <td className={`py-2.5 px-4 text-right font-black ${w.cumulativeBalance >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+                              <td className={`py-2.5 px-4 text-right font-black ${w.cumulativeBalance >= 0 ? "text-emerald-600 " : "text-rose-600 "}`}>
                                 <div className="flex items-center justify-end gap-1.5">
                                   <span>{money(w.cumulativeBalance)}</span>
                                   {w.isManuallyCalibrated && (
-                                    <span className="px-1.5 py-0.2 rounded text-[9px] bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-300 font-bold">
+                                    <span className="px-1.5 py-0.2 rounded text-[9px] bg-amber-100  text-amber-700  border border-amber-300 font-bold">
                                       🎯 {t("Set", "Nastavené", "Fix")}
                                     </span>
                                   )}
@@ -3711,14 +3744,14 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                 <button
                                   type="button"
                                   onClick={() => handleOpenCalibrator(w)}
-                                  className="px-2 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-slate-600 hover:text-emerald-600 rounded-lg text-[10px] font-bold border border-slate-200 dark:border-slate-700 transition-colors inline-flex items-center gap-1 cursor-pointer"
+                                  className="px-2 py-1 bg-slate-100  hover:bg-emerald-50  text-slate-600 hover:text-emerald-600 rounded-lg text-[10px] font-bold border border-slate-200  transition-colors inline-flex items-center gap-1 cursor-pointer"
                                 >
                                   <Pencil className="h-3 w-3" />
                                   <span>{w.isManuallyCalibrated ? t("Edit", "Upraviť", "Módosít") : t("Calibrate", "Nastaviť", "Beállít")}</span>
                                 </button>
                               </td>
                               <td className="py-2.5 px-4 text-center">
-                                <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-[10px] text-slate-600 dark:text-slate-400 font-bold">
+                                <span className="px-2 py-0.5 rounded-full bg-slate-100  text-[10px] text-slate-600  font-bold">
                                   {w.items.length}
                                 </span>
                               </td>
@@ -3736,17 +3769,17 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           {/* 4. WEEK-SPECIFIC BANK BALANCE CALIBRATION DIALOG */}
           {calibratingWeek && (
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-              <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-md p-6 space-y-5 animate-in zoom-in-95 duration-150">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="bg-white  rounded-3xl border border-slate-200  shadow-2xl w-full max-w-md p-6 space-y-5 animate-in zoom-in-95 duration-150">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100 ">
                   <div className="flex items-center gap-2">
-                    <div className="p-2 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400">
+                    <div className="p-2 rounded-2xl bg-emerald-50  text-emerald-600 ">
                       <Landmark className="h-5 w-5" />
                     </div>
                     <div>
-                      <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                      <h4 className="text-sm font-bold text-slate-900 ">
                         {t(`Calibrate Bank Balance for ${calibratingWeek.weekLabel}`, `Nastaviť zostatok na účte pre ${calibratingWeek.weekLabel}`, `Heti egyenleg beállítása: ${calibratingWeek.weekLabel}`)}
                       </h4>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      <p className="text-[11px] text-slate-500 ">
                         {calibratingWeek.dateRangeLabel} ({calibratingWeek.year})
                       </p>
                     </div>
@@ -3754,14 +3787,14 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   <button
                     type="button"
                     onClick={() => setCalibratingWeek(null)}
-                    className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800"
+                    className="text-slate-400 hover:text-slate-600  p-1.5 rounded-xl hover:bg-slate-100 "
                   >
                     <X className="h-4 w-4" />
                   </button>
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
+                  <label className="text-xs font-bold text-slate-700  block">
                     {t("Real Verified Bank Balance at this Week (€)", "Skutočný stav na účte v tomto týždni (€)", "Valós bankszámla egyenleg ezen a héten (€)")}
                   </label>
                   <div className="relative">
@@ -3770,12 +3803,12 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                       value={calibratingVal}
                       onChange={(e) => setCalibratingVal(e.target.value)}
                       placeholder="48500"
-                      className="w-full pl-4 pr-10 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-base font-black text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      className="w-full pl-4 pr-10 py-2.5 bg-slate-50  border border-slate-200  rounded-2xl text-base font-black text-slate-900  focus:outline-none focus:ring-2 focus:ring-emerald-500"
                       autoFocus
                     />
                     <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">€</span>
                   </div>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <p className="text-[11px] text-slate-500 ">
                     {t(
                       "Setting this anchor will recalculate the entire timeline: subsequent weeks will add cash flow starting from this sum, and preceding weeks will back-calculate.",
                       "Nastavenie tejto kotvy prepočíta celú časovú os: nasledujúce týždne budú pripočítavať zmeny k tejto sume.",
@@ -3809,7 +3842,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                             setCalibratingVal(String(curr + (btn.add || 0)));
                           }
                         }}
-                        className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 transition-colors"
+                        className="px-2.5 py-1 bg-slate-100  hover:bg-slate-200  rounded-xl text-xs font-bold text-slate-700  transition-colors"
                       >
                         {btn.label}
                       </button>
@@ -3818,13 +3851,13 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 </div>
 
                 {/* Footer action buttons */}
-                <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                <div className="pt-3 border-t border-slate-100  flex items-center justify-between gap-2">
                   <div>
                     {calibratingWeek.isManual && (
                       <button
                         type="button"
                         onClick={() => handleResetWeeklyCalibration(calibratingWeek.startIso)}
-                        className="px-3 py-2 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 text-rose-700 dark:text-rose-300 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5"
+                        className="px-3 py-2 bg-rose-50  hover:bg-rose-100 text-rose-700  rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                         {t("Reset to Auto", "Vrátiť na auto", "Visszaállítás")}
@@ -3835,7 +3868,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                     <button
                       type="button"
                       onClick={() => setCalibratingWeek(null)}
-                      className="px-3.5 py-2 text-xs font-semibold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                      className="px-3.5 py-2 text-xs font-semibold text-slate-500 hover:text-slate-700 "
                     >
                       {t("Cancel", "Zrušiť", "Mégse")}
                     </button>
@@ -3859,9 +3892,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       {activeTab === "table" && (
         <div className="space-y-4 animate-in fade-in duration-200">
           {/* THE MATRIX DATA TABLE CONTAINER */}
-          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden">
+          <div className="bg-white  rounded-3xl border border-slate-200/80  shadow-sm overflow-hidden">
             {/* Sleek Single-Line Table Toolbar */}
-            <div className="px-5 py-3 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50 dark:bg-slate-800/30">
+            <div className="px-5 py-3 border-b border-slate-100  flex flex-wrap items-center justify-between gap-3 bg-slate-50/50 ">
               {/* Category Search Filter */}
               <div className="relative w-56">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
@@ -3870,7 +3903,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   value={tableSearchQuery}
                   onChange={(e) => setTableSearchQuery(e.target.value)}
                   placeholder={t("Filter categories...", "Filtrovať kategórie...", "Kategóriák szűrése...")}
-                  className="w-full pl-8 pr-3 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-2xs"
+                  className="w-full pl-8 pr-3 py-1 bg-white  border border-slate-200  rounded-xl text-xs text-slate-800  focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-2xs"
                 />
                 {tableSearchQuery && (
                   <button
@@ -3886,7 +3919,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               {/* Granularity & Year & Value Mode Switchers */}
               <div className="flex flex-wrap items-center gap-2">
                 {/* Granularity Switcher */}
-                <div className="bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl flex items-center gap-0.5 border border-slate-200 dark:border-slate-700">
+                <div className="bg-slate-100  p-0.5 rounded-xl flex items-center gap-0.5 border border-slate-200 ">
                   {[
                     { id: "week", label: t("Week", "Týždeň", "Hét") },
                     { id: "month", label: t("Month", "Mesiac", "Hónap") },
@@ -3899,8 +3932,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                       onClick={() => setTableGranularity(g.id as any)}
                       className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                         tableGranularity === g.id
-                          ? "bg-white dark:bg-slate-900 text-purple-600 dark:text-purple-400 shadow-2xs border border-slate-200 dark:border-slate-700"
-                          : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                          ? "bg-white  text-purple-600  shadow-2xs border border-slate-200 "
+                          : "text-slate-600  hover:text-slate-900 "
                       }`}
                     >
                       {g.label}
@@ -3910,22 +3943,22 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
                 {/* Year Navigator (for month, quarter, week) */}
                 {(tableGranularity === "month" || tableGranularity === "quarter" || tableGranularity === "week") && (
-                  <div className="flex items-center bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <div className="flex items-center bg-slate-100  px-1 py-0.5 rounded-xl border border-slate-200 ">
                     <button
                       type="button"
                       onClick={() => setTableYear(tableYear - 1)}
-                      className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+                      className="p-1 hover:bg-slate-200  rounded-lg text-slate-600  transition-colors cursor-pointer"
                       title={t("Previous Year", "Predchádzajúci rok", "Előző év")}
                     >
                       <ChevronDown className="h-3 w-3 rotate-90" />
                     </button>
-                    <span className="px-2 text-xs font-black text-slate-800 dark:text-slate-200 select-none">
+                    <span className="px-2 text-xs font-black text-slate-800  select-none">
                       {tableYear}
                     </span>
                     <button
                       type="button"
                       onClick={() => setTableYear(tableYear + 1)}
-                      className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+                      className="p-1 hover:bg-slate-200  rounded-lg text-slate-600  transition-colors cursor-pointer"
                       title={t("Next Year", "Nasledujúci rok", "Következő év")}
                     >
                       <ChevronDown className="h-3 w-3 -rotate-90" />
@@ -3934,14 +3967,14 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 )}
 
                 {/* Real vs Estimated Value Mode Toggle */}
-                <div className="bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl flex items-center gap-0.5 border border-slate-200 dark:border-slate-700">
+                <div className="bg-slate-100  p-0.5 rounded-xl flex items-center gap-0.5 border border-slate-200 ">
                   <button
                     type="button"
                     onClick={() => setTableValueMode("both")}
                     className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
                       tableValueMode === "both"
-                        ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs border border-slate-200/80 dark:border-slate-700"
-                        : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                        ? "bg-white  text-slate-900  shadow-2xs border border-slate-200/80 "
+                        : "text-slate-500 hover:text-slate-800 "
                     }`}
                   >
                     {t("Real + Est", "Skutočnosť + Plán", "Tény + Terv")}
@@ -3952,7 +3985,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                     className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
                       tableValueMode === "real"
                         ? "bg-emerald-500 text-white shadow-2xs"
-                        : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                        : "text-slate-500 hover:text-slate-800 "
                     }`}
                   >
                     {t("Real", "Skutočnosť", "Tény")}
@@ -3963,7 +3996,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                     className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
                       tableValueMode === "estimated"
                         ? "bg-purple-600 text-white shadow-2xs"
-                        : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                        : "text-slate-500 hover:text-slate-800 "
                     }`}
                   >
                     {t("Est", "Plán", "Terv")}
@@ -3974,7 +4007,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                     className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
                       tableValueMode === "total"
                         ? "bg-indigo-600 text-white shadow-2xs"
-                        : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                        : "text-slate-500 hover:text-slate-800 "
                     }`}
                   >
                     {t("Combined", "Spolu", "Összesen")}
@@ -3986,9 +4019,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             <div className="overflow-x-auto scrollbar-thin">
               <table className="w-full text-left text-xs border-collapse">
                 {/* Sticky Header */}
-                <thead className="bg-slate-50 dark:bg-slate-800 sticky top-0 z-30 shadow-xs border-b border-slate-200 dark:border-slate-700">
+                <thead className="bg-slate-50  sticky top-0 z-30 shadow-xs border-b border-slate-200 ">
                   <tr>
-                    <th className="w-[320px] min-w-[320px] max-w-[320px] py-3 px-4 sticky left-0 bg-slate-100 dark:bg-slate-800 z-40 font-black uppercase text-[10px] tracking-wider text-slate-600 dark:text-slate-300 border-r-2 border-slate-200 dark:border-slate-700 shadow-[2px_0_4px_rgba(0,0,0,0.04)]">
+                    <th className="w-[320px] min-w-[320px] max-w-[320px] py-3 px-4 sticky left-0 bg-slate-100  z-40 font-black uppercase text-[10px] tracking-wider text-slate-600  border-r-2 border-slate-200  shadow-[2px_0_4px_rgba(0,0,0,0.04)]">
                       {t("Category Structure (3 Levels)", "Štruktúra kategórií (3 úrovne)", "Kategória struktúra (3 szint)")}
                     </th>
                     {overviewTableData.columns.map((col) => (
@@ -3996,8 +4029,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                         key={col.id}
                         className={`py-3 px-3 text-right font-black uppercase text-[10px] tracking-wider min-w-[110px] ${
                           col.isCurrent
-                            ? "bg-indigo-50/80 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-x border-indigo-200 dark:border-indigo-800"
-                            : "text-slate-600 dark:text-slate-300"
+                            ? "bg-indigo-50/80  text-indigo-700  border-x border-indigo-200 "
+                            : "text-slate-600 "
                         }`}
                       >
                         <div className="flex flex-col items-end">
@@ -4006,19 +4039,19 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                         </div>
                       </th>
                     ))}
-                    <th className="py-3 px-4 text-right font-black uppercase text-[10px] tracking-wider min-w-[130px] bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white border-l border-slate-200 dark:border-slate-700 sticky right-0 z-30">
+                    <th className="py-3 px-4 text-right font-black uppercase text-[10px] tracking-wider min-w-[130px] bg-slate-100  text-slate-900  border-l border-slate-200  sticky right-0 z-30">
                       {t("Total / Horizon", "Spolu / Horizont", "Összesen")}
                     </th>
                   </tr>
                 </thead>
 
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-medium">
+                <tbody className="divide-y divide-slate-100  font-medium">
                   {/* ======================================================== */}
                   {/* SECTION 1: EXPENSES (TOP OF TABLE) */}
                   {/* ======================================================== */}
-                  <tr className="bg-rose-50 dark:bg-rose-950/40 border-y-2 border-rose-200 dark:border-rose-900/50">
-                    <td className="w-[320px] min-w-[320px] max-w-[320px] py-2.5 px-4 sticky left-0 z-20 bg-rose-50 dark:bg-slate-900 border-r-2 border-rose-200 dark:border-rose-900/50 shadow-[2px_0_4px_rgba(0,0,0,0.04)]">
-                      <div className="flex items-center justify-between gap-2 text-xs font-black uppercase tracking-wider text-rose-700 dark:text-rose-300 whitespace-nowrap">
+                  <tr className="bg-rose-50  border-y-2 border-rose-200 ">
+                    <td className="w-[320px] min-w-[320px] max-w-[320px] py-2.5 px-4 sticky left-0 z-20 bg-rose-50  border-r-2 border-rose-200  shadow-[2px_0_4px_rgba(0,0,0,0.04)]">
+                      <div className="flex items-center justify-between gap-2 text-xs font-black uppercase tracking-wider text-rose-700  whitespace-nowrap">
                         <div className="flex items-center gap-2">
                           <TrendingDown className="h-4 w-4 shrink-0" />
                           <span>{t("💸 EXPENSES", "💸 VÝDAVKY", "💸 KIADÁSOK")}</span>
@@ -4026,7 +4059,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                         <button
                           type="button"
                           onClick={areAllExpensesExpanded ? collapseAllExpenseCategories : expandAllExpenseCategories}
-                          className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-rose-100 hover:bg-rose-200 dark:bg-rose-900/40 dark:hover:bg-rose-900/70 text-rose-700 dark:text-rose-300 text-[10px] font-bold tracking-normal normal-case transition-colors cursor-pointer"
+                          className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-rose-100 hover:bg-rose-200   text-rose-700  text-[10px] font-bold tracking-normal normal-case transition-colors cursor-pointer"
                           title={areAllExpensesExpanded ? t("Collapse all expense categories", "Zbaliť výdavky", "Kiadások becsukása") : t("Expand all expense categories", "Rozbaliť výdavky", "Kiadások kinyitása")}
                         >
                           {areAllExpensesExpanded ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
@@ -4034,15 +4067,15 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                         </button>
                       </div>
                     </td>
-                    <td colSpan={overviewTableData.columns.length + 1} className="py-2.5 px-4 bg-rose-50/60 dark:bg-rose-950/20" />
+                    <td colSpan={overviewTableData.columns.length + 1} className="py-2.5 px-4 bg-rose-50/60 " />
                   </tr>
 
                   {/* Render Expense Categories Recursively */}
                   {categoryTree.expenseTree.map((rootCat) => renderCategoryMatrixRow(rootCat, 1, "expense"))}
 
                   {/* SUB-TOTAL EXPENSES ROW */}
-                  <tr className="bg-rose-100/60 dark:bg-rose-950/50 font-black border-y-2 border-rose-300 dark:border-rose-800">
-                    <td className="w-[320px] min-w-[320px] max-w-[320px] py-3 px-4 sticky left-0 bg-rose-100 dark:bg-slate-900 z-20 text-rose-800 dark:text-rose-300 border-r-2 border-rose-300 dark:border-rose-800 shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
+                  <tr className="bg-rose-100/60  font-black border-y-2 border-rose-300 ">
+                    <td className="w-[320px] min-w-[320px] max-w-[320px] py-3 px-4 sticky left-0 bg-rose-100  z-20 text-rose-800  border-r-2 border-rose-300  shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
                       <div className="flex items-center gap-2 whitespace-nowrap">
                         <ArrowDownRight className="h-4 w-4 text-rose-600 shrink-0" />
                         <span>{t("Total Expenses", "Výdavky spolu", "Összes kiadás")}</span>
@@ -4056,7 +4089,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                         </td>
                       );
                     })}
-                    <td className="py-3 px-4 text-right font-extrabold bg-rose-100 dark:bg-rose-950/80 border-l border-slate-200 dark:border-slate-700 sticky right-0 z-20">
+                    <td className="py-3 px-4 text-right font-extrabold bg-rose-100  border-l border-slate-200  sticky right-0 z-20">
                       {renderTableCellValue(overviewTableData.totalExpenseSummary, "expense")}
                     </td>
                   </tr>
@@ -4064,9 +4097,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   {/* ======================================================== */}
                   {/* SECTION 2: INCOMES (RIGHT BELOW EXPENSES) */}
                   {/* ======================================================== */}
-                  <tr className="bg-emerald-50 dark:bg-emerald-950/40 border-y-2 border-emerald-200 dark:border-emerald-900/50">
-                    <td className="w-[320px] min-w-[320px] max-w-[320px] py-2.5 px-4 sticky left-0 z-20 bg-emerald-50 dark:bg-slate-900 border-r-2 border-emerald-200 dark:border-emerald-900/50 shadow-[2px_0_4px_rgba(0,0,0,0.04)]">
-                      <div className="flex items-center justify-between gap-2 text-xs font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
+                  <tr className="bg-emerald-50  border-y-2 border-emerald-200 ">
+                    <td className="w-[320px] min-w-[320px] max-w-[320px] py-2.5 px-4 sticky left-0 z-20 bg-emerald-50  border-r-2 border-emerald-200  shadow-[2px_0_4px_rgba(0,0,0,0.04)]">
+                      <div className="flex items-center justify-between gap-2 text-xs font-black uppercase tracking-wider text-emerald-700  whitespace-nowrap">
                         <div className="flex items-center gap-2">
                           <TrendingUp className="h-4 w-4 shrink-0" />
                           <span>{t("💰 INCOMES", "💰 PRÍJMY", "💰 BEVÉTELEK")}</span>
@@ -4074,7 +4107,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                         <button
                           type="button"
                           onClick={areAllIncomesExpanded ? collapseAllIncomeCategories : expandAllIncomeCategories}
-                          className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:hover:bg-emerald-900/70 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold tracking-normal normal-case transition-colors cursor-pointer"
+                          className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-100 hover:bg-emerald-200   text-emerald-700  text-[10px] font-bold tracking-normal normal-case transition-colors cursor-pointer"
                           title={areAllIncomesExpanded ? t("Collapse all income categories", "Zbaliť príjmy", "Bevételek becsukása") : t("Expand all income categories", "Rozbaliť príjmy", "Bevételek kinyitása")}
                         >
                           {areAllIncomesExpanded ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
@@ -4082,15 +4115,15 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                         </button>
                       </div>
                     </td>
-                    <td colSpan={overviewTableData.columns.length + 1} className="py-2.5 px-4 bg-emerald-50/60 dark:bg-emerald-950/20" />
+                    <td colSpan={overviewTableData.columns.length + 1} className="py-2.5 px-4 bg-emerald-50/60 " />
                   </tr>
 
                   {/* Render Income Categories Recursively */}
                   {categoryTree.incomeTree.map((rootCat) => renderCategoryMatrixRow(rootCat, 1, "income"))}
 
                   {/* SUB-TOTAL INCOMES ROW */}
-                  <tr className="bg-emerald-100/60 dark:bg-emerald-950/50 font-black border-y-2 border-emerald-300 dark:border-emerald-800">
-                    <td className="w-[320px] min-w-[320px] max-w-[320px] py-3 px-4 sticky left-0 bg-emerald-100 dark:bg-slate-900 z-20 text-emerald-800 dark:text-emerald-300 border-r-2 border-emerald-300 dark:border-emerald-800 shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
+                  <tr className="bg-emerald-100/60  font-black border-y-2 border-emerald-300 ">
+                    <td className="w-[320px] min-w-[320px] max-w-[320px] py-3 px-4 sticky left-0 bg-emerald-100  z-20 text-emerald-800  border-r-2 border-emerald-300  shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
                       <div className="flex items-center gap-2 whitespace-nowrap">
                         <ArrowUpRight className="h-4 w-4 text-emerald-600 shrink-0" />
                         <span>{t("Total Incomes", "Príjmy spolu", "Összes bevétel")}</span>
@@ -4104,7 +4137,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                         </td>
                       );
                     })}
-                    <td className="py-3 px-4 text-right font-extrabold bg-emerald-100 dark:bg-emerald-950/80 border-l border-slate-200 dark:border-slate-700 sticky right-0 z-20">
+                    <td className="py-3 px-4 text-right font-extrabold bg-emerald-100  border-l border-slate-200  sticky right-0 z-20">
                       {renderTableCellValue(overviewTableData.totalIncomeSummary, "income")}
                     </td>
                   </tr>
@@ -4112,19 +4145,19 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   {/* ======================================================== */}
                   {/* SECTION 3: SUMMARY (NET FLOW & BALANCE) AT TABLE END */}
                   {/* ======================================================== */}
-                  <tr className="bg-slate-100 dark:bg-slate-800 border-y-2 border-slate-300 dark:border-slate-700">
-                    <td className="w-[320px] min-w-[320px] max-w-[320px] py-2.5 px-4 sticky left-0 z-20 bg-slate-100 dark:bg-slate-900 border-r-2 border-slate-300 dark:border-slate-700 shadow-[2px_0_4px_rgba(0,0,0,0.04)]">
-                      <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 whitespace-nowrap">
+                  <tr className="bg-slate-100  border-y-2 border-slate-300 ">
+                    <td className="w-[320px] min-w-[320px] max-w-[320px] py-2.5 px-4 sticky left-0 z-20 bg-slate-100  border-r-2 border-slate-300  shadow-[2px_0_4px_rgba(0,0,0,0.04)]">
+                      <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-800  whitespace-nowrap">
                         <Landmark className="h-4 w-4 text-purple-600 shrink-0" />
                         <span>{t("📊 FINANCIAL SUMMARY", "📊 FINANČNÉ ZHRNUTIE", "📊 PÉNZÜGYI ÖSSZESÍTŐ")}</span>
                       </div>
                     </td>
-                    <td colSpan={overviewTableData.columns.length + 1} className="py-2.5 px-4 bg-slate-100/80 dark:bg-slate-800/60" />
+                    <td colSpan={overviewTableData.columns.length + 1} className="py-2.5 px-4 bg-slate-100/80 " />
                   </tr>
 
                   {/* Row: Net Profit / Cash Flow (Income - Expense) */}
-                  <tr className="bg-purple-50/50 dark:bg-purple-950/30 font-black border-b border-slate-200 dark:border-slate-700">
-                    <td className="w-[320px] min-w-[320px] max-w-[320px] py-3 px-4 sticky left-0 bg-purple-50 dark:bg-slate-900 z-20 text-purple-900 dark:text-purple-300 border-r-2 border-purple-300 dark:border-purple-800 shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
+                  <tr className="bg-purple-50/50  font-black border-b border-slate-200 ">
+                    <td className="w-[320px] min-w-[320px] max-w-[320px] py-3 px-4 sticky left-0 bg-purple-50  z-20 text-purple-900  border-r-2 border-purple-300  shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
                       <div className="flex items-center gap-2 whitespace-nowrap">
                         <Coins className="h-4 w-4 text-purple-600 shrink-0" />
                         <span>{t("Net Cash Flow (Diff = Income − Expense)", "Čistý rozdiel (Príjmy − Výdavky)", "Nettó eredmény (Bevétel − Kiadás)")}</span>
@@ -4138,7 +4171,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                         </td>
                       );
                     })}
-                    <td className="py-3 px-4 text-right font-black bg-purple-100 dark:bg-purple-950/80 border-l border-slate-200 dark:border-slate-700 sticky right-0 z-20">
+                    <td className="py-3 px-4 text-right font-black bg-purple-100  border-l border-slate-200  sticky right-0 z-20">
                       {renderTableCellValue(overviewTableData.netSummary, "net")}
                     </td>
                   </tr>
@@ -4153,32 +4186,32 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       {activeTab === "movements" && (
         <div className="space-y-4 animate-in fade-in duration-200">
           {/* MOVEMENTS CONTROL & FILTER CARD */}
-          <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-3">
+          <div className="bg-white  p-4 rounded-3xl border border-slate-200/80  shadow-sm space-y-3">
             {/* Top Row: Title, KPI summary chips, Add buttons, Sort toggle */}
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 pb-3 border-b border-slate-100 ">
               <div className="flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-2">
                   <Coins className="h-5 w-5 text-emerald-500" />
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  <h3 className="text-sm font-bold text-slate-900 ">
                     {t("All Financial Movements", "Všetky finančné pohyby", "Összes pénzügyi mozgás")}
                   </h3>
-                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100  text-slate-600 ">
                     {filteredMovements.length}
                   </span>
                 </div>
 
                 {/* Live Total KPI Pills */}
                 <div className="flex items-center gap-2 text-xs font-bold">
-                  <span className="px-2.5 py-1 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                  <span className="px-2.5 py-1 rounded-xl bg-emerald-50  text-emerald-700  border border-emerald-200 ">
                     {t("Incomes:", "Príjmy:", "Bevételek:")} +{money(movementsSummary.income)}
                   </span>
-                  <span className="px-2.5 py-1 rounded-xl bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                  <span className="px-2.5 py-1 rounded-xl bg-rose-50  text-rose-700  border border-rose-200 ">
                     {t("Expenses:", "Výdavky:", "Kiadások:")} -{money(movementsSummary.expense)}
                   </span>
                   <span className={`px-2.5 py-1 rounded-xl border ${
                     movementsSummary.net >= 0
-                      ? "bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800"
-                      : "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800"
+                      ? "bg-purple-50  text-purple-700  border-purple-200 "
+                      : "bg-rose-50  text-rose-700  border-rose-200 "
                   }`}>
                     {t("Net:", "Čistý rozdiel:", "Nettó:")} {movementsSummary.net >= 0 ? "+" : ""}{money(movementsSummary.net)}
                   </span>
@@ -4190,7 +4223,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 <button
                   type="button"
                   onClick={() => setMovementsSortOrder(movementsSortOrder === "desc" ? "asc" : "desc")}
-                  className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition-colors"
+                  className="px-3 py-1.5 bg-slate-100  hover:bg-slate-200  text-slate-700  text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition-colors"
                   title={movementsSortOrder === "desc" ? t("Sorted by newest first", "Zotriedené od najnovších", "Legújabb elöl") : t("Sorted by oldest first", "Zotriedené od najstarších", "Legrégebbi elöl")}
                 >
                   <ArrowUpDown className="h-3.5 w-3.5 text-slate-500" />
@@ -4202,7 +4235,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
                 >
                   <Plus className="h-3.5 w-3.5" />
-                  <span>{t("+ Income", "+ Príjem", "+ Bevétel")}</span>
+                  <span>{t("Income", "Príjem", "Bevétel")}</span>
                 </button>
 
                 <button
@@ -4210,7 +4243,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
                 >
                   <Plus className="h-3.5 w-3.5" />
-                  <span>{t("+ Expense", "+ Výdavok", "+ Kiadás")}</span>
+                  <span>{t("Expense", "Výdavok", "Kiadás")}</span>
                 </button>
               </div>
             </div>
@@ -4225,7 +4258,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   value={movementsSearch}
                   onChange={(e) => setMovementsSearch(e.target.value)}
                   placeholder={t("Filter by title, client, project, category, #FA...", "Hľadať podľa názvu, klienta, projektu, kategórie...", "Keresés név, ügyfél, projekt vagy kategória alapján...")}
-                  className="w-full pl-8 pr-7 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-2xs"
+                  className="w-full pl-8 pr-7 py-1.5 bg-slate-50  border border-slate-200  rounded-xl text-xs text-slate-800  focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-2xs"
                 />
                 {movementsSearch && (
                   <button
@@ -4239,14 +4272,14 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               </div>
 
               {/* 2. Type Selector (All / Income / Expense) */}
-              <div className="md:col-span-3 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl flex items-center gap-0.5 border border-slate-200 dark:border-slate-700">
+              <div className="md:col-span-3 bg-slate-100  p-0.5 rounded-xl flex items-center gap-0.5 border border-slate-200 ">
                 <button
                   type="button"
                   onClick={() => setMovementsType("all")}
                   className={`flex-1 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer text-center ${
                     movementsType === "all"
-                      ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs border border-slate-200/80 dark:border-slate-700"
-                      : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                      ? "bg-white  text-slate-900  shadow-2xs border border-slate-200/80 "
+                      : "text-slate-500 hover:text-slate-800 "
                   }`}
                 >
                   {t("All", "Všetko", "Összes")}
@@ -4257,7 +4290,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   className={`flex-1 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer text-center ${
                     movementsType === "income"
                       ? "bg-emerald-500 text-white shadow-2xs"
-                      : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                      : "text-slate-500 hover:text-slate-800 "
                   }`}
                 >
                   {t("💰 Incomes", "💰 Príjmy", "💰 Bevételek")}
@@ -4268,7 +4301,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   className={`flex-1 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer text-center ${
                     movementsType === "expense"
                       ? "bg-rose-500 text-white shadow-2xs"
-                      : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                      : "text-slate-500 hover:text-slate-800 "
                   }`}
                 >
                   {t("💸 Expenses", "💸 Výdavky", "💸 Kiadások")}
@@ -4280,7 +4313,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 <select
                   value={movementsDatePreset}
                   onChange={(e) => setMovementsDatePreset(e.target.value as any)}
-                  className="w-full py-1.5 px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-200 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full py-1.5 px-3 bg-slate-50  border border-slate-200  rounded-xl text-xs text-slate-800  font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 >
                   <option value="all">{t("📅 All Time", "📅 Celé obdobie", "📅 Teljes időszak")}</option>
                   <option value="this_month">{t("📅 This Month", "📅 Tento mesiac", "📅 Ez a hónap")}</option>
@@ -4298,8 +4331,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   onClick={() => setIsMovementsAdvancedOpen(!isMovementsAdvancedOpen)}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
                     isMovementsAdvancedOpen || hasActiveMovementsFilters
-                      ? "bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-800"
-                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                      ? "bg-purple-100  text-purple-700  border border-purple-300 "
+                      : "bg-slate-100  text-slate-600  hover:bg-slate-200 "
                   }`}
                 >
                   <SlidersHorizontal className="h-3.5 w-3.5" />
@@ -4324,10 +4357,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
             {/* Advanced Filters Drawer: Value Range, Category, Client/Project Scope, Custom Dates */}
             {isMovementsAdvancedOpen && (
-              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs animate-in fade-in duration-150">
+              <div className="pt-3 border-t border-slate-100  grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs animate-in fade-in duration-150">
                 {/* Category Dropdown (All 3 levels) */}
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500  mb-1">
                     {t("Category (3 Levels)", "Kategória (3 úrovne)", "Kategória (3 szint)")}
                   </label>
                   <SearchableCategorySelect
@@ -4342,7 +4375,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
                 {/* Scope / Project / Client */}
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500  mb-1">
                     {t("Linked Project / Client", "Prepojený projekt / Klient", "Kapcsolt projekt / Ügyfél")}
                   </label>
                   <SearchableScopeSelect
@@ -4384,7 +4417,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
                 {/* Value Range (Min & Max) */}
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500  mb-1">
                     {t("Value Range (€)", "Rozsah sumy (€)", "Értékhatár (€)")}
                   </label>
                   <div className="flex items-center gap-1.5">
@@ -4393,7 +4426,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                       value={movementsMinAmount}
                       onChange={(e) => setMovementsMinAmount(e.target.value)}
                       placeholder="Min €"
-                      className="w-1/2 py-1.5 px-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      className="w-1/2 py-1.5 px-2.5 bg-slate-50  border border-slate-200  rounded-xl text-xs text-slate-800  focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     />
                     <span className="text-slate-400 font-bold">–</span>
                     <input
@@ -4401,14 +4434,14 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                       value={movementsMaxAmount}
                       onChange={(e) => setMovementsMaxAmount(e.target.value)}
                       placeholder="Max €"
-                      className="w-1/2 py-1.5 px-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      className="w-1/2 py-1.5 px-2.5 bg-slate-50  border border-slate-200  rounded-xl text-xs text-slate-800  focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     />
                   </div>
                 </div>
 
                 {/* Custom Date Range Picker */}
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500  mb-1">
                     {t("Custom Dates (From - To)", "Vlastný dátum (Od - Do)", "Egyéni dátum (Tól - Ig)")}
                   </label>
                   <div className="flex items-center gap-1.5">
@@ -4419,7 +4452,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                         setMovementsStartDate(e.target.value);
                         setMovementsDatePreset("custom");
                       }}
-                      className="w-1/2 py-1.5 px-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      className="w-1/2 py-1.5 px-2 bg-slate-50  border border-slate-200  rounded-xl text-xs text-slate-800  focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     />
                     <span className="text-slate-400 font-bold">–</span>
                     <input
@@ -4429,7 +4462,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                         setMovementsEndDate(e.target.value);
                         setMovementsDatePreset("custom");
                       }}
-                      className="w-1/2 py-1.5 px-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      className="w-1/2 py-1.5 px-2 bg-slate-50  border border-slate-200  rounded-xl text-xs text-slate-800  focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     />
                   </div>
                 </div>
@@ -4438,10 +4471,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           </div>
 
           {/* GROUPED MOVEMENTS LEDGER TABLE */}
-          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden">
+          <div className="bg-white  rounded-3xl border border-slate-200/80  shadow-sm overflow-hidden">
             <div className="overflow-x-auto scrollbar-thin">
               <table className="w-full text-left text-xs border-collapse">
-                <thead className="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-black uppercase text-[10px] tracking-wider border-b border-slate-200 dark:border-slate-700 sticky top-0 z-20">
+                <thead className="bg-slate-50  text-slate-600  font-black uppercase text-[10px] tracking-wider border-b border-slate-200  sticky top-0 z-20">
                   <tr>
                     <th className="py-3 px-4 w-[130px]">{t("Date", "Dátum", "Dátum")}</th>
                     <th className="py-3 px-4 min-w-[220px]">{t("Title & Reference", "Názov & Referencia", "Megnevezés & Hivatkozás")}</th>
@@ -4452,12 +4485,12 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   </tr>
                 </thead>
 
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-medium">
+                <tbody className="divide-y divide-slate-100  font-medium">
                   {filteredMovements.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="py-16 text-center text-slate-400 font-medium space-y-2">
-                        <Coins className="h-10 w-10 text-slate-300 dark:text-slate-600 mx-auto" />
-                        <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                        <Coins className="h-10 w-10 text-slate-300  mx-auto" />
+                        <p className="text-sm font-bold text-slate-700 ">
                           {t("No financial movements found", "Neboli nájdené žiadne finančné pohyby", "Nincs találat a megadott szűrők alapján")}
                         </p>
                         <p className="text-xs text-slate-400">
@@ -4480,31 +4513,31 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                         return (
                           <React.Fragment key={"month-grp-" + group.monthKey}>
                             {/* MONTH DIVIDER ROW WITH SUMMARY TOTALS */}
-                            <tr className="bg-slate-100/90 dark:bg-slate-800/90 border-y-2 border-slate-300 dark:border-slate-700 sticky top-[37px] z-10 shadow-xs">
+                            <tr className="bg-slate-100/90  border-y-2 border-slate-300  sticky top-[37px] z-10 shadow-xs">
                               <td colSpan={6} className="py-2.5 px-4">
                                 <div className="flex flex-wrap items-center justify-between gap-3">
                                   <div className="flex items-center gap-2">
-                                    <CalendarDays className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-                                    <span className="font-black text-xs uppercase tracking-wider text-slate-900 dark:text-white">
+                                    <CalendarDays className="h-4 w-4 text-purple-600 " />
+                                    <span className="font-black text-xs uppercase tracking-wider text-slate-900 ">
                                       {group.monthLabel}
                                     </span>
-                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white  text-slate-600  border border-slate-200 ">
                                       {group.records.length} {t("movements", "pohybov", "tétel")}
                                     </span>
                                   </div>
 
                                   {/* Monthly Subtotals */}
                                   <div className="flex items-center gap-3 text-xs font-black">
-                                    <span className="text-emerald-700 dark:text-emerald-400">
+                                    <span className="text-emerald-700 ">
                                       +{money(group.totalIncome)}
                                     </span>
-                                    <span className="text-rose-700 dark:text-rose-400">
+                                    <span className="text-rose-700 ">
                                       -{money(group.totalExpense)}
                                     </span>
                                     <span className={`px-2 py-0.5 rounded-lg border ${
                                       group.net >= 0
-                                        ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800"
-                                        : "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-800"
+                                        ? "bg-emerald-50  text-emerald-700  border-emerald-300 "
+                                        : "bg-rose-50  text-rose-700  border-rose-300 "
                                     }`}>
                                       {t("Net:", "Čistý:", "Nettó:")} {group.net >= 0 ? "+" : ""}{money(group.net)}
                                     </span>
@@ -4525,11 +4558,11 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                               return (
                                 <tr
                                   key={rec.id}
-                                  className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors group"
+                                  className="hover:bg-slate-50/80  transition-colors group"
                                 >
                                   {/* 1. Date & Status */}
                                   <td className="py-3 px-4 whitespace-nowrap">
-                                    <div className="font-bold text-slate-800 dark:text-slate-200">
+                                    <div className="font-bold text-slate-800 ">
                                       {formatDateLocalized(rec.paidDate || rec.issueDate, userLanguage)}
                                     </div>
                                     <div className="flex items-center gap-1 mt-0.5">
@@ -4542,7 +4575,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                           ? "bg-rose-500"
                                           : "bg-slate-400"
                                       }`} />
-                                      <span className="text-[10px] font-medium uppercase text-slate-500 dark:text-slate-400">
+                                      <span className="text-[10px] font-medium uppercase text-slate-500 ">
                                         {rec.status}
                                       </span>
                                     </div>
@@ -4550,14 +4583,14 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
                                   {/* 2. Title & Reference & Recurring Badge */}
                                   <td className="py-3 px-4">
-                                    <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                                    <div className="font-bold text-slate-900  flex items-center gap-1.5">
                                       <span className="truncate max-w-[280px]" title={rec.title}>
                                         {rec.title}
                                       </span>
                                     </div>
                                     <div className="flex items-center gap-2 mt-0.5">
                                       {rec.invoiceNumber && (
-                                        <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold">
+                                        <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-100  text-slate-600  font-semibold">
                                           {rec.invoiceNumber}
                                         </span>
                                       )}
@@ -4583,8 +4616,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                             <span
                                               className={`text-[11px] ${
                                                 idx === catBreadcrumbs.length - 1
-                                                  ? "font-bold text-slate-800 dark:text-slate-200"
-                                                  : "font-normal text-slate-500 dark:text-slate-400"
+                                                  ? "font-bold text-slate-800 "
+                                                  : "font-normal text-slate-500 "
                                               }`}
                                             >
                                               {c.name}
@@ -4609,7 +4642,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                           <button
                                             type="button"
                                             onClick={() => onOpenProject?.(rec.projectId!)}
-                                            className="inline-flex items-center gap-1.5 px-2 py-1 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                                            className="inline-flex items-center gap-1.5 px-2 py-1 bg-indigo-50  hover:bg-indigo-100 text-indigo-700  rounded-lg text-xs font-semibold transition-colors cursor-pointer"
                                           >
                                             <Briefcase className="h-3.5 w-3.5 shrink-0" />
                                             <span className="truncate max-w-[140px]" title={pName}>
@@ -4622,7 +4655,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                       <button
                                         type="button"
                                         onClick={() => onOpenClient?.(rec.clientId!)}
-                                        className="inline-flex items-center gap-1.5 px-2 py-1 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                                        className="inline-flex items-center gap-1.5 px-2 py-1 bg-emerald-50  hover:bg-emerald-100 text-emerald-700  rounded-lg text-xs font-semibold transition-colors cursor-pointer"
                                       >
                                         <User className="h-3.5 w-3.5 shrink-0" />
                                         <span className="truncate max-w-[140px]" title={client?.name || rec.clientId}>
@@ -4643,8 +4676,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                       <span
                                         className={`font-black text-sm ${
                                           isExpense
-                                            ? "text-rose-600 dark:text-rose-400"
-                                            : "text-emerald-600 dark:text-emerald-400"
+                                            ? "text-rose-600 "
+                                            : "text-emerald-600 "
                                         }`}
                                       >
                                         {isExpense ? "-" : "+"}
@@ -4654,7 +4687,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                       {/* Recurring Expense/Income icon next to value */}
                                       {rec.isRecurring && (
                                         <span
-                                          className="p-1 rounded-md bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800"
+                                          className="p-1 rounded-md bg-purple-50  text-purple-600  border border-purple-200 "
                                           title={t(
                                             `Recurring movement (${rec.recurringFrequency || "monthly"})`,
                                             `Pravidelný pohyb (${rec.recurringFrequency || "mesačne"})`,
@@ -4680,7 +4713,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                       <button
                                         type="button"
                                         onClick={() => handleOpenEditModal(rec)}
-                                        className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
+                                        className="p-1.5 hover:bg-slate-100  rounded-lg text-slate-500 hover:text-slate-900  transition-colors cursor-pointer"
                                         title={t("Edit movement", "Upraviť pohyb", "Szerkesztés")}
                                       >
                                         <Pencil className="h-3.5 w-3.5" />
@@ -4688,7 +4721,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                       <button
                                         type="button"
                                         onClick={() => handleDeleteTransaction(rec.id)}
-                                        className="p-1.5 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded-lg text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                                        className="p-1.5 hover:bg-rose-50  rounded-lg text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
                                         title={t("Delete movement", "Vymazať pohyb", "Törlés")}
                                       >
                                         <Trash2 className="h-3.5 w-3.5" />
@@ -4711,7 +4744,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             {filteredMovements.length > 0 && (
               <div
                 ref={movementsSentinelRef}
-                className="py-6 border-t border-slate-100 dark:border-slate-800 flex items-center justify-center text-xs text-slate-400 font-medium"
+                className="py-6 border-t border-slate-100  flex items-center justify-center text-xs text-slate-400 font-medium"
               >
                 {movementsVisibleCount < filteredMovements.length ? (
                   <div className="flex items-center gap-2">
@@ -4745,15 +4778,15 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           {/* TOP METRIC CARDS */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Card 1: Monthly Recurring Commitment */}
-            <div className="p-4 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm flex items-center gap-3.5">
-              <div className="p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400">
+            <div className="p-4 rounded-3xl bg-white  border border-slate-200/80  shadow-sm flex items-center gap-3.5">
+              <div className="p-3 rounded-2xl bg-rose-50  text-rose-600 ">
                 <RefreshCw className="h-5 w-5" />
               </div>
               <div>
                 <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                   {t("Monthly Recurring Costs", "Mesačné pravidelné výdavky", "Havi rendszeres kiadás")}
                 </div>
-                <div className="text-lg font-black text-rose-600 dark:text-rose-400">
+                <div className="text-lg font-black text-rose-600 ">
                   -{money(recurringMetrics.totalMonthlyExpense)}
                   <span className="text-xs font-semibold text-slate-400 ml-1">/ {t("mo", "mes", "hó")}</span>
                 </div>
@@ -4761,15 +4794,15 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             </div>
 
             {/* Card 2: Annual Overhead Projection */}
-            <div className="p-4 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm flex items-center gap-3.5">
-              <div className="p-3 rounded-2xl bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400">
+            <div className="p-4 rounded-3xl bg-white  border border-slate-200/80  shadow-sm flex items-center gap-3.5">
+              <div className="p-3 rounded-2xl bg-purple-50  text-purple-600 ">
                 <Calendar className="h-5 w-5" />
               </div>
               <div>
                 <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                   {t("Annual Overhead Projection", "Ročný projektovaný náklad", "Éves tervezett költség")}
                 </div>
-                <div className="text-lg font-black text-slate-900 dark:text-white">
+                <div className="text-lg font-black text-slate-900 ">
                   -{money(recurringMetrics.totalAnnualExpense)}
                   <span className="text-xs font-semibold text-slate-400 ml-1">/ {t("yr", "rok", "év")}</span>
                 </div>
@@ -4777,15 +4810,15 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             </div>
 
             {/* Card 3: Active vs Paused Rules */}
-            <div className="p-4 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm flex items-center gap-3.5">
-              <div className="p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400">
+            <div className="p-4 rounded-3xl bg-white  border border-slate-200/80  shadow-sm flex items-center gap-3.5">
+              <div className="p-3 rounded-2xl bg-emerald-50  text-emerald-600 ">
                 <CheckCircle2 className="h-5 w-5" />
               </div>
               <div>
                 <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                   {t("Active Commitments", "Aktívne pravidlá", "Aktív szabályok")}
                 </div>
-                <div className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                <div className="text-lg font-black text-slate-900  flex items-center gap-2">
                   <span>{recurringMetrics.activeCount}</span>
                   {recurringMetrics.pausedCount > 0 && (
                     <span className="text-xs font-semibold text-slate-400">
@@ -4797,8 +4830,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             </div>
 
             {/* Card 4: Next Upcoming Charge */}
-            <div className="p-4 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm flex items-center gap-3.5">
-              <div className="p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400">
+            <div className="p-4 rounded-3xl bg-white  border border-slate-200/80  shadow-sm flex items-center gap-3.5">
+              <div className="p-3 rounded-2xl bg-amber-50  text-amber-600 ">
                 <Clock className="h-5 w-5" />
               </div>
               <div className="truncate">
@@ -4811,12 +4844,12 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                     return <div className="text-xs text-slate-400">{t("None scheduled", "Žiadna", "Nincs")}</div>;
                   }
                   return (
-                    <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                      <span className="text-rose-600 dark:text-rose-400 font-black">
+                    <div className="text-xs font-bold text-slate-900  truncate">
+                      <span className="text-rose-600  font-black">
                         {money(upcoming.record.amountReal || upcoming.record.amountPlanned)}
                       </span>{" "}
                       – {upcoming.record.title}{" "}
-                      <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
+                      <span className="text-[10px] text-amber-600  font-semibold">
                         ({upcoming.daysLeft === 0 ? t("Today", "Dnes", "Ma") : t(`in ${upcoming.daysLeft}d`, `o ${upcoming.daysLeft} dní`, `${upcoming.daysLeft} nap múlva`)})
                       </span>
                     </div>
@@ -4827,12 +4860,12 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           </div>
 
           {/* CONTROL & FILTER CARD */}
-          <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-3">
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+          <div className="bg-white  p-4 rounded-3xl border border-slate-200/80  shadow-sm space-y-3">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 pb-3 border-b border-slate-100 ">
               <div className="flex items-center gap-2">
-                <RefreshCw className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                <RefreshCw className="h-5 w-5 text-purple-600 " />
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  <h3 className="text-sm font-bold text-slate-900 ">
                     {t("Recurring Expenses & Subscriptions", "Pravidelné výdavky a predplatné", "Rendszeres kiadások és előfizetések")}
                   </h3>
                   <p className="text-xs text-slate-400">
@@ -4846,7 +4879,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   <button
                     type="button"
                     onClick={handleQuickSeedRecurringExpenses}
-                    className="px-3.5 py-1.5 bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-100 text-purple-700 dark:text-purple-300 text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer border border-purple-200 dark:border-purple-800 transition-colors"
+                    className="px-3.5 py-1.5 bg-purple-50  hover:bg-purple-100 text-purple-700  text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer border border-purple-200  transition-colors"
                   >
                     <Sparkles className="h-3.5 w-3.5" />
                     <span>{t("Load Sample Templates", "Nahrať vzorové šablóny", "Minták betöltése")}</span>
@@ -4859,7 +4892,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
                 >
                   <Plus className="h-4 w-4" />
-                  <span>{t("+ New Recurring Expense", "+ Nový pravidelný výdavok", "+ Új rendszeres kiadás")}</span>
+                  <span>{t("New Recurring Expense", "Nový pravidelný výdavok", "Új rendszeres kiadás")}</span>
                 </button>
               </div>
             </div>
@@ -4874,7 +4907,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   value={recurringSearch}
                   onChange={(e) => setRecurringSearch(e.target.value)}
                   placeholder={t("Search by expense title, vendor, category...", "Hľadať podľa názvu, kategórie...", "Keresés név, kategória alapján...")}
-                  className="w-full pl-8 pr-7 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="w-full pl-8 pr-7 py-1.5 bg-slate-50  border border-slate-200  rounded-xl text-xs text-slate-800  focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
                 {recurringSearch && (
                   <button
@@ -4892,7 +4925,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 <select
                   value={recurringFreqFilter}
                   onChange={(e) => setRecurringFreqFilter(e.target.value)}
-                  className="w-full py-1.5 px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-200 font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="w-full py-1.5 px-3 bg-slate-50  border border-slate-200  rounded-xl text-xs text-slate-800  font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500"
                 >
                   <option value="all">{t("All Frequencies", "Všetky frekvencie", "Minden gyakoriság")}</option>
                   <option value="weekly">{t("Weekly (Týždenne)", "Týždenne", "Heti")}</option>
@@ -4906,7 +4939,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 <select
                   value={recurringStatusFilter}
                   onChange={(e) => setRecurringStatusFilter(e.target.value as any)}
-                  className="w-full py-1.5 px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-200 font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="w-full py-1.5 px-3 bg-slate-50  border border-slate-200  rounded-xl text-xs text-slate-800  font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500"
                 >
                   <option value="all">{t("All Statuses (Active & Paused)", "Všetky stavy (Aktívne aj pozastavené)", "Minden állapot")}</option>
                   <option value="active">{t("✓ Active Rules Only", "✓ Iba aktívne pravidlá", "✓ Csak aktív szabályok")}</option>
@@ -4919,7 +4952,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 <select
                   value={recurringScopeFilter}
                   onChange={(e) => setRecurringScopeFilter(e.target.value)}
-                  className="w-full py-1.5 px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-200 font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="w-full py-1.5 px-3 bg-slate-50  border border-slate-200  rounded-xl text-xs text-slate-800  font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500"
                 >
                   <option value="all">{t("All Scopes", "Všetky rozsahy", "Minden hatókör")}</option>
                   <option value="global">{t("🌐 Global Only", "🌐 Iba firemné", "🌐 Vállalati")}</option>
@@ -4931,10 +4964,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           </div>
 
           {/* RECURRING EXPENSES TABLE */}
-          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden">
+          <div className="bg-white  rounded-3xl border border-slate-200/80  shadow-sm overflow-hidden">
             <div className="overflow-x-auto scrollbar-thin">
               <table className="w-full text-left text-xs border-collapse">
-                <thead className="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-black uppercase text-[10px] tracking-wider border-b border-slate-200 dark:border-slate-700">
+                <thead className="bg-slate-50  text-slate-600  font-black uppercase text-[10px] tracking-wider border-b border-slate-200 ">
                   <tr>
                     <th className="py-3.5 px-4 min-w-[220px]">{t("Recurring Expense & Description", "Pravidelný výdavok & Popis", "Rendszeres kiadás & Leírás")}</th>
                     <th className="py-3.5 px-4 min-w-[220px]">{t("Cadence & Next Due", "Frekvencia & Ďalšia platba", "Gyakoriság & Esedékesség")}</th>
@@ -4946,13 +4979,13 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   </tr>
                 </thead>
 
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-medium">
+                <tbody className="divide-y divide-slate-100  font-medium">
                   {filteredRecurringRecords.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="py-16 text-center text-slate-400 font-medium space-y-3">
-                        <RefreshCw className="h-10 w-10 text-slate-300 dark:text-slate-600 mx-auto animate-spin-slow" />
+                        <RefreshCw className="h-10 w-10 text-slate-300  mx-auto animate-spin-slow" />
                         <div>
-                          <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                          <p className="text-sm font-bold text-slate-700 ">
                             {t("No recurring expenses found", "Nenašli sa žiadne pravidelné výdavky", "Nincsenek rendszeres kiadások")}
                           </p>
                           <p className="text-xs text-slate-400 mt-1">
@@ -4963,7 +4996,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                           <button
                             type="button"
                             onClick={handleQuickSeedRecurringExpenses}
-                            className="px-3.5 py-1.5 bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-100 text-purple-700 dark:text-purple-300 text-xs font-bold rounded-xl border border-purple-200 dark:border-purple-800 cursor-pointer"
+                            className="px-3.5 py-1.5 bg-purple-50  hover:bg-purple-100 text-purple-700  text-xs font-bold rounded-xl border border-purple-200  cursor-pointer"
                           >
                             <Sparkles className="h-3.5 w-3.5 inline mr-1" />
                             {t("Load Standard Overhead Templates", "Nahrať vzorové šablóny", "Alapértelmezett sablonok betöltése")}
@@ -4996,25 +5029,25 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                       return (
                         <tr
                           key={rec.id}
-                          className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors group ${
-                            isPaused ? "opacity-60 bg-slate-50/30 dark:bg-slate-900/30" : ""
+                          className={`hover:bg-slate-50/80  transition-colors group ${
+                            isPaused ? "opacity-60 bg-slate-50/30 " : ""
                           }`}
                         >
                           {/* 1. Title & Description */}
                           <td className="py-3.5 px-4">
                             <div className="flex items-center gap-2">
-                              <span className="font-bold text-slate-900 dark:text-white text-sm">
+                              <span className="font-bold text-slate-900  text-sm">
                                 {rec.title}
                               </span>
                               {rec.type === "income" && (
-                                <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300">
+                                <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-100  text-emerald-700 ">
                                   {t("Income", "Príjem", "Bevétel")}
                                 </span>
                               )}
                             </div>
                             <div className="flex items-center gap-2 mt-0.5">
                               {rec.invoiceNumber && (
-                                <span className="font-mono text-[10px] px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold">
+                                <span className="font-mono text-[10px] px-1.5 py-0.2 rounded bg-slate-100  text-slate-600  font-semibold">
                                   {rec.invoiceNumber}
                                 </span>
                               )}
@@ -5029,10 +5062,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                           {/* 2. Cadence & Schedule Details */}
                           <td className="py-3.5 px-4">
                             <div className="flex items-center gap-1.5">
-                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-purple-50  text-purple-700  border border-purple-200 ">
                                 {rec.recurringFrequency || "monthly"}
                               </span>
-                              <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                              <span className="text-xs font-semibold text-slate-700 ">
                                 {cadenceText}
                               </span>
                             </div>
@@ -5061,8 +5094,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                     <span
                                       className={`text-[11px] ${
                                         idx === catBreadcrumbs.length - 1
-                                          ? "font-bold text-slate-800 dark:text-slate-200"
-                                          : "font-normal text-slate-500 dark:text-slate-400"
+                                          ? "font-bold text-slate-800 "
+                                          : "font-normal text-slate-500 "
                                       }`}
                                     >
                                       {c.name}
@@ -5083,7 +5116,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                               <button
                                 type="button"
                                 onClick={() => onOpenProject?.(rec.projectId!)}
-                                className="inline-flex items-center gap-1.5 px-2 py-1 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                                className="inline-flex items-center gap-1.5 px-2 py-1 bg-indigo-50  hover:bg-indigo-100 text-indigo-700  rounded-lg text-xs font-semibold transition-colors cursor-pointer"
                               >
                                 <Briefcase className="h-3.5 w-3.5 shrink-0" />
                                 <span className="truncate max-w-[120px]" title={pName || rec.projectId}>
@@ -5094,7 +5127,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                               <button
                                 type="button"
                                 onClick={() => onOpenClient?.(rec.clientId!)}
-                                className="inline-flex items-center gap-1.5 px-2 py-1 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                                className="inline-flex items-center gap-1.5 px-2 py-1 bg-emerald-50  hover:bg-emerald-100 text-emerald-700  rounded-lg text-xs font-semibold transition-colors cursor-pointer"
                               >
                                 <User className="h-3.5 w-3.5 shrink-0" />
                                 <span className="truncate max-w-[120px]" title={client?.name || rec.clientId}>
@@ -5111,7 +5144,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
                           {/* 5. Amount & Monthly Breakdown */}
                           <td className="py-3.5 px-4 text-right">
-                            <div className="font-black text-sm text-rose-600 dark:text-rose-400">
+                            <div className="font-black text-sm text-rose-600 ">
                               -{money(amount)}
                               {rec.recurringFrequency && rec.recurringFrequency !== "monthly" && (
                                 <span className="text-[10px] font-bold text-slate-400 ml-1">
@@ -5131,8 +5164,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                               onClick={() => handleToggleRecurringActive(rec.id)}
                               className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition-all cursor-pointer inline-flex items-center gap-1 border ${
                                 !isPaused
-                                  ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 shadow-2xs"
-                                  : "bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700"
+                                  ? "bg-emerald-50  text-emerald-700  border-emerald-200  shadow-2xs"
+                                  : "bg-slate-100  text-slate-500 border-slate-200 "
                               }`}
                               title={!isPaused ? t("Click to pause rule", "Kliknutím pozastavíte", "Kattintson a szüneteltetéshez") : t("Click to resume rule", "Kliknutím aktivujete", "Kattintson az aktiváláshoz")}
                             >
@@ -5147,7 +5180,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                               <button
                                 type="button"
                                 onClick={() => handleOpenEditModal(rec)}
-                                className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
+                                className="p-1.5 hover:bg-slate-100  rounded-lg text-slate-500 hover:text-slate-900  transition-colors cursor-pointer"
                                 title={t("Edit recurring expense", "Upraviť pravidlo", "Szerkesztés")}
                               >
                                 <Pencil className="h-3.5 w-3.5" />
@@ -5155,7 +5188,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                               <button
                                 type="button"
                                 onClick={() => handleDuplicateRecurring(rec)}
-                                className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
+                                className="p-1.5 hover:bg-slate-100  rounded-lg text-slate-500 hover:text-slate-900  transition-colors cursor-pointer"
                                 title={t("Duplicate rule", "Duplikovať pravidlo", "Másolás")}
                               >
                                 <Copy className="h-3.5 w-3.5" />
@@ -5163,7 +5196,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                               <button
                                 type="button"
                                 onClick={() => handleDeleteTransaction(rec.id)}
-                                className="p-1.5 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded-lg text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                                className="p-1.5 hover:bg-rose-50  rounded-lg text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
                                 title={t("Delete rule", "Vymazať pravidlo", "Törlés")}
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -5183,10 +5216,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
       {/* 8. TAB CONTENT 5: 3-LEVEL CATEGORY HIERARCHY TREE MANAGER */}
       {activeTab === "categories" && (
-        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-6 space-y-6 animate-in fade-in duration-200">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
+        <div className="bg-white  rounded-3xl border border-slate-200/80  shadow-sm p-6 space-y-6 animate-in fade-in duration-200">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100  pb-4">
             <div>
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <h3 className="text-sm font-bold text-slate-900  flex items-center gap-2">
                 <Layers className="h-4 w-4 text-indigo-500" />
                 {t("Movement Categories", "Kategórie finančných pohybov", "Mozgási kategóriák")}
               </h3>
@@ -5196,11 +5229,11 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             </div>
 
             {/* Incomes vs Expenses tree switcher */}
-            <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl">
+            <div className="flex items-center gap-2 bg-slate-100  p-1 rounded-2xl">
               <button
                 onClick={() => setCatTreeType("expense")}
                 className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  catTreeType === "expense" ? "bg-white dark:bg-slate-700 text-rose-600 shadow-sm" : "text-slate-500"
+                  catTreeType === "expense" ? "bg-white  text-rose-600 shadow-sm" : "text-slate-500"
                 }`}
               >
                 {t("Expense Categories", "Kategórie výdavkov", "Kiadási kategóriák")}
@@ -5208,7 +5241,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               <button
                 onClick={() => setCatTreeType("income")}
                 className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  catTreeType === "income" ? "bg-white dark:bg-slate-700 text-emerald-600 shadow-sm" : "text-slate-500"
+                  catTreeType === "income" ? "bg-white  text-emerald-600 shadow-sm" : "text-slate-500"
                 }`}
               >
                 {t("Income Categories", "Kategórie príjmov", "Bevételi kategóriák")}
@@ -5217,7 +5250,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           </div>
 
           {/* Quick Add Category Form */}
-          <form onSubmit={handleCreateCategory} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 flex flex-wrap items-end gap-3">
+          <form onSubmit={handleCreateCategory} className="p-4 rounded-2xl bg-slate-50  border border-slate-200  flex flex-wrap items-end gap-3">
             <div className="flex-1 min-w-[200px]">
               <label className="text-[11px] font-bold text-slate-500 block mb-1">
                 {t("Category Name", "Názov kategórie", "Kategória neve")}
@@ -5227,7 +5260,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 value={newCatName}
                 onChange={(e) => setNewCatName(e.target.value)}
                 placeholder={t("e.g. Meta Ads, Truck Transport, LAM 5+...", "napr. Meta Ads, Preprava, LAM 5+...", "pl. Google Ads, Szállítás...")}
-                className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none"
+                className="w-full px-3 py-2 bg-white  border border-slate-200  rounded-xl text-xs text-slate-800  focus:outline-none"
               />
             </div>
 
@@ -5238,7 +5271,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               <select
                 value={newCatParentId}
                 onChange={(e) => setNewCatParentId(e.target.value)}
-                className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-none"
+                className="w-full px-3 py-2 bg-white  border border-slate-200  rounded-xl text-xs font-semibold text-slate-700  focus:outline-none"
               >
                 <option value="">{t("★ None (Create as Level 1 Root)", "★ Žiadna (Vytvoriť ako Hlavnú L1)", "★ Nincs (Fő L1 kategória)")}</option>
                 {financialCategories
@@ -5257,7 +5290,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 type="color"
                 value={newCatColor}
                 onChange={(e) => setNewCatColor(e.target.value)}
-                className="h-9 w-12 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer p-0.5"
+                className="h-9 w-12 rounded-xl bg-white  border border-slate-200  cursor-pointer p-0.5"
               />
             </div>
 
@@ -5265,20 +5298,20 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               type="submit"
               className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl cursor-pointer shadow-sm"
             >
-              {t("+ Add Category", "+ Pridať kategóriu", "+ Kategória hozzáadása")}
+              {t("Add Category", "Pridať kategóriu", "Kategória hozzáadása")}
             </button>
           </form>
 
           {/* Tree Rendering */}
           <div className="space-y-3">
             {(catTreeType === "expense" ? categoryTree.expenseTree : categoryTree.incomeTree).map((l1: any) => (
-              <div key={l1.id} className="border border-slate-200 dark:border-slate-700/80 rounded-2xl overflow-hidden bg-white dark:bg-slate-900">
+              <div key={l1.id} className="border border-slate-200  rounded-2xl overflow-hidden bg-white ">
                 {/* Level 1 Header */}
-                <div className="p-3.5 bg-slate-50/80 dark:bg-slate-800/60 flex items-center justify-between border-b border-slate-100 dark:border-slate-800">
+                <div className="p-3.5 bg-slate-50/80  flex items-center justify-between border-b border-slate-100 ">
                   <div className="flex items-center gap-2.5">
                     <span className="h-3.5 w-3.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: l1.color }} />
-                    <span className="font-bold text-xs text-slate-900 dark:text-white uppercase tracking-wider">{l1.name}</span>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300">Level 1</span>
+                    <span className="font-bold text-xs text-slate-900  uppercase tracking-wider">{l1.name}</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-200  text-slate-600 ">Level 1</span>
                   </div>
                   <button
                     onClick={() => handleDeleteCategory(l1.id)}
@@ -5291,14 +5324,14 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
                 {/* Level 2 Children */}
                 {l1.children && l1.children.length > 0 && (
-                  <div className="p-3 space-y-2 bg-slate-50/30 dark:bg-slate-900">
+                  <div className="p-3 space-y-2 bg-slate-50/30 ">
                     {l1.children.map((l2: any) => (
-                      <div key={l2.id} className="pl-4 border-l-2 border-slate-200 dark:border-slate-700 space-y-2">
-                        <div className="flex items-center justify-between p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700">
+                      <div key={l2.id} className="pl-4 border-l-2 border-slate-200  space-y-2">
+                        <div className="flex items-center justify-between p-2 rounded-xl bg-white  border border-slate-100 ">
                           <div className="flex items-center gap-2">
                             <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: l2.color || l1.color }} />
-                            <span className="font-semibold text-xs text-slate-800 dark:text-slate-200">{l2.name}</span>
-                            <span className="px-1.5 py-0.2 rounded text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-500">Level 2</span>
+                            <span className="font-semibold text-xs text-slate-800 ">{l2.name}</span>
+                            <span className="px-1.5 py-0.2 rounded text-[10px] bg-slate-100  text-slate-500">Level 2</span>
                           </div>
                           <button
                             onClick={() => handleDeleteCategory(l2.id)}
@@ -5312,10 +5345,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                         {l2.children && l2.children.length > 0 && (
                           <div className="pl-6 space-y-1">
                             {l2.children.map((l3: any) => (
-                              <div key={l3.id} className="flex items-center justify-between p-1.5 px-3 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-700 text-xs">
+                              <div key={l3.id} className="flex items-center justify-between p-1.5 px-3 rounded-lg bg-slate-50  border border-slate-100  text-xs">
                                 <div className="flex items-center gap-2">
                                   <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: l3.color || l2.color }} />
-                                  <span className="text-slate-700 dark:text-slate-300 font-medium">{l3.name}</span>
+                                  <span className="text-slate-700  font-medium">{l3.name}</span>
                                   <span className="text-[10px] text-slate-400">(Level 3)</span>
                                 </div>
                                 <button
@@ -5351,31 +5384,31 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
           {/* Right Slideout Drawer Panel with genuine smooth slide physics */}
           <div
-            className={`relative z-10 w-full max-w-xl bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col h-full overflow-hidden transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+            className={`relative z-10 w-full max-w-xl bg-white  shadow-2xl border-l border-slate-200  flex flex-col h-full overflow-hidden transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
               isClosingModal ? "translate-x-full" : "translate-x-0"
             }`}
           >
             {/* Drawer Header (Fixed at top) */}
-            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/80 dark:bg-slate-800/40 shrink-0">
+            <div className="px-6 py-4 border-b border-slate-100  flex items-center justify-between bg-slate-50/80  shrink-0">
               <div className="flex items-center gap-3">
                 <div
                   className={`p-2.5 rounded-2xl ${
                     formType === "income"
-                      ? "bg-emerald-500/10 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400"
-                      : "bg-rose-500/10 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400"
+                      ? "bg-emerald-500/10 text-emerald-600  "
+                      : "bg-rose-500/10 text-rose-600  "
                   }`}
                 >
                   {formType === "income" ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                    <h3 className="text-base font-bold text-slate-900 ">
                       {formType === "income"
                         ? t("Edit Income / Invoice", "Upraviť príjem / faktúru", "Bevétel / számla szerkesztése")
                         : t("Edit Expense", "Upraviť výdavok", "Kiadás szerkesztése")}
                     </h3>
                     {formIsRecurring && (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-purple-100  text-purple-700  border border-purple-200 ">
                         {t("Recurring", "Pravidelné", "Ismétlődő")}
                       </span>
                     )}
@@ -5393,7 +5426,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               <button
                 type="button"
                 onClick={handleCloseModal}
-                className="p-2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                className="p-2 text-slate-400 hover:text-slate-700  hover:bg-slate-100  rounded-xl transition-colors cursor-pointer"
                 title={t("Close panel", "Zavrieť panel", "Bezárás")}
               >
                 <X className="h-5 w-5" />
@@ -5406,11 +5439,11 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             </form>
 
             {/* Sticky Actions Footer */}
-            <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/40 flex items-center justify-between gap-3 shrink-0">
+            <div className="px-6 py-4 border-t border-slate-100  bg-slate-50/80  flex items-center justify-between gap-3 shrink-0">
               <button
                 type="button"
                 onClick={handleCloseModal}
-                className="px-4 py-2.5 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-200/70 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                className="px-4 py-2.5 text-xs font-bold text-slate-600  hover:bg-slate-200/70  rounded-xl transition-colors cursor-pointer"
               >
                 {t("Cancel", "Zrušiť", "Mégsem")}
               </button>
@@ -5443,31 +5476,31 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
           {/* Center Modal Card */}
           <div
-            className={`relative z-10 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden transition-all duration-200 ${
+            className={`relative z-10 bg-white  rounded-3xl border border-slate-200  shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden transition-all duration-200 ${
               isClosingModal ? "scale-95 opacity-0" : "scale-100 opacity-100"
             }`}
           >
             {/* Header */}
-            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/80 dark:bg-slate-800/40 shrink-0">
+            <div className="px-6 py-4 border-b border-slate-100  flex items-center justify-between bg-slate-50/80  shrink-0">
               <div className="flex items-center gap-3">
                 <div
                   className={`p-2.5 rounded-2xl ${
                     formType === "income"
-                      ? "bg-emerald-500/10 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400"
-                      : "bg-rose-500/10 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400"
+                      ? "bg-emerald-500/10 text-emerald-600  "
+                      : "bg-rose-500/10 text-rose-600  "
                   }`}
                 >
                   {formType === "income" ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                    <h3 className="text-base font-bold text-slate-900 ">
                       {formType === "income"
                         ? t("Add New Income / Invoice", "Pridať nový príjem / faktúru", "Új bevétel / számla hozzáadása")
                         : t("Add New Expense", "Pridať nový výdavok", "Új kiadás hozzáadása")}
                     </h3>
                     {formIsRecurring && (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-purple-100  text-purple-700  border border-purple-200 ">
                         {t("Recurring", "Pravidelné", "Ismétlődő")}
                       </span>
                     )}
@@ -5485,7 +5518,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               <button
                 type="button"
                 onClick={handleCloseModal}
-                className="p-2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                className="p-2 text-slate-400 hover:text-slate-700  hover:bg-slate-100  rounded-xl transition-colors cursor-pointer"
                 title={t("Close", "Zavrieť", "Bezárás")}
               >
                 <X className="h-5 w-5" />
@@ -5498,11 +5531,11 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             </form>
 
             {/* Actions Footer */}
-            <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/40 flex items-center justify-between gap-3 shrink-0">
+            <div className="px-6 py-4 border-t border-slate-100  bg-slate-50/80  flex items-center justify-between gap-3 shrink-0">
               <button
                 type="button"
                 onClick={handleCloseModal}
-                className="px-4 py-2.5 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-200/70 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                className="px-4 py-2.5 text-xs font-bold text-slate-600  hover:bg-slate-200/70  rounded-xl transition-colors cursor-pointer"
               >
                 {t("Cancel", "Zrušiť", "Mégsem")}
               </button>
@@ -5527,9 +5560,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       {/* 10. CATEGORY TREE MANAGEMENT MODAL */}
       {isCatModalOpen && (
         <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl max-w-lg w-full p-6 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+          <div className="bg-white  rounded-3xl border border-slate-200  shadow-2xl max-w-lg w-full p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100  pb-3">
+              <h3 className="text-sm font-bold text-slate-900  flex items-center gap-2">
                 <Layers className="h-4 w-4 text-indigo-500" />
                 {t("Manage 3-Level Categories", "Správa kategórií (3 úrovne)", "3 szintű kategóriák")}
               </h3>

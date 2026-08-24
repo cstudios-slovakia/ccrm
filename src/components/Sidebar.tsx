@@ -259,16 +259,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
   }, [roles, currentUser]);
 
   const resolvedLayout = React.useMemo(() => {
-    if (canEditNav && Array.isArray(userMetadata?.navLayout)) {
+    if (canEditNav && Array.isArray(userMetadata?.navLayout) && userMetadata.navLayout.length > 0) {
       const stored: string[] = userMetadata.navLayout;
       return stored;
     }
-    if (userRole?.defaultNavLayout && Array.isArray(userRole.defaultNavLayout)) {
+    if (userRole?.defaultNavLayout && Array.isArray(userRole.defaultNavLayout) && userRole.defaultNavLayout.length > 0) {
       return userRole.defaultNavLayout;
     }
-    // Freshly installed: start with nothing on the sidebar
-    return [];
-  }, [canEditNav, userMetadata, userRole]);
+    // Default behavior: show all default items on the sidebar
+    return defaultSystemLayout;
+  }, [canEditNav, userMetadata, userRole, defaultSystemLayout]);
 
   // Initialize active/hidden items when edit mode starts
   React.useEffect(() => {
@@ -482,24 +482,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button
             type="button"
             onClick={() => setIsStartMenuOpen(true)}
-            className="flex items-center gap-3 p-1.5 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800/80 active:scale-95 transition-all cursor-pointer group text-left w-full focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+            className={cn(
+              "flex items-center gap-3 p-2 rounded-2xl bg-slate-50 border border-slate-200/90 shadow-sm hover:border-slate-300 hover:bg-slate-100 active:scale-[0.98] transition-all cursor-pointer group mx-auto focus:outline-none focus:ring-2 focus:ring-indigo-500/30",
+              isCollapsed ? "justify-center flex-col gap-1.5 w-[85%]" : "text-left w-[90%]"
+            )}
             title={t("Start Menu (All Modules)", "Štart menu (Všetky moduly)", "Start menü (Összes modul)")}
           >
-            {/* 3 Dots Container with small START label directly underneath */}
-            <div className="flex flex-col items-center justify-center gap-1 py-1.5 px-2 rounded-2xl bg-slate-50 dark:bg-slate-850 border border-slate-200/90 dark:border-slate-700 shadow-2xs group-hover:border-indigo-400 group-hover:shadow-md group-hover:bg-indigo-50/50 dark:group-hover:bg-indigo-950/40 transition-all shrink-0">
+            {/* 3 Dots with START label */}
+            <div className={cn(
+              "flex items-center justify-center",
+              isCollapsed ? "flex-col gap-1" : "gap-1 flex-col shrink-0"
+            )}>
               <div className="flex items-center justify-center gap-1">
-                <span className="h-2 w-2 rounded-full bg-orange-500 group-hover:scale-125 transition-transform" />
-                <span className="h-2 w-2 rounded-full bg-emerald-500 group-hover:scale-125 transition-transform" />
-                <span className="h-2 w-2 rounded-full bg-indigo-500 group-hover:scale-125 transition-transform" />
+                <span className="h-2 w-2 rounded-full bg-orange-500 transition-transform" />
+                <span className="h-2 w-2 rounded-full bg-emerald-500 transition-transform" />
+                <span className="h-2 w-2 rounded-full bg-indigo-500 transition-transform" />
               </div>
-              <span className="text-[7.5px] font-black tracking-widest text-slate-500 dark:text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors uppercase leading-none">
+              <span className="text-[7.5px] font-black tracking-widest text-slate-500 group-hover:text-slate-700 transition-colors uppercase leading-none">
                 START
               </span>
             </div>
 
             {!isCollapsed && (
               <div className="flex flex-col animate-in fade-in duration-300 min-w-0 flex-1">
-                <span className="font-heading font-bold text-sm leading-snug bg-gradient-to-r from-slate-800 to-slate-950 dark:from-slate-100 dark:to-white bg-clip-text text-transparent truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                <span className="font-heading font-bold text-sm leading-snug bg-gradient-to-r from-slate-800 to-slate-950 bg-clip-text text-transparent truncate group-hover:text-indigo-600 transition-colors">
                   {systemName}
                 </span>
                 <span className="text-[10px] text-slate-400 tracking-wider font-semibold uppercase mt-0.5 truncate">
