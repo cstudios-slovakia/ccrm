@@ -6,7 +6,7 @@ import {
   Eye, Pencil, Minus, GripVertical, ArrowLeft, Activity, Clock, CheckSquare,
   Menu, ArrowUp, FolderOpen, Search
 } from "lucide-react";
-import type { UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, ProjectType } from "../types";
+import type { UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, ProjectType, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate } from "../types";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { ProjectSettings } from "./ProjectSettings";
@@ -138,6 +138,13 @@ interface SettingsViewProps {
 
   projectTypes: ProjectType[];
   setProjectTypes: React.Dispatch<React.SetStateAction<ProjectType[]>>;
+
+  companyBillingSettings?: CompanyBillingSettings | null;
+  setCompanyBillingSettings?: React.Dispatch<React.SetStateAction<CompanyBillingSettings | null>>;
+  invoicingIntegrations?: ExternalInvoicingConfig | null;
+  setInvoicingIntegrations?: React.Dispatch<React.SetStateAction<ExternalInvoicingConfig | null>>;
+  aiCustomTemplates?: AiCustomTemplate[];
+  setAiCustomTemplates?: React.Dispatch<React.SetStateAction<AiCustomTemplate[]>>;
 }
 
 // Extract all valid Lucide icon names dynamically for search
@@ -154,6 +161,7 @@ const ALL_LUCIDE_ICONS = Object.keys(Icons).filter(key => {
 // back to Branding every time a background sync produced a new `roles` array.
 const SETTINGS_TABS = [
   { id: "branding", permKey: "general_config" },
+  { id: "invoicing", permKey: "general_config" },
   { id: "projects", permKey: "general_config" },
   { id: "unified", permKey: "general_config" },
   { id: "sources", permKey: "traffic_sources" },
@@ -214,12 +222,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setUnifiedEntries,
   unifiedEntriesData = {},
   initialSubTab = "branding",
-  settingsAction = null,
-  settingsActionId = null,
   setLeads,
   setTasks,
   projectTypes,
-  setProjectTypes
+  setProjectTypes,
+  companyBillingSettings,
+  setCompanyBillingSettings,
+  invoicingIntegrations,
+  setInvoicingIntegrations,
+  aiCustomTemplates = [],
+  setAiCustomTemplates
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
 
@@ -507,7 +519,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // Role creation states
   const [newRoleName, setNewRoleName] = React.useState("");
 
-  const [activeSubTab, setActiveSubTab] = React.useState<"branding" | "managers" | "rbac" | "states" | "sources" | "danger" | "ads" | "social" | "api" | "email" | "ai" | "unified" | "errors" | "projects">((initialSubTab as any) || "branding");
+  const [activeSubTab, setActiveSubTab] = React.useState<"branding" | "invoicing" | "managers" | "rbac" | "states" | "sources" | "danger" | "ads" | "social" | "api" | "email" | "ai" | "unified" | "errors" | "projects">((initialSubTab as any) || "branding");
 
   // Zernio Social Media Integration State
   const [zernioApiKey, setZernioApiKey] = React.useState<string>(integrationsConfig?.zernioApiKey || "");
@@ -731,6 +743,202 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       }
     } catch (e) {
       console.error("Failed to clear error logs", e);
+    }
+  };
+
+  // Invoicing & Company Billing Settings State
+  const [billingForm, setBillingForm] = React.useState<CompanyBillingSettings>({
+    companyName: companyBillingSettings?.companyName || "SIGNUM Slovakia s.r.o.",
+    companySubtitle: companyBillingSettings?.companySubtitle || "HYDROIZOLÁCIE A PLOCHÉ STRECHY",
+    companyLogoUrl: companyBillingSettings?.companyLogoUrl || "",
+    street: companyBillingSettings?.street || "Gradus Residence, ul. Biskupa Kondého 179/4A",
+    city: companyBillingSettings?.city || "Dunajská Streda",
+    postalCode: companyBillingSettings?.postalCode || "929 01",
+    country: companyBillingSettings?.country || "Slovakia",
+    companyId: companyBillingSettings?.companyId || "44 282 516",
+    taxId: companyBillingSettings?.taxId || "2022 653 226",
+    vatId: companyBillingSettings?.vatId || "SK 2022 653 226",
+    email: companyBillingSettings?.email || "teleky@signumslovakia.sk",
+    phone: companyBillingSettings?.phone || "+421 911 742 473",
+    phoneSecondary: companyBillingSettings?.phoneSecondary || "+421 905 778 710",
+    website: companyBillingSettings?.website || "www.signumslovakia.sk",
+    iban: companyBillingSettings?.iban || "",
+    swift: companyBillingSettings?.swift || "",
+    bankName: companyBillingSettings?.bankName || "",
+    defaultPaymentDueDays: companyBillingSettings?.defaultPaymentDueDays || 14,
+    defaultVatRate: companyBillingSettings?.defaultVatRate || 20,
+    defaultWarrantyText: companyBillingSettings?.defaultWarrantyText || "10 rokov",
+    defaultDurationText: companyBillingSettings?.defaultDurationText || "2–3 dni",
+    defaultNextSteps: companyBillingSettings?.defaultNextSteps || "Aby sme vám vedeli pripraviť finálnu záväznú cenovú ponuku, radi by sme k vám poslali nášho technika na bezplatnú obhliadku a presné zameranie. Stačí nám napísať alebo zavolať a dohodneme si spolu vyhovujúci termín.",
+    defaultSocialProof: companyBillingSettings?.defaultSocialProof || "Amazon · Heineken · FedEx · JYSK · Alza · Prologis · Goodman Group · Schindler · FC DAC 1904 Dunajská Streda",
+    defaultUspCards: companyBillingSettings?.defaultUspCards || [
+      { title: "18 rokov skúseností", subtitle: "Viac ako 1 000 000 m² zrealizovaných striech – zvládneme aj náročné detaily, kde iní improvizujú." },
+      { title: "Certifikované materiály", subtitle: "Výhradne certifikované systémy a presné dodržiavanie postupov výrobcu (Sika, Rheinzink, Rockwool a i.)." },
+      { title: "Žiadne zálohy vopred", subtitle: "Platíte až po úspešnom dokončení práce – riziko preberáme my, nie vy." },
+      { title: "10-ročná záruka", subtitle: "Istota, ktorú menšie alebo začínajúce firmy jednoducho nemôžu ponúknuť." }
+    ]
+  });
+
+  React.useEffect(() => {
+    if (companyBillingSettings) {
+      setBillingForm(prev => ({ ...prev, ...companyBillingSettings }));
+    }
+  }, [companyBillingSettings]);
+
+  // External Invoicing Integrations State
+  const [extInvoicingForm, setExtInvoicingForm] = React.useState<ExternalInvoicingConfig>({
+    superfaktura: {
+      enabled: invoicingIntegrations?.superfaktura?.enabled || false,
+      email: invoicingIntegrations?.superfaktura?.email || "",
+      apiKey: invoicingIntegrations?.superfaktura?.apiKey || "",
+      companyId: invoicingIntegrations?.superfaktura?.companyId || "",
+      sandbox: invoicingIntegrations?.superfaktura?.sandbox || false
+    },
+    idoklad: {
+      enabled: invoicingIntegrations?.idoklad?.enabled || false,
+      clientId: invoicingIntegrations?.idoklad?.clientId || "",
+      clientSecret: invoicingIntegrations?.idoklad?.clientSecret || "",
+      sandbox: invoicingIntegrations?.idoklad?.sandbox || false
+    }
+  });
+
+  React.useEffect(() => {
+    if (invoicingIntegrations) {
+      setExtInvoicingForm(invoicingIntegrations);
+    }
+  }, [invoicingIntegrations]);
+
+  const [testingSf, setTestingSf] = React.useState(false);
+  const [sfStatus, setSfStatus] = React.useState<{ success: boolean; message: string } | null>(null);
+  const [testingIdk, setTestingIdk] = React.useState(false);
+  const [idkStatus, setIdkStatus] = React.useState<{ success: boolean; message: string } | null>(null);
+
+  const [isUploadingLogo, setIsUploadingLogo] = React.useState(false);
+  const [isUploadingPdf, setIsUploadingPdf] = React.useState(false);
+  const [pdfUploadStatus, setPdfUploadStatus] = React.useState<string | null>(null);
+
+  const handleSaveBillingSettings = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (setCompanyBillingSettings) {
+      setCompanyBillingSettings(billingForm);
+    }
+    if (setInvoicingIntegrations) {
+      setInvoicingIntegrations(extInvoicingForm);
+    }
+    (window as any).showToast(t("Invoicing settings saved successfully!", "Fakturačné nastavenia boli úspešne uložené!", "A számlázási beállítások sikeresen elmentve!"));
+  };
+
+  const handleUploadLogo = async (file: File) => {
+    setIsUploadingLogo(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("eventId", "company-logo");
+      const res = await fetch("/upload.php", {
+        method: "POST",
+        body: formData
+      });
+      const data = await res.json();
+      if (data.success && data.filePath) {
+        setBillingForm(prev => ({ ...prev, companyLogoUrl: data.filePath }));
+        (window as any).showToast(t("Company logo uploaded successfully!", "Firemné logo bolo úspešne nahrané!", "Céglogó sikeresen feltöltve!"));
+      } else {
+        (window as any).showToast(data.message || t("Upload failed", "Nahrávanie zlyhalo", "Feltöltés sikertelen"), "error");
+      }
+    } catch (err: any) {
+      (window as any).showToast("Chyba pri nahrávaní loga: " + err.message, "error");
+    } finally {
+      setIsUploadingLogo(false);
+    }
+  };
+
+  const handleTestSuperfaktura = async () => {
+    setTestingSf(true);
+    setSfStatus(null);
+    try {
+      const res = await fetch("/api/superfaktura.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "test_connection",
+          email: extInvoicingForm.superfaktura?.email,
+          apiKey: extInvoicingForm.superfaktura?.apiKey,
+          companyId: extInvoicingForm.superfaktura?.companyId,
+          sandbox: extInvoicingForm.superfaktura?.sandbox
+        })
+      });
+      const data = await res.json();
+      setSfStatus(data);
+    } catch (err: any) {
+      setSfStatus({ success: false, message: "Sieťová chyba: " + err.message });
+    } finally {
+      setTestingSf(false);
+    }
+  };
+
+  const handleTestIdoklad = async () => {
+    setTestingIdk(true);
+    setIdkStatus(null);
+    try {
+      const res = await fetch("/api/idoklad.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "test_connection",
+          clientId: extInvoicingForm.idoklad?.clientId,
+          clientSecret: extInvoicingForm.idoklad?.clientSecret,
+          sandbox: extInvoicingForm.idoklad?.sandbox
+        })
+      });
+      const data = await res.json();
+      setIdkStatus(data);
+    } catch (err: any) {
+      setIdkStatus({ success: false, message: "Sieťová chyba: " + err.message });
+    } finally {
+      setTestingIdk(false);
+    }
+  };
+
+  const handleUploadAndGenerateAiTemplate = async (file: File) => {
+    setIsUploadingPdf(true);
+    setPdfUploadStatus(t("Uploading and analyzing PDF with AI...", "Nahrávam a analyzujem PDF pomocou AI...", "PDF feltöltése és elemzése AI-val..."));
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("eventId", "custom-template-pdf");
+      const uploadRes = await fetch("/upload.php", {
+        method: "POST",
+        body: formData
+      });
+      const uploadData = await uploadRes.json();
+      if (!uploadData.success) {
+        throw new Error(uploadData.message || "Upload failed");
+      }
+
+      const genRes = await fetch("/api/generate_pdf_template.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pdfName: file.name,
+          pdfUrl: uploadData.filePath,
+          pdfText: uploadData.extractedText || ""
+        })
+      });
+      const genData = await genRes.json();
+      if (genData.success && genData.template) {
+        if (setAiCustomTemplates) {
+          setAiCustomTemplates(prev => [genData.template, ...prev]);
+        }
+        setPdfUploadStatus(null);
+        (window as any).showToast(t("AI Custom Template successfully generated and saved!", "Vlastná AI šablóna bola úspešne vygenerovaná a uložená!", "Egyedi AI sablon sikeresen létrehozva!"));
+      } else {
+        throw new Error(genData.message || "Template generation failed");
+      }
+    } catch (err: any) {
+      setPdfUploadStatus(null);
+      (window as any).showToast("Chyba pri generovaní AI šablóny: " + err.message, "error");
+    } finally {
+      setIsUploadingPdf(false);
     }
   };
 
@@ -2360,16 +2568,564 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </>
         )}
 
-        {/* TAB: Projects Configuration */}
-        {activeSubTab === "projects" && getPermission("general_config") !== "nothing" && (
+        {/* TAB: Invoicing & Billing Configuration */}
+        {activeSubTab === "invoicing" && getPermission("general_config") !== "nothing" && (
           <div className="lg:col-span-12 space-y-6">
             {renderReadOnlyBanner("general_config")}
-            <ProjectSettings
-              projectTypes={projectTypes}
-              setProjectTypes={setProjectTypes}
-              userLanguage={userLanguage}
-              canEdit={getPermission("general_config") === "edit"}
-            />
+            <div className="glass-panel p-6 rounded-3xl space-y-8 border border-white/60 bg-white/95 shadow-glass">
+              
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-200 pb-4">
+                <div>
+                  <h3 className="text-sm font-heading font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                    <FileText className="h-4.5 w-4.5 text-indigo-600" />
+                    {t("Invoicing, Billing & PDF Templates", "Fakturácia, firemné údaje a PDF šablóny", "Számlázás, cégadatok és PDF sablonok")}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">
+                    {t("Configure your company billing identity, default warranty terms, SuperFaktura/iDoklad APIs, and AI custom templates.", "Nastavte firemné identifikačné údaje, predvolené texty záruk, SuperFaktúru/iDoklad a AI šablóny.", "Állítsa be a cég számlázási adatait, alapértelmezett garanciális feltételeit és AI sablonjait.")}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={getPermission("general_config") === "view"}
+                  onClick={() => handleSaveBillingSettings()}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer transition-all disabled:opacity-50"
+                >
+                  <Save className="h-4 w-4" />
+                  {t("Save Invoicing Settings", "Uložiť fakturačné nastavenia", "Számlázási beállítások mentése")}
+                </button>
+              </div>
+
+              {/* SECTION 1: Company Logo & Identity */}
+              <div className="space-y-4">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                  <Building2 className="h-4 w-4 text-indigo-600" />
+                  1. {t("Company Identity & Logo", "Firemná identita a logo", "Cégidentitás és logó")}
+                </h4>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+                  {/* Logo Upload Box */}
+                  <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl flex flex-col items-center justify-center text-center space-y-3">
+                    <div className="text-[11px] font-bold text-slate-600 uppercase">
+                      {t("Company Logo (PDF & Quotes)", "Firemné logo na dokladoch", "Céglogó")}
+                    </div>
+                    {billingForm.companyLogoUrl ? (
+                      <div className="space-y-2 flex flex-col items-center">
+                        <img
+                          src={billingForm.companyLogoUrl}
+                          alt="Company Logo"
+                          className="h-16 w-auto max-w-[200px] object-contain bg-white p-2 rounded-xl border border-slate-200 shadow-sm"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setBillingForm(prev => ({ ...prev, companyLogoUrl: "" }))}
+                          className="text-xs text-rose-600 font-bold hover:underline cursor-pointer"
+                        >
+                          {t("Remove logo", "Odstrániť logo", "Logó törlése")}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="h-16 w-32 border-2 border-dashed border-slate-300 rounded-xl flex items-center justify-center text-slate-400 text-xs font-semibold">
+                        {t("No logo", "Bez loga", "Nincs logó")}
+                      </div>
+                    )}
+
+                    <label className="px-4 py-2 bg-white border border-slate-300 hover:border-indigo-500 rounded-xl text-xs font-bold text-slate-700 shadow-sm cursor-pointer transition-all flex items-center gap-1.5">
+                      <Plus className="h-3.5 w-3.5" />
+                      {isUploadingLogo ? t("Uploading...", "Nahrávam...", "Feltöltés...") : t("Upload Logo (PNG / SVG / JPG)", "Nahrať logo (PNG/SVG/JPG)", "Logó feltöltése")}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleUploadLogo(file);
+                        }}
+                      />
+                    </label>
+                  </div>
+
+                  {/* Company Name & Subtitle */}
+                  <div className="md:col-span-2 space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                          {t("Company Name", "Obchodné meno spoločnosti", "Cégnév")}
+                        </label>
+                        <input
+                          type="text"
+                          value={billingForm.companyName}
+                          onChange={e => setBillingForm(prev => ({ ...prev, companyName: e.target.value }))}
+                          className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                          {t("Subtitle / Slogan", "Podtitul / Špecializácia", "Szlogen")}
+                        </label>
+                        <input
+                          type="text"
+                          value={billingForm.companySubtitle || ""}
+                          onChange={e => setBillingForm(prev => ({ ...prev, companySubtitle: e.target.value }))}
+                          className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">IČO</label>
+                        <input
+                          type="text"
+                          value={billingForm.companyId || ""}
+                          onChange={e => setBillingForm(prev => ({ ...prev, companyId: e.target.value }))}
+                          className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-semibold focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">DIČ</label>
+                        <input
+                          type="text"
+                          value={billingForm.taxId || ""}
+                          onChange={e => setBillingForm(prev => ({ ...prev, taxId: e.target.value }))}
+                          className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-semibold focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">IČ DPH</label>
+                        <input
+                          type="text"
+                          value={billingForm.vatId || ""}
+                          onChange={e => setBillingForm(prev => ({ ...prev, vatId: e.target.value }))}
+                          className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-semibold focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 2: Address & Contact Details */}
+              <div className="space-y-4 pt-4 border-t border-slate-150">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                  <Globe className="h-4 w-4 text-indigo-600" />
+                  2. {t("Billing Address & Contacts", "Sídlo spoločnosti a kontakty", "Székhely és elérhetőségek")}
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  <div className="sm:col-span-2">
+                    <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                      {t("Street & Number", "Ulica a číslo", "Utca és házszám")}
+                    </label>
+                    <input
+                      type="text"
+                      value={billingForm.street || ""}
+                      onChange={e => setBillingForm(prev => ({ ...prev, street: e.target.value }))}
+                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                      {t("City", "Mesto", "Város")}
+                    </label>
+                    <input
+                      type="text"
+                      value={billingForm.city || ""}
+                      onChange={e => setBillingForm(prev => ({ ...prev, city: e.target.value }))}
+                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                      {t("Postal Code", "PSČ", "Irányítószám")}
+                    </label>
+                    <input
+                      type="text"
+                      value={billingForm.postalCode || ""}
+                      onChange={e => setBillingForm(prev => ({ ...prev, postalCode: e.target.value }))}
+                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                      {t("Email", "Fakturačný e-mail", "E-mail")}
+                    </label>
+                    <input
+                      type="email"
+                      value={billingForm.email || ""}
+                      onChange={e => setBillingForm(prev => ({ ...prev, email: e.target.value }))}
+                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                      {t("Phone", "Telefónne číslo", "Telefonszám")}
+                    </label>
+                    <input
+                      type="text"
+                      value={billingForm.phone || ""}
+                      onChange={e => setBillingForm(prev => ({ ...prev, phone: e.target.value }))}
+                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                      {t("Secondary Phone", "Záložný telefón", "Másodlagos telefon")}
+                    </label>
+                    <input
+                      type="text"
+                      value={billingForm.phoneSecondary || ""}
+                      onChange={e => setBillingForm(prev => ({ ...prev, phoneSecondary: e.target.value }))}
+                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                      {t("Website", "Webová stránka", "Weboldal")}
+                    </label>
+                    <input
+                      type="text"
+                      value={billingForm.website || ""}
+                      onChange={e => setBillingForm(prev => ({ ...prev, website: e.target.value }))}
+                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 3: Banking & Payment Terms */}
+              <div className="space-y-4 pt-4 border-t border-slate-150">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                  <Database className="h-4 w-4 text-indigo-600" />
+                  3. {t("Bank Accounts & Default Terms", "Bankové spojenie a predvolené podmienky", "Bankszámla és alapértelmezett feltételek")}
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">IBAN</label>
+                    <input
+                      type="text"
+                      value={billingForm.iban || ""}
+                      onChange={e => setBillingForm(prev => ({ ...prev, iban: e.target.value }))}
+                      placeholder="SK00 0000 0000 0000 0000 0000"
+                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-semibold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">SWIFT / BIC</label>
+                    <input
+                      type="text"
+                      value={billingForm.swift || ""}
+                      onChange={e => setBillingForm(prev => ({ ...prev, swift: e.target.value }))}
+                      placeholder="TATRSKBX"
+                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                      {t("Default Payment Due (Days)", "Predvolená splatnosť (Dni)", "Fizetési határidő (napok)")}
+                    </label>
+                    <input
+                      type="number"
+                      value={billingForm.defaultPaymentDueDays || 14}
+                      onChange={e => setBillingForm(prev => ({ ...prev, defaultPaymentDueDays: parseInt(e.target.value) || 14 }))}
+                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                      {t("Social Proof / Reference Clients", "Referenční klienti v pätičke ponuky", "Referenciák")}
+                    </label>
+                    <input
+                      type="text"
+                      value={billingForm.defaultSocialProof || ""}
+                      onChange={e => setBillingForm(prev => ({ ...prev, defaultSocialProof: e.target.value }))}
+                      placeholder="Amazon · Heineken · FedEx · JYSK"
+                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                      {t("Default Warranty Guarantee Text", "Predvolená záruka", "Garancia szövege")}
+                    </label>
+                    <input
+                      type="text"
+                      value={billingForm.defaultWarrantyText || ""}
+                      onChange={e => setBillingForm(prev => ({ ...prev, defaultWarrantyText: e.target.value }))}
+                      placeholder="10 rokov"
+                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 4: External Invoicing Connectors */}
+              <div className="space-y-4 pt-4 border-t border-slate-150">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                  <Share2 className="h-4 w-4 text-indigo-600" />
+                  4. {t("External Accounting APIs (SuperFaktúra & iDoklad)", "Externé účtovníctvo (SuperFaktúra a iDoklad)", "Külső számlázó integrációk")}
+                </h4>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* SuperFaktura Card */}
+                  <div className="p-5 bg-slate-50/80 border border-slate-200/90 rounded-2xl space-y-3.5">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                      <div className="font-bold text-xs uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                        <span className="h-2 w-2 rounded-full bg-blue-500"></span>
+                        SuperFaktúra API
+                      </div>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={extInvoicingForm.superfaktura?.enabled || false}
+                          onChange={e => setExtInvoicingForm(prev => ({
+                            ...prev,
+                            superfaktura: { ...prev.superfaktura!, enabled: e.target.checked }
+                          }))}
+                          className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                        />
+                        <span className="text-xs font-bold text-slate-700">{t("Active", "Aktívne", "Aktív")}</span>
+                      </label>
+                    </div>
+
+                    <div className="space-y-2.5">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-550 uppercase block mb-1">SuperFaktúra Email</label>
+                        <input
+                          type="email"
+                          value={extInvoicingForm.superfaktura?.email || ""}
+                          onChange={e => setExtInvoicingForm(prev => ({
+                            ...prev,
+                            superfaktura: { ...prev.superfaktura!, email: e.target.value }
+                          }))}
+                          className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs"
+                          placeholder="vas@email.sk"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-550 uppercase block mb-1">API Kľúč (API Key)</label>
+                        <input
+                          type="password"
+                          value={extInvoicingForm.superfaktura?.apiKey || ""}
+                          onChange={e => setExtInvoicingForm(prev => ({
+                            ...prev,
+                            superfaktura: { ...prev.superfaktura!, apiKey: e.target.value }
+                          }))}
+                          className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-mono"
+                          placeholder="••••••••••••••••"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-550 uppercase block mb-1">Company ID (Voliteľné)</label>
+                          <input
+                            type="text"
+                            value={extInvoicingForm.superfaktura?.companyId || ""}
+                            onChange={e => setExtInvoicingForm(prev => ({
+                              ...prev,
+                              superfaktura: { ...prev.superfaktura!, companyId: e.target.value }
+                            }))}
+                            className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-mono"
+                            placeholder="napr. 12345"
+                          />
+                        </div>
+                        <div className="flex items-center pt-5">
+                          <label className="flex items-center gap-1.5 cursor-pointer text-xs font-medium text-slate-600">
+                            <input
+                              type="checkbox"
+                              checked={extInvoicingForm.superfaktura?.sandbox || false}
+                              onChange={e => setExtInvoicingForm(prev => ({
+                                ...prev,
+                                superfaktura: { ...prev.superfaktura!, sandbox: e.target.checked }
+                              }))}
+                              className="rounded text-indigo-600"
+                            />
+                            Sandbox test
+                          </label>
+                        </div>
+                      </div>
+
+                      <div className="pt-2 flex items-center justify-between">
+                        <button
+                          type="button"
+                          disabled={testingSf || !extInvoicingForm.superfaktura?.apiKey}
+                          onClick={handleTestSuperfaktura}
+                          className="px-3 py-1.5 bg-white border border-slate-300 hover:border-indigo-500 rounded-xl text-xs font-bold text-slate-700 shadow-sm cursor-pointer transition-all disabled:opacity-40"
+                        >
+                          {testingSf ? t("Testing...", "Testujem...", "Tesztelés...") : t("Test Connection", "Otestovať pripojenie", "Kapcsolat tesztelése")}
+                        </button>
+
+                        {sfStatus && (
+                          <span className={cn("text-xs font-bold", sfStatus.success ? "text-emerald-600" : "text-rose-600")}>
+                            {sfStatus.message}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* iDoklad Card */}
+                  <div className="p-5 bg-slate-50/80 border border-slate-200/90 rounded-2xl space-y-3.5">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                      <div className="font-bold text-xs uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                        <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
+                        iDoklad API
+                      </div>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={extInvoicingForm.idoklad?.enabled || false}
+                          onChange={e => setExtInvoicingForm(prev => ({
+                            ...prev,
+                            idoklad: { ...prev.idoklad!, enabled: e.target.checked }
+                          }))}
+                          className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                        />
+                        <span className="text-xs font-bold text-slate-700">{t("Active", "Aktívne", "Aktív")}</span>
+                      </label>
+                    </div>
+
+                    <div className="space-y-2.5">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-550 uppercase block mb-1">Client ID</label>
+                        <input
+                          type="text"
+                          value={extInvoicingForm.idoklad?.clientId || ""}
+                          onChange={e => setExtInvoicingForm(prev => ({
+                            ...prev,
+                            idoklad: { ...prev.idoklad!, clientId: e.target.value }
+                          }))}
+                          className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-mono"
+                          placeholder="client-id-uuid"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-550 uppercase block mb-1">Client Secret</label>
+                        <input
+                          type="password"
+                          value={extInvoicingForm.idoklad?.clientSecret || ""}
+                          onChange={e => setExtInvoicingForm(prev => ({
+                            ...prev,
+                            idoklad: { ...prev.idoklad!, clientSecret: e.target.value }
+                          }))}
+                          className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-mono"
+                          placeholder="••••••••••••••••"
+                        />
+                      </div>
+
+                      <div className="pt-2 flex items-center justify-between">
+                        <button
+                          type="button"
+                          disabled={testingIdk || !extInvoicingForm.idoklad?.clientSecret}
+                          onClick={handleTestIdoklad}
+                          className="px-3 py-1.5 bg-white border border-slate-300 hover:border-indigo-500 rounded-xl text-xs font-bold text-slate-700 shadow-sm cursor-pointer transition-all disabled:opacity-40"
+                        >
+                          {testingIdk ? t("Testing...", "Testujem...", "Tesztelés...") : t("Test Connection", "Otestovať pripojenie", "Kapcsolat tesztelése")}
+                        </button>
+
+                        {idkStatus && (
+                          <span className={cn("text-xs font-bold", idkStatus.success ? "text-emerald-600" : "text-rose-600")}>
+                            {idkStatus.message}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 5: AI Custom PDF Template Generator */}
+              <div className="space-y-4 pt-4 border-t border-slate-150">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-purple-600" />
+                      5. {t("AI Custom PDF Template Generator", "AI Generátor vlastných PDF šablón", "AI egyedi PDF sablon generátor")}
+                    </h4>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {t("Upload any sample quote/invoice PDF. AI will extract colors, styles, and generate a customized template with all mandatory fields guaranteed.", "Nahrajte ukážkové PDF cenovej ponuky. AI analyzuje dizajn a vytvorí šablónu s garanciou všetkých povinných údajov.", "Töltsön fel egy mintát, és az AI generál egy kompatibilis sablont.")}
+                    </p>
+                  </div>
+
+                  <label className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer transition-all flex items-center gap-2 shrink-0">
+                    <Plus className="h-4 w-4" />
+                    {isUploadingPdf ? t("Processing with AI...", "Analyzujem pomocou AI...", "Feldolgozás...") : t("Upload PDF & Generate Template", "Nahrať PDF a vygenerovať šablónu", "PDF feltöltése és generálás")}
+                    <input
+                      type="file"
+                      accept=".pdf"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleUploadAndGenerateAiTemplate(file);
+                      }}
+                    />
+                  </label>
+                </div>
+
+                {pdfUploadStatus && (
+                  <div className="p-3 bg-purple-50 border border-purple-200 text-purple-800 rounded-xl text-xs font-semibold flex items-center gap-2 animate-pulse">
+                    <Sparkles className="h-4 w-4 text-purple-600" />
+                    {pdfUploadStatus}
+                  </div>
+                )}
+
+                {/* Templates List */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 pt-2">
+                  {aiCustomTemplates.map(template => (
+                    <div key={template.id} className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-3 relative group">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <div className="font-bold text-xs text-slate-900">{template.name}</div>
+                          <div className="text-[11px] text-slate-500">{template.description || "AI vygenerovaná šablóna"}</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm(t("Delete this template?", "Zmazať túto šablónu?", "Törli ezt a sablont?"))) {
+                              if (setAiCustomTemplates) {
+                                setAiCustomTemplates(prev => prev.filter(t => t.id !== template.id));
+                              }
+                            }
+                          }}
+                          className="p-1 text-slate-400 hover:text-rose-600 rounded-md cursor-pointer"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-1 border-t border-slate-200/70">
+                        <span className="text-[10px] text-slate-400 font-bold uppercase">{t("Palette:", "Paleta:", "Paletta:")}</span>
+                        <div className="flex items-center gap-1">
+                          <span className="h-3 w-3 rounded-full border border-slate-300" style={{ backgroundColor: template.colors.primary }}></span>
+                          <span className="h-3 w-3 rounded-full border border-slate-300" style={{ backgroundColor: template.colors.accent }}></span>
+                          <span className="h-3 w-3 rounded-full border border-slate-300" style={{ backgroundColor: template.colors.secondary }}></span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+            </div>
           </div>
         )}
 

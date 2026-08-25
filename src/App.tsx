@@ -3,7 +3,7 @@ import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { LoginView } from "./components/LoginView";
 import { TaskDashboardView } from "./components/TaskDashboardView";
-import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, FinancialRecord } from "./types";
+import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, FinancialRecord, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate } from "./types";
 import { VERSION } from "./utils/version";
 import { SOCIAL_MEDIA_ENABLED } from "./utils/featureFlags";
 import type { MeetingNote } from "./components/MeetingRoomView";
@@ -77,6 +77,7 @@ const AutomationView = safeLazy(() => import("./components/AutomationView").then
 const SocialMediaView = safeLazy(() => import("./components/SocialMediaView").then(m => ({ default: m.SocialMediaView })));
 const WarehouseView = safeLazy(() => import("./components/WarehouseView").then(m => ({ default: m.WarehouseView })));
 const FinancialManagementView = safeLazy(() => import("./components/FinancialManagementView").then(m => ({ default: m.FinancialManagementView })));
+const InvoicingView = safeLazy(() => import("./components/InvoicingView").then(m => ({ default: m.InvoicingView })));
 
 const ShaderGradientAny = ShaderGradient as any;
 
@@ -109,6 +110,8 @@ const computeSettingsSig = (s: any): string => {
     s.taskStates ?? [],
     s.taskStateColors && Object.keys(s.taskStateColors).length ? s.taskStateColors : null,
     s.integrationsConfig ?? null,
+    s.companyBillingSettings ?? null,
+    s.invoicingIntegrations ?? null,
   ]);
 };
 
@@ -123,12 +126,14 @@ const computePushSig = (p: {
   warehouses?: unknown; suppliers?: unknown; warehouseItems?: unknown;
   warehouseStock?: unknown; warehouseBatches?: unknown; warehouseMovements?: unknown;
   financialCategories?: unknown; financialRecords?: unknown;
+  invoicesOffers?: unknown; aiCustomTemplates?: unknown;
   settings?: any;
 }): string => JSON.stringify([
   p.leads, p.tasks, p.users, p.roles, p.meetingNotes, p.unifiedEntries,
   p.unifiedEntriesData, p.customDashboards, p.projectTypes, p.projects,
   p.warehouses, p.suppliers, p.warehouseItems, p.warehouseStock, p.warehouseBatches, p.warehouseMovements,
   p.financialCategories, p.financialRecords,
+  p.invoicesOffers, p.aiCustomTemplates,
   computeSettingsSig(p.settings),
 ]);
 
@@ -231,6 +236,10 @@ function App() {
   const warehouseMovementsRef = useRef<WarehouseMovement[]>([]);
   const financialCategoriesRef = useRef<FinancialCategory[]>([]);
   const financialRecordsRef = useRef<FinancialRecord[]>([]);
+  const invoicesOffersRef = useRef<InvoiceOffer[]>([]);
+  const aiCustomTemplatesRef = useRef<AiCustomTemplate[]>([]);
+  const companyBillingSettingsRef = useRef<CompanyBillingSettings | null>(null);
+  const invoicingIntegrationsRef = useRef<ExternalInvoicingConfig | null>(null);
   // DB clock from the last GET/POST. Sent back as baseSyncedAt so the server can
   // avoid deleting records a concurrent user added after our snapshot.
   const baseSyncedAtRef = useRef<string | null>(null);
@@ -277,10 +286,10 @@ function App() {
     const rawHash = window.location.hash.replace("#", "");
     const baseHash = rawHash.split(/[/?]/)[0];
     const hashLower = baseHash.toLowerCase();
-    if (hashLower.startsWith("client-") || hashLower.startsWith("lead-") || hashLower.startsWith("user-") || hashLower.startsWith("ue_") || hashLower.startsWith("dash_") || hashLower.startsWith("settings") || hashLower.startsWith("warehouse") || hashLower.startsWith("financial")) {
-      return rawHash; // Keep case sensitivity and allow sub-tabs for settings, warehouse, and financial
+    if (hashLower.startsWith("client-") || hashLower.startsWith("lead-") || hashLower.startsWith("user-") || hashLower.startsWith("ue_") || hashLower.startsWith("dash_") || hashLower.startsWith("settings") || hashLower.startsWith("warehouse") || hashLower.startsWith("financial") || hashLower.startsWith("invoices")) {
+      return rawHash; // Keep case sensitivity and allow sub-tabs for settings, warehouse, financial and invoices
     }
-    const validTabs = ["dashboard", "overview", "leads", "clients", "tasks", "files", "personal-settings", "email", "rag_ai", "automation", "meetings", "projects", "updates", "warehouse", "financial", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
+    const validTabs = ["dashboard", "overview", "leads", "clients", "invoices", "tasks", "files", "personal-settings", "email", "rag_ai", "automation", "meetings", "projects", "updates", "warehouse", "financial", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
     return validTabs.includes(hashLower) ? rawHash : "dashboard";
   };
 
@@ -408,6 +417,10 @@ function App() {
   const [warehouseMovements, setWarehouseMovements] = useState<WarehouseMovement[]>([]);
   const [financialCategories, setFinancialCategories] = useState<FinancialCategory[]>([]);
   const [financialRecords, setFinancialRecords] = useState<FinancialRecord[]>([]);
+  const [invoicesOffers, setInvoicesOffers] = useState<InvoiceOffer[]>([]);
+  const [aiCustomTemplates, setAiCustomTemplates] = useState<AiCustomTemplate[]>([]);
+  const [companyBillingSettings, setCompanyBillingSettings] = useState<CompanyBillingSettings | null>(null);
+  const [invoicingIntegrations, setInvoicingIntegrations] = useState<ExternalInvoicingConfig | null>(null);
 
   // Initial states set to empty / defaults without localStorage or mockData loaders
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -721,6 +734,9 @@ ${log.payload || ''}
         case "warehouse":
           viewName = t("Warehouse & Inventory", "Sklad a zásoby", "Raktár és készlet");
           break;
+        case "invoices":
+          viewName = t("Invoices & Price Offers", "Cenové ponuky a faktúry", "Árajánlatok és számlák");
+          break;
         case "dashboard":
         default:
           viewName = t("Task Dashboard", "Panel úloh", "Feladat Irányítópult");
@@ -812,6 +828,10 @@ ${log.payload || ''}
   warehouseMovementsRef.current = warehouseMovements;
   financialCategoriesRef.current = financialCategories;
   financialRecordsRef.current = financialRecords;
+  invoicesOffersRef.current = invoicesOffers;
+  aiCustomTemplatesRef.current = aiCustomTemplates;
+  companyBillingSettingsRef.current = companyBillingSettings;
+  invoicingIntegrationsRef.current = invoicingIntegrations;
 
   // --- REAL-TIME SERVER SYNCHRONIZER ENGINE ---
   const pushStateToServer = (
@@ -834,6 +854,8 @@ ${log.payload || ''}
     nextWarehouseMovements?: WarehouseMovement[],
     nextFinancialCategories?: FinancialCategory[],
     nextFinancialRecords?: FinancialRecord[],
+    nextInvoicesOffers?: InvoiceOffer[],
+    nextAiCustomTemplates?: AiCustomTemplate[],
     options?: { showIndicator?: boolean }
   ): Promise<void> => {
     if (!isInstalled || !currentUser || !isInitialSyncResolved) return pushChainRef.current;
@@ -871,6 +893,8 @@ ${log.payload || ''}
     const liveWarehouseMovements = nextWarehouseMovements ?? warehouseMovementsRef.current;
     const liveFinancialCategories = nextFinancialCategories ?? financialCategoriesRef.current;
     const liveFinancialRecords = nextFinancialRecords ?? financialRecordsRef.current;
+    const liveInvoicesOffers = nextInvoicesOffers ?? invoicesOffersRef.current;
+    const liveAiCustomTemplates = nextAiCustomTemplates ?? aiCustomTemplatesRef.current;
 
     const payload: any = {
       baseSyncedAt: baseSyncedAtRef.current,
@@ -892,6 +916,8 @@ ${log.payload || ''}
       warehouseMovements: liveWarehouseMovements,
       financialCategories: liveFinancialCategories,
       financialRecords: liveFinancialRecords,
+      invoicesOffers: liveInvoicesOffers,
+      aiCustomTemplates: liveAiCustomTemplates,
       settings: {
         systemName,
         systemLanguage,
@@ -907,7 +933,9 @@ ${log.payload || ''}
         leadStateFollowUp,
         taskStates,
         taskStateColors,
-        integrationsConfig: nextIntegrationsConfig ?? integrationsConfigRef.current
+        integrationsConfig: nextIntegrationsConfig ?? integrationsConfigRef.current,
+        companyBillingSettings: companyBillingSettingsRef.current,
+        invoicingIntegrations: invoicingIntegrationsRef.current
       }
     };
 
@@ -940,6 +968,8 @@ ${log.payload || ''}
       narrow("warehouseMovements", liveWarehouseMovements);
       narrow("financialCategories", liveFinancialCategories);
       narrow("financialRecords", liveFinancialRecords);
+      narrow("invoicesOffers", liveInvoicesOffers);
+      narrow("aiCustomTemplates", liveAiCustomTemplates);
 
       // The registry list stays whole on purpose: sync.php walks unifiedEntries to
       // reach each entry's dynamic table, so an entry omitted here would silently
@@ -1209,6 +1239,42 @@ ${log.payload || ''}
       const next = typeof newRecs === "function" ? newRecs(prev) : newRecs;
       financialRecordsRef.current = next;
       pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
+      return next;
+    });
+  };
+
+  const updateInvoicesOffersAndSync = (newOffers: InvoiceOffer[] | ((prev: InvoiceOffer[]) => InvoiceOffer[])) => {
+    setInvoicesOffers(prev => {
+      const next = typeof newOffers === "function" ? newOffers(prev) : newOffers;
+      invoicesOffersRef.current = next;
+      pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
+      return next;
+    });
+  };
+
+  const updateAiCustomTemplatesAndSync = (newTemplates: AiCustomTemplate[] | ((prev: AiCustomTemplate[]) => AiCustomTemplate[])) => {
+    setAiCustomTemplates(prev => {
+      const next = typeof newTemplates === "function" ? newTemplates(prev) : newTemplates;
+      aiCustomTemplatesRef.current = next;
+      pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
+      return next;
+    });
+  };
+
+  const updateCompanyBillingSettingsAndSync = (newSettings: CompanyBillingSettings | null | ((prev: CompanyBillingSettings | null) => CompanyBillingSettings | null)) => {
+    setCompanyBillingSettings(prev => {
+      const next = typeof newSettings === "function" ? newSettings(prev) : newSettings;
+      companyBillingSettingsRef.current = next;
+      pushStateToServer();
+      return next;
+    });
+  };
+
+  const updateInvoicingIntegrationsAndSync = (newIntegrations: ExternalInvoicingConfig | null | ((prev: ExternalInvoicingConfig | null) => ExternalInvoicingConfig | null)) => {
+    setInvoicingIntegrations(prev => {
+      const next = typeof newIntegrations === "function" ? newIntegrations(prev) : newIntegrations;
+      invoicingIntegrationsRef.current = next;
+      pushStateToServer();
       return next;
     });
   };
@@ -1601,11 +1667,19 @@ ${log.payload || ''}
       if (data.financialRecords && Array.isArray(data.financialRecords)) {
         setFinancialRecords(data.financialRecords);
       }
+      if (data.invoicesOffers && Array.isArray(data.invoicesOffers)) {
+        setInvoicesOffers(data.invoicesOffers);
+      }
+      if (data.aiCustomTemplates && Array.isArray(data.aiCustomTemplates)) {
+        setAiCustomTemplates(data.aiCustomTemplates);
+      }
       if (data.settings) {
         const s = data.settings;
         if (s.systemName && s.systemName !== systemName) setSystemName(s.systemName);
         if (s.systemLanguage && s.systemLanguage !== systemLanguage) setSystemLanguage(s.systemLanguage);
         if (s.systemCurrency !== undefined && s.systemCurrency !== systemCurrency) setSystemCurrency(s.systemCurrency || "");
+        if (s.companyBillingSettings) setCompanyBillingSettings(s.companyBillingSettings);
+        if (s.invoicingIntegrations) setInvoicingIntegrations(s.invoicingIntegrations);
         setLeadStates((prev) => s.leadStates && JSON.stringify(s.leadStates) !== JSON.stringify(prev) ? s.leadStates : prev);
         setLeadSources((prev) => s.leadSources && JSON.stringify(s.leadSources) !== JSON.stringify(prev) ? s.leadSources : prev);
         setLeadCategories((prev) => s.leadCategories && JSON.stringify(s.leadCategories) !== JSON.stringify(prev) ? s.leadCategories : prev);
@@ -1649,6 +1723,8 @@ ${log.payload || ''}
         warehouseMovements: baselineOf(data.warehouseMovements ?? warehouseMovementsRef.current),
         financialCategories: baselineOf(data.financialCategories ?? financialCategoriesRef.current),
         financialRecords: baselineOf(data.financialRecords ?? financialRecordsRef.current),
+        invoicesOffers: baselineOf(data.invoicesOffers ?? invoicesOffersRef.current),
+        aiCustomTemplates: baselineOf(data.aiCustomTemplates ?? aiCustomTemplatesRef.current),
       };
       const ueData = data.unifiedEntriesData ?? unifiedEntriesDataRef.current ?? {};
       const nextUeBaselines: Record<string, RecordBaseline> = {};
@@ -1677,6 +1753,8 @@ ${log.payload || ''}
         warehouseMovements: data.warehouseMovements ?? warehouseMovementsRef.current,
         financialCategories: data.financialCategories ?? financialCategoriesRef.current,
         financialRecords: data.financialRecords ?? financialRecordsRef.current,
+        invoicesOffers: data.invoicesOffers ?? invoicesOffersRef.current,
+        aiCustomTemplates: data.aiCustomTemplates ?? aiCustomTemplatesRef.current,
         settings: data.settings ?? {},
       });
     };
@@ -1871,6 +1949,12 @@ ${log.payload || ''}
           dbInfo={dbInfo || undefined}
           projectTypes={projectTypes}
           setProjectTypes={updateProjectTypesAndSync}
+          companyBillingSettings={companyBillingSettings}
+          setCompanyBillingSettings={updateCompanyBillingSettingsAndSync}
+          invoicingIntegrations={invoicingIntegrations}
+          setInvoicingIntegrations={updateInvoicingIntegrationsAndSync}
+          aiCustomTemplates={aiCustomTemplates}
+          setAiCustomTemplates={updateAiCustomTemplatesAndSync}
         />
       );
     }
@@ -2017,6 +2101,12 @@ ${log.payload || ''}
           setTasks={updateTasksAndSync}
           projectTypes={projectTypes}
           setProjectTypes={updateProjectTypesAndSync}
+          companyBillingSettings={companyBillingSettings}
+          setCompanyBillingSettings={updateCompanyBillingSettingsAndSync}
+          invoicingIntegrations={invoicingIntegrations}
+          setInvoicingIntegrations={updateInvoicingIntegrationsAndSync}
+          aiCustomTemplates={aiCustomTemplates}
+          setAiCustomTemplates={updateAiCustomTemplatesAndSync}
           unifiedEntries={unifiedEntries}
           setUnifiedEntries={updateUnifiedEntriesAndSync}
           unifiedEntriesData={unifiedEntriesData}
@@ -2122,6 +2212,26 @@ ${log.payload || ''}
                 window.location.hash = `clients?name=${encodeURIComponent(cl.name)}`;
                 setActiveTab("clients");
               }
+            }}
+          />
+        );
+      case "invoices":
+        return (
+          <InvoicingView
+            invoicesOffers={invoicesOffers}
+            setInvoicesOffers={updateInvoicesOffersAndSync}
+            leads={leads}
+            setLeads={updateLeadsAndSync}
+            warehouseItems={warehouseItems}
+            companyBillingSettings={companyBillingSettings}
+            aiCustomTemplates={aiCustomTemplates}
+            invoicingIntegrations={invoicingIntegrations}
+            currentUser={activeUser}
+            systemLanguage={userLanguage}
+            systemCurrency={currencyCode}
+            onOpenSettings={() => {
+              window.location.hash = "settings/invoicing";
+              setActiveTab("settings/invoicing");
             }}
           />
         );

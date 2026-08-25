@@ -1,6 +1,8 @@
 <?php
-require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/../api/schema.php';
+$configFile = file_exists(__DIR__ . '/config.php') ? __DIR__ . '/config.php' : (file_exists(__DIR__ . '/../config.php') ? __DIR__ . '/../config.php' : '/var/www/html/config.php');
+require_once $configFile;
+$schemaFile = file_exists(__DIR__ . '/api/schema.php') ? __DIR__ . '/api/schema.php' : (file_exists(__DIR__ . '/../api/schema.php') ? __DIR__ . '/../api/schema.php' : '/var/www/html/api/schema.php');
+require_once $schemaFile;
 
 $pdo = get_db_connection();
 ccrm_apply_schema($pdo);

@@ -55,6 +55,7 @@ export const translations: Record<Language, Record<string, string>> = {
     // Settings Subtabs
     "settings.category_title": "Preferences Categories",
     "settings.tab.branding": "⚙️ General Config",
+    "settings.tab.invoicing": "🧾 Invoicing & Templates",
     "settings.tab.projects": "💼 Project Settings",
     "settings.tab.unified": "🗂️ Unified Entries",
     "settings.tab.sources": "🚀 Traffic & Categories",
@@ -508,6 +509,7 @@ export const translations: Record<Language, Record<string, string>> = {
     // Settings Subtabs
     "settings.category_title": "Kategórie nastavení",
     "settings.tab.branding": "⚙️ Všeobecná konfigurácia",
+    "settings.tab.invoicing": "🧾 Fakturácia a šablóny",
     "settings.tab.projects": "💼 Nastavenia projektov",
     "settings.tab.unified": "🗂️ Unifikované záznamy",
     "settings.tab.sources": "🚀 Zdroje a kategórie",
@@ -960,6 +962,7 @@ export const translations: Record<Language, Record<string, string>> = {
     // Settings Subtabs
     "settings.category_title": "Beállítási kategóriák",
     "settings.tab.branding": "⚙️ Általános beállítások",
+    "settings.tab.invoicing": "🧾 Számlázás és sablonok",
     "settings.tab.projects": "💼 Projekt beállítások",
     "settings.tab.unified": "🗂️ Egységes bejegyzések",
     "settings.tab.sources": "🚀 Források és kategóriák",

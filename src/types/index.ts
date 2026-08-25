@@ -591,6 +591,171 @@ export interface ProjectRevenueAnalysis {
   expensesByCategory: Record<string, { planned: number; real: number; categoryName: string; color: string }>;
 }
 
+// ==========================================
+// Invoices & Price Offers (Version 1.9)
+// ==========================================
 
+export type InvoiceOfferType = 'price_offer' | 'proforma' | 'invoice';
+export type InvoiceOfferMode = 'default' | 'custom' | 'external';
+export type InvoiceOfferStatus = 'draft' | 'sent' | 'approved' | 'rejected' | 'invoiced' | 'cancelled';
+export type ExternalInvoiceProvider = 'superfaktura' | 'idoklad';
 
+export interface InvoiceOfferItem {
+  id: string;
+  warehouseItemId?: string | null;
+  sku?: string | null;
+  name: string;
+  description?: string | null;
+  quantity: number;
+  unit: string;
+  unitPrice: number;
+  vatRate: number; // e.g. 20 for 20%
+  discountPct: number; // 0-100
+  totalPrice: number; // calculated line total with/without VAT depending on config
+}
 
+export interface UspCardItem {
+  id?: string;
+  title: string;
+  subtitle: string;
+  icon?: string;
+}
+
+export interface InvoiceOffer {
+  id: string;
+  documentNumber: string; // e.g. CP-2026-001 or FA-2026-001
+  type: InvoiceOfferType;
+  mode: InvoiceOfferMode;
+  externalProvider?: ExternalInvoiceProvider | null;
+  externalId?: string | null;
+  externalPdfUrl?: string | null;
+  
+  // Mandatory Lead / Client Pairing
+  leadId: string;
+  clientId?: string | null;
+  clientName: string;
+  clientEmail?: string | null;
+  clientPhone?: string | null;
+  clientStreet?: string | null;
+  clientCity?: string | null;
+  clientPostalCode?: string | null;
+  clientCountry?: string | null;
+  clientIco?: string | null;
+  clientDic?: string | null;
+  clientIcdph?: string | null;
+  
+  // Content & Customisation
+  title: string; // e.g. "Predbežná cenová ponuka"
+  subject: string; // e.g. "Rekonštrukcia plochej strechy — Šahy"
+  location?: string | null; // e.g. "Šahy"
+  greetingNote?: string | null; // e.g. "Dobrý deň, pán Šimon Zsolt Frenko,"
+  introNote?: string | null; // Trust paragraph
+  
+  // Value Proposition / USP Highlights
+  uspCards: UspCardItem[];
+  reassuranceNote?: string | null;
+  
+  // Items Scope
+  items: InvoiceOfferItem[];
+  
+  // Financial totals
+  subtotal: number;
+  vatAmount: number;
+  totalPrice: number;
+  priceRangeMin?: number | null;
+  priceRangeMax?: number | null;
+  currency: string; // 'EUR', 'CZK', etc.
+  
+  // Execution Parameters (3 key cards)
+  durationText?: string | null; // e.g. "2–3 dni"
+  startDateText?: string | null; // e.g. "Koniec júna"
+  warrantyText?: string | null; // e.g. "10 rokov"
+  
+  // Closing & Action
+  nextStepsNote?: string | null;
+  closingNote?: string | null;
+  signOffTeam?: string | null; // e.g. "Tím SIGNUM Slovakia s.r.o."
+  
+  // Custom AI Template metadata
+  customTemplateId?: string | null;
+  customTemplateStyle?: Record<string, any> | null;
+  
+  // Status & File
+  status: InvoiceOfferStatus;
+  issuedAt: string; // YYYY-MM-DD
+  validUntil?: string | null; // YYYY-MM-DD
+  dueDate?: string | null; // YYYY-MM-DD
+  fileName?: string | null;
+  filePath?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  createdBy?: string | null;
+}
+
+export interface CompanyBillingSettings {
+  companyName: string;
+  companySubtitle?: string;
+  companyLogoUrl?: string | null;
+  street: string;
+  city: string;
+  postalCode: string;
+  country: string;
+  companyId: string; // IČO
+  taxId: string;     // DIČ
+  vatId: string;     // IČ DPH
+  email: string;
+  phone: string;
+  phoneSecondary?: string;
+  website: string;
+  iban: string;
+  swift: string;
+  bankName: string;
+  
+  // Default terms
+  defaultPaymentDueDays: number;
+  defaultVatRate: number;
+  defaultWarranty: string;
+  defaultDuration: string;
+  defaultNextSteps: string;
+  defaultSocialProof: string; // e.g. "Realizovali sme pre: Amazon · Heineken · FedEx..."
+  defaultUspCards: UspCardItem[];
+}
+
+export interface ExternalInvoicingConfig {
+  superfaktura: {
+    enabled: boolean;
+    email: string;
+    apiKey: string;
+    companyId: string;
+    sandbox: boolean;
+  };
+  idoklad: {
+    enabled: boolean;
+    clientId: string;
+    clientSecret: string;
+    sandbox: boolean;
+  };
+}
+
+export interface AiCustomTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  sourcePdfUrl?: string;
+  sourcePdfName?: string;
+  colors: {
+    primary: string;
+    secondary: string;
+    background: string;
+    accent: string;
+    text: string;
+  };
+  typography: {
+    fontFamily: string;
+    headingStyle: string;
+  };
+  sectionsOrder: string[];
+  customBannerText?: string;
+  badgeStyle?: 'rounded' | 'square' | 'pill';
+  createdAt: string;
+}

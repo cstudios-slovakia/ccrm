@@ -286,6 +286,15 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         defaultSection: "operations"
       },
       {
+        id: "invoices",
+        label: t("Invoices & Price Offers", "Cenové ponuky & Faktúry", "Ajánlatok és számlák"),
+        description: t("Price offers, PDF templates & accounting sync", "Cenové ponuky, PDF šablóny a fakturácia", "Árajánlatok, PDF sablonok és számlázás"),
+        icon: Icons.FileText || Coins,
+        color: "#6366f1",
+        bgColor: "rgba(99, 102, 241, 0.12)",
+        defaultSection: "operations"
+      },
+      {
         id: "financial",
         label: getTranslation(systemLanguage, "sidebar.financial"),
         description: t("Cash flow trend, matrix table, ledger & recurring rules", "Trend cashflow, tabuľka, pohyby a trvalé príkazy", "Cashflow trend, mátrix tábla, mozgások"),

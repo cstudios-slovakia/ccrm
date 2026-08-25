@@ -230,6 +230,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       "rag_ai", 
       "leads", 
       "clients", 
+      "invoices",
       "warehouse",
       "financial",
       "meetings", 
@@ -427,6 +428,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       { id: "rag_ai", label: systemLanguage === "sk" ? "RAG AI Asistent" : systemLanguage === "hu" ? "RAG AI Asszisztens" : "RAG AI Assistant", icon: Brain, color: "#8b5cf6", isPurple: true },
       { id: "leads", label: getTranslation(systemLanguage, "sidebar.leads"), icon: TableProperties, color: "#2563eb" },
       { id: "clients", label: getTranslation(systemLanguage, "sidebar.clients"), icon: Users, color: "#059669" },
+      { id: "invoices", label: systemLanguage === "sk" ? "Cenové ponuky & Faktúry" : systemLanguage === "hu" ? "Ajánlatok és számlák" : "Invoices & Offers", icon: Icons.FileText || Coins, color: "#6366f1", isIndigo: true },
       { id: "warehouse", label: getTranslation(systemLanguage, "sidebar.warehouse"), icon: Icons.Package || Icons.Boxes || FolderOpen, color: "#1e3a8a", isNavy: true },
       { id: "financial", label: getTranslation(systemLanguage, "sidebar.financial"), icon: Coins, color: "#10b981", isEmerald: true },
       { id: "meetings", label: getTranslation(systemLanguage, "sidebar.meetings"), icon: PencilLine, color: "#4f46e5", isNightBlue: true },
@@ -566,6 +568,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           ? (isActive
                               ? "bg-blue-950 text-white font-bold shadow-lg shadow-blue-950/30 border border-blue-900/20"
                               : "text-blue-950 hover:text-blue-900 hover:bg-blue-50/50")
+                        : item.isIndigo
+                          ? (isActive
+                              ? "bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-600/30 border border-indigo-500/20"
+                              : "text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50/50")
                         : item.isEmerald
                           ? (isActive
                               ? "bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-600/30 border border-emerald-500/20"
@@ -965,6 +971,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           : (isMobileMenuOpen
                               ? "bg-purple-50 border-purple-100 text-purple-500"
                               : "bg-purple-50/50 border-purple-100 text-purple-500 hover:bg-purple-100 hover:text-purple-650"))
+                      : item.isIndigo
+                        ? (isActive
+                            ? "bg-indigo-600 border-indigo-700 text-white"
+                            : (isMobileMenuOpen
+                                ? "bg-indigo-50 border-indigo-200 text-indigo-600"
+                                : "bg-indigo-50/50 border-indigo-100 text-indigo-600 hover:bg-indigo-100 hover:text-indigo-700"))
                       : item.isEmerald
                         ? (isActive
                             ? "bg-emerald-600 border-emerald-700 text-white"
