@@ -88,9 +88,9 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({ systemLanguage
         const localizedList: UpdateEntry[] = [];
         Object.keys(groups).forEach(ver => {
           const group = groups[ver];
-          let best = group.find(e => e.siteHandle === systemLanguage);
+          let best = group.find(e => e.siteHandle === systemLanguage) || (systemLanguage === "sk" ? group.find(e => e.siteHandle === "default") : undefined);
           if (!best) {
-            best = group.find(e => e.siteHandle === "en") || group.find(e => e.siteHandle === "sk") || group[0];
+            best = group.find(e => e.siteHandle === "default") || group.find(e => e.siteHandle === "en") || group[0];
           }
           if (best) localizedList.push(best);
         });
