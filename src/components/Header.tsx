@@ -1,92 +1,123 @@
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { User, PencilLine, Mic, Plus, List, CheckSquare, Search, Mail, Database, FileText, Loader2, X, Sparkles, Workflow, Play, Package } from "lucide-react";
+import {
+    User,
+    PencilLine,
+    Mic,
+    Plus,
+    List,
+    CheckSquare,
+    Search,
+    Mail,
+    Database,
+    FileText,
+    Loader2,
+    X,
+    Sparkles,
+    Workflow,
+    Play,
+    Package,
+} from "lucide-react";
 import * as Icons from "lucide-react";
 import type { UserProfile } from "../types";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import type { UpdateEntry } from "./UpdateNotesModal";
 import { useUserPref } from "../utils/userPrefs";
-import { bundledUpdateNotes, mergeBundledUpdateNotes } from "../utils/bundledUpdateNotes";
+import {
+    bundledUpdateNotes,
+    mergeBundledUpdateNotes,
+} from "../utils/bundledUpdateNotes";
 
 interface HeaderProps {
-  activeTab: string;
-  systemName: string;
-  currentUser?: UserProfile;
-  onLogout?: () => void;
-  systemLanguage: Language;
-  setSystemLanguage: (lang: Language) => void;
-  isDemoMode?: boolean;
-  onOpenPersonalSettings: () => void;
-  onNavigateMeetings?: (action: "list" | "new") => void;
-  onAddTask?: () => void;
-  onNavigateUpdates?: () => void;
+    activeTab: string;
+    systemName: string;
+    currentUser?: UserProfile;
+    onLogout?: () => void;
+    systemLanguage: Language;
+    setSystemLanguage: (lang: Language) => void;
+    isDemoMode?: boolean;
+    onOpenPersonalSettings: () => void;
+    onNavigateMeetings?: (action: "list" | "new") => void;
+    onAddTask?: () => void;
+    onNavigateUpdates?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
-  activeTab,
-  systemName,
-  currentUser,
-  onLogout,
-  systemLanguage,
-  setSystemLanguage,
-  isDemoMode,
-  onOpenPersonalSettings,
-  onNavigateMeetings,
-  onAddTask,
-  onNavigateUpdates
+    activeTab,
+    systemName,
+    currentUser,
+    onLogout,
+    systemLanguage,
+    setSystemLanguage,
+    isDemoMode,
+    onOpenPersonalSettings,
+    onNavigateMeetings,
+    onAddTask,
+    onNavigateUpdates,
 }) => {
-  const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
-  const [isProfileOpen, setIsProfileOpen] = React.useState(false);
-  const [isClosing, setIsClosing] = React.useState(false);
-  const [isMeetingsOpen, setIsMeetingsOpen] = React.useState(false);
-  const dropdownRef = React.useRef<HTMLDivElement>(null);
-  const meetingsDropdownRef = React.useRef<HTMLDivElement>(null);
+    const t = (en: string, sk: string, hu: string) =>
+        systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
+    const [isProfileOpen, setIsProfileOpen] = React.useState(false);
+    const [isClosing, setIsClosing] = React.useState(false);
+    const [isMeetingsOpen, setIsMeetingsOpen] = React.useState(false);
+    const dropdownRef = React.useRef<HTMLDivElement>(null);
+    const meetingsDropdownRef = React.useRef<HTMLDivElement>(null);
 
-  // Automation Toolbox States
-  const [manualWorkflows, setManualWorkflows] = React.useState<any[]>([]);
-  const [isToolboxOpen, setIsToolboxOpen] = React.useState(false);
-  const [runningWfId, setRunningWfId] = React.useState<string | null>(null);
-  const toolboxDropdownRef = React.useRef<HTMLDivElement>(null);
+    // Automation Toolbox States
+    const [manualWorkflows, setManualWorkflows] = React.useState<any[]>([]);
+    const [isToolboxOpen, setIsToolboxOpen] = React.useState(false);
+    const [runningWfId, setRunningWfId] = React.useState<string | null>(null);
+    const toolboxDropdownRef = React.useRef<HTMLDivElement>(null);
 
-  React.useEffect(() => {
-    if (isToolboxOpen) {
-      fetch("/api/workflows.php?action=list")
-        .then(res => res.json())
-        .then(data => {
-          if (data.success) {
-            const manualOnly = (data.workflows || []).filter((w: any) => w.trigger_type === 'manual' && w.is_active === 1);
-            setManualWorkflows(manualOnly);
-          }
-        })
-        .catch(err => console.error("Error loading manual triggers", err));
-    }
-  }, [isToolboxOpen]);
+    React.useEffect(() => {
+        if (isToolboxOpen) {
+            fetch("/api/workflows.php?action=list")
+                .then((res) => res.json())
+                .then((data) => {
+                    if (data.success) {
+                        const manualOnly = (data.workflows || []).filter(
+                            (w: any) =>
+                                w.trigger_type === "manual" &&
+                                w.is_active === 1,
+                        );
+                        setManualWorkflows(manualOnly);
+                    }
+                })
+                .catch((err) =>
+                    console.error("Error loading manual triggers", err),
+                );
+        }
+    }, [isToolboxOpen]);
 
-  React.useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (toolboxDropdownRef.current && !toolboxDropdownRef.current.contains(event.target as Node)) {
-        setIsToolboxOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+    React.useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (
+                toolboxDropdownRef.current &&
+                !toolboxDropdownRef.current.contains(event.target as Node)
+            ) {
+                setIsToolboxOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () =>
+            document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
 
-  // Update notes states
-  const [updatesList, setUpdatesList] = useState<UpdateEntry[]>([]);
-  const [hasNewUpdate, setHasNewUpdate] = useState(false);
-  // Which release note the user has already opened. A DB-backed preference, so
-  // the "new updates" dot doesn't reappear on every device and every new browser.
-  // Mirrored into a ref because the fetch effect below must not re-run when it
-  // changes — it only needs the value at the moment the list arrives.
-  const [seenUpdateId, setSeenUpdateId] = useUserPref("seenUpdateId");
-  const seenUpdateIdRef = React.useRef(seenUpdateId);
-  seenUpdateIdRef.current = seenUpdateId;
+    // Update notes states
+    const [updatesList, setUpdatesList] = useState<UpdateEntry[]>([]);
+    const [hasNewUpdate, setHasNewUpdate] = useState(false);
+    // Which release note the user has already opened. A DB-backed preference, so
+    // the "new updates" dot doesn't reappear on every device and every new browser.
+    // Mirrored into a ref because the fetch effect below must not re-run when it
+    // changes — it only needs the value at the moment the list arrives.
+    const [seenUpdateId, setSeenUpdateId] = useUserPref("seenUpdateId");
+    const seenUpdateIdRef = React.useRef(seenUpdateId);
+    seenUpdateIdRef.current = seenUpdateId;
 
-  useEffect(() => {
-    const fetchUpdateNotes = async () => {
-      const query = `
+    useEffect(() => {
+        const fetchUpdateNotes = async () => {
+            const query = `
         query GetUpdateNotes {
           entries(section: "updateNotes", site: "*") {
             id
@@ -119,266 +150,331 @@ export const Header: React.FC<HeaderProps> = ({
           }
         }
       `;
-      try {
-        const res = await fetch("https://ccrm.softwaresolutions.sk/index.php?action=graphql/api", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Accept": "application/json"
-          },
-          body: JSON.stringify({ query })
-        });
-        if (!res.ok) throw new Error("Network response was not ok");
-        const json = await res.json();
-        const rawEntries = json.data?.entries || [];
+            try {
+                const res = await fetch(
+                    "https://ccrm.softwaresolutions.sk/index.php?action=graphql/api",
+                    {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            Accept: "application/json",
+                        },
+                        body: JSON.stringify({ query }),
+                    },
+                );
+                if (!res.ok) throw new Error("Network response was not ok");
+                const json = await res.json();
+                const rawEntries = json.data?.entries || [];
 
-        // Helper to group by version and select best localized entry
-        const groups: Record<string, UpdateEntry[]> = {};
-        rawEntries.forEach((e: any) => {
-          if (!e.version) return;
-          if (!groups[e.version]) groups[e.version] = [];
-          groups[e.version].push(e);
-        });
+                // Helper to group by version and select best localized entry
+                const groups: Record<string, UpdateEntry[]> = {};
+                rawEntries.forEach((e: any) => {
+                    if (!e.version) return;
+                    if (!groups[e.version]) groups[e.version] = [];
+                    groups[e.version].push(e);
+                });
 
-        const localizedList: UpdateEntry[] = [];
-        Object.keys(groups).forEach(ver => {
-          const group = groups[ver];
-          let best = group.find(e => e.siteHandle === systemLanguage) || (systemLanguage === "sk" ? group.find(e => e.siteHandle === "default") : undefined);
-          if (!best) {
-            best = group.find(e => e.siteHandle === "default") || group.find(e => e.siteHandle === "en") || group[0];
-          }
-          if (best) localizedList.push(best);
-        });
+                const localizedList: UpdateEntry[] = [];
+                Object.keys(groups).forEach((ver) => {
+                    const group = groups[ver];
+                    let best =
+                        group.find((e) => e.siteHandle === systemLanguage) ||
+                        (systemLanguage === "sk"
+                            ? group.find((e) => e.siteHandle === "default")
+                            : undefined);
+                    if (!best) {
+                        best =
+                            group.find((e) => e.siteHandle === "default") ||
+                            group.find((e) => e.siteHandle === "en") ||
+                            group[0];
+                    }
+                    if (best) localizedList.push(best);
+                });
 
-        const allUpdates = mergeBundledUpdateNotes(localizedList);
-        setUpdatesList(allUpdates);
+                const allUpdates = mergeBundledUpdateNotes(localizedList);
+                setUpdatesList(allUpdates);
 
-        // Check if there is a new unseen update
-        if (allUpdates.length > 0) {
-          const latestId = allUpdates[0].id;
-          if (seenUpdateIdRef.current !== latestId) {
-            setHasNewUpdate(true);
-          }
+                // Check if there is a new unseen update
+                if (allUpdates.length > 0) {
+                    const latestId = allUpdates[0].id;
+                    if (seenUpdateIdRef.current !== latestId) {
+                        setHasNewUpdate(true);
+                    }
+                }
+            } catch (err) {
+                console.error("Error fetching release notes:", err);
+                setUpdatesList(bundledUpdateNotes);
+                if (seenUpdateIdRef.current !== bundledUpdateNotes[0].id) {
+                    setHasNewUpdate(true);
+                }
+            }
+        };
+        fetchUpdateNotes();
+    }, [systemLanguage]);
+
+    const handleOpenUpdates = () => {
+        if (onNavigateUpdates) {
+            onNavigateUpdates();
         }
-      } catch (err) {
-        console.error("Error fetching release notes:", err);
-        setUpdatesList(bundledUpdateNotes);
-        if (seenUpdateIdRef.current !== bundledUpdateNotes[0].id) {
-          setHasNewUpdate(true);
+        if (updatesList.length > 0) {
+            setSeenUpdateId(updatesList[0].id);
+            setHasNewUpdate(false);
         }
-      }
     };
-    fetchUpdateNotes();
-  }, [systemLanguage]);
 
-  const handleOpenUpdates = () => {
-    if (onNavigateUpdates) {
-      onNavigateUpdates();
-    }
-    if (updatesList.length > 0) {
-      setSeenUpdateId(updatesList[0].id);
-      setHasNewUpdate(false);
-    }
-  };
-
-  const handleRunWorkflow = async (wf: any) => {
-    setRunningWfId(wf.id);
-    try {
-      const res = await fetch("/api/workflows.php?action=trigger_manual", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: wf.id })
-      });
-      const data = await res.json();
-      if (data.success) {
-        if (typeof (window as any).showToast === "function") {
-          (window as any).showToast(t("Automation executed successfully!", "Automatizácia prebehla úspešne!", "Az automatizálás sikeresen lefutott!"));
+    const handleRunWorkflow = async (wf: any) => {
+        setRunningWfId(wf.id);
+        try {
+            const res = await fetch(
+                "/api/workflows.php?action=trigger_manual",
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ id: wf.id }),
+                },
+            );
+            const data = await res.json();
+            if (data.success) {
+                if (typeof (window as any).showToast === "function") {
+                    (window as any).showToast(
+                        t(
+                            "Automation executed successfully!",
+                            "Automatizácia prebehla úspešne!",
+                            "Az automatizálás sikeresen lefutott!",
+                        ),
+                    );
+                }
+            } else {
+                if (typeof (window as any).showToast === "function") {
+                    (window as any).showToast(
+                        data.message || "Execution failed",
+                        "error",
+                    );
+                }
+            }
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setRunningWfId(null);
+            setIsToolboxOpen(false);
         }
-      } else {
-        if (typeof (window as any).showToast === "function") {
-          (window as any).showToast(data.message || "Execution failed", "error");
+    };
+
+    // Universal Search states
+    const [searchQuery, setSearchQuery] = React.useState("");
+    const [searchResults, setSearchResults] = React.useState<any[]>([]);
+    const [isSearching, setIsSearching] = React.useState(false);
+    const [showSearchDropdown, setShowSearchDropdown] = React.useState(false);
+    const [selectedIndex, setSelectedIndex] = React.useState(-1);
+
+    const searchInputRef = React.useRef<HTMLInputElement>(null);
+    const searchContainerRef = React.useRef<HTMLDivElement>(null);
+    const searchTimeoutRef = React.useRef<any>(null);
+
+    const handleClose = () => {
+        setIsClosing(true);
+        setTimeout(() => {
+            setIsProfileOpen(false);
+            setIsClosing(false);
+        }, 350);
+    };
+
+    React.useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (
+                dropdownRef.current &&
+                !dropdownRef.current.contains(event.target as Node)
+            ) {
+                setIsProfileOpen(false);
+            }
+            if (
+                meetingsDropdownRef.current &&
+                !meetingsDropdownRef.current.contains(event.target as Node)
+            ) {
+                setIsMeetingsOpen(false);
+            }
+            if (
+                searchContainerRef.current &&
+                !searchContainerRef.current.contains(event.target as Node)
+            ) {
+                setShowSearchDropdown(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () =>
+            document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
+    // Hotkey listener (Cmd+K or Ctrl+K) and escape key listener
+    React.useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+                e.preventDefault();
+                searchInputRef.current?.focus();
+            }
+            if (e.key === "Escape") {
+                setShowSearchDropdown(false);
+                searchInputRef.current?.blur();
+            }
+        };
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, []);
+
+    const fetchSearchResults = async (val: string) => {
+        if (val.trim().length < 2) {
+            setSearchResults([]);
+            setIsSearching(false);
+            return;
         }
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setRunningWfId(null);
-      setIsToolboxOpen(false);
-    }
-  };
+        setIsSearching(true);
+        try {
+            const res = await fetch(
+                `/api/universal_search.php?query=${encodeURIComponent(val)}`,
+            );
+            if (res.ok) {
+                const data = await res.json();
+                setSearchResults(Array.isArray(data) ? data : []);
+                setShowSearchDropdown(true);
+                setSelectedIndex(-1);
+            } else {
+                setSearchResults([]);
+            }
+        } catch (err) {
+            console.error("Error running universal search", err);
+            setSearchResults([]);
+        } finally {
+            setIsSearching(false);
+        }
+    };
 
-  // Universal Search states
-  const [searchQuery, setSearchQuery] = React.useState("");
-  const [searchResults, setSearchResults] = React.useState<any[]>([]);
-  const [isSearching, setIsSearching] = React.useState(false);
-  const [showSearchDropdown, setShowSearchDropdown] = React.useState(false);
-  const [selectedIndex, setSelectedIndex] = React.useState(-1);
+    const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value;
+        setSearchQuery(val);
+        if (val.trim().length < 2) {
+            setSearchResults([]);
+            setShowSearchDropdown(false);
+            return;
+        }
 
-  const searchInputRef = React.useRef<HTMLInputElement>(null);
-  const searchContainerRef = React.useRef<HTMLDivElement>(null);
-  const searchTimeoutRef = React.useRef<any>(null);
+        if (searchTimeoutRef.current) {
+            clearTimeout(searchTimeoutRef.current);
+        }
 
-  const handleClose = () => {
-    setIsClosing(true);
-    setTimeout(() => {
-      setIsProfileOpen(false);
-      setIsClosing(false);
-    }, 350);
-  };
+        searchTimeoutRef.current = setTimeout(() => {
+            fetchSearchResults(val);
+        }, 250);
+    };
 
-  React.useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsProfileOpen(false);
-      }
-      if (meetingsDropdownRef.current && !meetingsDropdownRef.current.contains(event.target as Node)) {
-        setIsMeetingsOpen(false);
-      }
-      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
+    const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (!showSearchDropdown || searchResults.length === 0) return;
+
+        if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setSelectedIndex((prev) =>
+                prev + 1 < searchResults.length ? prev + 1 : 0,
+            );
+        } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setSelectedIndex((prev) =>
+                prev - 1 >= 0 ? prev - 1 : searchResults.length - 1,
+            );
+        } else if (e.key === "Enter") {
+            e.preventDefault();
+            if (selectedIndex >= 0 && selectedIndex < searchResults.length) {
+                handleSelectSearchResult(searchResults[selectedIndex]);
+            }
+        }
+    };
+
+    const handleSelectSearchResult = (item: any) => {
+        window.location.hash = item.url;
         setShowSearchDropdown(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  // Hotkey listener (Cmd+K or Ctrl+K) and escape key listener
-  React.useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault();
-        searchInputRef.current?.focus();
-      }
-      if (e.key === "Escape") {
-        setShowSearchDropdown(false);
-        searchInputRef.current?.blur();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
-  const fetchSearchResults = async (val: string) => {
-    if (val.trim().length < 2) {
-      setSearchResults([]);
-      setIsSearching(false);
-      return;
-    }
-    setIsSearching(true);
-    try {
-      const res = await fetch(`/api/universal_search.php?query=${encodeURIComponent(val)}`);
-      if (res.ok) {
-        const data = await res.json();
-        setSearchResults(Array.isArray(data) ? data : []);
-        setShowSearchDropdown(true);
-        setSelectedIndex(-1);
-      } else {
+        setSearchQuery("");
         setSearchResults([]);
-      }
-    } catch (err) {
-      console.error("Error running universal search", err);
-      setSearchResults([]);
-    } finally {
-      setIsSearching(false);
-    }
-  };
+        searchInputRef.current?.blur();
+    };
 
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setSearchQuery(val);
-    if (val.trim().length < 2) {
-      setSearchResults([]);
-      setShowSearchDropdown(false);
-      return;
-    }
-    
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-    }
-    
-    searchTimeoutRef.current = setTimeout(() => {
-      fetchSearchResults(val);
-    }, 250);
-  };
+    const getSearchIcon = (type: string) => {
+        switch (type) {
+            case "client":
+                return <User className="h-4 w-4 text-emerald-600" />;
+            case "lead":
+                return <User className="h-4 w-4 text-indigo-500" />;
+            case "product":
+                return <Package className="h-4 w-4 text-blue-900" />;
+            case "email":
+                return <Mail className="h-4 w-4 text-pink-500" />;
+            case "meeting":
+                return <PencilLine className="h-4 w-4 text-amber-500" />;
+            case "unified_entry":
+                return <Database className="h-4 w-4 text-purple-500" />;
+            default:
+                return <FileText className="h-4 w-4 text-slate-450" />;
+        }
+    };
 
-  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!showSearchDropdown || searchResults.length === 0) return;
-    
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setSelectedIndex(prev => (prev + 1 < searchResults.length ? prev + 1 : 0));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setSelectedIndex(prev => (prev - 1 >= 0 ? prev - 1 : searchResults.length - 1));
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      if (selectedIndex >= 0 && selectedIndex < searchResults.length) {
-        handleSelectSearchResult(searchResults[selectedIndex]);
-      }
-    }
-  };
+    const getSearchTypeLabel = (type: string) => {
+        switch (type) {
+            case "client":
+                return systemLanguage === "sk"
+                    ? "Klient"
+                    : systemLanguage === "hu"
+                      ? "Ügyfél"
+                      : "Client";
+            case "lead":
+                return systemLanguage === "sk"
+                    ? "Záujemca"
+                    : systemLanguage === "hu"
+                      ? "Érdeklődő"
+                      : "Lead";
+            case "product":
+                return systemLanguage === "sk"
+                    ? "Tovar"
+                    : systemLanguage === "hu"
+                      ? "Termék"
+                      : "Product";
+            case "email":
+                return "Email";
+            case "meeting":
+                return systemLanguage === "sk"
+                    ? "Stretnutie"
+                    : systemLanguage === "hu"
+                      ? "Megbeszélés"
+                      : "Meeting";
+            case "unified_entry":
+                return systemLanguage === "sk"
+                    ? "Záznam"
+                    : systemLanguage === "hu"
+                      ? "Bejegyzés"
+                      : "Registry";
+            default:
+                return t("Item", "Položka", "Elem");
+        }
+    };
 
-  const handleSelectSearchResult = (item: any) => {
-    window.location.hash = item.url;
-    setShowSearchDropdown(false);
-    setSearchQuery("");
-    setSearchResults([]);
-    searchInputRef.current?.blur();
-  };
+    const getSearchTypeBadgeColor = (type: string) => {
+        switch (type) {
+            case "client":
+                return "bg-emerald-50 text-emerald-700 border-emerald-200";
+            case "lead":
+                return "bg-indigo-50 text-indigo-700 border-indigo-200";
+            case "product":
+                return "bg-blue-50 text-blue-900 border-blue-200";
+            case "email":
+                return "bg-pink-50 text-pink-700 border-pink-200";
+            case "meeting":
+                return "bg-amber-50 text-amber-700 border-amber-200";
+            case "unified_entry":
+                return "bg-purple-50 text-purple-700 border-purple-200";
+            default:
+                return "bg-slate-50 text-slate-700 border-slate-200";
+        }
+    };
 
-  const getSearchIcon = (type: string) => {
-    switch (type) {
-      case "client":
-        return <User className="h-4 w-4 text-emerald-600" />;
-      case "lead":
-        return <User className="h-4 w-4 text-indigo-500" />;
-      case "product":
-        return <Package className="h-4 w-4 text-blue-900" />;
-      case "email":
-        return <Mail className="h-4 w-4 text-pink-500" />;
-      case "meeting":
-        return <PencilLine className="h-4 w-4 text-amber-500" />;
-      case "unified_entry":
-        return <Database className="h-4 w-4 text-purple-500" />;
-      default:
-        return <FileText className="h-4 w-4 text-slate-450" />;
-    }
-  };
-
-  const getSearchTypeLabel = (type: string) => {
-    switch (type) {
-      case "client":
-        return systemLanguage === "sk" ? "Klient" : systemLanguage === "hu" ? "Ügyfél" : "Client";
-      case "lead":
-        return systemLanguage === "sk" ? "Záujemca" : systemLanguage === "hu" ? "Érdeklődő" : "Lead";
-      case "product":
-        return systemLanguage === "sk" ? "Tovar" : systemLanguage === "hu" ? "Termék" : "Product";
-      case "email":
-        return "Email";
-      case "meeting":
-        return systemLanguage === "sk" ? "Stretnutie" : systemLanguage === "hu" ? "Megbeszélés" : "Meeting";
-      case "unified_entry":
-        return systemLanguage === "sk" ? "Záznam" : systemLanguage === "hu" ? "Bejegyzés" : "Registry";
-      default:
-        return t("Item", "Položka", "Elem");
-    }
-  };
-
-  const getSearchTypeBadgeColor = (type: string) => {
-    switch (type) {
-      case "client": return "bg-emerald-50 text-emerald-700 border-emerald-200";
-      case "lead": return "bg-indigo-50 text-indigo-700 border-indigo-200";
-      case "product": return "bg-blue-50 text-blue-900 border-blue-200";
-      case "email": return "bg-pink-50 text-pink-700 border-pink-200";
-      case "meeting": return "bg-amber-50 text-amber-700 border-amber-200";
-      case "unified_entry": return "bg-purple-50 text-purple-700 border-purple-200";
-      default: return "bg-slate-50 text-slate-700 border-slate-200";
-    }
-  };
-
-  return (
-    <header className="h-20 border-b border-white/40 bg-white/25 backdrop-blur-md px-4 md:px-6 flex items-center justify-between sticky top-0 z-50 select-none">
-      <style>{`
+    return (
+        <header className="h-20 border-b border-white/40 bg-white/25 backdrop-blur-md px-4 md:px-6 flex items-center justify-between sticky top-0 z-50 select-none">
+            <style>{`
         @keyframes slideInRight {
           from { transform: translateX(100%); }
           to { transform: translateX(0); }
@@ -388,452 +484,635 @@ export const Header: React.FC<HeaderProps> = ({
         }
       `}</style>
 
-      {/* Brand Title */}
-      <div className="flex flex-col">
-        <h1 className="text-xl font-heading font-extrabold text-slate-900 tracking-tight leading-none uppercase">
-          {systemName}
-        </h1>
-      </div>
-
-      {/* Universal Search bar in the center */}
-      <div ref={searchContainerRef} className="relative w-72 md:w-96 mx-4">
-        <div className="relative">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            {isSearching ? (
-              <Loader2 className="h-4 w-4 animate-spin text-indigo-500" />
-            ) : (
-              <Search className="h-4 w-4 text-slate-400" />
-            )}
-          </div>
-          <input
-            ref={searchInputRef}
-            type="text"
-            value={searchQuery}
-            onChange={handleSearchChange}
-            onKeyDown={handleSearchKeyDown}
-            onFocus={() => {
-              if (searchQuery.trim().length >= 2) {
-                setShowSearchDropdown(true);
-              }
-            }}
-            placeholder={
-              systemLanguage === "sk" 
-                ? "Hľadať všade... (Cmd + K)" 
-                : systemLanguage === "hu" 
-                  ? "Keresés mindenhol... (Cmd + K)" 
-                  : "Search everywhere... (Cmd + K)"
-            }
-            className="w-full pl-9 pr-10 py-2 text-xs font-semibold rounded-xl bg-white/70 border border-slate-200 focus:outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-slate-800"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => {
-                setSearchQuery("");
-                setSearchResults([]);
-                setShowSearchDropdown(false);
-              }}
-              className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
-
-        {/* Dropdown Suggestions */}
-        {showSearchDropdown && (
-          <div className="absolute left-0 right-0 top-full mt-1 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-2xl max-h-[380px] overflow-y-auto z-[999] p-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
-            {searchResults.length === 0 ? (
-              <div className="py-6 text-center text-xs text-slate-400 font-semibold">
-                {systemLanguage === "sk" ? "Žiadne výsledky pre \"" + searchQuery + "\"" : systemLanguage === "hu" ? "Nincs találat a következőre: \"" + searchQuery + "\"" : "No results found for \"" + searchQuery + "\""}
-              </div>
-            ) : (
-              <div className="flex flex-col gap-0.5">
-                {searchResults.map((item, idx) => {
-                  const isSelected = idx === selectedIndex;
-                  return (
-                    <div
-                      key={item.id || idx}
-                      onClick={() => handleSelectSearchResult(item)}
-                      onMouseEnter={() => setSelectedIndex(idx)}
-                      className={`px-3 py-2.5 rounded-xl cursor-pointer transition-all flex items-start gap-3 border ${
-                        isSelected 
-                          ? "bg-slate-50/90 border-slate-200 text-slate-900 shadow-xs" 
-                          : "bg-transparent border-transparent text-slate-700 hover:bg-slate-50/50"
-                      }`}
-                    >
-                      <div className="mt-0.5 shrink-0 bg-slate-100 p-1.5 rounded-lg border border-slate-200/50">
-                        {getSearchIcon(item.type)}
-                      </div>
-                      
-                      <div className="flex-1 min-w-0 text-left">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-bold text-xs truncate text-slate-800">{item.title}</span>
-                          <span className={`text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md border shrink-0 ${getSearchTypeBadgeColor(item.type)}`}>
-                            {getSearchTypeLabel(item.type)}
-                          </span>
-                        </div>
-                        {item.subtitle && (
-                          <div className="text-[10px] text-slate-400 font-bold mt-0.5 truncate">{item.subtitle}</div>
-                        )}
-                        {item.excerpt && (
-                          <div className="text-[10px] text-slate-550 font-semibold mt-1 leading-relaxed border-l-2 border-slate-200 pl-2 italic truncate">
-                            {item.excerpt}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Utilities */}
-      <div className="flex items-center gap-6">
-        {/* Pulsing DEMO MODE badge */}
-        {isDemoMode && (
-          <a 
-            href="#settings"
-            className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 border border-amber-600 text-white text-[10px] font-black uppercase tracking-wider shadow-md shadow-amber-500/25 transition-all flex items-center gap-1 hover:scale-[1.02] shrink-0"
-          >
-            <span className="h-2 w-2 rounded-full bg-white animate-pulse" />
-            {t("DEMO MODE", "DEMO REŽIM", "DEMÓ MÓD")}
-          </a>
-        )}
-
-        {/* Create Task Top-Bar Action Button */}
-        <button
-          onClick={onAddTask}
-          className="h-10 w-10 rounded-xl border bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-350 hover:bg-slate-50 flex items-center justify-center transition-colors shadow-sm cursor-pointer shrink-0"
-          title={systemLanguage === "sk" ? "Vytvoriť novú úlohu" : systemLanguage === "hu" ? "Új feladat" : "Create New Task"}
-        >
-          <CheckSquare className="h-5 w-5 text-indigo-600" />
-        </button>
-
-        {/* Meeting Room Popover Utilities */}
-        <div className="relative" ref={meetingsDropdownRef}>
-          <button
-            onClick={() => setIsMeetingsOpen(!isMeetingsOpen)}
-            className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-colors shadow-sm cursor-pointer ${
-              isMeetingsOpen 
-                ? "bg-[#0b1329] border-[#0b1329] text-white" 
-                : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-350 hover:bg-slate-50"
-            }`}
-            aria-label={t("Meeting Room Menu", "Menu zasadačky", "Tárgyaló menü")}
-            title={systemLanguage === "sk" ? "Zasadačka a stretnutia" : systemLanguage === "hu" ? "Tárgyaló és megbeszélések" : "Meetings & Notes"}
-          >
-            <PencilLine className="h-5 w-5" />
-          </button>
-
-          {/* Popover Dropdown Panel */}
-          {isMeetingsOpen && (
-            <div className="absolute right-0 mt-2.5 w-60 bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-2xl rounded-2xl p-2.5 z-50 flex flex-col gap-1 select-none animate-in fade-in slide-in-from-top-2 duration-200">
-              <div className="px-3 py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 mb-1">
-                {systemLanguage === "sk" ? "Rýchle akcie zasadačky" : systemLanguage === "hu" ? "Gyors tárgyaló műveletek" : "Meeting Room Quick Actions"}
-              </div>
-
-              {/* Record Meeting */}
-              <button
-                onClick={() => {
-                  setIsMeetingsOpen(false);
-                  if (typeof (window as any).showToast === "function") {
-                    (window as any).showToast(
-                      systemLanguage === "sk" 
-                        ? "Nahrávanie stretnutia: Audio nahrávanie bude k dispozícii v ďalšej aktualizácii." 
-                        : systemLanguage === "hu" 
-                          ? "Megbeszélés rögzítése: A hangfelvétel a következő frissítésben érhető el." 
-                          : "Record Meeting: Audio recording feature will be implemented in the next update."
-                    );
-                  }
-                }}
-                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-all cursor-pointer group"
-              >
-                <Mic className="h-4 w-4 text-slate-400 group-hover:text-slate-500" />
-                <div className="flex flex-col">
-                  <span>{systemLanguage === "sk" ? "Nahrať stretnutie" : systemLanguage === "hu" ? "Megbeszélés rögzítése" : "Record Meeting"}</span>
-                  <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">{systemLanguage === "sk" ? "Pripravuje sa" : systemLanguage === "hu" ? "Fejlesztés alatt" : "Coming soon"}</span>
-                </div>
-              </button>
-
-              {/* New Meeting */}
-              <button
-                onClick={() => {
-                  setIsMeetingsOpen(false);
-                  if (onNavigateMeetings) {
-                    onNavigateMeetings("new");
-                  }
-                }}
-                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-[#0b1329] hover:bg-slate-100/60 transition-all cursor-pointer group"
-              >
-                <Plus className="h-4 w-4 text-[#0b1329]" />
-                <span>{systemLanguage === "sk" ? "Nové stretnutie" : systemLanguage === "hu" ? "Új megbeszélés" : "New Meeting"}</span>
-              </button>
-
-              {/* Show Meetings */}
-              <button
-                onClick={() => {
-                  setIsMeetingsOpen(false);
-                  if (onNavigateMeetings) {
-                    onNavigateMeetings("list");
-                  }
-                }}
-                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-slate-700 hover:text-[#0b1329] hover:bg-slate-100/60 transition-all cursor-pointer group"
-              >
-                <List className="h-4 w-4 text-slate-400 group-hover:text-[#0b1329]" />
-                <span>{systemLanguage === "sk" ? "Zobraziť stretnutia" : systemLanguage === "hu" ? "Megbeszélések mutatása" : "Show Meetings"}</span>
-              </button>
+            {/* Brand Title */}
+            <div className="flex flex-col">
+                <h1 className="text-xl font-heading font-extrabold text-slate-900 tracking-tight leading-none uppercase">
+                    {systemName}
+                </h1>
             </div>
-          )}
-        </div>
 
-        {/* Automation Toolbox Popover */}
-        <div className="relative" ref={toolboxDropdownRef}>
-          <button
-            onClick={() => setIsToolboxOpen(!isToolboxOpen)}
-            className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-colors shadow-sm cursor-pointer ${
-              isToolboxOpen 
-                ? "bg-[#0b1329] border-[#0b1329] text-white" 
-                : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-350 hover:bg-slate-50"
-            }`}
-            title={t("Automation Toolbox", "Automatizačný panel", "Automatizálási eszköztár")}
-          >
-            <Workflow className="h-5 w-5 text-purple-700" />
-          </button>
-
-          {isToolboxOpen && (
-            <div className="absolute right-0 mt-2.5 w-64 bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-2xl rounded-2xl p-3.5 z-50 flex flex-col gap-2 select-none animate-in fade-in slide-in-from-top-2 duration-200">
-              <div className="px-1.5 pb-2 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 mb-1 flex items-center justify-between">
-                <span>{t("Manual Triggers", "Manuálne spúšťače", "Kézi indítók")}</span>
-                <Workflow className="h-3 w-3 text-purple-400" />
-              </div>
-
-              {manualWorkflows.length === 0 ? (
-                <div className="py-6 text-center text-xs text-slate-400 font-medium">
-                  {t("No active manual workflows.", "Žiadne aktívne manuálne spúšťače.", "Nincsenek aktívny kézi indítók.")}
-                </div>
-              ) : (
-                <div className="flex flex-col gap-1.5 max-h-60 overflow-y-auto pr-0.5">
-                  {manualWorkflows.map(wf => {
-                    const cfg = wf.trigger_config || {};
-                    const btnColor = cfg.buttonColor || '#6b21a8';
-                    const btnIconName = cfg.buttonIcon || 'Play';
-                    const btnStyle = cfg.buttonStyle || 'full';
-                    
-                    const IconComponent = (Icons as any)[btnIconName] || Play;
-                    
-                    let buttonClass = "";
-                    let inlineStyle: React.CSSProperties = {};
-                    
-                    if (btnStyle === 'skeleton') {
-                      buttonClass = "w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border-2 text-xs font-bold transition-all hover:scale-[1.01] active:scale-[0.99]";
-                      inlineStyle = { borderColor: btnColor, color: btnColor };
-                    } else if (btnStyle === 'icon_only') {
-                      buttonClass = "w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-slate-100 text-xs font-bold transition-all hover:bg-slate-50 hover:scale-[1.01] active:scale-[0.99]";
-                      inlineStyle = { color: btnColor };
-                    } else { // 'full'
-                      buttonClass = "w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-white text-xs font-bold transition-all hover:opacity-90 hover:scale-[1.01] active:scale-[0.99]";
-                      inlineStyle = { backgroundColor: btnColor };
-                    }
-
-                    return (
-                      <button
-                        key={wf.id}
-                        onClick={() => handleRunWorkflow(wf)}
-                        disabled={runningWfId === wf.id}
-                        className={buttonClass}
-                        style={inlineStyle}
-                        title={wf.description}
-                      >
-                        {runningWfId === wf.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
+            {/* Universal Search bar in the center */}
+            <div
+                ref={searchContainerRef}
+                className="relative w-72 md:w-96 mx-4"
+            >
+                <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        {isSearching ? (
+                            <Loader2 className="h-4 w-4 animate-spin text-indigo-500" />
                         ) : (
-                          <IconComponent className="h-4 w-4 shrink-0" />
+                            <Search className="h-4 w-4 text-slate-400" />
                         )}
-                        {btnStyle !== 'icon_only' && (
-                          <span className="truncate">{wf.name}</span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Product Release Notes Updates Button */}
-        {updatesList.length > 0 && (
-          <div className="relative">
-            <button
-              onClick={handleOpenUpdates}
-              className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-colors shadow-sm cursor-pointer relative ${
-                activeTab === "updates" 
-                  ? "bg-[#0b1329] border-[#0b1329] text-white" 
-                  : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-350 hover:bg-slate-50"
-              }`}
-              title={systemLanguage === "sk" ? "Aktualizácie a novinky" : systemLanguage === "hu" ? "Frissítések és hírek" : "Updates & News"}
-            >
-              <Sparkles className="h-5 w-5 text-amber-500" />
-              {hasNewUpdate && (
-                <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
-                </span>
-              )}
-            </button>
-          </div>
-        )}
-
-
-        {/* User Account Trigger Button */}
-        <div>
-          <button
-            onClick={() => setIsProfileOpen(true)}
-            className="h-10 w-10 rounded-xl bg-white/80 border border-slate-200 flex items-center justify-center hover:border-slate-350 text-slate-700 transition-colors shadow-sm cursor-pointer"
-            aria-label={t("User Profile Menu", "Menu používateľského profilu", "Felhasználói profil menü")}
-          >
-            <User className="h-5 w-5 text-indigo-600" />
-          </button>
-
-          {/* User Account Right Slideout Drawer */}
-          {(isProfileOpen || isClosing) && typeof document !== "undefined" && (
-            React.createElement(React.Fragment, null, [
-              createPortal(
-                <div 
-                  className={`fixed inset-0 bg-slate-950/40 backdrop-blur-xs z-40 ${isClosing ? "animate-fade-out" : "animate-fade-in"}`}
-                  onClick={handleClose}
-                  key="drawer-backdrop"
-                />,
-                document.body
-              ),
-              createPortal(
-                <div
-                  className={`fixed top-20 right-0 bottom-0 w-80 md:w-90 bg-white/95 backdrop-blur-lg border-l border-slate-200/80 shadow-2xl flex flex-col justify-between overflow-y-auto p-0 z-50 ${isClosing ? "animate-slide-out-right" : "animate-slide-in-right"}`}
-                  onClick={(e) => e.stopPropagation()}
-                  key="drawer-panel"
-                >
-                  {/* Upper Section */}
-                  <div className="flex-1">
-                    {/* Header info with Close Trigger */}
-                    <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div 
-                           className="h-10 w-10 rounded-full flex items-center justify-center font-heading font-extrabold text-sm shadow-lg border"
-                          style={{
-                            backgroundColor: `${currentUser?.color || "#6366f1"}15`,
-                            color: currentUser?.color || "#6366f1",
-                            borderColor: `${currentUser?.color || "#6366f1"}35`
-                          }}
-                        >
-                          {currentUser ? currentUser.name.substring(0, 2).toUpperCase() : "US"}
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="text-sm font-black text-slate-800">{currentUser ? currentUser.name : "—"}</span>
-                          <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
-                            {currentUser ? currentUser.role : "Global Systems Admin"}
-                          </span>
-                        </div>
-                      </div>
-                      
-                      <button
-                        type="button"
-                        onClick={handleClose}
-                        className="text-slate-400 hover:text-slate-700 transition-colors p-1.5 hover:bg-slate-100 rounded-lg cursor-pointer"
-                        title={t("Close Drawer", "Zatvoriť panel", "Fiók bezárása")}
-                      >
-                        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
                     </div>
-
-                    {/* Language Selector Section */}
-                    <div className="p-5 space-y-3 border-b border-slate-105">
-                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
-                        {getTranslation(systemLanguage, "header.drawer_title")}
-                      </div>
-                      <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200/60 gap-1 select-none w-full">
-                        <button
-                          type="button"
-                          onClick={() => setSystemLanguage("en")}
-                          className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                            systemLanguage === "en"
-                              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 font-black"
-                              : "text-slate-500 hover:text-slate-800 hover:bg-white/60"
-                          }`}
-                        >
-                          <span className="text-base">🇬🇧</span> EN
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setSystemLanguage("sk")}
-                          className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                    <input
+                        ref={searchInputRef}
+                        type="text"
+                        value={searchQuery}
+                        onChange={handleSearchChange}
+                        onKeyDown={handleSearchKeyDown}
+                        onFocus={() => {
+                            if (searchQuery.trim().length >= 2) {
+                                setShowSearchDropdown(true);
+                            }
+                        }}
+                        placeholder={
                             systemLanguage === "sk"
-                              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 font-black"
-                              : "text-slate-500 hover:text-slate-800 hover:bg-white/60"
-                          }`}
-                        >
-                          <span className="text-base">🇸🇰</span> SK
-                        </button>
+                                ? "Hľadať všade... (Cmd + K)"
+                                : systemLanguage === "hu"
+                                  ? "Keresés mindenhol... (Cmd + K)"
+                                  : "Search everywhere... (Cmd + K)"
+                        }
+                        className="w-full pl-9 pr-10 py-2 text-xs font-semibold rounded-xl bg-white/70 border border-slate-200 focus:outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-slate-800"
+                    />
+                    {searchQuery && (
                         <button
-                          type="button"
-                          onClick={() => setSystemLanguage("hu")}
-                          className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                            systemLanguage === "hu"
-                              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 font-black"
-                              : "text-slate-500 hover:text-slate-800 hover:bg-white/60"
-                          }`}
+                            onClick={() => {
+                                setSearchQuery("");
+                                setSearchResults([]);
+                                setShowSearchDropdown(false);
+                            }}
+                            className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
                         >
-                          <span className="text-base">🇭🇺</span> HU
+                            <X className="h-3.5 w-3.5" />
                         </button>
-                      </div>
-                    </div>
-
-                    {/* Personal Settings Button */}
-                    <div className="p-5">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onOpenPersonalSettings();
-                          handleClose();
-                        }}
-                        className="w-full py-3.5 px-4 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 hover:text-indigo-850 transition-all text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-sm"
-                      >
-                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                        {systemLanguage === "sk" ? "Osobné nastavenia" : systemLanguage === "hu" ? "Személyes beállítások" : "Personal Settings"}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Lower Footer with Logout Option */}
-                  <div className="p-5 bg-slate-50 border-t border-slate-100 flex justify-between items-center text-[10px] text-slate-400 font-bold select-none uppercase tracking-wider">
-                    <span>{systemName} CRM</span>
-                    {onLogout ? (
-                      <button
-                        onClick={() => {
-                          onLogout();
-                          handleClose();
-                        }}
-                        className="text-rose-600 hover:text-rose-700 transition-colors uppercase font-black tracking-wider cursor-pointer"
-                      >
-                        {getTranslation(systemLanguage, "sidebar.logout")}
-                      </button>
-                    ) : (
-                      <span>{getTranslation(systemLanguage, "header.active_node")}</span>
                     )}
-                  </div>
-                </div>,
-                document.body
-              )
-            ])
-          )}
-        </div>
-      </div>
-    </header>
-  );
+                </div>
+
+                {/* Dropdown Suggestions */}
+                {showSearchDropdown && (
+                    <div className="absolute left-0 right-0 top-full mt-1 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-2xl max-h-[380px] overflow-y-auto z-[999] p-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
+                        {searchResults.length === 0 ? (
+                            <div className="py-6 text-center text-xs text-slate-400 font-semibold">
+                                {systemLanguage === "sk"
+                                    ? 'Žiadne výsledky pre "' +
+                                      searchQuery +
+                                      '"'
+                                    : systemLanguage === "hu"
+                                      ? 'Nincs találat a következőre: "' +
+                                        searchQuery +
+                                        '"'
+                                      : 'No results found for "' +
+                                        searchQuery +
+                                        '"'}
+                            </div>
+                        ) : (
+                            <div className="flex flex-col gap-0.5">
+                                {searchResults.map((item, idx) => {
+                                    const isSelected = idx === selectedIndex;
+                                    return (
+                                        <div
+                                            key={item.id || idx}
+                                            onClick={() =>
+                                                handleSelectSearchResult(item)
+                                            }
+                                            onMouseEnter={() =>
+                                                setSelectedIndex(idx)
+                                            }
+                                            className={`px-3 py-2.5 rounded-xl cursor-pointer transition-all flex items-start gap-3 border ${
+                                                isSelected
+                                                    ? "bg-slate-50/90 border-slate-200 text-slate-900 shadow-xs"
+                                                    : "bg-transparent border-transparent text-slate-700 hover:bg-slate-50/50"
+                                            }`}
+                                        >
+                                            <div className="mt-0.5 shrink-0 bg-slate-100 p-1.5 rounded-lg border border-slate-200/50">
+                                                {getSearchIcon(item.type)}
+                                            </div>
+
+                                            <div className="flex-1 min-w-0 text-left">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className="font-bold text-xs truncate text-slate-800">
+                                                        {item.title}
+                                                    </span>
+                                                    <span
+                                                        className={`text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md border shrink-0 ${getSearchTypeBadgeColor(item.type)}`}
+                                                    >
+                                                        {getSearchTypeLabel(
+                                                            item.type,
+                                                        )}
+                                                    </span>
+                                                </div>
+                                                {item.subtitle && (
+                                                    <div className="text-[10px] text-slate-400 font-bold mt-0.5 truncate">
+                                                        {item.subtitle}
+                                                    </div>
+                                                )}
+                                                {item.excerpt && (
+                                                    <div className="text-[10px] text-slate-550 font-semibold mt-1 leading-relaxed border-l-2 border-slate-200 pl-2 italic truncate">
+                                                        {item.excerpt}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {/* Utilities */}
+            <div className="flex items-center gap-6">
+                {/* Pulsing DEMO MODE badge */}
+                {isDemoMode && (
+                    <a
+                        href="#settings"
+                        className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 border border-amber-600 text-white text-[10px] font-black uppercase tracking-wider shadow-md shadow-amber-500/25 transition-all flex items-center gap-1 hover:scale-[1.02] shrink-0"
+                    >
+                        <span className="h-2 w-2 rounded-full bg-white animate-pulse" />
+                        {t("DEMO MODE", "DEMO REŽIM", "DEMÓ MÓD")}
+                    </a>
+                )}
+
+                {/* Create Task Top-Bar Action Button */}
+                <button
+                    onClick={onAddTask}
+                    className="h-10 w-10 rounded-xl border bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-350 hover:bg-slate-50 flex items-center justify-center transition-colors shadow-sm cursor-pointer shrink-0"
+                    title={
+                        systemLanguage === "sk"
+                            ? "Vytvoriť novú úlohu"
+                            : systemLanguage === "hu"
+                              ? "Új feladat"
+                              : "Create New Task"
+                    }
+                >
+                    <CheckSquare className="h-5 w-5 text-indigo-600" />
+                </button>
+
+                {/* Meeting Room Popover Utilities */}
+                <div className="relative" ref={meetingsDropdownRef}>
+                    <button
+                        onClick={() => setIsMeetingsOpen(!isMeetingsOpen)}
+                        className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-colors shadow-sm cursor-pointer ${
+                            isMeetingsOpen
+                                ? "bg-[#0b1329] border-[#0b1329] text-white"
+                                : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-350 hover:bg-slate-50"
+                        }`}
+                        aria-label={t(
+                            "Meeting Room Menu",
+                            "Menu zasadačky",
+                            "Tárgyaló menü",
+                        )}
+                        title={
+                            systemLanguage === "sk"
+                                ? "Zasadačka a stretnutia"
+                                : systemLanguage === "hu"
+                                  ? "Tárgyaló és megbeszélések"
+                                  : "Meetings & Notes"
+                        }
+                    >
+                        <PencilLine className="h-5 w-5" />
+                    </button>
+
+                    {/* Popover Dropdown Panel */}
+                    {isMeetingsOpen && (
+                        <div className="absolute right-0 mt-2.5 w-60 bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-2xl rounded-2xl p-2.5 z-50 flex flex-col gap-1 select-none animate-in fade-in slide-in-from-top-2 duration-200">
+                            <div className="px-3 py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 mb-1">
+                                {systemLanguage === "sk"
+                                    ? "Rýchle akcie zasadačky"
+                                    : systemLanguage === "hu"
+                                      ? "Gyors tárgyaló műveletek"
+                                      : "Meeting Room Quick Actions"}
+                            </div>
+
+                            {/* Record Meeting */}
+                            <button
+                                onClick={() => {
+                                    setIsMeetingsOpen(false);
+                                    if (
+                                        typeof (window as any).showToast ===
+                                        "function"
+                                    ) {
+                                        (window as any).showToast(
+                                            systemLanguage === "sk"
+                                                ? "Nahrávanie stretnutia: Audio nahrávanie bude k dispozícii v ďalšej aktualizácii."
+                                                : systemLanguage === "hu"
+                                                  ? "Megbeszélés rögzítése: A hangfelvétel a következő frissítésben érhető el."
+                                                  : "Record Meeting: Audio recording feature will be implemented in the next update.",
+                                        );
+                                    }
+                                }}
+                                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-all cursor-pointer group"
+                            >
+                                <Mic className="h-4 w-4 text-slate-400 group-hover:text-slate-500" />
+                                <div className="flex flex-col">
+                                    <span>
+                                        {systemLanguage === "sk"
+                                            ? "Nahrať stretnutie"
+                                            : systemLanguage === "hu"
+                                              ? "Megbeszélés rögzítése"
+                                              : "Record Meeting"}
+                                    </span>
+                                    <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">
+                                        {systemLanguage === "sk"
+                                            ? "Pripravuje sa"
+                                            : systemLanguage === "hu"
+                                              ? "Fejlesztés alatt"
+                                              : "Coming soon"}
+                                    </span>
+                                </div>
+                            </button>
+
+                            {/* New Meeting */}
+                            <button
+                                onClick={() => {
+                                    setIsMeetingsOpen(false);
+                                    if (onNavigateMeetings) {
+                                        onNavigateMeetings("new");
+                                    }
+                                }}
+                                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-[#0b1329] hover:bg-slate-100/60 transition-all cursor-pointer group"
+                            >
+                                <Plus className="h-4 w-4 text-[#0b1329]" />
+                                <span>
+                                    {systemLanguage === "sk"
+                                        ? "Nové stretnutie"
+                                        : systemLanguage === "hu"
+                                          ? "Új megbeszélés"
+                                          : "New Meeting"}
+                                </span>
+                            </button>
+
+                            {/* Show Meetings */}
+                            <button
+                                onClick={() => {
+                                    setIsMeetingsOpen(false);
+                                    if (onNavigateMeetings) {
+                                        onNavigateMeetings("list");
+                                    }
+                                }}
+                                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-slate-700 hover:text-[#0b1329] hover:bg-slate-100/60 transition-all cursor-pointer group"
+                            >
+                                <List className="h-4 w-4 text-slate-400 group-hover:text-[#0b1329]" />
+                                <span>
+                                    {systemLanguage === "sk"
+                                        ? "Zobraziť stretnutia"
+                                        : systemLanguage === "hu"
+                                          ? "Megbeszélések mutatása"
+                                          : "Show Meetings"}
+                                </span>
+                            </button>
+                        </div>
+                    )}
+                </div>
+
+                {/* Automation Toolbox Popover */}
+                <div className="relative" ref={toolboxDropdownRef}>
+                    <button
+                        onClick={() => setIsToolboxOpen(!isToolboxOpen)}
+                        className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-colors shadow-sm cursor-pointer ${
+                            isToolboxOpen
+                                ? "bg-[#0b1329] border-[#0b1329] text-white"
+                                : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-350 hover:bg-slate-50"
+                        }`}
+                        title={t(
+                            "Automation Toolbox",
+                            "Automatizačný panel",
+                            "Automatizálási eszköztár",
+                        )}
+                    >
+                        <Workflow className="h-5 w-5 text-purple-700" />
+                    </button>
+
+                    {isToolboxOpen && (
+                        <div className="absolute right-0 mt-2.5 w-64 bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-2xl rounded-2xl p-3.5 z-50 flex flex-col gap-2 select-none animate-in fade-in slide-in-from-top-2 duration-200">
+                            <div className="px-1.5 pb-2 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 mb-1 flex items-center justify-between">
+                                <span>
+                                    {t(
+                                        "Manual Triggers",
+                                        "Manuálne spúšťače",
+                                        "Kézi indítók",
+                                    )}
+                                </span>
+                                <Workflow className="h-3 w-3 text-purple-400" />
+                            </div>
+
+                            {manualWorkflows.length === 0 ? (
+                                <div className="py-6 text-center text-xs text-slate-400 font-medium">
+                                    {t(
+                                        "No active manual workflows.",
+                                        "Žiadne aktívne manuálne spúšťače.",
+                                        "Nincsenek aktívny kézi indítók.",
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="flex flex-col gap-1.5 max-h-60 overflow-y-auto pr-0.5">
+                                    {manualWorkflows.map((wf) => {
+                                        const cfg = wf.trigger_config || {};
+                                        const btnColor =
+                                            cfg.buttonColor || "#6b21a8";
+                                        const btnIconName =
+                                            cfg.buttonIcon || "Play";
+                                        const btnStyle =
+                                            cfg.buttonStyle || "full";
+
+                                        const IconComponent =
+                                            (Icons as any)[btnIconName] || Play;
+
+                                        let buttonClass = "";
+                                        let inlineStyle: React.CSSProperties =
+                                            {};
+
+                                        if (btnStyle === "skeleton") {
+                                            buttonClass =
+                                                "w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border-2 text-xs font-bold transition-all hover:scale-[1.01] active:scale-[0.99]";
+                                            inlineStyle = {
+                                                borderColor: btnColor,
+                                                color: btnColor,
+                                            };
+                                        } else if (btnStyle === "icon_only") {
+                                            buttonClass =
+                                                "w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-slate-100 text-xs font-bold transition-all hover:bg-slate-50 hover:scale-[1.01] active:scale-[0.99]";
+                                            inlineStyle = { color: btnColor };
+                                        } else {
+                                            // 'full'
+                                            buttonClass =
+                                                "w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-white text-xs font-bold transition-all hover:opacity-90 hover:scale-[1.01] active:scale-[0.99]";
+                                            inlineStyle = {
+                                                backgroundColor: btnColor,
+                                            };
+                                        }
+
+                                        return (
+                                            <button
+                                                key={wf.id}
+                                                onClick={() =>
+                                                    handleRunWorkflow(wf)
+                                                }
+                                                disabled={runningWfId === wf.id}
+                                                className={buttonClass}
+                                                style={inlineStyle}
+                                                title={wf.description}
+                                            >
+                                                {runningWfId === wf.id ? (
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                ) : (
+                                                    <IconComponent className="h-4 w-4 shrink-0" />
+                                                )}
+                                                {btnStyle !== "icon_only" && (
+                                                    <span className="truncate">
+                                                        {wf.name}
+                                                    </span>
+                                                )}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                {/* Product Release Notes Updates Button */}
+                {updatesList.length > 0 && (
+                    <div className="relative">
+                        <button
+                            onClick={handleOpenUpdates}
+                            className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-colors shadow-sm cursor-pointer relative ${
+                                activeTab === "updates"
+                                    ? "bg-[#0b1329] border-[#0b1329] text-white"
+                                    : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-350 hover:bg-slate-50"
+                            }`}
+                            title={
+                                systemLanguage === "sk"
+                                    ? "Aktualizácie a novinky"
+                                    : systemLanguage === "hu"
+                                      ? "Frissítések és hírek"
+                                      : "Updates & News"
+                            }
+                        >
+                            <Sparkles className="h-5 w-5 text-amber-500" />
+                            {hasNewUpdate && (
+                                <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
+                                </span>
+                            )}
+                        </button>
+                    </div>
+                )}
+
+                {/* User Account Trigger Button */}
+                <div>
+                    <button
+                        onClick={() => setIsProfileOpen(true)}
+                        className="h-10 w-10 rounded-xl bg-white/80 border border-slate-200 flex items-center justify-center hover:border-slate-350 text-slate-700 transition-colors shadow-sm cursor-pointer"
+                        aria-label={t(
+                            "User Profile Menu",
+                            "Menu používateľského profilu",
+                            "Felhasználói profil menü",
+                        )}
+                    >
+                        <User className="h-5 w-5 text-indigo-600" />
+                    </button>
+
+                    {/* User Account Right Slideout Drawer */}
+                    {(isProfileOpen || isClosing) &&
+                        typeof document !== "undefined" &&
+                        React.createElement(React.Fragment, null, [
+                            createPortal(
+                                <div
+                                    className={`fixed inset-0 bg-slate-950/40 backdrop-blur-xs z-40 ${isClosing ? "animate-fade-out" : "animate-fade-in"}`}
+                                    onClick={handleClose}
+                                    key="drawer-backdrop"
+                                />,
+                                document.body,
+                            ),
+                            createPortal(
+                                <div
+                                    className={`fixed top-20 right-0 bottom-0 w-80 md:w-90 bg-white/95 backdrop-blur-lg border-l border-slate-200/80 shadow-2xl flex flex-col justify-between overflow-y-auto p-0 z-50 ${isClosing ? "animate-slide-out-right" : "animate-slide-in-right"}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                    key="drawer-panel"
+                                >
+                                    {/* Upper Section */}
+                                    <div className="flex-1">
+                                        {/* Header info with Close Trigger */}
+                                        <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div
+                                                    className="h-10 w-10 rounded-full flex items-center justify-center font-heading font-extrabold text-sm shadow-lg border"
+                                                    style={{
+                                                        backgroundColor: `${currentUser?.color || "#6366f1"}15`,
+                                                        color:
+                                                            currentUser?.color ||
+                                                            "#6366f1",
+                                                        borderColor: `${currentUser?.color || "#6366f1"}35`,
+                                                    }}
+                                                >
+                                                    {currentUser
+                                                        ? currentUser.name
+                                                              .substring(0, 2)
+                                                              .toUpperCase()
+                                                        : "US"}
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className="text-sm font-black text-slate-800">
+                                                        {currentUser
+                                                            ? currentUser.name
+                                                            : "—"}
+                                                    </span>
+                                                    <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
+                                                        {currentUser
+                                                            ? currentUser.role
+                                                            : "Global Systems Admin"}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            <button
+                                                type="button"
+                                                onClick={handleClose}
+                                                className="text-slate-400 hover:text-slate-700 transition-colors p-1.5 hover:bg-slate-100 rounded-lg cursor-pointer"
+                                                title={t(
+                                                    "Close Drawer",
+                                                    "Zatvoriť panel",
+                                                    "Fiók bezárása",
+                                                )}
+                                            >
+                                                <svg
+                                                    className="h-5 w-5"
+                                                    fill="none"
+                                                    viewBox="0 0 24 24"
+                                                    stroke="currentColor"
+                                                    strokeWidth={2}
+                                                >
+                                                    <path
+                                                        strokeLinecap="round"
+                                                        strokeLinejoin="round"
+                                                        d="M6 18L18 6M6 6l12 12"
+                                                    />
+                                                </svg>
+                                            </button>
+                                        </div>
+
+                                        {/* Language Selector Section */}
+                                        <div className="p-5 space-y-3 border-b border-slate-105">
+                                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
+                                                {getTranslation(
+                                                    systemLanguage,
+                                                    "header.drawer_title",
+                                                )}
+                                            </div>
+                                            <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200/60 gap-1 select-none w-full">
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setSystemLanguage("en")
+                                                    }
+                                                    className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                                                        systemLanguage === "en"
+                                                            ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 font-black"
+                                                            : "text-slate-500 hover:text-slate-800 hover:bg-white/60"
+                                                    }`}
+                                                >
+                                                    <span className="text-base">
+                                                        🇬🇧
+                                                    </span>{" "}
+                                                    EN
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setSystemLanguage("sk")
+                                                    }
+                                                    className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                                                        systemLanguage === "sk"
+                                                            ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 font-black"
+                                                            : "text-slate-500 hover:text-slate-800 hover:bg-white/60"
+                                                    }`}
+                                                >
+                                                    <span className="text-base">
+                                                        🇸🇰
+                                                    </span>{" "}
+                                                    SK
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setSystemLanguage("hu")
+                                                    }
+                                                    className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                                                        systemLanguage === "hu"
+                                                            ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 font-black"
+                                                            : "text-slate-500 hover:text-slate-800 hover:bg-white/60"
+                                                    }`}
+                                                >
+                                                    <span className="text-base">
+                                                        🇭🇺
+                                                    </span>{" "}
+                                                    HU
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Personal Settings Button */}
+                                        <div className="p-5">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    onOpenPersonalSettings();
+                                                    handleClose();
+                                                }}
+                                                className="w-full py-3.5 px-4 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 hover:text-indigo-850 transition-all text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                                            >
+                                                <svg
+                                                    className="h-4 w-4"
+                                                    fill="none"
+                                                    viewBox="0 0 24 24"
+                                                    stroke="currentColor"
+                                                    strokeWidth={2.5}
+                                                >
+                                                    <path
+                                                        strokeLinecap="round"
+                                                        strokeLinejoin="round"
+                                                        d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                                                    />
+                                                    <path
+                                                        strokeLinecap="round"
+                                                        strokeLinejoin="round"
+                                                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                                                    />
+                                                </svg>
+                                                {systemLanguage === "sk"
+                                                    ? "Osobné nastavenia"
+                                                    : systemLanguage === "hu"
+                                                      ? "Személyes beállítások"
+                                                      : "Personal Settings"}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Lower Footer with Logout Option */}
+                                    <div className="p-5 bg-slate-50 border-t border-slate-100 flex justify-between items-center text-[10px] text-slate-400 font-bold select-none uppercase tracking-wider">
+                                        <span>{systemName} CRM</span>
+                                        {onLogout ? (
+                                            <button
+                                                onClick={() => {
+                                                    onLogout();
+                                                    handleClose();
+                                                }}
+                                                className="text-rose-600 hover:text-rose-700 transition-colors uppercase font-black tracking-wider cursor-pointer"
+                                            >
+                                                {getTranslation(
+                                                    systemLanguage,
+                                                    "sidebar.logout",
+                                                )}
+                                            </button>
+                                        ) : (
+                                            <span>
+                                                {getTranslation(
+                                                    systemLanguage,
+                                                    "header.active_node",
+                                                )}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>,
+                                document.body,
+                            ),
+                        ])}
+                </div>
+            </div>
+        </header>
+    );
 };
