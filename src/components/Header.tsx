@@ -24,10 +24,6 @@ import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import type { UpdateEntry } from "./UpdateNotesModal";
 import { useUserPref } from "../utils/userPrefs";
-import {
-    bundledUpdateNotes,
-    mergeBundledUpdateNotes,
-} from "../utils/bundledUpdateNotes";
 
 interface HeaderProps {
     activeTab: string;
@@ -191,22 +187,23 @@ export const Header: React.FC<HeaderProps> = ({
                     if (best) localizedList.push(best);
                 });
 
-                const allUpdates = mergeBundledUpdateNotes(localizedList);
-                setUpdatesList(allUpdates);
+                const sortedUpdates = [...localizedList].sort(
+                    (a, b) =>
+                        new Date(b.postDate).getTime() -
+                        new Date(a.postDate).getTime(),
+                );
+                setUpdatesList(sortedUpdates);
 
                 // Check if there is a new unseen update
-                if (allUpdates.length > 0) {
-                    const latestId = allUpdates[0].id;
+                if (sortedUpdates.length > 0) {
+                    const latestId = sortedUpdates[0].id;
                     if (seenUpdateIdRef.current !== latestId) {
                         setHasNewUpdate(true);
                     }
                 }
             } catch (err) {
                 console.error("Error fetching release notes:", err);
-                setUpdatesList(bundledUpdateNotes);
-                if (seenUpdateIdRef.current !== bundledUpdateNotes[0].id) {
-                    setHasNewUpdate(true);
-                }
+                setUpdatesList([]);
             }
         };
         fetchUpdateNotes();

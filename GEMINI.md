@@ -12,3 +12,7 @@
 ### 2. Verification & Build Cleanliness
 - Use `npx tsc --noEmit` to verify TypeScript types without generating unwanted `dist/` changes.
 - If `npm run build` is run during validation, clean up `dist/` (`git checkout -- dist/ && git clean -fd dist/`) unless explicitly creating a deployment bundle.
+
+### 3. News & Product Updates Management
+- **Managed Exclusively via Craft CMS**: All news, release notes, and product update entries must be managed exclusively through Craft CMS (via GraphQL API `entries(section: "updateNotes", site: "*")`).
+- **No Hardcoded or Local DB Entries**: News and update entries must NEVER be hardcoded in client source code or stored in the application's local database.
