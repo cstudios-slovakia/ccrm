@@ -463,6 +463,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         }
+    } catch (\Exception $ex) {
+        // Fallback
+    }
+
     // RAG from Warehouse Products & Inventory
     try {
         $products_stmt = $pdo->query("
@@ -564,8 +568,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $sanitized_query = sanitize_text($userQuery, $to_placeholder);
 
     // Resolve system prompt based on active agent
-    $agentName = "Durian";
-    $skillInstructions = "You are Durian, the active CRM RAG AI assistant. You have access to the context below from the CRM database.";
+    $versionCodename = 'Imbe';
+    $versionFile = dirname(__DIR__, 2) . '/src/utils/version.ts';
+    if (!file_exists($versionFile)) {
+        $versionFile = dirname(__DIR__) . '/src/utils/version.ts';
+    }
+    if (file_exists($versionFile)) {
+        $vContent = @file_get_contents($versionFile);
+        if ($vContent && preg_match('/VERSION_CODENAME\s*=\s*["\']([^"\']+)["\']/', $vContent, $m)) {
+            $versionCodename = $m[1];
+        } elseif ($vContent && preg_match('/VERSION\s*=\s*["\'][^"\']*-([^"\']+)["\']/', $vContent, $m)) {
+            $versionCodename = $m[1];
+        }
+    }
+
+    $agentName = $versionCodename;
+    $skillInstructions = "You are " . $versionCodename . ", the active CRM RAG AI assistant. You have access to the context below from the CRM database.";
 
     if ($agentId !== 'durian' && $ragPdo) {
         try {
