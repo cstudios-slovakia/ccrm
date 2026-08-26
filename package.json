@@ -8,7 +8,11 @@
     "build": "tsc -b && vite build",
     "deploy": "node scripts/deploy.mjs",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:qa": "playwright test",
+    "test:qa:headed": "playwright test --headed",
+    "test:qa:crawler": "playwright test tests/e2e/crawler.spec.ts",
+    "test:qa:recorder": "node scripts/qa/run-recorder.mjs"
   },
   "dependencies": {
     "@fancyapps/ui": "^6.1.14",
@@ -26,6 +30,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4.3.0",
     "@types/node": "^24.12.3",
     "@types/react": "^19.2.14",

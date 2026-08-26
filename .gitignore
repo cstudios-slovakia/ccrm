@@ -85,3 +85,7 @@ errorsFigtree.md
 graphiql_dump.html
 graphql_settings.html
 __pycache__/
+
+# Test Results & Playwright Reports
+/test-results/
+/playwright-report/
