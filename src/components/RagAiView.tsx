@@ -1,10 +1,11 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { Brain, Send, Bot, User, Sparkles, Database, Check, RotateCcw, Plus, X, FileText, Play, Clock, Trash2, Edit } from "lucide-react";
 import type { Language } from "../utils/translations";
 import { Markdown } from "../utils/markdown";
 import { localeCodeFor } from "../utils/localTime";
 import { useUserPref } from "../utils/userPrefs";
+import { VERSION, VERSION_CODENAME } from "../utils/version";
 import type { Lead } from "../types";
 
 interface Message {
@@ -23,14 +24,13 @@ interface Agent {
   is_autonomous: boolean;
 }
 
-/** The built-in assistant, as shipped. Users may rewrite it — that edited copy is
- *  stored per user in the database, see the ragDefaultAgent preference. */
+/** The built-in assistant, as shipped. Dynamically adopts current version codename. */
 const STOCK_DEFAULT_AGENT: Agent = {
   id: "durian",
-  name: "Grapefruit",
+  name: VERSION_CODENAME,
   position: "CRM Assistant & Consultant",
   color: "purple",
-  skill_content: "You are Grapefruit, the active CRM RAG AI assistant. Answer user queries based on context.",
+  skill_content: `You are ${VERSION_CODENAME}, the active CRM RAG AI assistant. Answer user queries based on context.`,
   is_autonomous: false
 };
 
@@ -86,7 +86,17 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
   // it is still the stock one), so a rewritten assistant persona follows the
   // account instead of living in one browser's localStorage.
   const [customDefaultAgent, setCustomDefaultAgent] = useUserPref("ragDefaultAgent");
-  const defaultAgent: Agent = customDefaultAgent ?? STOCK_DEFAULT_AGENT;
+  const defaultAgent: Agent = useMemo(() => {
+    if (!customDefaultAgent) return STOCK_DEFAULT_AGENT;
+    if (customDefaultAgent.id === "durian" && (!customDefaultAgent.name || ["Grapefruit", "Huckleberry", "Durian"].includes(customDefaultAgent.name))) {
+      return {
+        ...customDefaultAgent,
+        name: VERSION_CODENAME,
+        skill_content: `You are ${VERSION_CODENAME}, the active CRM RAG AI assistant. Answer user queries based on context.`
+      };
+    }
+    return customDefaultAgent;
+  }, [customDefaultAgent]);
 
   const [selectedAgent, setSelectedAgent] = useState<Agent>(defaultAgent);
 
@@ -97,7 +107,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
   const defaultAgentSignature = JSON.stringify(customDefaultAgent);
   useEffect(() => {
     setSelectedAgent(prev => (prev.id === STOCK_DEFAULT_AGENT.id ? defaultAgent : prev));
-  }, [defaultAgentSignature]);
+  }, [defaultAgentSignature, defaultAgent]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -720,7 +730,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                   <div className="flex items-center justify-between">
                     <span className="font-heading font-bold text-xs text-slate-800">{agent.name}</span>
                     {agent.id === "durian" ? (
-                      <span className="text-[8px] font-bold text-purple-600 bg-purple-100/80 px-1.5 py-0.5 rounded-md uppercase tracking-wider">v1.3.13</span>
+                      <span className="text-[8px] font-bold text-purple-600 bg-purple-100/80 px-1.5 py-0.5 rounded-md uppercase tracking-wider">v{VERSION}</span>
                     ) : (
                       agent.is_autonomous && (
                         <span className="text-[7.5px] font-bold text-indigo-600 bg-indigo-100/80 px-1.5 py-0.5 rounded-md uppercase tracking-wider flex items-center gap-0.5">

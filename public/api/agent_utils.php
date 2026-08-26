@@ -243,50 +243,112 @@ function execute_autonomous_run($pdo, $ragPdo, $agent, $openAiKey) {
         // Fallback
     }
 
-    // RAG from Warehouse Products for autonomous agents
+    // RAG from Unified Entries for autonomous agents
     try {
-        $products_stmt = $pdo->query("
-            SELECT wi.`id`, wi.`name`, wi.`sku`, wi.`barcode`, wi.`category`, wi.`unit`, wi.`default_sell_price`, wi.`avg_purchase_price`, wi.`min_stock`, wi.`optimal_stock`, wi.`default_location`
-            FROM `warehouse_items` wi
-            LIMIT 50
-        ");
-        $products_all = $products_stmt->fetchAll(PDO::FETCH_ASSOC);
-        foreach ($products_all as $p) {
-            $matches = false;
-            $pName = mb_strtolower($p['name'] ?? '');
-            $pSku = mb_strtolower($p['sku'] ?? '');
-            $pCat = mb_strtolower($p['category'] ?? '');
+        $registries = $pdo->query("SELECT `id`, `name`, `entry_name`, `folder_name` FROM `unified_entries` WHERE `archived` = 0")->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($registries as $reg) {
+            $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($reg['id']));
+            $tableName = "ue_" . $safeId;
+            $chkTable = $pdo->query("SHOW TABLES LIKE '{$tableName}'")->rowCount() > 0;
+            if (!$chkTable) continue;
 
-            if ((!empty($pName) && mb_strpos($normalized_query, $pName) !== false) ||
-                (!empty($pSku) && mb_strpos($normalized_query, $pSku) !== false) ||
-                (!empty($pCat) && mb_strpos($normalized_query, $pCat) !== false) ||
-                mb_strpos($normalized_query, 'sklad') !== false ||
-                mb_strpos($normalized_query, 'zásob') !== false ||
-                mb_strpos($normalized_query, 'tovar') !== false ||
-                mb_strpos($normalized_query, 'stock') !== false ||
-                mb_strpos($normalized_query, 'inventory') !== false) {
-                $matches = true;
+            $entryLabel = $reg['entry_name'] ?: 'Záznam';
+            $folderLabel = $reg['folder_name'] ?: 'Skupina';
+            $regNameLower = mb_strtolower($reg['name']);
+
+            $rows = $pdo->query("
+                SELECT ue.*, l.`name` as `client_name`
+                FROM `{$tableName}` ue
+                LEFT JOIN `leads` l ON ue.`client_id` = l.`id`
+                ORDER BY ue.`is_folder` DESC, ue.`created_at` DESC
+                LIMIT 50
+            ")->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($rows as $r) {
+                $isFolder = (int)($r['is_folder'] ?? 0) === 1;
+                $typeLabel = $isFolder ? $folderLabel : $entryLabel;
+                $matches = false;
+                
+                if (mb_strpos($normalized_query, $regNameLower) !== false ||
+                    (!empty($r['title']) && mb_strpos($normalized_query, mb_strtolower($r['title'])) !== false) ||
+                    (!empty($r['client_name']) && mb_strpos($normalized_query, mb_strtolower($r['client_name'])) !== false)) {
+                    $matches = true;
+                }
+
+                $block = "Unified Registry (" . $reg['name'] . " - " . $typeLabel . "):\n";
+                $block .= "- Title: " . ($r['title'] ?: 'Untitled') . "\n";
+                if (!empty($r['client_name'])) $block .= "- Client: " . $r['client_name'] . "\n";
+                if (!empty($r['due_date'])) $block .= "- Due Date: " . $r['due_date'] . "\n";
+                if (!empty($r['file_name'])) $block .= "- File Attachment: " . $r['file_name'] . "\n";
+
+                $context_blocks[] = [
+                    'text' => $block,
+                    'is_match' => $matches
+                ];
             }
+        }
+    } catch (\Exception $ex) {
+        // Fallback
+    }
 
-            $onHand = 0;
-            try {
-                $stQuery = $pdo->prepare("SELECT SUM(`quantity`) as `total_qty` FROM `warehouse_stock` WHERE `item_id` = ?");
-                $stQuery->execute([$p['id']]);
-                $onHand = (float)$stQuery->fetchColumn();
-            } catch (\Exception $e) {}
+    // RAG from Financial Management for autonomous agents
+    try {
+        $chkFin = $pdo->query("SHOW TABLES LIKE 'financial_records'")->rowCount() > 0;
+        if ($chkFin) {
+            $finStmt = $pdo->query("
+                SELECT fr.*, l.`name` as `client_name`
+                FROM `financial_records` fr
+                LEFT JOIN `leads` l ON fr.`client_id` = l.`id`
+                ORDER BY fr.`issue_date` DESC
+                LIMIT 50
+            ");
+            $finRecords = $finStmt->fetchAll(PDO::FETCH_ASSOC);
 
-            $block = "Warehouse Product / Material:\n";
-            $block .= "- Name: " . $p['name'] . "\n";
-            $block .= "- SKU: " . ($p['sku'] ?: 'N/A') . "\n";
-            $block .= "- Category: " . ($p['category'] ?: 'N/A') . "\n";
-            $block .= "- Selling Price: €" . number_format($p['default_sell_price'] ?? 0, 2) . "\n";
-            $block .= "- Current Stock: " . $onHand . " " . ($p['unit'] ?: 'ks') . "\n";
-            $block .= "- Min Stock Alert: " . $p['min_stock'] . " " . ($p['unit'] ?: 'ks') . "\n";
+            if (!empty($finRecords)) {
+                $totalRealIncome = 0;
+                $totalRealExpense = 0;
+                $overdueReceivables = 0;
+                $pendingPayables = 0;
 
-            $context_blocks[] = [
-                'text' => $block,
-                'is_match' => $matches
-            ];
+                foreach ($finRecords as $fr) {
+                    $amtReal = (float)($fr['amount_real'] ?? 0);
+                    $amtPlan = (float)($fr['amount_planned'] ?? 0);
+                    if ($fr['type'] === 'income') {
+                        if ($fr['status'] === 'paid' || $fr['status'] === 'partially_paid') $totalRealIncome += $amtReal;
+                        if ($fr['status'] === 'overdue') $overdueReceivables += $amtPlan;
+                    } elseif ($fr['type'] === 'expense') {
+                        if ($fr['status'] === 'paid' || $fr['status'] === 'partially_paid') $totalRealExpense += $amtReal;
+                        if ($fr['status'] === 'pending' || $fr['status'] === 'overdue') $pendingPayables += $amtPlan;
+                    }
+                }
+
+                $finSummaryBlock = "Financial Overview & Key Figures:\n";
+                $finSummaryBlock .= "- Realized Income: €" . number_format($totalRealIncome, 2) . "\n";
+                $finSummaryBlock .= "- Realized Expenses: €" . number_format($totalRealExpense, 2) . "\n";
+                $finSummaryBlock .= "- Net Cash Flow / Margin: €" . number_format($totalRealIncome - $totalRealExpense, 2) . "\n";
+                $finSummaryBlock .= "- Overdue Incomes (Pohľadávky po splatnosti): €" . number_format($overdueReceivables, 2) . "\n";
+                $finSummaryBlock .= "- Pending Expenses (Záväzky na úhradu): €" . number_format($pendingPayables, 2) . "\n";
+
+                $context_blocks[] = [
+                    'text' => $finSummaryBlock,
+                    'is_match' => true
+                ];
+
+                foreach ($finRecords as $fr) {
+                    $block = "Financial Record (" . strtoupper($fr['type']) . " - " . strtoupper($fr['status']) . "):\n";
+                    $block .= "- Title: " . $fr['title'] . "\n";
+                    $block .= "- Amount: €" . number_format((float)$fr['amount_real'], 2) . " (Planned: €" . number_format((float)$fr['amount_planned'], 2) . ")\n";
+                    if (!empty($fr['invoice_number'])) $block .= "- Invoice No: " . $fr['invoice_number'] . "\n";
+                    if (!empty($fr['category_path'])) $block .= "- Category: " . $fr['category_path'] . "\n";
+                    if (!empty($fr['client_name'])) $block .= "- Client: " . $fr['client_name'] . "\n";
+                    if (!empty($fr['due_date'])) $block .= "- Due Date: " . $fr['due_date'] . "\n";
+
+                    $context_blocks[] = [
+                        'text' => $block,
+                        'is_match' => false
+                    ];
+                }
+            }
         }
     } catch (\Exception $ex) {
         // Fallback

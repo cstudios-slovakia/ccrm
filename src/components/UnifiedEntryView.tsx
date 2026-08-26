@@ -309,12 +309,15 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
   const renderClientSelector = () => {
     const linkedClient = formClientId ? leads.find(l => l.id === formClientId) : null;
     const filteredLeads = leads.filter(lead => {
-      if (lead.status !== "accepted" || lead.id === "unassigned-docs") return false;
+      if (lead.id === "unassigned-docs") return false;
       const q = clientSearchQuery.toLowerCase().trim();
       if (!q) return true;
-      return lead.name.toLowerCase().includes(q) || 
+      return (lead.name && lead.name.toLowerCase().includes(q)) || 
              (lead.phone && lead.phone.includes(q)) || 
-             (lead.email && lead.email.toLowerCase().includes(q));
+             (lead.email && lead.email.toLowerCase().includes(q)) ||
+             (lead.city && lead.city.toLowerCase().includes(q)) ||
+             (lead.companyId && lead.companyId.toLowerCase().includes(q)) ||
+             (lead.contactPerson && lead.contactPerson.toLowerCase().includes(q));
     });
 
     return (
@@ -330,6 +333,9 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
               value={clientSearchQuery}
               onChange={(e) => {
                 setClientSearchQuery(e.target.value);
+                if (!e.target.value) {
+                  setFormClientId("");
+                }
                 setIsClientDropdownOpen(true);
               }}
               onFocus={() => setIsClientDropdownOpen(true)}
@@ -377,7 +383,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                     >
                       <span className="font-bold text-slate-800">{lead.name}</span>
                       <span className="text-[10px] text-slate-400 truncate">
-                        {lead.email || t("No email", "Žiadny e-mail", "Nincs e-mail")} • {lead.phone || t("No phone", "Žiadny telefón", "Nincs telefonszám")}
+                        {lead.city ? `${lead.city} • ` : ""}{lead.email || t("No email", "Žiadny e-mail", "Nincs e-mail")} • {lead.phone || t("No phone", "Žiadny telefón", "Nincs telefonszám")}
                       </span>
                     </button>
                   ))
@@ -430,12 +436,15 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
   const renderLeadSelector = () => {
     const linkedLead = formLeadId ? leads.find(l => l.id === formLeadId) : null;
     const filteredLeads = leads.filter(lead => {
-      if (lead.status === "accepted" || lead.id === "unassigned-docs") return false;
+      if (lead.id === "unassigned-docs") return false;
       const q = leadSearchQuery.toLowerCase().trim();
       if (!q) return true;
-      return lead.name.toLowerCase().includes(q) || 
+      return (lead.name && lead.name.toLowerCase().includes(q)) || 
              (lead.phone && lead.phone.includes(q)) || 
-             (lead.email && lead.email.toLowerCase().includes(q));
+             (lead.email && lead.email.toLowerCase().includes(q)) ||
+             (lead.city && lead.city.toLowerCase().includes(q)) ||
+             (lead.companyId && lead.companyId.toLowerCase().includes(q)) ||
+             (lead.contactPerson && lead.contactPerson.toLowerCase().includes(q));
     });
 
     return (
@@ -451,6 +460,9 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
               value={leadSearchQuery}
               onChange={(e) => {
                 setLeadSearchQuery(e.target.value);
+                if (!e.target.value) {
+                  setFormLeadId("");
+                }
                 setIsLeadDropdownOpen(true);
               }}
               onFocus={() => setIsLeadDropdownOpen(true)}
@@ -498,7 +510,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                     >
                       <span className="font-bold text-slate-800">{lead.name}</span>
                       <span className="text-[10px] text-slate-400 truncate">
-                        {lead.email || t("No email", "Žiadny e-mail", "Nincs e-mail")} • {lead.phone || t("No phone", "Žiadny telefón", "Nincs telefonszám")}
+                        {lead.city ? `${lead.city} • ` : ""}{lead.email || t("No email", "Žiadny e-mail", "Nincs e-mail")} • {lead.phone || t("No phone", "Žiadny telefón", "Nincs telefonszám")}
                       </span>
                     </button>
                   ))
