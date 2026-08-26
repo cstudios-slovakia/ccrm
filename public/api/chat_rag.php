@@ -236,28 +236,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     list($to_placeholder, $to_real) = get_sanitization_maps($pdo);
 
+    // Diacritic & Accent Normalization
+    $remove_accents = function($str) {
+        $transl = [
+            'á'=>'a','ä'=>'a','č'=>'c','ď'=>'d','é'=>'e','ě'=>'e','í'=>'i','ĺ'=>'l','ľ'=>'l','ň'=>'n','ó'=>'o','ô'=>'o','ö'=>'o','ő'=>'o','ŕ'=>'r','ř'=>'r','š'=>'s','ť'=>'t','ú'=>'u','ů'=>'u','ü'=>'u','ű'=>'u','ý'=>'y','ž'=>'z',
+            'Á'=>'a','Ä'=>'a','Č'=>'c','Ď'=>'d','É'=>'e','Ě'=>'e','Í'=>'i','Ĺ'=>'l','Ľ'=>'l','Ň'=>'n','Ó'=>'o','Ô'=>'o','Ö'=>'o','Ő'=>'o','Ŕ'=>'r','Ř'=>'r','Š'=>'s','Ť'=>'t','Ú'=>'u','Ů'=>'u','Ü'=>'u','Ű'=>'u','Ý'=>'y','Ž'=>'z'
+        ];
+        return strtr($str, $transl);
+    };
+
+    $todayDate = date('Y-m-d');
+    $todayFormatted = date('Y-m-d (l, F j, Y)');
+
     // Local database context retrieval (RAG)
     $leads_stmt = $pdo->query("SELECT `id`, `name`, `city`, `client_type`, `status`, `source`, `owner`, `value`, `contact_person`, `financial_summary` FROM `leads` LIMIT 100");
     $leads_all = $leads_stmt->fetchAll(PDO::FETCH_ASSOC);
 
     $context_blocks = [];
     $normalized_query = mb_strtolower(trim($userQuery));
+    $normalized_query_clean = $remove_accents($normalized_query);
+    
     $query_words = preg_split('/[\s,\.\?\!\;\:\(\)\[\]\/\\\"\'\-]+/u', $normalized_query, -1, PREG_SPLIT_NO_EMPTY);
     $stop_words = ['v', 'a', 'i', 'o', 'na', 'do', 'so', 'za', 'pre', 'ku', 'od', 'ake', 'aka', 'aky', 'akeho', 'akej', 'co', 'kto', 'kde', 'ako', 'mame', 'ma', 'su', 'je', 'bol', 'bola', 'boli', 'the', 'is', 'in', 'at', 'of', 'on', 'and', 'to', 'for', 'are', 'what', 'who', 'how', 'which'];
     $meaningful_tokens = array_values(array_filter($query_words, function($w) use ($stop_words) {
         return mb_strlen($w) >= 2 && !in_array($w, $stop_words);
     }));
+    $meaningful_tokens_clean = array_map($remove_accents, $meaningful_tokens);
 
-    $calc_token_score = function($targetText, array $tokens) {
-        if (empty($targetText) || empty($tokens)) return 0;
-        $tLower = mb_strtolower($targetText);
+    $calc_token_score = function($targetText, array $tokensClean) use ($remove_accents) {
+        if (empty($targetText) || empty($tokensClean)) return 0;
+        $tClean = $remove_accents(mb_strtolower($targetText));
         $score = 0;
-        foreach ($tokens as $token) {
-            if (mb_strpos($tLower, $token) !== false) {
+        foreach ($tokensClean as $token) {
+            if (mb_strpos($tClean, $token) !== false) {
                 $score += 40;
             } else {
                 $stem = mb_substr($token, 0, max(3, mb_strlen($token) - 1));
-                if (mb_strlen($stem) >= 3 && mb_strpos($tLower, $stem) !== false) {
+                if (mb_strlen($stem) >= 3 && mb_strpos($tClean, $stem) !== false) {
                     $score += 25;
                 }
             }
@@ -265,37 +280,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         return $score;
     };
 
+    $isDeadlineQuery = (
+        mb_strpos($normalized_query_clean, 'splatn') !== false ||
+        mb_strpos($normalized_query_clean, 'platn') !== false ||
+        mb_strpos($normalized_query_clean, 'expir') !== false ||
+        mb_strpos($normalized_query_clean, 'due') !== false ||
+        mb_strpos($normalized_query_clean, 'deadline') !== false ||
+        mb_strpos($normalized_query_clean, 'vyprs') !== false ||
+        mb_strpos($normalized_query_clean, 'termin') !== false ||
+        mb_strpos($normalized_query_clean, 'overdue') !== false ||
+        mb_strpos($normalized_query_clean, 'meska') !== false ||
+        mb_strpos($normalized_query_clean, 'cas') !== false ||
+        mb_strpos($normalized_query_clean, 'datum') !== false
+    );
+
     foreach ($leads_all as $l) {
         $lead_id = $l['id'];
         $score = 0;
         
-        $nameLower = mb_strtolower($l['name'] ?? '');
-        $cityLower = mb_strtolower($l['city'] ?? '');
-        $ownerLower = mb_strtolower($l['owner'] ?? '');
-        $typeLower = mb_strtolower($l['client_type'] ?? '');
+        $nameClean = $remove_accents(mb_strtolower($l['name'] ?? ''));
+        $cityClean = $remove_accents(mb_strtolower($l['city'] ?? ''));
+        $ownerClean = $remove_accents(mb_strtolower($l['owner'] ?? ''));
 
-        if (!empty($l['name']) && mb_strpos($normalized_query, $nameLower) !== false) $score += 100;
-        if (!empty($l['city']) && mb_strpos($normalized_query, $cityLower) !== false) $score += 50;
-        if (!empty($l['owner']) && mb_strpos($normalized_query, $ownerLower) !== false) $score += 50;
+        if (!empty($l['name']) && mb_strpos($normalized_query_clean, $nameClean) !== false) $score += 100;
+        if (!empty($l['city']) && mb_strpos($normalized_query_clean, $cityClean) !== false) $score += 50;
+        if (!empty($l['owner']) && mb_strpos($normalized_query_clean, $ownerClean) !== false) $score += 50;
         
-        $score += $calc_token_score($l['name'] ?? '', $meaningful_tokens);
-        $score += $calc_token_score($l['city'] ?? '', $meaningful_tokens);
-        $score += $calc_token_score($l['owner'] ?? '', $meaningful_tokens);
-        $score += $calc_token_score($l['contact_person'] ?? '', $meaningful_tokens);
+        $score += $calc_token_score($l['name'] ?? '', $meaningful_tokens_clean);
+        $score += $calc_token_score($l['city'] ?? '', $meaningful_tokens_clean);
+        $score += $calc_token_score($l['owner'] ?? '', $meaningful_tokens_clean);
+        $score += $calc_token_score($l['contact_person'] ?? '', $meaningful_tokens_clean);
 
         if (!empty($l['financial_summary'])) {
-            if (mb_strpos($normalized_query, 'finan') !== false || 
-                mb_strpos($normalized_query, 'report') !== false || 
-                mb_strpos($normalized_query, 'revenue') !== false || 
-                mb_strpos($normalized_query, 'turnover') !== false || 
-                mb_strpos($normalized_query, 'profit') !== false || 
-                mb_strpos($normalized_query, 'zisk') !== false || 
-                mb_strpos($normalized_query, 'výnos') !== false || 
-                mb_strpos($normalized_query, 'obrat') !== false ||
-                mb_strpos($normalized_query, 'largest') !== false ||
-                mb_strpos($normalized_query, 'najväč') !== false ||
-                mb_strpos($normalized_query, 'highest') !== false ||
-                mb_strpos(mb_strtolower($l['financial_summary']), $normalized_query) !== false) {
+            if (mb_strpos($normalized_query_clean, 'finan') !== false || 
+                mb_strpos($normalized_query_clean, 'report') !== false || 
+                mb_strpos($normalized_query_clean, 'revenue') !== false || 
+                mb_strpos($normalized_query_clean, 'turnover') !== false || 
+                mb_strpos($normalized_query_clean, 'profit') !== false || 
+                mb_strpos($normalized_query_clean, 'zisk') !== false || 
+                mb_strpos($normalized_query_clean, 'vynos') !== false || 
+                mb_strpos($normalized_query_clean, 'obrat') !== false ||
+                mb_strpos($normalized_query_clean, 'largest') !== false ||
+                mb_strpos($normalized_query_clean, 'najvac') !== false ||
+                mb_strpos($normalized_query_clean, 'highest') !== false ||
+                mb_strpos($remove_accents(mb_strtolower($l['financial_summary'])), $normalized_query_clean) !== false) {
                 $score += 60;
             }
         }
@@ -304,23 +332,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $cat_stmt->execute([$lead_id]);
         $categories = $cat_stmt->fetchAll(PDO::FETCH_COLUMN);
         foreach ($categories as $cat) {
-            if (mb_strpos($normalized_query, mb_strtolower($cat)) !== false) {
+            $catClean = $remove_accents(mb_strtolower($cat));
+            if (mb_strpos($normalized_query_clean, $catClean) !== false) {
                 $score += 40;
             }
-            $score += $calc_token_score($cat, $meaningful_tokens);
+            $score += $calc_token_score($cat, $meaningful_tokens_clean);
         }
         
         $events_stmt = $pdo->prepare("SELECT `type`, `title`, `content`, `amount`, `file_name`, `file_size`, `file_type` FROM `timeline_events` WHERE `lead_id` = ? LIMIT 15");
         $events_stmt->execute([$lead_id]);
         $events = $events_stmt->fetchAll(PDO::FETCH_ASSOC);
         foreach ($events as $ev) {
-            if (mb_strpos($normalized_query, mb_strtolower($ev['title'])) !== false || 
-                mb_strpos($normalized_query, mb_strtolower($ev['content'] ?? '')) !== false ||
-                (!empty($ev['file_name']) && mb_strpos($normalized_query, mb_strtolower($ev['file_name'])) !== false)) {
+            $evTitleClean = $remove_accents(mb_strtolower($ev['title'] ?? ''));
+            $evContentClean = $remove_accents(mb_strtolower($ev['content'] ?? ''));
+            $evFileClean = $remove_accents(mb_strtolower($ev['file_name'] ?? ''));
+            
+            if (mb_strpos($normalized_query_clean, $evTitleClean) !== false || 
+                mb_strpos($normalized_query_clean, $evContentClean) !== false ||
+                (!empty($ev['file_name']) && mb_strpos($normalized_query_clean, $evFileClean) !== false)) {
                 $score += 40;
             }
-            $score += $calc_token_score($ev['title'] ?? '', $meaningful_tokens);
-            $score += $calc_token_score($ev['content'] ?? '', $meaningful_tokens);
+            $score += $calc_token_score($ev['title'] ?? '', $meaningful_tokens_clean);
+            $score += $calc_token_score($ev['content'] ?? '', $meaningful_tokens_clean);
         }
 
         $block = "Lead Profile:\n";
@@ -395,15 +428,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } catch (\Exception $e) {}
             }
             
-            if (mb_strpos($normalized_query, mb_strtolower($mn['title'])) !== false ||
-                (!empty($mn['lead_name']) && mb_strpos($normalized_query, mb_strtolower($mn['lead_name'])) !== false) ||
-                mb_strpos($normalized_query, mb_strtolower($plainTextNotes)) !== false ||
-                mb_strpos($normalized_query, mb_strtolower($summaryText)) !== false) {
+            $mnTitleClean = $remove_accents(mb_strtolower($mn['title'] ?? ''));
+            $mnLeadClean = $remove_accents(mb_strtolower($mn['lead_name'] ?? ''));
+
+            if (mb_strpos($normalized_query_clean, $mnTitleClean) !== false ||
+                (!empty($mn['lead_name']) && mb_strpos($normalized_query_clean, $mnLeadClean) !== false)) {
                 $score += 50;
             }
-            $score += $calc_token_score($mn['title'] ?? '', $meaningful_tokens);
-            $score += $calc_token_score($mn['lead_name'] ?? '', $meaningful_tokens);
-            $score += $calc_token_score($plainTextNotes, $meaningful_tokens);
+            $score += $calc_token_score($mn['title'] ?? '', $meaningful_tokens_clean);
+            $score += $calc_token_score($mn['lead_name'] ?? '', $meaningful_tokens_clean);
+            $score += $calc_token_score($plainTextNotes, $meaningful_tokens_clean);
             
             $block = "Meeting Note Profile:\n";
             $block .= "- Title: " . $mn['title'] . "\n";
@@ -431,14 +465,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         foreach ($rag_emails_all as $re) {
             $score = 0;
             
-            if (mb_strpos(mb_strtolower($re['subject']), $normalized_query) !== false ||
-                mb_strpos(mb_strtolower($re['sender']), $normalized_query) !== false ||
-                mb_strpos(mb_strtolower($re['body']), $normalized_query) !== false) {
-                $score += 50;
-            }
-            $score += $calc_token_score($re['subject'] ?? '', $meaningful_tokens);
-            $score += $calc_token_score($re['sender'] ?? '', $meaningful_tokens);
-            $score += $calc_token_score($re['body'] ?? '', $meaningful_tokens);
+            $score += $calc_token_score($re['subject'] ?? '', $meaningful_tokens_clean);
+            $score += $calc_token_score($re['sender'] ?? '', $meaningful_tokens_clean);
+            $score += $calc_token_score($re['body'] ?? '', $meaningful_tokens_clean);
             
             $block = "Received Email Profile:\n";
             $block .= "- Subject: " . $re['subject'] . "\n";
@@ -457,7 +486,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Fallback
     }
 
-    // RAG from unified entries
+    // RAG from unified entries & registries
     try {
         $registries = $pdo->query("SELECT `id`, `name`, `entry_name`, `folder_name` FROM `unified_entries` WHERE `archived` = 0")->fetchAll(PDO::FETCH_ASSOC);
         foreach ($registries as $reg) {
@@ -466,18 +495,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $chkTable = $pdo->query("SHOW TABLES LIKE '{$tableName}'")->rowCount() > 0;
             if (!$chkTable) continue;
 
-            $regNameLower = mb_strtolower($reg['name']);
-            $regIdLower = mb_strtolower($reg['id']);
             $entryLabel = $reg['entry_name'] ?: 'Záznam';
             $folderLabel = $reg['folder_name'] ?: 'Skupina';
+            $regNameClean = $remove_accents(mb_strtolower($reg['name']));
+            $regIdClean = $remove_accents(mb_strtolower($reg['id']));
+            $entryLabelClean = $remove_accents(mb_strtolower($entryLabel));
+            $folderLabelClean = $remove_accents(mb_strtolower($folderLabel));
 
-            // Check if query targets this registry directly (e.g. "evidencia", "evidencii", "evidencie", "v evidencii", etc.)
+            // Check if query targets this registry directly (accent-agnostic)
             $isRegQuery = (
-                mb_strpos($normalized_query, $regNameLower) !== false ||
-                mb_strpos($normalized_query, $regIdLower) !== false ||
-                (mb_strpos($regNameLower, 'evidenc') !== false && mb_strpos($normalized_query, 'evidenc') !== false) ||
-                (mb_strpos($normalized_query, mb_strtolower($entryLabel)) !== false) ||
-                (mb_strpos($normalized_query, mb_strtolower($folderLabel)) !== false)
+                mb_strpos($normalized_query_clean, $regNameClean) !== false ||
+                mb_strpos($normalized_query_clean, $regIdClean) !== false ||
+                (mb_strpos($regNameClean, 'evidenc') !== false && mb_strpos($normalized_query_clean, 'evidenc') !== false) ||
+                (mb_strpos($normalized_query_clean, $entryLabelClean) !== false) ||
+                (mb_strpos($normalized_query_clean, $folderLabelClean) !== false)
             );
 
             $query = "
@@ -507,27 +538,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            // Top-level Registry Overview Block if user is asking about this registry
-            if ($isRegQuery && !empty($rows)) {
+            // Top-level Registry Overview Block
+            if (($isRegQuery || $isDeadlineQuery) && !empty($rows)) {
                 $summaryBlock = "=== UNIFIED REGISTRY OVERVIEW: '" . $reg['name'] . "' ===\n";
-                $summaryBlock .= "- Registry Name: " . $reg['name'] . " (Folder Label: " . $folderLabel . ", Entry Label: " . $entryLabel . ")\n";
+                $summaryBlock .= "- Registry: " . $reg['name'] . " (Folder Type: " . $folderLabel . ", Entry Type: " . $entryLabel . ")\n";
+                $summaryBlock .= "- Today's Date: " . $todayDate . "\n";
                 $summaryBlock .= "- Total Folders/Groups: " . count($foldersMap) . "\n";
-                $summaryBlock .= "- Total Entries/Items: " . count($entriesList) . "\n";
+                $summaryBlock .= "- Total Entries/Certificates: " . count($entriesList) . "\n";
                 if (!empty($foldersMap)) {
-                    $summaryBlock .= "- Folders in '" . $reg['name'] . "':\n";
+                    $summaryBlock .= "- Folders & Contained Items in '" . $reg['name'] . "':\n";
                     foreach ($foldersMap as $f) {
-                        $fClient = !empty($f['client_name']) ? " (Linked Client/Company: " . $f['client_name'] . ")" : "";
-                        $summaryBlock .= "  * Folder [" . $folderLabel . "]: '" . ($f['title'] ?: 'Untitled') . "'" . $fClient;
+                        $fClient = !empty($f['client_name']) ? " (Client: " . $f['client_name'] . ")" : "";
+                        $summaryBlock .= "  * [" . $folderLabel . "] '" . ($f['title'] ?: 'Untitled') . "'" . $fClient . "\n";
                         if (!empty($f['children'])) {
-                            $childTitles = array_map(function($c) { return "'" . ($c['title'] ?: 'Item') . "'"; }, $f['children']);
-                            $summaryBlock .= " -> Contains " . count($f['children']) . " items: " . implode(", ", $childTitles);
+                            foreach ($f['children'] as $c) {
+                                $cDue = !empty($c['due_date']) ? substr($c['due_date'], 0, 10) : 'None';
+                                $cStatus = "Bez termínu";
+                                if (!empty($c['due_date'])) {
+                                    $cDiff = (int)round((strtotime($cDue) - strtotime($todayDate)) / 86400);
+                                    if ($cDiff < 0) {
+                                        $cStatus = "PO SPLATNOSTI / EXPIRED (" . abs($cDiff) . " dní po termíne platnosti)";
+                                    } elseif ($cDiff === 0) {
+                                        $cStatus = "SPLATNOSŤ DNES (končí dnes)";
+                                    } else {
+                                        $cStatus = "PLATNÝ / ACTIVE (" . $cDiff . " dní do vypršania platnosti)";
+                                    }
+                                }
+                                $summaryBlock .= "    - " . $entryLabel . ": '" . ($c['title'] ?: 'Item') . "' | Due Date: " . $cDue . " -> [" . $cStatus . "]\n";
+                            }
                         }
-                        $summaryBlock .= "\n";
                     }
                 }
                 $context_blocks[] = [
                     'text' => $summaryBlock,
-                    'score' => 300,
+                    'score' => $isRegQuery ? 350 : 200,
                     'is_match' => true
                 ];
             }
@@ -537,28 +581,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $typeLabel = $isFolder ? $folderLabel : $entryLabel;
                 $score = $isRegQuery ? 150 : 0;
 
-                $titleLower = mb_strtolower($r['title'] ?? '');
-                $clientLower = mb_strtolower($r['client_name'] ?? '');
-                $fileLower = mb_strtolower($r['file_name'] ?? '');
+                $titleClean = $remove_accents(mb_strtolower($r['title'] ?? ''));
+                $clientClean = $remove_accents(mb_strtolower($r['client_name'] ?? ''));
+                $fileClean = $remove_accents(mb_strtolower($r['file_name'] ?? ''));
 
-                if (!empty($r['title']) && mb_strpos($normalized_query, $titleLower) !== false) $score += 80;
-                if (!empty($r['client_name']) && mb_strpos($normalized_query, $clientLower) !== false) $score += 80;
-                if (!empty($r['file_name']) && mb_strpos($normalized_query, $fileLower) !== false) $score += 50;
+                if (!empty($r['title']) && mb_strpos($normalized_query_clean, $titleClean) !== false) $score += 80;
+                if (!empty($r['client_name']) && mb_strpos($normalized_query_clean, $clientClean) !== false) $score += 80;
+                if (!empty($r['file_name']) && mb_strpos($normalized_query_clean, $fileClean) !== false) $score += 50;
 
-                $score += $calc_token_score($r['title'] ?? '', $meaningful_tokens);
-                $score += $calc_token_score($r['client_name'] ?? '', $meaningful_tokens);
-                $score += $calc_token_score($r['file_name'] ?? '', $meaningful_tokens);
-                $score += $calc_token_score($reg['name'] ?? '', $meaningful_tokens);
+                $score += $calc_token_score($r['title'] ?? '', $meaningful_tokens_clean);
+                $score += $calc_token_score($r['client_name'] ?? '', $meaningful_tokens_clean);
+                $score += $calc_token_score($r['file_name'] ?? '', $meaningful_tokens_clean);
+                $score += $calc_token_score($reg['name'] ?? '', $meaningful_tokens_clean);
+                $score += $calc_token_score($entryLabel, $meaningful_tokens_clean);
+                $score += $calc_token_score($folderLabel, $meaningful_tokens_clean);
+
+                $dueDateStr = "None";
+                $validityStatus = "N/A";
+                if (!empty($r['due_date'])) {
+                    $dueDateStr = substr($r['due_date'], 0, 10);
+                    $diffDays = (int)round((strtotime($dueDateStr) - strtotime($todayDate)) / 86400);
+                    if ($diffDays < 0) {
+                        $validityStatus = "PO SPLATNOSTI / EXPIRED (" . abs($diffDays) . " dní po splatnosti / expired " . abs($diffDays) . " days ago on " . $dueDateStr . ")";
+                    } elseif ($diffDays === 0) {
+                        $validityStatus = "DNEŠNÁ SPLATNOSŤ / DUE TODAY (expires today: " . $dueDateStr . ")";
+                    } else {
+                        $validityStatus = "PLATNÝ / ACTIVE (" . $diffDays . " dní do vypršania platnosti / " . $diffDays . " days remaining until " . $dueDateStr . ")";
+                    }
+
+                    if ($isDeadlineQuery) {
+                        $score += 120;
+                        if ($diffDays < 0 && (mb_strpos($normalized_query_clean, 'po splatnost') !== false || mb_strpos($normalized_query_clean, 'expir') !== false || mb_strpos($normalized_query_clean, 'overdue') !== false || mb_strpos($normalized_query_clean, 'vyprs') !== false)) {
+                            $score += 100;
+                        }
+                    }
+                }
 
                 $block = "Unified Entry in '" . $reg['name'] . "' (" . $typeLabel . "):\n";
                 $block .= "- Title / Name: " . ($r['title'] ?: 'Untitled') . "\n";
+                $block .= "- Registry: " . $reg['name'] . "\n";
                 $block .= "- Hierarchy: " . ($isFolder ? "Folder / Group" : "Item in Folder") . "\n";
                 if (!$isFolder && !empty($r['parent_id']) && isset($foldersMap[$r['parent_id']])) {
                     $block .= "- Parent Folder: " . ($foldersMap[$r['parent_id']]['title'] ?: 'Folder') . "\n";
                 }
                 if ($isFolder && isset($foldersMap[$r['id']]['children']) && !empty($foldersMap[$r['id']]['children'])) {
-                    $cTitles = array_map(function($c) { return $c['title'] ?: 'Item'; }, $foldersMap[$r['id']]['children']);
-                    $block .= "- Contained Items: " . implode(", ", $cTitles) . " (" . count($cTitles) . " items)\n";
+                    $block .= "- Contained Items / Records:\n";
+                    foreach ($foldersMap[$r['id']]['children'] as $ch) {
+                        $chDue = !empty($ch['due_date']) ? substr($ch['due_date'], 0, 10) : 'None';
+                        $block .= "  * '" . ($ch['title'] ?: 'Item') . "' (Due Date: " . $chDue . ")\n";
+                    }
                 }
                 if (!empty($r['client_name'])) {
                     $block .= "- Associated Client/Company: " . $r['client_name'];
@@ -567,7 +638,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $block .= "\n";
                 }
                 if (!empty($r['due_date'])) {
-                    $block .= "- Due Date / Expiration: " . $r['due_date'] . "\n";
+                    $block .= "- Due Date / Splatnosť / Expiration: " . $dueDateStr . " -> " . $validityStatus . "\n";
                 }
                 if (!empty($r['file_name'])) {
                     $block .= "- File Attachment: " . $r['file_name'] . " (" . ($r['file_size'] ?? '') . ")\n";
@@ -584,6 +655,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Fallback
     }
 
+    // RAG from tasks
+    try {
+        $tasks_stmt = $pdo->query("
+            SELECT t.`id`, t.`title`, t.`description`, t.`status`, t.`priority`, t.`due_date`, t.`assigned_to`, l.`name` as `lead_name`
+            FROM `tasks` t
+            LEFT JOIN `leads` l ON t.`lead_id` = l.`id`
+            WHERE (t.`archived` = 0 OR t.`archived` IS NULL)
+            ORDER BY t.`created_at` DESC
+            LIMIT 50
+        ");
+        $tasks_all = $tasks_stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($tasks_all as $tsk) {
+            $score = 0;
+            $tTitleClean = $remove_accents(mb_strtolower($tsk['title'] ?? ''));
+            $tLeadClean = $remove_accents(mb_strtolower($tsk['lead_name'] ?? ''));
+
+            if (!empty($tsk['title']) && mb_strpos($normalized_query_clean, $tTitleClean) !== false) $score += 70;
+            if (!empty($tsk['lead_name']) && mb_strpos($normalized_query_clean, $tLeadClean) !== false) $score += 60;
+            
+            $score += $calc_token_score($tsk['title'] ?? '', $meaningful_tokens_clean);
+            $score += $calc_token_score($tsk['lead_name'] ?? '', $meaningful_tokens_clean);
+
+            if ($isDeadlineQuery && !empty($tsk['due_date'])) {
+                $score += 60;
+            }
+
+            $tDueStr = !empty($tsk['due_date']) ? substr($tsk['due_date'], 0, 10) : 'None';
+            $tStatusStr = "";
+            if (!empty($tsk['due_date'])) {
+                $tDiff = (int)round((strtotime($tDueStr) - strtotime($todayDate)) / 86400);
+                $tStatusStr = ($tDiff < 0) ? " [PO TERMÍNE / OVERDUE by " . abs($tDiff) . " days]" : " [PLATNÝ / " . $tDiff . " days remaining]";
+            }
+
+            $block = "CRM Task / Úloha Profile:\n";
+            $block .= "- Title: " . $tsk['title'] . "\n";
+            $block .= "- Status: " . $tsk['status'] . "\n";
+            $block .= "- Priority: " . ($tsk['priority'] ?: 'Normal') . "\n";
+            if (!empty($tsk['lead_name'])) $block .= "- Associated Client: " . $tsk['lead_name'] . "\n";
+            if (!empty($tsk['assigned_to'])) $block .= "- Assignee: " . $tsk['assigned_to'] . "\n";
+            if (!empty($tsk['due_date'])) $block .= "- Deadline / Due Date: " . $tDueStr . $tStatusStr . "\n";
+            if (!empty($tsk['description'])) $block .= "- Details: " . strip_tags($tsk['description']) . "\n";
+
+            $context_blocks[] = [
+                'text' => $block,
+                'score' => $score,
+                'is_match' => ($score > 0)
+            ];
+        }
+    } catch (\Exception $ex) {}
+
     // RAG from Warehouse Products & Inventory
     try {
         $products_stmt = $pdo->query("
@@ -594,39 +715,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $products_all = $products_stmt->fetchAll(PDO::FETCH_ASSOC);
         foreach ($products_all as $p) {
             $score = 0;
-            $pName = mb_strtolower($p['name'] ?? '');
-            $pSku = mb_strtolower($p['sku'] ?? '');
-            $pEan = mb_strtolower($p['barcode'] ?? '');
-            $pCat = mb_strtolower($p['category'] ?? '');
-            $pDesc = mb_strtolower($p['description'] ?? '');
-            $pLoc = mb_strtolower($p['default_location'] ?? '');
+            $pNameClean = $remove_accents(mb_strtolower($p['name'] ?? ''));
+            $pSkuClean = $remove_accents(mb_strtolower($p['sku'] ?? ''));
+            $pCatClean = $remove_accents(mb_strtolower($p['category'] ?? ''));
 
-            if ((!empty($pName) && mb_strpos($normalized_query, $pName) !== false) ||
-                (!empty($pSku) && mb_strpos($normalized_query, $pSku) !== false) ||
-                (!empty($pEan) && mb_strpos($normalized_query, $pEan) !== false) ||
-                (!empty($pCat) && mb_strpos($normalized_query, $pCat) !== false) ||
-                (!empty($pLoc) && mb_strpos($normalized_query, $pLoc) !== false) ||
-                (!empty($pDesc) && mb_strpos($normalized_query, $pDesc) !== false)) {
+            if ((!empty($p['name']) && mb_strpos($normalized_query_clean, $pNameClean) !== false) ||
+                (!empty($p['sku']) && mb_strpos($normalized_query_clean, $pSkuClean) !== false) ||
+                (!empty($p['category']) && mb_strpos($normalized_query_clean, $pCatClean) !== false)) {
                 $score += 60;
             }
 
-            $score += $calc_token_score($p['name'] ?? '', $meaningful_tokens);
-            $score += $calc_token_score($p['sku'] ?? '', $meaningful_tokens);
-            $score += $calc_token_score($p['barcode'] ?? '', $meaningful_tokens);
-            $score += $calc_token_score($p['category'] ?? '', $meaningful_tokens);
+            $score += $calc_token_score($p['name'] ?? '', $meaningful_tokens_clean);
+            $score += $calc_token_score($p['sku'] ?? '', $meaningful_tokens_clean);
+            $score += $calc_token_score($p['category'] ?? '', $meaningful_tokens_clean);
 
-            // Also match general warehouse/inventory questions if specific keywords appear
-            if (mb_strpos($normalized_query, 'sklad') !== false ||
-                mb_strpos($normalized_query, 'zásob') !== false ||
-                mb_strpos($normalized_query, 'tovar') !== false ||
-                mb_strpos($normalized_query, 'produkt') !== false ||
-                mb_strpos($normalized_query, 'cenník') !== false ||
-                mb_strpos($normalized_query, 'materiál') !== false ||
-                mb_strpos($normalized_query, 'inventory') !== false ||
-                mb_strpos($normalized_query, 'stock') !== false ||
-                mb_strpos($normalized_query, 'product') !== false ||
-                mb_strpos($normalized_query, 'fefo') !== false ||
-                mb_strpos($normalized_query, 'šarž') !== false) {
+            // Also match general warehouse/inventory questions
+            if (mb_strpos($normalized_query_clean, 'sklad') !== false ||
+                mb_strpos($normalized_query_clean, 'zasob') !== false ||
+                mb_strpos($normalized_query_clean, 'tovar') !== false ||
+                mb_strpos($normalized_query_clean, 'produkt') !== false ||
+                mb_strpos($normalized_query_clean, 'cennik') !== false ||
+                mb_strpos($normalized_query_clean, 'material') !== false ||
+                mb_strpos($normalized_query_clean, 'inventory') !== false ||
+                mb_strpos($normalized_query_clean, 'stock') !== false ||
+                mb_strpos($normalized_query_clean, 'product') !== false ||
+                mb_strpos($normalized_query_clean, 'fefo') !== false ||
+                mb_strpos($normalized_query_clean, 'sarz') !== false) {
                 $score += 30;
             }
 
@@ -725,12 +839,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $systemPrompt = $skillInstructions . "\n\n"
+                  . "CURRENT SYSTEM DATE: " . $todayFormatted . "\n\n"
+                  . "CRITICAL INSTRUCTION ON DATES, DUE DATES & EXPIRATIONS (SPLATNOSŤ / PLATNOSŤ / LEHOTY):\n"
+                  . "- Use CURRENT SYSTEM DATE (" . $todayDate . ") to evaluate whether an entry, certificate (certifikát), deadline, task, or document is valid (platný / aktívny) or expired / overdue (po splatnosti / vypršaná platnosť).\n"
+                  . "- If asked whether any certificate or entry is expired (po splatnosti), check all items in the context. If all dates are in the future, explicitly confirm that none are overdue and state their expiration dates and days remaining.\n"
+                  . "- If an item is expired (date in the past), clearly specify which item is expired and when.\n\n"
                   . "IMPORTANT - PRIVACY INSTRUCTION: Personal names, phone numbers, and emails have been pseudonymized and masked with placeholders like [CLIENT_NAME_1] or [EMAIL_REF_1].\n"
                   . "Keep references exactly as they are. Answer the user question based on the context provided.\n\n"
                   . "=== RAG KNOWLEDGE BASE CONTEXT ===\n"
                   . $sanitized_context
                   . "\n==================================\n\n"
-                  . "Answer the user question query professionally in the same language they asked. Reference the client placeholders (e.g. [CLIENT_NAME_1]) naturally.";
+                  . "Answer the user question query professionally in the same language they asked. Accurately report certificates, folders, clients, due dates, and validity status.";
 
     $payloadMessages = [
         ['role' => 'system', 'content' => $systemPrompt],
