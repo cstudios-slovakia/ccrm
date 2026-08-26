@@ -291,6 +291,69 @@ function execute_autonomous_run($pdo, $ragPdo, $agent, $openAiKey) {
         // Fallback
     }
 
+    // RAG from Financial Management for autonomous agents
+    try {
+        $chkFin = $pdo->query("SHOW TABLES LIKE 'financial_records'")->rowCount() > 0;
+        if ($chkFin) {
+            $finStmt = $pdo->query("
+                SELECT fr.*, l.`name` as `client_name`
+                FROM `financial_records` fr
+                LEFT JOIN `leads` l ON fr.`client_id` = l.`id`
+                ORDER BY fr.`issue_date` DESC
+                LIMIT 50
+            ");
+            $finRecords = $finStmt->fetchAll(PDO::FETCH_ASSOC);
+
+            if (!empty($finRecords)) {
+                $totalRealIncome = 0;
+                $totalRealExpense = 0;
+                $overdueReceivables = 0;
+                $pendingPayables = 0;
+
+                foreach ($finRecords as $fr) {
+                    $amtReal = (float)($fr['amount_real'] ?? 0);
+                    $amtPlan = (float)($fr['amount_planned'] ?? 0);
+                    if ($fr['type'] === 'income') {
+                        if ($fr['status'] === 'paid' || $fr['status'] === 'partially_paid') $totalRealIncome += $amtReal;
+                        if ($fr['status'] === 'overdue') $overdueReceivables += $amtPlan;
+                    } elseif ($fr['type'] === 'expense') {
+                        if ($fr['status'] === 'paid' || $fr['status'] === 'partially_paid') $totalRealExpense += $amtReal;
+                        if ($fr['status'] === 'pending' || $fr['status'] === 'overdue') $pendingPayables += $amtPlan;
+                    }
+                }
+
+                $finSummaryBlock = "Financial Overview & Key Figures:\n";
+                $finSummaryBlock .= "- Realized Income: €" . number_format($totalRealIncome, 2) . "\n";
+                $finSummaryBlock .= "- Realized Expenses: €" . number_format($totalRealExpense, 2) . "\n";
+                $finSummaryBlock .= "- Net Cash Flow / Margin: €" . number_format($totalRealIncome - $totalRealExpense, 2) . "\n";
+                $finSummaryBlock .= "- Overdue Incomes (Pohľadávky po splatnosti): €" . number_format($overdueReceivables, 2) . "\n";
+                $finSummaryBlock .= "- Pending Expenses (Záväzky na úhradu): €" . number_format($pendingPayables, 2) . "\n";
+
+                $context_blocks[] = [
+                    'text' => $finSummaryBlock,
+                    'is_match' => true
+                ];
+
+                foreach ($finRecords as $fr) {
+                    $block = "Financial Record (" . strtoupper($fr['type']) . " - " . strtoupper($fr['status']) . "):\n";
+                    $block .= "- Title: " . $fr['title'] . "\n";
+                    $block .= "- Amount: €" . number_format((float)$fr['amount_real'], 2) . " (Planned: €" . number_format((float)$fr['amount_planned'], 2) . ")\n";
+                    if (!empty($fr['invoice_number'])) $block .= "- Invoice No: " . $fr['invoice_number'] . "\n";
+                    if (!empty($fr['category_path'])) $block .= "- Category: " . $fr['category_path'] . "\n";
+                    if (!empty($fr['client_name'])) $block .= "- Client: " . $fr['client_name'] . "\n";
+                    if (!empty($fr['due_date'])) $block .= "- Due Date: " . $fr['due_date'] . "\n";
+
+                    $context_blocks[] = [
+                        'text' => $block,
+                        'is_match' => false
+                    ];
+                }
+            }
+        }
+    } catch (\Exception $ex) {
+        // Fallback
+    }
+
     // Sort by match relevance
     usort($context_blocks, function($a, $b) {
         return $b['is_match'] - $a['is_match'];

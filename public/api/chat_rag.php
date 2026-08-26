@@ -294,6 +294,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         mb_strpos($normalized_query_clean, 'datum') !== false
     );
 
+    $isFinancialQuery = (
+        mb_strpos($normalized_query_clean, 'financ') !== false ||
+        mb_strpos($normalized_query_clean, 'peniaz') !== false ||
+        mb_strpos($normalized_query_clean, 'prijm') !== false ||
+        mb_strpos($normalized_query_clean, 'vydav') !== false ||
+        mb_strpos($normalized_query_clean, 'faktur') !== false ||
+        mb_strpos($normalized_query_clean, 'zisk') !== false ||
+        mb_strpos($normalized_query_clean, 'naklad') !== false ||
+        mb_strpos($normalized_query_clean, 'cashflow') !== false ||
+        mb_strpos($normalized_query_clean, 'bilanci') !== false ||
+        mb_strpos($normalized_query_clean, 'uhrad') !== false ||
+        mb_strpos($normalized_query_clean, 'pohladavk') !== false ||
+        mb_strpos($normalized_query_clean, 'zavazk') !== false ||
+        mb_strpos($normalized_query_clean, 'revenue') !== false ||
+        mb_strpos($normalized_query_clean, 'income') !== false ||
+        mb_strpos($normalized_query_clean, 'expense') !== false ||
+        mb_strpos($normalized_query_clean, 'profit') !== false ||
+        mb_strpos($normalized_query_clean, 'cost') !== false ||
+        mb_strpos($normalized_query_clean, 'invoice') !== false ||
+        mb_strpos($normalized_query_clean, 'bill') !== false ||
+        mb_strpos($normalized_query_clean, 'budget') !== false ||
+        mb_strpos($normalized_query_clean, 'uctovnictv') !== false ||
+        mb_strpos($normalized_query_clean, 'dph') !== false ||
+        mb_strpos($normalized_query_clean, 'platb') !== false
+    );
+
     foreach ($leads_all as $l) {
         $lead_id = $l['id'];
         $score = 0;
@@ -655,6 +681,206 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Fallback
     }
 
+    // RAG from Financial Management (financial_records & financial_categories)
+    try {
+        $chkFin = $pdo->query("SHOW TABLES LIKE 'financial_records'")->rowCount() > 0;
+        if ($chkFin) {
+            $finStmt = $pdo->query("
+                SELECT fr.*, l.`name` as `client_name`
+                FROM `financial_records` fr
+                LEFT JOIN `leads` l ON fr.`client_id` = l.`id`
+                ORDER BY fr.`issue_date` DESC, fr.`created_at` DESC
+                LIMIT 200
+            ");
+            $finRecords = $finStmt->fetchAll(PDO::FETCH_ASSOC);
+
+            if (!empty($finRecords)) {
+                // Compute Financial KPIs
+                $totalRealIncome = 0;
+                $totalRealExpense = 0;
+                $totalPlannedIncome = 0;
+                $totalPlannedExpense = 0;
+                $overdueReceivables = 0;
+                $pendingReceivables = 0;
+                $pendingPayables = 0;
+                $overduePayables = 0;
+                $paidInvoicesCount = 0;
+                $unpaidInvoicesCount = 0;
+
+                $incomeByCat = [];
+                $expenseByCat = [];
+
+                foreach ($finRecords as $fr) {
+                    $amtReal = (float)($fr['amount_real'] ?? 0);
+                    $amtPlan = (float)($fr['amount_planned'] ?? 0);
+                    $type = $fr['type'];
+                    $status = $fr['status'];
+                    $catPath = $fr['category_path'] ?: 'Všeobecné / Iné';
+
+                    if ($type === 'income') {
+                        $totalPlannedIncome += $amtPlan;
+                        if ($status === 'paid') {
+                            $totalRealIncome += $amtReal;
+                            $paidInvoicesCount++;
+                            $incomeByCat[$catPath] = ($incomeByCat[$catPath] ?? 0) + $amtReal;
+                        } elseif ($status === 'partially_paid') {
+                            $totalRealIncome += $amtReal;
+                            $rem = max(0, $amtPlan - $amtReal);
+                            $pendingReceivables += $rem;
+                            $incomeByCat[$catPath] = ($incomeByCat[$catPath] ?? 0) + $amtReal;
+                        } elseif ($status === 'overdue') {
+                            $overdueReceivables += $amtPlan;
+                            $unpaidInvoicesCount++;
+                        } elseif ($status === 'pending') {
+                            $pendingReceivables += $amtPlan;
+                            $unpaidInvoicesCount++;
+                        }
+                    } elseif ($type === 'expense') {
+                        $totalPlannedExpense += $amtPlan;
+                        if ($status === 'paid' || $status === 'partially_paid') {
+                            $totalRealExpense += $amtReal;
+                            $expenseByCat[$catPath] = ($expenseByCat[$catPath] ?? 0) + $amtReal;
+                        }
+                        if ($status === 'overdue') {
+                            $overduePayables += $amtPlan;
+                        } elseif ($status === 'pending' || $status === 'planned') {
+                            $pendingPayables += $amtPlan;
+                        }
+                    }
+                }
+
+                $netRealCashflow = $totalRealIncome - $totalRealExpense;
+                $netPlannedCashflow = $totalPlannedIncome - $totalPlannedExpense;
+
+                // Build Executive Financial KPI Overview
+                $finSummaryBlock = "=== FINANCIAL MANAGEMENT OVERVIEW (FINANCIE / CASHFLOW / PREHĽAD) ===\n";
+                $finSummaryBlock .= "- As of Date: " . $todayDate . "\n";
+                $finSummaryBlock .= "- Skutočné príjmy (Real Income): €" . number_format($totalRealIncome, 2) . " EUR\n";
+                $finSummaryBlock .= "- Skutočné výdavky (Real Expenses): €" . number_format($totalRealExpense, 2) . " EUR\n";
+                $finSummaryBlock .= "- Čistá bilancia / Zisk (Net Cash Flow / Profit): €" . number_format($netRealCashflow, 2) . " EUR\n";
+                $finSummaryBlock .= "- Plánované príjmy: €" . number_format($totalPlannedIncome, 2) . " EUR | Plánované výdavky: €" . number_format($totalPlannedExpense, 2) . " EUR\n";
+                $finSummaryBlock .= "- Pohľadávky po splatnosti (Overdue Incomes to receive): €" . number_format($overdueReceivables, 2) . " EUR\n";
+                $finSummaryBlock .= "- Čakajúce pohľadávky (Pending Incomes): €" . number_format($pendingReceivables, 2) . " EUR\n";
+                $finSummaryBlock .= "- Čakajúce / Neuhradené výdavky (Pending Payables): €" . number_format($pendingPayables, 2) . " EUR\n";
+                $finSummaryBlock .= "- Celkový počet finančných záznamov: " . count($finRecords) . "\n";
+
+                if (!empty($expenseByCat)) {
+                    arsort($expenseByCat);
+                    $topExp = array_slice($expenseByCat, 0, 4, true);
+                    $finSummaryBlock .= "- Hlavné kategórie výdavkov: ";
+                    $expList = [];
+                    foreach ($topExp as $cName => $cSum) {
+                        $expList[] = $cName . " (€" . number_format($cSum, 2) . ")";
+                    }
+                    $finSummaryBlock .= implode(", ", $expList) . "\n";
+                }
+
+                $context_blocks[] = [
+                    'text' => $finSummaryBlock,
+                    'score' => $isFinancialQuery ? 400 : 150,
+                    'is_match' => true
+                ];
+
+                // Individual Financial Record Blocks
+                foreach ($finRecords as $fr) {
+                    $score = $isFinancialQuery ? 130 : 0;
+                    $titleClean = $remove_accents(mb_strtolower($fr['title'] ?? ''));
+                    $descClean = $remove_accents(mb_strtolower($fr['description'] ?? ''));
+                    $invClean = $remove_accents(mb_strtolower($fr['invoice_number'] ?? ''));
+                    $catClean = $remove_accents(mb_strtolower($fr['category_path'] ?? ''));
+                    $clientClean = $remove_accents(mb_strtolower($fr['client_name'] ?? ''));
+
+                    if (!empty($fr['title']) && mb_strpos($normalized_query_clean, $titleClean) !== false) $score += 80;
+                    if (!empty($fr['invoice_number']) && mb_strpos($normalized_query_clean, $invClean) !== false) $score += 100;
+                    if (!empty($fr['client_name']) && mb_strpos($normalized_query_clean, $clientClean) !== false) $score += 80;
+                    if (!empty($fr['category_path']) && mb_strpos($normalized_query_clean, $catClean) !== false) $score += 60;
+
+                    $score += $calc_token_score($fr['title'] ?? '', $meaningful_tokens_clean);
+                    $score += $calc_token_score($fr['invoice_number'] ?? '', $meaningful_tokens_clean);
+                    $score += $calc_token_score($fr['client_name'] ?? '', $meaningful_tokens_clean);
+                    $score += $calc_token_score($fr['category_path'] ?? '', $meaningful_tokens_clean);
+                    $score += $calc_token_score($fr['description'] ?? '', $meaningful_tokens_clean);
+
+                    // If query specifically asks about unpaid / overdue / pending
+                    if ($fr['status'] === 'overdue' && (mb_strpos($normalized_query_clean, 'splatnost') !== false || mb_strpos($normalized_query_clean, 'nezaplat') !== false || mb_strpos($normalized_query_clean, 'neuhrad') !== false || mb_strpos($normalized_query_clean, 'overdue') !== false)) {
+                        $score += 150;
+                    }
+                    if ($fr['status'] === 'pending' && (mb_strpos($normalized_query_clean, 'caka') !== false || mb_strpos($normalized_query_clean, 'pending') !== false || mb_strpos($normalized_query_clean, 'uhrad') !== false)) {
+                        $score += 100;
+                    }
+
+                    $dueStr = !empty($fr['due_date']) ? substr($fr['due_date'], 0, 10) : 'None';
+                    $paidStr = !empty($fr['paid_date']) ? substr($fr['paid_date'], 0, 10) : 'None';
+                    $issueStr = !empty($fr['issue_date']) ? substr($fr['issue_date'], 0, 10) : 'None';
+
+                    $dueValidity = "";
+                    if (!empty($fr['due_date']) && $fr['status'] !== 'paid') {
+                        $dDiff = (int)round((strtotime($dueStr) - strtotime($todayDate)) / 86400);
+                        if ($dDiff < 0) {
+                            $dueValidity = " [PO SPLATNOSTI O " . abs($dDiff) . " DNÍ / " . abs($dDiff) . " DAYS OVERDUE]";
+                        } elseif ($dDiff === 0) {
+                            $dueValidity = " [SPLATNOSŤ DNES / DUE TODAY]";
+                        } else {
+                            $dueValidity = " [SPLATNOSŤ O " . $dDiff . " DNÍ / " . $dDiff . " DAYS REMAINING]";
+                        }
+                    }
+
+                    $typeLabel = ($fr['type'] === 'income') ? 'PRÍJEM / INCOME' : 'VÝDAVOK / EXPENSE';
+                    $statusLabel = strtoupper($fr['status']);
+                    if ($fr['status'] === 'paid') $statusLabel = "UHRADENÉ / PAID";
+                    elseif ($fr['status'] === 'overdue') $statusLabel = "PO SPLATNOSTI / OVERDUE";
+                    elseif ($fr['status'] === 'pending') $statusLabel = "ČAKÁ NA ÚHRADU / PENDING";
+                    elseif ($fr['status'] === 'partially_paid') $statusLabel = "ČIASTOČNE UHRADENÉ / PARTIALLY PAID";
+                    elseif ($fr['status'] === 'planned') $statusLabel = "PLÁNOVANÉ / PLANNED";
+
+                    $block = "Financial Record (" . $typeLabel . " - " . $statusLabel . "):\n";
+                    $block .= "- Title / Názov: " . $fr['title'] . "\n";
+                    $block .= "- Type: " . $typeLabel . " (" . ($fr['subtype'] ?: 'General') . ")\n";
+                    $block .= "- Status: " . $statusLabel . "\n";
+                    $block .= "- Amount Real (Skutočná suma): €" . number_format((float)$fr['amount_real'], 2) . " " . ($fr['currency'] ?: 'EUR') . "\n";
+                    if ((float)$fr['amount_planned'] > 0) {
+                        $block .= "- Amount Planned (Plánovaná suma): €" . number_format((float)$fr['amount_planned'], 2) . " " . ($fr['currency'] ?: 'EUR') . "\n";
+                    }
+                    if (!empty($fr['invoice_number'])) {
+                        $block .= "- Invoice / Reference Number: " . $fr['invoice_number'] . "\n";
+                    }
+                    if (!empty($fr['category_path'])) {
+                        $block .= "- Category: " . $fr['category_path'] . "\n";
+                    }
+                    if (!empty($fr['client_name'])) {
+                        $block .= "- Associated Client/Company: " . $fr['client_name'] . "\n";
+                    }
+                    if (!empty($fr['issue_date'])) {
+                        $block .= "- Issue Date (Vystavené): " . $issueStr . "\n";
+                    }
+                    if (!empty($fr['due_date'])) {
+                        $block .= "- Due Date (Splatnosť): " . $dueStr . $dueValidity . "\n";
+                    }
+                    if (!empty($fr['paid_date'])) {
+                        $block .= "- Paid Date (Dátum úhrady): " . $paidStr . "\n";
+                    }
+                    if (!empty($fr['payment_method'])) {
+                        $block .= "- Payment Method: " . $fr['payment_method'] . "\n";
+                    }
+                    if (!empty($fr['is_recurring']) && (int)$fr['is_recurring'] === 1) {
+                        $block .= "- Recurring: YES (" . ($fr['recurring_frequency'] ?: 'regular') . ")\n";
+                    }
+                    if (!empty($fr['description'])) {
+                        $block .= "- Description: " . strip_tags($fr['description']) . "\n";
+                    }
+
+                    $context_blocks[] = [
+                        'text' => $block,
+                        'score' => $score,
+                        'is_match' => ($score > 0)
+                    ];
+                }
+            }
+        }
+    } catch (\Exception $ex) {
+        // Fallback
+    }
+
     // RAG from tasks
     try {
         $tasks_stmt = $pdo->query("
@@ -795,7 +1021,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         return ($b['score'] ?? 0) - ($a['score'] ?? 0);
     });
 
-    $selected_context = array_slice($context_blocks, 0, 20);
+    $selected_context = array_slice($context_blocks, 0, 25);
     $context_text = "";
     foreach ($selected_context as $cb) {
         $context_text .= $cb['text'] . "\n---\n";
@@ -840,16 +1066,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $systemPrompt = $skillInstructions . "\n\n"
                   . "CURRENT SYSTEM DATE: " . $todayFormatted . "\n\n"
-                  . "CRITICAL INSTRUCTION ON DATES, DUE DATES & EXPIRATIONS (SPLATNOSŤ / PLATNOSŤ / LEHOTY):\n"
-                  . "- Use CURRENT SYSTEM DATE (" . $todayDate . ") to evaluate whether an entry, certificate (certifikát), deadline, task, or document is valid (platný / aktívny) or expired / overdue (po splatnosti / vypršaná platnosť).\n"
-                  . "- If asked whether any certificate or entry is expired (po splatnosti), check all items in the context. If all dates are in the future, explicitly confirm that none are overdue and state their expiration dates and days remaining.\n"
-                  . "- If an item is expired (date in the past), clearly specify which item is expired and when.\n\n"
+                  . "CRITICAL INSTRUCTIONS ON CRM DATA DOMAINS:\n"
+                  . "1. FINANCIAL MANAGEMENT (FINANCIE / CASHFLOW / FAKTÚRY):\n"
+                  . "   - You have full access to Financial Management records (incomes, expenses, invoices, vendor bills, overdue receivables, cash flow, and profit margins).\n"
+                  . "   - When asked about company finances, revenue, expenses, cash flow, profit, unpaid invoices, or specific costs, refer to the FINANCIAL MANAGEMENT OVERVIEW and individual financial records accurately with exact euro amounts.\n\n"
+                  . "2. DATES, DUE DATES & EXPIRATIONS (SPLATNOSŤ / PLATNOSŤ / LEHOTY):\n"
+                  . "   - Use CURRENT SYSTEM DATE (" . $todayDate . ") to evaluate whether an entry, certificate (certifikát), invoice, deadline, task, or document is valid (platný / aktívny) or expired / overdue (po splatnosti / vypršaná platnosť).\n"
+                  . "   - If asked whether any certificate or invoice is expired (po splatnosti), check all items in the context. If all dates are in the future, explicitly confirm that none are overdue and state their expiration dates and days remaining.\n"
+                  . "   - If an item is expired (date in the past), clearly specify which item is expired and when.\n\n"
                   . "IMPORTANT - PRIVACY INSTRUCTION: Personal names, phone numbers, and emails have been pseudonymized and masked with placeholders like [CLIENT_NAME_1] or [EMAIL_REF_1].\n"
                   . "Keep references exactly as they are. Answer the user question based on the context provided.\n\n"
                   . "=== RAG KNOWLEDGE BASE CONTEXT ===\n"
                   . $sanitized_context
                   . "\n==================================\n\n"
-                  . "Answer the user question query professionally in the same language they asked. Accurately report certificates, folders, clients, due dates, and validity status.";
+                  . "Answer the user question query professionally in the same language they asked. Accurately report financial metrics, invoices, certificates, folders, clients, due dates, and validity status.";
 
     $payloadMessages = [
         ['role' => 'system', 'content' => $systemPrompt],
