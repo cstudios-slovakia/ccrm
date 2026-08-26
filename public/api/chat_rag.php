@@ -237,25 +237,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     list($to_placeholder, $to_real) = get_sanitization_maps($pdo);
 
     // Local database context retrieval (RAG)
-    $leads_stmt = $pdo->query("SELECT `id`, `name`, `city`, `client_type`, `status`, `source`, `owner`, `value`, `financial_summary` FROM `leads` LIMIT 100");
+    $leads_stmt = $pdo->query("SELECT `id`, `name`, `city`, `client_type`, `status`, `source`, `owner`, `value`, `contact_person`, `financial_summary` FROM `leads` LIMIT 100");
     $leads_all = $leads_stmt->fetchAll(PDO::FETCH_ASSOC);
 
     $context_blocks = [];
-    $normalized_query = mb_strtolower($userQuery);
+    $normalized_query = mb_strtolower(trim($userQuery));
+    $query_words = preg_split('/[\s,\.\?\!\;\:\(\)\[\]\/\\\"\'\-]+/u', $normalized_query, -1, PREG_SPLIT_NO_EMPTY);
+    $stop_words = ['v', 'a', 'i', 'o', 'na', 'do', 'so', 'za', 'pre', 'ku', 'od', 'ake', 'aka', 'aky', 'akeho', 'akej', 'co', 'kto', 'kde', 'ako', 'mame', 'ma', 'su', 'je', 'bol', 'bola', 'boli', 'the', 'is', 'in', 'at', 'of', 'on', 'and', 'to', 'for', 'are', 'what', 'who', 'how', 'which'];
+    $meaningful_tokens = array_values(array_filter($query_words, function($w) use ($stop_words) {
+        return mb_strlen($w) >= 2 && !in_array($w, $stop_words);
+    }));
+
+    $calc_token_score = function($targetText, array $tokens) {
+        if (empty($targetText) || empty($tokens)) return 0;
+        $tLower = mb_strtolower($targetText);
+        $score = 0;
+        foreach ($tokens as $token) {
+            if (mb_strpos($tLower, $token) !== false) {
+                $score += 40;
+            } else {
+                $stem = mb_substr($token, 0, max(3, mb_strlen($token) - 1));
+                if (mb_strlen($stem) >= 3 && mb_strpos($tLower, $stem) !== false) {
+                    $score += 25;
+                }
+            }
+        }
+        return $score;
+    };
 
     foreach ($leads_all as $l) {
         $lead_id = $l['id'];
-        $matches = false;
+        $score = 0;
         
-        if (!empty($l['name']) && mb_strpos($normalized_query, mb_strtolower($l['name'])) !== false) {
-            $matches = true;
-        }
-        if (!empty($l['city']) && mb_strpos($normalized_query, mb_strtolower($l['city'])) !== false) {
-            $matches = true;
-        }
-        if (!empty($l['owner']) && mb_strpos($normalized_query, mb_strtolower($l['owner'])) !== false) {
-            $matches = true;
-        }
+        $nameLower = mb_strtolower($l['name'] ?? '');
+        $cityLower = mb_strtolower($l['city'] ?? '');
+        $ownerLower = mb_strtolower($l['owner'] ?? '');
+        $typeLower = mb_strtolower($l['client_type'] ?? '');
+
+        if (!empty($l['name']) && mb_strpos($normalized_query, $nameLower) !== false) $score += 100;
+        if (!empty($l['city']) && mb_strpos($normalized_query, $cityLower) !== false) $score += 50;
+        if (!empty($l['owner']) && mb_strpos($normalized_query, $ownerLower) !== false) $score += 50;
+        
+        $score += $calc_token_score($l['name'] ?? '', $meaningful_tokens);
+        $score += $calc_token_score($l['city'] ?? '', $meaningful_tokens);
+        $score += $calc_token_score($l['owner'] ?? '', $meaningful_tokens);
+        $score += $calc_token_score($l['contact_person'] ?? '', $meaningful_tokens);
+
         if (!empty($l['financial_summary'])) {
             if (mb_strpos($normalized_query, 'finan') !== false || 
                 mb_strpos($normalized_query, 'report') !== false || 
@@ -269,7 +296,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 mb_strpos($normalized_query, 'najväč') !== false ||
                 mb_strpos($normalized_query, 'highest') !== false ||
                 mb_strpos(mb_strtolower($l['financial_summary']), $normalized_query) !== false) {
-                $matches = true;
+                $score += 60;
             }
         }
         
@@ -278,8 +305,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $categories = $cat_stmt->fetchAll(PDO::FETCH_COLUMN);
         foreach ($categories as $cat) {
             if (mb_strpos($normalized_query, mb_strtolower($cat)) !== false) {
-                $matches = true;
+                $score += 40;
             }
+            $score += $calc_token_score($cat, $meaningful_tokens);
         }
         
         $events_stmt = $pdo->prepare("SELECT `type`, `title`, `content`, `amount`, `file_name`, `file_size`, `file_type` FROM `timeline_events` WHERE `lead_id` = ? LIMIT 15");
@@ -289,8 +317,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (mb_strpos($normalized_query, mb_strtolower($ev['title'])) !== false || 
                 mb_strpos($normalized_query, mb_strtolower($ev['content'] ?? '')) !== false ||
                 (!empty($ev['file_name']) && mb_strpos($normalized_query, mb_strtolower($ev['file_name'])) !== false)) {
-                $matches = true;
+                $score += 40;
             }
+            $score += $calc_token_score($ev['title'] ?? '', $meaningful_tokens);
+            $score += $calc_token_score($ev['content'] ?? '', $meaningful_tokens);
         }
 
         $block = "Lead Profile:\n";
@@ -328,7 +358,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $context_blocks[] = [
             'text' => $block,
-            'is_match' => $matches
+            'score' => $score,
+            'is_match' => ($score > 0)
         ];
     }
 
@@ -337,7 +368,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $notes_stmt = $pdo->query("SELECT `id`, `title`, `notes`, `lead_name`, `ai_summary_json` FROM `meeting_notes` WHERE (`archived` = 0 OR `archived` IS NULL) LIMIT 100");
         $meeting_notes_all = $notes_stmt->fetchAll(PDO::FETCH_ASSOC);
         foreach ($meeting_notes_all as $mn) {
-            $matches = false;
+            $score = 0;
             $plainTextNotes = "";
             if (!empty($mn['notes'])) {
                 if (strpos(trim($mn['notes']), '[') === 0) {
@@ -368,8 +399,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 (!empty($mn['lead_name']) && mb_strpos($normalized_query, mb_strtolower($mn['lead_name'])) !== false) ||
                 mb_strpos($normalized_query, mb_strtolower($plainTextNotes)) !== false ||
                 mb_strpos($normalized_query, mb_strtolower($summaryText)) !== false) {
-                $matches = true;
+                $score += 50;
             }
+            $score += $calc_token_score($mn['title'] ?? '', $meaningful_tokens);
+            $score += $calc_token_score($mn['lead_name'] ?? '', $meaningful_tokens);
+            $score += $calc_token_score($plainTextNotes, $meaningful_tokens);
             
             $block = "Meeting Note Profile:\n";
             $block .= "- Title: " . $mn['title'] . "\n";
@@ -381,7 +415,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             $context_blocks[] = [
                 'text' => $block,
-                'is_match' => $matches
+                'score' => $score,
+                'is_match' => ($score > 0)
             ];
         }
     } catch (\Exception $ex) {
@@ -394,13 +429,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $emails_stmt = $email_db->query("SELECT `subject`, `sender`, `recipient`, `body`, `received_at` FROM `rag_emails` LIMIT 100");
         $rag_emails_all = $emails_stmt->fetchAll(PDO::FETCH_ASSOC);
         foreach ($rag_emails_all as $re) {
-            $matches = false;
+            $score = 0;
             
             if (mb_strpos(mb_strtolower($re['subject']), $normalized_query) !== false ||
                 mb_strpos(mb_strtolower($re['sender']), $normalized_query) !== false ||
                 mb_strpos(mb_strtolower($re['body']), $normalized_query) !== false) {
-                $matches = true;
+                $score += 50;
             }
+            $score += $calc_token_score($re['subject'] ?? '', $meaningful_tokens);
+            $score += $calc_token_score($re['sender'] ?? '', $meaningful_tokens);
+            $score += $calc_token_score($re['body'] ?? '', $meaningful_tokens);
             
             $block = "Received Email Profile:\n";
             $block .= "- Subject: " . $re['subject'] . "\n";
@@ -411,7 +449,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             $context_blocks[] = [
                 'text' => $block,
-                'is_match' => $matches
+                'score' => $score,
+                'is_match' => ($score > 0)
             ];
         }
     } catch (\Exception $ex) {
@@ -420,47 +459,125 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // RAG from unified entries
     try {
-        $registries = $pdo->query("SELECT `id`, `name`, `entry_name`, `folder_name` FROM `unified_entries` WHERE `archived` = 0")->fetchAll();
+        $registries = $pdo->query("SELECT `id`, `name`, `entry_name`, `folder_name` FROM `unified_entries` WHERE `archived` = 0")->fetchAll(PDO::FETCH_ASSOC);
         foreach ($registries as $reg) {
             $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($reg['id']));
             $tableName = "ue_" . $safeId;
             $chkTable = $pdo->query("SHOW TABLES LIKE '{$tableName}'")->rowCount() > 0;
-            if ($chkTable) {
-                $query = "
-                    SELECT ue.*, l.`name` as `client_name`
-                    FROM `{$tableName}` ue
-                    LEFT JOIN `leads` l ON ue.`client_id` = l.`id`
-                    LIMIT 100
-                ";
-                $rows = $pdo->query($query)->fetchAll(PDO::FETCH_ASSOC);
-                foreach ($rows as $r) {
-                    $isFolder = (int)($r['is_folder'] ?? 0) === 1;
-                    $typeLabel = $isFolder ? ($reg['folder_name'] ?: 'Folder') : ($reg['entry_name'] ?: 'Entry');
-                    
-                    $block = "Unified Entry (" . $reg['name'] . " - " . $typeLabel . "):\n";
-                    $block .= "- Title: " . ($r['title'] ?: 'Untitled') . "\n";
-                    if (!empty($r['client_name'])) {
-                        $block .= "- Client: " . $r['client_name'] . "\n";
-                    }
-                    if (!empty($r['due_date'])) {
-                        $block .= "- Due Date: " . $r['due_date'] . "\n";
-                    }
-                    if (!empty($r['file_name'])) {
-                        $block .= "- File Attachment: " . $r['file_name'] . " (" . ($r['file_size'] ?? '') . ")\n";
-                    }
-                    
-                    $matches = false;
-                    if (mb_strpos($normalized_query, mb_strtolower($r['title'])) !== false ||
-                        (!empty($r['client_name']) && mb_strpos($normalized_query, mb_strtolower($r['client_name'])) !== false) ||
-                        (!empty($r['file_name']) && mb_strpos($normalized_query, mb_strtolower($r['file_name'])) !== false)) {
-                        $matches = true;
-                    }
-                    
-                    $context_blocks[] = [
-                        'text' => $block,
-                        'is_match' => $matches
-                    ];
+            if (!$chkTable) continue;
+
+            $regNameLower = mb_strtolower($reg['name']);
+            $regIdLower = mb_strtolower($reg['id']);
+            $entryLabel = $reg['entry_name'] ?: 'Záznam';
+            $folderLabel = $reg['folder_name'] ?: 'Skupina';
+
+            // Check if query targets this registry directly (e.g. "evidencia", "evidencii", "evidencie", "v evidencii", etc.)
+            $isRegQuery = (
+                mb_strpos($normalized_query, $regNameLower) !== false ||
+                mb_strpos($normalized_query, $regIdLower) !== false ||
+                (mb_strpos($regNameLower, 'evidenc') !== false && mb_strpos($normalized_query, 'evidenc') !== false) ||
+                (mb_strpos($normalized_query, mb_strtolower($entryLabel)) !== false) ||
+                (mb_strpos($normalized_query, mb_strtolower($folderLabel)) !== false)
+            );
+
+            $query = "
+                SELECT ue.*, l.`name` as `client_name`, l.`city` as `client_city`, l.`client_type`, l.`status` as `client_status`, l.`phone` as `client_phone`, l.`email` as `client_email`
+                FROM `{$tableName}` ue
+                LEFT JOIN `leads` l ON ue.`client_id` = l.`id`
+                ORDER BY ue.`is_folder` DESC, ue.`created_at` DESC
+                LIMIT 200
+            ";
+            $rows = $pdo->query($query)->fetchAll(PDO::FETCH_ASSOC);
+
+            // Index folders and children
+            $foldersMap = [];
+            $entriesList = [];
+            foreach ($rows as $r) {
+                if ((int)($r['is_folder'] ?? 0) === 1) {
+                    $foldersMap[$r['id']] = $r;
+                    $foldersMap[$r['id']]['children'] = [];
+                } else {
+                    $entriesList[] = $r;
                 }
+            }
+            foreach ($entriesList as $e) {
+                $pId = $e['parent_id'] ?? null;
+                if ($pId && isset($foldersMap[$pId])) {
+                    $foldersMap[$pId]['children'][] = $e;
+                }
+            }
+
+            // Top-level Registry Overview Block if user is asking about this registry
+            if ($isRegQuery && !empty($rows)) {
+                $summaryBlock = "=== UNIFIED REGISTRY OVERVIEW: '" . $reg['name'] . "' ===\n";
+                $summaryBlock .= "- Registry Name: " . $reg['name'] . " (Folder Label: " . $folderLabel . ", Entry Label: " . $entryLabel . ")\n";
+                $summaryBlock .= "- Total Folders/Groups: " . count($foldersMap) . "\n";
+                $summaryBlock .= "- Total Entries/Items: " . count($entriesList) . "\n";
+                if (!empty($foldersMap)) {
+                    $summaryBlock .= "- Folders in '" . $reg['name'] . "':\n";
+                    foreach ($foldersMap as $f) {
+                        $fClient = !empty($f['client_name']) ? " (Linked Client/Company: " . $f['client_name'] . ")" : "";
+                        $summaryBlock .= "  * Folder [" . $folderLabel . "]: '" . ($f['title'] ?: 'Untitled') . "'" . $fClient;
+                        if (!empty($f['children'])) {
+                            $childTitles = array_map(function($c) { return "'" . ($c['title'] ?: 'Item') . "'"; }, $f['children']);
+                            $summaryBlock .= " -> Contains " . count($f['children']) . " items: " . implode(", ", $childTitles);
+                        }
+                        $summaryBlock .= "\n";
+                    }
+                }
+                $context_blocks[] = [
+                    'text' => $summaryBlock,
+                    'score' => 300,
+                    'is_match' => true
+                ];
+            }
+
+            foreach ($rows as $r) {
+                $isFolder = (int)($r['is_folder'] ?? 0) === 1;
+                $typeLabel = $isFolder ? $folderLabel : $entryLabel;
+                $score = $isRegQuery ? 150 : 0;
+
+                $titleLower = mb_strtolower($r['title'] ?? '');
+                $clientLower = mb_strtolower($r['client_name'] ?? '');
+                $fileLower = mb_strtolower($r['file_name'] ?? '');
+
+                if (!empty($r['title']) && mb_strpos($normalized_query, $titleLower) !== false) $score += 80;
+                if (!empty($r['client_name']) && mb_strpos($normalized_query, $clientLower) !== false) $score += 80;
+                if (!empty($r['file_name']) && mb_strpos($normalized_query, $fileLower) !== false) $score += 50;
+
+                $score += $calc_token_score($r['title'] ?? '', $meaningful_tokens);
+                $score += $calc_token_score($r['client_name'] ?? '', $meaningful_tokens);
+                $score += $calc_token_score($r['file_name'] ?? '', $meaningful_tokens);
+                $score += $calc_token_score($reg['name'] ?? '', $meaningful_tokens);
+
+                $block = "Unified Entry in '" . $reg['name'] . "' (" . $typeLabel . "):\n";
+                $block .= "- Title / Name: " . ($r['title'] ?: 'Untitled') . "\n";
+                $block .= "- Hierarchy: " . ($isFolder ? "Folder / Group" : "Item in Folder") . "\n";
+                if (!$isFolder && !empty($r['parent_id']) && isset($foldersMap[$r['parent_id']])) {
+                    $block .= "- Parent Folder: " . ($foldersMap[$r['parent_id']]['title'] ?: 'Folder') . "\n";
+                }
+                if ($isFolder && isset($foldersMap[$r['id']]['children']) && !empty($foldersMap[$r['id']]['children'])) {
+                    $cTitles = array_map(function($c) { return $c['title'] ?: 'Item'; }, $foldersMap[$r['id']]['children']);
+                    $block .= "- Contained Items: " . implode(", ", $cTitles) . " (" . count($cTitles) . " items)\n";
+                }
+                if (!empty($r['client_name'])) {
+                    $block .= "- Associated Client/Company: " . $r['client_name'];
+                    if (!empty($r['client_city'])) $block .= " (" . $r['client_city'] . ")";
+                    if (!empty($r['client_type'])) $block .= " [Type: " . $r['client_type'] . "]";
+                    $block .= "\n";
+                }
+                if (!empty($r['due_date'])) {
+                    $block .= "- Due Date / Expiration: " . $r['due_date'] . "\n";
+                }
+                if (!empty($r['file_name'])) {
+                    $block .= "- File Attachment: " . $r['file_name'] . " (" . ($r['file_size'] ?? '') . ")\n";
+                }
+
+                $context_blocks[] = [
+                    'text' => $block,
+                    'score' => $score,
+                    'is_match' => ($score > 0)
+                ];
             }
         }
     } catch (\Exception $ex) {
@@ -476,7 +593,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ");
         $products_all = $products_stmt->fetchAll(PDO::FETCH_ASSOC);
         foreach ($products_all as $p) {
-            $matches = false;
+            $score = 0;
             $pName = mb_strtolower($p['name'] ?? '');
             $pSku = mb_strtolower($p['sku'] ?? '');
             $pEan = mb_strtolower($p['barcode'] ?? '');
@@ -490,8 +607,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 (!empty($pCat) && mb_strpos($normalized_query, $pCat) !== false) ||
                 (!empty($pLoc) && mb_strpos($normalized_query, $pLoc) !== false) ||
                 (!empty($pDesc) && mb_strpos($normalized_query, $pDesc) !== false)) {
-                $matches = true;
+                $score += 60;
             }
+
+            $score += $calc_token_score($p['name'] ?? '', $meaningful_tokens);
+            $score += $calc_token_score($p['sku'] ?? '', $meaningful_tokens);
+            $score += $calc_token_score($p['barcode'] ?? '', $meaningful_tokens);
+            $score += $calc_token_score($p['category'] ?? '', $meaningful_tokens);
 
             // Also match general warehouse/inventory questions if specific keywords appear
             if (mb_strpos($normalized_query, 'sklad') !== false ||
@@ -505,7 +627,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 mb_strpos($normalized_query, 'product') !== false ||
                 mb_strpos($normalized_query, 'fefo') !== false ||
                 mb_strpos($normalized_query, 'šarž') !== false) {
-                $matches = true;
+                $score += 30;
             }
 
             $rawCat = $p['category'] ?? '';
@@ -547,7 +669,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $context_blocks[] = [
                 'text' => $block,
-                'is_match' => $matches
+                'score' => $score,
+                'is_match' => ($score > 0)
             ];
         }
     } catch (\Exception $ex) {
@@ -555,10 +678,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     usort($context_blocks, function($a, $b) {
-        return $b['is_match'] - $a['is_match'];
+        return ($b['score'] ?? 0) - ($a['score'] ?? 0);
     });
 
-    $selected_context = array_slice($context_blocks, 0, 6);
+    $selected_context = array_slice($context_blocks, 0, 20);
     $context_text = "";
     foreach ($selected_context as $cb) {
         $context_text .= $cb['text'] . "\n---\n";
