@@ -62,6 +62,7 @@ found — not that nothing was checked.
 | `npm run test:qa:nav` | Shell navigation and header controls | ~1 min |
 | `npm run test:qa:crawler` | Per-module deep audit | minutes |
 | `npm run test:qa:recorder` | Chrome Recorder replays | ~1 min |
+| `npm run test:qa:dark` | Dark-mode legibility on every module | ~30s |
 | `npm run test:qa:headed` | Full run with a visible browser | minutes |
 | `npm run test:qa:report` | Open the latest report | — |
 | `npm run test:qa:report -- --list` | List saved runs | — |

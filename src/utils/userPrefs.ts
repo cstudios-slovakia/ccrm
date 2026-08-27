@@ -20,8 +20,17 @@ import { createContext, useContext } from "react";
  * to read it without a user object (see getStoredLanguage in translations.ts).
  */
 export interface UserPrefs {
-  /** Theme id. Reserved: main has no theme picker yet. */
+  /** Light palette id — see HERB_THEMES in utils/theme.ts. */
   theme: string;
+  /**
+   * Appearance: "system" | "light" | "dark" | "auto" (sunrise/sunset). Typed as
+   * a plain string so this module stays free of a theme import; utils/theme.ts
+   * validates it with isThemeMode() before anything is applied.
+   *
+   * It is also mirrored into localStorage, because index.html has to know the
+   * answer before the session — and this row — has loaded.
+   */
+  themeMode: string;
   /** Debug affordance: show the error-log quick access in the main sidebar. */
   errorSidebarEnabled: boolean;
   /** Leads screen: table or kanban board. */
@@ -43,6 +52,7 @@ export interface UserPrefs {
 
 export const DEFAULT_USER_PREFS: UserPrefs = {
   theme: "basic",
+  themeMode: "system",
   errorSidebarEnabled: false,
   leadsViewMode: "list",
   leadsCompactMode: false,
@@ -108,7 +118,10 @@ export function useUserPref<K extends keyof UserPrefs>(
  * migrateLegacyPrefs usage in App.tsx.
  */
 const LEGACY_PREF_KEYS = [
-  "crm_user_theme",
+  // `crm_user_theme` is deliberately NOT wiped: since the theme switcher landed
+  // it is no longer only a legacy copy, it is the mirror the pre-paint script in
+  // index.html reads to pick the right palette before the bundle loads. Clearing
+  // it would put a flash of the default theme on every reload.
   "ccrm_error_sidebar_enabled",
   "crm_leads_visible_states",
   "ccrm_seen_update_id",

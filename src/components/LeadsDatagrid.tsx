@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { useUserPref } from "../utils/userPrefs";
 import { resolveAssigneeName } from "../utils/taskSelectors";
+import { liftAccent } from "../utils/accentColor";
 // import { createPortal } from "react-dom";
 import {
     Users,
@@ -7513,12 +7514,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         ? {
                                               backgroundColor: `${stateColor}08`,
                                               borderColor: `${stateColor}18`,
-                                              color: stateColor,
+                                              color: liftAccent(stateColor),
                                           }
                                         : {
-                                              backgroundColor: "#f8fafc",
-                                              borderColor: "#e2e8f0",
-                                              color: "#94a3b8",
+                                              // Theme tokens, not literals: the hardcoded slate here
+                                              // left the inactive chip white-on-white in dark mode.
+                                              backgroundColor: "rgb(var(--muted))",
+                                              borderColor: "rgb(var(--border))",
+                                              color: "rgb(var(--muted-foreground))",
                                               opacity: 0.7,
                                           }
                                 }
@@ -7530,11 +7533,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         isActive
                                             ? {
                                                   backgroundColor: `${stateColor}12`,
-                                                  color: stateColor,
+                                                  color: liftAccent(stateColor),
                                               }
                                             : {
-                                                  backgroundColor: "#e2e8f0",
-                                                  color: "#94a3b8",
+                                                  backgroundColor: "rgb(var(--border))",
+                                                  color: "rgb(var(--muted-foreground))",
                                               }
                                     }
                                 >
@@ -9161,8 +9164,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                         className="px-2 py-0.5 rounded text-[9px] font-extrabold uppercase border select-none transition-colors"
                                                                                         style={{
                                                                                             backgroundColor: `${getSafeSourceColor(lead.source)}15`,
-                                                                                            color: getSafeSourceColor(
-                                                                                                lead.source,
+                                                                                            color: liftAccent(
+                                                                                                getSafeSourceColor(lead.source),
                                                                                             ),
                                                                                             borderColor: `${getSafeSourceColor(lead.source)}35`,
                                                                                         }}
@@ -9237,8 +9240,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                                 className="px-2.5 py-0.5 lg:py-1 rounded-full border text-[9px] lg:text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition-all shadow-sm"
                                                                                                 style={{
                                                                                                     backgroundColor: `${getSafePMColor(lead.owner)}15`,
-                                                                                                    color: getSafePMColor(
-                                                                                                        lead.owner,
+                                                                                                    color: liftAccent(
+                                                                                                        getSafePMColor(lead.owner),
                                                                                                     ),
                                                                                                     borderColor: `${getSafePMColor(lead.owner)}30`,
                                                                                                 }}
@@ -9791,7 +9794,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                         <span
                                                                                             className="italic"
                                                                                             style={{
-                                                                                                color: "#7c3aed",
+                                                                                                color: "rgb(var(--accent))",
                                                                                             }}
                                                                                         >
                                                                                             {generateAiSummary(
@@ -10291,7 +10294,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                             {
                                                                                                 value: "",
                                                                                                 label: (
-                                                                                                    <span style={{ color: "#475569" }}>
+                                                                                                    <span style={{ color: "rgb(var(--muted-foreground))" }}>
                                                                                                         {systemLanguage ===
                                                                                                         "sk"
                                                                                                             ? "Žiadny podstav"
@@ -10401,7 +10404,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     <div
                         className={`w-full max-w-2xl rounded-t-[32px] border-t border-x border-blue-100 shadow-2xl p-7 space-y-6 relative z-10 ${isClosingModal ? "animate-slide-out-bottom" : "animate-slide-in-bottom"}`}
                         style={{
-                            background: "#ffffff",
+                            background: "rgb(var(--card))",
                             backdropFilter: "none",
                         }}
                     >
@@ -10897,7 +10900,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     <div
                         className={`h-screen w-full sm:w-[500px] border-l border-emerald-100/50 shadow-2xl flex flex-col justify-between p-6 ${isClosingClient ? "animate-slide-out-right" : "animate-slide-in-right"}`}
                         style={{
-                            background: "#ffffff",
+                            background: "rgb(var(--card))",
                             backdropFilter: "none",
                         }}
                     >

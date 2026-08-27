@@ -17,6 +17,7 @@
     "test:qa:nav": "playwright test navigation.spec.ts",
     "test:qa:recorder": "playwright test recorder.spec.ts",
     "test:qa:canary": "playwright test canary.spec.ts",
+    "test:qa:dark": "playwright test darkmode.spec.ts",
     "test:qa:report": "node scripts/qa/open-report.mjs",
     "test:qa:report:html": "npx playwright show-report",
     "test:qa:setup": "playwright install chromium",

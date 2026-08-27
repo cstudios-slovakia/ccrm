@@ -113,6 +113,7 @@ until it is added here.
 | Page filters | Filter / status dropdowns on the landing view, capped (they mutate the view). | `crawler.spec.ts` |
 | Known bugs | Čas termínu occlusion; Silvia timeline `?tab=` error screen. | `canary.spec.ts` |
 | Pinned journeys | Chrome Recorder JSON in `tests/recordings/`. | `recorder.spec.ts` |
+| Dark mode | Every module, plus the client drawer and the new-lead modal, opened with the appearance forced to dark. Every run of text is measured against the surface actually behind it; anything under 3:1 is a defect. | `darkmode.spec.ts` |
 
 `#dashboard` and `#tasks` are the same view. Only `#dashboard` is crawled;
 navigation still clicks both sidebar items.

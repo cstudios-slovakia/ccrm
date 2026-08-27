@@ -5,6 +5,7 @@ import { cn } from "../utils/cn";
 import type { Language } from "../utils/translations";
 import { formatMoney } from "../utils/currency";
 import { localeCodeFor } from "../utils/localTime";
+import { chartTheme, useAppearance } from "../utils/theme";
 
 interface DynamicDashboardViewProps {
   dashboard: CustomDashboard;
@@ -792,6 +793,10 @@ interface DashboardChartProps {
 }
 
 const DashboardChart: React.FC<DashboardChartProps> = ({ widget, data }) => {
+  // See FinancialReportView in ClientsView.tsx: canvas colours are literals and
+  // have to be rebuilt when the appearance changes.
+  const appearance = useAppearance();
+  const chart = chartTheme(appearance);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartInstanceRef = useRef<any>(null);
 
@@ -861,6 +866,7 @@ const DashboardChart: React.FC<DashboardChartProps> = ({ widget, data }) => {
             position: "bottom",
             labels: {
               boxWidth: 10,
+              color: chart.label,
               font: { size: 9, weight: "bold" }
             }
           }
@@ -870,11 +876,11 @@ const DashboardChart: React.FC<DashboardChartProps> = ({ widget, data }) => {
           : {
               x: {
                 grid: { display: false },
-                ticks: { font: { size: 9, weight: "bold" } }
+                ticks: { color: chart.tick, font: { size: 9, weight: "bold" } }
               },
               y: {
-                grid: { color: "#f1f5f9" },
-                ticks: { font: { size: 9, weight: "bold" } }
+                grid: { color: chart.grid },
+                ticks: { color: chart.tick, font: { size: 9, weight: "bold" } }
               }
             }
       }
@@ -885,7 +891,7 @@ const DashboardChart: React.FC<DashboardChartProps> = ({ widget, data }) => {
         chartInstanceRef.current.destroy();
       }
     };
-  }, [widget, data]);
+  }, [widget, data, appearance]);
 
   return (
     <div className="h-[220px] w-full relative">

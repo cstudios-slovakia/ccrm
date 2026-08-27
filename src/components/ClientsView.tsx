@@ -22,6 +22,7 @@ import type { Language } from "../utils/translations";
 import { resolveCurrencySymbol, formatMoney } from "../utils/currency";
 import { resolveAssigneeName } from "../utils/taskSelectors";
 import { todayLocal, nowLocalStamp, formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
+import { chartTheme, useAppearance } from "../utils/theme";
 
 interface ClientsViewProps {
   leads: Lead[];
@@ -51,6 +52,10 @@ interface FinancialReportViewProps {
 }
 
 export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summary, systemLanguage }) => {
+  // chart.js paints to a canvas, so its axis, grid and legend colours cannot
+  // come from CSS — they are literals rebuilt whenever the appearance flips.
+  const appearance = useAppearance();
+  const chart = chartTheme(appearance);
   const chartRef = useRef<HTMLCanvasElement | null>(null);
   const chartInstanceRef = useRef<any>(null);
 
@@ -147,7 +152,7 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
                 weight: 'bold',
                 size: 10
               },
-              color: '#334155'
+              color: chart.label
             }
           },
           tooltip: {
@@ -164,7 +169,7 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
           y: {
             beginAtZero: true,
             ticks: {
-              color: '#64748b',
+              color: chart.tick,
               font: {
                 family: 'Google Sans, sans-serif',
                 size: 9,
@@ -173,12 +178,12 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
               callback: (value: any) => '€' + value.toLocaleString()
             },
             grid: {
-              color: '#f1f5f9'
+              color: chart.grid
             }
           },
           x: {
             ticks: {
-              color: '#64748b',
+              color: chart.tick,
               font: {
                 family: 'Google Sans, sans-serif',
                 size: 10,
@@ -198,7 +203,7 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
         chartInstanceRef.current.destroy();
       }
     };
-  }, [parsedData, systemLanguage]);
+  }, [parsedData, systemLanguage, appearance]);
 
   const renderBeautifulReport = (text: string) => {
     if (!text) return null;

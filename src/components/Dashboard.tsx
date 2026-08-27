@@ -8,6 +8,7 @@ import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { resolveCurrencySymbol, resolveCurrencyPosition, formatMoney } from "../utils/currency";
 import { formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
+import { liftAccent, readableOn } from "../utils/accentColor";
 
 interface DashboardProps {
   systemName: string;
@@ -1410,7 +1411,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                   className="inline-block px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider border select-none leading-none"
                                   style={{
                                     backgroundColor: `${leadSourceColors[p.source.toLowerCase()] || "#10b981"}15`,
-                                    color: leadSourceColors[p.source.toLowerCase()] || "#10b981",
+                                    color: liftAccent(leadSourceColors[p.source.toLowerCase()] || "#10b981"),
                                     borderColor: `${leadSourceColors[p.source.toLowerCase()] || "#10b981"}35`
                                   }}
                                 >
@@ -1429,9 +1430,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                 const subColor = leadStateColors[sName] || "#38bdf8";
                                 return (
                                   <span 
-                                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider select-none text-white leading-none"
+                                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider select-none leading-none"
                                     style={{
-                                      background: `linear-gradient(135deg, ${parentColor}, ${subColor})`
+                                      background: `linear-gradient(135deg, ${parentColor}, ${subColor})`,
+                                      // The gradient's midpoint is what the text
+                                      // actually sits on; a pale state colour
+                                      // needs ink, not more white.
+                                      color: readableOn(subColor)
                                     }}
                                   >
                                     {parentName.toUpperCase()} &gt; {p.status.toUpperCase()}
@@ -1441,9 +1446,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                 const mainColor = leadStateColors[sName] || "#6366f1";
                                 return (
                                   <span 
-                                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider select-none text-white leading-none"
+                                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider select-none leading-none"
                                     style={{
-                                      backgroundColor: mainColor
+                                      backgroundColor: mainColor,
+                                      color: readableOn(mainColor)
                                     }}
                                   >
                                     {p.status.toUpperCase()}

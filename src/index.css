@@ -87,6 +87,14 @@
   }
 }
 
+/* Lift applied to database-configured colours (pipeline states, lead sources,
+   project-manager badges) so they stay readable in dark mode. See
+   src/utils/accentColor.ts — 0% here means "return the colour untouched". */
+:root {
+  --accent-lift-color: #ffffff;
+  --accent-lift-amount: 0%;
+}
+
 :root,
 [data-theme="basic"] {
   /* Softened classic light theme tokens with restrained, elegant slate-blue and warm coral accents */
@@ -381,6 +389,421 @@ dialog[open]::backdrop {
   margin: 1.2em 0 !important;
 }
 
+
+
+
+/* ===========================================================================
+   DARK THEME
+   ===========================================================================
+
+   The app is written light-first: ~13 000 raw Tailwind palette classes
+   (`bg-white`, `bg-slate-50`, `border-slate-200`, `text-slate-800`,
+   `bg-indigo-50 text-indigo-700`) rather than semantic tokens. Dark mode is
+   therefore built by re-pointing the palette itself rather than by annotating
+   markup:
+
+     - Tailwind v4 compiles every colour utility to `var(--color-<ramp>-<shade>)`,
+       so redefining those variables here re-themes every usage at once.
+     - Each ramp is turned inside out. The light end (50-300), which carries
+       surfaces and hairlines, becomes dark; the dark end (600-950), which
+       carries type, becomes light. `text-slate-800` on `bg-slate-50` keeps
+       being dark type on a light panel — with both sides swapped over.
+     - The handful of places where one variable has to be two things at once —
+       a saturated shade used as a solid button fill, a light shade used as the
+       label on top of it — are pinned back to their original values by
+       scripts/postcss-dark-palette.mjs, which derives those rules from
+       Tailwind's own output so they never fall behind new markup.
+
+   Appearance selection (system / light / dark / auto by sunrise) lives in
+   src/utils/theme.ts; all it does is write `data-theme="dark"` on <html>.
+--------------------------------------------------------------------------- */
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Colours that arrive from the database as inline styles cannot be inverted
+     by redefining a variable, so they are mixed towards white instead. */
+  --accent-lift-amount: 42%;
+
+  /* Surfaces the plugin substitutes for `bg-white` / `border-white`, which have
+     no ramp shade to invert. The card sits above the page background and below
+     `bg-slate-100`, so the light-mode stacking order survives the flip. */
+  --dark-surface: oklch(21.5% 0.014 257.4);
+  --dark-hairline: oklch(100% 0 0 / 0.08);
+
+  /* --- Semantic tokens (the `background`/`card`/`primary`… scale) ---------- */
+  --background: 13 17 23;
+  --foreground: 226 232 240;
+
+  --card: 22 27 36;
+  --card-foreground: 226 232 240;
+
+  --popover: 27 33 44;
+  --popover-foreground: 226 232 240;
+
+  --primary: 125 151 255;        /* Indigo lifted until it reads on a dark card */
+  --primary-foreground: 10 14 22;
+
+  --secondary: 240 164 104;      /* Warm terracotta, brightened to match */
+  --secondary-foreground: 26 16 8;
+
+  --muted: 32 39 51;
+  --muted-foreground: 148 163 184;
+
+  --accent: 173 152 255;
+  --accent-foreground: 14 11 28;
+
+  --border: 42 50 66;
+  --input: 42 50 66;
+  --ring: 125 151 255;
+
+  --sidebar: 18 23 31;
+  --sidebar-foreground: 203 213 225;
+
+  --radius: 1.5rem;
+
+  /* --- The inverted Tailwind palette -------------------------------------- */
+  /* Neutrals: surfaces and hairlines at the light end, type at the dark end. */
+  --color-slate-50: oklch(17% 0.01 257.4);
+  --color-slate-100: oklch(26% 0.012 257.4);
+  --color-slate-200: oklch(31% 0.014 257.4);
+  --color-slate-300: oklch(38% 0.016 257.4);
+  --color-slate-400: oklch(65% 0.028 257.4);
+  --color-slate-500: oklch(71% 0.024 257.4);
+  --color-slate-600: oklch(78% 0.02 257.4);
+  --color-slate-700: oklch(84% 0.016 257.4);
+  --color-slate-800: oklch(89.5% 0.012 257.4);
+  --color-slate-900: oklch(94% 0.008 257.4);
+  --color-slate-950: oklch(97% 0.004 257.4);
+
+  --color-gray-50: oklch(17% 0.01 264.1);
+  --color-gray-100: oklch(26% 0.012 264.1);
+  --color-gray-200: oklch(31% 0.014 264.1);
+  --color-gray-300: oklch(38% 0.016 264.1);
+  --color-gray-400: oklch(65% 0.028 264.1);
+  --color-gray-500: oklch(71% 0.024 264.1);
+  --color-gray-600: oklch(78% 0.02 264.1);
+  --color-gray-700: oklch(84% 0.016 264.1);
+  --color-gray-800: oklch(89.5% 0.012 264.1);
+  --color-gray-900: oklch(94% 0.008 264.1);
+  --color-gray-950: oklch(97% 0.004 264.1);
+
+  --color-zinc-50: oklch(17% 0.01 286.4);
+  --color-zinc-100: oklch(26% 0.012 286.4);
+  --color-zinc-200: oklch(31% 0.014 286.4);
+  --color-zinc-300: oklch(38% 0.016 286.4);
+  --color-zinc-400: oklch(65% 0.028 286.4);
+  --color-zinc-500: oklch(71% 0.024 286.4);
+  --color-zinc-600: oklch(78% 0.02 286.4);
+  --color-zinc-700: oklch(84% 0.016 286.4);
+  --color-zinc-800: oklch(89.5% 0.012 286.4);
+  --color-zinc-900: oklch(94% 0.008 286.4);
+  --color-zinc-950: oklch(97% 0.004 286.4);
+
+  --color-neutral-50: oklch(17% 0 0);
+  --color-neutral-100: oklch(26% 0 0);
+  --color-neutral-200: oklch(31% 0 0);
+  --color-neutral-300: oklch(38% 0 0);
+  --color-neutral-400: oklch(65% 0 0);
+  --color-neutral-500: oklch(71% 0 0);
+  --color-neutral-600: oklch(78% 0 0);
+  --color-neutral-700: oklch(84% 0 0);
+  --color-neutral-800: oklch(89.5% 0 0);
+  --color-neutral-900: oklch(94% 0 0);
+  --color-neutral-950: oklch(97% 0 0);
+
+  --color-stone-50: oklch(17% 0.01 58.1);
+  --color-stone-100: oklch(26% 0.012 58.1);
+  --color-stone-200: oklch(31% 0.014 58.1);
+  --color-stone-300: oklch(38% 0.016 58.1);
+  --color-stone-400: oklch(65% 0.028 58.1);
+  --color-stone-500: oklch(71% 0.024 58.1);
+  --color-stone-600: oklch(78% 0.02 58.1);
+  --color-stone-700: oklch(84% 0.016 58.1);
+  --color-stone-800: oklch(89.5% 0.012 58.1);
+  --color-stone-900: oklch(94% 0.008 58.1);
+  --color-stone-950: oklch(97% 0.004 58.1);
+
+  /* Tinted ramps: 50-300 become tinted dark surfaces, 600-950 become readable type. */
+  --color-red-50: oklch(19.5% 0.035 25.331);
+  --color-red-100: oklch(24% 0.05 25.331);
+  --color-red-200: oklch(30% 0.07 25.331);
+  --color-red-300: oklch(38% 0.095 25.331);
+  --color-red-400: oklch(72% 0.13 25.331);
+  --color-red-500: oklch(70% 0.15 25.331);
+  --color-red-600: oklch(67% 0.16 25.331);
+  --color-red-700: oklch(76% 0.13 25.331);
+  --color-red-800: oklch(84% 0.095 25.331);
+  --color-red-900: oklch(90% 0.06 25.331);
+  --color-red-950: oklch(95% 0.03 25.331);
+
+  --color-orange-50: oklch(19.5% 0.035 47.604);
+  --color-orange-100: oklch(24% 0.05 47.604);
+  --color-orange-200: oklch(30% 0.07 47.604);
+  --color-orange-300: oklch(38% 0.095 47.604);
+  --color-orange-400: oklch(72% 0.13 47.604);
+  --color-orange-500: oklch(70% 0.15 47.604);
+  --color-orange-600: oklch(67% 0.16 47.604);
+  --color-orange-700: oklch(76% 0.13 47.604);
+  --color-orange-800: oklch(84% 0.095 47.604);
+  --color-orange-900: oklch(90% 0.06 47.604);
+  --color-orange-950: oklch(95% 0.03 47.604);
+
+  --color-amber-50: oklch(19.5% 0.035 70.08);
+  --color-amber-100: oklch(24% 0.05 70.08);
+  --color-amber-200: oklch(30% 0.07 70.08);
+  --color-amber-300: oklch(38% 0.095 70.08);
+  --color-amber-400: oklch(72% 0.13 70.08);
+  --color-amber-500: oklch(70% 0.15 70.08);
+  --color-amber-600: oklch(67% 0.16 70.08);
+  --color-amber-700: oklch(76% 0.13 70.08);
+  --color-amber-800: oklch(84% 0.095 70.08);
+  --color-amber-900: oklch(90% 0.06 70.08);
+  --color-amber-950: oklch(95% 0.03 70.08);
+
+  --color-yellow-50: oklch(19.5% 0.035 86.047);
+  --color-yellow-100: oklch(24% 0.05 86.047);
+  --color-yellow-200: oklch(30% 0.07 86.047);
+  --color-yellow-300: oklch(38% 0.095 86.047);
+  --color-yellow-400: oklch(72% 0.13 86.047);
+  --color-yellow-500: oklch(70% 0.15 86.047);
+  --color-yellow-600: oklch(67% 0.16 86.047);
+  --color-yellow-700: oklch(76% 0.13 86.047);
+  --color-yellow-800: oklch(84% 0.095 86.047);
+  --color-yellow-900: oklch(90% 0.06 86.047);
+  --color-yellow-950: oklch(95% 0.03 86.047);
+
+  --color-lime-50: oklch(19.5% 0.035 130.85);
+  --color-lime-100: oklch(24% 0.05 130.85);
+  --color-lime-200: oklch(30% 0.07 130.85);
+  --color-lime-300: oklch(38% 0.095 130.85);
+  --color-lime-400: oklch(72% 0.13 130.85);
+  --color-lime-500: oklch(70% 0.15 130.85);
+  --color-lime-600: oklch(67% 0.16 130.85);
+  --color-lime-700: oklch(76% 0.13 130.85);
+  --color-lime-800: oklch(84% 0.095 130.85);
+  --color-lime-900: oklch(90% 0.06 130.85);
+  --color-lime-950: oklch(95% 0.03 130.85);
+
+  --color-green-50: oklch(19.5% 0.035 149.579);
+  --color-green-100: oklch(24% 0.05 149.579);
+  --color-green-200: oklch(30% 0.07 149.579);
+  --color-green-300: oklch(38% 0.095 149.579);
+  --color-green-400: oklch(72% 0.13 149.579);
+  --color-green-500: oklch(70% 0.15 149.579);
+  --color-green-600: oklch(67% 0.16 149.579);
+  --color-green-700: oklch(76% 0.13 149.579);
+  --color-green-800: oklch(84% 0.095 149.579);
+  --color-green-900: oklch(90% 0.06 149.579);
+  --color-green-950: oklch(95% 0.03 149.579);
+
+  --color-emerald-50: oklch(19.5% 0.035 162.48);
+  --color-emerald-100: oklch(24% 0.05 162.48);
+  --color-emerald-200: oklch(30% 0.07 162.48);
+  --color-emerald-300: oklch(38% 0.095 162.48);
+  --color-emerald-400: oklch(72% 0.13 162.48);
+  --color-emerald-500: oklch(70% 0.15 162.48);
+  --color-emerald-600: oklch(67% 0.16 162.48);
+  --color-emerald-700: oklch(76% 0.13 162.48);
+  --color-emerald-800: oklch(84% 0.095 162.48);
+  --color-emerald-900: oklch(90% 0.06 162.48);
+  --color-emerald-950: oklch(95% 0.03 162.48);
+
+  --color-teal-50: oklch(19.5% 0.035 182.503);
+  --color-teal-100: oklch(24% 0.05 182.503);
+  --color-teal-200: oklch(30% 0.07 182.503);
+  --color-teal-300: oklch(38% 0.095 182.503);
+  --color-teal-400: oklch(72% 0.13 182.503);
+  --color-teal-500: oklch(70% 0.15 182.503);
+  --color-teal-600: oklch(67% 0.16 182.503);
+  --color-teal-700: oklch(76% 0.13 182.503);
+  --color-teal-800: oklch(84% 0.095 182.503);
+  --color-teal-900: oklch(90% 0.06 182.503);
+  --color-teal-950: oklch(95% 0.03 182.503);
+
+  --color-cyan-50: oklch(19.5% 0.035 215.221);
+  --color-cyan-100: oklch(24% 0.05 215.221);
+  --color-cyan-200: oklch(30% 0.07 215.221);
+  --color-cyan-300: oklch(38% 0.095 215.221);
+  --color-cyan-400: oklch(72% 0.13 215.221);
+  --color-cyan-500: oklch(70% 0.15 215.221);
+  --color-cyan-600: oklch(67% 0.16 215.221);
+  --color-cyan-700: oklch(76% 0.13 215.221);
+  --color-cyan-800: oklch(84% 0.095 215.221);
+  --color-cyan-900: oklch(90% 0.06 215.221);
+  --color-cyan-950: oklch(95% 0.03 215.221);
+
+  --color-sky-50: oklch(19.5% 0.035 237.323);
+  --color-sky-100: oklch(24% 0.05 237.323);
+  --color-sky-200: oklch(30% 0.07 237.323);
+  --color-sky-300: oklch(38% 0.095 237.323);
+  --color-sky-400: oklch(72% 0.13 237.323);
+  --color-sky-500: oklch(70% 0.15 237.323);
+  --color-sky-600: oklch(67% 0.16 237.323);
+  --color-sky-700: oklch(76% 0.13 237.323);
+  --color-sky-800: oklch(84% 0.095 237.323);
+  --color-sky-900: oklch(90% 0.06 237.323);
+  --color-sky-950: oklch(95% 0.03 237.323);
+
+  --color-blue-50: oklch(19.5% 0.035 259.815);
+  --color-blue-100: oklch(24% 0.05 259.815);
+  --color-blue-200: oklch(30% 0.07 259.815);
+  --color-blue-300: oklch(38% 0.095 259.815);
+  --color-blue-400: oklch(72% 0.13 259.815);
+  --color-blue-500: oklch(70% 0.15 259.815);
+  --color-blue-600: oklch(67% 0.16 259.815);
+  --color-blue-700: oklch(76% 0.13 259.815);
+  --color-blue-800: oklch(84% 0.095 259.815);
+  --color-blue-900: oklch(90% 0.06 259.815);
+  --color-blue-950: oklch(95% 0.03 259.815);
+
+  --color-indigo-50: oklch(19.5% 0.035 277.117);
+  --color-indigo-100: oklch(24% 0.05 277.117);
+  --color-indigo-200: oklch(30% 0.07 277.117);
+  --color-indigo-300: oklch(38% 0.095 277.117);
+  --color-indigo-400: oklch(72% 0.13 277.117);
+  --color-indigo-500: oklch(70% 0.15 277.117);
+  --color-indigo-600: oklch(67% 0.16 277.117);
+  --color-indigo-700: oklch(76% 0.13 277.117);
+  --color-indigo-800: oklch(84% 0.095 277.117);
+  --color-indigo-900: oklch(90% 0.06 277.117);
+  --color-indigo-950: oklch(95% 0.03 277.117);
+
+  --color-violet-50: oklch(19.5% 0.035 293.009);
+  --color-violet-100: oklch(24% 0.05 293.009);
+  --color-violet-200: oklch(30% 0.07 293.009);
+  --color-violet-300: oklch(38% 0.095 293.009);
+  --color-violet-400: oklch(72% 0.13 293.009);
+  --color-violet-500: oklch(70% 0.15 293.009);
+  --color-violet-600: oklch(67% 0.16 293.009);
+  --color-violet-700: oklch(76% 0.13 293.009);
+  --color-violet-800: oklch(84% 0.095 293.009);
+  --color-violet-900: oklch(90% 0.06 293.009);
+  --color-violet-950: oklch(95% 0.03 293.009);
+
+  --color-purple-50: oklch(19.5% 0.035 303.9);
+  --color-purple-100: oklch(24% 0.05 303.9);
+  --color-purple-200: oklch(30% 0.07 303.9);
+  --color-purple-300: oklch(38% 0.095 303.9);
+  --color-purple-400: oklch(72% 0.13 303.9);
+  --color-purple-500: oklch(70% 0.15 303.9);
+  --color-purple-600: oklch(67% 0.16 303.9);
+  --color-purple-700: oklch(76% 0.13 303.9);
+  --color-purple-800: oklch(84% 0.095 303.9);
+  --color-purple-900: oklch(90% 0.06 303.9);
+  --color-purple-950: oklch(95% 0.03 303.9);
+
+  --color-fuchsia-50: oklch(19.5% 0.035 322.16);
+  --color-fuchsia-100: oklch(24% 0.05 322.16);
+  --color-fuchsia-200: oklch(30% 0.07 322.16);
+  --color-fuchsia-300: oklch(38% 0.095 322.16);
+  --color-fuchsia-400: oklch(72% 0.13 322.16);
+  --color-fuchsia-500: oklch(70% 0.15 322.16);
+  --color-fuchsia-600: oklch(67% 0.16 322.16);
+  --color-fuchsia-700: oklch(76% 0.13 322.16);
+  --color-fuchsia-800: oklch(84% 0.095 322.16);
+  --color-fuchsia-900: oklch(90% 0.06 322.16);
+  --color-fuchsia-950: oklch(95% 0.03 322.16);
+
+  --color-pink-50: oklch(19.5% 0.035 354.308);
+  --color-pink-100: oklch(24% 0.05 354.308);
+  --color-pink-200: oklch(30% 0.07 354.308);
+  --color-pink-300: oklch(38% 0.095 354.308);
+  --color-pink-400: oklch(72% 0.13 354.308);
+  --color-pink-500: oklch(70% 0.15 354.308);
+  --color-pink-600: oklch(67% 0.16 354.308);
+  --color-pink-700: oklch(76% 0.13 354.308);
+  --color-pink-800: oklch(84% 0.095 354.308);
+  --color-pink-900: oklch(90% 0.06 354.308);
+  --color-pink-950: oklch(95% 0.03 354.308);
+
+  --color-rose-50: oklch(19.5% 0.035 16.439);
+  --color-rose-100: oklch(24% 0.05 16.439);
+  --color-rose-200: oklch(30% 0.07 16.439);
+  --color-rose-300: oklch(38% 0.095 16.439);
+  --color-rose-400: oklch(72% 0.13 16.439);
+  --color-rose-500: oklch(70% 0.15 16.439);
+  --color-rose-600: oklch(67% 0.16 16.439);
+  --color-rose-700: oklch(76% 0.13 16.439);
+  --color-rose-800: oklch(84% 0.095 16.439);
+  --color-rose-900: oklch(90% 0.06 16.439);
+  --color-rose-950: oklch(95% 0.03 16.439);
+}
+
+/* Arbitrary-value classes have no ramp shade for the inversion to work on, so
+   the few light ones in the codebase are named here. `#0b1329` is the app's
+   near-black brand navy: it stays a background, but as *type* it has to flip. */
+[data-theme="dark"] .text-\[\#0b1329\] {
+  color: oklch(94% 0.008 257.4);
+}
+[data-theme="dark"] .bg-\[\#f8fafc\],
+[data-theme="dark"] .bg-\[\#f4f7fe\] {
+  background-color: oklch(17% 0.01 257.4);
+}
+[data-theme="dark"] .from-\[\#e8efff\] {
+  --tw-gradient-from: oklch(21.5% 0.014 257.4);
+}
+[data-theme="dark"] .via-\[\#f0f0fd\] {
+  --tw-gradient-via: oklch(20% 0.016 280);
+}
+[data-theme="dark"] .to-\[\#fff0e6\] {
+  --tw-gradient-to: oklch(20% 0.018 60);
+}
+
+/* --- Component surfaces defined in this file --------------------------------
+   Everything below overrides a light-mode rule further up, so it has to stay
+   after it. --------------------------------------------------------------- */
+
+[data-theme="dark"] body {
+  background: linear-gradient(135deg, #0b0f16 0%, #0d1119 50%, #12101a 100%);
+}
+
+[data-theme="dark"] .glass-panel {
+  background: rgba(22, 27, 36, 0.72);
+  backdrop-filter: blur(16px) saturate(130%);
+  -webkit-backdrop-filter: blur(16px) saturate(130%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 8px 30px -10px rgba(0, 0, 0, 0.6), 0 2px 10px -2px rgba(0, 0, 0, 0.4);
+}
+
+/* Coloured glows read as light leaks on a dark surface; keep them as a hint. */
+[data-theme="dark"] .glow-primary {
+  box-shadow: 0 10px 30px -5px rgba(125, 151, 255, 0.18);
+}
+[data-theme="dark"] .glow-secondary {
+  box-shadow: 0 10px 30px -5px rgba(240, 164, 104, 0.18);
+}
+
+[data-theme="dark"] ::selection {
+  background-color: #2f3f7a !important;
+  color: #e8eeff !important;
+}
+
+/* The light-mode backdrop is a translucent slate; on a dark app it has to go
+   deeper than the page itself or the modal stops reading as raised. */
+[data-theme="dark"] dialog[open]::backdrop {
+  background-color: rgba(2, 4, 8, 0.62);
+}
+
+/* The changelog / CKEditor formatting above is written with `!important`
+   literals because @tailwindcss/typography is not loaded, so it can only be
+   answered in kind. */
+[data-theme="dark"] .prose.ck-content {
+  color: #c3cdda !important;
+}
+[data-theme="dark"] .prose.ck-content strong,
+[data-theme="dark"] .prose.ck-content h1,
+[data-theme="dark"] .prose.ck-content h2,
+[data-theme="dark"] .prose.ck-content h3,
+[data-theme="dark"] .prose.ck-content h4 {
+  color: #eef2f8 !important;
+}
+[data-theme="dark"] .prose.ck-content a {
+  color: #93a9ff !important;
+}
+[data-theme="dark"] .prose.ck-content a:hover {
+  color: #b5c4ff !important;
+}
 
 
 /* ---------------------------------------------------------------------------

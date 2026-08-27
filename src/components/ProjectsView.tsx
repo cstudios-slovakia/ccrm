@@ -6,6 +6,7 @@ import { ProjectDetailsView } from "./ProjectDetailsView";
 import { ProjectSettings } from "./ProjectSettings";
 import { CustomSelect } from "./ui/CustomSelect";
 import type { Language } from "../utils/translations";
+import { readableOn } from "../utils/accentColor";
 
 interface ProjectsViewProps {
   projects: Project[];
@@ -336,8 +337,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                     {/* Project Type Badge */}
                     <div className="flex items-center justify-between mb-4">
                       <div 
-                        className="flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold text-white shadow-sm"
-                        style={{ backgroundColor: pType.color }}
+                        className="flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold shadow-sm"
+                        style={{ backgroundColor: pType.color, color: readableOn(pType.color) }}
                       >
                         {renderIcon(pType.icon, "h-3.5 w-3.5")}
                         <span>{pType.name}</span>

@@ -3698,7 +3698,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 <div 
                                   className="h-8.5 w-8.5 rounded-lg flex items-center justify-center border-2 shrink-0 z-10 shadow-sm"
                                   style={{
-                                    backgroundColor: "white",
+                                    backgroundColor: "rgb(var(--card))",
                                     borderColor: selectedUser.color
                                   }}
                                 >

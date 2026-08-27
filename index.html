@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
@@ -13,9 +13,37 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.cdnfonts.com/css/google-sans" rel="stylesheet" />
+    <!--
+      Paint the right theme before the first frame.
+
+      React decides the theme in src/utils/theme.ts, but it only runs after the
+      bundle has parsed. Without this the app flashes a full white screen at
+      every dark-mode boot, which is the one thing dark mode exists to avoid.
+      This mirrors resolveAppearance() for the three cheap modes; `auto` needs
+      sunrise/sunset, so it reads the answer the last run cached and the real
+      calculation corrects it on mount.
+    -->
+    <script>
+      (function () {
+        try {
+          var read = function (key) { try { return localStorage.getItem(key); } catch (e) { return null; } };
+          var mode = read("ccrm_theme_mode") || "system";
+          var palette = read("crm_user_theme") || "basic";
+          var dark =
+            mode === "dark" ? true :
+            mode === "light" ? false :
+            mode === "auto" ? read("ccrm_theme_auto_dark") === "1" :
+            !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          var root = document.documentElement;
+          root.setAttribute("data-theme", dark ? "dark" : palette);
+          root.setAttribute("data-appearance", dark ? "dark" : "light");
+          root.style.colorScheme = dark ? "dark" : "light";
+        } catch (e) {}
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </head>
-  <body class="bg-[#0f111a] text-slate-100 font-sans antialiased overflow-x-hidden selection:bg-indigo-500/30 selection:text-indigo-200">
+  <body class="font-sans antialiased overflow-x-hidden">
     <div id="root"></div>
     
     <!-- Active Service Worker Unregistration to prevent caching issues -->

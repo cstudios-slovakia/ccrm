@@ -15,7 +15,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import FilePreviewPane from "./components/FilePreviewPane";
 import { RefreshCw, AlertOctagon, Trash2, Copy } from "lucide-react";
 import { ShaderGradient, ShaderGradientCanvas } from "shadergradient";
-import { getStoredTheme, applyTheme } from "./utils/theme";
+import { getStoredTheme, getStoredThemeMode, isThemeMode, startThemeWatcher, type Appearance, type ThemeMode } from "./utils/theme";
 import { hasPersistentStorage } from "./utils/safeStorage";
 import type { UserPrefs, UserPrefsApi } from "./utils/userPrefs";
 import {
@@ -379,11 +379,25 @@ function App() {
   const [systemName, setSystemName] = useState("CCRM");
   const [systemLanguage, setSystemLanguage] = useState<"en" | "sk" | "hu">("sk");
   const [userLanguage, setUserLanguage] = useState<"en" | "sk" | "hu">("sk");
+  // Appearance (light/dark/system/auto) and the light palette are independent:
+  // switching to dark and back has to give the user their herb theme again.
   const [userTheme, setUserTheme] = useState<string>(getStoredTheme);
+  const [themeMode, setThemeMode] = useState<ThemeMode>(getStoredThemeMode);
+  const [appearance, setAppearance] = useState<Appearance>(
+    () => (document.documentElement.getAttribute("data-appearance") === "dark" ? "dark" : "light")
+  );
 
-  useEffect(() => {
-    applyTheme(userTheme);
-  }, [userTheme]);
+  // The watcher owns the actual repaint. It also has to react to the OS theme
+  // flipping and to the sun rising or setting, so it reads the current choice
+  // through a ref rather than being re-attached on every change.
+  const themeStateRef = useRef({ mode: themeMode, palette: userTheme });
+  themeStateRef.current = { mode: themeMode, palette: userTheme };
+  useEffect(
+    // Re-attached on every explicit change so the watcher repaints at once and
+    // re-arms its timers for the mode that is now in force.
+    () => startThemeWatcher(() => themeStateRef.current, setAppearance),
+    [themeMode, userTheme]
+  );
 
   // Same three-language shorthand every view uses for one-off copy that has no
   // entry in translations.ts.
@@ -1366,6 +1380,50 @@ ${log.payload || ''}
 
   const errorSidebarEnabled = userPrefs.errorSidebarEnabled;
 
+  // The appearance and the palette live in two places on purpose: localStorage,
+  // which index.html can read before the first frame, and the user's DB row,
+  // which follows the account to another browser. This adopts the row whenever
+  // it disagrees — on login, and after a sync brings a change made elsewhere.
+  //
+  // Read straight out of the blob rather than through `userPrefs`, which fills
+  // absent keys in from DEFAULT_USER_PREFS: an account that has never saved a
+  // theme would otherwise look like it had chosen "system", and adopting that
+  // would throw away the choice the visitor just made in this browser.
+  const storedThemePrefs = useMemo(() => {
+    const preferences = parseUserMetadata({ metadata_json: currentUserMetaJson }).preferences;
+    return preferences && typeof preferences === "object"
+      ? { mode: (preferences as Partial<UserPrefs>).themeMode, palette: (preferences as Partial<UserPrefs>).theme }
+      : { mode: undefined, palette: undefined };
+  }, [currentUserMetaJson]);
+  const storedThemeMode = storedThemePrefs.mode;
+  const storedThemePalette = storedThemePrefs.palette;
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    if (isThemeMode(storedThemeMode) && storedThemeMode !== themeModeRef.current) {
+      setThemeMode(storedThemeMode);
+    }
+    if (storedThemePalette && storedThemePalette !== themePaletteRef.current) {
+      setUserTheme(storedThemePalette);
+    }
+  }, [isLoggedIn, storedThemeMode, storedThemePalette]);
+
+  // Writing a preference re-renders with a new `userPrefs`, so the effect above
+  // must compare against what is on screen right now, not against a value it
+  // captured — otherwise a local change and the row it just wrote fight.
+  const themeModeRef = useRef(themeMode);
+  themeModeRef.current = themeMode;
+  const themePaletteRef = useRef(userTheme);
+  themePaletteRef.current = userTheme;
+
+  const changeThemeMode = (mode: ThemeMode) => {
+    setThemeMode(mode);
+    setUserPref("themeMode", mode);
+  };
+  const changeThemePalette = (palette: string) => {
+    setUserTheme(palette);
+    setUserPref("theme", palette);
+  };
+
   useEffect(() => {
     if (errorSidebarEnabled) {
       fetchErrorLogs();
@@ -1393,14 +1451,18 @@ ${log.payload || ''}
     }
     const nextMeta = {
       ...parseUserMetadata(currentUser),
-      preferences: { ...DEFAULT_USER_PREFS, ...readLegacyPrefs() }
+      // The appearance is seeded from what this browser is actually showing,
+      // not from DEFAULT_USER_PREFS: writing the default here would be read
+      // straight back by the adoption effect above and would silently undo the
+      // theme the visitor picked before they ever logged in.
+      preferences: { ...DEFAULT_USER_PREFS, ...readLegacyPrefs(), themeMode, theme: userTheme }
     };
     updateUsersAndSync(prevUsers => prevUsers.map(u =>
       u.email === currentUser.email ? { ...u, metadata_json: nextMeta } : u
     ));
     setCurrentUser(prev => prev ? { ...prev, metadata_json: nextMeta } : prev);
     clearLegacyPrefs();
-  }, [currentUser, users, isInitialSyncResolved]);
+  }, [currentUser, users, isInitialSyncResolved, themeMode, userTheme]);
 
   const handleSaveUserLayout = (layout: string[], hidden?: string[]) => {
     if (!currentUser) return;
@@ -2249,7 +2311,10 @@ ${log.payload || ''}
             userLanguage={userLanguage}
             setUserLanguage={changeUserLanguage}
             userTheme={userTheme}
-            setUserTheme={setUserTheme}
+            setUserTheme={changeThemePalette}
+            themeMode={themeMode}
+            setThemeMode={changeThemeMode}
+            appearance={appearance}
             onSync={() => {}}
             errorSidebarEnabled={errorSidebarEnabled}
             setErrorSidebarEnabled={(enabled: boolean) => setUserPref("errorSidebarEnabled", enabled)}
