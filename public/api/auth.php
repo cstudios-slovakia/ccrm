@@ -726,6 +726,135 @@ HTACCESS;
     }
 
     /**
+     * Secret fields inside INVOICING_INTEGRATIONS, per provider. Unlike
+     * INTEGRATIONS_CONFIG these live one level down (`superfaktura.apiKey`,
+     * `idoklad.clientSecret`), so they need their own walk rather than the flat
+     * ccrm_*_config_secrets helpers.
+     */
+    function ccrm_invoicing_secret_map(): array {
+        return [
+            'superfaktura' => ['apiKey'],
+            'idoklad' => ['clientSecret'],
+        ];
+    }
+
+    /** Apply $fn to every provider secret in an INVOICING_INTEGRATIONS array. */
+    function ccrm_walk_invoicing_secrets($config, callable $fn): array {
+        if (!is_array($config)) {
+            return [];
+        }
+        foreach (ccrm_invoicing_secret_map() as $provider => $keys) {
+            if (!isset($config[$provider]) || !is_array($config[$provider])) {
+                continue;
+            }
+            foreach ($keys as $k) {
+                if (isset($config[$provider][$k]) && is_string($config[$provider][$k]) && $config[$provider][$k] !== '') {
+                    $config[$provider][$k] = $fn($config[$provider][$k]);
+                }
+            }
+        }
+        return $config;
+    }
+
+    /** Encrypt accounting-connector secrets before they are persisted. */
+    function ccrm_encrypt_invoicing_secrets($config): array {
+        return ccrm_walk_invoicing_secrets($config, 'ccrm_encrypt_secret');
+    }
+
+    /** Decrypt accounting-connector secrets for server-side use. */
+    function ccrm_decrypt_invoicing_secrets($config): array {
+        return ccrm_walk_invoicing_secrets($config, 'ccrm_decrypt_secret');
+    }
+
+    /**
+     * Replace accounting-connector secrets with the mask before the config is
+     * sent to a browser. Every authenticated user receives the settings blob on
+     * sync, so unmasked keys here handed the company's SuperFaktúra / iDoklad
+     * credentials to every account in the CRM, whatever their role.
+     */
+    function ccrm_mask_invoicing_secrets($config): array {
+        return ccrm_walk_invoicing_secrets($config, function () { return CCRM_SECRET_MASK; });
+    }
+
+    /**
+     * Merge an inbound INVOICING_INTEGRATIONS over the stored one, keeping any
+     * provider secret the client left masked or omitted.
+     */
+    function ccrm_merge_invoicing_secrets($incoming, $existing): array {
+        if (!is_array($incoming)) {
+            return is_array($existing) ? $existing : [];
+        }
+        if (!is_array($existing)) {
+            $existing = [];
+        }
+        foreach (ccrm_invoicing_secret_map() as $provider => $keys) {
+            if (!isset($incoming[$provider]) || !is_array($incoming[$provider])) {
+                continue;
+            }
+            foreach ($keys as $k) {
+                $inbound = $incoming[$provider][$k] ?? null;
+                $hasReal = is_string($inbound) && $inbound !== '' && $inbound !== CCRM_SECRET_MASK;
+                if ($hasReal) {
+                    continue;
+                }
+                if (isset($existing[$provider][$k])) {
+                    $incoming[$provider][$k] = $existing[$provider][$k];
+                } else {
+                    unset($incoming[$provider][$k]);
+                }
+            }
+        }
+        return $incoming;
+    }
+
+    /**
+     * iDoklad country id for a free-text country name. iDoklad is a Czech
+     * service whose id 2 is Slovakia and 1 is Czechia; anything unrecognised
+     * falls back to Slovakia, which is where this CRM is deployed.
+     */
+    function ccrm_idoklad_country_id($country): int {
+        $c = mb_strtolower(trim((string)$country));
+        if ($c === '') {
+            return 2;
+        }
+        $czech = ['cz', 'czechia', 'czech republic', 'česko', 'česká republika', 'ceska republika', 'cesko'];
+        foreach ($czech as $needle) {
+            if ($c === $needle) {
+                return 1;
+            }
+        }
+        return 2;
+    }
+
+    /**
+     * Persist a base64 PDF returned by an accounting API under /uploads and hand
+     * back its public path, so the CRM can link the official document instead of
+     * only storing its remote id. Returns null when the payload is unusable.
+     */
+    function ccrm_store_external_pdf($base64, string $baseName): ?string {
+        if (!is_string($base64) || $base64 === '') {
+            return null;
+        }
+        $binary = base64_decode($base64, true);
+        // A valid PDF starts with %PDF-; anything else is an error page or JSON.
+        if ($binary === false || strncmp($binary, '%PDF-', 5) !== 0) {
+            return null;
+        }
+        // ccrm_uploads_dir() also (re)installs the .htaccess guard that keeps
+        // uploads/ inert, so never write there by hand.
+        $dir = ccrm_uploads_dir();
+        if (!is_dir($dir)) {
+            return null;
+        }
+        $safeBase = preg_replace('/[^A-Za-z0-9._-]/', '', $baseName) ?: 'document';
+        $fileName = $safeBase . '-' . bin2hex(random_bytes(4)) . '.pdf';
+        if (@file_put_contents($dir . $fileName, $binary) === false) {
+            return null;
+        }
+        return '/uploads/' . $fileName;
+    }
+
+    /**
      * Resolve the OpenAI chat model to use, from the admin-configured
      * INTEGRATIONS_CONFIG, falling back to a sane default. Centralised so the
      * default is not scattered as a literal across every AI endpoint.

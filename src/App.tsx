@@ -2537,10 +2537,14 @@ ${log.payload || ''}
             pendingPushRef.current = false;
             setTimeout(() => {
               pushStateToServer(
+                // 21 positional "next…" slots precede the options object. Keep this
+                // padding in step with the pushStateToServer signature: when the
+                // invoices/AI-template slots were added the options object silently
+                // slid into `nextInvoicesOffers`, corrupting the replayed payload.
                 undefined, undefined, undefined, undefined, undefined, undefined,
                 undefined, undefined, undefined, undefined, undefined,
                 undefined, undefined, undefined, undefined, undefined, undefined,
-                undefined, undefined,
+                undefined, undefined, undefined, undefined,
                 { showIndicator: false }
               );
             }, 0);

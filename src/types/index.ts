@@ -711,13 +711,15 @@ export interface CompanyBillingSettings {
   swift: string;
   bankName: string;
   
-  // Default terms
+  // Default terms. Seeded into every new document by InvoicingView, so the names
+  // here must match the Settings → Invoicing form that writes them.
   defaultPaymentDueDays: number;
   defaultVatRate: number;
-  defaultWarranty: string;
-  defaultDuration: string;
+  defaultWarrantyText: string;
+  defaultDurationText: string;
+  defaultStartDateText?: string;
   defaultNextSteps: string;
-  defaultSocialProof: string; // e.g. "Realizovali sme pre: Amazon · Heineken · FedEx..."
+  defaultSocialProof: string; // reference clients printed in the document footer
   defaultUspCards: UspCardItem[];
 }
 

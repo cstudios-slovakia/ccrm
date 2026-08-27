@@ -910,18 +910,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
               setIsMobileMenuOpen(false);
               setIsStartMenuOpen(true);
             }}
-            className="flex items-center gap-3.5 mb-8 animate-in fade-in slide-in-from-top-4 duration-300 shrink-0 text-left p-2 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer w-full"
+            className="flex items-center gap-3.5 mb-8 animate-in fade-in slide-in-from-top-4 duration-300 shrink-0 text-left p-2 rounded-2xl hover:bg-slate-100 transition-colors cursor-pointer w-full"
           >
-            <div className="h-10 w-10 flex items-center justify-center gap-1.5 shrink-0 select-none rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+            <div className="h-10 w-10 flex items-center justify-center gap-1.5 shrink-0 select-none rounded-2xl bg-slate-100 border border-slate-200">
               <span className="h-2.5 w-2.5 rounded-full bg-orange-500" />
               <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
               <span className="h-2.5 w-2.5 rounded-full bg-indigo-500" />
             </div>
             <div className="flex flex-col text-left">
-              <span className="font-heading font-bold text-sm leading-none bg-gradient-to-r from-slate-800 to-slate-950 dark:from-slate-100 dark:to-white bg-clip-text text-transparent">
+              <span className="font-heading font-bold text-sm leading-none bg-gradient-to-r from-slate-800 to-slate-950 bg-clip-text text-transparent">
                 {systemName}
               </span>
-              <span className="text-[9px] text-indigo-600 dark:text-indigo-400 tracking-wider font-extrabold uppercase mt-1">
+              <span className="text-[9px] text-indigo-600 tracking-wider font-extrabold uppercase mt-1">
                 {t("Open Start Menu", "Otvoriť Štart menu", "Start menü megnyitása")} ➔
               </span>
             </div>

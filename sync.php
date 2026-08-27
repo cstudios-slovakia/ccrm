@@ -388,7 +388,7 @@ function ccrm_explicit_deleted_ids(array $deleted, string $entity): array {
  * deletion is irreversible (project_types DROPs its dynamic data tables) pass
  * $strict so even an N-1 wipe is refused.
  */
-function ccrm_filter_mass_delete(PDO $pdo, string $table, array $toDelete, bool $strict = false): array {
+function ccrm_filter_mass_delete(PDO $pdo, string $table, array $toDelete, bool $strict = false, bool $explicit = false): array {
     if (empty($toDelete)) {
         return [];
     }
@@ -409,10 +409,18 @@ function ccrm_filter_mass_delete(PDO $pdo, string $table, array $toDelete, bool 
         return [];
     }
 
-    // (a) Never delete EVERY remaining row of a table by omission — that is only
+    // (a) Never delete EVERY remaining row of a table by OMISSION — that is only
     //     ever an empty/stale push, never a legitimate edit. Applies to every
     //     table regardless of size, so even a 1- or 2-row table can't be emptied.
-    $wouldEmptyTable = ($serverTotal > 0 && $deleteCount >= $serverTotal);
+    //     $explicit marks a delta-sync deletion the client NAMED in its `deleted`
+    //     list. That is recorded user intent, not an inferred omission -- and the
+    //     incident this guard was written for was omission, not naming. Such a
+    //     delete may empty an ordinary table, so removing the only price offer you
+    //     have actually sticks instead of silently reappearing on the next sync.
+    //     $strict tables (users, project_types) are never emptied either way, and
+    //     rule (b) below still caps how much one request may remove.
+    $wouldEmptyTable = ($serverTotal > 0 && $deleteCount >= $serverTotal)
+        && (!$explicit || $strict);
 
     // (b) Refuse to delete a large FRACTION of a table in one request. Ordinary
     //     data tables keep a small absolute-row floor so everyday little
@@ -437,7 +445,7 @@ function ccrm_filter_mass_delete(PDO $pdo, string $table, array $toDelete, bool 
     return $toDelete;
 }
 
-function ccrm_delete_omitted(PDO $pdo, string $table, array $idsToDelete, ?string $baseSyncedAt, array $skipIds = [], bool $strict = false): void {
+function ccrm_delete_omitted(PDO $pdo, string $table, array $idsToDelete, ?string $baseSyncedAt, array $skipIds = [], bool $strict = false, bool $explicit = false): void {
     if (empty($idsToDelete)) {
         return;
     }
@@ -451,7 +459,7 @@ function ccrm_delete_omitted(PDO $pdo, string $table, array $idsToDelete, ?strin
         }
     }
 
-    $toDelete = ccrm_filter_mass_delete($pdo, $table, $toDelete, $strict);
+    $toDelete = ccrm_filter_mass_delete($pdo, $table, $toDelete, $strict, $explicit);
     if (empty($toDelete)) {
         return;
     }
@@ -784,6 +792,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     if (is_array($integrationsConfig)) {
         $integrationsConfig = ccrm_decrypt_config_secrets($integrationsConfig, ccrm_integration_secret_keys());
         $integrationsConfig = ccrm_mask_secrets($integrationsConfig, ccrm_integration_secret_keys());
+    }
+
+    // Same treatment for the accounting connectors. The settings blob goes to
+    // EVERY authenticated client on every sync, so an unmasked SuperFaktúra API
+    // key / iDoklad client secret here was handed to every account in the CRM
+    // regardless of role. The connectors read the real values server-side.
+    $invoicingIntegrations = isset($settings['INVOICING_INTEGRATIONS'])
+        ? json_decode($settings['INVOICING_INTEGRATIONS'], true)
+        : null;
+    if (is_array($invoicingIntegrations)) {
+        $invoicingIntegrations = ccrm_decrypt_invoicing_secrets($invoicingIntegrations);
+        $invoicingIntegrations = ccrm_mask_invoicing_secrets($invoicingIntegrations);
     }
 
     // Fetch Meeting Notes (meeting_tasks pre-fetched in one query, grouped by meeting_id)
@@ -1266,6 +1286,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'updatedAt' => $row['updated_at'],
                 ];
             }
+        }
         if ($pdo->query("SHOW TABLES LIKE 'invoices_offers'")->rowCount() > 0) {
             $ioStmt = $pdo->query("SELECT * FROM `invoices_offers` ORDER BY `issued_at` DESC, `created_at` DESC");
             $allItemsStmt = $pdo->query("SELECT * FROM `invoice_offer_items`");
@@ -1445,7 +1466,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'taskStateColors' => $taskStateColors,
             'integrationsConfig' => $integrationsConfig,
             'companyBillingSettings' => isset($settings['COMPANY_BILLING_SETTINGS']) ? json_decode($settings['COMPANY_BILLING_SETTINGS'], true) : null,
-            'invoicingIntegrations' => isset($settings['INVOICING_INTEGRATIONS']) ? json_decode($settings['INVOICING_INTEGRATIONS'], true) : null,
+            'invoicingIntegrations' => $invoicingIntegrations,
             'customLabels' => isset($settings['CUSTOM_LABELS']) ? json_decode($settings['CUSTOM_LABELS'], true) : (object)[]
         ]
     ]);
@@ -1778,6 +1799,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $integrationsValue = ($existingIntegrationsRaw !== false && $existingIntegrationsRaw !== null) ? $existingIntegrationsRaw : json_encode((object)[]);
             }
 
+            // Accounting connectors: same masked-secret merge, plus the same
+            // "omitted means unchanged" rule. Writing NULL whenever the client
+            // did not send these keys silently wiped the saved company billing
+            // identity and API credentials on any unrelated settings save.
+            $existingBillingRaw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'COMPANY_BILLING_SETTINGS'")->fetchColumn();
+            $billingValue = ($existingBillingRaw !== false && $existingBillingRaw !== null) ? $existingBillingRaw : null;
+            if (array_key_exists('companyBillingSettings', $s) && is_array($s['companyBillingSettings'])) {
+                $billingValue = json_encode($s['companyBillingSettings'], JSON_UNESCAPED_UNICODE);
+            }
+
+            $existingInvIntRaw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'INVOICING_INTEGRATIONS'")->fetchColumn();
+            $existingInvInt = ($existingInvIntRaw !== false && $existingInvIntRaw !== null) ? json_decode($existingInvIntRaw, true) : [];
+            if (!is_array($existingInvInt)) { $existingInvInt = []; }
+            $invIntValue = ($existingInvIntRaw !== false && $existingInvIntRaw !== null) ? $existingInvIntRaw : null;
+            if (array_key_exists('invoicingIntegrations', $s) && is_array($s['invoicingIntegrations'])) {
+                $mergedInvInt = ccrm_merge_invoicing_secrets($s['invoicingIntegrations'], $existingInvInt);
+                $mergedInvInt = ccrm_encrypt_invoicing_secrets($mergedInvInt);
+                $invIntValue = json_encode($mergedInvInt, JSON_UNESCAPED_UNICODE);
+            }
+
             $settingsList = [
                 'SYSTEM_NAME' => $s['systemName'] ?? 'CCRM',
                 'SYSTEM_LANGUAGE' => $s['systemLanguage'] ?? 'sk',
@@ -1794,13 +1835,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'TASK_STATES' => json_encode($s['taskStates'] ?? []),
                 'TASK_STATE_COLORS' => json_encode($s['taskStateColors'] ?? []),
                 'INTEGRATIONS_CONFIG' => $integrationsValue,
-                'COMPANY_BILLING_SETTINGS' => isset($s['companyBillingSettings']) ? json_encode($s['companyBillingSettings'], JSON_UNESCAPED_UNICODE) : null,
-                'INVOICING_INTEGRATIONS' => isset($s['invoicingIntegrations']) ? json_encode($s['invoicingIntegrations'], JSON_UNESCAPED_UNICODE) : null,
+                'COMPANY_BILLING_SETTINGS' => $billingValue,
+                'INVOICING_INTEGRATIONS' => $invIntValue,
                 'CUSTOM_LABELS' => json_encode($s['customLabels'] ?? (object)[])
             ];
 
             $insSet = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
             foreach ($settingsList as $k => $v) {
+                // A null here means "nothing inbound and nothing stored" — skip it
+                // rather than writing a NULL row over a value another writer may
+                // have just saved.
+                if ($v === null) {
+                    continue;
+                }
                 $insSet->execute([$k, $v]);
             }
             ccrm_audit_log($pdo, $sessionUser, 'settings.update', 'System settings / integrations updated');
@@ -3252,7 +3299,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $ioToDelete = $isDeltaSync ? $deletionsFor('invoicesOffers', $existingIoIds) : array_diff($existingIoIds, $processedIoIds);
             if (!empty($ioToDelete)) {
-                ccrm_delete_omitted($pdo, 'invoices_offers', $ioToDelete, null);
+                ccrm_delete_omitted($pdo, 'invoices_offers', $ioToDelete, null, [], false, $isDeltaSync);
             }
         }
 

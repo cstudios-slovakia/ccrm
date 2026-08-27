@@ -71,7 +71,7 @@ function fetch_system_settings($pdo) {
 // the multi-MB snapshot, and it is immune to no-op re-saves (a sync POST that
 // writes identical rows leaves the checksum untouched).
 function ccrm_compute_data_version($pdo) {
-    $candidates = ['leads', 'timeline_events', 'lead_categories', 'tasks', 'task_assignees', 'users', 'roles', 'meeting_notes', 'meeting_tasks', 'unified_entries', 'system_settings', 'project_types', 'projects', 'project_managers', 'warehouses', 'suppliers', 'warehouse_items', 'warehouse_stock', 'warehouse_batches', 'warehouse_movements', 'warehouse_movement_items', 'financial_categories', 'financial_records'];
+    $candidates = ['leads', 'timeline_events', 'lead_categories', 'tasks', 'task_assignees', 'users', 'roles', 'meeting_notes', 'meeting_tasks', 'unified_entries', 'system_settings', 'project_types', 'projects', 'project_managers', 'warehouses', 'suppliers', 'warehouse_items', 'warehouse_stock', 'warehouse_batches', 'warehouse_movements', 'warehouse_movement_items', 'financial_categories', 'financial_records', 'invoices_offers', 'invoice_offer_items', 'ai_custom_templates'];
     try {
         $existing = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
         $existingSet = array_flip($existing);
@@ -388,7 +388,7 @@ function ccrm_explicit_deleted_ids(array $deleted, string $entity): array {
  * deletion is irreversible (project_types DROPs its dynamic data tables) pass
  * $strict so even an N-1 wipe is refused.
  */
-function ccrm_filter_mass_delete(PDO $pdo, string $table, array $toDelete, bool $strict = false): array {
+function ccrm_filter_mass_delete(PDO $pdo, string $table, array $toDelete, bool $strict = false, bool $explicit = false): array {
     if (empty($toDelete)) {
         return [];
     }
@@ -409,10 +409,18 @@ function ccrm_filter_mass_delete(PDO $pdo, string $table, array $toDelete, bool 
         return [];
     }
 
-    // (a) Never delete EVERY remaining row of a table by omission — that is only
+    // (a) Never delete EVERY remaining row of a table by OMISSION — that is only
     //     ever an empty/stale push, never a legitimate edit. Applies to every
     //     table regardless of size, so even a 1- or 2-row table can't be emptied.
-    $wouldEmptyTable = ($serverTotal > 0 && $deleteCount >= $serverTotal);
+    //     $explicit marks a delta-sync deletion the client NAMED in its `deleted`
+    //     list. That is recorded user intent, not an inferred omission -- and the
+    //     incident this guard was written for was omission, not naming. Such a
+    //     delete may empty an ordinary table, so removing the only price offer you
+    //     have actually sticks instead of silently reappearing on the next sync.
+    //     $strict tables (users, project_types) are never emptied either way, and
+    //     rule (b) below still caps how much one request may remove.
+    $wouldEmptyTable = ($serverTotal > 0 && $deleteCount >= $serverTotal)
+        && (!$explicit || $strict);
 
     // (b) Refuse to delete a large FRACTION of a table in one request. Ordinary
     //     data tables keep a small absolute-row floor so everyday little
@@ -437,7 +445,7 @@ function ccrm_filter_mass_delete(PDO $pdo, string $table, array $toDelete, bool 
     return $toDelete;
 }
 
-function ccrm_delete_omitted(PDO $pdo, string $table, array $idsToDelete, ?string $baseSyncedAt, array $skipIds = [], bool $strict = false): void {
+function ccrm_delete_omitted(PDO $pdo, string $table, array $idsToDelete, ?string $baseSyncedAt, array $skipIds = [], bool $strict = false, bool $explicit = false): void {
     if (empty($idsToDelete)) {
         return;
     }
@@ -451,7 +459,7 @@ function ccrm_delete_omitted(PDO $pdo, string $table, array $idsToDelete, ?strin
         }
     }
 
-    $toDelete = ccrm_filter_mass_delete($pdo, $table, $toDelete, $strict);
+    $toDelete = ccrm_filter_mass_delete($pdo, $table, $toDelete, $strict, $explicit);
     if (empty($toDelete)) {
         return;
     }
@@ -784,6 +792,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     if (is_array($integrationsConfig)) {
         $integrationsConfig = ccrm_decrypt_config_secrets($integrationsConfig, ccrm_integration_secret_keys());
         $integrationsConfig = ccrm_mask_secrets($integrationsConfig, ccrm_integration_secret_keys());
+    }
+
+    // Same treatment for the accounting connectors. The settings blob goes to
+    // EVERY authenticated client on every sync, so an unmasked SuperFaktúra API
+    // key / iDoklad client secret here was handed to every account in the CRM
+    // regardless of role. The connectors read the real values server-side.
+    $invoicingIntegrations = isset($settings['INVOICING_INTEGRATIONS'])
+        ? json_decode($settings['INVOICING_INTEGRATIONS'], true)
+        : null;
+    if (is_array($invoicingIntegrations)) {
+        $invoicingIntegrations = ccrm_decrypt_invoicing_secrets($invoicingIntegrations);
+        $invoicingIntegrations = ccrm_mask_invoicing_secrets($invoicingIntegrations);
     }
 
     // Fetch Meeting Notes (meeting_tasks pre-fetched in one query, grouped by meeting_id)
@@ -1209,9 +1229,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         error_log('[ccrm sync] warehouse fetch error: ' . $e->getMessage());
     }
 
-    // 3.8. Fetch Financial Categories and Records
+    // 3.8. Fetch Financial Categories and Records, Invoices & Price Offers
     $financialCategories = [];
     $financialRecords = [];
+    $invoicesOffers = [];
+    $aiCustomTemplates = [];
     try {
         if ($pdo->query("SHOW TABLES LIKE 'financial_categories'")->rowCount() > 0) {
             $fcStmt = $pdo->query("SELECT * FROM `financial_categories` ORDER BY `level` ASC, `name` ASC");
@@ -1265,8 +1287,102 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 ];
             }
         }
+        if ($pdo->query("SHOW TABLES LIKE 'invoices_offers'")->rowCount() > 0) {
+            $ioStmt = $pdo->query("SELECT * FROM `invoices_offers` ORDER BY `issued_at` DESC, `created_at` DESC");
+            $allItemsStmt = $pdo->query("SELECT * FROM `invoice_offer_items`");
+            $itemsByIo = [];
+            while ($itemRow = $allItemsStmt->fetch()) {
+                $itemsByIo[$itemRow['invoice_offer_id']][] = [
+                    'id' => $itemRow['id'],
+                    'warehouseItemId' => $itemRow['warehouse_item_id'],
+                    'sku' => $itemRow['sku'],
+                    'name' => $itemRow['name'],
+                    'description' => $itemRow['description'],
+                    'quantity' => (float)$itemRow['quantity'],
+                    'unit' => $itemRow['unit'],
+                    'unitPrice' => (float)$itemRow['unit_price'],
+                    'vatRate' => (float)$itemRow['vat_rate'],
+                    'discountPct' => (float)$itemRow['discount_pct'],
+                    'totalPrice' => (float)$itemRow['total_price'],
+                ];
+            }
+
+            while ($row = $ioStmt->fetch()) {
+                $invoicesOffers[] = [
+                    'id' => $row['id'],
+                    'documentNumber' => $row['document_number'],
+                    'type' => $row['type'],
+                    'mode' => $row['mode'],
+                    'externalProvider' => $row['external_provider'],
+                    'externalId' => $row['external_id'],
+                    'externalPdfUrl' => $row['external_pdf_url'],
+                    'leadId' => $row['lead_id'],
+                    'clientId' => $row['client_id'],
+                    'clientName' => $row['client_name'],
+                    'clientEmail' => $row['client_email'],
+                    'clientPhone' => $row['client_phone'],
+                    'clientStreet' => $row['client_street'],
+                    'clientCity' => $row['client_city'],
+                    'clientPostalCode' => $row['client_postal_code'],
+                    'clientCountry' => $row['client_country'],
+                    'clientIco' => $row['client_ico'],
+                    'clientDic' => $row['client_dic'],
+                    'clientIcdph' => $row['client_icdph'],
+                    'title' => $row['title'],
+                    'subject' => $row['subject'],
+                    'location' => $row['location'],
+                    'greetingNote' => $row['greeting_note'],
+                    'introNote' => $row['intro_note'],
+                    'uspCards' => !empty($row['usp_cards_json']) ? json_decode($row['usp_cards_json'], true) : [],
+                    'reassuranceNote' => $row['reassurance_note'],
+                    'items' => $itemsByIo[$row['id']] ?? [],
+                    'subtotal' => (float)$row['subtotal'],
+                    'vatAmount' => (float)$row['vat_amount'],
+                    'totalPrice' => (float)$row['total_price'],
+                    'priceRangeMin' => $row['price_range_min'] !== null ? (float)$row['price_range_min'] : null,
+                    'priceRangeMax' => $row['price_range_max'] !== null ? (float)$row['price_range_max'] : null,
+                    'currency' => $row['currency'] ?? 'EUR',
+                    'durationText' => $row['duration_text'],
+                    'startDateText' => $row['start_date_text'],
+                    'warrantyText' => $row['warranty_text'],
+                    'nextStepsNote' => $row['next_steps_note'],
+                    'closingNote' => $row['closing_note'],
+                    'signOffTeam' => $row['sign_off_team'],
+                    'customTemplateId' => $row['custom_template_id'],
+                    'customTemplateStyle' => !empty($row['custom_template_style_json']) ? json_decode($row['custom_template_style_json'], true) : null,
+                    'status' => $row['status'],
+                    'issuedAt' => $row['issued_at'],
+                    'validUntil' => $row['valid_until'],
+                    'dueDate' => $row['due_date'],
+                    'fileName' => $row['file_name'],
+                    'filePath' => $row['file_path'],
+                    'createdBy' => $row['created_by'],
+                    'createdAt' => $row['created_at'],
+                    'updatedAt' => $row['updated_at'],
+                ];
+            }
+        }
+
+        if ($pdo->query("SHOW TABLES LIKE 'ai_custom_templates'")->rowCount() > 0) {
+            $actStmt = $pdo->query("SELECT * FROM `ai_custom_templates` ORDER BY `created_at` DESC");
+            while ($row = $actStmt->fetch()) {
+                $aiCustomTemplates[] = [
+                    'id' => $row['id'],
+                    'name' => $row['name'],
+                    'description' => $row['description'],
+                    'sourcePdfUrl' => $row['source_pdf_url'],
+                    'sourcePdfName' => $row['source_pdf_name'],
+                    'colors' => json_decode($row['colors_json'] ?? '{}', true),
+                    'typography' => json_decode($row['typography_json'] ?? '{}', true),
+                    'sectionsOrder' => json_decode($row['sections_order_json'] ?? '[]', true),
+                    'customBannerText' => $row['custom_banner_text'],
+                    'badgeStyle' => $row['badge_style'] ?? 'rounded',
+                    'createdAt' => $row['created_at'],
+                ];
+            }
+        }
     } catch (\Throwable $e) {
-        error_log('[ccrm sync] financial fetch error: ' . $e->getMessage());
+        error_log('[ccrm sync] financial/invoicing fetch error: ' . $e->getMessage());
     }
 
     // DB clock at read time. The client echoes this back as baseSyncedAt on the
@@ -1331,6 +1447,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'warehouseMovements' => $warehouseMovements,
         'financialCategories' => $financialCategories,
         'financialRecords' => $financialRecords,
+        'invoicesOffers' => $invoicesOffers,
+        'aiCustomTemplates' => $aiCustomTemplates,
         'settings' => [
             'systemName' => $settings['SYSTEM_NAME'] ?? 'CCRM',
             'systemLanguage' => $settings['SYSTEM_LANGUAGE'] ?? 'sk',
@@ -1347,6 +1465,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'taskStates' => $taskStates,
             'taskStateColors' => $taskStateColors,
             'integrationsConfig' => $integrationsConfig,
+            'companyBillingSettings' => isset($settings['COMPANY_BILLING_SETTINGS']) ? json_decode($settings['COMPANY_BILLING_SETTINGS'], true) : null,
+            'invoicingIntegrations' => $invoicingIntegrations,
             'customLabels' => isset($settings['CUSTOM_LABELS']) ? json_decode($settings['CUSTOM_LABELS'], true) : (object)[]
         ]
     ]);
@@ -1679,6 +1799,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $integrationsValue = ($existingIntegrationsRaw !== false && $existingIntegrationsRaw !== null) ? $existingIntegrationsRaw : json_encode((object)[]);
             }
 
+            // Accounting connectors: same masked-secret merge, plus the same
+            // "omitted means unchanged" rule. Writing NULL whenever the client
+            // did not send these keys silently wiped the saved company billing
+            // identity and API credentials on any unrelated settings save.
+            $existingBillingRaw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'COMPANY_BILLING_SETTINGS'")->fetchColumn();
+            $billingValue = ($existingBillingRaw !== false && $existingBillingRaw !== null) ? $existingBillingRaw : null;
+            if (array_key_exists('companyBillingSettings', $s) && is_array($s['companyBillingSettings'])) {
+                $billingValue = json_encode($s['companyBillingSettings'], JSON_UNESCAPED_UNICODE);
+            }
+
+            $existingInvIntRaw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'INVOICING_INTEGRATIONS'")->fetchColumn();
+            $existingInvInt = ($existingInvIntRaw !== false && $existingInvIntRaw !== null) ? json_decode($existingInvIntRaw, true) : [];
+            if (!is_array($existingInvInt)) { $existingInvInt = []; }
+            $invIntValue = ($existingInvIntRaw !== false && $existingInvIntRaw !== null) ? $existingInvIntRaw : null;
+            if (array_key_exists('invoicingIntegrations', $s) && is_array($s['invoicingIntegrations'])) {
+                $mergedInvInt = ccrm_merge_invoicing_secrets($s['invoicingIntegrations'], $existingInvInt);
+                $mergedInvInt = ccrm_encrypt_invoicing_secrets($mergedInvInt);
+                $invIntValue = json_encode($mergedInvInt, JSON_UNESCAPED_UNICODE);
+            }
+
             $settingsList = [
                 'SYSTEM_NAME' => $s['systemName'] ?? 'CCRM',
                 'SYSTEM_LANGUAGE' => $s['systemLanguage'] ?? 'sk',
@@ -1695,11 +1835,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'TASK_STATES' => json_encode($s['taskStates'] ?? []),
                 'TASK_STATE_COLORS' => json_encode($s['taskStateColors'] ?? []),
                 'INTEGRATIONS_CONFIG' => $integrationsValue,
+                'COMPANY_BILLING_SETTINGS' => $billingValue,
+                'INVOICING_INTEGRATIONS' => $invIntValue,
                 'CUSTOM_LABELS' => json_encode($s['customLabels'] ?? (object)[])
             ];
 
             $insSet = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
             foreach ($settingsList as $k => $v) {
+                // A null here means "nothing inbound and nothing stored" — skip it
+                // rather than writing a NULL row over a value another writer may
+                // have just saved.
+                if ($v === null) {
+                    continue;
+                }
                 $insSet->execute([$k, $v]);
             }
             ccrm_audit_log($pdo, $sessionUser, 'settings.update', 'System settings / integrations updated');
@@ -3033,6 +3181,165 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $frToDelete = $isDeltaSync ? $deletionsFor('financialRecords', $existingFrIds) : array_diff($existingFrIds, $processedFrIds);
             if (!empty($frToDelete)) {
                 ccrm_delete_omitted($pdo, 'financial_records', $frToDelete, null);
+            }
+        }
+
+        // 4.15. Synchronize Invoices & Price Offers
+        if (isset($payload['invoicesOffers']) && is_array($payload['invoicesOffers'])) {
+            $stmt = $pdo->query("SELECT `id` FROM `invoices_offers`");
+            $existingIoIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $processedIoIds = [];
+
+            $insIo = $pdo->prepare("INSERT INTO `invoices_offers` (
+                `id`, `document_number`, `type`, `mode`, `external_provider`, `external_id`, `external_pdf_url`,
+                `lead_id`, `client_id`, `client_name`, `client_email`, `client_phone`, `client_street`, `client_city`, `client_postal_code`, `client_country`, `client_ico`, `client_dic`, `client_icdph`,
+                `title`, `subject`, `location`, `greeting_note`, `intro_note`, `usp_cards_json`, `reassurance_note`,
+                `subtotal`, `vat_amount`, `total_price`, `price_range_min`, `price_range_max`, `currency`,
+                `duration_text`, `start_date_text`, `warranty_text`, `next_steps_note`, `closing_note`, `sign_off_team`,
+                `custom_template_id`, `custom_template_style_json`, `status`, `issued_at`, `valid_until`, `due_date`,
+                `file_name`, `file_path`, `created_by`
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                `document_number` = VALUES(`document_number`), `type` = VALUES(`type`), `mode` = VALUES(`mode`),
+                `external_provider` = VALUES(`external_provider`), `external_id` = VALUES(`external_id`), `external_pdf_url` = VALUES(`external_pdf_url`),
+                `lead_id` = VALUES(`lead_id`), `client_id` = VALUES(`client_id`), `client_name` = VALUES(`client_name`),
+                `client_email` = VALUES(`client_email`), `client_phone` = VALUES(`client_phone`), `client_street` = VALUES(`client_street`),
+                `client_city` = VALUES(`client_city`), `client_postal_code` = VALUES(`client_postal_code`), `client_country` = VALUES(`client_country`),
+                `client_ico` = VALUES(`client_ico`), `client_dic` = VALUES(`client_dic`), `client_icdph` = VALUES(`client_icdph`),
+                `title` = VALUES(`title`), `subject` = VALUES(`subject`), `location` = VALUES(`location`),
+                `greeting_note` = VALUES(`greeting_note`), `intro_note` = VALUES(`intro_note`), `usp_cards_json` = VALUES(`usp_cards_json`), `reassurance_note` = VALUES(`reassurance_note`),
+                `subtotal` = VALUES(`subtotal`), `vat_amount` = VALUES(`vat_amount`), `total_price` = VALUES(`total_price`),
+                `price_range_min` = VALUES(`price_range_min`), `price_range_max` = VALUES(`price_range_max`), `currency` = VALUES(`currency`),
+                `duration_text` = VALUES(`duration_text`), `start_date_text` = VALUES(`start_date_text`), `warranty_text` = VALUES(`warranty_text`),
+                `next_steps_note` = VALUES(`next_steps_note`), `closing_note` = VALUES(`closing_note`), `sign_off_team` = VALUES(`sign_off_team`),
+                `custom_template_id` = VALUES(`custom_template_id`), `custom_template_style_json` = VALUES(`custom_template_style_json`),
+                `status` = VALUES(`status`), `issued_at` = VALUES(`issued_at`), `valid_until` = VALUES(`valid_until`), `due_date` = VALUES(`due_date`),
+                `file_name` = VALUES(`file_name`), `file_path` = VALUES(`file_path`), `created_by` = VALUES(`created_by`)");
+
+            $delIoItems = $pdo->prepare("DELETE FROM `invoice_offer_items` WHERE `invoice_offer_id` = ?");
+            $insIoItem = $pdo->prepare("INSERT INTO `invoice_offer_items` (
+                `id`, `invoice_offer_id`, `warehouse_item_id`, `sku`, `name`, `description`,
+                `quantity`, `unit`, `unit_price`, `vat_rate`, `discount_pct`, `total_price`
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+
+            foreach ($payload['invoicesOffers'] as $io) {
+                $ioId = $io['id'];
+                $insIo->execute([
+                    $ioId,
+                    $io['documentNumber'] ?? '',
+                    $io['type'] ?? 'price_offer',
+                    $io['mode'] ?? 'default',
+                    $io['externalProvider'] ?? null,
+                    $io['externalId'] ?? null,
+                    $io['externalPdfUrl'] ?? null,
+                    $io['leadId'] ?? '',
+                    $io['clientId'] ?? null,
+                    $io['clientName'] ?? '',
+                    $io['clientEmail'] ?? null,
+                    $io['clientPhone'] ?? null,
+                    $io['clientStreet'] ?? null,
+                    $io['clientCity'] ?? null,
+                    $io['clientPostalCode'] ?? null,
+                    $io['clientCountry'] ?? 'Slovakia',
+                    $io['clientIco'] ?? null,
+                    $io['clientDic'] ?? null,
+                    $io['clientIcdph'] ?? null,
+                    $io['title'] ?? '',
+                    $io['subject'] ?? '',
+                    $io['location'] ?? null,
+                    $io['greetingNote'] ?? null,
+                    $io['introNote'] ?? null,
+                    !empty($io['uspCards']) ? json_encode($io['uspCards'], JSON_UNESCAPED_UNICODE) : null,
+                    $io['reassuranceNote'] ?? null,
+                    (float)($io['subtotal'] ?? 0),
+                    (float)($io['vatAmount'] ?? 0),
+                    (float)($io['totalPrice'] ?? 0),
+                    isset($io['priceRangeMin']) && $io['priceRangeMin'] !== null ? (float)$io['priceRangeMin'] : null,
+                    isset($io['priceRangeMax']) && $io['priceRangeMax'] !== null ? (float)$io['priceRangeMax'] : null,
+                    $io['currency'] ?? 'EUR',
+                    $io['durationText'] ?? null,
+                    $io['startDateText'] ?? null,
+                    $io['warrantyText'] ?? null,
+                    $io['nextStepsNote'] ?? null,
+                    $io['closingNote'] ?? null,
+                    $io['signOffTeam'] ?? null,
+                    $io['customTemplateId'] ?? null,
+                    !empty($io['customTemplateStyle']) ? json_encode($io['customTemplateStyle'], JSON_UNESCAPED_UNICODE) : null,
+                    $io['status'] ?? 'draft',
+                    !empty($io['issuedAt']) ? $io['issuedAt'] : date('Y-m-d'),
+                    !empty($io['validUntil']) ? $io['validUntil'] : null,
+                    !empty($io['dueDate']) ? $io['dueDate'] : null,
+                    $io['fileName'] ?? null,
+                    $io['filePath'] ?? null,
+                    $io['createdBy'] ?? $sessionEmail
+                ]);
+                $processedIoIds[] = $ioId;
+
+                if (isset($io['items']) && is_array($io['items'])) {
+                    $delIoItems->execute([$ioId]);
+                    foreach ($io['items'] as $item) {
+                        $itemId = $item['id'] ?? ('ioi-' . bin2hex(random_bytes(8)));
+                        $insIoItem->execute([
+                            $itemId,
+                            $ioId,
+                            $item['warehouseItemId'] ?? null,
+                            $item['sku'] ?? null,
+                            $item['name'] ?? '',
+                            $item['description'] ?? null,
+                            (float)($item['quantity'] ?? 1),
+                            $item['unit'] ?? 'ks',
+                            (float)($item['unitPrice'] ?? 0),
+                            (float)($item['vatRate'] ?? 20),
+                            (float)($item['discountPct'] ?? 0),
+                            (float)($item['totalPrice'] ?? 0)
+                        ]);
+                    }
+                }
+            }
+
+            $ioToDelete = $isDeltaSync ? $deletionsFor('invoicesOffers', $existingIoIds) : array_diff($existingIoIds, $processedIoIds);
+            if (!empty($ioToDelete)) {
+                ccrm_delete_omitted($pdo, 'invoices_offers', $ioToDelete, null, [], false, $isDeltaSync);
+            }
+        }
+
+        // 4.16. Synchronize AI Custom PDF Templates
+        if (isset($payload['aiCustomTemplates']) && is_array($payload['aiCustomTemplates'])) {
+            $stmt = $pdo->query("SELECT `id` FROM `ai_custom_templates`");
+            $existingActIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $processedActIds = [];
+
+            $insAct = $pdo->prepare("INSERT INTO `ai_custom_templates` (
+                `id`, `name`, `description`, `source_pdf_url`, `source_pdf_name`,
+                `colors_json`, `typography_json`, `sections_order_json`, `custom_banner_text`, `badge_style`
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                `name` = VALUES(`name`), `description` = VALUES(`description`),
+                `source_pdf_url` = VALUES(`source_pdf_url`), `source_pdf_name` = VALUES(`source_pdf_name`),
+                `colors_json` = VALUES(`colors_json`), `typography_json` = VALUES(`typography_json`),
+                `sections_order_json` = VALUES(`sections_order_json`), `custom_banner_text` = VALUES(`custom_banner_text`),
+                `badge_style` = VALUES(`badge_style`)");
+
+            foreach ($payload['aiCustomTemplates'] as $act) {
+                $actId = $act['id'];
+                $insAct->execute([
+                    $actId,
+                    $act['name'] ?? 'Template',
+                    $act['description'] ?? null,
+                    $act['sourcePdfUrl'] ?? null,
+                    $act['sourcePdfName'] ?? null,
+                    json_encode($act['colors'] ?? (object)[], JSON_UNESCAPED_UNICODE),
+                    json_encode($act['typography'] ?? (object)[], JSON_UNESCAPED_UNICODE),
+                    json_encode($act['sectionsOrder'] ?? [], JSON_UNESCAPED_UNICODE),
+                    $act['customBannerText'] ?? null,
+                    $act['badgeStyle'] ?? 'rounded'
+                ]);
+                $processedActIds[] = $actId;
+            }
+
+            $actToDelete = $isDeltaSync ? $deletionsFor('aiCustomTemplates', $existingActIds) : array_diff($existingActIds, $processedActIds);
+            if (!empty($actToDelete)) {
+                ccrm_delete_omitted($pdo, 'ai_custom_templates', $actToDelete, null);
             }
         }
 

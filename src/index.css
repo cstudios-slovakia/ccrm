@@ -1,5 +1,16 @@
 @import "tailwindcss";
 
+/* Tailwind v4 resolves `dark:` against prefers-color-scheme by default, and
+   tailwind.config.js (darkMode: "class") is never loaded because there is no
+   @config directive. That combination meant a stray `dark:` utility silently
+   themed one screen off the visitor's OS setting while the rest of the app
+   stayed light — which is exactly what happened to the invoicing section.
+
+   This app ships light palettes selected by `data-theme` (see below), so the
+   variant is re-pointed at that same mechanism: `dark:` utilities are inert
+   until a real dark theme is added, instead of half-applying from the OS. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 @theme {
   --color-border: rgb(var(--border));
   --color-input: rgb(var(--input));
@@ -371,3 +382,54 @@ dialog[open]::backdrop {
 }
 
 
+
+/* ---------------------------------------------------------------------------
+   PRINT: isolate the invoice / price-offer document.
+
+   window.print() used to spool the whole app shell — sidebar, header, sticky
+   bars, the modal backdrop — around the document. Everything is hidden here and
+   only the element carrying `.print-document` (the offer/invoice template) is
+   restored, lifted to the top-left of the sheet at full width.
+--------------------------------------------------------------------------- */
+@media print {
+  /* Scoped with :has() so printing any other page of the app is untouched —
+     without it, every print outside the invoicing screens came out blank. */
+  body:has(.print-document) * {
+    visibility: hidden;
+  }
+
+  body:has(.print-document) .print-document,
+  body:has(.print-document) .print-document * {
+    visibility: visible;
+  }
+
+  .print-document {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    box-shadow: none;
+    border: none;
+    border-radius: 0;
+  }
+
+  /* Keep the dark price banner and coloured table header readable on paper. */
+  .print-document {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Don't split a line item or a highlight card across two sheets. */
+  .print-document tr,
+  .print-document img {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  @page {
+    margin: 14mm;
+  }
+}

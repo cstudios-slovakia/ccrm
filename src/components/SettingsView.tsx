@@ -1,10 +1,10 @@
 import React from "react";
 import * as Icons from "lucide-react";
-import { 
-  Settings, Save, Database, Trash2, ShieldAlert, Sliders, 
+import {
+  Settings, Save, Database, Trash2, ShieldAlert, Sliders,
   Globe, Plus, X, Tag, Share2, Users, ShieldCheck, Lock,
   Eye, Pencil, Minus, GripVertical, ArrowLeft, Activity, Clock, CheckSquare,
-  Menu, ArrowUp, FolderOpen, Search
+  Menu, ArrowUp, FolderOpen, Search, FileText, Building2, Sparkles
 } from "lucide-react";
 import type { UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, ProjectType, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate } from "../types";
 import { getTranslation } from "../utils/translations";
@@ -12,6 +12,7 @@ import type { Language } from "../utils/translations";
 import { ProjectSettings } from "./ProjectSettings";
 import { PasswordInput } from "./PasswordInput";
 import { CustomSelect } from "./ui/CustomSelect";
+import { cn } from "../utils/cn";
 import { CURRENCY_OPTIONS, currencyForRegion } from "../utils/currency";
 import { SOCIAL_MEDIA_ENABLED } from "../utils/featureFlags";
 import { formatTimestampLocalized } from "../utils/localTime";
@@ -222,6 +223,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setUnifiedEntries,
   unifiedEntriesData = {},
   initialSubTab = "branding",
+  settingsAction = null,
+  settingsActionId = null,
   setLeads,
   setTasks,
   projectTypes,
@@ -746,38 +749,50 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
-  // Invoicing & Company Billing Settings State
-  const [billingForm, setBillingForm] = React.useState<CompanyBillingSettings>({
-    companyName: companyBillingSettings?.companyName || "SIGNUM Slovakia s.r.o.",
-    companySubtitle: companyBillingSettings?.companySubtitle || "HYDROIZOLÁCIE A PLOCHÉ STRECHY",
-    companyLogoUrl: companyBillingSettings?.companyLogoUrl || "",
-    street: companyBillingSettings?.street || "Gradus Residence, ul. Biskupa Kondého 179/4A",
-    city: companyBillingSettings?.city || "Dunajská Streda",
-    postalCode: companyBillingSettings?.postalCode || "929 01",
-    country: companyBillingSettings?.country || "Slovakia",
-    companyId: companyBillingSettings?.companyId || "44 282 516",
-    taxId: companyBillingSettings?.taxId || "2022 653 226",
-    vatId: companyBillingSettings?.vatId || "SK 2022 653 226",
-    email: companyBillingSettings?.email || "teleky@signumslovakia.sk",
-    phone: companyBillingSettings?.phone || "+421 911 742 473",
-    phoneSecondary: companyBillingSettings?.phoneSecondary || "+421 905 778 710",
-    website: companyBillingSettings?.website || "www.signumslovakia.sk",
-    iban: companyBillingSettings?.iban || "",
-    swift: companyBillingSettings?.swift || "",
-    bankName: companyBillingSettings?.bankName || "",
-    defaultPaymentDueDays: companyBillingSettings?.defaultPaymentDueDays || 14,
-    defaultVatRate: companyBillingSettings?.defaultVatRate || 20,
-    defaultWarrantyText: companyBillingSettings?.defaultWarrantyText || "10 rokov",
-    defaultDurationText: companyBillingSettings?.defaultDurationText || "2–3 dni",
-    defaultNextSteps: companyBillingSettings?.defaultNextSteps || "Aby sme vám vedeli pripraviť finálnu záväznú cenovú ponuku, radi by sme k vám poslali nášho technika na bezplatnú obhliadku a presné zameranie. Stačí nám napísať alebo zavolať a dohodneme si spolu vyhovujúci termín.",
-    defaultSocialProof: companyBillingSettings?.defaultSocialProof || "Amazon · Heineken · FedEx · JYSK · Alza · Prologis · Goodman Group · Schindler · FC DAC 1904 Dunajská Streda",
-    defaultUspCards: companyBillingSettings?.defaultUspCards || [
-      { title: "18 rokov skúseností", subtitle: "Viac ako 1 000 000 m² zrealizovaných striech – zvládneme aj náročné detaily, kde iní improvizujú." },
-      { title: "Certifikované materiály", subtitle: "Výhradne certifikované systémy a presné dodržiavanie postupov výrobcu (Sika, Rheinzink, Rockwool a i.)." },
-      { title: "Žiadne zálohy vopred", subtitle: "Platíte až po úspešnom dokončení práce – riziko preberáme my, nie vy." },
-      { title: "10-ročná záruka", subtitle: "Istota, ktorú menšie alebo začínajúce firmy jednoducho nemôžu ponúknuť." }
+  // Invoicing & Company Billing Settings State.
+  //
+  // Deliberately blank rather than pre-filled with a sample company: this CRM is
+  // deployed for several different businesses, and seeded defaults meant an
+  // unconfigured tenant issued price offers carrying another company's name,
+  // IČO/DIČ and client references. The document templates omit whatever is left
+  // empty here instead of substituting someone else's details.
+  const emptyBilling = (): CompanyBillingSettings => ({
+    companyName: "",
+    companySubtitle: "",
+    companyLogoUrl: "",
+    street: "",
+    city: "",
+    postalCode: "",
+    country: "",
+    companyId: "",
+    taxId: "",
+    vatId: "",
+    email: "",
+    phone: "",
+    phoneSecondary: "",
+    website: "",
+    iban: "",
+    swift: "",
+    bankName: "",
+    defaultPaymentDueDays: 14,
+    defaultVatRate: 20,
+    defaultWarrantyText: "",
+    defaultDurationText: "",
+    defaultStartDateText: "",
+    defaultNextSteps: "",
+    defaultSocialProof: "",
+    defaultUspCards: [
+      { title: "", subtitle: "" },
+      { title: "", subtitle: "" },
+      { title: "", subtitle: "" },
+      { title: "", subtitle: "" }
     ]
   });
+
+  const [billingForm, setBillingForm] = React.useState<CompanyBillingSettings>(() => ({
+    ...emptyBilling(),
+    ...(companyBillingSettings || {})
+  }));
 
   React.useEffect(() => {
     if (companyBillingSettings) {
@@ -2855,7 +2870,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       type="text"
                       value={billingForm.defaultSocialProof || ""}
                       onChange={e => setBillingForm(prev => ({ ...prev, defaultSocialProof: e.target.value }))}
-                      placeholder="Amazon · Heineken · FedEx · JYSK"
+                      placeholder={t("e.g. Client A · Client B · Client C", "napr. Klient A · Klient B · Klient C", "pl. A ügyfél · B ügyfél · C ügyfél")}
                       className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs"
                     />
                   </div>
@@ -2868,9 +2883,112 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       type="text"
                       value={billingForm.defaultWarrantyText || ""}
                       onChange={e => setBillingForm(prev => ({ ...prev, defaultWarrantyText: e.target.value }))}
-                      placeholder="10 rokov"
+                      placeholder={t("e.g. 10 years", "napr. 10 rokov", "pl. 10 év")}
                       className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs"
                     />
+                  </div>
+                </div>
+
+                {/* Remaining document defaults. Every field here pre-fills a new
+                    document in the Invoicing wizard, so leaving one blank simply
+                    means that block is omitted from the printed document. */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                      {t("Default VAT Rate (%)", "Predvolená sadzba DPH (%)", "Alapértelmezett ÁFA (%)")}
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="any"
+                      value={billingForm.defaultVatRate ?? 20}
+                      onChange={e =>
+                        setBillingForm(prev => ({
+                          ...prev,
+                          defaultVatRate: Math.min(100, Math.max(0, parseFloat(e.target.value) || 0))
+                        }))
+                      }
+                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                      {t("Default Project Duration", "Predvolená dĺžka realizácie", "Alapértelmezett időtartam")}
+                    </label>
+                    <input
+                      type="text"
+                      value={billingForm.defaultDurationText || ""}
+                      onChange={e => setBillingForm(prev => ({ ...prev, defaultDurationText: e.target.value }))}
+                      placeholder={t("e.g. 2–3 days", "napr. 2–3 dni", "pl. 2–3 nap")}
+                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                      {t("Default Start Date Text", "Predvolený termín nástupu", "Alapértelmezett kezdés")}
+                    </label>
+                    <input
+                      type="text"
+                      value={billingForm.defaultStartDateText || ""}
+                      onChange={e => setBillingForm(prev => ({ ...prev, defaultStartDateText: e.target.value }))}
+                      placeholder={t("e.g. by agreement", "napr. dohodou", "pl. megegyezés szerint")}
+                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                    {t("Default Next Step / Call to Action", "Predvolený text „Ďalší krok“", "Alapértelmezett következő lépés")}
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={billingForm.defaultNextSteps || ""}
+                    onChange={e => setBillingForm(prev => ({ ...prev, defaultNextSteps: e.target.value }))}
+                    placeholder={t(
+                      "e.g. We would gladly send our technician for a free site survey…",
+                      "napr. Radi k vám pošleme nášho technika na bezplatnú obhliadku…",
+                      "pl. Szívesen kiküldjük technikusunkat egy ingyenes felmérésre…"
+                    )}
+                    className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs resize-y leading-relaxed"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-600 uppercase block mb-2">
+                    {t("Default Value Proposition Cards (4)", "Predvolené USP karty (4)", "Alapértelmezett USP kártyák (4)")}
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {[0, 1, 2, 3].map(idx => {
+                      const card = billingForm.defaultUspCards?.[idx] || { title: "", subtitle: "" };
+                      const updateCard = (patch: { title?: string; subtitle?: string }) =>
+                        setBillingForm(prev => {
+                          const next = [0, 1, 2, 3].map(i => prev.defaultUspCards?.[i] || { title: "", subtitle: "" });
+                          next[idx] = { ...next[idx], ...patch };
+                          return { ...prev, defaultUspCards: next };
+                        });
+                      return (
+                        <div key={idx} className="p-3 bg-white border border-slate-200 rounded-xl space-y-1.5">
+                          <input
+                            type="text"
+                            value={card.title}
+                            onChange={e => updateCard({ title: e.target.value })}
+                            placeholder={t(`Benefit ${idx + 1}`, `Výhoda ${idx + 1}`, `${idx + 1}. előny`)}
+                            className="font-bold text-xs w-full bg-transparent border-b border-slate-200 focus:border-indigo-500 focus:outline-none transition-colors py-0.5"
+                          />
+                          <input
+                            type="text"
+                            value={card.subtitle}
+                            onChange={e => updateCard({ subtitle: e.target.value })}
+                            placeholder={t("Short description", "Krátky popis", "Rövid leírás")}
+                            className="text-[11px] text-slate-500 w-full bg-transparent focus:outline-none py-0.5"
+                          />
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -3126,6 +3244,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
 
             </div>
+          </div>
+        )}
+
+        {/* TAB: Projects Configuration */}
+        {activeSubTab === "projects" && getPermission("general_config") !== "nothing" && (
+          <div className="lg:col-span-12 space-y-6">
+            {renderReadOnlyBanner("general_config")}
+            <ProjectSettings
+              projectTypes={projectTypes}
+              setProjectTypes={setProjectTypes}
+              userLanguage={userLanguage}
+              canEdit={getPermission("general_config") === "edit"}
+            />
           </div>
         )}
 

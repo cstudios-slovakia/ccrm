@@ -354,6 +354,55 @@ function execute_autonomous_run($pdo, $ragPdo, $agent, $openAiKey) {
         // Fallback
     }
 
+    // RAG from Warehouse Products for autonomous agents
+    try {
+        $products_stmt = $pdo->query("
+            SELECT wi.`id`, wi.`name`, wi.`sku`, wi.`barcode`, wi.`category`, wi.`unit`, wi.`default_sell_price`, wi.`avg_purchase_price`, wi.`min_stock`, wi.`optimal_stock`, wi.`default_location`
+            FROM `warehouse_items` wi
+            LIMIT 50
+        ");
+        $products_all = $products_stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($products_all as $p) {
+            $matches = false;
+            $pName = mb_strtolower($p['name'] ?? '');
+            $pSku = mb_strtolower($p['sku'] ?? '');
+            $pCat = mb_strtolower($p['category'] ?? '');
+
+            if ((!empty($pName) && mb_strpos($normalized_query, $pName) !== false) ||
+                (!empty($pSku) && mb_strpos($normalized_query, $pSku) !== false) ||
+                (!empty($pCat) && mb_strpos($normalized_query, $pCat) !== false) ||
+                mb_strpos($normalized_query, 'sklad') !== false ||
+                mb_strpos($normalized_query, 'zásob') !== false ||
+                mb_strpos($normalized_query, 'tovar') !== false ||
+                mb_strpos($normalized_query, 'stock') !== false ||
+                mb_strpos($normalized_query, 'inventory') !== false) {
+                $matches = true;
+            }
+
+            $onHand = 0;
+            try {
+                $stQuery = $pdo->prepare("SELECT SUM(`quantity`) as `total_qty` FROM `warehouse_stock` WHERE `item_id` = ?");
+                $stQuery->execute([$p['id']]);
+                $onHand = (float)$stQuery->fetchColumn();
+            } catch (\Exception $e) {}
+
+            $block = "Warehouse Product / Material:\n";
+            $block .= "- Name: " . $p['name'] . "\n";
+            $block .= "- SKU: " . ($p['sku'] ?: 'N/A') . "\n";
+            $block .= "- Category: " . ($p['category'] ?: 'N/A') . "\n";
+            $block .= "- Selling Price: €" . number_format($p['default_sell_price'] ?? 0, 2) . "\n";
+            $block .= "- Current Stock: " . $onHand . " " . ($p['unit'] ?: 'ks') . "\n";
+            $block .= "- Min Stock Alert: " . $p['min_stock'] . " " . ($p['unit'] ?: 'ks') . "\n";
+
+            $context_blocks[] = [
+                'text' => $block,
+                'is_match' => $matches
+            ];
+        }
+    } catch (\Exception $ex) {
+        // Fallback
+    }
+
     // Sort by match relevance
     usort($context_blocks, function($a, $b) {
         return $b['is_match'] - $a['is_match'];
