@@ -151,7 +151,10 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
   const allAgents = [defaultAgent, ...customAgents];
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    // `block: "nearest"` keeps the scroll inside the message list. The default
+    // ("start") also scrolls every ancestor, which dragged the whole workspace
+    // down on mount and hid anything rendered above this view.
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   };
 
   useEffect(() => {

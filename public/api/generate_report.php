@@ -11,11 +11,22 @@ if (function_exists('ccrm_send_cors')) {
     ccrm_send_cors('POST, OPTIONS');
 }
 
+/**
+ * Every failure exit carries a stable machine-readable `code` next to the
+ * English `message`. The browser only ever shows the code, translated into the
+ * user's language (see translateAiApiError in src/utils/aiConfig.ts) — without
+ * it the UI could not tell "no OpenAI key configured" apart from "this company
+ * publishes no statements", and used to show one generic toast for both.
+ */
+function report_error(int $status, string $code, string $message, array $extra = []): void {
+    http_response_code($status);
+    echo json_encode(array_merge(['success' => false, 'code' => $code, 'message' => $message], $extra));
+    exit;
+}
+
 if (php_sapi_name() !== 'cli') {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-        http_response_code(405);
-        echo json_encode(['success' => false, 'message' => 'Method Not Allowed']);
-        exit;
+        report_error(405, 'method_not_allowed', 'Method Not Allowed');
     }
     // SECURITY: Authenticated users only
     if (function_exists('ccrm_require_auth')) {
@@ -25,9 +36,7 @@ if (php_sapi_name() !== 'cli') {
 
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
-    http_response_code(503);
-    echo json_encode(['success' => false, 'installed' => false, 'message' => 'CRM is not installed yet.']);
-    exit;
+    report_error(503, 'not_installed', 'CRM is not installed yet.', ['installed' => false]);
 }
 require_once $configFile;
 
@@ -47,34 +56,21 @@ if (php_sapi_name() === 'cli' && isset($argv[1]) && !empty(trim($argv[1]))) {
 }
 
 if (empty($companyId)) {
-    http_response_code(400);
-    echo json_encode(['success' => false, 'message' => 'Missing companyId parameter']);
-    exit;
+    report_error(400, 'missing_company_id', 'Missing companyId parameter');
 }
 
 try {
     $pdo = get_db_connection();
 } catch (\Exception $e) {
-    http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Database connection failed.']);
-    exit;
+    report_error(500, 'db_error', 'Database connection failed.');
 }
 
 // Fetch integrations config to get OpenAI API key
-$stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'INTEGRATIONS_CONFIG'");
-$stmt->execute();
-$configJson = $stmt->fetchColumn();
-$integrationsConfig = $configJson ? json_decode($configJson, true) : [];
-$integrationsConfig = is_array($integrationsConfig) ? ccrm_decrypt_config_secrets($integrationsConfig, ccrm_integration_secret_keys()) : [];
-$openAiKey = $integrationsConfig['openAiKey'] ?? '';
+$integrationsConfig = ccrm_load_integrations_config($pdo);
+$openAiKey = trim((string)($integrationsConfig['openAiKey'] ?? ''));
 
-if (empty($openAiKey)) {
-    http_response_code(400);
-    echo json_encode([
-        'success' => false,
-        'message' => 'OpenAI API Key is not configured. Please configure it in Settings.'
-    ]);
-    exit;
+if ($openAiKey === '') {
+    report_error(400, 'ai_key_missing', 'OpenAI API Key is not configured. Please configure it in Settings.');
 }
 
 // Helper function to fetch registeruz URLs
@@ -108,9 +104,7 @@ $listUrl = "https://www.registeruz.sk/cruz-public/api/uctovne-jednotky?ico=" . u
 $listResponse = fetch_registry_url($listUrl);
 
 if (!$listResponse || empty($listResponse['id'])) {
-    http_response_code(404);
-    echo json_encode(['success' => false, 'message' => 'Company not found in registry']);
-    exit;
+    report_error(404, 'company_not_found', 'Company not found in registry');
 }
 
 $unitId = $listResponse['id'][0];
@@ -118,16 +112,12 @@ $detailUrl = "https://www.registeruz.sk/cruz-public/api/uctovna-jednotka?id=" . 
 $unitDetail = fetch_registry_url($detailUrl);
 
 if (!$unitDetail) {
-    http_response_code(502);
-    echo json_encode(['success' => false, 'message' => 'Failed to retrieve company details from registry']);
-    exit;
+    report_error(502, 'registry_unavailable', 'Failed to retrieve company details from registry');
 }
 
 $statementIds = $unitDetail['idUctovnychZavierok'] ?? [];
 if (empty($statementIds)) {
-    http_response_code(404);
-    echo json_encode(['success' => false, 'message' => 'No financial statements found for this company in registry']);
-    exit;
+    report_error(404, 'no_statements', 'No financial statements found for this company in registry');
 }
 
 // Take the last 5 statements to compile multi-year history
@@ -188,9 +178,7 @@ foreach ($statementIds as $stmtId) {
 }
 
 if (empty(trim($compiledDataText))) {
-    http_response_code(404);
-    echo json_encode(['success' => false, 'message' => 'No structured financial data was found to analyze']);
-    exit;
+    report_error(404, 'no_financial_data', 'No structured financial data was found to analyze');
 }
 
 // 3. Build OpenAI prompt
@@ -247,18 +235,18 @@ curl_close($ch);
 if ($httpCode !== 200 || !$response) {
     $errData = json_decode($response, true);
     $errMsg = $errData['error']['message'] ?? (!empty($curlErr) ? $curlErr : 'OpenAI API request failed');
-    http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'OpenAI Error: ' . $errMsg]);
-    exit;
+    // 401/403 means the stored key exists but OpenAI rejected it — a different
+    // problem from "no key at all", and one the user fixes in the same place.
+    $code = ($httpCode === 401 || $httpCode === 403) ? 'ai_key_invalid'
+          : (($httpCode === 429) ? 'ai_rate_limited' : 'ai_error');
+    report_error(502, $code, 'OpenAI Error: ' . $errMsg, ['providerMessage' => $errMsg]);
 }
 
 $resData = json_decode($response, true);
 $aiReply = trim($resData['choices'][0]['message']['content'] ?? '');
 
 if (empty($aiReply)) {
-    http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Empty response from OpenAI']);
-    exit;
+    report_error(502, 'ai_empty', 'Empty response from OpenAI');
 }
 
 try {

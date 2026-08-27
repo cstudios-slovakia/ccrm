@@ -13,6 +13,7 @@ import { orderLeadStates } from "./utils/leadStates";
 import { resolveTaskViewAll } from "./utils/taskSelectors";
 import { InstallerWizard } from "./components/InstallerWizard";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { AiKeyBanner } from "./components/ui/AiKeyBanner";
 import FilePreviewPane from "./components/FilePreviewPane";
 import { RefreshCw, AlertOctagon, Trash2, Copy } from "lucide-react";
 import { ShaderGradient, ShaderGradientCanvas } from "shadergradient";
@@ -28,6 +29,14 @@ import {
   readLegacyPrefs,
   readUserPrefs,
 } from "./utils/userPrefs";
+
+/**
+ * Routes whose whole purpose depends on OpenAI. Visiting one without a
+ * configured key gets the AiKeyBanner above the view. Views that merely have an
+ * AI corner (clients, leads) are deliberately absent — they mount the banner
+ * next to the affected section instead of over the whole screen.
+ */
+const AI_DEPENDENT_TABS = ["rag_ai", "automation", "meetings", "email"];
 
 // Helper for resilient lazy loading: automatically reloads page if a build update changed chunk hash filenames
 const safeLazy = <T extends ComponentType<any>>(importFn: () => Promise<{ default: T }>) =>
@@ -346,14 +355,18 @@ function App() {
 
     (window as any).showToast = (
       message: string,
-      actionOrVariant?: { label: string; onClick: () => void } | "error" | "warning"
+      actionOrVariant?: { label: string; onClick: () => void } | "error" | "warning",
+      explicitVariant?: "error" | "warning"
     ) => {
       // A dozen call sites put a severity string in the second slot instead of an
       // action. Taken literally that produced a toast with an empty action button
-      // that never auto-dismissed, so normalise the two shapes here.
+      // that never auto-dismissed, so normalise the two shapes here. A caller that
+      // needs both — an actionable failure, e.g. "AI key missing / Open settings"
+      // — passes the severity in the third slot.
       const action = actionOrVariant && typeof actionOrVariant === "object" ? actionOrVariant : undefined;
       const variant: ToastPayload["variant"] =
-        actionOrVariant === "error" || actionOrVariant === "warning" ? actionOrVariant : "info";
+        explicitVariant ||
+        (actionOrVariant === "error" || actionOrVariant === "warning" ? actionOrVariant : "info");
       const next: ToastPayload = { id: ++toastIdRef.current, message, variant, action };
       // visiblePushesRef is bumped the moment a save is queued (not when the request
       // actually starts), because callers fire their success toast synchronously right
@@ -2531,6 +2544,22 @@ ${log.payload || ''}
           
           <main className="flex-1 p-4 md:p-6 overflow-y-auto max-w-[1600px] mx-auto w-full relative flex flex-col justify-between">
             <div className="shrink-0 w-full">
+              {/* Whole views (RAG assistant, automations, meeting summaries, the
+                  email assistant) are inert without an OpenAI key, and used to give
+                  no hint of it until a button failed. One banner above the view
+                  covers all of them; sections inside a mixed view (e.g. the client
+                  financial report tab) mount their own. */}
+              {AI_DEPENDENT_TABS.includes(parseAppHash(activeTab).route.split("/")[0]) && (
+                <AiKeyBanner
+                  integrationsConfig={integrationsConfig}
+                  language={userLanguage}
+                  // Sticky, because these views size themselves to the viewport
+                  // and scroll their own content into view on mount (the RAG
+                  // chat jumps to the newest message), which scrolled a plain
+                  // banner straight off the top of the workspace.
+                  className="mb-4 sticky top-0 z-30 backdrop-blur-sm"
+                />
+              )}
               {/* Per-view boundary: a render error in one module (a single CRM tab)
                   used to escape to the root boundary and take the whole app down,
                   leaving a reload as the only way back. Contained here, the sidebar,

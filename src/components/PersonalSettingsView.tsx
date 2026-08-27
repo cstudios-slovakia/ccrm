@@ -5,6 +5,7 @@ import type { UserProfile } from "../types";
 import type { Language } from "../utils/translations";
 import { HERB_THEMES, getStoredTheme, applyTheme } from "../utils/theme";
 import { CustomSelect } from "./ui/CustomSelect";
+import { SecretInput } from "./ui/SecretInput";
 
 interface PersonalSettingsViewProps {
   currentUser: UserProfile;
@@ -150,7 +151,6 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
   };
 
   const [emailSettings, setEmailSettings] = useState<any>(loadEmailSettings);
-  const [showPass, setShowPass] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ status: "success" | "error"; message: string } | null>(null);
 
@@ -668,12 +668,14 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                             </div>
                             <div className="space-y-1">
                               <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">{t("IMAP Password", "Heslo IMAP", "IMAP jelszó")}</label>
-                              <PasswordInput
+                              <SecretInput
                                 required
+                                mono={false}
+                                language={systemLanguage}
                                 value={emailSettings.imapPassword}
-                                onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, imapPassword: e.target.value }))}
-                                placeholder="••••••••••••"
-                                className="w-full pl-3 pr-10 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none"
+                                onChange={(next) => setEmailSettings((prev: any) => ({ ...prev, imapPassword: next }))}
+                                placeholder={t("IMAP password", "Heslo IMAP", "IMAP jelszó")}
+                                inputClassName="py-2"
                               />
                             </div>
                           </div>
@@ -735,12 +737,14 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                             </div>
                             <div className="space-y-1">
                               <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">{t("SMTP Password", "Heslo SMTP", "SMTP jelszó")}</label>
-                              <PasswordInput
+                              <SecretInput
                                 required
+                                mono={false}
+                                language={systemLanguage}
                                 value={emailSettings.smtpPassword}
-                                onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, smtpPassword: e.target.value }))}
-                                placeholder="••••••••••••"
-                                className="w-full pl-3 pr-10 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none"
+                                onChange={(next) => setEmailSettings((prev: any) => ({ ...prev, smtpPassword: next }))}
+                                placeholder={t("SMTP password", "Heslo SMTP", "SMTP jelszó")}
+                                inputClassName="py-2"
                               />
                             </div>
                           </div>
@@ -776,23 +780,15 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
 
                     {emailSettings.provider === "exchange" && (
                       <div className="space-y-1 border-t border-slate-100 pt-3">
-                        <div className="flex justify-between items-center">
-                          <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t("Account Password", "Heslo k účtu / App Password", "Fiók jelszava")}</label>
-                          <button
-                            type="button"
-                            onClick={() => setShowPass(!showPass)}
-                            className="text-[9px] font-black uppercase text-indigo-600 hover:text-indigo-900"
-                          >
-                            {showPass ? t("Hide", "Skryť", "Elrejt") : t("Show", "Zobraziť", "Mutat")}
-                          </button>
-                        </div>
-                        <input
-                          type={showPass ? "text" : "password"}
+                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t("Account Password", "Heslo k účtu / App Password", "Fiók jelszava")}</label>
+                        <SecretInput
                           required
+                          mono={false}
+                          language={systemLanguage}
                           value={emailSettings.password}
-                          onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, password: e.target.value }))}
-                          placeholder="••••••••••••"
-                          className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none focus:bg-white"
+                          onChange={(next) => setEmailSettings((prev: any) => ({ ...prev, password: next }))}
+                          placeholder={t("Account or app password", "Heslo k účtu alebo App Password", "Fiók- vagy alkalmazásjelszó")}
+                          inputClassName="py-2"
                         />
                       </div>
                     )}
