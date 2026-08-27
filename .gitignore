@@ -86,3 +86,7 @@ errorsFigtree.md
 graphiql_dump.html
 graphql_settings.html
 __pycache__/
+
+# QA audit run output (reports, screenshots, traces, videos)
+/test-results/
+/playwright-report/

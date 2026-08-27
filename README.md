@@ -12,6 +12,10 @@ them up:
   directly into the server's web document root and pulling updates with
   `git`/`php ccrm update` — there is no build step on the server.
 
+**New here?** Read [Local Development Setup](#local-development-setup), then
+**[docs/TESTING.md](docs/TESTING.md)** — how to run the tests, what they cover
+and where the results go.
+
 ## Local Development Setup
 
 1. Clone the repo and install JS dependencies:
@@ -132,82 +136,43 @@ retest it before relying on it if you need this path.
 - `config.php`, `api_key.txt` and `uploads/` are git-ignored. Never commit real
   credentials.
 
+## Testing
+
+Full guide: **[docs/TESTING.md](docs/TESTING.md)**.
+
+```bash
+npm run test:qa:setup     # once per machine - downloads Chromium
+npm run test:qa           # audit the app in a real browser
+npm run test:unit         # fast unit tests
+npm test                  # both
+```
+
+Two suites:
+
+- **Unit tests** (`npm run test:unit`) — plain `node --test` over
+  `src/**/*.test.ts`. No dependencies, runs in under a second.
+- **QA audit** (`npm run test:qa`) — Playwright drives the real app in Chromium
+  and reports every action whose **actual** result differed from its
+  **expected** result, with a screenshot and a proposed fix. Covers navigation,
+  every module, tabs, drill-downs, create/edit forms and every dropdown.
+
+The QA suite mocks `/sync.php`, `/api/*` and `/upload.php` and seeds its own
+data, so it needs **no Docker, no PHP and no database** — just the Vite dev
+server, which it starts for you. It never touches a real backend.
+
+Results are saved per run under `test-results/runs/<timestamp>-<kind>/`
+(report + findings + screenshots, self-contained), with the latest always at
+`test-results/qa-audit-report.md`. The verdict prints in your terminal as soon
+as the run ends; reopen it any time with `npm run test:qa:report`.
+
+**When to run it:** any time you like, and always when you finish a feature or
+a fix. It also runs automatically — `npm run deploy` refuses to ship if the
+audit finds a HIGH-severity defect, and GitHub Actions runs it on every push
+and pull request.
+
 ## Development
 
 The database DDL lives in a single source of truth: `public/api/schema.php`,
 copied into `dist/api/schema.php` by `npm run build` (the PHP API and
 `.htaccess` live in `public/` and are copied into `dist/` on build).
 
----
-
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
-
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```

@@ -1,0 +1,98 @@
+name: QA
+
+# Runs the same npm scripts a developer runs locally, so a red build always
+# reproduces with one command on your machine:
+#
+#   npm run test:unit
+#   npm run test:qa
+#
+# No secrets, no database, no PHP: the QA suite mocks /sync.php, /api/* and
+# /upload.php and seeds its own dataset, so a clean runner needs only Node and
+# Chromium. See docs/TESTING.md.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same branch supersedes an in-flight run.
+concurrency:
+  group: qa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Unit tests + QA audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check the app
+        run: npx tsc -b
+
+      - name: Type-check the QA suite
+        run: npm run test:qa:typecheck
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: QA audit
+        run: npm run test:qa
+
+      # Uploaded even when the audit fails - that is exactly when you need them.
+      # Each run folder is self-contained (report.md + findings.json +
+      # screenshots/), so the downloaded artifact renders with its evidence.
+      - name: Upload QA report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-report-${{ github.run_number }}
+          path: |
+            test-results/runs/
+            test-results/qa-audit-report.md
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-${{ github.run_number }}
+          path: playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      # Puts the verdict on the workflow summary page, so the result is readable
+      # in the browser without downloading anything.
+      - name: Publish report to the run summary
+        if: always()
+        shell: bash
+        run: |
+          report=test-results/qa-audit-report.md
+          if [ -f "$report" ]; then
+            {
+              echo "## CCRM QA audit"
+              echo
+              # Everything up to the per-defect detail: verdict + summary table.
+              sed -n '1,/^## Defect detail/p' "$report" | sed '$d'
+              echo
+              echo "_Full report, findings JSON and screenshots are in the"
+              echo "\`qa-report-${{ github.run_number }}\` artifact below._"
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No QA report was produced." >> "$GITHUB_STEP_SUMMARY"
+          fi

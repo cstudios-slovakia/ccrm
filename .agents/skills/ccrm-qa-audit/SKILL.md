@@ -1,0 +1,214 @@
+---
+name: "ccrm-qa-audit"
+description: "Automated browser QA for CCRM: autonomous UI crawler that proves every action produces its expected result, plus Chrome DevTools Recorder replay. Use when asked to test the app, audit buttons/forms/dropdowns, hunt for UI regressions, or verify recent changes."
+---
+
+# CCRM Automated QA Audit
+
+Drives the real app in a real browser and reports every action whose **actual**
+result differed from its **expected** result, with a proposed fix.
+
+This is **not** "click every pixel". Coverage is a declared ladder (below). If a
+surface is not on the ladder, it is a suite gap, not a silent pass.
+
+---
+
+## 1. Running it
+
+Human-facing guide (setup, results, how to add a test): **`docs/TESTING.md`**.
+This file is the deep reference: coverage ladder, categories, severity.
+
+```powershell
+npm run test:qa:setup     # once per machine - downloads the Chromium build
+npm run test:qa           # full audit: canaries + navigation + modules + recordings
+```
+
+The dev server starts automatically on **port 5273** - deliberately not 5173, and
+not adjacent to it. Vite walks upward (5174, 5175, ...) when 5173 is busy, so a
+second checkout's dev server lands exactly there. `--strictPort` plus no implicit
+reuse means a run either audits *this* checkout or refuses to start, instead of
+silently auditing another branch. Set `QA_REUSE_SERVER=1` to reuse a server
+already on the QA port.
+
+A full run takes a few minutes.
+
+| Command | Scope |
+|---|---|
+| `npm run test:qa` | Everything (full suite; updates `qa-audit-report-latest-full.md`) |
+| `npm run test:qa:canary` | Harness acceptance: the two known product bugs must still be detected |
+| `npm run test:qa:nav` | Shell navigation and header controls only |
+| `npm run test:qa:crawler` | Per-module deep audit only |
+| `npm run test:qa:recorder` | Chrome Recorder replays only |
+| `npm run test:qa:headed` | Same as full, with a visible browser |
+| `npm run test:qa:report` | Open the latest report (`-- --list` lists saved runs) |
+| `npm run test:qa:report:html` | Playwright traces / video |
+| `npm run test:qa:typecheck` | Type-check the suite itself |
+
+Environment switches:
+
+- `QA_FAIL_ON=CRITICAL|HIGH|MEDIUM|LOW|NEVER` - severity that fails the run (default `HIGH`).
+- `QA_WORKERS=n` - parallel workers (default 3, 2 in CI).
+- `QA_KEEP_RUNS=n` - how many past run folders to keep (default 10).
+- `QA_OPEN=1` - open the report automatically when defects are found.
+- `QA_PORT=n` / `QA_REUSE_SERVER=1` - dev-server port, and reuse an existing one.
+- `QA_SERVER_LOGS=1` - un-silence the Vite dev server output.
+- `QA_RECORDING=path.json` - replay a single recording.
+- `BASE_URL=...` - audit a deployed environment (no local dev server is started).
+
+**A defect fails the run.** Findings at `QA_FAIL_ON` or above throw in the test
+that found them (except canaries, which *pass* when they find their known bug).
+A green full run means nothing at HIGH or above was found.
+
+Canaries are inverted: they **fail the harness** if the known bug is missed.
+Do not fix Čas termínu or the Silvia `?tab=` parser to make canaries green.
+If those product bugs are fixed, **delete the canary**.
+
+It also runs without being asked: `npm run deploy` gates on it, and
+`.github/workflows/qa.yml` runs it on every push and pull request.
+
+---
+
+## 2. Output
+
+Every run gets its own folder. Nothing is silently overwritten, and old folders
+are pruned to `QA_KEEP_RUNS`.
+
+```
+test-results/
+  qa-audit-report.md                <- the latest run, always here
+  qa-findings.json                  <- same data, for tooling
+  qa-audit-report-latest-full.md    <- last COMPLETE run; a partial run never overwrites it
+  runs/
+    2026-08-27_22-16-24-full/       <- self-contained
+      report.md                     <- screenshot links relative to this folder
+      findings.json
+      screenshots/                  <- only this run's evidence
+  artifacts/                        <- Playwright traces and video
+playwright-report/                  <- Playwright HTML report
+```
+
+A run folder can be zipped, attached to a ticket or downloaded from CI and its
+screenshots still resolve. The verdict (`RESULT: PASSED` / `RESULT: FAILED`,
+counts, top findings) prints in the terminal the moment the run ends.
+
+Defect IDs are stable across runs (derived from module + target + action +
+category), so `DDOC-9992FBC0` refers to the same defect tomorrow.
+
+---
+
+## 3. Coverage map
+
+Every full run must exercise these surfaces. Anything else is out of scope
+until it is added here.
+
+| Layer | What is clicked | Spec |
+|---|---|---|
+| Shell | Every sidebar nav button (by click, not by URL). Re-clicking the open item is a no-op. | `navigation.spec.ts` |
+| Header | Every header control; something visible must happen (panel, overlay, or view change). | `navigation.spec.ts` |
+| Module landing | Each crawled hash: content rendered, no error screen, no blank view. | `crawler.spec.ts` |
+| Tabs | Every tab strip on the landing view, including the already-open tab (this app rewrites `?tab=` on re-click). | `crawler.spec.ts` |
+| First-row detail | First register row → detail view → its sub-tabs → `#record?tab=` deep link. | `crawler.spec.ts` (`drilldown`) |
+| Create form | Labeled create buttons (header + main) before Plus-icon-only. Fill every field. **Every** dropdown in the form (no cap). Submit. | `crawler.spec.ts` |
+| Edit drawer | One edit control per module (pencil / "Upraviť"). Dropdowns inside, no submit. | `crawler.spec.ts` |
+| Page filters | Filter / status dropdowns on the landing view, capped (they mutate the view). | `crawler.spec.ts` |
+| Known bugs | Čas termínu occlusion; Silvia timeline `?tab=` error screen. | `canary.spec.ts` |
+| Pinned journeys | Chrome Recorder JSON in `tests/recordings/`. | `recorder.spec.ts` |
+
+`#dashboard` and `#tasks` are the same view. Only `#dashboard` is crawled;
+navigation still clicks both sidebar items.
+
+Modules crawled: Dashboard, Leads, Clients, Projects, Warehouse, Financial,
+Meetings, Files, Email, Automation, Updates, Settings.
+
+---
+
+## 4. What each check asserts
+
+Every check is written as an expectation, never as a bare symptom.
+
+**Dropdowns** get the deepest treatment, because "looks opened but it's not
+visible" is the bug class this suite was built for. For each one: does the
+panel mount, does it have real dimensions, is it painted, is it inside the
+viewport, is any part of it covered by another layer, is it cropped by an
+overflow ancestor, does it have options, and does choosing one apply it.
+Geometry is only read after the enter animation has settled.
+
+Occlusion is diagnosed by resolving **both** the panel and the covering element
+to their nearest *stacking context* (`tests/e2e/helpers/diagnostics.ts`), so the
+report names the layer whose z-index has to change rather than whichever button
+happened to be under the probe point.
+
+`INTERACTION_FAILED` at **LOW** after a sticky search/filter bar intercepts a
+click is a harness scroll artefact. `UNCAUGHT_EXCEPTION` from `shadergradient`
+(and other `node_modules` throws) is **LOW** third-party noise. Do not treat
+those as product defects.
+
+---
+
+## 5. Chrome DevTools Recorder
+
+Recording and crawling do different jobs. The crawler **discovers** bugs nobody
+thought to look for. A recording **pins** a known journey so it can be re-checked
+cheaply forever — and lets a non-engineer contribute a test case without writing
+code.
+
+To add one:
+
+1. Chrome → DevTools → ⋮ → More tools → **Recorder** → *Create a new recording*.
+2. Perform the journey, stop, then **Export** → *JSON*.
+3. Save it into `tests/recordings/`.
+4. `npm run test:qa:recorder`.
+
+Target controls **by field label**, not by "first listbox". The bundled
+`add-task-deadline-time.json` starts on the dashboard, fills every create-task
+field, and clicks **Čas termínu** by its label.
+
+Real Chrome exports are supported, including all of Chrome's selector dialects
+(`aria/`, `text/`, `pierce/`, `xpath/`, plain CSS) and step types (`navigate`,
+`click`, `doubleClick`, `hover`, `change`, `keyDown`/`keyUp`, `scroll`,
+`waitForElement`, `waitForExpression`, `setViewport`). Recorded absolute URLs are
+rewritten onto the base URL under test.
+
+Replays are not just selector checks: after **every** step the runner re-applies
+the error-screen and dropdown-visibility analysis.
+
+---
+
+## 6. Test data
+
+The suite never touches a real backend. `tests/e2e/helpers/fixture.ts` mocks
+`/sync.php`, `/api/*` and `/upload.php` and seeds a full dataset — clients,
+leads, tasks, projects, warehouse items, movements, invoices, documents — so
+every register has rows and every detail view is reachable. Writes are
+acknowledged and discarded, which is why the crawler is free to submit forms.
+
+Two things to know when editing it:
+
+- `installed: true` is **mandatory**. `App.tsx` gates `applyServerData()` behind
+  that flag, so a payload without it leaves every collection empty and the whole
+  suite silently audits empty states.
+- If a module reports `VIEW_RENDERED_EMPTY` for its register, add a record for it
+  here rather than accepting the gap.
+
+---
+
+## 7. Instructions for AI agents
+
+When asked to test the app, audit buttons, or check for UI errors:
+
+1. Run `npm run test:qa` (add `npm run test:qa:setup` first if Chromium is missing).
+   To prove the harness itself still works: `npm run test:qa:canary`.
+2. Read `test-results/qa-audit-report.md` — start with the summary table.
+   If this was a partial run, also read `qa-audit-report-latest-full.md`.
+3. For each defect, open the screenshot and trace the finding to the component in
+   `src/`. The report's proposed fix is a starting hypothesis, not a verdict:
+   confirm it against the source before acting.
+4. Report back as **observed symptom → root cause → proposed fix**, grouped by
+   root cause rather than by defect, since one cause usually produces several
+   findings (a single z-index mismatch surfaces as every dropdown in that drawer).
+5. Distinguish app defects from suite gaps. `INTERACTION_FAILED` at LOW severity
+   and `VIEW_RENDERED_EMPTY` on a register usually mean the harness needs work,
+   not the app. Third-party `shadergradient` throws are LOW noise.
+6. Do not "fix" a defect by loosening the check.
+7. Do not fix Čas termínu or the client `?tab=` parser unless the user asked to
+   fix those product bugs. They are oracles for the canaries.

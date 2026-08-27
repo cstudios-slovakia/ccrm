@@ -2,6 +2,22 @@
 
 ## Core Guidelines & Workflow
 
+### 0. Test Before You Ship
+
+- **Run the QA audit when a feature or fix is finished**, before the version bump
+  and build commit: `npm run test:unit` then `npm run test:qa`.
+- Full guide: [`docs/TESTING.md`](docs/TESTING.md). Deep reference:
+  [`.agents/skills/ccrm-qa-audit/SKILL.md`](.agents/skills/ccrm-qa-audit/SKILL.md).
+- No Docker, PHP or database needed - the suite mocks the backend and seeds its
+  own data, so it never touches real records.
+- Results are saved per run in `test-results/runs/<timestamp>-<kind>/`; the
+  latest is always `test-results/qa-audit-report.md`.
+- `npm run deploy` re-runs the gate and aborts the deploy if it fails.
+- Never make a finding disappear by loosening the check.
+
+The order when finishing a change: **test -> bump version -> changelog -> build
+-> commit**.
+
 ### 1. Commit & Version Bumping Protocol
 
 - **Commit After Every Significant Change**: Make atomic, clean git commits after completing each feature, fix, or significant modification.
