@@ -26,7 +26,7 @@ export const TEST_ADMIN_USER: UserProfile = {
 
 /**
  * Pre-seeds the session storage with an authenticated Admin user session
- * and mocks server endpoints (/api/login.php and /sync.php) for isolated, fast, and stable E2E runs.
+ * and mocks server endpoints (/api/login.php, /sync.php, /api/mail_broker.php) for isolated, fast, and stable E2E runs.
  */
 export async function seedAuthSession(page: Page, user: UserProfile = TEST_ADMIN_USER) {
   // Mock /api/login.php
@@ -37,6 +37,20 @@ export async function seedAuthSession(page: Page, user: UserProfile = TEST_ADMIN
       body: JSON.stringify({
         success: true,
         user: user,
+      }),
+    });
+  });
+
+  // Mock /api/mail_broker.php for instant email hub polling
+  await page.route('**/api/mail_broker.php**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        emails: [],
+        total: 0,
+        folders: { INBOX: 0, Sent: 0, Trash: 0 },
       }),
     });
   });
@@ -98,17 +112,20 @@ export async function seedAuthSession(page: Page, user: UserProfile = TEST_ADMIN
     }
   });
 
+  // Pre-seed sessionStorage with admin authentication before HTML parsing
   await page.addInitScript((userJson) => {
     try {
-      window.sessionStorage.setItem("crm_current_user_rbac", userJson);
+      window.sessionStorage.setItem('crm_current_user_rbac', userJson);
+      window.sessionStorage.setItem('crm_session_token', 'qa-automated-test-token');
     } catch (e) {
-      console.warn("Failed to set test session in sessionStorage", e);
+      console.warn('Could not access sessionStorage in init script', e);
     }
   }, JSON.stringify(user));
 }
 
 /**
- * Ensures the page is loaded and authenticated.
+ * Ensures that the page is loaded and authenticated.
+ * If the login view is unexpectedly displayed, clicks the test admin preset.
  */
 export async function ensureAuthenticated(page: Page, targetHash?: string) {
   const targetUrl = targetHash ? `/${targetHash}` : '/#dashboard';
@@ -116,15 +133,15 @@ export async function ensureAuthenticated(page: Page, targetHash?: string) {
   await page.waitForLoadState('domcontentloaded');
 
   const erikPreset = page.locator('button:has-text("erik@crm.com"), button:has-text("ER Erik")').first();
-  const isPresetVisible = await erikPreset.isVisible({ timeout: 1500 }).catch(() => false);
+  const isPresetVisible = await erikPreset.isVisible({ timeout: 400 }).catch(() => false);
   
   if (isPresetVisible) {
     await erikPreset.click({ force: true });
-    await page.waitForSelector('header', { timeout: 6000 }).catch(() => {});
+    await page.waitForSelector('header', { timeout: 3000 }).catch(() => {});
   }
 
   if (targetHash) {
     await page.goto(`/${targetHash}`);
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(150);
   }
 }

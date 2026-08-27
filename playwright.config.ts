@@ -6,12 +6,12 @@ import { defineConfig, devices } from '@playwright/test';
 export default defineConfig({
   testDir: './tests/e2e',
   /* Maximum time one test can run for. */
-  timeout: 45 * 1000,
+  timeout: 30 * 1000,
   expect: {
     /**
      * Maximum time expect() should wait for the condition to be met.
      */
-    timeout: 5000,
+    timeout: 4000,
   },
   /* Run tests sequentially to avoid local session / storage conflicts */
   fullyParallel: false,

@@ -1,8 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { seedAuthSession, ensureAuthenticated } from './helpers/auth';
 import { QAReportCollector } from './helpers/reportCollector';
+import { UIExplorer } from './helpers/uiExplorer';
 
-test.describe('Automated App Exploration & UI/UX Crawler', () => {
+test.describe('Deep Autonomous UI/UX Crawler & Defect Discovery Engine', () => {
   const routes = [
     { name: 'Dashboard', hash: '#dashboard' },
     { name: 'Leads / Pipeline', hash: '#leads' },
@@ -27,7 +28,7 @@ test.describe('Automated App Exploration & UI/UX Crawler', () => {
   });
 
   for (const r of routes) {
-    test(`Crawl & Audit View: ${r.name} (${r.hash})`, async ({ page }) => {
+    test(`Deep Audit View: ${r.name} (${r.hash})`, async ({ page }) => {
       const consoleErrors: string[] = [];
       page.on('console', (msg) => {
         if (msg.type() === 'error') {
@@ -38,47 +39,47 @@ test.describe('Automated App Exploration & UI/UX Crawler', () => {
         consoleErrors.push(err.message);
       });
 
+      // 1. Navigate to view
       await ensureAuthenticated(page, r.hash);
-      await page.waitForTimeout(400);
+      await page.waitForTimeout(150);
 
-      // 1. Verify view container rendered
+      // 2. Base render & error banner check
       const rootApp = page.locator('#root');
-      await expect(rootApp).toBeVisible({ timeout: 10000 });
-      QAReportCollector.recordPass(`Route ${r.name} rendered without crash`);
+      await expect(rootApp).toBeVisible({ timeout: 5000 });
+      await UIExplorer.checkVisibleErrorBanners(page, `${r.name} (Initial Load)`);
 
-      // 2. Check for universal error banners
-      const errorBanner = page.locator('div.border-red-400:has(h2), [role="alert"].bg-rose-50');
-      const hasError = (await errorBanner.count()) > 0 && (await errorBanner.first().isVisible().catch(() => false));
-      if (hasError) {
-        const text = await errorBanner.first().innerText().catch(() => 'Error banner');
+      // 3. Sub-tabs & filter pills traversal
+      await UIExplorer.auditSubTabs(page, r.name);
+
+      // 4. Action buttons, modals, drawers & nested dropdown occlusion check
+      await UIExplorer.auditModalsAndDrawers(page, r.name);
+
+      // 5. Standalone page dropdown occlusion check
+      await UIExplorer.auditAllDropdownsInContainer(page, page.locator('#root'), r.name);
+
+      // 6. Datagrid row clicking & detail sub-view exploration
+      await UIExplorer.auditTableRows(page, r.name);
+      await UIExplorer.dismissAnyOpenModals(page);
+
+      // 7. Verify no severe unhandled exceptions crashed the view
+      const severeErrors = consoleErrors.filter(e => 
+        !e.includes('favicon') && 
+        !e.includes('404 (Not Found)') && 
+        !e.includes('502 (Bad Gateway)')
+      );
+      if (severeErrors.length > 0) {
         QAReportCollector.recordFailure({
-          id: `CRAWL-${r.name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}-001`,
+          id: `CONSOLE-ERR-${r.name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}-${Date.now()}`,
           module: r.name,
-          action: `Navigate to route ${r.hash}`,
-          errorType: 'ROUTE_OR_LOOKUP_ERROR',
-          severity: 'HIGH',
-          symptom: `Error screen encountered upon loading view: ${text.slice(0, 100)}`,
-          expected: `Route ${r.name} should display active data and functional UI components.`,
-          actual: text,
-          consoleErrors: consoleErrors.slice(0, 5),
+          action: `Console error observation on ${r.name}`,
+          errorType: 'CONSOLE_ERROR',
+          severity: 'MEDIUM',
+          symptom: `Unhandled JavaScript console errors detected during exploration of ${r.name}`,
+          consoleErrors: severeErrors.slice(0, 5),
         });
       }
 
-      // 3. Test Header Action Buttons on this view
-      const headerButtons = page.locator('header button');
-      const btnCount = await headerButtons.count();
-      const testLimit = Math.min(btnCount, 5);
-
-      for (let i = 0; i < testLimit; i++) {
-        const btn = headerButtons.nth(i);
-        if (await btn.isVisible().catch(() => false) && await btn.isEnabled().catch(() => false)) {
-          const btnText = (await btn.innerText().catch(() => '')) || 'IconBtn';
-          if (!/zmazať|delete|odhlásiť|logout|trash/i.test(btnText)) {
-            await btn.hover().catch(() => {});
-          }
-        }
-      }
-      QAReportCollector.recordPass(`Exercised header controls on ${r.name}`);
+      QAReportCollector.recordPass(`Completed deep audit on ${r.name}`);
     });
   }
 });

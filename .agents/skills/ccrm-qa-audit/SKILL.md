@@ -9,19 +9,17 @@ Use this skill when you need to audit, crawl, or automatically test views, butto
 
 ---
 
-## 1. Core Capabilities & Workflows
+## 1. Core Capabilities & Architecture
 
-### A. Full Automated App Crawler (`npm run test:qa`)
-Systematically navigates all registered routes and views in the application:
-- Dashboard, Leads/Pipeline, Clients Register, Projects, Warehouse, Financial Management, Meeting Room, Files Manager, Email Hub, Automations, System Settings.
-- Exercises header buttons, view switchers, and filter pills.
-- Validates that every view renders cleanly without 500 errors, blank screens, or unhandled exceptions.
+### A. Deep Autonomous UI/UX Crawler (`npm run test:qa`)
+Systematically crawls all 12 registered application views in ~50 seconds without hardcoded defect scripts:
+- **12 Views Tested**: Dashboard, Leads / Pipeline, Clients Register, Projects, Warehouse, Financial Management, Meeting Room, Files Manager, Email Hub, Automation, Update Notes, System Settings.
+- **Dynamic Occlusion Detection (`UIExplorer.auditDropdownOcclusion`)**: Uses real browser geometry and `document.elementFromPoint(x, y)` to dynamically detect visual occlusion bugs (e.g. dropdown listboxes rendered behind modal bodies, drawers, or backdrop layers due to z-index mismatches).
+- **Sub-Tab & Route Auditing (`UIExplorer.auditSubTabs` & `auditTableRows`)**: Intercepts sub-tabs, filter pills, and direct URL query routing.
+- **Modal & Drawer Action Auditing (`UIExplorer.auditModalsAndDrawers`)**: Discovers action triggers (+ Nový, Pridať, Filter, calendar cells), tests controls in opened drawers, and cleanly dismisses them.
+- **Empirical Failure Logging**: Emits clean diagnostics (defect category, symptoms, bounding box dimensions, occluding layer tags, and screenshots) to `test-results/qa-audit-report.md`.
 
-### B. Deep Feature Suites (`npm run test:qa`)
-- **Task Dashboard & Modals** (`tests/e2e/task-dashboard.spec.ts`): Verifies "+ New Task" drawer, inputs, priority buttons, and custom deadline time pickers.
-- **Client Register & Sub-Tabs** (`tests/e2e/client-register.spec.ts`): Verifies client details navigation, timeline history, attached files, offers, and note tabs.
-
-### C. Chrome DevTools Recorder Replay (`npm run test:qa:recorder`)
+### B. Chrome DevTools Recorder Replay (`npm run test:qa:recorder`)
 - Replays recorded JSON user journeys exported directly from Google Chrome DevTools (`Inspect` -> `Recorder`).
 - Can execute custom recording files:
   ```bash
@@ -35,7 +33,7 @@ Systematically navigates all registered routes and views in the application:
 Whenever the user asks to "test the app", "audit all buttons", "check for UI errors", or "verify recent changes":
 
 1. **Verify Dev Server is Running**:
-   - Ensure `http://localhost:5173` is active (or run `npm run dev` in the background).
+   - Ensure `http://localhost:5173` is active (or let Playwright launch it automatically).
 2. **Execute the QA Suite**:
    - Run the automated test suite:
      ```powershell
@@ -43,9 +41,8 @@ Whenever the user asks to "test the app", "audit all buttons", "check for UI err
      ```
 3. **Inspect Output & Artifacts**:
    - Read the generated report at `test-results/qa-audit-report.md`.
-   - Check screenshots in `test-results/screenshots/` if visual defects were flagged.
-4. **Diagnose & Report Findings**:
-   - Map each failed step to the corresponding component in `src/`.
-   - Explain the **Observed Symptom**, **Expected Behavior**, and **Root Cause**.
-   - Provide the **Proposed Code Fix** with code references and clear line numbers.
-   - Present the structured report to the user without making destructive edits until approved.
+   - Check screenshots in `test-results/screenshots/` for visual occlusions or error banners.
+4. **Diagnose & Author Solutions**:
+   - Trace the empirical findings from the report back to the source component in `src/`.
+   - Explain the **Observed Symptom**, **Root Cause**, and **Proposed Solution**.
+   - Present findings and fix options cleanly to the user.

@@ -5,15 +5,12 @@ export interface QAFailure {
   id: string;
   module: string;
   action: string;
-  errorType: 'VISUAL_DEFECT' | 'UNHANDLED_EXCEPTION' | 'ROUTE_OR_LOOKUP_ERROR' | 'INTERACTION_FAILURE';
-  severity: 'HIGH' | 'MEDIUM' | 'LOW';
+  errorType: 'VISUAL_OCCLUSION' | 'ERROR_BANNER_DETECTED' | 'UNHANDLED_EXCEPTION' | 'CONSOLE_ERROR' | 'INTERACTION_FAILURE';
+  severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
   symptom: string;
-  expected: string;
-  actual: string;
+  details?: string;
   screenshotPath?: string;
   consoleErrors?: string[];
-  codeLocation?: string;
-  proposedFix?: string;
 }
 
 const DATA_FILE = path.resolve('test-results', 'qa-collected-data.json');
@@ -64,36 +61,31 @@ export class QAReportCollector {
 
     let md = `# CCRM Automated QA Audit Report\n\n`;
     md += `**Generated At**: ${new Date().toISOString()}\n`;
-    md += `**Total Checks Run**: ${total} | **Passed**: ${passed} | **Issues Found**: ${failed}\n\n`;
+    md += `**Total Checks Run**: ${total} | **Passed**: ${passed} | **Issues Discovered**: ${failed}\n\n`;
 
     if (failed === 0) {
-      md += `> [!NOTE]\n> All scanned views, buttons, modals, and user flows completed successfully with zero defects detected.\n\n`;
+      md += `> [!NOTE]\n> All scanned views, buttons, modals, drawers, and dropdowns completed successfully with zero defects detected.\n\n`;
       return md;
     }
 
-    md += `## ❌ Discovered Defects & Recommendations\n\n`;
+    md += `## ❌ Discovered Defects (Empirical Runtime Findings)\n\n`;
 
     data.failures.forEach((f, idx) => {
       md += `### ${idx + 1}. [${f.severity}] ${f.module} — ${f.action}\n\n`;
       md += `- **Defect ID**: \`${f.id}\`\n`;
-      md += `- **Defect Category**: \`${f.errorType}\`\n`;
+      md += `- **Category**: \`${f.errorType}\`\n`;
       md += `- **Observed Symptom**: ${f.symptom}\n`;
-      md += `- **Expected Behavior**: ${f.expected}\n`;
-      md += `- **Actual Outcome**: ${f.actual}\n`;
-      if (f.codeLocation) {
-        md += `- **Code Location**: \`${f.codeLocation}\`\n`;
+      if (f.details) {
+        md += `- **Diagnostic Details**: ${f.details}\n`;
       }
       if (f.screenshotPath) {
         md += `- **Screenshot**: \`${f.screenshotPath}\`\n`;
       }
       if (f.consoleErrors && f.consoleErrors.length > 0) {
-        md += `- **Console Errors Captured**:\n`;
+        md += `- **Captured Console Errors**:\n`;
         f.consoleErrors.forEach((err) => {
           md += `  \`\`\`text\n  ${err}\n  \`\`\`\n`;
         });
-      }
-      if (f.proposedFix) {
-        md += `\n**💡 Proposed Code Fix**:\n${f.proposedFix}\n`;
       }
       md += `\n---\n\n`;
     });
