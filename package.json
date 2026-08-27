@@ -11,8 +11,14 @@
     "preview": "vite preview",
     "test:qa": "playwright test",
     "test:qa:headed": "playwright test --headed",
-    "test:qa:crawler": "playwright test tests/e2e/crawler.spec.ts",
-    "test:qa:recorder": "node scripts/qa/run-recorder.mjs"
+    "test:qa:crawler": "playwright test crawler.spec.ts",
+    "test:qa:nav": "playwright test navigation.spec.ts",
+    "test:qa:recorder": "playwright test recorder.spec.ts",
+    "test:qa:canary": "playwright test canary.spec.ts",
+    "test:qa:report": "node scripts/qa/open-report.mjs",
+    "test:qa:report:html": "npx playwright show-report",
+    "test:qa:setup": "playwright install chromium",
+    "test:qa:typecheck": "tsc -p tsconfig.qa.json"
   },
   "dependencies": {
     "@fancyapps/ui": "^6.1.14",

@@ -87,6 +87,6 @@ graphiql_dump.html
 graphql_settings.html
 __pycache__/
 
-# Test Results & Playwright Reports
+# QA audit run output (reports, screenshots, traces, videos)
 /test-results/
 /playwright-report/

@@ -1,0 +1,81 @@
+{
+  "title": "Dashboard: create task, fill every field, open Čas termínu",
+  "steps": [
+    {
+      "type": "setViewport",
+      "width": 1440,
+      "height": 900,
+      "deviceScaleFactor": 1,
+      "isMobile": false,
+      "hasTouch": false,
+      "isLandscape": false
+    },
+    {
+      "type": "navigate",
+      "url": "http://localhost:5173/#dashboard"
+    },
+    {
+      "type": "click",
+      "target": "main",
+      "selectors": [
+        ["aria/Vytvoriť novú úlohu"],
+        ["text/Vytvoriť novú úlohu"],
+        ["aria/Create New Task"],
+        ["text/Create New Task"]
+      ]
+    },
+    {
+      "type": "waitForElement",
+      "selectors": [
+        ["text/Vytvoriť novú úlohu"],
+        ["aria/Vytvoriť novú úlohu"]
+      ],
+      "visible": true,
+      "timeout": 8000
+    },
+    {
+      "type": "change",
+      "selectors": [
+        ["xpath///label[contains(., \"Názov\") or contains(., \"Task Title\") or contains(., \"Cím\")]/following::input[@type=\"text\"][1]"],
+        ["div.fixed input[type=\"text\"]"]
+      ],
+      "value": "Recorded QA task"
+    },
+    {
+      "type": "change",
+      "selectors": [
+        ["xpath///label[contains(., \"Popis\") or contains(., \"Description\") or contains(., \"Leírás\")]/following::textarea[1]"],
+        ["div.fixed textarea"]
+      ],
+      "value": "Recorded QA description"
+    },
+    {
+      "type": "change",
+      "selectors": [
+        ["xpath///label[contains(., \"Dátum začiatku\") or contains(., \"Start Date\") or contains(., \"Kezdő dátum\")]/following::input[@type=\"date\"][1]"]
+      ],
+      "value": "2026-09-03"
+    },
+    {
+      "type": "change",
+      "selectors": [
+        ["xpath///label[contains(., \"Termín\") or contains(., \"Deadline Date\") or contains(., \"Határidő\")][not(contains(., \"Čas\")) and not(contains(., \"Time\")) and not(contains(., \"időpont\"))]/following::input[@type=\"date\"][1]"]
+      ],
+      "value": "2026-09-10"
+    },
+    {
+      "type": "click",
+      "target": "main",
+      "selectors": [
+        ["xpath///label[contains(., \"Čas termínu\") or contains(., \"Deadline Time\") or contains(., \"Határidő időpont\")]/following::button[@aria-haspopup=\"listbox\"][1]"],
+        ["xpath///label[contains(., \"Čas termínu\") or contains(., \"Deadline Time\")]/../button[@aria-haspopup=\"listbox\"]"]
+      ]
+    },
+    {
+      "type": "waitForElement",
+      "selectors": [["[role=\"listbox\"]"]],
+      "visible": true,
+      "timeout": 5000
+    }
+  ]
+}

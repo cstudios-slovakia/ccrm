@@ -1,85 +1,84 @@
-import { test, expect } from '@playwright/test';
-import { seedAuthSession, ensureAuthenticated } from './helpers/auth';
-import { QAReportCollector } from './helpers/reportCollector';
-import { UIExplorer } from './helpers/uiExplorer';
+import { test } from '@playwright/test';
+import { QAReport } from './helpers/reportCollector';
+import { assertNoDefectsFound } from './helpers/gate';
+import { ViewCrawler } from './helpers/uiExplorer';
+import { dismissOverlays, gotoView, startSession, type ConsoleCapture } from './helpers/appDriver';
 
-test.describe('Deep Autonomous UI/UX Crawler & Defect Discovery Engine', () => {
-  const routes = [
-    { name: 'Dashboard', hash: '#dashboard' },
-    { name: 'Leads / Pipeline', hash: '#leads' },
-    { name: 'Clients Register', hash: '#clients' },
-    { name: 'Projects', hash: '#projects' },
-    { name: 'Warehouse / Sklad', hash: '#warehouse' },
-    { name: 'Financial Management', hash: '#financial' },
-    { name: 'Meeting Room', hash: '#meetings' },
-    { name: 'Files Manager', hash: '#files' },
-    { name: 'Email Hub', hash: '#email' },
-    { name: 'Automation', hash: '#automation' },
-    { name: 'Update Notes', hash: '#updates' },
-    { name: 'System Settings', hash: '#settings' },
-  ];
+/**
+ * One test per module. Each drives the coverage ladder declared in
+ * `.agents/skills/ccrm-qa-audit/SKILL.md` and fails on any high-severity
+ * defect it discovers.
+ *
+ * `#dashboard` and `#tasks` are the same view (`TaskDashboardView`); only
+ * dashboard is crawled. Navigation still clicks both sidebar items.
+ */
+
+interface ModuleUnderTest {
+  name: string;
+  hash: string;
+  /** Registers whose rows open a detail view worth drilling into. */
+  drilldown?: boolean;
+}
+
+const MODULES: ModuleUnderTest[] = [
+  { name: 'Dashboard', hash: '#dashboard' },
+  { name: 'Leads / Pipeline', hash: '#leads', drilldown: true },
+  { name: 'Clients Register', hash: '#clients', drilldown: true },
+  { name: 'Projects', hash: '#projects', drilldown: true },
+  { name: 'Warehouse', hash: '#warehouse', drilldown: true },
+  { name: 'Financial Management', hash: '#financial', drilldown: true },
+  { name: 'Meeting Room', hash: '#meetings' },
+  { name: 'Files Manager', hash: '#files', drilldown: true },
+  { name: 'Email Hub', hash: '#email' },
+  { name: 'Automation', hash: '#automation' },
+  { name: 'Update Notes', hash: '#updates' },
+  { name: 'System Settings', hash: '#settings' },
+];
+
+test.describe('Deep UI audit', () => {
+  let consoleCapture: ConsoleCapture;
 
   test.beforeEach(async ({ page }) => {
-    await seedAuthSession(page);
+    QAReport.beginScope();
+    consoleCapture = await startSession(page);
   });
 
-  test.afterAll(() => {
-    QAReportCollector.generateMarkdownReport();
-  });
+  for (const mod of MODULES) {
+    test(`${mod.name} (${mod.hash})`, async ({ page }) => {
+      const crawler = new ViewCrawler(page, mod.name, consoleCapture);
 
-  for (const r of routes) {
-    test(`Deep Audit View: ${r.name} (${r.hash})`, async ({ page }) => {
-      const consoleErrors: string[] = [];
-      page.on('console', (msg) => {
-        if (msg.type() === 'error') {
-          consoleErrors.push(msg.text());
-        }
-      });
-      page.on('pageerror', (err) => {
-        consoleErrors.push(err.message);
-      });
+      await gotoView(page, mod.hash);
+      await crawler.assertViewHealthy(mod.name, `Opening ${mod.hash} renders the ${mod.name} module.`);
+      crawler.drainConsole(`${mod.name} initial load`);
 
-      // 1. Navigate to view
-      await ensureAuthenticated(page, r.hash);
-      await page.waitForTimeout(150);
+      // 1. Tab strips: switching panels actually works and stays healthy.
+      await crawler.auditTabStrips(mod.name);
+      await dismissOverlays(page);
 
-      // 2. Base render & error banner check
-      const rootApp = page.locator('#root');
-      await expect(rootApp).toBeVisible({ timeout: 5000 });
-      await UIExplorer.checkVisibleErrorBanners(page, `${r.name} (Initial Load)`);
-
-      // 3. Sub-tabs & filter pills traversal
-      await UIExplorer.auditSubTabs(page, r.name);
-
-      // 4. Action buttons, modals, drawers & nested dropdown occlusion check
-      await UIExplorer.auditModalsAndDrawers(page, r.name);
-
-      // 5. Standalone page dropdown occlusion check
-      await UIExplorer.auditAllDropdownsInContainer(page, page.locator('#root'), r.name);
-
-      // 6. Datagrid row clicking & detail sub-view exploration
-      await UIExplorer.auditTableRows(page, r.name);
-      await UIExplorer.dismissAnyOpenModals(page);
-
-      // 7. Verify no severe unhandled exceptions crashed the view
-      const severeErrors = consoleErrors.filter(e => 
-        !e.includes('favicon') && 
-        !e.includes('404 (Not Found)') && 
-        !e.includes('502 (Bad Gateway)')
-      );
-      if (severeErrors.length > 0) {
-        QAReportCollector.recordFailure({
-          id: `CONSOLE-ERR-${r.name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}-${Date.now()}`,
-          module: r.name,
-          action: `Console error observation on ${r.name}`,
-          errorType: 'CONSOLE_ERROR',
-          severity: 'MEDIUM',
-          symptom: `Unhandled JavaScript console errors detected during exploration of ${r.name}`,
-          consoleErrors: severeErrors.slice(0, 5),
-        });
+      // 2. Record detail + deep-link routing (first-row drill-down).
+      if (mod.drilldown) {
+        await gotoView(page, mod.hash);
+        await crawler.auditRecordDrilldown(mod.hash);
       }
 
-      QAReportCollector.recordPass(`Completed deep audit on ${r.name}`);
+      // 3. Create forms: labeled create buttons first (header + main), every
+      //    field, every dropdown in the form (no cap), then submit.
+      await gotoView(page, mod.hash);
+      await crawler.auditCreateFlows(mod.name);
+      await dismissOverlays(page);
+
+      // 4. One edit drawer per module.
+      await gotoView(page, mod.hash);
+      await crawler.auditEditFlows(mod.name);
+      await dismissOverlays(page);
+
+      // 5. Page-level dropdowns last, since choosing a filter mutates the view.
+      await gotoView(page, mod.hash);
+      await crawler.auditAllDropdowns(page.locator('main'), `${mod.name} (page controls)`, { select: true });
+      await crawler.auditNativeSelects(page.locator('main'), `${mod.name} (page controls)`);
+
+      crawler.drainConsole(`${mod.name} audit`);
+      assertNoDefectsFound();
     });
   }
 });
