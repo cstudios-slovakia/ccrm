@@ -5,6 +5,7 @@ import { LoginView } from "./components/LoginView";
 import { TaskDashboardView } from "./components/TaskDashboardView";
 import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, FinancialRecord } from "./types";
 import { VERSION } from "./utils/version";
+import { parseAppHash, workspaceResetKey } from "./utils/hash";
 import { SOCIAL_MEDIA_ENABLED } from "./utils/featureFlags";
 import type { MeetingNote } from "./components/MeetingRoomView";
 import { getTranslation } from "./utils/translations";
@@ -1827,8 +1828,10 @@ ${log.payload || ''}
       metadata_json: "{}"
     };
 
-    if (activeTab.startsWith("user-")) {
-      const username = decodeURIComponent(activeTab.replace("user-", ""));
+    const { route: activeRoute } = parseAppHash(activeTab);
+
+    if (activeRoute.startsWith("user-")) {
+      const username = decodeURIComponent(activeRoute.replace("user-", ""));
       return (
         <SettingsView 
           systemName={systemName} 
@@ -1875,8 +1878,8 @@ ${log.payload || ''}
       );
     }
 
-    if (activeTab.startsWith("dash_")) {
-      const dashId = activeTab.replace("dash_", "");
+    if (activeRoute.startsWith("dash_")) {
+      const dashId = activeRoute.replace("dash_", "");
       const dashboard = customDashboards.find(d => d.id === dashId);
       if (dashboard) {
         return (
@@ -1894,8 +1897,8 @@ ${log.payload || ''}
       }
     }
 
-    if (activeTab.startsWith("ue_")) {
-      const parts = activeTab.split("/");
+    if (activeRoute.startsWith("ue_")) {
+      const parts = activeRoute.split("/");
       const ueId = parts[0].replace("ue_", "");
       const subPath = parts[1] || null;
       const ueRegistry = unifiedEntries.find(ue => ue.id === ueId);
@@ -1913,8 +1916,8 @@ ${log.payload || ''}
       }
     }
 
-    if (activeTab.startsWith("client-")) {
-      const clientName = decodeURIComponent(activeTab.replace("client-", ""));
+    if (activeRoute.startsWith("client-")) {
+      const clientName = decodeURIComponent(activeRoute.replace("client-", ""));
       return (
         <ClientsView 
           leads={leads}
@@ -1934,8 +1937,8 @@ ${log.payload || ''}
       );
     }
 
-    if (activeTab.startsWith("lead-")) {
-      const leadId = activeTab.replace("lead-", "");
+    if (activeRoute.startsWith("lead-")) {
+      const leadId = activeRoute.replace("lead-", "");
       return (
         <LeadsDatagrid 
           systemName={systemName}
@@ -1967,8 +1970,8 @@ ${log.payload || ''}
         />
       );
     }
-    if (activeTab.startsWith("settings")) {
-      const parts = activeTab.split("/");
+    if (activeRoute.startsWith("settings")) {
+      const parts = activeRoute.split("/");
       const subTab = parts[1] || "branding";
       const settingsAction = parts[2] || null;
       const settingsActionId = parts[3] || null;
@@ -2027,7 +2030,7 @@ ${log.payload || ''}
       );
     }
 
-    const rawBaseTab = activeTab.split(/[/?]/)[0];
+    const rawBaseTab = activeRoute.split("/")[0];
     const baseTab = rawBaseTab === "social_media" && !SOCIAL_MEDIA_ENABLED ? "dashboard" : rawBaseTab;
     switch (baseTab) {
       case "leads":
@@ -2510,8 +2513,14 @@ ${log.payload || ''}
               window.location.hash = "meetings";
             }}
             onAddTask={() => {
-              setActiveTab("tasks");
-              window.location.hash = "tasks";
+              const route = parseAppHash(activeTab).route;
+              // Dashboard and the task panel are the same view. Navigating
+              // dashboard → tasks remounts the calendar (ErrorBoundary resetKey)
+              // and races the create drawer against that remount.
+              if (route !== "tasks" && route !== "dashboard") {
+                setActiveTab("tasks");
+                window.location.hash = "tasks";
+              }
               setAutoOpenAddTask(true);
             }}
             onNavigateUpdates={() => {
@@ -2527,7 +2536,7 @@ ${log.payload || ''}
                   leaving a reload as the only way back. Contained here, the sidebar,
                   header and every other tab keep working, and switching tabs clears
                   the error via resetKey. */}
-              <ErrorBoundary contained resetKey={activeTab}>
+              <ErrorBoundary contained resetKey={workspaceResetKey(activeTab)}>
                 <Suspense fallback={<div className="w-full flex items-center justify-center py-24"><RefreshCw className="w-6 h-6 text-indigo-400 animate-spin" /></div>}>
                   {renderWorkspaceView()}
                 </Suspense>

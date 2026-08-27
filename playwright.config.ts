@@ -6,11 +6,9 @@ persistSuiteKind(inferSuiteKindFromArgv());
 /**
  * CCRM automated QA suite.
  *
- * Three kinds of test live here:
+ * Two kinds of test live here:
  *   - `crawler.spec.ts` / `navigation.spec.ts` — autonomous discovery.
  *   - `recorder.spec.ts` — replays Chrome DevTools Recorder exports.
- *   - `canary.spec.ts` — harness acceptance: the two known product bugs must
- *     still be detected. They pass when the bug is found.
  *
  * See https://playwright.dev/docs/test-configuration.
  */

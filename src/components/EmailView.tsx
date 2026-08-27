@@ -671,6 +671,11 @@ export const EmailView: React.FC<EmailViewProps> = ({
     return threadsList;
   }, [emails, searchQuery]);
 
+  const visibleThreads = useMemo(
+    () => (filter === "unread" ? threadedEmails.filter((t) => !t.seen) : threadedEmails),
+    [threadedEmails, filter],
+  );
+
   const activeThread = useMemo(() => {
     if (!isThreadedMode || !selectedThreadId) return null;
     return threadedEmails.find(t => t.id === selectedThreadId) || null;
@@ -714,6 +719,11 @@ export const EmailView: React.FC<EmailViewProps> = ({
       );
     });
   }, [emails, searchQuery]);
+
+  const visibleIndividualEmails = useMemo(
+    () => (filter === "unread" ? filteredIndividualEmails.filter((e) => !e.seen) : filteredIndividualEmails),
+    [filteredIndividualEmails, filter],
+  );
 
   // Fetch thread flow summary when active thread changes or thread bodies load
   useEffect(() => {
@@ -889,14 +899,20 @@ export const EmailView: React.FC<EmailViewProps> = ({
           </div>
 
           <div className="flex items-center justify-between bg-slate-55 p-1 rounded-2xl border border-slate-200/40">
-            <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200/50 text-[10px] font-black uppercase tracking-wider flex-1 mr-3">
+            <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200/50 text-[10px] font-black uppercase tracking-wider flex-1 mr-3" role="tablist" aria-label={t("Mailbox filter", "Filter schránky", "Postafiók szűrő")}>
               <button
+                type="button"
+                role="tab"
+                aria-selected={filter === "all"}
                 onClick={() => setFilter("all")}
                 className={`flex-1 py-1.5 rounded-lg transition-all ${filter === "all" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
               >
                 {t("All Threads", "Všetky vlákna", "Összes szál")}
               </button>
               <button
+                type="button"
+                role="tab"
+                aria-selected={filter === "unread"}
                 onClick={() => setFilter("unread")}
                 className={`flex-1 py-1.5 rounded-lg transition-all ${filter === "unread" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
               >
@@ -939,6 +955,11 @@ export const EmailView: React.FC<EmailViewProps> = ({
 
         {/* List of Email Cards */}
         <div className="flex-1 overflow-y-auto space-y-2 pt-3">
+          <h3 className="text-[10px] font-black uppercase tracking-wider text-slate-400 px-0.5">
+            {filter === "unread"
+              ? t("Unread messages", "Neprečítané správy", "Olvasatlan üzenetek")
+              : t("All threads", "Všetky vlákna", "Összes szál")}
+          </h3>
           {isLoadingEmails ? (
             <div className="flex flex-col items-center justify-center py-12 gap-2 text-slate-400">
               <Loader2 className="animate-spin text-pink-500" size={24} />
@@ -946,12 +967,14 @@ export const EmailView: React.FC<EmailViewProps> = ({
             </div>
           ) : isThreadedMode ? (
             /* Threaded List View */
-            threadedEmails.length === 0 ? (
+            visibleThreads.length === 0 ? (
               <div className="text-center py-12 text-slate-400 text-xs font-semibold">
-                {t("No threads found.", "Nenašli sa žiadne vlákna.", "Nincs találat a szálakra.")}
+                {filter === "unread"
+                  ? t("No unread messages.", "Žiadne neprečítané správy.", "Nincs olvasatlan üzenet.")
+                  : t("No threads found.", "Nenašli sa žiadne vlákna.", "Nincs találat a szálakra.")}
               </div>
             ) : (
-              threadedEmails.map(thread => {
+              visibleThreads.map(thread => {
                 const isSelected = selectedThreadId === thread.id;
                 const latest = thread.latestEmail;
                 const matchedClient = leads.find(l => l.email && l.email.toLowerCase() === latest.from.address.toLowerCase());
@@ -1024,12 +1047,14 @@ export const EmailView: React.FC<EmailViewProps> = ({
             )
           ) : (
             /* Unthreaded List View */
-            filteredIndividualEmails.length === 0 ? (
+            visibleIndividualEmails.length === 0 ? (
               <div className="text-center py-12 text-slate-400 text-xs font-semibold">
-                {t("No conversations found.", "Nenašli sa žiadne konverzácie.", "Nincs találat a beszélgetésekre.")}
+                {filter === "unread"
+                  ? t("No unread messages.", "Žiadne neprečítané správy.", "Nincs olvasatlan üzenet.")
+                  : t("No conversations found.", "Nenašli sa žiadne konverzácie.", "Nincs találat a beszélgetésekre.")}
               </div>
             ) : (
-              filteredIndividualEmails.map(email => {
+              visibleIndividualEmails.map(email => {
                 const isSelected = selectedEmail?.uid === email.uid;
                 const matchedClient = leads.find(l => l.email && l.email.toLowerCase() === email.from.address.toLowerCase());
                 

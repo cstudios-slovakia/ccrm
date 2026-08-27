@@ -1146,7 +1146,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   // Find active client details based on URL deep routing
   const activeClient = useMemo(() => {
     if (!initialSelectedClient) return null;
-    return clientProfiles.find(c => c.name.toLowerCase() === initialSelectedClient.toLowerCase()) || null;
+    const lookupName = initialSelectedClient.split("?")[0];
+    return clientProfiles.find(c => c.name.toLowerCase() === lookupName.toLowerCase()) || null;
   }, [clientProfiles, initialSelectedClient]);
 
   // RegisterUZ dynamically loaded statement list states
@@ -4618,7 +4619,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         </div>
 
         {/* Collapsible Filter Panel (Collapses smoothly using modern CSS grid/height transitions) */}
-        <div className={`grid transition-all duration-350 ease-in-out ${showFilterDrawer ? "grid-rows-[1fr] opacity-100 border-t border-slate-150 pt-4" : "grid-rows-[0fr] opacity-0 overflow-hidden"}`}>
+        <div className={`grid transition-all duration-350 ease-in-out ${showFilterDrawer ? "grid-rows-[1fr] opacity-100 border-t border-slate-150 pt-4" : "grid-rows-[0fr] opacity-0 invisible overflow-hidden pointer-events-none"}`} aria-hidden={!showFilterDrawer}>
           <div className="overflow-hidden">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pb-1">
               

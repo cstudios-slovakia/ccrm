@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { AnimatePresence, motion } from "framer-motion";
+import { createPortal, flushSync } from "react-dom";
+import { motion } from "framer-motion";
 import { Check, ChevronDown } from "lucide-react";
 
 export interface DropdownOption {
@@ -43,6 +43,8 @@ interface Coords {
 }
 
 const PANEL_MAX_HEIGHT = 260;
+/** Above drawers (`z-[100000]`) and modals (`z-[9999]`) so portaled options paint on top. */
+const PANEL_Z = 100001;
 
 export const CustomSelect: React.FC<CustomSelectProps> = ({
   value,
@@ -73,12 +75,22 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
     const rect = el.getBoundingClientRect();
     const spaceBelow = window.innerHeight - rect.bottom;
     const openUp = spaceBelow < PANEL_MAX_HEIGHT && rect.top > spaceBelow;
+    const margin = 8;
+    const width = rect.width;
+    let left = align === "right" ? undefined : rect.left;
+    let right = align === "right" ? window.innerWidth - rect.right : undefined;
+    if (left !== undefined) {
+      left = Math.max(margin, Math.min(left, window.innerWidth - Math.max(width, 160) - margin));
+    }
+    if (right !== undefined) {
+      right = Math.max(margin, right);
+    }
     setCoords({
       top: openUp ? undefined : rect.bottom + 4,
       bottom: openUp ? window.innerHeight - rect.top + 4 : undefined,
-      left: align === "right" ? undefined : rect.left,
-      right: align === "right" ? window.innerWidth - rect.right : undefined,
-      width: rect.width,
+      left,
+      right,
+      width,
       openUp,
     });
   };
@@ -113,10 +125,16 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
         setIsOpen(false);
       }
     };
-    // Capture phase: some parents (e.g. draggable canvas cards) stopPropagation()
-    // on mousedown during the bubble phase, which would otherwise hide this click.
-    document.addEventListener("mousedown", handleClickOutside, true);
-    return () => document.removeEventListener("mousedown", handleClickOutside, true);
+    // Defer so the opening click (and its capture-phase mousedown) cannot
+    // immediately close the panel. Capture phase: some parents (e.g. draggable
+    // canvas cards) stopPropagation() on mousedown during the bubble phase.
+    const id = window.setTimeout(() => {
+      document.addEventListener("mousedown", handleClickOutside, true);
+    }, 0);
+    return () => {
+      window.clearTimeout(id);
+      document.removeEventListener("mousedown", handleClickOutside, true);
+    };
   }, [isOpen]);
 
   useEffect(() => {
@@ -132,11 +150,16 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
     triggerRef.current?.focus();
   };
 
+  const open = () => {
+    updatePosition();
+    setIsOpen(true);
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (disabled) return;
     if (!isOpen && (e.key === "Enter" || e.key === " " || e.key === "ArrowDown" || e.key === "ArrowUp")) {
       e.preventDefault();
-      setIsOpen(true);
+      open();
       return;
     }
     if (!isOpen) return;
@@ -153,8 +176,9 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
       e.preventDefault();
       const opt = opts[highlighted];
       if (opt && !opt.disabled) {
+        flushSync(() => setIsOpen(false));
+        triggerRef.current?.focus();
         onChange(opt.value);
-        close();
       }
     }
   };
@@ -167,7 +191,14 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
         type="button"
         ref={triggerRef}
         disabled={disabled}
-        onClick={() => !disabled && setIsOpen((o) => !o)}
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (disabled) return;
+          if (isOpen) setIsOpen(false);
+          else open();
+        }}
         onKeyDown={handleKeyDown}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
@@ -199,26 +230,26 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
 
       {typeof document !== "undefined" &&
         createPortal(
-          <AnimatePresence>
-            {isOpen && coords && (
+          isOpen ? (
               <motion.div
                 ref={panelRef}
                 role="listbox"
-                initial={{ opacity: 0, scale: 0.97, y: coords.openUp ? 6 : -6 }}
+                initial={{ opacity: 0, scale: 0.97, y: coords?.openUp ? 6 : -6 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.98, y: coords.openUp ? 4 : -4 }}
                 transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
                 style={{
                   position: "fixed",
-                  top: coords.top,
-                  bottom: coords.bottom,
-                  left: coords.left,
-                  right: coords.right,
-                  minWidth: coords.width,
+                  top: coords?.top,
+                  bottom: coords?.bottom,
+                  left: coords?.left,
+                  right: coords?.right,
+                  minWidth: coords?.width ?? 160,
                   maxHeight: PANEL_MAX_HEIGHT,
-                  transformOrigin: coords.openUp ? "bottom" : "top",
+                  zIndex: PANEL_Z,
+                  transformOrigin: coords?.openUp ? "bottom" : "top",
+                  visibility: coords ? "visible" : "hidden",
                 }}
-                className={`z-[1000] overflow-y-auto rounded-2xl border border-slate-200 bg-white py-1.5 shadow-xl ring-4 ring-slate-900/[0.03] ${panelClassName}`}
+                className={`overflow-y-auto rounded-2xl border border-slate-200 bg-white py-1.5 shadow-xl ring-4 ring-slate-900/[0.03] ${panelClassName}`}
               >
                 {opts.length === 0 && <div className="px-3.5 py-2.5 text-sm text-slate-400 italic">No options</div>}
                 {opts.map((opt, i) => (
@@ -229,10 +260,16 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                     aria-selected={opt.value === value}
                     disabled={opt.disabled}
                     onMouseEnter={() => setHighlighted(i)}
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       if (opt.disabled) return;
+                      // Close synchronously before the parent re-renders (the
+                      // task dashboard calendar is expensive). Otherwise the
+                      // listbox stays in the DOM for hundreds of ms and looks
+                      // like the choice did not take.
+                      flushSync(() => setIsOpen(false));
+                      triggerRef.current?.focus();
                       onChange(opt.value);
-                      close();
                     }}
                     className={`w-full flex items-center gap-2 px-3.5 py-2.5 text-left text-sm font-medium transition-colors cursor-pointer ${
                       opt.disabled
@@ -250,8 +287,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                   </button>
                 ))}
               </motion.div>
-            )}
-          </AnimatePresence>,
+          ) : null,
           document.body
         )}
     </>

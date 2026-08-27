@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { useUserPref } from "../utils/userPrefs";
 import { resolveAssigneeName } from "../utils/taskSelectors";
-// import { createPortal } from "react-dom";
+import { createPortal } from "react-dom";
 import {
     Users,
     MapPin,
@@ -314,6 +314,132 @@ import {
     // formatTimestampLocalized — only used by the commented-out e-mail full view
 } from "../utils/localTime";
 import { formatMoney } from "../utils/currency";
+
+type LeadStatusSelectorProps = {
+    status: string;
+    onChange: (newStatus: string) => void;
+    isEditing?: boolean;
+    leadStates: string[];
+    leadStateParents: Record<string, string>;
+    leadStageGroups?: Record<string, "new" | "in_progress" | "closed">;
+    leadStateColors: Record<string, string>;
+    systemLanguage: Language;
+};
+
+/** Module-scoped so hover/filter re-renders of the grid do not remount the dropdown. */
+const LeadStatusSelector: React.FC<LeadStatusSelectorProps> = ({
+    status,
+    onChange,
+    isEditing = true,
+    leadStates,
+    leadStateParents,
+    leadStageGroups,
+    leadStateColors,
+    systemLanguage,
+}) => {
+    const sName = (status || "").toLowerCase();
+    const activeMain = leadStateParents[sName] || sName;
+    const hasSubstates = leadStates.some(
+        (s) => leadStateParents[s.toLowerCase()] === activeMain,
+    );
+    const activeSubstates = leadStates.filter(
+        (s) => leadStateParents[s.toLowerCase()] === activeMain,
+    );
+    const currentSub = leadStateParents[sName] ? sName : "";
+    const getStateColor = (stateName: string) => {
+        if (!leadStateColors) return "#64748b";
+        return leadStateColors[(stateName || "").toLowerCase()] || "#64748b";
+    };
+    const mainColor = getStateColor(activeMain);
+    const subColor = currentSub ? getStateColor(currentSub) : mainColor;
+
+    const majorStates = (["new", "in_progress", "closed"] as const).flatMap(
+        (group) =>
+            leadStates.filter(
+                (s) =>
+                    !leadStateParents[s.toLowerCase()] &&
+                    (leadStageGroups?.[s.toLowerCase()] || "in_progress") === group,
+            ),
+    );
+
+    if (!isEditing) {
+        if (leadStateParents[sName]) {
+            return (
+                <span
+                    className="inline-flex items-center px-2.5 py-1 rounded-full text-[9px] font-extrabold uppercase border shadow-sm text-white select-none leading-none tracking-wider"
+                    style={{
+                        background: `linear-gradient(135deg, ${mainColor}, ${subColor})`,
+                        borderColor: "transparent",
+                    }}
+                >
+                    {leadStateParents[sName].toUpperCase()} &gt; {sName.toUpperCase()}
+                </span>
+            );
+        }
+        return (
+            <span
+                className="inline-flex items-center px-2.5 py-1 rounded-full text-[9px] font-extrabold uppercase border shadow-sm text-white select-none leading-none tracking-wider"
+                style={{ backgroundColor: mainColor, borderColor: mainColor }}
+            >
+                {sName.toUpperCase()}
+            </span>
+        );
+    }
+
+    return (
+        <div
+            className="flex flex-col items-center lg:items-start gap-1 justify-center"
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+        >
+            <CustomSelect
+                size="sm"
+                value={activeMain}
+                onChange={onChange}
+                className="!font-black !uppercase !tracking-wider !shadow-sm"
+                style={{
+                    backgroundColor: `${mainColor}18`,
+                    color: mainColor,
+                    borderColor: `${mainColor}35`,
+                }}
+                options={majorStates.map((state) => ({
+                    value: state.toLowerCase(),
+                    label: state,
+                }))}
+            />
+            {hasSubstates && (
+                <CustomSelect
+                    size="sm"
+                    value={currentSub}
+                    onChange={(newSub) => onChange(newSub || activeMain)}
+                    className="!font-black !uppercase !tracking-wider !shadow-sm"
+                    style={{
+                        background: currentSub
+                            ? `linear-gradient(to right, ${mainColor}18, ${subColor}18)`
+                            : `${mainColor}10`,
+                        color: subColor,
+                        borderColor: `${subColor}30`,
+                    }}
+                    options={[
+                        {
+                            value: "",
+                            label:
+                                systemLanguage === "sk"
+                                    ? "-- Žiadny podstav --"
+                                    : systemLanguage === "hu"
+                                      ? "-- Nincs al-állapot --"
+                                      : "-- No Substate --",
+                        },
+                        ...activeSubstates.map((sub) => ({
+                            value: sub.toLowerCase(),
+                            label: `↳ ${sub}`,
+                        })),
+                    ]}
+                />
+            )}
+        </div>
+    );
+};
 
 // Separates the old from the new state inside a `status_change` event's content.
 // `timeline_events` has no column for the pair, so it is stored as plain text —
@@ -815,125 +941,24 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         );
     };
 
-    const StatusSelector: React.FC<{
-        status: string;
-        onChange: (newStatus: string) => void;
-        isEditing?: boolean;
-    }> = ({ status, onChange, isEditing = true }) => {
-        const sName = (status || "").toLowerCase();
-        const activeMain = leadStateParents[sName] || sName;
-        const hasSubstates = leadStates.some(
-            (s) => leadStateParents[s.toLowerCase()] === activeMain,
+    const StatusSelector = useMemo(() => {
+        const Bound: React.FC<{
+            status: string;
+            onChange: (newStatus: string) => void;
+            isEditing?: boolean;
+        }> = (props) => (
+            <LeadStatusSelector
+                {...props}
+                leadStates={leadStates}
+                leadStateParents={leadStateParents}
+                leadStageGroups={leadStageGroups}
+                leadStateColors={leadStateColors}
+                systemLanguage={systemLanguage}
+            />
         );
-        const activeSubstates = leadStates.filter(
-            (s) => leadStateParents[s.toLowerCase()] === activeMain,
-        );
-        const currentSub = leadStateParents[sName] ? sName : "";
-
-        const mainColor = getSafeStateColor(activeMain);
-        const subColor = currentSub ? getSafeStateColor(currentSub) : mainColor;
-
-        const handleMainChange = (newMain: string) => {
-            onChange(newMain);
-        };
-
-        const handleSubChange = (newSub: string) => {
-            if (newSub) {
-                onChange(newSub);
-            } else {
-                onChange(activeMain);
-            }
-        };
-
-        // Order major states exactly like the Settings pipeline table: grouped by
-        // stage group (new → in_progress → closed), preserving the configured
-        // leadStates order within each group.
-        const majorStates = (["new", "in_progress", "closed"] as const).flatMap(
-            (group) =>
-                leadStates.filter(
-                    (s) =>
-                        !leadStateParents[s.toLowerCase()] &&
-                        (leadStageGroups[s.toLowerCase()] || "in_progress") ===
-                            group,
-                ),
-        );
-
-        if (!isEditing) {
-            if (leadStateParents[sName]) {
-                return (
-                    <span
-                        className="inline-flex items-center px-2.5 py-1 rounded-full text-[9px] font-extrabold uppercase border shadow-sm text-white select-none leading-none tracking-wider"
-                        style={{
-                            background: `linear-gradient(135deg, ${mainColor}, ${subColor})`,
-                            borderColor: "transparent",
-                        }}
-                    >
-                        {leadStateParents[sName].toUpperCase()} &gt;{" "}
-                        {sName.toUpperCase()}
-                    </span>
-                );
-            } else {
-                return (
-                    <span
-                        className="inline-flex items-center px-2.5 py-1 rounded-full text-[9px] font-extrabold uppercase border shadow-sm text-white select-none leading-none tracking-wider"
-                        style={{
-                            backgroundColor: mainColor,
-                            borderColor: mainColor,
-                        }}
-                    >
-                        {sName.toUpperCase()}
-                    </span>
-                );
-            }
-        }
-
-        return (
-            <div className="flex flex-col items-center lg:items-start gap-1 justify-center">
-                {/* Main Dropdown */}
-                <CustomSelect
-                    size="sm"
-                    value={activeMain}
-                    onChange={handleMainChange}
-                    className="!font-black !uppercase !tracking-wider !shadow-sm"
-                    style={{
-                        backgroundColor: `${mainColor}18`,
-                        color: mainColor,
-                        borderColor: `${mainColor}35`,
-                    }}
-                    options={majorStates.map((state) => ({ value: state.toLowerCase(), label: state }))}
-                />
-
-                {/* Substate Dropdown */}
-                {hasSubstates && (
-                    <CustomSelect
-                        size="sm"
-                        value={currentSub}
-                        onChange={handleSubChange}
-                        className="!font-black !uppercase !tracking-wider !shadow-sm"
-                        style={{
-                            background: currentSub
-                                ? `linear-gradient(to right, ${mainColor}18, ${subColor}18)`
-                                : `${mainColor}10`,
-                            color: subColor,
-                            borderColor: `${subColor}30`,
-                        }}
-                        options={[
-                            {
-                                value: "",
-                                label:
-                                    systemLanguage === "sk"
-                                        ? "-- Žiadny podstav --"
-                                        : systemLanguage === "hu"
-                                          ? "-- Nincs al-állapot --"
-                                          : "-- No Substate --",
-                            },
-                            ...activeSubstates.map((sub) => ({ value: sub.toLowerCase(), label: `↳ ${sub}` })),
-                        ]}
-                    />
-                )}
-            </div>
-        );
-    };
+        Bound.displayName = "StatusSelector";
+        return Bound;
+    }, [leadStates, leadStateParents, leadStageGroups, leadStateColors, systemLanguage]);
 
     const getSafePMColor = (pmName: string) => {
         if (!projectManagerColors) return "#64748b";
@@ -8663,14 +8688,18 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             {(orderingMode === "state" ||
                                                 orderingMode === "pm") && (
                                                 <tr
-                                                    onClick={() =>
-                                                        toggleGroupCollapse(
-                                                            group.state,
-                                                        )
-                                                    }
+                                                    onClick={() => {
+                                                        const first = group.leads[0];
+                                                        if (first) {
+                                                            window.location.hash = `lead-${first.id}`;
+                                                            return;
+                                                        }
+                                                        toggleGroupCollapse(group.state);
+                                                    }}
                                                     className="block lg:table-row bg-transparent cursor-pointer hover:opacity-80 transition-all select-none"
                                                 >
-                                                    <td
+                                                    <th
+                                                        scope="colgroup"
                                                         colSpan={9}
                                                         className={`px-4 lg:px-6 font-bold align-middle select-none block lg:table-cell w-full lg:w-auto ${compactMode ? "py-1" : "py-1.5"}`}
                                                         style={{
@@ -8680,8 +8709,15 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     >
                                                         <div className="flex items-center justify-between w-full gap-2">
                                                             <div className="flex items-center gap-2 shrink-0">
-                                                                <span
-                                                                    className="text-[10px] select-none opacity-60"
+                                                                <button
+                                                                    type="button"
+                                                                    aria-expanded={!isCollapsed}
+                                                                    aria-label={isCollapsed ? "Expand group" : "Collapse group"}
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        toggleGroupCollapse(group.state);
+                                                                    }}
+                                                                    className="text-[10px] select-none opacity-60 hover:opacity-100 transition-opacity cursor-pointer"
                                                                     style={{
                                                                         color: stateColor,
                                                                         marginRight:
@@ -8691,7 +8727,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                     {isCollapsed
                                                                         ? "▶"
                                                                         : "▼"}
-                                                                </span>
+                                                                </button>
                                                                 <span
                                                                     className="text-[11px] font-black uppercase tracking-wider font-heading"
                                                                     style={{
@@ -8767,7 +8803,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                 )}
                                                             </span>
                                                         </div>
-                                                    </td>
+                                                    </th>
                                                 </tr>
                                             )}
 
@@ -8807,11 +8843,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                     );
 
                                                                 return (
-                                                                    <>
+                                                                    <React.Fragment key={lead.id}>
                                                                         <tr
-                                                                            key={
-                                                                                lead.id
-                                                                            }
                                                                             onMouseEnter={() =>
                                                                                 setHoveredLeadId(
                                                                                     lead.id,
@@ -9809,7 +9842,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                 </td>
                                                                             </tr>
                                                                         )}
-                                                                    </>
+                                                                    </React.Fragment>
                                                                 );
                                                             })}
                                                         {hasMore && (
@@ -9987,7 +10020,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                             lead.id
                                                                         }
                                                                         draggable="true"
-                                                                        onDragStart={() => {
+                                                                        onDragStart={(e) => {
+                                                                            const target = e.target as HTMLElement;
+                                                                            if (target.closest('button, input, textarea, a, [aria-haspopup="listbox"]')) {
+                                                                                e.preventDefault();
+                                                                                return;
+                                                                            }
                                                                             setDraggedLeadId(
                                                                                 lead.id,
                                                                             );
@@ -10388,9 +10426,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 </div>
             </div>
 
-            {(isModalOpen || isClosingModal) && (
+            {(isModalOpen || isClosingModal) &&
+                typeof document !== "undefined" &&
+                createPortal(
                 <div
-                    className={`fixed inset-0 z-[9999] flex items-end justify-center bg-slate-900/35 backdrop-blur-sm ${isClosingModal ? "animate-fade-out" : "animate-fade-in"}`}
+                    className={`fixed inset-0 z-[100000] flex items-end justify-center bg-slate-900/35 backdrop-blur-sm ${isClosingModal ? "animate-fade-out" : "animate-fade-in"}`}
                 >
                     {/* Click backdrop to close */}
                     <div
@@ -10399,7 +10439,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     />
 
                     <div
-                        className={`w-full max-w-2xl rounded-t-[32px] border-t border-x border-blue-100 shadow-2xl p-7 space-y-6 relative z-10 ${isClosingModal ? "animate-slide-out-bottom" : "animate-slide-in-bottom"}`}
+                        className={`w-full max-w-2xl max-h-[min(100vh,100dvh)] overflow-y-auto rounded-t-[32px] border-t border-x border-blue-100 shadow-2xl p-7 space-y-6 relative z-10 ${isClosingModal ? "animate-slide-out-bottom" : "animate-slide-in-bottom"}`}
                         style={{
                             background: "#ffffff",
                             backdropFilter: "none",
@@ -10884,13 +10924,16 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             </div>
                         </form>
                     </div>
-                </div>
+                </div>,
+                document.body,
             )}
 
             {/* --- CLIENT INSPECT SLIDEOUT RIGHT DRAWER (Per rules.md) --- */}
-            {(selectedClientName || isClosingClient) && (
+            {(selectedClientName || isClosingClient) &&
+                typeof document !== "undefined" &&
+                createPortal(
                 <div
-                    className={`fixed inset-0 z-[9999] flex justify-end bg-slate-900/35 backdrop-blur-sm ${isClosingClient ? "animate-fade-out" : "animate-fade-in"}`}
+                    className={`fixed inset-0 z-[100000] flex justify-end bg-slate-900/35 backdrop-blur-sm ${isClosingClient ? "animate-fade-out" : "animate-fade-in"}`}
                 >
                     <div className="flex-1" onClick={closeClientDrawer} />
 
@@ -11157,7 +11200,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body,
             )}
         </div>
     );

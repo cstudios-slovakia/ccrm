@@ -314,6 +314,8 @@ export const Header: React.FC<HeaderProps> = ({
             }
             if (e.key === "Escape") {
                 setShowSearchDropdown(false);
+                setIsMeetingsOpen(false);
+                setIsToolboxOpen(false);
                 searchInputRef.current?.blur();
             }
         };
@@ -643,6 +645,8 @@ export const Header: React.FC<HeaderProps> = ({
                 <div className="relative" ref={meetingsDropdownRef}>
                     <button
                         onClick={() => setIsMeetingsOpen(!isMeetingsOpen)}
+                        aria-expanded={isMeetingsOpen}
+                        aria-haspopup="menu"
                         className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-colors shadow-sm cursor-pointer ${
                             isMeetingsOpen
                                 ? "bg-[#0b1329] border-[#0b1329] text-white"
@@ -665,8 +669,17 @@ export const Header: React.FC<HeaderProps> = ({
                     </button>
 
                     {/* Popover Dropdown Panel */}
+                    {isMeetingsOpen && typeof document !== "undefined" &&
+                        createPortal(
+                            <div
+                                className="fixed inset-0 z-40"
+                                aria-hidden="true"
+                                onClick={() => setIsMeetingsOpen(false)}
+                            />,
+                            document.body,
+                        )}
                     {isMeetingsOpen && (
-                        <div className="absolute right-0 mt-2.5 w-60 bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-2xl rounded-2xl p-2.5 z-50 flex flex-col gap-1 select-none animate-in fade-in slide-in-from-top-2 duration-200">
+                        <div role="menu" className="absolute right-0 mt-2.5 w-60 bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-2xl rounded-2xl p-2.5 z-50 flex flex-col gap-1 select-none animate-in fade-in slide-in-from-top-2 duration-200">
                             <div className="px-3 py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 mb-1">
                                 {systemLanguage === "sk"
                                     ? "Rýchle akcie zasadačky"
@@ -760,6 +773,8 @@ export const Header: React.FC<HeaderProps> = ({
                 <div className="relative" ref={toolboxDropdownRef}>
                     <button
                         onClick={() => setIsToolboxOpen(!isToolboxOpen)}
+                        aria-expanded={isToolboxOpen}
+                        aria-haspopup="menu"
                         className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-colors shadow-sm cursor-pointer ${
                             isToolboxOpen
                                 ? "bg-[#0b1329] border-[#0b1329] text-white"
@@ -774,8 +789,17 @@ export const Header: React.FC<HeaderProps> = ({
                         <Workflow className="h-5 w-5 text-purple-700" />
                     </button>
 
+                    {isToolboxOpen && typeof document !== "undefined" &&
+                        createPortal(
+                            <div
+                                className="fixed inset-0 z-40"
+                                aria-hidden="true"
+                                onClick={() => setIsToolboxOpen(false)}
+                            />,
+                            document.body,
+                        )}
                     {isToolboxOpen && (
-                        <div className="absolute right-0 mt-2.5 w-64 bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-2xl rounded-2xl p-3.5 z-50 flex flex-col gap-2 select-none animate-in fade-in slide-in-from-top-2 duration-200">
+                        <div role="menu" className="absolute right-0 mt-2.5 w-64 bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-2xl rounded-2xl p-3.5 z-50 flex flex-col gap-2 select-none animate-in fade-in slide-in-from-top-2 duration-200">
                             <div className="px-1.5 pb-2 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 mb-1 flex items-center justify-between">
                                 <span>
                                     {t(
