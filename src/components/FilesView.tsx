@@ -562,7 +562,12 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
                   return (
                     <tr 
                       key={file.id}
-                      className="hover:bg-amber-50/20 transition-colors duration-150 border-b border-amber-50/60 group"
+                      onClick={() => {
+                        if ((window as any).previewFile) {
+                          (window as any).previewFile(`/uploads/${file.id}_${file.fileName}`, file.fileName);
+                        }
+                      }}
+                      className="hover:bg-amber-50/20 transition-colors duration-150 border-b border-amber-50/60 group cursor-pointer"
                     >
                       
                       {/* File Name */}
@@ -622,7 +627,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
 
                       {/* Actions */}
                       <td className="py-3.5 px-6 text-right">
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
                           {!(
                             file.clientName === "Unassigned Documents" ||
                             file.clientName === "Nepriradené dokumenty" ||

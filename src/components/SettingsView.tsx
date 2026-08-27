@@ -12,6 +12,7 @@ import type { Language } from "../utils/translations";
 import { ProjectSettings } from "./ProjectSettings";
 import { PasswordInput } from "./PasswordInput";
 import { CustomSelect } from "./ui/CustomSelect";
+import { SecretInput } from "./ui/SecretInput";
 import { CURRENCY_OPTIONS, currencyForRegion } from "../utils/currency";
 import { SOCIAL_MEDIA_ENABLED } from "../utils/featureFlags";
 import { formatTimestampLocalized } from "../utils/localTime";
@@ -511,7 +512,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   // Zernio Social Media Integration State
   const [zernioApiKey, setZernioApiKey] = React.useState<string>(integrationsConfig?.zernioApiKey || "");
-  const [showZernioKey, setShowZernioKey] = React.useState<boolean>(false);
   const [isTestingZernio, setIsTestingZernio] = React.useState<boolean>(false);
   const [zernioTestResult, setZernioTestResult] = React.useState<{ success: boolean; message: string; accounts?: any[]; count?: number } | null>(
     integrationsConfig?.zernioConnected ? { success: true, message: "Zernio is connected", accounts: integrationsConfig?.zernioAccounts || [], count: (integrationsConfig?.zernioAccounts || []).length } : null
@@ -849,14 +849,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   // OpenAI & Vector DB Configuration States
   const [openAiKey, setOpenAiKey] = React.useState("");
-  const [showOpenAiKey, setShowOpenAiKey] = React.useState(false);
   // Alternative LLM providers — only the Automation workflow AI nodes can pick
   // a provider, the rest of the CRM's AI features are OpenAI-only. Kept here so
   // every AI credential lives in one place.
   const [anthropicKey, setAnthropicKey] = React.useState("");
-  const [showAnthropicKey, setShowAnthropicKey] = React.useState(false);
   const [geminiKey, setGeminiKey] = React.useState("");
-  const [showGeminiKey, setShowGeminiKey] = React.useState(false);
   const [vectorDb, setVectorDb] = React.useState<"none" | "mariadb" | "qdrant" | "pinecone">("none");
   const [mariaDbHost, setMariaDbHost] = React.useState("");
   const [mariaDbPort, setMariaDbPort] = React.useState("3306");
@@ -905,11 +902,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [exchClientSecret, setExchClientSecret] = React.useState("");
   const [exchPassword, setExchPassword] = React.useState("");
   const [exchMailbox, setExchMailbox] = React.useState("");
-
-  // Show/Hide password toggles
-  const [showSmtpPass, setShowSmtpPass] = React.useState(false);
-  const [showExchSecret, setShowExchSecret] = React.useState(false);
-  const [showExchPass, setShowExchPass] = React.useState(false);
 
   // Connection validation states
   const [testRecipient, setTestRecipient] = React.useState("");
@@ -4604,24 +4596,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                         <div className="space-y-1.5">
                           <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider">{getTranslation(userLanguage, "settings.email.smtp_pass")}</label>
-                          <div className="relative">
-                            <input
-                              type={showSmtpPass ? "text" : "password"}
-                              required
-                              disabled={getPermission("general_config") === "view"}
-                              value={smtpPassword}
-                              onChange={(e) => setSmtpPassword(e.target.value)}
-                              placeholder="••••••••••••"
-                              className="w-full pl-4 pr-10 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setShowSmtpPass(!showSmtpPass)}
-                              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-650 cursor-pointer p-1"
-                            >
-                              {showSmtpPass ? <Minus className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                            </button>
-                          </div>
+                          <SecretInput
+                            language={userLanguage}
+                            mono={false}
+                            required
+                            disabled={getPermission("general_config") === "view"}
+                            value={smtpPassword}
+                            onChange={setSmtpPassword}
+                            placeholder={t("Mailbox password", "Heslo k schránke", "Postafiók jelszava")}
+                          />
                         </div>
                       </>
                     )}
@@ -4728,24 +4711,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                         <div className="space-y-1.5 md:col-span-2">
                           <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider">{userLanguage === "sk" ? "Klientsky kľúč (Client Secret)" : userLanguage === "hu" ? "Kliens titkos kulcs (Client Secret)" : "Client Secret"}</label>
-                          <div className="relative">
-                            <input
-                              type={showExchSecret ? "text" : "password"}
-                              required
-                              disabled={getPermission("general_config") === "view"}
-                              value={exchClientSecret}
-                              onChange={(e) => setExchClientSecret(e.target.value)}
-                              placeholder="••••••••••••"
-                              className="w-full pl-4 pr-10 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setShowExchSecret(!showExchSecret)}
-                              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-650 cursor-pointer p-1"
-                            >
-                              {showExchSecret ? <Minus className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                            </button>
-                          </div>
+                          <SecretInput
+                            language={userLanguage}
+                            required
+                            disabled={getPermission("general_config") === "view"}
+                            value={exchClientSecret}
+                            onChange={setExchClientSecret}
+                            placeholder={t("Client secret", "Klientsky kľúč", "Kliens titkos kulcs")}
+                          />
                         </div>
                       </>
                     )}
@@ -4754,24 +4727,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     {(exchAuth === "basic" || exchAuth === "ntlm") && (
                       <div className="space-y-1.5 md:col-span-2 border-t border-slate-100 pt-3">
                         <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider">{userLanguage === "sk" ? "Exchange Heslo" : userLanguage === "hu" ? "Exchange Jelszó" : "Exchange Password"}</label>
-                        <div className="relative">
-                          <input
-                            type={showExchPass ? "text" : "password"}
-                            required
-                            disabled={getPermission("general_config") === "view"}
-                            value={exchPassword}
-                            onChange={(e) => setExchPassword(e.target.value)}
-                            placeholder="••••••••••••"
-                            className="w-full pl-4 pr-10 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all font-mono"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowExchPass(!showExchPass)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-650 cursor-pointer p-1"
-                          >
-                            {showExchPass ? <Minus className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                          </button>
-                        </div>
+                        <SecretInput
+                          language={userLanguage}
+                          required
+                          disabled={getPermission("general_config") === "view"}
+                          value={exchPassword}
+                          onChange={setExchPassword}
+                          placeholder={t("Exchange password", "Heslo Exchange", "Exchange jelszó")}
+                        />
                       </div>
                     )}
 
@@ -5066,23 +5029,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider block">
                     {t("OpenAI API Secret Key", "Tajný API kľúč OpenAI", "OpenAI API titkos kulcs")}
                   </label>
-                  <div className="relative max-w-2xl">
-                    <input
-                      type={showOpenAiKey ? "text" : "password"}
-                      disabled={getPermission("ai_config") === "view"}
-                      value={openAiKey}
-                      onChange={(e) => setOpenAiKey(e.target.value)}
-                      placeholder="sk-proj-..."
-                      className="w-full pl-4 pr-10 py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-mono font-bold text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:bg-slate-50 disabled:text-slate-400"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowOpenAiKey(!showOpenAiKey)}
-                      className="absolute right-3.5 top-2.5 text-slate-400 hover:text-slate-650 cursor-pointer"
-                    >
-                      {showOpenAiKey ? <Minus className="h-4.5 w-4.5" /> : <Eye className="h-4.5 w-4.5" />}
-                    </button>
-                  </div>
+                  <SecretInput
+                    className="max-w-2xl"
+                    language={userLanguage}
+                    disabled={getPermission("ai_config") === "view"}
+                    value={openAiKey}
+                    onChange={setOpenAiKey}
+                    placeholder="sk-proj-..."
+                  />
                 </div>
 
                 <div className="space-y-4 pt-4 border-t border-slate-100">
@@ -5098,46 +5052,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider block">
                       {t("Anthropic API Secret Key", "Tajný API kľúč Anthropic", "Anthropic API titkos kulcs")}
                     </label>
-                    <div className="relative max-w-2xl">
-                      <input
-                        type={showAnthropicKey ? "text" : "password"}
-                        disabled={getPermission("ai_config") === "view"}
-                        value={anthropicKey}
-                        onChange={(e) => setAnthropicKey(e.target.value)}
-                        placeholder="sk-ant-..."
-                        className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-mono font-bold text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:bg-slate-50 disabled:text-slate-400"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowAnthropicKey(!showAnthropicKey)}
-                        className="absolute right-3.5 top-2.5 text-slate-400 hover:text-slate-650 cursor-pointer"
-                      >
-                        {showAnthropicKey ? <Minus className="h-4.5 w-4.5" /> : <Eye className="h-4.5 w-4.5" />}
-                      </button>
-                    </div>
+                    <SecretInput
+                      className="max-w-2xl"
+                      language={userLanguage}
+                      disabled={getPermission("ai_config") === "view"}
+                      value={anthropicKey}
+                      onChange={setAnthropicKey}
+                      placeholder="sk-ant-..."
+                    />
                   </div>
 
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider block">
                       {t("Google Gemini API Secret Key", "Tajný API kľúč Google Gemini", "Google Gemini API titkos kulcs")}
                     </label>
-                    <div className="relative max-w-2xl">
-                      <input
-                        type={showGeminiKey ? "text" : "password"}
-                        disabled={getPermission("ai_config") === "view"}
-                        value={geminiKey}
-                        onChange={(e) => setGeminiKey(e.target.value)}
-                        placeholder="AIzaSy..."
-                        className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-mono font-bold text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:bg-slate-50 disabled:text-slate-400"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowGeminiKey(!showGeminiKey)}
-                        className="absolute right-3.5 top-2.5 text-slate-400 hover:text-slate-650 cursor-pointer"
-                      >
-                        {showGeminiKey ? <Minus className="h-4.5 w-4.5" /> : <Eye className="h-4.5 w-4.5" />}
-                      </button>
-                    </div>
+                    <SecretInput
+                      className="max-w-2xl"
+                      language={userLanguage}
+                      disabled={getPermission("ai_config") === "view"}
+                      value={geminiKey}
+                      onChange={setGeminiKey}
+                      placeholder="AIzaSy..."
+                    />
                   </div>
                 </div>
 
@@ -5555,25 +5491,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider">
                       {t("Zernio API Secret Key", "Zernio API Tajný Kľúč", "Zernio API Titkos Kulcs")}
                     </label>
-                    <div className="relative">
-                      <input
-                        type={showZernioKey ? "text" : "password"}
-                        value={zernioApiKey}
-                        onChange={(e) => setZernioApiKey(e.target.value)}
-                        placeholder="sk_live_..."
-                        readOnly={getPermission("general_config") === "view"}
-                        className="w-full pl-4 pr-12 py-3 rounded-2xl bg-slate-50 border border-slate-200 text-xs font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition-all"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowZernioKey(!showZernioKey)}
-                        aria-label={showZernioKey ? t("Hide API key", "Skryť API kľúč", "API kulcs elrejtése") : t("Show API key", "Zobraziť API kľúč", "API kulcs megjelenítése")}
-                        title={showZernioKey ? t("Hide API key", "Skryť API kľúč", "API kulcs elrejtése") : t("Show API key", "Zobraziť API kľúč", "API kulcs megjelenítése")}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1.5 cursor-pointer"
-                      >
-                        {showZernioKey ? <Minus className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </button>
-                    </div>
+                    <SecretInput
+                      language={userLanguage}
+                      disabled={getPermission("general_config") === "view"}
+                      value={zernioApiKey}
+                      onChange={setZernioApiKey}
+                      placeholder="sk_live_..."
+                    />
                     <p className="text-[11px] text-slate-500">
                       {t(
                         "Obtain your Zernio API key from your Zernio Dashboard at https://zernio.com or via 1-click device auth above.",

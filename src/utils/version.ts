@@ -1,1 +1,2 @@
-export const VERSION = "1.8.24-Imbe";
+export const VERSION = "1.8.34-Imbe";
+export const VERSION_CODENAME = VERSION.split("-")[1] || "Imbe";

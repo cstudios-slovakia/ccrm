@@ -1182,14 +1182,17 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
   const filteredMeetings = meetingNotes.filter((m) => {
     if (m.archived && !showArchived) return false;
 
-    const notesText = m.notes.trim().startsWith("[") 
-      ? parseNotesToBlocks(m.notes).map(b => b.content).join(" ")
-      : m.notes;
+    const notesRaw = m.notes ?? "";
+    const notesText = notesRaw.trim().startsWith("[")
+      ? parseNotesToBlocks(notesRaw).map(b => b.content).join(" ")
+      : notesRaw;
+    const summaryText = m.aiSummary?.summary ?? "";
+    const titleText = m.title ?? "";
 
-    const matchesSearch = 
-      m.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    const matchesSearch =
+      titleText.toLowerCase().includes(searchQuery.toLowerCase()) ||
       notesText.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      m.aiSummary.summary.toLowerCase().includes(searchQuery.toLowerCase());
+      summaryText.toLowerCase().includes(searchQuery.toLowerCase());
       
     const matchesLead = selectedLeadFilter ? m.leadId === selectedLeadFilter : true;
     
@@ -1827,7 +1830,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                           )}
                         </div>
                         <p className="text-xs text-slate-450 line-clamp-1 leading-relaxed">
-                          {m.aiSummary.summary}
+                          {m.aiSummary?.summary ?? ""}
                         </p>
                       </div>
                     </div>
@@ -1839,7 +1842,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                         {m.leadName}
                       </span>
                       <div className="w-24 flex justify-end">
-                        {getSentimentBadge(m.aiSummary.sentiment)}
+                        {m.aiSummary ? getSentimentBadge(m.aiSummary.sentiment) : null}
                       </div>
                       
                       {/* Archive/Unarchive Action Button */}

@@ -19,6 +19,15 @@ import { TimelineCollapsible } from "./TimelineCollapsible";
 import type { EditorBlock } from "./BlockEditor";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
+import { AiKeyBanner } from "./ui/AiKeyBanner";
+import {
+  hasOpenAiKey,
+  isAiKeyProblem,
+  networkAiApiError,
+  openAiSettings,
+  readAiApiError,
+  translateAiApiError,
+} from "../utils/aiConfig";
 import { resolveCurrencySymbol, formatMoney } from "../utils/currency";
 import { resolveAssigneeName } from "../utils/taskSelectors";
 import { todayLocal, nowLocalStamp, formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
@@ -1146,7 +1155,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   // Find active client details based on URL deep routing
   const activeClient = useMemo(() => {
     if (!initialSelectedClient) return null;
-    return clientProfiles.find(c => c.name.toLowerCase() === initialSelectedClient.toLowerCase()) || null;
+    const lookupName = initialSelectedClient.split("?")[0];
+    return clientProfiles.find(c => c.name.toLowerCase() === lookupName.toLowerCase()) || null;
   }, [clientProfiles, initialSelectedClient]);
 
   // RegisterUZ dynamically loaded statement list states
@@ -1508,9 +1518,29 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     }
   };
 
+  /**
+   * Report an AI endpoint failure in the user's own language, and — when the
+   * fix is an admin setting rather than something they did wrong — put the way
+   * to fix it in the toast itself.
+   */
+  const showAiFailure = (error: ReturnType<typeof networkAiApiError> | Awaited<ReturnType<typeof readAiApiError>>) => {
+    console.error("[financial report]", error.code, error.message);
+    if (typeof (window as any).showToast !== "function") return;
+    const message = translateAiApiError(error, systemLanguage);
+    if (isAiKeyProblem(error.code)) {
+      (window as any).showToast(
+        message,
+        { label: t("Open settings", "Otvoriť nastavenia", "Beállítások megnyitása"), onClick: openAiSettings },
+        "error"
+      );
+      return;
+    }
+    (window as any).showToast(message, "error");
+  };
+
   const handleDownloadStatement = async (statementId: string, client: any) => {
     if (!client) return;
-    
+
     // Switch to financial status tab to show loading state
     setActiveDetailTab("financial_status");
     setIsAnalyzingFinancial(true);
@@ -1526,9 +1556,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       });
       
       if (!res.ok) {
-        throw new Error("Financial analysis failed");
+        // The body carries the real reason (no API key, company not in the
+        // registry, OpenAI refused…). Reading only res.ok used to throw it away
+        // and leave the user with one generic "it failed" toast.
+        showAiFailure(await readAiApiError(res));
+        return;
       }
-      
+
       const result = await res.json();
       if (result.success && result.summary) {
         setLeads(prev => prev.map(lead => {
@@ -1544,13 +1578,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           (window as any).showToast(t("Financial analysis successfully generated!", "Finančná analýza bola úspešne vygenerovaná!", "A pénzügyi elemzés sikeresen elkészült!"));
         }
       } else {
-        throw new Error(result.message || "Failed to generate summary");
+        showAiFailure({
+          code: typeof result.code === "string" ? result.code : "unknown",
+          message: result.message || "Failed to generate summary",
+          status: res.status,
+        });
       }
     } catch (e: any) {
-      console.error(e);
-      if (typeof (window as any).showToast === "function") {
-        (window as any).showToast(t("Failed to generate financial analysis.", "Nepodarilo sa vygenerovať analýzu.", "Nem sikerült létrehozni a pénzügyi elemzést."));
-      }
+      showAiFailure(networkAiApiError(e));
     } finally {
       setIsAnalyzingFinancial(false);
     }
@@ -1571,9 +1606,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       });
       
       if (!res.ok) {
-        throw new Error("Financial report generation failed");
+        // Same as above: the failure reason lives in the body, not in the status.
+        showAiFailure(await readAiApiError(res));
+        return;
       }
-      
+
       const result = await res.json();
       if (result.success && result.report) {
         setLeads(prev => prev.map(lead => {
@@ -1589,13 +1626,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           (window as any).showToast(t("Financial report successfully generated!", "Finančný report bol úspešne vygenerovaný!", "A pénzügyi jelentés sikeresen elkészült!"));
         }
       } else {
-        throw new Error(result.message || "Failed to generate report");
+        showAiFailure({
+          code: typeof result.code === "string" ? result.code : "unknown",
+          message: result.message || "Failed to generate report",
+          status: res.status,
+        });
       }
     } catch (e: any) {
-      console.error(e);
-      if (typeof (window as any).showToast === "function") {
-        (window as any).showToast(t("Failed to generate financial report.", "Nepodarilo sa vygenerovať finančný report.", "Nem sikerült létrehozni a pénzügyi jelentést."));
-      }
+      showAiFailure(networkAiApiError(e));
     } finally {
       setIsAnalyzingFinancial(false);
     }
@@ -1658,7 +1696,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     return `${detailsStr}#${timelineStr}#${activeClient.leadsCount}#${tasksStr}`;
   }, [activeClient, activeClientTasks]);
 
-  const isOpenAiConfigured = !!(integrationsConfig?.openAiKey && integrationsConfig.openAiKey.trim() !== "");
+  const isOpenAiConfigured = hasOpenAiKey(integrationsConfig);
 
   // Recording timer
   useEffect(() => {
@@ -4127,23 +4165,28 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       <TrendingUp className="h-4.5 w-4.5 text-indigo-600 stroke-[2.5]" /> 
                       {t("AI Financial Report", "AI Finančný report", "AI pénzügyi jelentés")}
                     </h3>
-                    {activeClient.clientType !== "person" && activeClient.companyId && (
+                    {/* Only the regenerate affordance lives in the header. While no
+                        report exists the empty state below already offers "create",
+                        and showing both put two buttons for one action on screen. */}
+                    {activeClient.clientType !== "person" && activeClient.companyId && activeClient.financialSummary && (
                       <button
                         type="button"
                         disabled={isAnalyzingFinancial}
                         onClick={handleCreateFinancialReport}
-                        className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 disabled:bg-slate-200 text-indigo-800 border border-indigo-300 text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer disabled:cursor-not-allowed"
+                        className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 disabled:bg-slate-200 text-indigo-800 border border-indigo-300 text-[10px] font-black uppercase tracking-wider transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:-translate-y-0.5 hover:shadow-md active:scale-95 cursor-pointer disabled:cursor-not-allowed disabled:hover:translate-y-0"
                       >
                         <Brain className="h-3.5 w-3.5 text-indigo-600" />
-                        <span>
-                          {activeClient.financialSummary
-                            ? t("Regenerate Report", "Pre-generovať report", "Jelentés újragenerálása")
-                            : t("Create Report", "Vytvoriť report", "Jelentés létrehozása")}
-                        </span>
+                        <span>{t("Regenerate Report", "Pre-generovať report", "Jelentés újragenerálása")}</span>
                       </button>
                     )}
                   </div>
-                  
+
+                  <AiKeyBanner
+                    integrationsConfig={integrationsConfig}
+                    language={systemLanguage}
+                    feature={t("AI financial report", "AI finančný report", "AI pénzügyi jelentés")}
+                  />
+
                   {isAnalyzingFinancial ? (
                     <div className="py-12 flex flex-col items-center justify-center gap-3 text-xs text-slate-500 font-bold uppercase">
                       <Loader2 className="h-6 w-6 animate-spin text-indigo-500" />
@@ -4160,8 +4203,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       {activeClient.clientType !== "person" && activeClient.companyId ? (
                         <button
                           type="button"
+                          disabled={isAnalyzingFinancial}
                           onClick={handleCreateFinancialReport}
-                          className="mt-2 px-4 py-2 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white border-2 border-indigo-700 text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md active:scale-95 cursor-pointer"
+                          className="mt-2 px-4 py-2 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white border-2 border-indigo-700 text-[10px] font-black uppercase tracking-wider transition-all duration-200 flex items-center gap-1.5 shadow-md hover:-translate-y-0.5 hover:shadow-lg active:scale-95 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                         >
                           <Brain className="h-4 w-4" />
                           <span>{t("Create Financial Report", "Vytvoriť finančný report", "Pénzügyi jelentés létrehozása")}</span>
@@ -4618,7 +4662,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         </div>
 
         {/* Collapsible Filter Panel (Collapses smoothly using modern CSS grid/height transitions) */}
-        <div className={`grid transition-all duration-350 ease-in-out ${showFilterDrawer ? "grid-rows-[1fr] opacity-100 border-t border-slate-150 pt-4" : "grid-rows-[0fr] opacity-0 overflow-hidden"}`}>
+        <div className={`grid transition-all duration-350 ease-in-out ${showFilterDrawer ? "grid-rows-[1fr] opacity-100 border-t border-slate-150 pt-4" : "grid-rows-[0fr] opacity-0 invisible overflow-hidden pointer-events-none"}`} aria-hidden={!showFilterDrawer}>
           <div className="overflow-hidden">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pb-1">
               
