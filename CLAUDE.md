@@ -48,10 +48,6 @@ These live in `.agents/rules/` and apply to every change:
   `dist/` unless you are deliberately committing a deployment bundle.
 - [`news-craft-cms.md`](.agents/rules/news-craft-cms.md) — news and update notes
   come from Craft CMS only, never hardcoded or in the local database.
-- [`semantic-color-tokens.md`](.agents/rules/semantic-color-tokens.md) — new
-  markup uses `bg-card` / `text-foreground` / `border-border`, not `bg-white` /
-  `text-slate-800` / `border-slate-200`. The palette classes already in the
-  codebase are held together by a PostCSS pass; do not add more.
 
 The order when finishing a change:
 
