@@ -730,7 +730,7 @@ HTACCESS;
      * INTEGRATIONS_CONFIG, falling back to a sane default. Centralised so the
      * default is not scattered as a literal across every AI endpoint.
      */
-    function ccrm_ai_model(array $config = [], string $default = 'gpt-4o-mini'): string {
+    function ccrm_ai_model(array $config = [], string $default = 'gpt-5.6-luna'): string {
         $m = $config['aiModel'] ?? ($config['openAiModel'] ?? '');
         return (is_string($m) && $m !== '') ? $m : $default;
     }

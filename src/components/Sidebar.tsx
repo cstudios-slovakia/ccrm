@@ -161,7 +161,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       color: dashColor,
       prompts: [],
       layout: { widgets: [] },
-      activeModel: "gpt-4o",
+      activeModel: "gpt-5.6-terra",
       archived: false
     };
 

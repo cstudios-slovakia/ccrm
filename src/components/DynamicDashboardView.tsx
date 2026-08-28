@@ -26,7 +26,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
 
   const [isEditMode, setIsEditMode] = useState(dashboard.layout.widgets.length === 0);
   const [promptText, setPromptText] = useState("");
-  const [selectedModel, setSelectedModel] = useState(dashboard.activeModel || "gpt-4o");
+  const [selectedModel, setSelectedModel] = useState(dashboard.activeModel || "gpt-5.6-terra");
   const [isGenerating, setIsGenerating] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -35,10 +35,10 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   const [isSaved, setIsSaved] = useState(true);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
 
-  const models = ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"];
+  const models = ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol"];
   const modelIndex = models.indexOf(selectedModel);
   const handleModelSliderChange = (val: number) => {
-    setSelectedModel(models[val] || "gpt-4o");
+    setSelectedModel(models[val] || "gpt-5.6-terra");
   };
 
   // Temporary layout workspace before saving
@@ -262,9 +262,9 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                       {t("Model Power", "Výkon modelu", "Modell Teljesítmény")}
                     </span>
                     <span className="text-[9px] font-black text-purple-600 uppercase tracking-wider">
-                      {selectedModel === "gpt-4o-mini"
+                      {selectedModel === "gpt-5.6-luna"
                         ? t("Simple", "Jednoduchý", "Egyszerű")
-                        : selectedModel === "gpt-4o"
+                        : selectedModel === "gpt-5.6-terra"
                           ? t("Smart", "Inteligentný", "Okos")
                           : t("Expert", "Expert", "Szakértő")}
                     </span>
@@ -425,9 +425,9 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
             <div className="flex flex-col gap-1 items-start min-w-[100px] shrink-0 justify-center">
               <div className="flex items-center justify-between w-full">
                 <span className="text-[8px] font-black text-purple-600 uppercase tracking-wider">
-                  {selectedModel === "gpt-4o-mini"
+                  {selectedModel === "gpt-5.6-luna"
                     ? t("Simple", "Jednoduchý", "Egyszerű")
-                    : selectedModel === "gpt-4o"
+                    : selectedModel === "gpt-5.6-terra"
                       ? t("Smart", "Inteligentný", "Okos")
                       : t("Expert", "Expert", "Szakértő")}
                 </span>

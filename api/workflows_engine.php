@@ -459,7 +459,7 @@ if (!function_exists('ccrm_call_llm')) {
             curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
         } elseif ($provider === 'openai') {
             $url = 'https://api.openai.com/v1/chat/completions';
-            $model = $options['model'] ?? 'gpt-4o-mini';
+            $model = $options['model'] ?? 'gpt-5.6-luna';
             $payload = [
                 'model' => $model,
                 'messages' => [['role' => 'user', 'content' => $prompt]]

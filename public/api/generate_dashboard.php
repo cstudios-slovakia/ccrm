@@ -49,7 +49,7 @@ $data = json_decode($input, true);
 
 $prompt = $data['prompt'] ?? '';
 $history = $data['history'] ?? [];
-$model = $data['model'] ?? 'gpt-4o';
+$model = $data['model'] ?? 'gpt-5.6-terra';
 
 if (empty($prompt)) {
     http_response_code(400);
