@@ -254,7 +254,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         label: t("Projects", "Projekty", "Projektek"),
         description: t("Project timelines, budget & milestones", "Časové osy, rozpočty a míľniky projektov", "Projekt ütemtervek, költségvetések"),
         icon: Briefcase,
-        color: "#a855f7",
+        color: "var(--color-purple-500)",
         bgColor: "rgba(168, 85, 247, 0.12)",
         defaultSection: "operations"
       },
@@ -263,7 +263,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         label: getTranslation(systemLanguage, "sidebar.leads"),
         description: t("Pipeline stages, conversions & leads datagrid", "Fázy predaja, konverzie a datagrid leadov", "Értékesítési tölcsér és leadek"),
         icon: TableProperties,
-        color: "#2563eb",
+        color: "var(--color-blue-600)",
         bgColor: "rgba(37, 99, 235, 0.12)",
         defaultSection: "operations"
       },
@@ -272,7 +272,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         label: getTranslation(systemLanguage, "sidebar.clients"),
         description: t("Client profiles, address book & contract history", "Profily klientov, adresár a história zmlúv", "Ügyfélprofilok és előzmények"),
         icon: Users,
-        color: "#059669",
+        color: "var(--color-emerald-600)",
         bgColor: "rgba(5, 150, 105, 0.12)",
         defaultSection: "operations"
       },
@@ -281,7 +281,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         label: getTranslation(systemLanguage, "sidebar.warehouse"),
         description: t("Inventory stock, FEFO batches & material movements", "Skladové zásoby, FEFO šarže a pohyby materiálu", "Raktárkészlet, FEFO tételek és mozgások"),
         icon: Package,
-        color: "#1e3a8a",
+        color: "var(--color-blue-900)",
         bgColor: "rgba(30, 58, 138, 0.12)",
         defaultSection: "operations"
       },
@@ -290,7 +290,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         label: t("Invoices & Price Offers", "Cenové ponuky & Faktúry", "Ajánlatok és számlák"),
         description: t("Price offers, PDF templates & accounting sync", "Cenové ponuky, PDF šablóny a fakturácia", "Árajánlatok, PDF sablonok és számlázás"),
         icon: Icons.FileText || Coins,
-        color: "#6366f1",
+        color: "var(--color-indigo-500)",
         bgColor: "rgba(99, 102, 241, 0.12)",
         defaultSection: "operations"
       },
@@ -299,7 +299,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         label: getTranslation(systemLanguage, "sidebar.financial"),
         description: t("Cash flow trend, matrix table, ledger & recurring rules", "Trend cashflow, tabuľka, pohyby a trvalé príkazy", "Cashflow trend, mátrix tábla, mozgások"),
         icon: Coins,
-        color: "#10b981",
+        color: "var(--color-emerald-500)",
         bgColor: "rgba(16, 185, 129, 0.12)",
         defaultSection: "operations"
       },
@@ -310,7 +310,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         label: getTranslation(systemLanguage, "sidebar.dashboard"),
         description: t("Executive BI overview & marketing funnel metrics", "Manažérske BI reporty a marketingové metriky", "Vezetői BI és marketing mutatók"),
         icon: BarChart3,
-        color: "#0891b2",
+        color: "var(--color-cyan-600)",
         bgColor: "rgba(8, 145, 178, 0.12)",
         defaultSection: "analytics"
       },
@@ -357,7 +357,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         label: getTranslation(systemLanguage, "sidebar.meetings"),
         description: t("Voice recordings, AI notes & meeting minutes", "Hlasové nahrávky, AI poznámky a zápisy zo stretnutí", "Hangfelvételek, AI jegyzetek és memók"),
         icon: PencilLine,
-        color: "#4f46e5",
+        color: "var(--color-indigo-600)",
         bgColor: "rgba(79, 70, 229, 0.12)",
         defaultSection: "collaboration"
       },
@@ -366,7 +366,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         label: getTranslation(systemLanguage, "sidebar.files"),
         description: t("Central cloud document repository & attachments", "Centrálne úložisko dokumentov a príloh", "Központi dokumentumtár és csatolmányok"),
         icon: FolderOpen,
-        color: "#b45309",
+        color: "var(--color-amber-700)",
         bgColor: "rgba(180, 83, 9, 0.12)",
         defaultSection: "collaboration"
       }
@@ -378,7 +378,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         label: t("Mail Client", "Pošta", "Levelezés"),
         description: t("Integrated IMAP/SMTP corporate email client", "Integrovaná firemná pošta a schránka", "Integrált vállalati levelezőkliens"),
         icon: Mail,
-        color: "#db2777",
+        color: "var(--color-pink-600)",
         bgColor: "rgba(219, 39, 119, 0.12)",
         defaultSection: "collaboration"
       });
@@ -390,7 +390,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         label: t("RAG AI Assistant", "RAG AI Asistent", "RAG AI Asszisztens"),
         description: t("Vector-indexed company knowledge AI chat", "Firemný znalostný AI asistent s vektorovou DB", "Vállalati tudásbázis AI asszisztens"),
         icon: Brain,
-        color: "#8b5cf6",
+        color: "var(--color-violet-500)",
         bgColor: "rgba(139, 92, 246, 0.12)",
         defaultSection: "collaboration"
       });
@@ -401,7 +401,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       label: t("Automation", "Automatizácia", "Automatizálás"),
       description: t("Event triggers, webhook integrations & rule builder", "Udalosťové spúšťače, webhooky a automatické pravidlá", "Eseményvezérelt munkafolyamatok és webhookok"),
       icon: Workflow,
-      color: "#6b21a8",
+      color: "var(--color-purple-800)",
       bgColor: "rgba(107, 33, 168, 0.12)",
       defaultSection: "collaboration"
     });
@@ -412,7 +412,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         label: t("Social Media", "Sociálne siete", "Közösségi média"),
         description: t("Social post scheduling & cross-platform publishing", "Plánovanie príspevkov a publikovanie na sociálne siete", "Közösségi média bejegyzések időzítése"),
         icon: Globe,
-        color: "#f43f5e",
+        color: "var(--color-rose-500)",
         bgColor: "rgba(244, 63, 94, 0.12)",
         defaultSection: "collaboration"
       });
@@ -424,7 +424,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       label: t("Personal Settings", "Osobné nastavenia", "Személyes beállítások"),
       description: t("Theme mode, error sidebar & user profile", "Vzhľad aplikácie, panel chýb a osobný profil", "Téma, hibaoldalsáv és személyes profil"),
       icon: User,
-      color: "#0284c7",
+      color: "var(--color-sky-600)",
       bgColor: "rgba(2, 132, 199, 0.12)",
       defaultSection: "system"
     });
@@ -435,7 +435,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         label: getTranslation(systemLanguage, "sidebar.settings"),
         description: t("Roles & permissions, lead stages, branding & DB", "Roly a oprávnenia, fázy leadov, branding a DB", "Szerepkörök, jogosultságok, branding és DB"),
         icon: Settings,
-        color: "#475569",
+        color: "var(--color-slate-600)",
         bgColor: "rgba(71, 85, 105, 0.12)",
         defaultSection: "system"
       });
@@ -446,7 +446,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       label: t("Updates & What's New", "Novinky a verzie", "Újdonságok"),
       description: t("System changelog, release notes & improvements", "História verzií, novinky a vylepšenia systému", "Verziótörténet és újdonságok"),
       icon: Sparkles,
-      color: "#d97706",
+      color: "var(--color-amber-600)",
       bgColor: "rgba(217, 119, 6, 0.12)",
       defaultSection: "system"
     });

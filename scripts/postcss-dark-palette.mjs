@@ -88,6 +88,12 @@ const SURFACE_PROPS = new Set([
   '--tw-gradient-from',
   '--tw-gradient-to',
   '--tw-gradient-via',
+  // A coloured `shadow-indigo-600/30` etc. is the glow cast by a solid
+  // `bg-indigo-600` button, not a text colour — it needs to stay a deep,
+  // saturated colour in dark mode too. Left unpinned it rides the inverted
+  // ramp like glyph text does, so a 600/900/950 shadow colour turns
+  // near-white and the glow reads as a stray white halo around the button.
+  '--tw-shadow-color',
 ]);
 
 /** Properties that draw a hairline. Rings are excluded on purpose: a focus ring

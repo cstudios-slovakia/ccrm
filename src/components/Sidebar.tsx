@@ -423,22 +423,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const allPossibleItems = React.useMemo(() => {
     return [
       { id: "dashboard", label: systemLanguage === "sk" ? "Panel úloh" : systemLanguage === "hu" ? "Feladat Irányítópult" : "Task Dashboard", icon: LayoutDashboard, color: "#ff5d00" },
-      { id: "overview", label: getTranslation(systemLanguage, "sidebar.dashboard"), icon: BarChart3, color: "#0891b2" },
-      { id: "projects", label: systemLanguage === "sk" ? "Projekty" : systemLanguage === "hu" ? "Projektek" : "Projects", icon: Icons.Briefcase || LayoutDashboard, color: "#a855f7", isLavender: true },
-      { id: "rag_ai", label: systemLanguage === "sk" ? "RAG AI Asistent" : systemLanguage === "hu" ? "RAG AI Asszisztens" : "RAG AI Assistant", icon: Brain, color: "#8b5cf6", isPurple: true },
-      { id: "leads", label: getTranslation(systemLanguage, "sidebar.leads"), icon: TableProperties, color: "#2563eb" },
-      { id: "clients", label: getTranslation(systemLanguage, "sidebar.clients"), icon: Users, color: "#059669" },
-      { id: "invoices", label: systemLanguage === "sk" ? "Cenové ponuky & Faktúry" : systemLanguage === "hu" ? "Ajánlatok és számlák" : "Invoices & Offers", icon: Icons.FileText || Coins, color: "#6366f1", isIndigo: true },
-      { id: "warehouse", label: getTranslation(systemLanguage, "sidebar.warehouse"), icon: Icons.Package || Icons.Boxes || FolderOpen, color: "#1e3a8a", isNavy: true },
-      { id: "financial", label: getTranslation(systemLanguage, "sidebar.financial"), icon: Coins, color: "#10b981", isEmerald: true },
-      { id: "meetings", label: getTranslation(systemLanguage, "sidebar.meetings"), icon: PencilLine, color: "#4f46e5", isNightBlue: true },
+      { id: "overview", label: getTranslation(systemLanguage, "sidebar.dashboard"), icon: BarChart3, color: "var(--color-cyan-600)" },
+      { id: "projects", label: systemLanguage === "sk" ? "Projekty" : systemLanguage === "hu" ? "Projektek" : "Projects", icon: Icons.Briefcase || LayoutDashboard, color: "var(--color-purple-500)", isLavender: true },
+      { id: "rag_ai", label: systemLanguage === "sk" ? "RAG AI Asistent" : systemLanguage === "hu" ? "RAG AI Asszisztens" : "RAG AI Assistant", icon: Brain, color: "var(--color-violet-500)", isPurple: true },
+      { id: "leads", label: getTranslation(systemLanguage, "sidebar.leads"), icon: TableProperties, color: "var(--color-blue-600)" },
+      { id: "clients", label: getTranslation(systemLanguage, "sidebar.clients"), icon: Users, color: "var(--color-emerald-600)" },
+      { id: "invoices", label: systemLanguage === "sk" ? "Cenové ponuky & Faktúry" : systemLanguage === "hu" ? "Ajánlatok és számlák" : "Invoices & Offers", icon: Icons.FileText || Coins, color: "var(--color-indigo-500)", isIndigo: true },
+      { id: "warehouse", label: getTranslation(systemLanguage, "sidebar.warehouse"), icon: Icons.Package || Icons.Boxes || FolderOpen, color: "var(--color-blue-900)", isNavy: true },
+      { id: "financial", label: getTranslation(systemLanguage, "sidebar.financial"), icon: Coins, color: "var(--color-emerald-500)", isEmerald: true },
+      { id: "meetings", label: getTranslation(systemLanguage, "sidebar.meetings"), icon: PencilLine, color: "var(--color-indigo-600)", isNightBlue: true },
       ...dynamicUeItems,
       ...dynamicDashItems,
-      { id: "files", label: getTranslation(systemLanguage, "sidebar.files"), icon: FolderOpen, color: "#b45309" },
-      { id: "email", label: systemLanguage === "sk" ? "Pošta" : systemLanguage === "hu" ? "Levelezés" : "Mail Client", icon: Mail, color: "#db2777" },
-      { id: "automation", label: systemLanguage === "sk" ? "Automatizácia" : systemLanguage === "hu" ? "Automatizálás" : "Automation", icon: Icons.Workflow || Icons.Network || Icons.GitFork || FolderOpen, color: "#6b21a8", isPurple: true },
-      { id: "social_media", label: systemLanguage === "sk" ? "Sociálne siete" : systemLanguage === "hu" ? "Közösségi média" : "Social Media", icon: Icons.Share2 || Icons.Globe, color: "#f43f5e", isRose: true },
-      { id: "updates", label: systemLanguage === "sk" ? "Novinky" : systemLanguage === "hu" ? "Újdonságok" : "Updates", icon: Sparkles, color: "#d97706" }
+      { id: "files", label: getTranslation(systemLanguage, "sidebar.files"), icon: FolderOpen, color: "var(--color-amber-700)" },
+      { id: "email", label: systemLanguage === "sk" ? "Pošta" : systemLanguage === "hu" ? "Levelezés" : "Mail Client", icon: Mail, color: "var(--color-pink-600)" },
+      { id: "automation", label: systemLanguage === "sk" ? "Automatizácia" : systemLanguage === "hu" ? "Automatizálás" : "Automation", icon: Icons.Workflow || Icons.Network || Icons.GitFork || FolderOpen, color: "var(--color-purple-800)", isPurple: true },
+      { id: "social_media", label: systemLanguage === "sk" ? "Sociálne siete" : systemLanguage === "hu" ? "Közösségi média" : "Social Media", icon: Icons.Share2 || Icons.Globe, color: "var(--color-rose-500)", isRose: true },
+      { id: "updates", label: systemLanguage === "sk" ? "Novinky" : systemLanguage === "hu" ? "Újdonságok" : "Updates", icon: Sparkles, color: "var(--color-amber-600)" }
     ];
   }, [systemLanguage, dynamicUeItems, dynamicDashItems]);
 
