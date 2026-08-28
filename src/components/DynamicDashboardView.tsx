@@ -16,7 +16,6 @@ interface DynamicDashboardViewProps {
 /** Where a `tabs` widget's per-tab query result is stored in the data/error maps. */
 const tabDataKey = (widgetId: string, index: number) => `${widgetId}::tab${index}`;
 
-/** Widget types that hold their own nested content instead of a single query. */
 const WIDGET_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   metric: LayoutDashboard,
   chart: Sparkles,
@@ -24,6 +23,82 @@ const WIDGET_ICONS: Record<string, React.ComponentType<{ className?: string }>> 
   timeline: History,
   accordion: Rows3,
   tabs: Layers
+};
+
+const WIDGET_TYPES = ["metric", "chart", "table", "timeline", "accordion", "tabs"];
+
+/**
+ * Every chart flavour the renderer understands (keys are `canonical()`-ed), mapped
+ * to the Chart.js controller that actually draws it. "gauge" has no controller and
+ * is rendered natively by GaugeWidget.
+ */
+const CHART_BASE_TYPES: Record<string, string> = {
+  bar: "bar",
+  horizontalbar: "bar",
+  line: "line",
+  area: "line",
+  pie: "pie",
+  doughnut: "doughnut",
+  polararea: "polarArea",
+  radar: "radar",
+  scatter: "scatter",
+  bubble: "bubble"
+};
+
+const CHART_TYPES = [...Object.keys(CHART_BASE_TYPES), "gauge"];
+
+const canonical = (value: any) => String(value ?? "").toLowerCase().replace(/[\s_-]/g, "");
+
+/** Solid accent for the widget palette names the AI is allowed to pick from. */
+const ACCENT_COLORS: Record<string, string> = {
+  indigo: "#4f46e5",
+  blue: "#2563eb",
+  emerald: "#059669",
+  purple: "#8b5cf6",
+  amber: "#d97706",
+  rose: "#e11d48",
+  cyan: "#0891b2",
+  pink: "#db2777"
+};
+
+const accentFor = (color: any) => ACCENT_COLORS[String(color || "indigo")] || ACCENT_COLORS.indigo;
+
+/**
+ * Decides which renderer a widget belongs to. The model is told to emit
+ * `type` + `chartType`, but in practice it also writes `type: "radar"` or omits
+ * `type` entirely — infer rather than render an empty card.
+ */
+const resolveWidgetType = (w: any): { type: string; widget: any } => {
+  const raw = canonical(w?.type);
+  if (WIDGET_TYPES.includes(raw)) return { type: raw, widget: w };
+  if (raw === "kpi" || raw === "counter" || raw === "stat") return { type: "metric", widget: w };
+  if (raw === "list") return { type: "table", widget: w };
+  if (CHART_TYPES.includes(raw)) {
+    return { type: "chart", widget: { ...w, chartType: w?.chartType || raw } };
+  }
+  if (Array.isArray(w?.tabs) && w.tabs.length > 0) return { type: "tabs", widget: w };
+  if (w?.chartType) return { type: "chart", widget: w };
+  if (Array.isArray(w?.columns) && w.columns.length > 0) return { type: "table", widget: w };
+  return { type: "metric", widget: w };
+};
+
+/**
+ * Picks the first row key that looks like the requested role, so timeline and
+ * accordion widgets still render when the model omits the `mapping` block.
+ */
+const pickKey = (row: any, explicit: any, candidates: string[]): string | null => {
+  if (explicit && row && Object.prototype.hasOwnProperty.call(row, explicit)) return explicit;
+  if (!row || typeof row !== "object") return null;
+  const keys = Object.keys(row);
+  for (const candidate of candidates) {
+    const hit = keys.find(k => k.toLowerCase() === candidate);
+    if (hit) return hit;
+  }
+  for (const candidate of candidates) {
+    const hit = keys.find(k => k.toLowerCase().includes(candidate));
+    if (hit) return hit;
+  }
+  return null;
 };
 
 export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
@@ -486,7 +561,11 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                     </span>
                     <div
                       className="w-7 h-7 rounded-xl flex items-center justify-center text-white scale-90"
-                      style={widgetErrors[w.id] ? undefined : { backgroundColor: w.color || dashboard.color }}
+                      // `w.color` is a palette NAME ("emerald", "rose", "amber"), which is
+                      // not valid CSS — those badges painted transparent and hid their white
+                      // icon. Resolve the name to its hex; anything else (a literal colour
+                      // from the dashboard) is still passed through untouched.
+                      style={widgetErrors[w.id] ? undefined : { backgroundColor: ACCENT_COLORS[w.color] || w.color || dashboard.color }}
                     >
                       {widgetErrors[w.id] ? (
                         <AlertCircle className="h-4 w-4 text-rose-500" />
@@ -899,6 +978,58 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   );
 };
 
+/* Single-value KPI card. Extracted from the grid so a `tabs` widget can host one. */
+const DashboardMetric: React.FC<{
+  widget: any;
+  data: any;
+  localizedTitle: string;
+  money: (value: number, opts?: Intl.NumberFormatOptions) => string;
+}> = ({ widget, data, localizedTitle, money }) => {
+  const value = (() => {
+    if (widget.metricValue !== undefined && widget.metricValue !== "") {
+      return widget.metricValue;
+    }
+    if (data === undefined || data === null) {
+      return "...";
+    }
+    if (Array.isArray(data)) {
+      if (data.length === 0) return "0";
+      const firstRow = data[0];
+      if (typeof firstRow === "object" && firstRow !== null) {
+        const values = Object.values(firstRow);
+        if (values.length > 0) {
+          const val = values[0];
+          const keys = Object.keys(firstRow);
+          const firstKeyLower = keys[0].toLowerCase();
+          const titleLower = localizedTitle.toLowerCase();
+          const isCurrency =
+            firstKeyLower.includes("value") ||
+            firstKeyLower.includes("worth") ||
+            firstKeyLower.includes("revenue") ||
+            firstKeyLower.includes("price") ||
+            titleLower.includes("value") ||
+            titleLower.includes("worth") ||
+            titleLower.includes("revenue");
+
+          if (isCurrency && !isNaN(Number(val))) {
+            return money(Number(val));
+          }
+          return typeof val === "number" ? val.toLocaleString() : String(val);
+        }
+      }
+      return JSON.stringify(data);
+    }
+    if (typeof data === "object") {
+      if (data.count !== undefined) return data.count;
+      if (data.value !== undefined) return money(Number(data.value));
+      return JSON.stringify(data);
+    }
+    return String(data);
+  })();
+
+  return <div className="text-3xl font-black text-slate-800 tracking-tight">{value}</div>;
+};
+
 /* Widget Chart Element utilizing global Chart.js */
 interface DashboardChartProps {
   widget: any;
@@ -922,17 +1053,7 @@ const GaugeWidget: React.FC<DashboardChartProps> = ({ widget, data }) => {
   );
   const pct = target > 0 ? Math.max(0, Math.min(100, Math.round((value / target) * 100))) : 0;
 
-  const barColors: Record<string, string> = {
-    indigo: "#4f46e5",
-    blue: "#2563eb",
-    emerald: "#059669",
-    purple: "#8b5cf6",
-    amber: "#d97706",
-    rose: "#e11d48",
-    cyan: "#0891b2",
-    pink: "#db2777"
-  };
-  const barColor = barColors[widget.color || "indigo"] || barColors.indigo;
+  const barColor = accentFor(widget.color);
 
   return (
     <div className="w-full flex flex-col justify-center gap-2 py-4">
@@ -965,8 +1086,13 @@ const DashboardChart: React.FC<DashboardChartProps> = ({ widget, data, localized
     pink: ["#db2777", "#f472b6", "#831843", "#fce7f3", "#be185d"]
   };
 
+  // "horizontalBar" and "area" are not Chart.js controllers — they are a bar with
+  // a swapped index axis and a filled line. Normalising here (rather than passing
+  // the AI's word straight to `new Chart`) is what makes them actually render.
+  const kind = canonical(widget.chartType) || "bar";
+
   useEffect(() => {
-    if (widget.chartType === "gauge") return;
+    if (kind === "gauge") return;
     if (!canvasRef.current || !data) return;
 
     if (chartInstanceRef.current) {
@@ -983,39 +1109,94 @@ const DashboardChart: React.FC<DashboardChartProps> = ({ widget, data, localized
     const labelsKey = widget.mapping?.labelsKey || "status";
     const dataKey = widget.mapping?.dataKey || "count";
 
-    const labels = dataList.map((item: any) => item[labelsKey] || "Unknown");
+    const labels = dataList.map((item: any) => item[labelsKey] ?? "Unknown");
     const chartData = dataList.map((item: any) => Number(item[dataKey] || 0));
 
     const colorKey = widget.color || "indigo";
     const palette = chartPalettes[colorKey] || chartPalettes.indigo;
 
-    const isPie = ["pie", "doughnut"].includes(widget.chartType);
-    const bgColors = isPie ? palette : palette[0] + "20"; // 20% opacity for bar/line
-    const borderColors = isPie ? "#ffffff" : palette[0];
+    const isPie = ["pie", "doughnut", "polararea"].includes(kind);
+    const isRadar = kind === "radar";
+    const isScatter = kind === "scatter" || kind === "bubble";
+    const isHorizontal = kind === "horizontalbar";
+    const isArea = kind === "area";
+
+    // Scatter/bubble take {x, y} points instead of labels + values.
+    const xKey = widget.mapping?.xKey || widget.mapping?.labelsKey || "x";
+    const yKey = widget.mapping?.yKey || widget.mapping?.dataKey || "y";
+    const rKey = widget.mapping?.radiusKey || widget.mapping?.sizeKey;
+    const scatterData = dataList.map((item: any) => ({
+      x: Number(item[xKey] ?? 0),
+      y: Number(item[yKey] ?? 0),
+      ...(kind === "bubble" ? { r: Math.max(3, Number(item[rKey ?? ""] ?? 6)) } : {})
+    }));
+
+    // Chart.js controller ids are case-sensitive ("polarArea"), and neither
+    // "horizontalBar" nor "area" is one — they are a bar with a swapped index
+    // axis and a filled line. Anything unmapped is passed through so an
+    // AI-invented type still surfaces as this widget's error, not a wrong chart.
+    const baseType = CHART_BASE_TYPES[kind] || kind;
+
+    const backgroundColor = isPie
+      ? palette
+      : isScatter
+        ? palette[0]
+        : isRadar
+          ? palette[0] + "33"
+          : palette[0] + "20"; // 20% opacity for bar/line
+    const borderColor = isPie ? "#ffffff" : palette[0];
 
     const ctx = canvasRef.current.getContext("2d");
     if (!ctx) return;
 
+    const cartesianScales = {
+      x: {
+        // Scatter needs a numeric x axis; every other type keeps Chart.js's own
+        // default for its controller (category for bar/line).
+        ...(isScatter ? { type: "linear" } : {}),
+        grid: { display: isScatter || isHorizontal, color: "#f1f5f9" },
+        ticks: { font: { size: 9, weight: "bold" } }
+      },
+      y: {
+        grid: { display: isHorizontal ? false : true, color: "#f1f5f9" },
+        ticks: { font: { size: 9, weight: "bold" } }
+      }
+    };
+
+    const radarScales = {
+      r: {
+        grid: { color: "#e2e8f0" },
+        angleLines: { color: "#e2e8f0" },
+        pointLabels: { font: { size: 9, weight: "bold" }, color: "#64748b" },
+        ticks: { font: { size: 8 }, backdropColor: "transparent" }
+      }
+    };
+
     try {
       chartInstanceRef.current = new ChartGlob(ctx, {
-        type: widget.chartType || "bar",
+        type: baseType,
         data: {
           labels: labels,
           datasets: [
             {
               label: localizedTitle ?? widget.title,
-              data: chartData,
-              backgroundColor: bgColors,
-              borderColor: borderColors,
-              borderWidth: isPie ? 2 : 3,
-              fill: widget.chartType === "line",
-              tension: 0.3
+              data: isScatter ? scatterData : chartData,
+              backgroundColor,
+              borderColor,
+              borderWidth: isPie ? 2 : isScatter ? 0 : 3,
+              fill: isArea || kind === "line" || isRadar,
+              tension: 0.3,
+              ...(isScatter ? { pointRadius: 5, pointHoverRadius: 7 } : {}),
+              ...(isRadar ? { pointBackgroundColor: palette[0], pointRadius: 3 } : {})
             }
           ]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          // Chart.js v3+ dropped the "horizontalBar" type: a horizontal bar is a
+          // normal bar chart whose index axis is y.
+          ...(isHorizontal ? { indexAxis: "y" } : {}),
           plugins: {
             legend: {
               display: isPie,
@@ -1026,18 +1207,7 @@ const DashboardChart: React.FC<DashboardChartProps> = ({ widget, data, localized
               }
             }
           },
-          scales: isPie
-            ? undefined
-            : {
-                x: {
-                  grid: { display: false },
-                  ticks: { font: { size: 9, weight: "bold" } }
-                },
-                y: {
-                  grid: { color: "#f1f5f9" },
-                  ticks: { font: { size: 9, weight: "bold" } }
-                }
-              }
+          scales: isPie ? undefined : isRadar ? radarScales : cartesianScales
         }
       });
       setRenderError(null);
@@ -1053,9 +1223,9 @@ const DashboardChart: React.FC<DashboardChartProps> = ({ widget, data, localized
         chartInstanceRef.current.destroy();
       }
     };
-  }, [widget, data, localizedTitle]);
+  }, [widget, data, localizedTitle, kind]);
 
-  if (widget.chartType === "gauge") {
+  if (kind === "gauge") {
     return <GaugeWidget widget={widget} data={data} />;
   }
 
@@ -1129,6 +1299,192 @@ const DashboardTable: React.FC<DashboardTableProps> = ({ widget, data, t, format
           </tbody>
         </table>
       )}
+    </div>
+  );
+};
+
+/* ---------------------------------------------------------------------------
+   Layout widgets: timeline, accordion and tabs. These read plain query rows and
+   arrange them, so no charting library is involved.
+--------------------------------------------------------------------------- */
+
+const EmptyRows: React.FC<{ t: (en: string, sk: string, hu: string) => string }> = ({ t }) => (
+  <div className="text-center py-6 text-xs text-slate-400 font-semibold uppercase tracking-wider">
+    {t("No records found", "Žiadne záznamy", "Nincs találat")}
+  </div>
+);
+
+const TITLE_KEY_CANDIDATES = ["title", "name", "subject", "event", "label", "status"];
+const DATE_KEY_CANDIDATES = ["date", "timestamp", "created_at", "received_at", "deadline", "due_date", "start_date"];
+const BODY_KEY_CANDIDATES = ["description", "content", "notes", "summary", "body", "detail"];
+
+const formatTimestamp = (val: any, lang: Language) => {
+  if (val === null || val === undefined || val === "") return "";
+  const parsed = new Date(val);
+  if (isNaN(parsed.getTime())) return String(val);
+  return parsed.toLocaleDateString(localeCodeFor(lang), { year: "numeric", month: "short", day: "numeric" });
+};
+
+/* Chronological event list — meeting history, task activity, audit logs. */
+const DashboardTimeline: React.FC<{
+  widget: any;
+  data: any;
+  t: (en: string, sk: string, hu: string) => string;
+  systemLanguage: Language;
+  localize: (value: any) => string;
+}> = ({ widget, data, t, systemLanguage }) => {
+  const dataList = Array.isArray(data) ? data : [];
+  if (dataList.length === 0) return <EmptyRows t={t} />;
+
+  const sample = dataList[0];
+  const titleKey = pickKey(sample, widget.mapping?.titleKey, TITLE_KEY_CANDIDATES);
+  const dateKey = pickKey(sample, widget.mapping?.dateKey, DATE_KEY_CANDIDATES);
+  const bodyKey = pickKey(
+    sample,
+    widget.mapping?.descriptionKey || widget.mapping?.contentKey,
+    BODY_KEY_CANDIDATES
+  );
+  const accent = accentFor(widget.color);
+
+  return (
+    <ol className="w-full relative pl-5 py-1 space-y-4">
+      <span className="absolute left-[4px] top-2 bottom-2 w-px bg-slate-200" aria-hidden="true" />
+      {dataList.map((row: any, i: number) => (
+        <li key={i} className="relative">
+          <span
+            className="absolute -left-[19px] top-1 w-2.5 h-2.5 rounded-full ring-4 ring-white"
+            style={{ backgroundColor: i === 0 ? accent : "#cbd5e1" }}
+            aria-hidden="true"
+          />
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="text-xs font-bold text-slate-800">
+              {titleKey ? String(row[titleKey] ?? "-") : "-"}
+            </span>
+            {dateKey && (
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">
+                {formatTimestamp(row[dateKey], systemLanguage)}
+              </span>
+            )}
+          </div>
+          {bodyKey && row[bodyKey] ? (
+            <p className="text-[11px] text-slate-500 leading-relaxed mt-0.5 line-clamp-3">
+              {String(row[bodyKey])}
+            </p>
+          ) : null}
+        </li>
+      ))}
+    </ol>
+  );
+};
+
+/* Collapsible rows — long-form values (notes, summaries) that would blow out a table. */
+const DashboardAccordion: React.FC<{
+  widget: any;
+  data: any;
+  t: (en: string, sk: string, hu: string) => string;
+  localize: (value: any) => string;
+}> = ({ widget, data, t }) => {
+  const [openIndex, setOpenIndex] = useState<number | null>(0);
+  const dataList = Array.isArray(data) ? data : [];
+  if (dataList.length === 0) return <EmptyRows t={t} />;
+
+  const sample = dataList[0];
+  const titleKey = pickKey(sample, widget.mapping?.titleKey, TITLE_KEY_CANDIDATES);
+  const contentKey = pickKey(
+    sample,
+    widget.mapping?.contentKey || widget.mapping?.descriptionKey,
+    BODY_KEY_CANDIDATES
+  );
+  const subtitleKey = pickKey(sample, widget.mapping?.subtitleKey, DATE_KEY_CANDIDATES);
+
+  return (
+    <div className="w-full divide-y divide-slate-100">
+      {dataList.map((row: any, i: number) => {
+        const isOpen = openIndex === i;
+        const content = contentKey ? row[contentKey] : null;
+        return (
+          <div key={i}>
+            <button
+              type="button"
+              onClick={() => setOpenIndex(isOpen ? null : i)}
+              className="w-full flex items-center justify-between gap-3 py-2.5 text-left cursor-pointer group"
+            >
+              <span className="text-xs font-bold text-slate-700 group-hover:text-slate-900 transition-colors">
+                {titleKey ? String(row[titleKey] ?? "-") : "-"}
+              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                {subtitleKey && row[subtitleKey] ? (
+                  <span className="text-[10px] font-bold text-slate-400">{String(row[subtitleKey])}</span>
+                ) : null}
+                <ChevronDown
+                  className={cn(
+                    "h-3.5 w-3.5 text-slate-400 transition-transform duration-200",
+                    isOpen && "rotate-180"
+                  )}
+                />
+              </div>
+            </button>
+            {isOpen && (
+              <p className="pb-3 text-[11px] text-slate-500 leading-relaxed whitespace-pre-line animate-in fade-in slide-in-from-top-1 duration-200">
+                {content ? String(content) : t("No details.", "Žiadne detaily.", "Nincsenek részletek.")}
+              </p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+/* Tabbed container — several datasets sharing one card. Each tab carries its own
+   query and its own inner widget spec, rendered by the parent's dispatcher. */
+const DashboardTabs: React.FC<{
+  widget: any;
+  localize: (value: any) => string;
+  t: (en: string, sk: string, hu: string) => string;
+  isTabLoading: (index: number) => boolean;
+  renderTab: (tab: any, index: number) => React.ReactNode;
+}> = ({ widget, localize, t, isTabLoading, renderTab }) => {
+  const [active, setActive] = useState(0);
+  const tabs: any[] = Array.isArray(widget.tabs) ? widget.tabs : [];
+  if (tabs.length === 0) return <EmptyRows t={t} />;
+
+  const current = Math.min(active, tabs.length - 1);
+  const accent = accentFor(widget.color);
+  const activeTab = tabs[current];
+
+  return (
+    <div className="w-full">
+      <div className="flex items-center gap-1.5 flex-wrap mb-4">
+        {tabs.map((tab: any, i: number) => (
+          <button
+            key={i}
+            type="button"
+            onClick={() => setActive(i)}
+            className={cn(
+              "px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer",
+              i === current
+                ? "text-white border-transparent shadow-sm"
+                : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-700"
+            )}
+            style={i === current ? { backgroundColor: accent } : undefined}
+          >
+            {localize(tab?.label ?? tab?.title) || `${t("Tab", "Záložka", "Fül")} ${i + 1}`}
+          </button>
+        ))}
+      </div>
+
+      <div className="relative min-h-[80px] flex flex-col justify-center">
+        {isTabLoading(current) ? (
+          <div className="flex items-center justify-center py-6">
+            <RefreshCw className="h-4 w-4 text-indigo-600 animate-spin" />
+          </div>
+        ) : (
+          // The tab's own label doubles as its title, so a metric tab keeps the
+          // currency heuristic that reads the widget title.
+          renderTab({ ...activeTab, title: activeTab?.title ?? activeTab?.label }, current)
+        )}
+      </div>
     </div>
   );
 };

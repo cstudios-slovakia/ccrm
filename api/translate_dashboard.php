@@ -67,8 +67,9 @@ Rules:
   - If `title` is already such an object, keep any language keys that are already filled in and only fill in the missing ones — do not change the existing translations.
   - If `title` is a plain string, treat it as the source text (in whichever language it is written) and produce all three translations from it.
 - For every table widget's `columns[].label`, apply the exact same rule.
+- For every tabs widget's `tabs[].label` (and `tabs[].title`, if present), apply the exact same rule — including for tables nested inside a tab, whose `columns[].label` must also be translated.
 - Do NOT change, translate, or remove any other field: `id`, `type`, `size`, `color`, `chartType`, `mapping`, `columns[].key`, `columns[].format`, `query`, `metricValue`, etc. must be returned byte-for-byte identical.
-- Do NOT add, remove, or reorder widgets or columns.
+- Do NOT add, remove, or reorder widgets, tabs or columns.
 - Keep translations concise and consistent with normal CRM/dashboard terminology.";
 
 $messages = [
