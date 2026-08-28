@@ -119,6 +119,9 @@
   --accent: 147 122 235; /* Soft pastel violet #937aeb */
   --accent-foreground: 255 255 255;
 
+  --destructive: 225 29 72; /* rose-600 #e11d48 — the ramp the app already uses for danger */
+  --destructive-foreground: 255 255 255;
+
   --border: 226 232 240;
   --input: 226 232 240;
   --ring: 79 110 219;
@@ -151,6 +154,9 @@
 
   --accent: 217 165 42;      /* Muted honey gold #d9a52a */
   --accent-foreground: 51 47 43;
+
+  --destructive: 185 28 28;  /* Warm brick #b91c1c, so danger stays in the warm family */
+  --destructive-foreground: 255 255 255;
 
   --border: 236 228 213;     /* Delicate, feather-light warm border #ece4d5 */
   --input: 236 228 213;
@@ -452,6 +458,12 @@ dialog[open]::backdrop {
 
   --accent: 173 152 255;
   --accent-foreground: 14 11 28;
+
+  /* Lifted, and paired with dark ink rather than white — the same convention as
+     --primary above, so `text-destructive` reads on a dark card and
+     `bg-destructive` still carries its own label. */
+  --destructive: 255 122 145;
+  --destructive-foreground: 40 6 14;
 
   --border: 42 50 66;
   --input: 42 50 66;
