@@ -736,6 +736,16 @@ HTACCESS;
     }
 
     /**
+     * OpenAI's reasoning-model families (o1/o3/o4/gpt-5*) reject any
+     * 'temperature' value other than the default (1) — sending 0.2/0.3/0.4
+     * fails with "Unsupported value: 'temperature' does not support X".
+     * Only include the param for models that actually accept it.
+     */
+    function ccrm_ai_model_supports_temperature(string $model): bool {
+        return !preg_match('/^(o[1-9]|gpt-5)/i', trim($model));
+    }
+
+    /**
      * Redact secret-looking fields from a raw request body before it is stored
      * in the error log (readable by admins). Only rewrites JSON bodies; anything
      * whose key looks like a password/secret/token/api key becomes [REDACTED].

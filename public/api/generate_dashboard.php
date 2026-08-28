@@ -176,11 +176,14 @@ curl_setopt($ch, CURLOPT_HTTPHEADER, [
     'Content-Type: application/json',
     'Authorization: Bearer ' . $openAiKey
 ]);
-curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
+$dashboardPayload = [
     'model' => $model,
     'messages' => $messages,
-    'temperature' => 0.2
-]));
+];
+if (ccrm_ai_model_supports_temperature($model)) {
+    $dashboardPayload['temperature'] = 0.2;
+}
+curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($dashboardPayload));
 
 $response = curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
