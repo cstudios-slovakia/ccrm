@@ -40,6 +40,15 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   const handleModelSliderChange = (val: number) => {
     setSelectedModel(models[val] || "gpt-5.6-terra");
   };
+  // Driven by slider position (not the selectedModel string) so dashboards saved
+  // before models were renamed to the gpt-5.6 family (e.g. a stored "gpt-4o")
+  // still show a level that matches where the slider thumb actually sits.
+  const modelLevelIndex = modelIndex >= 0 ? modelIndex : 1;
+  const modelLevelLabel = [
+    t("Simple", "Jednoduchý", "Egyszerű"),
+    t("Smart", "Inteligentný", "Okos"),
+    t("Expert", "Expert", "Szakértő")
+  ][modelLevelIndex];
 
   // Temporary layout workspace before saving
   const [tempLayout, setTempLayout] = useState(dashboard.layout);
@@ -149,31 +158,28 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   };
 
   return (
-    <div className="flex-1 h-full flex flex-col bg-[#f8fafc] relative overflow-hidden p-6">
-      {/* Top Action Header */}
-      <div className="flex items-center justify-between pb-4 border-b border-slate-200/80 mb-6 shrink-0">
-        <div className="flex items-center gap-3">
-          <div
-            className="w-10 h-10 rounded-2xl flex items-center justify-center text-white shadow-md"
-            style={{ backgroundColor: dashboard.color }}
-          >
-            <Sparkles className="h-5 w-5" />
-          </div>
-          <div className="text-left">
-            <h1 className="text-xl font-extrabold text-slate-800 tracking-tight leading-none">
-              {dashboard.name}
-            </h1>
-            <span className="text-[10px] text-slate-450 font-bold uppercase tracking-wider mt-1 block">
-              {t("Custom Dynamic AI Dashboard", "Vlastný dynamický AI panel", "Egyéni dinamikus AI irányítópult")}
-            </span>
-          </div>
+    <div className="w-full space-y-6 animate-in fade-in slide-in-from-top-4 duration-300">
+      {/* HEADER — same shape as every other module: title block on the left,
+          actions on the right, hairline rule underneath. This view used to paint
+          its own full-bleed background and padding on top of the app's own
+          <main> padding, which made it visibly narrower/differently inset than
+          every other section. */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-4">
+        <div className="flex flex-col">
+          <h1 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+            <Sparkles className="h-6 w-6" style={{ color: dashboard.color }} />
+            {dashboard.name}
+          </h1>
+          <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
+            {t("Custom Dynamic AI Dashboard", "Vlastný dynamický AI panel", "Egyéni dinamikus AI irányítópult")}
+          </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
           {isEditMode && (
             <button
               onClick={() => setIsHelpOpen(true)}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-550 hover:text-slate-800 text-xs font-bold uppercase tracking-wider transition-all shadow-sm cursor-pointer animate-in fade-in duration-205"
+              className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors text-xs font-heading font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shrink-0"
             >
               <HelpCircle className="h-4 w-4" />
               <span>{t("Help", "Pomoc", "Súgó")}</span>
@@ -183,7 +189,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
           {tempLayout.widgets.length > 0 && !isEditMode && (
             <button
               onClick={() => setIsEditMode(true)}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold uppercase tracking-wider transition-all shadow-sm cursor-pointer"
+              className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors text-xs font-heading font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shrink-0"
             >
               <Edit className="h-4 w-4" />
               <span>{t("Edit", "Upraviť", "Szerkesztés")}</span>
@@ -193,7 +199,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
           {!isSaved && (
             <button
               onClick={handleSave}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold uppercase tracking-wider transition-all shadow-md shadow-emerald-600/10 cursor-pointer"
+              className="px-5 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20 transition-all font-heading font-bold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95 shrink-0"
             >
               <Save className="h-4 w-4" />
               <span>{t("Save", "Uložiť", "Mentés")}</span>
@@ -203,7 +209,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 overflow-y-auto pb-32 pr-1 scrollbar-thin">
+      <div>
         {errorMsg && (
           <div className="mb-6 p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-start gap-3 text-rose-800 text-sm animate-in fade-in duration-200">
             <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
@@ -216,7 +222,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
 
         {tempLayout.widgets.length === 0 ? (
           /* Empty Initial State: Large Center Prompt Input */
-          <div className="h-full max-w-2xl mx-auto flex flex-col items-center justify-center text-center p-8 mt-12">
+          <div className="max-w-2xl mx-auto flex flex-col items-center text-center p-8 mt-12">
             <div className="w-16 h-16 rounded-[24px] bg-indigo-50 flex items-center justify-center mb-6 shadow-inner">
               <Sparkles className="h-8 w-8 text-indigo-600 animate-pulse" />
             </div>
@@ -255,28 +261,27 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 />
               </div>
 
-              <div className="flex items-center justify-between gap-4 pt-2">
-                <div className="flex flex-col gap-1 items-start min-w-[120px]">
-                  <div className="flex items-center justify-between w-full">
+              <div className="flex items-center justify-between gap-5 pt-2">
+                <div className="flex flex-col gap-1.5 items-start w-[190px] shrink-0">
+                  <div className="flex items-center justify-between w-full gap-3">
                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">
                       {t("Model Power", "Výkon modelu", "Modell Teljesítmény")}
                     </span>
-                    <span className="text-[9px] font-black text-purple-600 uppercase tracking-wider">
-                      {selectedModel === "gpt-5.6-luna"
-                        ? t("Simple", "Jednoduchý", "Egyszerű")
-                        : selectedModel === "gpt-5.6-terra"
-                          ? t("Smart", "Inteligentný", "Okos")
-                          : t("Expert", "Expert", "Szakértő")}
+                    <span className="text-[9px] font-black text-purple-600 uppercase tracking-wider whitespace-nowrap">
+                      {modelLevelLabel}
                     </span>
                   </div>
                   <input
                     type="range"
                     min="0"
                     max="2"
-                    value={modelIndex >= 0 ? modelIndex : 1}
+                    value={modelLevelIndex}
                     onChange={(e) => handleModelSliderChange(Number(e.target.value))}
                     className="w-full accent-purple-600 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer"
                   />
+                  <span className="text-[9px] font-medium text-slate-400 tracking-tight normal-case">
+                    {selectedModel}
+                  </span>
                 </div>
 
                 <button
@@ -301,7 +306,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
           </div>
         ) : (
           /* Render Generated Layout Grid */
-          <div className="grid grid-cols-12 gap-6 text-left">
+          <div className="grid grid-cols-12 gap-6 text-left pb-2">
             {tempLayout.widgets.map((w: any) => (
               <div
                 key={w.id}
@@ -395,80 +400,85 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
             ))}
           </div>
         )}
-      </div>
 
-      {/* Floating Prompt Bar at the bottom in Edit Mode */}
-      {isEditMode && tempLayout.widgets.length > 0 && (
-        <div className="absolute bottom-6 left-6 right-6 z-[999] animate-in slide-in-from-bottom-6 duration-300">
-          <form
-            onSubmit={handleRunPrompt}
-            className="max-w-3xl mx-auto bg-white/90 backdrop-blur-md border border-slate-200/80 rounded-[28px] shadow-2xl p-4 flex items-center gap-3.5"
-          >
-            <textarea
-              rows={1}
-              value={promptText}
-              onChange={(e) => setPromptText(e.target.value)}
-              placeholder={t(
-                "Refine layout (e.g. change X chart to Y, add Z metric)...",
-                "Upravte rozloženie (napr. zmeňte graf X na Y, pridajte metriku Z)...",
-                "Módosítsa az elrendezést (pl. változtassa meg az X diagramot Y-ra)..."
-              )}
-              className="flex-1 px-4 py-2.5 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-xs font-semibold bg-slate-50/50 resize-none"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleRunPrompt();
-                }
-              }}
-            />
+        {/* Prompt Bar docked at the bottom of the workspace in Edit Mode. Sticky
+            (not the old viewport-fixed overlay) so it stays anchored to this
+            view's own scroll flow like the rest of the app instead of floating
+            over — and clipping — the last row of widgets. */}
+        {isEditMode && tempLayout.widgets.length > 0 && (
+          <div className="sticky bottom-6 z-40 mt-6 animate-in slide-in-from-bottom-6 duration-300">
+            <form
+              onSubmit={handleRunPrompt}
+              className="max-w-3xl mx-auto bg-white/90 backdrop-blur-md border border-slate-200/80 rounded-[28px] shadow-2xl p-4 flex items-center gap-3.5"
+            >
+              <textarea
+                rows={1}
+                value={promptText}
+                onChange={(e) => setPromptText(e.target.value)}
+                placeholder={t(
+                  "Refine layout (e.g. change X chart to Y, add Z metric)...",
+                  "Upravte rozloženie (napr. zmeňte graf X na Y, pridajte metriku Z)...",
+                  "Módosítsa az elrendezést (pl. változtassa meg az X diagramot Y-ra)..."
+                )}
+                className="flex-1 px-4 py-2.5 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-xs font-semibold bg-slate-50/50 resize-none"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleRunPrompt();
+                  }
+                }}
+              />
 
-            <div className="flex flex-col gap-1 items-start min-w-[100px] shrink-0 justify-center">
-              <div className="flex items-center justify-between w-full">
-                <span className="text-[8px] font-black text-purple-600 uppercase tracking-wider">
-                  {selectedModel === "gpt-5.6-luna"
-                    ? t("Simple", "Jednoduchý", "Egyszerű")
-                    : selectedModel === "gpt-5.6-terra"
-                      ? t("Smart", "Inteligentný", "Okos")
-                      : t("Expert", "Expert", "Szakértő")}
+              <div className="flex flex-col gap-1 items-start w-[150px] shrink-0 justify-center">
+                <div className="flex items-center justify-between w-full gap-2">
+                  <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest shrink-0">
+                    {t("Model", "Model", "Modell")}
+                  </span>
+                  <span className="text-[8px] font-black text-purple-600 uppercase tracking-wider whitespace-nowrap">
+                    {modelLevelLabel}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="2"
+                  value={modelLevelIndex}
+                  onChange={(e) => handleModelSliderChange(Number(e.target.value))}
+                  className="w-full accent-purple-600 h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer"
+                />
+                <span className="text-[8px] font-medium text-slate-400 tracking-tight normal-case">
+                  {selectedModel}
                 </span>
               </div>
-              <input
-                type="range"
-                min="0"
-                max="2"
-                value={modelIndex >= 0 ? modelIndex : 1}
-                onChange={(e) => handleModelSliderChange(Number(e.target.value))}
-                className="w-full accent-purple-600 h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer"
-              />
-            </div>
 
-            <button
-              type="submit"
-              disabled={isGenerating || !promptText.trim()}
-              className="flex items-center justify-center h-9 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white disabled:text-slate-400 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer shrink-0"
-            >
-              {isGenerating ? (
-                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Send className="h-3.5 w-3.5" />
-              )}
-            </button>
+              <button
+                type="submit"
+                disabled={isGenerating || !promptText.trim()}
+                className="flex items-center justify-center h-9 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white disabled:text-slate-400 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer shrink-0"
+              >
+                {isGenerating ? (
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Send className="h-3.5 w-3.5" />
+                )}
+              </button>
 
-            <div className="h-6 w-px bg-slate-200" />
+              <div className="h-6 w-px bg-slate-200" />
 
-            <button
-              type="button"
-              onClick={() => {
-                setIsEditMode(false);
-                setIsHelpOpen(false);
-              }}
-              className="h-9 px-4 border border-slate-200 rounded-xl hover:bg-slate-50 text-[10px] font-black text-slate-500 uppercase tracking-wider transition-colors cursor-pointer shrink-0"
-            >
-              {t("Close", "Zavrieť", "Bezárás")}
-            </button>
-          </form>
-        </div>
-      )}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsEditMode(false);
+                  setIsHelpOpen(false);
+                }}
+                className="h-9 px-4 border border-slate-200 rounded-xl hover:bg-slate-50 text-[10px] font-black text-slate-500 uppercase tracking-wider transition-colors cursor-pointer shrink-0"
+              >
+                {t("Close", "Zavrieť", "Bezárás")}
+              </button>
+            </form>
+          </div>
+        )}
+      </div>
 
       {/* UX Help Slideout Drawer */}
       {isHelpOpen && (
