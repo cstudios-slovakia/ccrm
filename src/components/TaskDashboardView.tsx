@@ -231,7 +231,7 @@ const BUCKET_TONES = {
         title: "text-amber-600",
         chevron: "text-amber-500 group-hover/btn:text-amber-700",
         emptyBorder: "border-amber-200/50",
-        emptyText: "text-amber-550",
+        emptyText: "text-amber-500",
     },
     slate: {
         shell: "bg-slate-50/50 border border-slate-200",
@@ -1279,7 +1279,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                       "Vissza a havi naptárhoz",
                                   )}
                         </button>
-                        <h2 className="text-2xl font-black text-slate-850 tracking-tight flex items-center gap-2">
+                        <h2 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2">
                             <CalendarIcon className="h-6 w-6 text-indigo-600 stroke-[2.5]" />
                             {dayDate.toLocaleDateString(dateLocale, {
                                 weekday: "long",
@@ -1366,7 +1366,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         }}
                         className={`px-3 py-1.5 rounded-lg font-black text-[10px] uppercase tracking-wider transition-all cursor-pointer ${
                             cfg.scope === scope
-                                ? "bg-white text-indigo-650 shadow-sm border border-slate-200/50"
+                                ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
                                 : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
                         }`}
                     >
@@ -1543,7 +1543,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 e.stopPropagation();
                                 handleArchiveTask(task);
                             }}
-                            className="p-1 hover:bg-slate-100 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 rounded-lg text-slate-400 hover:text-slate-650 transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-35"
+                            className="p-1 hover:bg-slate-100 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 rounded-lg text-slate-400 hover:text-slate-600 transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-35"
                             disabled={!mayEditTask(task)}
                             title={t(
                                 "Archive Task",
@@ -1558,7 +1558,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 e.stopPropagation();
                                 setEditingTask(task);
                             }}
-                            className="p-1 hover:bg-slate-100 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 rounded-lg text-slate-400 hover:text-slate-650 transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-35"
+                            className="p-1 hover:bg-slate-100 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 rounded-lg text-slate-400 hover:text-slate-600 transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-35"
                             disabled={!mayEditTask(task)}
                             title={t(
                                 "Edit Task",
@@ -1670,7 +1670,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         return (
             <div
                 key={task.id}
-                className="p-2.5 rounded-xl border border-slate-200 bg-white hover:border-slate-350 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-sm hover:shadow"
+                className="p-2.5 rounded-xl border border-slate-200 bg-white hover:border-slate-300 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-sm hover:shadow"
             >
                 <div className="flex-1 min-w-0 flex items-center gap-3">
                     {/* Priority dot indicator */}
@@ -1775,7 +1775,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     task,
                                 )
                             }
-                            className="px-2.5 py-1.5 border border-indigo-255 hover:bg-indigo-50 text-indigo-650 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
+                            className="px-2.5 py-1.5 border border-indigo-200 hover:bg-indigo-50 text-indigo-600 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
                         >
                             <RotateCcw className="h-3 w-3 stroke-[2.5]" />
                             {t(
@@ -2060,7 +2060,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         return (
             <div className="flex-1 min-h-0 flex flex-col gap-6 animate-in fade-in slide-in-from-top-4 duration-300">
                 {/* FILTERS */}
-                <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-150 shadow-sm shrink-0">
+                <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm shrink-0">
                     <div className="flex items-center gap-2">
                         <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
                             {t(
@@ -2270,7 +2270,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                 }}
                                                 className={`px-3 py-1.5 rounded-lg font-black text-[10px] uppercase tracking-wider transition-all cursor-pointer ${
                                                     globalRightView === mode
-                                                        ? "bg-white text-indigo-650 shadow-sm border border-slate-200/50"
+                                                        ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
                                                         : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
                                                 }`}
                                             >
@@ -2448,7 +2448,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             onClick={() => setViewMode("calendar")}
                             className={`px-4 py-2 rounded-lg font-black text-xs uppercase tracking-wider transition-all cursor-pointer ${
                                 viewMode === "calendar"
-                                    ? "bg-white text-indigo-650 shadow-sm border border-slate-200/50"
+                                    ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
                                     : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
                             }`}
                         >
@@ -2458,7 +2458,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             onClick={() => setViewMode("global")}
                             className={`px-4 py-2 rounded-lg font-black text-xs uppercase tracking-wider transition-all cursor-pointer ${
                                 viewMode === "global"
-                                    ? "bg-white text-indigo-650 shadow-sm border border-slate-200/50"
+                                    ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
                                     : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
                             }`}
                         >
@@ -2472,7 +2472,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             onClick={() => setViewMode("archive")}
                             className={`px-4 py-2 rounded-lg font-black text-xs uppercase tracking-wider transition-all cursor-pointer ${
                                 viewMode === "archive"
-                                    ? "bg-white text-indigo-650 shadow-sm border border-slate-200/50"
+                                    ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
                                     : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
                             }`}
                         >
@@ -2519,7 +2519,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                         }}
                                         className={`px-3 py-1.5 rounded-lg font-black text-[10px] uppercase tracking-wider transition-all cursor-pointer ${
                                             archiveView === mode
-                                                ? "bg-white text-indigo-650 shadow-sm border border-slate-200/50"
+                                                ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
                                                 : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
                                         }`}
                                     >
@@ -2791,7 +2791,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                             task,
                                                         )
                                                     }
-                                                    className="px-2.5 py-1.5 border border-indigo-255 hover:bg-indigo-50 text-indigo-650 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
+                                                    className="px-2.5 py-1.5 border border-indigo-200 hover:bg-indigo-50 text-indigo-600 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
                                                 >
                                                     <RotateCcw className="h-3 w-3 stroke-[2.5]" />
                                                     {t(
@@ -2835,7 +2835,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     resetNewTaskForm();
                                     setIsAddDrawerOpen(true);
                                 }}
-                                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-indigo-600/20 transition-all active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 flex items-center justify-center gap-2 cursor-pointer border-2 border-indigo-550 disabled:cursor-not-allowed disabled:opacity-50"
+                                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-indigo-600/20 transition-all active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 flex items-center justify-center gap-2 cursor-pointer border-2 border-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
                                 disabled={!taskAccess.create}
                             >
                                 <Plus className="h-4 w-4 stroke-[3]" />
@@ -2854,7 +2854,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 )}
                                 className={`shrink-0 py-2.5 px-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer border-2 ${
                                     isCompact
-                                        ? "bg-indigo-600 text-white border-indigo-550 shadow-lg shadow-indigo-600/20"
+                                        ? "bg-indigo-600 text-white border-indigo-500 shadow-lg shadow-indigo-600/20"
                                         : "bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600"
                                 }`}
                             >

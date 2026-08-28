@@ -322,7 +322,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
 
     return (
       <div className="flex flex-col gap-1.5 relative">
-        <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
+        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
           {t("Linked Client", "Priradený klient", "Hozzárendelt ügyfél")}
         </label>
         
@@ -351,7 +351,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                   setFormClientId("");
                   setIsClientDropdownOpen(true);
                 }}
-                className="absolute right-3 top-3 text-slate-400 hover:text-slate-650 cursor-pointer"
+                className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 cursor-pointer"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -394,7 +394,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
         </div>
 
         {linkedClient && (
-          <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-250 text-emerald-800 text-xs font-semibold space-y-2 relative shadow-sm animate-in fade-in slide-in-from-top-1 duration-150 mt-1.5">
+          <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 text-emerald-800 text-xs font-semibold space-y-2 relative shadow-sm animate-in fade-in slide-in-from-top-1 duration-150 mt-1.5">
             <div className="flex items-center justify-between border-b border-emerald-100 pb-1.5 mb-1.5">
               <div className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[10px] text-emerald-700">
                 <Users className="h-3.5 w-3.5" />
@@ -449,7 +449,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
 
     return (
       <div className="flex flex-col gap-1.5 relative">
-        <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
+        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
           {t("Linked Lead", "Priradený lead", "Hozzárendelt lead")}
         </label>
         
@@ -478,7 +478,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                   setFormLeadId("");
                   setIsLeadDropdownOpen(true);
                 }}
-                className="absolute right-3 top-3 text-slate-400 hover:text-slate-650 cursor-pointer"
+                className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 cursor-pointer"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -521,7 +521,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
         </div>
 
         {linkedLead && (
-          <div className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-250 text-indigo-800 text-xs font-semibold space-y-2 relative shadow-sm animate-in fade-in slide-in-from-top-1 duration-150 mt-1.5">
+          <div className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200 text-indigo-800 text-xs font-semibold space-y-2 relative shadow-sm animate-in fade-in slide-in-from-top-1 duration-150 mt-1.5">
             <div className="flex items-center justify-between border-b border-indigo-100 pb-1.5 mb-1.5">
               <div className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[10px] text-indigo-700">
                 <Briefcase className="h-3.5 w-3.5" />
@@ -529,7 +529,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
               </div>
               <a
                 href={`#lead-${encodeURIComponent(linkedLead.id)}`}
-                className="text-[10px] text-indigo-600 hover:text-indigo-955 font-black underline flex items-center gap-0.5"
+                className="text-[10px] text-indigo-600 hover:text-indigo-950 font-black underline flex items-center gap-0.5"
               >
                 {t("View Profile", "Profil leadu", "Profil megtekintése")}
                 <ChevronRight className="h-3 w-3" />
@@ -688,7 +688,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
             <h2 className="text-xl font-heading font-bold text-slate-900 uppercase tracking-wider">
               {t(`Details & Editing: ${entrySingularEn.toLowerCase()}`, `Detail a úprava: ${entrySingularSk.toLowerCase()}`, `${entrySingularHu.toLowerCase()} részletei és szerkesztése`)}
             </h2>
-            <p className="text-xs text-slate-550 uppercase font-bold tracking-wider mt-0.5">
+            <p className="text-xs text-slate-500 uppercase font-bold tracking-wider mt-0.5">
               {editingEntryRow.title || t("Untitled", "Bez názvu", "Névtelen")}
             </p>
           </div>
@@ -700,7 +700,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
             {/* Title module */}
             {activeModules.includes("title") && (
               <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                   {t("Title / Name", "Titulok / Názov", "Cím / Név")}
                 </label>
                 <input
@@ -718,7 +718,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
             {activeModules.includes("due_date") && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                     {t("Due Date", "Termín (Due Date)", "Határidő")}
                   </label>
                   <input
@@ -730,7 +730,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                 </div>
                 
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                     {t("Warning days before due date", "Počet dní pre varovanie pred termínom", "Figyelmeztetés napokban a határidő előtt")}
                   </label>
                   <input
@@ -748,7 +748,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
             {/* File module */}
             {activeModules.includes("file") && (
               <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                   {t("Attachment (File)", "Príloha (Súbor)", "Melléklet (Fájl)")}
                 </label>
                 {formFile ? (
@@ -764,7 +764,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                       <a
                         href={formFile.filePath}
                         download
-                        className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-500 hover:text-indigo-650 transition-colors"
+                        className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-500 hover:text-indigo-600 transition-colors"
                         title={t("Download file", "Stiahnuť súbor", "Fájl letöltése")}
                       >
                         <Download className="h-4 w-4" />
@@ -789,7 +789,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                     />
                     <div className="flex flex-col items-center gap-2">
                       <UploadCloud className="h-8 w-8 text-slate-400 group-hover:text-indigo-500 transition-colors" />
-                      <span className="text-xs font-bold text-slate-500 group-hover:text-indigo-650 transition-colors">
+                      <span className="text-xs font-bold text-slate-500 group-hover:text-indigo-600 transition-colors">
                         {isUploading
                           ? t("Uploading...", "Nahráva sa...", "Feltöltés...")
                           : t("Click or drag file here", "Kliknite alebo pretiahnite súbor sem", "Kattintson vagy húzza ide a fájlt")}
@@ -885,7 +885,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
             const isLast = idx === arr.length - 1;
             return (
               <React.Fragment key={crumb.id || "root"}>
-                {idx > 0 && <ChevronRight className="h-3 w-3 text-slate-350" />}
+                {idx > 0 && <ChevronRight className="h-3 w-3 text-slate-300" />}
                 {isLast ? (
                   <span className="text-slate-700 font-extrabold">{crumb.name}</span>
                 ) : (
@@ -910,7 +910,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                         }));
                       }
                     }}
-                    className="hover:text-indigo-650 transition-colors cursor-pointer"
+                    className="hover:text-indigo-600 transition-colors cursor-pointer"
                   >
                     {crumb.name}
                   </button>
@@ -933,7 +933,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
           {searchQuery && (
             <button
               onClick={() => setSearchQuery("")}
-              className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-650 text-xs"
+              className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 text-xs"
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -960,7 +960,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b border-slate-100 bg-slate-50/50 text-[10px] font-black uppercase tracking-wider text-slate-450 select-none">
+                <tr className="border-b border-slate-100 bg-slate-50/50 text-[10px] font-black uppercase tracking-wider text-slate-400 select-none">
                   <th className="py-3.5 px-6">{t(`Title / ${folderSingularEn}`, `Názov / ${folderSingularSk}`, `Cím / ${folderSingularHu}`)}</th>
                   {isDueDateActive && <th className="py-3.5 px-4">{t("Due Date", "Termín", "Határidő")}</th>}
                   {isFileActive && <th className="py-3.5 px-4">{t("Attachment", "Súbor", "Melléklet")}</th>}
@@ -1063,7 +1063,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                         {row.isFolder ? (() => {
                           const IconComponent = (Icons as any)[registry.icon] || Icons.Folder;
                           return (
-                            <div className="flex items-center gap-3 text-indigo-650 hover:text-indigo-850 font-black uppercase tracking-wider">
+                            <div className="flex items-center gap-3 text-indigo-600 hover:text-indigo-800 font-black uppercase tracking-wider">
                               <div className="h-8 w-8 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 shrink-0 shadow-sm">
                                 <IconComponent className="h-4 w-4" />
                               </div>
@@ -1100,7 +1100,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                             <a
                               href={row.filePath}
                               download
-                              className="inline-flex items-center gap-1 text-indigo-650 hover:text-indigo-850 font-bold hover:underline"
+                              className="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 font-bold hover:underline"
                               title={t("Download attachment", "Stiahnuť prílohu", "Melléklet letöltése")}
                             >
                               <Download className="h-3.5 w-3.5" />
@@ -1119,7 +1119,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                           {rowModules.includes("client") && linkedClient ? (
                             <a
                               href={`#client-${encodeURIComponent(linkedClient.name)}`}
-                              className="inline-flex items-center gap-1 text-indigo-650 hover:underline font-bold"
+                              className="inline-flex items-center gap-1 text-indigo-600 hover:underline font-bold"
                             >
                               <Users className="h-3.5 w-3.5 text-slate-400" />
                               <span>{linkedClient.name}</span>
@@ -1138,7 +1138,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                             {rowModules.includes("lead") && linkedLead ? (
                               <a
                                 href={`#lead-${encodeURIComponent(linkedLead.id)}`}
-                                className="inline-flex items-center gap-1 text-indigo-650 hover:underline font-bold"
+                                className="inline-flex items-center gap-1 text-indigo-600 hover:underline font-bold"
                               >
                                 <Briefcase className="h-3.5 w-3.5 text-slate-400" />
                                 <span>{linkedLead.name}</span>
@@ -1216,7 +1216,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                         ? t(`Edit ${entrySingularEn}`, `Upraviť ${entrySingularSk.toLowerCase()}`, `${entrySingularHu} szerkesztése`)
                         : t(`New ${entrySingularEn}`, `Nový ${entrySingularSk}`, `Új ${entrySingularHu}`))}
                 </h3>
-                <button onClick={() => setIsEditing(false)} className="text-slate-400 hover:text-slate-650">
+                <button onClick={() => setIsEditing(false)} className="text-slate-400 hover:text-slate-600">
                   <X className="h-5 w-5" />
                 </button>
               </div>
@@ -1225,7 +1225,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                 {/* Title module */}
                 {(activeFormModules.includes("title") || editingIsFolder) && (
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                       {editingIsFolder
                         ? t(`${folderSingularEn} Name`, `Názov pre ${folderSingularSk.toLowerCase()}`, `${folderSingularHu} neve`)
                         : t(`${entrySingularEn} Name`, `Názov pre ${entrySingularSk.toLowerCase()}`, `${entrySingularHu} neve`)} *
@@ -1248,7 +1248,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                 {activeFormModules.includes("due_date") && (
                   <div className="space-y-3">
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                         {t("Due Date", "Termín (Due Date)", "Határidő")}
                       </label>
                       <input
@@ -1260,7 +1260,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                     </div>
                     
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                         {t("Warning days before due date", "Počet dní pre varovanie pred termínom", "Figyelmeztetés napokban a határidő előtt")}
                       </label>
                       <input
@@ -1278,7 +1278,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                 {/* File module */}
                 {activeFormModules.includes("file") && (
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                       {t("Attachment (File)", "Príloha (Súbor)", "Melléklet (Fájl)")}
                     </label>
                     {formFile ? (
@@ -1286,7 +1286,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                         <div className="flex items-center gap-2 truncate">
                           <FileText className="h-4.5 w-4.5 text-slate-400 shrink-0" />
                           <span className="font-semibold text-slate-700 truncate">{formFile.fileName}</span>
-                          <span className="text-[9px] text-slate-450 font-bold shrink-0">({formFile.fileSize})</span>
+                          <span className="text-[9px] text-slate-400 font-bold shrink-0">({formFile.fileSize})</span>
                         </div>
                         <button
                           type="button"
@@ -1361,16 +1361,16 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
             </div>
 
             <div className="space-y-4 text-left">
-              <span className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
                 {t(`Select target ${folderSingularEn.toLowerCase()}`, `Vyberte cieľový ${folderSingularSk.toLowerCase()}`, `Válassza ki a cél ${folderSingularHu.toLowerCase()} elemet`)}
               </span>
 
-              <div className="max-h-60 overflow-y-auto space-y-1 pr-1 border border-slate-150 rounded-2xl p-2 bg-slate-50/50">
+              <div className="max-h-60 overflow-y-auto space-y-1 pr-1 border border-slate-100 rounded-2xl p-2 bg-slate-50/50">
                 {/* Root option */}
                 <button
                   type="button"
                   onClick={() => handleMoveItem(null)}
-                  className="w-full flex items-center gap-2 p-2.5 rounded-xl hover:bg-white border border-transparent hover:border-slate-200 text-xs font-bold text-slate-650 hover:text-indigo-650 transition-all text-left cursor-pointer"
+                  className="w-full flex items-center gap-2 p-2.5 rounded-xl hover:bg-white border border-transparent hover:border-slate-200 text-xs font-bold text-slate-600 hover:text-indigo-600 transition-all text-left cursor-pointer"
                 >
                   <Folder className="h-4 w-4 text-slate-400" />
                   <span>/ ({t("Root", "Koreň", "Gyökér")})</span>
@@ -1381,7 +1381,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                     key={folder.id}
                     type="button"
                     onClick={() => handleMoveItem(folder.id)}
-                    className="w-full flex items-center gap-2 p-2.5 rounded-xl hover:bg-white border border-transparent hover:border-slate-200 text-xs font-bold text-slate-650 hover:text-indigo-650 transition-all text-left cursor-pointer"
+                    className="w-full flex items-center gap-2 p-2.5 rounded-xl hover:bg-white border border-transparent hover:border-slate-200 text-xs font-bold text-slate-600 hover:text-indigo-600 transition-all text-left cursor-pointer"
                   >
                     <Folder className="h-4 w-4 text-amber-500 fill-amber-50" />
                     <span className="truncate">{folder.title}</span>

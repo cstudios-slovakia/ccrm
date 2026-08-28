@@ -2326,7 +2326,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                 >
                                   {getTriggerIcon(triggerType)}
                                 </div>
-                                <span className="font-semibold text-slate-750">{getTriggerLabel(triggerType)}</span>
+                                <span className="font-semibold text-slate-700">{getTriggerLabel(triggerType)}</span>
                               </div>
                               <span className="text-slate-400 text-[9px] mr-1">▼</span>
                             </button>

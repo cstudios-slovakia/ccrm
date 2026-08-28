@@ -372,7 +372,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
               <h3 className="text-md font-heading font-black tracking-tight text-slate-900 uppercase">
                 {getTranslation(systemLanguage, "login.success")}
               </h3>
-              <p className="text-[10px] text-slate-450 uppercase font-black tracking-widest leading-normal">
+              <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest leading-normal">
                 {getTranslation(systemLanguage, "login.success_desc")}
               </p>
             </div>
@@ -408,11 +408,11 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
                     "text-rose-600 font-black", // 3
                     "text-purple-600 font-black", // 4
                     "text-amber-600 font-black", // 5
-                    "text-cyan-605 font-black", // 6
-                    "text-red-705 font-black", // 7
+                    "text-cyan-600 font-black", // 6
+                    "text-red-700 font-black", // 7
                     "text-slate-600 font-black", // 8
                   ];
-                  colorClass = colors[cell.neighborMines] || "text-slate-750";
+                  colorClass = colors[cell.neighborMines] || "text-slate-700";
                 }
               } else if (cell.isFlagged) {
                 cellContent = "🚩";
@@ -464,7 +464,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
               <h2 className="text-2xl font-heading font-black text-slate-900 tracking-tight uppercase">
                 {systemName} {getTranslation(systemLanguage, "login.title")}
               </h2>
-              <p className="text-[10px] text-slate-505 font-extrabold uppercase tracking-widest mt-1">
+              <p className="text-[10px] text-slate-500 font-extrabold uppercase tracking-widest mt-1">
                 {getTranslation(systemLanguage, "login.subtitle")}
               </p>
             </div>
@@ -484,7 +484,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
                 <p className="font-black uppercase tracking-wider text-[10px] text-amber-700">
                   {getTranslation(systemLanguage, "login.storage_blocked_title")}
                 </p>
-                <p className="font-medium text-amber-850">
+                <p className="font-medium text-amber-800">
                   {getTranslation(systemLanguage, "login.storage_blocked_desc")}
                 </p>
               </div>
@@ -496,7 +496,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
             
             {/* Email Input */}
             <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-slate-550 uppercase tracking-wider block pl-0.5">{getTranslation(systemLanguage, "login.email")}</label>
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block pl-0.5">{getTranslation(systemLanguage, "login.email")}</label>
               <div className="relative">
                 <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                 <input
@@ -505,14 +505,14 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder={tr("e.g. alex@crm.com", "napr. alex@crm.com", "pl. alex@crm.com")}
-                  className="w-full pl-11 pr-4 py-3 rounded-2xl bg-white border border-slate-250 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all font-semibold"
+                  className="w-full pl-11 pr-4 py-3 rounded-2xl bg-white border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all font-semibold"
                 />
               </div>
             </div>
 
             {/* Password Input */}
             <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-slate-550 uppercase tracking-wider block pl-0.5">{getTranslation(systemLanguage, "login.password")}</label>
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block pl-0.5">{getTranslation(systemLanguage, "login.password")}</label>
               <div className="relative">
                 <Key className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 z-10" />
                 <PasswordInput
@@ -520,7 +520,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full pl-11 pr-11 py-3 rounded-2xl bg-white border border-slate-250 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all font-semibold"
+                  className="w-full pl-11 pr-11 py-3 rounded-2xl bg-white border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all font-semibold"
                 />
               </div>
             </div>
@@ -538,14 +538,14 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
               }`}>
                 {rememberMe && <CheckCircle className="h-3 w-3 text-white" />}
               </span>
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-550 group-hover:text-slate-700 transition-colors">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 group-hover:text-slate-700 transition-colors">
                 {systemLanguage === "sk" ? "Zapamätať prihlásenie" : systemLanguage === "hu" ? "Bejelentkezés megjegyzése" : "Remember me"}
               </span>
             </label>
 
             {/* Error Alert Display */}
             {error && (
-              <div className="flex items-start gap-2.5 p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-850 text-xs font-semibold animate-shake">
+              <div className="flex items-start gap-2.5 p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold animate-shake">
                 <AlertCircle className="h-4.5 w-4.5 text-rose-600 shrink-0 mt-0.5" />
                 <span>{error}</span>
               </div>
@@ -597,7 +597,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
                         </div>
                         <div className="flex flex-col">
                           <span className="text-xs font-bold text-slate-700 group-hover:text-slate-900 transition-colors">{user.name}</span>
-                          <span className="text-[10px] text-slate-450 font-medium">{user.email}</span>
+                          <span className="text-[10px] text-slate-400 font-medium">{user.email}</span>
                         </div>
                       </div>
                       
@@ -657,14 +657,14 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
                           value={newPassword}
                           onChange={(e) => setNewPassword(e.target.value)}
                           placeholder={tr("New password", "Nové heslo", "Új jelszó")}
-                          className="w-full pl-3 pr-10 py-2.5 rounded-xl bg-white border border-slate-250 text-xs text-slate-800 focus:outline-none focus:border-indigo-500 font-semibold"
+                          className="w-full pl-3 pr-10 py-2.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 focus:outline-none focus:border-indigo-500 font-semibold"
                         />
                         <PasswordInput
                           required
                           value={confirmPassword}
                           onChange={(e) => setConfirmPassword(e.target.value)}
                           placeholder={tr("Confirm new password", "Potvrďte nové heslo", "Új jelszó megerősítése")}
-                          className="w-full pl-3 pr-10 py-2.5 rounded-xl bg-white border border-slate-250 text-xs text-slate-800 focus:outline-none focus:border-indigo-500 font-semibold"
+                          className="w-full pl-3 pr-10 py-2.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 focus:outline-none focus:border-indigo-500 font-semibold"
                         />
                         {resetError && (
                           <div className="flex items-start gap-1.5 text-[10px] font-semibold text-rose-600">
@@ -702,7 +702,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
                           value={resetEmail}
                           onChange={(e) => setResetEmail(e.target.value)}
                           placeholder={tr("Your email", "Váš e-mail", "Az Ön e-mail-címe")}
-                          className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-250 text-xs text-slate-800 focus:outline-none focus:border-indigo-500 font-semibold"
+                          className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 focus:outline-none focus:border-indigo-500 font-semibold"
                         />
                         <button
                           type="submit"

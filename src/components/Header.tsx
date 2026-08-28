@@ -412,7 +412,7 @@ export const Header: React.FC<HeaderProps> = ({
             case "unified_entry":
                 return <Database className="h-4 w-4 text-purple-500" />;
             default:
-                return <FileText className="h-4 w-4 text-slate-450" />;
+                return <FileText className="h-4 w-4 text-slate-400" />;
         }
     };
 
@@ -599,7 +599,7 @@ export const Header: React.FC<HeaderProps> = ({
                                                     </div>
                                                 )}
                                                 {item.excerpt && (
-                                                    <div className="text-[10px] text-slate-550 font-semibold mt-1 leading-relaxed border-l-2 border-slate-200 pl-2 italic truncate">
+                                                    <div className="text-[10px] text-slate-500 font-semibold mt-1 leading-relaxed border-l-2 border-slate-200 pl-2 italic truncate">
                                                         {item.excerpt}
                                                     </div>
                                                 )}
@@ -629,7 +629,7 @@ export const Header: React.FC<HeaderProps> = ({
                 {/* Create Task Top-Bar Action Button */}
                 <button
                     onClick={onAddTask}
-                    className="h-10 w-10 rounded-xl border bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-350 hover:bg-slate-50 flex items-center justify-center transition-colors shadow-sm cursor-pointer shrink-0"
+                    className="h-10 w-10 rounded-xl border bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-300 hover:bg-slate-50 flex items-center justify-center transition-colors shadow-sm cursor-pointer shrink-0"
                     title={
                         systemLanguage === "sk"
                             ? "Vytvoriť novú úlohu"
@@ -650,7 +650,7 @@ export const Header: React.FC<HeaderProps> = ({
                         className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-colors shadow-sm cursor-pointer ${
                             isMeetingsOpen
                                 ? "bg-[#0b1329] border-[#0b1329] text-white"
-                                : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-350 hover:bg-slate-50"
+                                : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-300 hover:bg-slate-50"
                         }`}
                         aria-label={t(
                             "Meeting Room Menu",
@@ -778,7 +778,7 @@ export const Header: React.FC<HeaderProps> = ({
                         className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-colors shadow-sm cursor-pointer ${
                             isToolboxOpen
                                 ? "bg-[#0b1329] border-[#0b1329] text-white"
-                                : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-350 hover:bg-slate-50"
+                                : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-300 hover:bg-slate-50"
                         }`}
                         title={t(
                             "Automation Toolbox",
@@ -895,7 +895,7 @@ export const Header: React.FC<HeaderProps> = ({
                             className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-colors shadow-sm cursor-pointer relative ${
                                 activeTab === "updates"
                                     ? "bg-[#0b1329] border-[#0b1329] text-white"
-                                    : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-350 hover:bg-slate-50"
+                                    : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-300 hover:bg-slate-50"
                             }`}
                             title={
                                 systemLanguage === "sk"
@@ -920,7 +920,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <div>
                     <button
                         onClick={() => setIsProfileOpen(true)}
-                        className="h-10 w-10 rounded-xl bg-white/80 border border-slate-200 flex items-center justify-center hover:border-slate-350 text-slate-700 transition-colors shadow-sm cursor-pointer"
+                        className="h-10 w-10 rounded-xl bg-white/80 border border-slate-200 flex items-center justify-center hover:border-slate-300 text-slate-700 transition-colors shadow-sm cursor-pointer"
                         aria-label={t(
                             "User Profile Menu",
                             "Menu používateľského profilu",
@@ -1010,7 +1010,7 @@ export const Header: React.FC<HeaderProps> = ({
                                         </div>
 
                                         {/* Language Selector Section */}
-                                        <div className="p-5 space-y-3 border-b border-slate-105">
+                                        <div className="p-5 space-y-3 border-b border-slate-100">
                                             <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
                                                 {getTranslation(
                                                     systemLanguage,
@@ -1077,7 +1077,7 @@ export const Header: React.FC<HeaderProps> = ({
                                                     onOpenPersonalSettings();
                                                     handleClose();
                                                 }}
-                                                className="w-full py-3.5 px-4 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 hover:text-indigo-850 transition-all text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                                                className="w-full py-3.5 px-4 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 hover:text-indigo-800 transition-all text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-sm"
                                             >
                                                 <svg
                                                     className="h-4 w-4"

@@ -910,7 +910,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
       {isModalOpen && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm animate-fade-in">
           <div className="absolute inset-0" onClick={() => setIsModalOpen(false)} />
-          <div className="w-full max-w-md rounded-3xl border border-slate-150 bg-white p-6 shadow-2xl relative z-10 space-y-5 animate-scale-in">
+          <div className="w-full max-w-md rounded-3xl border border-slate-100 bg-white p-6 shadow-2xl relative z-10 space-y-5 animate-scale-in">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-sm font-heading font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                 <Sparkles className="h-4.5 w-4.5 text-purple-600 animate-pulse" />
@@ -933,7 +933,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                   value={agentName}
                   onChange={(e) => setAgentName(e.target.value)}
                   placeholder={t("e.g. Lead Qualification Expert", "napr. Expert na kvalifikáciu leadov", "pl. Lead minősítési szakértő")}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-550 focus:ring-1 focus:ring-purple-550"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
                 />
               </div>
 
@@ -945,14 +945,14 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                   value={agentPosition}
                   onChange={(e) => setAgentPosition(e.target.value)}
                   placeholder={t("e.g. Analyzes and qualifies inbound pipeline", "napr. Analyzuje a kvalifikuje prichádzajúci pipeline", "pl. Bejövő pipeline elemzése és minősítése")}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-550 focus:ring-1 focus:ring-purple-550"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
                 />
               </div>
 
               {/* Fixed Color Selection Circle Sections */}
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Theme Color", "Farba témy", "Téma színe")} *</label>
-                <div className="flex items-center gap-3 bg-slate-50/50 p-2.5 rounded-2xl border border-slate-150 w-fit">
+                <div className="flex items-center gap-3 bg-slate-50/50 p-2.5 rounded-2xl border border-slate-100 w-fit">
                   {Object.keys(COLOR_MAP).map((colorKey) => {
                     const colDetails = COLOR_MAP[colorKey];
                     const isSelected = agentColor === colorKey;
@@ -989,7 +989,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                   className={`w-full border-2 border-dashed rounded-2xl p-4 flex flex-col items-center justify-center gap-1.5 cursor-pointer transition-all duration-200 ${
                     isDragging 
                       ? "border-purple-600 bg-purple-50/20 scale-[1.02]" 
-                      : "border-slate-205 hover:border-purple-300 bg-slate-50/20 hover:bg-purple-50/10"
+                      : "border-slate-200 hover:border-purple-300 bg-slate-50/20 hover:bg-purple-50/10"
                   }`}
                 >
                   <FileText className={`h-8 w-8 transition-colors ${isDragging ? "text-purple-600" : "text-slate-400 animate-pulse"}`} />
@@ -1006,13 +1006,13 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                   type="checkbox"
                   checked={agentIsAutonomous}
                   onChange={(e) => setAgentIsAutonomous(e.target.checked)}
-                  className="rounded border-slate-300 text-purple-650 focus:ring-purple-500 h-4.5 w-4.5"
+                  className="rounded border-slate-300 text-purple-600 focus:ring-purple-500 h-4.5 w-4.5"
                 />
                 <div className="flex flex-col">
                   <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider flex items-center gap-1">
                     <Clock className="h-3 w-3" /> {t("Set as Autonomous Agent", "Nastaviť ako autonómneho agenta", "Beállítás autonóm ügynökként")}
                   </span>
-                  <span className="text-[8.5px] text-slate-450 mt-0.5">{t("Executes automatically via cron scheduler and adds Run triggers", "Vykonáva sa automaticky cez cron plánovač a pridáva spúšťače Run", "Automatikusan fut a cron ütemezőn keresztül, és Run triggereket ad hozzá")}</span>
+                  <span className="text-[8.5px] text-slate-400 mt-0.5">{t("Executes automatically via cron scheduler and adds Run triggers", "Vykonáva sa automaticky cez cron plánovač a pridáva spúšťače Run", "Automatikusan fut a cron ütemezőn keresztül, és Run triggereket ad hozzá")}</span>
                 </div>
               </label>
 
@@ -1041,7 +1041,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
       {isEditModalOpen && editingAgent && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm animate-fade-in">
           <div className="absolute inset-0" onClick={() => { setIsEditModalOpen(false); setEditingAgent(null); }} />
-          <div className="w-full max-w-md rounded-3xl border border-slate-150 bg-white p-6 shadow-2xl relative z-10 space-y-5 animate-scale-in">
+          <div className="w-full max-w-md rounded-3xl border border-slate-100 bg-white p-6 shadow-2xl relative z-10 space-y-5 animate-scale-in">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-sm font-heading font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                 <Edit className="h-4.5 w-4.5 text-purple-600" />
@@ -1064,7 +1064,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
                   placeholder={t("e.g. Lead Qualification Expert", "napr. Expert na kvalifikáciu leadov", "pl. Lead minősítési szakértő")}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-550 focus:ring-1 focus:ring-purple-550"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
                 />
               </div>
 
@@ -1076,14 +1076,14 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                   value={editPosition}
                   onChange={(e) => setEditPosition(e.target.value)}
                   placeholder={t("e.g. Analyzes and qualifies inbound pipeline", "napr. Analyzuje a kvalifikuje prichádzajúci pipeline", "pl. Bejövő pipeline elemzése és minősítése")}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-550 focus:ring-1 focus:ring-purple-550"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
                 />
               </div>
 
               {/* Fixed Color Selection Circle Sections */}
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Theme Color", "Farba témy", "Téma színe")} *</label>
-                <div className="flex items-center gap-3 bg-slate-50/50 p-2.5 rounded-2xl border border-slate-150 w-fit">
+                <div className="flex items-center gap-3 bg-slate-50/50 p-2.5 rounded-2xl border border-slate-100 w-fit">
                   {Object.keys(COLOR_MAP).map((colorKey) => {
                     const colDetails = COLOR_MAP[colorKey];
                     const isSelected = editColor === colorKey;
@@ -1120,7 +1120,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                   className={`w-full border-2 border-dashed rounded-2xl p-4 flex flex-col items-center justify-center gap-1.5 cursor-pointer transition-all duration-200 ${
                     isEditDragging 
                       ? "border-purple-600 bg-purple-50/20 scale-[1.02]" 
-                      : "border-slate-205 hover:border-purple-300 bg-slate-50/20 hover:bg-purple-50/10"
+                      : "border-slate-200 hover:border-purple-300 bg-slate-50/20 hover:bg-purple-50/10"
                   }`}
                 >
                   <FileText className={`h-8 w-8 transition-colors ${isEditDragging ? "text-purple-600" : "text-slate-400 animate-pulse"}`} />
@@ -1137,13 +1137,13 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                   type="checkbox"
                   checked={editIsAutonomous}
                   onChange={(e) => setEditIsAutonomous(e.target.checked)}
-                  className="rounded border-slate-300 text-purple-650 focus:ring-purple-500 h-4.5 w-4.5"
+                  className="rounded border-slate-300 text-purple-600 focus:ring-purple-500 h-4.5 w-4.5"
                 />
                 <div className="flex flex-col">
                   <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider flex items-center gap-1">
                     <Clock className="h-3 w-3" /> {t("Set as Autonomous Agent", "Nastaviť ako autonómneho agenta", "Beállítás autonóm ügynökként")}
                   </span>
-                  <span className="text-[8.5px] text-slate-450 mt-0.5">{t("Executes automatically via cron scheduler and adds Run triggers", "Vykonáva sa automaticky cez cron plánovač a pridáva spúšťače Run", "Automatikusan fut a cron ütemezőn keresztül, és Run triggereket ad hozzá")}</span>
+                  <span className="text-[8.5px] text-slate-400 mt-0.5">{t("Executes automatically via cron scheduler and adds Run triggers", "Vykonáva sa automaticky cez cron plánovač a pridáva spúšťače Run", "Automatikusan fut a cron ütemezőn keresztül, és Run triggereket ad hozzá")}</span>
                 </div>
               </label>
 

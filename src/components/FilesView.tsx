@@ -462,7 +462,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
       </div>
 
       {/* 2. Amber Control Filter Bar with Always-Visible File Type Switcher */}
-      <div className="glass-panel p-6 rounded-[28px] border-2 border-amber-450 bg-white shadow-lg space-y-4">
+      <div className="glass-panel p-6 rounded-[28px] border-2 border-amber-400 bg-white shadow-lg space-y-4">
         
         {/* Always-visible file type pill selector */}
         <div className="space-y-1.5">
@@ -476,11 +476,11 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
                 className={`py-2 rounded-xl font-black text-[9px] uppercase tracking-wider transition-all text-center flex items-center justify-center gap-1.5 ${
                   selectedTypeFilter === type 
                     ? "bg-amber-700 text-white border border-amber-800 shadow-md shadow-amber-700/20" 
-                    : "text-slate-550 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
+                    : "text-slate-500 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
                 }`}
               >
                 {type === "all" && (
-                  <FolderOpen className={`h-3.5 w-3.5 ${selectedTypeFilter === type ? "text-white" : "text-slate-650"}`} />
+                  <FolderOpen className={`h-3.5 w-3.5 ${selectedTypeFilter === type ? "text-white" : "text-slate-600"}`} />
                 )}
                 {type === "offer" && (
                   <Euro className={`h-3.5 w-3.5 ${selectedTypeFilter === type ? "text-white" : "text-emerald-500"}`} />
@@ -511,7 +511,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={getTranslation(systemLanguage, "files.search_placeholder")}
-              className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-amber-50/10 border-2 border-amber-250 text-xs text-slate-800 placeholder:text-slate-400 font-bold focus:outline-none focus:bg-white focus:border-amber-700 focus:ring-1 focus:ring-amber-500"
+              className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-amber-50/10 border-2 border-amber-200 text-xs text-slate-800 placeholder:text-slate-400 font-bold focus:outline-none focus:bg-white focus:border-amber-700 focus:ring-1 focus:ring-amber-500"
             />
           </div>
 
@@ -532,7 +532,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
       </div>
 
       {/* 3. Files Datagrid Table (Amber Light Brown styled) */}
-      <div className="glass-panel rounded-[28px] border-2 border-amber-450 bg-white shadow-xl overflow-hidden">
+      <div className="glass-panel rounded-[28px] border-2 border-amber-400 bg-white shadow-xl overflow-hidden">
         <div className="overflow-x-auto overflow-y-auto max-h-[75vh] scrollbar-thin">
           <table className="w-full border-collapse text-left">
             <thead>
@@ -577,7 +577,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
                             <FileText className="h-4 w-4" />
                           </div>
                           <div className="flex flex-col min-w-0">
-                            <span className="line-clamp-1 font-black text-slate-855 group-hover:text-amber-855 transition-colors">{file.fileName}</span>
+                            <span className="line-clamp-1 font-black text-slate-800 group-hover:text-amber-800 transition-colors">{file.fileName}</span>
                             {file.summary && (
                               <span className="text-[10px] text-slate-400 font-semibold truncate max-w-sm lg:max-w-md mt-0.5" title={file.summary}>
                                 {file.summary}
@@ -621,7 +621,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
                         {file.offerValue > 0 ? (
                           <span>{money(file.offerValue)}</span>
                         ) : (
-                          <span className="text-slate-350 italic">{t("None", "Žiadna", "Nincs")}</span>
+                          <span className="text-slate-300 italic">{t("None", "Žiadna", "Nincs")}</span>
                         )}
                       </td>
 
@@ -649,7 +649,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
                                 (window as any).previewFile(`/uploads/${file.id}_${file.fileName}`, file.fileName);
                               }
                             }}
-                            className="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100/80 border border-indigo-250 text-indigo-700 transition-all text-[8px] font-black uppercase flex items-center gap-1 shadow-sm cursor-pointer"
+                            className="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100/80 border border-indigo-200 text-indigo-700 transition-all text-[8px] font-black uppercase flex items-center gap-1 shadow-sm cursor-pointer"
                             title={t("Preview file", "Náhľad súboru", "Fájl előnézete")}
                           >
                             <Eye className="h-3 w-3 stroke-[2.5]" />
@@ -704,7 +704,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
           <div className={`w-full max-w-5xl h-[80vh] bg-white rounded-t-[32px] border-t border-slate-200/80 shadow-2xl p-8 flex flex-col justify-between text-left ${isClosingUpload ? "animate-slide-out-bottom" : "animate-slide-in-bottom"}`}>
             
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-slate-150 pb-3 shrink-0">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
               <div>
                 <span className="text-[10px] font-black uppercase text-amber-600 tracking-wider">
                   {systemLanguage === "sk" ? "Systém správy dokumentov" : systemLanguage === "hu" ? "Dokumentumkezelő Rendszer" : "CRM Document Management"}
@@ -733,7 +733,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
                   className={`flex-1 border-2 border-dashed rounded-[20px] flex flex-col items-center justify-center p-6 text-center cursor-pointer transition-all ${
                     isDragging 
                       ? "border-amber-700 bg-amber-50/30 scale-[0.99] shadow-inner" 
-                      : "border-slate-350 hover:border-amber-700 hover:bg-amber-50/10"
+                      : "border-slate-300 hover:border-amber-700 hover:bg-amber-50/10"
                   }`}
                   onClick={() => document.getElementById("file-upload-input")?.click()}
                 >
@@ -781,7 +781,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
                 <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin">
                   {uploadQueue.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-slate-400 py-12">
-                      <File className="h-8 w-8 text-slate-350 mb-2 stroke-[1.5]" />
+                      <File className="h-8 w-8 text-slate-300 mb-2 stroke-[1.5]" />
                       <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider">
                         {systemLanguage === "sk" ? "Žiadne súbory vo fronte" : systemLanguage === "hu" ? "Nincsenek fájlok a sorban" : "No files queued yet"}
                       </span>
@@ -842,11 +842,11 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
                                     onChange={(e) => handleSearchInputChange(item.id, e.target.value)}
                                     onFocus={() => handleSearchInputFocus(item.id)}
                                     onBlur={handleSearchInputBlur}
-                                    className="w-full px-2.5 py-1.5 border border-slate-205 rounded-xl text-[10px] font-bold bg-white focus:outline-none focus:border-amber-700"
+                                    className="w-full px-2.5 py-1.5 border border-slate-200 rounded-xl text-[10px] font-bold bg-white focus:outline-none focus:border-amber-700"
                                   />
                                   {/* Suggestions dropdown */}
                                   {focusedQueueInputId === item.id && (
-                                    <div className="absolute left-0 right-0 mt-1 max-h-40 overflow-y-auto bg-white border border-slate-250 rounded-xl shadow-xl z-50 divide-y divide-slate-100 text-[10px]">
+                                    <div className="absolute left-0 right-0 mt-1 max-h-40 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-xl z-50 divide-y divide-slate-100 text-[10px]">
                                       {getSuggestions(item.id).length === 0 ? (
                                         <div className="p-2.5 text-slate-400 italic">
                                           {systemLanguage === "sk" ? "Žiadne výsledky" : systemLanguage === "hu" ? "Nincs találat" : "No results found"}
@@ -934,12 +934,12 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
             </div>
 
             {/* Footer Actions */}
-            <div className="border-t border-slate-150 pt-4 flex items-center justify-end gap-3 shrink-0 mt-6">
+            <div className="border-t border-slate-100 pt-4 flex items-center justify-end gap-3 shrink-0 mt-6">
               <button
                 type="button"
                 onClick={closeUploadDrawer}
                 disabled={isUploading}
-                className="px-4 py-2 border border-slate-200 text-slate-650 hover:bg-slate-50 rounded-xl text-xs font-black uppercase transition-all duration-150 active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+                className="px-4 py-2 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl text-xs font-black uppercase transition-all duration-150 active:scale-[0.98] disabled:opacity-50 cursor-pointer"
               >
                 {systemLanguage === "sk" ? "Zrušiť" : systemLanguage === "hu" ? "Mégse" : "Cancel"}
               </button>

@@ -713,7 +713,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
               <button
                 type="button"
                 onClick={() => setIsHelpOpen(false)}
-                className="text-slate-400 hover:text-slate-650 p-2 hover:bg-slate-100 rounded-xl transition-all cursor-pointer"
+                className="text-slate-400 hover:text-slate-600 p-2 hover:bg-slate-100 rounded-xl transition-all cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -754,8 +754,8 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                   <div className="col-span-4 h-8 rounded-lg bg-slate-100/70 flex items-center justify-center text-[9px] font-black text-slate-500 border border-slate-200">md (1/3)</div>
                   <div className="col-span-4 h-8 rounded-lg bg-slate-100/70 flex items-center justify-center text-[9px] font-black text-slate-500 border border-slate-200">md (1/3)</div>
 
-                  <div className="col-span-6 h-8 rounded-lg bg-indigo-50/50 flex items-center justify-center text-[9px] font-black text-indigo-650 border border-indigo-100">lg (1/2)</div>
-                  <div className="col-span-6 h-8 rounded-lg bg-indigo-50/50 flex items-center justify-center text-[9px] font-black text-indigo-650 border border-indigo-100">lg (1/2)</div>
+                  <div className="col-span-6 h-8 rounded-lg bg-indigo-50/50 flex items-center justify-center text-[9px] font-black text-indigo-600 border border-indigo-100">lg (1/2)</div>
+                  <div className="col-span-6 h-8 rounded-lg bg-indigo-50/50 flex items-center justify-center text-[9px] font-black text-indigo-600 border border-indigo-100">lg (1/2)</div>
 
                   <div className="col-span-12 h-8 rounded-lg bg-purple-50/50 flex items-center justify-center text-[9px] font-black text-purple-600 border border-purple-100">full (1/1)</div>
                 </div>
@@ -768,10 +768,10 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 </h4>
 
                 {/* Metric Card */}
-                <div className="p-4 border border-slate-150 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
+                <div className="p-4 border border-slate-100 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
                   <div className="p-2.5 rounded-xl bg-white border border-slate-200 flex flex-col justify-between shrink-0 shadow-sm w-24 h-16">
                     <span className="text-[7px] font-bold text-slate-400 uppercase tracking-wide truncate">{t("Total Leads", "Počet leadov", "Leadek száma")}</span>
-                    <span className="text-base font-black text-slate-850">142</span>
+                    <span className="text-base font-black text-slate-800">142</span>
                   </div>
                   <div>
                     <h5 className="text-xs font-bold text-slate-800">{t("KPI Metric Card", "Metrická karta (KPI)", "KPI Kártya")}</h5>
@@ -782,7 +782,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 </div>
 
                 {/* Bar Chart */}
-                <div className="p-4 border border-slate-150 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
+                <div className="p-4 border border-slate-100 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
                   <div className="w-24 h-16 rounded-xl bg-white border border-slate-200 p-2 flex items-end justify-around shrink-0 shadow-sm">
                     <div className="w-2.5 h-6 bg-indigo-500 rounded-sm" />
                     <div className="w-2.5 h-10 bg-indigo-500 rounded-sm" />
@@ -797,7 +797,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 </div>
 
                 {/* Line Chart */}
-                <div className="p-4 border border-slate-150 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
+                <div className="p-4 border border-slate-100 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
                   <div className="w-24 h-16 rounded-xl bg-white border border-slate-200 p-2 flex items-center justify-center shrink-0 shadow-sm">
                     <svg className="w-16 h-8 text-purple-500" viewBox="0 0 100 50" fill="none">
                       <path d="M5 45 L25 35 L45 40 L65 15 L85 20 L95 5" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
@@ -811,7 +811,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 </div>
 
                 {/* Doughnut Chart */}
-                <div className="p-4 border border-slate-150 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
+                <div className="p-4 border border-slate-100 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
                   <div className="w-24 h-16 rounded-xl bg-white border border-slate-200 flex items-center justify-center shrink-0 shadow-sm animate-pulse-slow">
                     <div className="w-10 h-10 rounded-full border-4 border-emerald-500 border-r-indigo-500 border-t-purple-500" />
                   </div>
@@ -824,7 +824,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 </div>
 
                 {/* Data Table */}
-                <div className="p-4 border border-slate-150 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
+                <div className="p-4 border border-slate-100 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
                   <div className="w-24 h-16 rounded-xl bg-white border border-slate-200 p-2 flex flex-col gap-1.5 shrink-0 shadow-sm justify-center">
                     <div className="h-2 bg-slate-100 rounded w-full" />
                     <div className="h-2 bg-slate-100 rounded w-4/5" />
@@ -839,7 +839,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 </div>
 
                 {/* Accordion */}
-                <div className="p-4 border border-slate-150 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
+                <div className="p-4 border border-slate-100 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
                   <div className="w-24 h-16 rounded-xl bg-white border border-slate-200 p-2 flex flex-col gap-1.5 shrink-0 shadow-sm justify-center">
                     <div className="flex items-center justify-between border-b border-slate-100 pb-1">
                       <div className="h-1.5 bg-indigo-500 rounded w-1/2" />
@@ -856,7 +856,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 </div>
 
                 {/* Tabs */}
-                <div className="p-4 border border-slate-150 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
+                <div className="p-4 border border-slate-100 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
                   <div className="w-24 h-16 rounded-xl bg-white border border-slate-200 p-2 flex gap-1.5 items-start shrink-0 shadow-sm justify-center">
                     <div className="px-1.5 py-0.5 rounded bg-indigo-600 text-[6px] font-bold text-white">Tab A</div>
                     <div className="px-1.5 py-0.5 rounded bg-slate-50 text-[6px] font-bold text-slate-500">Tab B</div>
@@ -870,7 +870,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 </div>
 
                 {/* Progress & Goals */}
-                <div className="p-4 border border-slate-150 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
+                <div className="p-4 border border-slate-100 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
                   <div className="w-24 h-16 rounded-xl bg-white border border-slate-200 p-2.5 flex flex-col justify-center shrink-0 shadow-sm gap-1.5">
                     <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                       <div className="h-full bg-emerald-500 w-3/4 rounded-full" />
@@ -886,7 +886,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 </div>
 
                 {/* Timeline */}
-                <div className="p-4 border border-slate-150 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
+                <div className="p-4 border border-slate-100 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
                   <div className="w-24 h-16 rounded-xl bg-white border border-slate-200 p-2 flex flex-col shrink-0 shadow-sm justify-center pl-4 relative">
                     <div className="absolute left-2.5 top-2 bottom-2 w-px bg-slate-200" />
                     <div className="absolute left-[7px] top-3.5 w-2.5 h-2.5 rounded-full bg-indigo-500" />
@@ -903,7 +903,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 </div>
 
                 {/* Area Chart */}
-                <div className="p-4 border border-slate-150 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
+                <div className="p-4 border border-slate-100 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
                   <div className="w-24 h-16 rounded-xl bg-white border border-slate-200 p-2 flex items-center justify-center shrink-0 shadow-sm">
                     <svg className="w-16 h-8 text-indigo-500" viewBox="0 0 100 50">
                       <path d="M 5 45 L 25 30 L 50 40 L 75 20 L 95 10 L 95 45 Z" fill="rgba(99, 102, 241, 0.15)" stroke="currentColor" strokeWidth="2.5" />
@@ -918,7 +918,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 </div>
 
                 {/* Radar Chart */}
-                <div className="p-4 border border-slate-150 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
+                <div className="p-4 border border-slate-100 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
                   <div className="w-24 h-16 rounded-xl bg-white border border-slate-200 p-2 flex items-center justify-center shrink-0 shadow-sm">
                     <div className="w-8 h-8 border border-slate-200 rotate-45 relative flex items-center justify-center">
                       <div className="absolute inset-1.5 border border-indigo-400 rotate-[22deg] bg-indigo-500/10" />
@@ -933,7 +933,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 </div>
 
                 {/* Scatter Plot */}
-                <div className="p-4 border border-slate-150 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
+                <div className="p-4 border border-slate-100 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
                   <div className="w-24 h-16 rounded-xl bg-white border border-slate-200 p-2.5 relative flex items-center justify-center shrink-0 shadow-sm">
                     <div className="w-1 h-1 rounded-full bg-purple-500 absolute top-3 left-4" />
                     <div className="w-1.5 h-1.5 rounded-full bg-purple-500 absolute top-7 left-6" />
@@ -950,7 +950,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 </div>
 
                 {/* Horizontal Bar */}
-                <div className="p-4 border border-slate-150 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
+                <div className="p-4 border border-slate-100 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
                   <div className="w-24 h-16 rounded-xl bg-white border border-slate-200 p-2.5 flex flex-col gap-1.5 shrink-0 shadow-sm justify-center font-sans">
                     <div className="h-2 bg-indigo-500 rounded-sm w-4/5" />
                     <div className="h-2 bg-indigo-500 rounded-sm w-3/5" />

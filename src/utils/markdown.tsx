@@ -112,7 +112,7 @@ export const parseMarkdown = (text: string): React.ReactNode[] => {
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-800 font-extrabold">
                 {currentTableHeader.map((cell, idx) => (
-                  <th key={idx} className="py-2.5 px-4 font-black uppercase tracking-wider text-[10px] text-slate-755">
+                  <th key={idx} className="py-2.5 px-4 font-black uppercase tracking-wider text-[10px] text-slate-700">
                     {parseInlineStyles(cell)}
                   </th>
                 ))}
@@ -120,9 +120,9 @@ export const parseMarkdown = (text: string): React.ReactNode[] => {
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
               {currentTableRows.map((row, rowIdx) => (
-                <tr key={rowIdx} className="hover:bg-slate-55/30 transition-colors">
+                <tr key={rowIdx} className="hover:bg-slate-50/30 transition-colors">
                   {row.map((cell, cellIdx) => (
-                    <td key={cellIdx} className="py-2.5 px-4 font-bold text-slate-655">
+                    <td key={cellIdx} className="py-2.5 px-4 font-bold text-slate-600">
                       {parseInlineStyles(cell)}
                     </td>
                   ))}

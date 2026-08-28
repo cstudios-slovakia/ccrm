@@ -280,7 +280,7 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({
                                         {activeUpdate.title}
                                     </h2>
                                 </div>
-                                <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-455 mt-2 select-none">
+                                <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-400 mt-2 select-none">
                                     <Calendar className="h-3.5 w-3.5" />
                                     <span>
                                         {new Date(

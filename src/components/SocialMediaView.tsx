@@ -844,7 +844,7 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
             </div>
           )}
 
-          <div className="pt-2 border-t border-slate-150 flex items-center justify-between text-[11px] font-bold text-slate-500">
+          <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] font-bold text-slate-500">
             <span className="flex items-center gap-1 text-blue-600">
               👍 ❤️ 💡 {post.stats.likes} reactions
             </span>
@@ -956,7 +956,7 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
               
               {/* Authentic Platform Card (Styled exactly like Twitter/X, Instagram, LinkedIn, etc.) */}
               <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-150 pb-3">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block px-1">
                     {t("AUTHENTIC PLATFORM CARD", "NÁHĽAD V DIZAJNE PLATFORMY", "EREDETI PLATFORM BEJEGYZÉS NÉZET")}
                   </span>
@@ -973,7 +973,7 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
 
               {/* Performance Analytics Breakdown */}
               <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-5">
-                <div className="flex items-center justify-between border-b border-slate-150 pb-3">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                   <div className="flex items-center gap-2">
                     <BarChart3 className="h-5 w-5 text-emerald-500" />
                     <h3 className="text-sm font-heading font-black text-slate-900 uppercase tracking-wider">
@@ -1026,7 +1026,7 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
               <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-5 min-h-[550px] flex flex-col justify-between">
                 
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between border-b border-slate-150 pb-3">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                     <div className="flex items-center gap-2">
                       <MessageSquare className="h-5 w-5 text-rose-500" />
                       <h3 className="text-sm font-heading font-black text-slate-900 uppercase tracking-wider">
@@ -1098,7 +1098,7 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
                     connected account, since there is nothing to reply through. */}
                 <form
                   onSubmit={handleSubmitComment}
-                  className="pt-4 border-t border-slate-150 space-y-2"
+                  className="pt-4 border-t border-slate-100 space-y-2"
                 >
                   <div className="flex items-center gap-3">
                     <input
@@ -1347,7 +1347,7 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
             </div>
 
             {/* Filter by Status */}
-            <div className="pt-3 border-t border-slate-150">
+            <div className="pt-3 border-t border-slate-100">
               <span className="text-[9.5px] font-black text-slate-400 uppercase tracking-widest block mb-2 px-1">
                 {t("POST STATUS", "STAV PRÍSPEVKU", "BEJEGYZÉS ÁLLAPOTA")}
               </span>
@@ -1376,7 +1376,7 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
             </div>
 
             {/* Zernio Quick Sync Action */}
-            <div className="pt-3 border-t border-slate-150">
+            <div className="pt-3 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => {
@@ -1491,7 +1491,7 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
                             >
                               <div>
                                 {/* Post Top Meta Header */}
-                                <div className="flex items-center justify-between gap-2 border-b border-slate-150 pb-3 mb-3">
+                                <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3 mb-3">
                                   <div className="flex items-center gap-2 truncate">
                                     <span className={`px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider ${platformMeta.bg} ${platformMeta.text} shadow-sm shrink-0`}>
                                       {platformMeta.name}
@@ -1539,8 +1539,8 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
                               </div>
 
                               {/* Base Stats Footer (Zernio Specs) */}
-                              <div className="pt-3 border-t border-slate-150 space-y-2">
-                                <div className="grid grid-cols-4 gap-1 text-center bg-slate-50 p-2 rounded-2xl border border-slate-150">
+                              <div className="pt-3 border-t border-slate-100 space-y-2">
+                                <div className="grid grid-cols-4 gap-1 text-center bg-slate-50 p-2 rounded-2xl border border-slate-100">
                                   <div title="Likes / Reactions">
                                     <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block flex items-center justify-center gap-1">
                                       <Heart className="h-3 w-3 text-rose-500" />
@@ -1599,7 +1599,7 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
           {activeView === "calendar" && (
             <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-6">
               {/* Calendar Header Controls */}
-              <div className="flex items-center justify-between border-b border-slate-150 pb-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                 <div className="flex items-center gap-3">
                   <Calendar className="h-6 w-6 text-indigo-600" />
                   <h2 className="text-lg font-heading font-black text-slate-900">
@@ -1662,7 +1662,7 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
                     } ${
                       day.isCurrentMonth
                         ? "bg-white border-slate-200/80 shadow-sm"
-                        : "bg-slate-50/50 border-slate-150 text-slate-300"
+                        : "bg-slate-50/50 border-slate-100 text-slate-300"
                     }`}
                   >
                     <div className="flex items-center justify-between">
@@ -1897,7 +1897,7 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
 
                     {/* Chart 1: Posts per Platform */}
                     <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4">
-                      <div className="flex items-center justify-between border-b border-slate-150 pb-3 gap-3">
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-3 gap-3">
                         <div className="min-w-0">
                           <h4 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider">
                             {t("Posts per Platform", "Príspevky podľa platforiem", "Bejegyzések platformonként")}
@@ -1940,7 +1940,7 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
 
                     {/* Chart 2: Posts over Time */}
                     <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4">
-                      <div className="flex items-center justify-between border-b border-slate-150 pb-3 gap-3">
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-3 gap-3">
                         <div className="min-w-0">
                           <h4 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider">
                             {t("Posts over Time", "Príspevky v čase", "Bejegyzések az időben")}
@@ -1977,7 +1977,7 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
 
                     {/* Chart 3: Likes per Platform */}
                     <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4">
-                      <div className="flex items-center justify-between border-b border-slate-150 pb-3 gap-3">
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-3 gap-3">
                         <div className="min-w-0">
                           <h4 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider">
                             {t("Likes per Platform", "Lajky podľa platforiem", "Lájkok platformonként")}
@@ -2023,7 +2023,7 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
 
                     {/* Chart 4: Interactions over Time */}
                     <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4">
-                      <div className="flex items-center justify-between border-b border-slate-150 pb-3 gap-3">
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-3 gap-3">
                         <div className="min-w-0">
                           <h4 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider">
                             {t("Interactions over Time", "Interakcie v čase", "Interakciók az időben")}
@@ -2065,7 +2065,7 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
                       same buckets. Previously three fixed bezier curves, where the
                       comments/reach/clicks pills toggled nothing at all. */}
                   <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-6">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-150 pb-4">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
                       <div>
                         <h3 className="text-sm font-heading font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
                           <Activity className="h-4.5 w-4.5 text-rose-500" />
@@ -2145,7 +2145,7 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
                   {/* BEST TIME TO POST — built from this workspace's own publish
                       times. It used to shade cells with (dayIndex + hourIndex) % 3. */}
                   <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4">
-                    <div className="flex items-center justify-between border-b border-slate-150 pb-3 gap-3">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3 gap-3">
                       <div className="min-w-0">
                         <h4 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
                           <Clock className="h-4 w-4 text-emerald-500" />
@@ -2191,7 +2191,7 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 pt-2 border-t border-slate-150 gap-3">
+                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 pt-2 border-t border-slate-100 gap-3">
                       <span className="truncate">
                         {postingHeatmap.max === 0
                           ? t("No published posts in this period yet.", "V tomto období zatiaľ nie sú publikované príspevky.", "Ebben az időszakban még nincs közzétett bejegyzés.")
@@ -2210,7 +2210,7 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
 
                   {/* TABULAR BREAKDOWN 1: PLATFORM BREAKDOWN TABLE */}
                   <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4 overflow-x-auto">
-                    <div className="flex items-center justify-between border-b border-slate-150 pb-3">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                       <h3 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
                         <Globe className="h-4.5 w-4.5 text-rose-500" />
                         {t("Platform Breakdown Table", "Tabuľka podľa platforiem", "Platform bontási táblázat")}
@@ -2233,7 +2233,7 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
                           <th className="py-2.5 px-3 text-right">ER %</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-150 text-xs font-semibold text-slate-800">
+                      <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-800">
                         {analyticsPlatformKeys.map((platKey) => {
                           const platData = getPlatformMeta(platKey);
                           const platPosts = analyticsPosts.filter(p => p.platform === platKey);
@@ -2274,7 +2274,7 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
 
                   {/* TABULAR BREAKDOWN 2: TOP PERFORMING POSTS RANKING TABLE */}
                   <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4 overflow-x-auto">
-                    <div className="flex items-center justify-between border-b border-slate-150 pb-3">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                       <h3 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
                         <Award className="h-4.5 w-4.5 text-amber-500" />
                         {t("Top Performing Posts Ranking", "Rebríček najlepších príspevkov", "Legjobban teljesítő bejegyzések rangsora")}
@@ -2296,7 +2296,7 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
                           <th className="py-2.5 px-3 text-right">ER %</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-150 text-xs font-semibold text-slate-800">
+                      <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-800">
                         {rankedPosts.map((post, idx) => {
                           const platData = getPlatformMeta(post.platform);
                           return (
@@ -2545,7 +2545,7 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
                         </div>
                       )}
 
-                      <div className="pt-2 border-t border-slate-150 flex items-center justify-between text-[11px] font-bold text-slate-500">
+                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] font-bold text-slate-500">
                         <span className="flex items-center gap-1 text-blue-600">
                           👍 ❤️ 💡 {post.stats.likes} reactions
                         </span>
@@ -2590,7 +2590,7 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
                       </div>
                     )}
 
-                    <div className="pt-3 border-t border-slate-150 grid grid-cols-4 gap-1 text-center bg-slate-50 p-2 rounded-2xl border border-slate-150">
+                    <div className="pt-3 border-t border-slate-100 grid grid-cols-4 gap-1 text-center bg-slate-50 p-2 rounded-2xl border border-slate-100">
                       <div>
                         <span className="text-[9px] text-slate-400 font-bold uppercase block">Likes</span>
                         <span className="text-xs font-black text-slate-800">{post.stats.likes}</span>

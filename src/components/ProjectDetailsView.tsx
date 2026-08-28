@@ -687,14 +687,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
         
         {/* LEFT COLUMN: Metadata & Custom Attributes Card */}
         <div className="lg:col-span-4 flex flex-col h-full overflow-hidden bg-white border border-slate-200 rounded-3xl p-5 shadow-sm text-left">
-          <h4 className="text-xs font-heading font-black text-slate-900 uppercase tracking-widest pb-3 border-b border-slate-150 mb-4 shrink-0">
+          <h4 className="text-xs font-heading font-black text-slate-900 uppercase tracking-widest pb-3 border-b border-slate-100 mb-4 shrink-0">
             {t("Project Card Details", "Detaily karty projektu", "Projekt részletei")}
           </h4>
 
           <div className="flex-1 overflow-y-auto space-y-4 pr-1 scrollbar-thin">
             {/* Status */}
             <div>
-              <label className="block text-[10px] font-black text-slate-450 uppercase mb-1">{t("Status", "Stav", "Állapot")}</label>
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Status", "Stav", "Állapot")}</label>
               <CustomSelect
                 value={status}
                 onChange={v => setStatus(v)}
@@ -709,7 +709,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
             {/* Lead / Client Link */}
             <div>
-              <label className="block text-[10px] font-black text-slate-450 uppercase mb-1">{t("Associated Client", "Priradený klient", "Kapcsolódó ügyfél")}</label>
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Associated Client", "Priradený klient", "Kapcsolódó ügyfél")}</label>
               <SearchableClientSelect
                 leads={leads}
                 value={associatedLeadId}
@@ -723,7 +723,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
             {/* Project Managers (Multiple selection) */}
             <div>
-              <label className="block text-[10px] font-black text-slate-450 uppercase mb-1">{t("Project Managers", "Projektoví manažéri", "Projektmenedzserek")}</label>
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Project Managers", "Projektoví manažéri", "Projektmenedzserek")}</label>
               <div className="border border-slate-200 rounded-xl p-2.5 bg-white space-y-1.5 max-h-32 overflow-y-auto scrollbar-thin">
                 {users.map(u => {
                   const isChecked = selectedManagers.includes(u.name);
@@ -748,7 +748,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               </div>
             </div>
 
-            <div className="border-t border-slate-205 my-4 shrink-0" />
+            <div className="border-t border-slate-200 my-4 shrink-0" />
 
             {/* DYNAMIC CUSTOM ATTRIBUTES FIELDS */}
             <div className="space-y-4">
@@ -760,7 +760,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
                 return (
                   <div key={attr.id}>
-                    <label className="block text-[10px] font-black text-slate-450 uppercase mb-1">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
                       {attr.name} {attr.required && <span className="text-red-500">*</span>}
                     </label>
 
@@ -842,7 +842,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                             const checkedList = Array.isArray(val) ? val : [];
                             const isChecked = checkedList.includes(opt);
                             return (
-                              <label key={opt} className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-655">
+                              <label key={opt} className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-600">
                                 <input
                                   type="checkbox"
                                   checked={isChecked}
@@ -859,7 +859,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                             );
                           })
                         ) : (
-                          <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-655">
+                          <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-600">
                             <input
                               type="checkbox"
                               checked={!!val}
@@ -876,7 +876,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     {attr.type === "radio" && (
                       <div className="space-y-1.5 py-1">
                         {(attr.options || []).map(opt => (
-                          <label key={opt} className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-655">
+                          <label key={opt} className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-600">
                             <input
                               type="radio"
                               name={attr.id}
@@ -926,7 +926,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                               const input = document.getElementById(`file-input-${attr.id}`);
                               input?.click();
                             }}
-                            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-dashed border-slate-300 text-xs font-semibold text-slate-550 hover:bg-slate-50 hover:border-slate-450 transition-all cursor-pointer disabled:opacity-50"
+                            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-dashed border-slate-300 text-xs font-semibold text-slate-500 hover:bg-slate-50 hover:border-slate-400 transition-all cursor-pointer disabled:opacity-50"
                           >
                             <Upload className="h-4 w-4 text-slate-400" />
                             <span>{isUploading === attr.id ? t("Uploading...", "Nahráva sa...", "Feltöltés...") : t("Upload File", "Nahrať súbor", "Fájl feltöltése")}</span>
@@ -1040,7 +1040,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             <div className="flex-1 overflow-hidden flex flex-col lg:flex-row gap-6">
               {/* Timeline Form */}
               <div className="lg:w-1/3 flex flex-col shrink-0 bg-slate-50 p-4 border border-slate-200 rounded-2xl h-fit">
-                <span className="text-[10px] font-black text-slate-450 uppercase mb-3 block">
+                <span className="text-[10px] font-black text-slate-400 uppercase mb-3 block">
                   {t("Log Timeline Event", "Zaznamenať udalosť", "Esemény rögzítése")}
                 </span>
                 
@@ -1252,7 +1252,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                   onClick={() => {
                                     document.getElementById(`te-file-input-${attr.id}`)?.click();
                                   }}
-                                  className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-dashed border-slate-300 text-[10.5px] font-bold text-slate-550 hover:bg-slate-100/50 hover:border-slate-400 transition-all cursor-pointer disabled:opacity-50"
+                                  className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-dashed border-slate-300 text-[10.5px] font-bold text-slate-500 hover:bg-slate-100/50 hover:border-slate-400 transition-all cursor-pointer disabled:opacity-50"
                                 >
                                   <Upload className="h-3.5 w-3.5 text-slate-400" />
                                   <span>{isUploading === `te-${attr.id}` ? t("Uploading...", "Nahráva sa...", "Feltöltés...") : t("Upload File", "Nahrať súbor", "Fájl feltöltése")}</span>
@@ -1463,15 +1463,15 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     <button
                       type="button"
                       onClick={handleZoomOut}
-                      className="p-1 hover:bg-slate-100 rounded text-slate-650 transition-colors"
+                      className="p-1 hover:bg-slate-100 rounded text-slate-600 transition-colors"
                     >
                       <Icons.Minus className="h-3.5 w-3.5" />
                     </button>
-                    <span className="text-[10px] font-black text-slate-450 px-1.5 uppercase select-none">{columnWidth}px</span>
+                    <span className="text-[10px] font-black text-slate-400 px-1.5 uppercase select-none">{columnWidth}px</span>
                     <button
                       type="button"
                       onClick={handleZoomIn}
-                      className="p-1 hover:bg-slate-100 rounded text-slate-650 transition-colors"
+                      className="p-1 hover:bg-slate-100 rounded text-slate-600 transition-colors"
                     >
                       <Icons.Plus className="h-3.5 w-3.5" />
                     </button>
@@ -1483,14 +1483,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     <div className="w-[340px] shrink-0 flex flex-col border-r border-slate-200 bg-white z-10 shadow-[2px_0_5px_rgba(0,0,0,0.015)]">
                       {/* Left Header */}
                       <div className="h-[76px] border-b border-slate-200 flex items-center justify-between px-4 shrink-0 bg-slate-50/20">
-                        <span className="text-[10px] font-black text-slate-450 uppercase tracking-widest">{t("Task Name", "Názov úlohy", "Feladat")}</span>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t("Task Name", "Názov úlohy", "Feladat")}</span>
                         <div className="flex items-center gap-4">
-                          <span className="text-[10px] font-black text-slate-450 uppercase tracking-widest pr-4">{t("Due Date", "Termín", "Határidő")}</span>
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pr-4">{t("Due Date", "Termín", "Határidő")}</span>
                         </div>
                       </div>
 
                       {/* Left Body List */}
-                      <div className="flex-1 overflow-y-auto divide-y divide-slate-150 scrollbar-none" id="gantt-left-body" onScroll={(e) => {
+                      <div className="flex-1 overflow-y-auto divide-y divide-slate-100 scrollbar-none" id="gantt-left-body" onScroll={(e) => {
                         const rightBody = document.getElementById("gantt-right-body");
                         if (rightBody) rightBody.scrollTop = (e.target as HTMLDivElement).scrollTop;
                       }}>
@@ -1507,7 +1507,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                   {isCompleted ? (
                                     <Icons.CheckCircle2 className="h-4.5 w-4.5 text-blue-500 fill-blue-50" />
                                   ) : (
-                                    <div className="h-4.5 w-4.5 rounded-full border border-slate-350 bg-white hover:border-slate-550 transition-colors" />
+                                    <div className="h-4.5 w-4.5 rounded-full border border-slate-300 bg-white hover:border-slate-500 transition-colors" />
                                   )}
                                 </button>
                                 <input
@@ -1524,7 +1524,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => setSelectedGanttEdit(row)}
-                                  className="text-slate-555 hover:text-indigo-600 hover:bg-indigo-50/50 font-bold px-2 py-0.5 rounded-xl border border-slate-200 transition-all text-[10.5px] cursor-pointer"
+                                  className="text-slate-500 hover:text-indigo-600 hover:bg-indigo-50/50 font-bold px-2 py-0.5 rounded-xl border border-slate-200 transition-all text-[10.5px] cursor-pointer"
                                 >
                                   {row.endDate ? (
                                     new Date(row.endDate).toLocaleDateString(userLanguage === "sk" ? "sk-SK" : userLanguage === "hu" ? "hu-HU" : "en-US", { month: "short", day: "numeric" })
@@ -1553,11 +1553,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                       <div className="h-[76px] border-b border-slate-200 overflow-x-hidden overflow-y-hidden shrink-0 bg-slate-50/20" id="gantt-right-header">
                         <div style={{ width: totalTimelineWidth, height: "100%" }} className="flex flex-col relative select-none">
                           {/* Weeks Row */}
-                          <div className="h-[38px] border-b border-slate-150 relative">
+                          <div className="h-[38px] border-b border-slate-100 relative">
                             {weekGroups.map((g, idx) => (
                               <div
                                 key={idx}
-                                className="absolute h-full border-r border-slate-150 flex items-center justify-center text-[10px] font-black text-slate-500 uppercase tracking-wider bg-slate-50/20 px-2"
+                                className="absolute h-full border-r border-slate-100 flex items-center justify-center text-[10px] font-black text-slate-500 uppercase tracking-wider bg-slate-50/20 px-2"
                                 style={{
                                   left: g.startOffset,
                                   width: g.width
@@ -1572,7 +1572,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                             {weekdays.map((d, idx) => (
                               <div
                                 key={idx}
-                                className="absolute h-full border-r border-slate-150 flex items-center justify-center text-[9px] font-bold text-slate-400 uppercase"
+                                className="absolute h-full border-r border-slate-100 flex items-center justify-center text-[9px] font-bold text-slate-400 uppercase"
                                 style={{
                                   left: idx * columnWidth,
                                   width: columnWidth
@@ -1597,7 +1597,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                           if (leftBody) leftBody.scrollTop = target.scrollTop;
                         }}
                       >
-                        <div style={{ width: totalTimelineWidth, minHeight: "100%" }} className="relative divide-y divide-slate-150">
+                        <div style={{ width: totalTimelineWidth, minHeight: "100%" }} className="relative divide-y divide-slate-100">
                           {/* Grid background lines */}
                           <div className="absolute inset-y-0 flex z-0 pointer-events-none">
                             {weekdays.map((_, idx) => (
@@ -1723,7 +1723,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
                 <div className="space-y-3.5 text-xs font-semibold text-slate-700">
                   <div>
-                    <label className="block text-[10px] font-black text-slate-450 uppercase mb-1">{t("Task Title", "Názov úlohy", "Feladat címe")}</label>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Task Title", "Názov úlohy", "Feladat címe")}</label>
                     <input
                       type="text"
                       value={selectedGanttEdit.title}
@@ -1737,7 +1737,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-black text-slate-450 uppercase mb-1">{t("Assignee Contact", "Kontakt", "Kapcsolat")}</label>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Assignee Contact", "Kontakt", "Kapcsolat")}</label>
                     <CustomSelect
                       value={selectedGanttEdit.contactId}
                       onChange={v => {
@@ -1751,7 +1751,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[10px] font-black text-slate-450 uppercase mb-1">{t("Start Date", "Začiatok", "Kezdet")}</label>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Start Date", "Začiatok", "Kezdet")}</label>
                       <input
                         type="date"
                         value={selectedGanttEdit.startDate || ""}
@@ -1765,7 +1765,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-black text-slate-450 uppercase mb-1">{t("End Date", "Koniec", "Vége")}</label>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("End Date", "Koniec", "Vége")}</label>
                       <input
                         type="date"
                         value={selectedGanttEdit.endDate || ""}
@@ -1780,7 +1780,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-black text-slate-450 uppercase mb-1.5">{t("Progress", "Postup", "Haladás")} ({selectedGanttEdit.progress}%)</label>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5">{t("Progress", "Postup", "Haladás")} ({selectedGanttEdit.progress}%)</label>
                     <div className="flex items-center gap-3">
                       <input
                         type="range"

@@ -132,7 +132,7 @@ ${this.state.errorInfo?.componentStack || "No Stack Trace"}
 
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-slate-550 flex items-center justify-center p-6 font-sans">
+        <div className="min-h-screen bg-slate-500 flex items-center justify-center p-6 font-sans">
           <div className="w-full max-w-4xl bg-white rounded-[32px] border border-rose-100 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             {/* Header Header */}
             <div className="bg-gradient-to-r from-rose-500 to-red-600 p-8 text-white">

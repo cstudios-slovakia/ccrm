@@ -2633,7 +2633,7 @@ ${log.payload || ''}
           />
           <div className="w-full max-w-5xl h-[85vh] bg-white rounded-t-[32px] rounded-b-[32px] border border-slate-200/80 shadow-2xl p-6 flex flex-col justify-between text-left relative z-10 animate-in zoom-in-95 duration-300">
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-slate-150 pb-3 shrink-0">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
               <div className="min-w-0 pr-4">
                 <span className="text-[10px] font-black uppercase text-amber-700 tracking-wider">{t("File Preview", "Náhľad súboru", "Fájl előnézet")}</span>
                 <h3 className="text-sm font-heading font-black uppercase tracking-tight truncate">{previewFile.name}</h3>
@@ -2682,9 +2682,9 @@ ${log.payload || ''}
       {/* Right Error Sidebar */}
       {errorSidebarEnabled && (
         <div className="w-[300px] bg-white border-l border-slate-200 flex flex-col h-full shrink-0 animate-in slide-in-from-right duration-300 text-left">
-          <div className="p-4.5 border-b border-slate-150 flex items-center justify-between bg-slate-50">
-            <div className="flex items-center gap-1.5 text-red-650">
-              <AlertOctagon className="h-4.5 w-4.5 text-red-550 animate-pulse" />
+          <div className="p-4.5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+            <div className="flex items-center gap-1.5 text-red-600">
+              <AlertOctagon className="h-4.5 w-4.5 text-red-500 animate-pulse" />
               <span className="font-heading font-extrabold text-slate-900 uppercase tracking-wider text-[10.5px]">
                 {t("Background Errors", "Chyby na pozadí", "Háttérhibák")}
               </span>
@@ -2693,7 +2693,7 @@ ${log.payload || ''}
               <button
                 type="button"
                 onClick={fetchErrorLogs}
-                className="p-1.5 hover:bg-slate-200 text-slate-500 hover:text-slate-850 rounded-xl transition-all cursor-pointer"
+                className="p-1.5 hover:bg-slate-200 text-slate-500 hover:text-slate-800 rounded-xl transition-all cursor-pointer"
                 title={t("Refresh", "Obnoviť", "Frissítés")}
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${isLoadingLogs ? 'animate-spin' : ''}`} />
@@ -2701,7 +2701,7 @@ ${log.payload || ''}
               <button
                 type="button"
                 onClick={clearErrorLogs}
-                className="p-1.5 hover:bg-red-50 text-red-650 hover:text-red-800 rounded-xl transition-all cursor-pointer"
+                className="p-1.5 hover:bg-red-50 text-red-600 hover:text-red-800 rounded-xl transition-all cursor-pointer"
                 title={t("Clear All", "Vymazať všetko", "Összes törlése")}
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -2736,7 +2736,7 @@ ${log.payload || ''}
                   <div className="font-mono text-[8.5px] text-slate-500 truncate">
                     {log.request_uri}
                   </div>
-                  <div className="font-bold text-red-650 line-clamp-2 leading-relaxed">
+                  <div className="font-bold text-red-600 line-clamp-2 leading-relaxed">
                     {log.message}
                   </div>
                 </div>
@@ -2749,9 +2749,9 @@ ${log.payload || ''}
       {/* Exception Detail Popup Modal */}
       {selectedLog && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="glass-panel w-full max-w-3xl bg-white rounded-3xl shadow-2xl border border-slate-250 overflow-hidden flex flex-col max-h-[85vh] text-left">
-            <div className="p-6 border-b border-slate-150 flex items-center justify-between bg-slate-50">
-              <div className="flex items-center gap-2 text-red-650">
+          <div className="glass-panel w-full max-w-3xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[85vh] text-left">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-2 text-red-600">
                 <AlertOctagon className="h-5 w-5 shrink-0" />
                 <h3 className="font-heading font-extrabold text-slate-900 uppercase tracking-wider text-xs">
                   {t("Exception / Error Details", "Detail výnimky / chyby", "Kivétel / hiba részletei")}
@@ -2769,13 +2769,13 @@ ${log.payload || ''}
                 <button
                   type="button"
                   onClick={() => setSelectedLog(null)}
-                  className="text-slate-450 hover:text-slate-800 p-1.5 hover:bg-slate-100 rounded-xl transition-all cursor-pointer font-bold text-sm"
+                  className="text-slate-400 hover:text-slate-800 p-1.5 hover:bg-slate-100 rounded-xl transition-all cursor-pointer font-bold text-sm"
                 >
                   ✕
                 </button>
               </div>
             </div>
-            <div className="p-6 overflow-y-auto space-y-4 font-medium text-slate-750 text-xs">
+            <div className="p-6 overflow-y-auto space-y-4 font-medium text-slate-700 text-xs">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-b border-slate-100 pb-4">
                 <div>
                   <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Date & Time", "Dátum a čas", "Dátum és idő")}</span>
@@ -2783,7 +2783,7 @@ ${log.payload || ''}
                 </div>
                 <div>
                   <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Method & URI", "Metóda a URI", "Metódus és URI")}</span>
-                  <span className="font-mono text-[10.5px] text-slate-750 font-bold">{selectedLog.request_method} {selectedLog.request_uri}</span>
+                  <span className="font-mono text-[10.5px] text-slate-700 font-bold">{selectedLog.request_method} {selectedLog.request_uri}</span>
                 </div>
                 <div>
                   <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("File & Line", "Súbor a riadok", "Fájl és sor")}</span>
@@ -2801,7 +2801,7 @@ ${log.payload || ''}
               {selectedLog.file && (
                 <div className="space-y-1">
                   <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Full File Path", "Úplná cesta k súboru", "Teljes fájlútvonal")}</span>
-                  <div className="p-2.5 bg-slate-50 text-slate-600 rounded-xl font-mono text-[10.5px] border border-slate-150">
+                  <div className="p-2.5 bg-slate-50 text-slate-600 rounded-xl font-mono text-[10.5px] border border-slate-100">
                     {selectedLog.file} (Line {selectedLog.line})
                   </div>
                 </div>
