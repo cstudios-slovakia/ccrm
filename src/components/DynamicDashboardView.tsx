@@ -121,6 +121,23 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     }
     return value ?? "";
   };
+  // A widget/column whose title/label is still a plain string predates the
+  // { en, sk, hu } schema (or came from a model that ignored it) — those are
+  // the only ones that still need translating; freshly generated widgets
+  // already carry all three languages.
+  const hasLegacyText = (layout: any): boolean => {
+    const isLegacy = (v: any) => typeof v === "string" && v.trim() !== "";
+    const widgets = layout?.widgets || [];
+    return widgets.some((w: any) => {
+      if (isLegacy(w?.title)) return true;
+      if (Array.isArray(w?.columns) && w.columns.some((c: any) => isLegacy(c?.label))) return true;
+      if (Array.isArray(w?.tabs) && w.tabs.some((tab: any) =>
+        isLegacy(tab?.label) || isLegacy(tab?.title) ||
+        (Array.isArray(tab?.columns) && tab.columns.some((c: any) => isLegacy(c?.label)))
+      )) return true;
+      return false;
+    });
+  };
 
   const [isEditMode, setIsEditMode] = useState(dashboard.layout.widgets.length === 0);
   const [promptText, setPromptText] = useState("");
@@ -254,31 +271,43 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     }
   };
 
-  const handleTranslateExisting = async () => {
-    setIsTranslating(true);
-    setErrorMsg(null);
-    try {
-      const res = await fetch("/api/translate_dashboard.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ layout: tempLayout, model: selectedModel })
-      });
-      const json = await res.json();
-      if (json.success && json.layout) {
-        setTempLayout(json.layout);
-        setIsSaved(false);
-        if (typeof (window as any).showToast === "function") {
-          (window as any).showToast(t("Panel translated — remember to save.", "Panel bol preložený — nezabudnite uložiť.", "A panel lefordítva — ne felejtse el menteni."));
+  // Silently backfills en/sk/hu for a panel saved before the multi-language
+  // schema existed (or produced by a model that ignored it) so it reads
+  // correctly for every viewer without anyone having to ask for it. Runs
+  // once per dashboard load and, since it only adds missing translations
+  // rather than changing anything a user typed, persists on its own.
+  const autoTranslatedIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!hasLegacyText(dashboard.layout)) return;
+    if (autoTranslatedIdsRef.current.has(dashboard.id)) return;
+    autoTranslatedIdsRef.current.add(dashboard.id);
+
+    let cancelled = false;
+    (async () => {
+      setIsTranslating(true);
+      try {
+        const res = await fetch("/api/translate_dashboard.php", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ layout: dashboard.layout, model: dashboard.activeModel || "gpt-5.6-terra" })
+        });
+        const json = await res.json();
+        if (!cancelled && json.success && json.layout) {
+          const updated: CustomDashboard = { ...dashboard, layout: json.layout };
+          onSaveDashboard(updated);
+          setTempLayout(json.layout);
         }
-      } else {
-        setErrorMsg(json.message || t("Failed to translate dashboard.", "Preklad panela zlyhal.", "Az irányítópult fordítása sikertelen."));
+      } catch {
+        // Non-fatal: the panel just keeps showing in its original language
+        // until the next successful attempt (e.g. after reload).
+        autoTranslatedIdsRef.current.delete(dashboard.id);
+      } finally {
+        if (!cancelled) setIsTranslating(false);
       }
-    } catch (err: any) {
-      setErrorMsg(err.message || t("Connection to AI agent failed.", "Pripojenie k AI agentovi zlyhalo.", "Az AI ügynökhöz való kapcsolódás sikertelen."));
-    } finally {
-      setIsTranslating(false);
-    }
-  };
+    })();
+
+    return () => { cancelled = true; };
+  }, [dashboard.id]);
 
   const handleSave = () => {
     const updated: CustomDashboard = {
@@ -397,24 +426,17 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
             </button>
           )}
 
-          {tempLayout.widgets.length > 0 && (
-            <button
-              onClick={handleTranslateExisting}
-              disabled={isTranslating}
+          {isTranslating && (
+            <span
               title={t(
-                "Translate this panel's titles and labels into all app languages.",
-                "Preložiť názvy a popisky tohto panela do všetkých jazykov aplikácie.",
-                "Fordítsa le a panel címeit és feliratait az összes alkalmazásnyelvre."
+                "Translating this panel's titles and labels into all app languages…",
+                "Prekladám názvy a popisky tohto panela do všetkých jazykov aplikácie…",
+                "A panel címeinek és feliratainak fordítása az összes alkalmazásnyelvre…"
               )}
-              className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-50 disabled:opacity-60 transition-colors text-xs font-heading font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shrink-0"
+              className="px-3 py-2.5 rounded-xl text-slate-400 flex items-center gap-1.5 shrink-0"
             >
-              {isTranslating ? (
-                <RefreshCw className="h-4 w-4 animate-spin" />
-              ) : (
-                <Languages className="h-4 w-4" />
-              )}
-              <span>{t("Translate", "Preložiť", "Fordítás")}</span>
-            </button>
+              <Languages className="h-4 w-4 animate-pulse" />
+            </span>
           )}
 
           {tempLayout.widgets.length > 0 && !isEditMode && (
