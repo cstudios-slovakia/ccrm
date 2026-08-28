@@ -32,6 +32,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
 
   const [widgetData, setWidgetData] = useState<Record<string, any>>({});
   const [loadingWidgets, setLoadingWidgets] = useState<Record<string, boolean>>({});
+  const [widgetErrors, setWidgetErrors] = useState<Record<string, string>>({});
   const [isSaved, setIsSaved] = useState(true);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
 
@@ -72,6 +73,12 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     widgets.forEach(async (w: any) => {
       if (!w.query || !w.query.action) return;
       setLoadingWidgets(prev => ({ ...prev, [w.id]: true }));
+      setWidgetErrors(prev => {
+        if (!(w.id in prev)) return prev;
+        const next = { ...prev };
+        delete next[w.id];
+        return next;
+      });
       try {
         const res = await fetch("/api/dashboard_query.php", {
           method: "POST",
@@ -84,9 +91,15 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
         const json = await res.json();
         if (json.success) {
           setWidgetData(prev => ({ ...prev, [w.id]: json.data }));
+        } else {
+          const msg = json.message || t("The AI-generated query for this widget was rejected.", "AI vygenerovaný dopyt pre tento modul bol zamietnutý.", "A modulhoz generált AI lekérdezést elutasították.");
+          console.error(`Failed to fetch data for widget ${w.id}: ${msg}`);
+          setWidgetErrors(prev => ({ ...prev, [w.id]: msg }));
         }
-      } catch (err) {
+      } catch (err: any) {
+        const msg = err?.message || t("Connection to the server failed.", "Pripojenie na server zlyhalo.", "A szerverkapcsolat sikertelen.");
         console.error(`Failed to fetch data for widget ${w.id}`, err);
+        setWidgetErrors(prev => ({ ...prev, [w.id]: msg }));
       } finally {
         setLoadingWidgets(prev => ({ ...prev, [w.id]: false }));
       }
@@ -328,9 +341,11 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                   </span>
                   <div
                     className="w-7 h-7 rounded-xl flex items-center justify-center text-white scale-90"
-                    style={{ backgroundColor: w.color || dashboard.color }}
+                    style={widgetErrors[w.id] ? undefined : { backgroundColor: w.color || dashboard.color }}
                   >
-                    {w.type === "metric" ? (
+                    {widgetErrors[w.id] ? (
+                      <AlertCircle className="h-4 w-4 text-rose-500" />
+                    ) : w.type === "metric" ? (
                       <LayoutDashboard className="h-4 w-4" />
                     ) : w.type === "chart" ? (
                       <Sparkles className="h-4 w-4" />
@@ -341,7 +356,14 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 </div>
 
                 <div className="flex-1 flex flex-col justify-center">
-                  {w.type === "metric" && (
+                  {widgetErrors[w.id] ? (
+                    <div className="flex items-start gap-2 p-3 rounded-2xl bg-rose-50 border border-rose-100 text-rose-700 text-xs font-semibold leading-relaxed">
+                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                      <span>{widgetErrors[w.id]}</span>
+                    </div>
+                  ) : null}
+
+                  {!widgetErrors[w.id] && w.type === "metric" && (
                     <div className="text-3xl font-black text-slate-800 tracking-tight">
                       {(() => {
                         if (w.metricValue !== undefined && w.metricValue !== "") {
@@ -388,11 +410,11 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                     </div>
                   )}
 
-                  {w.type === "chart" && (
+                  {!widgetErrors[w.id] && w.type === "chart" && (
                     <DashboardChart widget={w} data={widgetData[w.id]} />
                   )}
 
-                  {w.type === "table" && (
+                  {!widgetErrors[w.id] && w.type === "table" && (
                     <DashboardTable widget={w} data={widgetData[w.id]} t={t} formatCurrency={money} systemLanguage={systemLanguage as Language} />
                   )}
                 </div>
