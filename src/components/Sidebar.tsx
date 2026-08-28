@@ -507,7 +507,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
             {!isCollapsed && (
               <div className="flex flex-col animate-in fade-in duration-300 min-w-0 flex-1">
-                <span className="font-heading font-bold text-sm leading-snug bg-gradient-to-r from-slate-800 to-slate-950 bg-clip-text text-transparent truncate group-hover:text-indigo-600 transition-colors">
+                <span className="font-heading font-bold text-sm leading-snug text-slate-800 truncate group-hover:text-indigo-600 transition-colors">
                   {systemName}
                 </span>
                 <span className="text-[10px] text-slate-400 tracking-wider font-semibold uppercase mt-0.5 truncate">
@@ -918,7 +918,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <span className="h-2.5 w-2.5 rounded-full bg-indigo-500" />
             </div>
             <div className="flex flex-col text-left">
-              <span className="font-heading font-bold text-sm leading-none bg-gradient-to-r from-slate-800 to-slate-950 bg-clip-text text-transparent">
+              <span className="font-heading font-bold text-sm leading-none text-slate-800">
                 {systemName}
               </span>
               <span className="text-[9px] text-indigo-600 tracking-wider font-extrabold uppercase mt-1">
