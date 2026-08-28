@@ -343,6 +343,51 @@ if (!function_exists('ccrm_schema_statements')) {
               INDEX `idx_pwreset_ip_time` (`ip`, `created_at`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
+            // Licence held by THIS installation. At most one row, `id` pinned to
+            // 1 by the primary key: one install, one licence.
+            //
+            // `token` is the only authoritative column — a base64url claim plus
+            // the vendor's signature over it. Everything beside it is a
+            // denormalised copy of what that claim says, kept so the settings
+            // screen and ad-hoc SQL can read the licence without verifying a
+            // signature. Nothing decides anything from those copies: every read
+            // path re-verifies the token (see api/license_client.php), so editing
+            // `expires_at` here changes a display value and not the licence.
+            "CREATE TABLE IF NOT EXISTS `licenses` (
+              `id` TINYINT UNSIGNED NOT NULL DEFAULT 1,
+              `license_key` VARCHAR(64) NOT NULL,
+              `instance_id` VARCHAR(64) NOT NULL COMMENT 'Install this token was issued for',
+              `token` TEXT NOT NULL COMMENT 'base64url(claim).base64url(signature) — the authority',
+              `status` VARCHAR(20) NOT NULL DEFAULT 'unknown' COMMENT 'Last status the vendor stated',
+              `expires_at` DATE NULL,
+              `max_users` INT NULL COMMENT 'Seat ceiling, NULL for unlimited',
+              `customer` VARCHAR(190) NULL,
+              `plan` VARCHAR(60) NULL,
+              `issued_at` DATETIME NULL COMMENT 'When the vendor signed this token',
+              `activated_by` VARCHAR(50) NULL COMMENT 'users.id of whoever entered the key',
+              `activated_at` DATETIME NULL,
+              `last_check_at` DATETIME NULL COMMENT 'Last SUCCESSFUL licence-server check',
+              `last_attempt_at` DATETIME NULL COMMENT 'Last attempt, successful or not (throttle)',
+              `last_error` VARCHAR(255) NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              PRIMARY KEY (`id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Rate-limit ledger for licence activation attempts. Activation takes
+            // a key typed by a human, so it is a guessing surface like a login
+            // form; without this an admin session could grind the vendor's key
+            // space (and the vendor's server) from inside a customer install.
+            "CREATE TABLE IF NOT EXISTS `license_attempts` (
+              `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+              `ip` VARCHAR(45) NULL,
+              `user_id` VARCHAR(50) NULL,
+              `outcome` VARCHAR(30) NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              INDEX `idx_license_attempt_time` (`created_at`),
+              INDEX `idx_license_attempt_ip_time` (`ip`, `created_at`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
             // Workflow Definitions
             "CREATE TABLE IF NOT EXISTS `workflows` (
               `id` VARCHAR(50) NOT NULL PRIMARY KEY,

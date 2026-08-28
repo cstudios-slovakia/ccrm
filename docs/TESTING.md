@@ -63,6 +63,7 @@ found — not that nothing was checked.
 | `npm run test:qa:crawler` | Per-module deep audit | minutes |
 | `npm run test:qa:recorder` | Chrome Recorder replays | ~1 min |
 | `npm run test:qa:dark` | Dark-mode legibility on every module | ~30s |
+| `npm run test:qa:license` | Licensing banner, settings tab, and that a lapsed licence disables nothing | ~35s |
 | `npm run test:qa:headed` | Full run with a visible browser | minutes |
 | `npm run test:qa:report` | Open the latest report | — |
 | `npm run test:qa:report -- --list` | List saved runs | — |
@@ -192,6 +193,34 @@ know before editing it:
 
 ---
 
+## 5b. The one suite that is not in `npm test`
+
+`scripts/test/license-verification.php` covers the licensing backend: signature
+verification in both supported algorithms, every way a token can be refused, how
+a licence-server answer is read, the state machine, and the seat ceiling.
+
+It is deliberately **outside** `npm test`. This suite's contract is "no Docker,
+no PHP, no database required", and a PHP + MySQL lane inside the deploy gate
+would break that on any machine without both.
+
+```bash
+php scripts/test/license-verification.php          # crypto + protocol only
+CCRM_LICENSE_TEST_DSN="mysql:host=127.0.0.1;port=3308;dbname=ccrm_license_test;charset=utf8mb4" \
+CCRM_LICENSE_TEST_USER=root CCRM_LICENSE_TEST_PASS=… \
+  php scripts/test/license-verification.php        # + state and storage
+```
+
+It **drops and recreates** four tables in the database you point it at, and
+refuses a DSN whose database name does not contain `test`. Run it after any
+change to `api/license_client.php`, and after any change to the token format on
+either side (see [licensing/README.md](licensing/README.md)).
+
+The pure decision layer in front of it — when the banner appears, how a
+dismissal is keyed, the seat arithmetic — is in `src/utils/license.test.ts` and
+*is* part of `npm run test:unit`.
+
+---
+
 ## 6. When to run what
 
 | Situation | Run |
@@ -199,6 +228,7 @@ know before editing it:
 | Mid-change, want fast feedback | `npm run test:unit` |
 | Touched a specific module's UI | `npm run test:qa:crawler` |
 | Touched navigation, the sidebar or the header | `npm run test:qa:nav` |
+| Touched licensing (`api/license*.php`, the token format) | `php scripts/test/license-verification.php` |
 | **Finished a feature or a fix** | **`npm run test:qa`** |
 | Changed the QA suite itself | `npm run test:qa:canary` |
 | About to deploy | automatic — `npm run deploy` gates on it |

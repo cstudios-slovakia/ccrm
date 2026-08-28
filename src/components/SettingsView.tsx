@@ -16,6 +16,9 @@ import { cn } from "../utils/cn";
 import { CURRENCY_OPTIONS, currencyForRegion } from "../utils/currency";
 import { SOCIAL_MEDIA_ENABLED } from "../utils/featureFlags";
 import { formatTimestampLocalized } from "../utils/localTime";
+import { LicenseSettings } from "./LicenseSettings";
+import { isAtSeatLimit } from "../utils/license";
+import type { LicenseState } from "../utils/license";
 
 // Inline "double-click / pencil to rename" field.
 //
@@ -146,6 +149,10 @@ interface SettingsViewProps {
   setInvoicingIntegrations?: React.Dispatch<React.SetStateAction<ExternalInvoicingConfig | null>>;
   aiCustomTemplates?: AiCustomTemplate[];
   setAiCustomTemplates?: React.Dispatch<React.SetStateAction<AiCustomTemplate[]>>;
+
+  /** Licence for this installation — drives the Licence tab and the seat limit. */
+  licenseState?: LicenseState | null;
+  onLicenseStateChange?: (next: LicenseState) => void;
 }
 
 // Extract all valid Lucide icon names dynamically for search
@@ -162,6 +169,7 @@ const ALL_LUCIDE_ICONS = Object.keys(Icons).filter(key => {
 // back to Branding every time a background sync produced a new `roles` array.
 const SETTINGS_TABS = [
   { id: "branding", permKey: "general_config" },
+  { id: "license", permKey: "general_config" },
   { id: "invoicing", permKey: "general_config" },
   { id: "projects", permKey: "general_config" },
   { id: "unified", permKey: "general_config" },
@@ -234,7 +242,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   invoicingIntegrations,
   setInvoicingIntegrations,
   aiCustomTemplates = [],
-  setAiCustomTemplates
+  setAiCustomTemplates,
+  licenseState = null,
+  onLicenseStateChange
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
 
@@ -522,7 +532,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // Role creation states
   const [newRoleName, setNewRoleName] = React.useState("");
 
-  const [activeSubTab, setActiveSubTab] = React.useState<"branding" | "invoicing" | "managers" | "rbac" | "states" | "sources" | "danger" | "ads" | "social" | "api" | "email" | "ai" | "unified" | "errors" | "projects">((initialSubTab as any) || "branding");
+  const [activeSubTab, setActiveSubTab] = React.useState<"branding" | "license" | "invoicing" | "managers" | "rbac" | "states" | "sources" | "danger" | "ads" | "social" | "api" | "email" | "ai" | "unified" | "errors" | "projects">((initialSubTab as any) || "branding");
 
   // Zernio Social Media Integration State
   const [zernioApiKey, setZernioApiKey] = React.useState<string>(integrationsConfig?.zernioApiKey || "");
@@ -1852,12 +1862,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
     if (users.some(u => u.name.toLowerCase() === nameVal.toLowerCase() || u.email.toLowerCase() === emailVal.toLowerCase())) {
       (window as any).showToast(
-        userLanguage === "sk" 
-          ? "Používateľ s týmto menom alebo e-mailom už existuje!" 
-          : userLanguage === "hu" 
-            ? "Már létezik felhasználó ezzel a névvel vagy e-mail címmel!" 
+        userLanguage === "sk"
+          ? "Používateľ s týmto menom alebo e-mailom už existuje!"
+          : userLanguage === "hu"
+            ? "Már létezik felhasználó ezzel a névvel vagy e-mail címmel!"
             : "A user with this Name or Email already exists!"
       );
+      return;
+    }
+
+    // Licensed seat ceiling. sync.php refuses the insert as well — this branch
+    // exists so the admin is told BEFORE the account appears in the list and
+    // then quietly disappears on the next poll.
+    if (isAtSeatLimit(licenseState)) {
+      (window as any).showToast(getTranslation(userLanguage, "license.seats_full"), "warning");
       return;
     }
 
@@ -3245,6 +3263,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
             </div>
           </div>
+        )}
+
+        {/* TAB: Licence */}
+        {activeSubTab === "license" && getPermission("general_config") !== "nothing" && (
+          <LicenseSettings
+            state={licenseState}
+            language={userLanguage}
+            // Entering a key is an admin action on the server too (api/license.php
+            // requires the admin role), so a "view" permission genuinely means
+            // read-only here rather than a button that will 403.
+            canEdit={currentUser?.role?.toLowerCase() === "admin"}
+            onStateChange={(next) => onLicenseStateChange?.(next)}
+          />
         )}
 
         {/* TAB: Projects Configuration */}

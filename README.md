@@ -114,8 +114,34 @@ On the server:
 ```bash
 php ccrm update
 ```
-Pulls `origin/main`, runs `composer install`, publishes `dist/` over the
-docroot, and runs DB migrations — see the `ccrm` script at the repo root.
+Checks the licence, pulls `origin/main`, runs `composer install`, publishes
+`dist/` over the docroot, and runs DB migrations — see the `ccrm` script at the
+repo root.
+
+### Licensing
+
+An installation needs a valid licence key **to receive updates**. That is the
+only thing a licence controls: nothing in the running CRM is disabled by an
+expired, missing, or revoked licence, and a lapsed customer keeps a fully
+working app. Ahead of expiry the app shows a dismissible banner, and Settings →
+Licence is where a key is entered.
+
+```bash
+php ccrm license status              # what is installed, and does it allow updates
+php ccrm license set <key-or-token>  # activate
+php ccrm license check               # force a re-check with the licence server
+```
+
+The licence server is a Craft CMS channel plus a small module, and its answers
+are cryptographically signed — so neither a substituted licence server nor an
+edit to the CCRM database can mint a licence, and a vendor outage does not stop
+a valid customer updating. Full architecture and setup:
+[`docs/licensing/README.md`](docs/licensing/README.md).
+
+**A shipped build must have `CCRM_LICENSE_PUBLIC_KEY` filled in** (in both
+`api/license_client.php` and `public/api/license_client.php`). While it is
+empty the product reports "licensing is not configured", shows no banner and
+gates nothing.
 
 ### Legacy: Composer-package consumption
 

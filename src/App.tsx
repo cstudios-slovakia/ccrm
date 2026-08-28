@@ -7,7 +7,7 @@ import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, Uni
 import { VERSION } from "./utils/version";
 import { SOCIAL_MEDIA_ENABLED } from "./utils/featureFlags";
 import type { MeetingNote } from "./components/MeetingRoomView";
-import { getTranslation } from "./utils/translations";
+import { getTranslation, formatTranslation } from "./utils/translations";
 import { orderLeadStates } from "./utils/leadStates";
 import { resolveTaskViewAll } from "./utils/taskSelectors";
 import { InstallerWizard } from "./components/InstallerWizard";
@@ -17,6 +17,9 @@ import { RefreshCw, AlertOctagon, Trash2, Copy } from "lucide-react";
 import { ShaderGradient, ShaderGradientCanvas } from "shadergradient";
 import { getStoredTheme, getStoredThemeMode, isThemeMode, startThemeWatcher, type Appearance, type ThemeMode } from "./utils/theme";
 import { hasPersistentStorage } from "./utils/safeStorage";
+import { LicenseBanner } from "./components/LicenseBanner";
+import { fetchLicenseState } from "./utils/licenseApi";
+import type { LicenseState } from "./utils/license";
 import type { UserPrefs, UserPrefsApi } from "./utils/userPrefs";
 import {
   DEFAULT_USER_PREFS,
@@ -564,6 +567,39 @@ function App() {
     }
   }, [currentUser]);
 
+  // Licence for this installation. Fetched once per session and re-checked on a
+  // slow timer — it changes about once a year, and api/license.php throttles the
+  // call it makes to the licence server behind this anyway.
+  //
+  // `null` means "not known yet, or could not be read", and every consumer treats
+  // that as "say nothing": no banner, no seat limit. A licence check that fails
+  // must never be the reason someone cannot add a colleague.
+  const [licenseState, setLicenseState] = useState<LicenseState | null>(null);
+  // Read from inside the sync push handler, which is rebuilt on every render and
+  // must not close over a licence state that was current three renders ago.
+  const licenseStateRef = useRef<LicenseState | null>(null);
+  licenseStateRef.current = licenseState;
+
+  useEffect(() => {
+    if (!currentUser) {
+      setLicenseState(null);
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      const next = await fetchLicenseState();
+      if (!cancelled && next) setLicenseState(next);
+    };
+    load();
+    // Six hours: long enough to be invisible, short enough that a licence that
+    // expires overnight is reflected in a browser tab left open for days.
+    const timer = window.setInterval(load, 6 * 60 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [currentUser?.email]);
+
   // Theme, error sidebar and the leads-screen view modes are per-user
   // preferences read out of the DB — see the UserPrefs block below.
   const [errorLogs, setErrorLogs] = useState<any[]>([]);
@@ -1041,6 +1077,21 @@ ${log.payload || ''}
           const out = await res.json();
           if (out && typeof out.serverTime === "string") {
             baseSyncedAtRef.current = out.serverTime;
+          }
+          // Accounts the server refused because the licence has no seat left.
+          // The push itself succeeded, so without this the new colleague would
+          // simply not be there after the next poll, with nothing said.
+          if (Array.isArray(out?.seatRejections) && out.seatRejections.length > 0) {
+            const emails = out.seatRejections.filter((e: unknown) => typeof e === "string");
+            if (emails.length > 0 && typeof (window as any).showToast === "function") {
+              (window as any).showToast(
+                formatTranslation(userLanguage, "license.seat_rejected", {
+                  emails: emails.join(", "),
+                  max: licenseStateRef.current?.maxUsers ?? "—",
+                }),
+                "warning"
+              );
+            }
           }
         } catch { /* non-JSON response — keep the previous snapshot clock */ }
       } else {
@@ -2017,6 +2068,8 @@ ${log.payload || ''}
           setInvoicingIntegrations={updateInvoicingIntegrationsAndSync}
           aiCustomTemplates={aiCustomTemplates}
           setAiCustomTemplates={updateAiCustomTemplatesAndSync}
+          licenseState={licenseState}
+          onLicenseStateChange={setLicenseState}
         />
       );
     }
@@ -2175,6 +2228,8 @@ ${log.payload || ''}
           initialSubTab={subTab}
           settingsAction={settingsAction}
           settingsActionId={settingsActionId}
+          licenseState={licenseState}
+          onLicenseStateChange={setLicenseState}
         />
       );
     }
@@ -2701,6 +2756,18 @@ ${log.payload || ''}
           
           <main className="flex-1 p-4 md:p-6 overflow-y-auto max-w-[1600px] mx-auto w-full relative flex flex-col justify-between">
             <div className="shrink-0 w-full">
+              {/* Advance warning that the licence is lapsing. Above the workspace
+                  rather than over it: nothing here justifies interrupting work,
+                  and it stays out of the per-view ErrorBoundary so a crash in one
+                  module cannot take the notice down with it. */}
+              <LicenseBanner
+                state={licenseState}
+                language={userLanguage}
+                isAdmin={(currentUser?.role || "").toLowerCase() === "admin"}
+                onOpenLicenseSettings={() => {
+                  window.location.hash = "settings/license";
+                }}
+              />
               {/* Per-view boundary: a render error in one module (a single CRM tab)
                   used to escape to the root boundary and take the whole app down,
                   leaving a reload as the only way back. Contained here, the sidebar,

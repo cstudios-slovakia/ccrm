@@ -46,6 +46,13 @@ export interface UserPrefs {
   leadsVisibleStates: string[] | null;
   /** Id of the newest release note the user has already opened. */
   seenUpdateId: string | null;
+  /**
+   * Licence notice the user chose never to see again, stored as the SITUATION's
+   * signature rather than a plain boolean (see licenseNoticeSignature in
+   * utils/license.ts). Silencing "expires in three weeks" therefore does not
+   * also silence "expired", and a renewed key brings the notice back.
+   */
+  licenseNoticeSuppressed: string | null;
   /** Customised built-in RAG agent, or null while it is still the stock one. */
   ragDefaultAgent: any | null;
 }
@@ -59,6 +66,7 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   leadsOrderingMode: "state",
   leadsVisibleStates: null,
   seenUpdateId: null,
+  licenseNoticeSuppressed: null,
   ragDefaultAgent: null,
 };
 

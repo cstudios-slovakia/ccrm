@@ -30,6 +30,9 @@ if (!file_exists($configFile) || @filesize($configFile) < 100) {
 }
 
 require_once $configFile;
+// Loaded after config.php so a per-install override of the licence endpoint or
+// public key (define()d there) wins over the compiled-in defaults.
+require_once __DIR__ . '/api/license_client.php';
 
 try {
     $pdo = get_db_connection();
@@ -1523,6 +1526,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // rather than anything worth surfacing.
     $conflictedIds = [];
 
+    // Email addresses of accounts this push tried to CREATE beyond the licensed
+    // seat count. Reported back so the client can say which ones did not land,
+    // instead of the new colleague silently disappearing on the next poll.
+    $seatRejections = [];
+
     // Protocol the client is speaking. Absent/1 = full snapshot with deletions
     // inferred from omission (every pre-1.6.27 build). 2 = delta sync: sections may
     // be omitted entirely, only changed records are sent, and deletions are stated
@@ -1906,6 +1914,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingUserIds = array_keys($existingHashes);
             $processedUserIds = [];
 
+            // Seat limit from the licence (null = unlimited, and null is also what
+            // an unlicensed install gets — never lock anyone out of managing their
+            // own team just because a licence is missing). Accounts that already
+            // exist are NEVER touched by this: being over the limit after a
+            // downgrade only stops the team growing further.
+            //
+            // The budget is measured against the state this push will LEAVE
+            // BEHIND, so an admin who removes one colleague and adds another in
+            // the same save is not refused for momentarily "exceeding" a limit
+            // they end up respecting. Deletions are resolved the same way the
+            // delete step below resolves them.
+            $seatLimit = function_exists('ccrm_license_seat_limit') ? ccrm_license_seat_limit($pdo) : null;
+            $seatsAfterDeletes = count($existingUserIds);
+            if ($seatLimit !== null && $isAdmin) {
+                $payloadUserIds = [];
+                foreach ($payload['users'] as $pu) {
+                    if (empty($pu['email'])) continue;
+                    $puEmail = strtolower(trim($pu['email']));
+                    $payloadUserIds[] = isset($emailToUser[$puEmail])
+                        ? $emailToUser[$puEmail]['id']
+                        : ($pu['id'] ?? ('u-' . md5($puEmail)));
+                }
+                $plannedDeletes = $isDeltaSync
+                    ? $deletionsFor('users', $existingUserIds)
+                    : array_diff($existingUserIds, $payloadUserIds);
+                // The account performing the sync is never deleted, so it never
+                // frees a seat either.
+                $plannedDeletes = array_diff($plannedDeletes, [$sessionUser['id']]);
+                $seatsAfterDeletes = max(0, count($existingUserIds) - count($plannedDeletes));
+            }
+
             $insUser = $pdo->prepare("INSERT INTO `users` (`id`, `name`, `email`, `password_hash`, `role`, `avatar`, `color`, `metadata_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `email` = VALUES(`email`), `password_hash` = VALUES(`password_hash`), `role` = VALUES(`role`), `avatar` = VALUES(`avatar`), `color` = VALUES(`color`), `metadata_json` = VALUES(`metadata_json`)");
 
             foreach ($payload['users'] as $u) {
@@ -1915,6 +1954,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $uEmail = strtolower(trim($u['email']));
                 $existingRecord = $emailToUser[$uEmail] ?? null;
                 $userId = $existingRecord ? $existingRecord['id'] : ($u['id'] ?? ('u-' . md5($uEmail)));
+
+                // Creating an account past the licensed seat count. Refused here
+                // as well as in the UI: the settings screen is one client of this
+                // endpoint, not a gate in front of it.
+                if ($existingRecord === null && $seatLimit !== null && $seatsAfterDeletes >= $seatLimit) {
+                    $seatRejections[] = (string) $u['email'];
+                    continue;
+                }
 
                 $isSelf = ($sessionUser !== null) && (
                     strtolower(trim($sessionUser['email'] ?? '')) === $uEmail ||
@@ -1973,6 +2020,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $u['color'] ?? '#3b82f6',
                     $metaJson
                 ]);
+
+                if ($existingRecord === null) {
+                    $seatsAfterDeletes++;
+                }
 
                 // A new password retires every session that the old one could reach,
                 // except the one making this change (which just proved it knows the
@@ -3383,6 +3434,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // therefore left as-is. Always reported; only a delta client can treat
             // them as a real conflict (see ccrm_write_would_clobber).
             'conflicts' => (object) $conflictedIds,
+            // Accounts refused by the licensed seat count, if any.
+            'seatRejections' => array_values($seatRejections),
         ]);
     } catch (\Throwable $e) {
         if (isset($pdo) && $pdo->inTransaction()) {

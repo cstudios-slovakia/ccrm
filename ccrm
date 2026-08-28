@@ -18,6 +18,10 @@ switch ($command) {
     case 'migrate':
         ccrm_migrate();
         break;
+    case 'license':
+    case 'licence':
+        ccrm_license_cli(isset($args[2]) ? $args[2] : 'status', isset($args[3]) ? $args[3] : null);
+        break;
     case 'help':
     default:
         ccrm_help();
@@ -27,9 +31,151 @@ switch ($command) {
 function ccrm_help() {
     echo "CCRM CLI Tool\n";
     echo "Usage:\n";
-    echo "  php ccrm update   - Pulls latest code, runs composer install, publishes assets, and migrates DB\n";
-    echo "  php ccrm migrate  - Runs database migrations manually\n";
-    echo "  php ccrm help     - Shows this help message\n";
+    echo "  php ccrm update            - Pulls latest code, runs composer install, publishes assets, and migrates DB\n";
+    echo "  php ccrm migrate           - Runs database migrations manually\n";
+    echo "  php ccrm license status    - Shows this installation's licence and whether it allows updates\n";
+    echo "  php ccrm license set <key> - Activates a licence key (or imports an offline licence token)\n";
+    echo "  php ccrm license check     - Forces an immediate re-check with the licence server\n";
+    echo "  php ccrm help              - Shows this help message\n";
+}
+
+/**
+ * Load config.php + the schema + the licensing client and open a connection.
+ * Returns a PDO, or null when this checkout is not installed / reachable —
+ * callers decide whether that is fatal.
+ */
+function ccrm_cli_pdo() {
+    global $pdo, $db_connection_error;
+
+    $configFile = __DIR__ . '/config.php';
+    if (!file_exists($configFile)) {
+        $configFile = __DIR__ . '/public/config.php';
+    }
+    if (!file_exists($configFile)) {
+        return null;
+    }
+    require_once $configFile;
+    if (!function_exists('get_db_connection')) {
+        return null;
+    }
+
+    foreach (['/api', '/dist/api', '/public/api'] as $dir) {
+        if (file_exists(__DIR__ . $dir . '/license_client.php')) {
+            require_once __DIR__ . $dir . '/schema.php';
+            require_once __DIR__ . $dir . '/license_client.php';
+            break;
+        }
+    }
+
+    try {
+        $pdo = get_db_connection();
+        // The licences table may not exist yet on an install that has not been
+        // migrated since licensing shipped.
+        if (function_exists('ccrm_apply_schema')) {
+            ccrm_apply_schema($pdo);
+        }
+        return $pdo;
+    } catch (\Throwable $e) {
+        echo "Error: could not connect to the database: " . $e->getMessage() . "\n";
+        return null;
+    }
+}
+
+/** Human wording for the status codes ccrm_license_state() produces. */
+function ccrm_license_describe($code) {
+    $map = [
+        'unconfigured' => 'licensing is not configured in this build',
+        'none'         => 'no licence key has been entered on this installation',
+        'invalid'      => 'the stored licence does not verify for this installation',
+        'revoked'      => 'the licence has been revoked',
+        'suspended'    => 'the licence is suspended',
+        'expired'      => 'the licence has expired',
+        'expiring'     => 'the licence is valid but expires soon',
+        'active'       => 'the licence is valid',
+        'stale_check'  => 'the licence has not been confirmed with the licence server for too long',
+        'not_configured' => 'licensing is not configured in this build',
+    ];
+    return isset($map[$code]) ? $map[$code] : (string) $code;
+}
+
+function ccrm_license_print_state(array $state) {
+    echo "  Status:        " . $state['status'] . " (" . ccrm_license_describe($state['status']) . ")\n";
+    if (!empty($state['keyMasked'])) {
+        echo "  Key:           " . $state['keyMasked'] . "\n";
+    }
+    if (!empty($state['customer'])) {
+        echo "  Licensed to:   " . $state['customer'] . "\n";
+    }
+    if (!empty($state['expiresAt'])) {
+        echo "  Expires:       " . $state['expiresAt']
+            . ($state['daysRemaining'] !== null ? " (" . $state['daysRemaining'] . " day(s))" : "") . "\n";
+    }
+    if ($state['maxUsers'] !== null) {
+        echo "  Seats:         " . $state['seatsUsed'] . " of " . $state['maxUsers'] . "\n";
+    }
+    if (!empty($state['lastCheckAt'])) {
+        echo "  Last checked:  " . $state['lastCheckAt'] . "\n";
+    }
+    if (!empty($state['lastError'])) {
+        echo "  Last error:    " . $state['lastError'] . "\n";
+    }
+    echo "  Updates:       " . ($state['updatesAllowed'] ? "allowed" : "BLOCKED — " . ccrm_license_describe($state['updatesBlockedReason'])) . "\n";
+}
+
+function ccrm_license_cli($sub, $value) {
+    $pdo = ccrm_cli_pdo();
+    if ($pdo === null) {
+        echo "Error: CCRM is not installed here (no config.php), or the database is unreachable.\n";
+        exit(1);
+    }
+    if (!function_exists('ccrm_license_state')) {
+        echo "Error: the licensing client (api/license_client.php) was not found in this checkout.\n";
+        exit(1);
+    }
+
+    switch ($sub) {
+        case 'set':
+            if ($value === null || trim($value) === '') {
+                echo "Usage: php ccrm license set <licence-key|licence-token>\n";
+                exit(1);
+            }
+            $input = trim($value);
+            // One argument, two shapes — the same rule the HTTP endpoint uses.
+            $looksLikeToken = (substr_count($input, '.') === 1 && strlen($input) > 80);
+            echo $looksLikeToken
+                ? "Importing an offline licence token...\n"
+                : "Activating licence key with the licence server...\n";
+            $result = $looksLikeToken
+                ? ccrm_license_import_token($pdo, $input, null)
+                : ccrm_license_activate($pdo, $input, null);
+            if (!$result['ok']) {
+                echo "Failed: " . $result['error'] . "\n";
+                ccrm_license_print_state(ccrm_license_state($pdo));
+                exit(1);
+            }
+            echo "Licence stored.\n";
+            ccrm_license_print_state(ccrm_license_state($pdo));
+            break;
+
+        case 'check':
+            echo "Re-checking with the licence server...\n";
+            $result = ccrm_license_refresh($pdo, true);
+            if (!$result['ok']) {
+                echo "Check failed: " . $result['error'] . " (the cached licence stays in effect)\n";
+            } else {
+                echo "Licence confirmed.\n";
+            }
+            ccrm_license_print_state(ccrm_license_state($pdo));
+            if (!$result['ok']) {
+                exit(1);
+            }
+            break;
+
+        case 'status':
+        default:
+            ccrm_license_print_state(ccrm_license_state($pdo));
+            break;
+    }
 }
 
 function ccrm_update() {
@@ -44,6 +190,48 @@ function ccrm_update() {
         $branch = 'main';
     }
     echo "Deploy branch: $branch\n";
+
+    // 0. Licence gate.
+    //
+    // This is the ONLY thing a licence controls. Nothing below this point
+    // touches the running application, and nothing anywhere else in the product
+    // is disabled by an expired or missing licence — an install that stops
+    // updating keeps serving its users exactly as it did yesterday.
+    //
+    // Deliberately fail-OPEN in three situations, because refusing to update is
+    // also a way to leave a customer stuck on a version with a security bug:
+    //   - licensing is not configured in this build (no public key compiled in);
+    //   - CCRM is not installed here yet (no config.php / no database);
+    //   - the licence server is unreachable but the cached, signed claim is
+    //     still inside its validity and its offline window.
+    // The last two are handled inside ccrm_license_gate_update().
+    $licensePdo = ccrm_cli_pdo();
+    if ($licensePdo !== null && function_exists('ccrm_license_gate_update')) {
+        echo "Checking licence...\n";
+        $gate = ccrm_license_gate_update($licensePdo);
+        $state = $gate['state'];
+        if (!$gate['allowed']) {
+            echo "\n";
+            echo "Update refused: " . ccrm_license_describe($gate['reason']) . ".\n";
+            ccrm_license_print_state($state);
+            echo "\n";
+            echo "Enter a licence key in Settings -> Licence, or run:\n";
+            echo "  php ccrm license set <licence-key>\n";
+            echo "\n";
+            echo "The application itself is unaffected and keeps running normally.\n";
+            exit(1);
+        }
+        if ($state['status'] === 'expiring') {
+            echo "Licence valid, expires " . $state['expiresAt']
+                . " (" . $state['daysRemaining'] . " day(s) left).\n";
+        } elseif ($state['status'] === 'unconfigured') {
+            echo "Licence check skipped: licensing is not configured in this build.\n";
+        } else {
+            echo "Licence OK.\n";
+        }
+    } else {
+        echo "Licence check skipped (CCRM is not installed here yet).\n";
+    }
 
     // 1. Check for local modifications blocking git pull
     echo "Checking git status...\n";

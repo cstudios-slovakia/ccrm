@@ -771,6 +771,42 @@ export async function installBackendMocks(page: Page) {
     }),
   );
 
+  // Licence: a healthy, configured one. Given explicitly rather than left to the
+  // catch-all below so the Settings -> Licence tab renders its real content for
+  // the crawler instead of the "licensing not configured" placeholder. `active`
+  // on purpose — the expiry banner is covered by unit tests over the pure
+  // decision function (utils/license.test.ts), and a banner in every screenshot
+  // of every audited module would drown the reports it appears in.
+  await page.route('**/api/license.php**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        license: {
+          configured: true,
+          status: 'active',
+          valid: true,
+          keyMasked: 'CCRM-********QA01',
+          expiresAt: '2099-12-31',
+          daysRemaining: 3650,
+          warnDays: 30,
+          maxUsers: 25,
+          seatsUsed: 4,
+          customer: 'QA Automated Suite',
+          plan: 'standard',
+          activatedAt: '2026-01-01 09:00:00',
+          lastCheckAt: '2026-01-01 09:00:00',
+          lastAttemptAt: '2026-01-01 09:00:00',
+          lastError: null,
+          offlineDays: 0,
+          updatesAllowed: true,
+          updatesBlockedReason: null,
+        },
+      }),
+    }),
+  );
+
   // Everything else under /api/ and the upload endpoints: succeed quietly so a
   // missing PHP backend never shows up as an app defect.
   await page.route('**/api/**', (route) =>
