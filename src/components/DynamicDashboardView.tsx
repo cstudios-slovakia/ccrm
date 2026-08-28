@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Sparkles, Save, Edit, RefreshCw, Send, AlertCircle, LayoutDashboard, FileText, HelpCircle, X, Info } from "lucide-react";
+import { Sparkles, Save, Edit, RefreshCw, Send, AlertCircle, LayoutDashboard, FileText, HelpCircle, X, Info, Languages, Layers, Rows3, History, ChevronDown } from "lucide-react";
 import type { CustomDashboard } from "../types";
 import { cn } from "../utils/cn";
 import type { Language } from "../utils/translations";
@@ -13,6 +13,19 @@ interface DynamicDashboardViewProps {
   currencyCode?: string | null;
 }
 
+/** Where a `tabs` widget's per-tab query result is stored in the data/error maps. */
+const tabDataKey = (widgetId: string, index: number) => `${widgetId}::tab${index}`;
+
+/** Widget types that hold their own nested content instead of a single query. */
+const WIDGET_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  metric: LayoutDashboard,
+  chart: Sparkles,
+  table: FileText,
+  timeline: History,
+  accordion: Rows3,
+  tabs: Layers
+};
+
 export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   dashboard,
   onSaveDashboard,
@@ -23,11 +36,22 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
   const money = (value: number, opts?: Intl.NumberFormatOptions) =>
     formatMoney(value, currencyCode, (systemLanguage as Language) || "en", opts);
+  // AI-generated widget titles/column labels come back either as a plain
+  // string (legacy panels, or a model that ignored the schema) or as an
+  // { en, sk, hu } object — pick the current app language, falling back
+  // through the other translations rather than showing nothing.
+  const localize = (value: any): string => {
+    if (value && typeof value === "object") {
+      return value[systemLanguage] || value.en || value.sk || value.hu || Object.values(value)[0] as string || "";
+    }
+    return value ?? "";
+  };
 
   const [isEditMode, setIsEditMode] = useState(dashboard.layout.widgets.length === 0);
   const [promptText, setPromptText] = useState("");
   const [selectedModel, setSelectedModel] = useState(dashboard.activeModel || "gpt-5.6-terra");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isTranslating, setIsTranslating] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const [widgetData, setWidgetData] = useState<Record<string, any>>({});
@@ -67,16 +91,27 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     }
   }, [dashboard, isSaved]);
 
-  // Load data for all widgets in the layout
+  // Load data for all widgets in the layout. A `tabs` widget holds one query per
+  // tab rather than a single query of its own, so results are keyed by a data key
+  // (the widget id, or `${widget.id}::tab${i}`) instead of plainly by widget id.
   const fetchAllWidgetsData = async (layoutToLoad = tempLayout) => {
     const widgets = layoutToLoad?.widgets || [];
-    widgets.forEach(async (w: any) => {
-      if (!w.query || !w.query.action) return;
-      setLoadingWidgets(prev => ({ ...prev, [w.id]: true }));
+    const jobs: { key: string; query: any }[] = [];
+    widgets.forEach((w: any) => {
+      if (w?.query?.action) jobs.push({ key: w.id, query: w.query });
+      if (Array.isArray(w?.tabs)) {
+        w.tabs.forEach((tab: any, i: number) => {
+          if (tab?.query?.action) jobs.push({ key: tabDataKey(w.id, i), query: tab.query });
+        });
+      }
+    });
+
+    jobs.forEach(async ({ key, query }) => {
+      setLoadingWidgets(prev => ({ ...prev, [key]: true }));
       setWidgetErrors(prev => {
-        if (!(w.id in prev)) return prev;
+        if (!(key in prev)) return prev;
         const next = { ...prev };
-        delete next[w.id];
+        delete next[key];
         return next;
       });
       try {
@@ -84,24 +119,24 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            action: w.query.action,
-            params: w.query.params || {}
+            action: query.action,
+            params: query.params || {}
           })
         });
         const json = await res.json();
         if (json.success) {
-          setWidgetData(prev => ({ ...prev, [w.id]: json.data }));
+          setWidgetData(prev => ({ ...prev, [key]: json.data }));
         } else {
           const msg = json.message || t("The AI-generated query for this widget was rejected.", "AI vygenerovaný dopyt pre tento modul bol zamietnutý.", "A modulhoz generált AI lekérdezést elutasították.");
-          console.error(`Failed to fetch data for widget ${w.id}: ${msg}`);
-          setWidgetErrors(prev => ({ ...prev, [w.id]: msg }));
+          console.error(`Failed to fetch data for widget ${key}: ${msg}`);
+          setWidgetErrors(prev => ({ ...prev, [key]: msg }));
         }
       } catch (err: any) {
         const msg = err?.message || t("Connection to the server failed.", "Pripojenie na server zlyhalo.", "A szerverkapcsolat sikertelen.");
-        console.error(`Failed to fetch data for widget ${w.id}`, err);
-        setWidgetErrors(prev => ({ ...prev, [w.id]: msg }));
+        console.error(`Failed to fetch data for widget ${key}`, err);
+        setWidgetErrors(prev => ({ ...prev, [key]: msg }));
       } finally {
-        setLoadingWidgets(prev => ({ ...prev, [w.id]: false }));
+        setLoadingWidgets(prev => ({ ...prev, [key]: false }));
       }
     });
   };
@@ -144,6 +179,32 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     }
   };
 
+  const handleTranslateExisting = async () => {
+    setIsTranslating(true);
+    setErrorMsg(null);
+    try {
+      const res = await fetch("/api/translate_dashboard.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ layout: tempLayout, model: selectedModel })
+      });
+      const json = await res.json();
+      if (json.success && json.layout) {
+        setTempLayout(json.layout);
+        setIsSaved(false);
+        if (typeof (window as any).showToast === "function") {
+          (window as any).showToast(t("Panel translated — remember to save.", "Panel bol preložený — nezabudnite uložiť.", "A panel lefordítva — ne felejtse el menteni."));
+        }
+      } else {
+        setErrorMsg(json.message || t("Failed to translate dashboard.", "Preklad panela zlyhal.", "Az irányítópult fordítása sikertelen."));
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || t("Connection to AI agent failed.", "Pripojenie k AI agentovi zlyhalo.", "Az AI ügynökhöz való kapcsolódás sikertelen."));
+    } finally {
+      setIsTranslating(false);
+    }
+  };
+
   const handleSave = () => {
     const updated: CustomDashboard = {
       ...dashboard,
@@ -156,6 +217,68 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     setIsEditMode(false);
     if (typeof (window as any).showToast === "function") {
       (window as any).showToast(t("Dashboard saved successfully!", "Panel bol úspešne uložený!", "Irányítópult sikeresen mentve!"));
+    }
+  };
+
+  /**
+   * Renders the body of one widget (or of one tab inside a `tabs` widget).
+   * `dataKey` selects which entry of widgetData/widgetErrors belongs to it, and
+   * `depth` stops a model-generated `tabs` inside `tabs` from recursing forever.
+   */
+  const renderWidgetBody = (rawWidget: any, dataKey: string, depth = 0): React.ReactNode => {
+    const err = widgetErrors[dataKey];
+    if (err) {
+      return (
+        <div className="flex items-start gap-2 p-3 rounded-2xl bg-rose-50 border border-rose-100 text-rose-700 text-xs font-semibold leading-relaxed">
+          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+          <span>{err}</span>
+        </div>
+      );
+    }
+
+    const { type, widget } = resolveWidgetType(rawWidget);
+    const data = widgetData[dataKey];
+
+    switch (type) {
+      case "metric":
+        return <DashboardMetric widget={widget} data={data} localizedTitle={localize(widget.title)} money={money} />;
+      case "chart":
+        return <DashboardChart widget={widget} data={data} localizedTitle={localize(widget.title)} />;
+      case "table":
+        return (
+          <DashboardTable
+            widget={widget}
+            data={data}
+            t={t}
+            formatCurrency={money}
+            systemLanguage={systemLanguage as Language}
+            localize={localize}
+          />
+        );
+      case "timeline":
+        return <DashboardTimeline widget={widget} data={data} t={t} systemLanguage={systemLanguage as Language} localize={localize} />;
+      case "accordion":
+        return <DashboardAccordion widget={widget} data={data} t={t} localize={localize} />;
+      case "tabs":
+        if (depth > 0) {
+          // Tabs nested inside tabs have no sane layout and no fetched data.
+          return (
+            <div className="text-center py-6 text-xs text-slate-400 font-semibold uppercase tracking-wider">
+              {t("Nested tabs are not supported", "Vnorené záložky nie sú podporované", "Az egymásba ágyazott fülek nem támogatottak")}
+            </div>
+          );
+        }
+        return (
+          <DashboardTabs
+            widget={widget}
+            localize={localize}
+            t={t}
+            isTabLoading={(i: number) => !!loadingWidgets[tabDataKey(widget.id, i)]}
+            renderTab={(tab: any, i: number) => renderWidgetBody(tab, tabDataKey(widget.id, i), depth + 1)}
+          />
+        );
+      default:
+        return null;
     }
   };
 
@@ -196,6 +319,26 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
             >
               <HelpCircle className="h-4 w-4" />
               <span>{t("Help", "Pomoc", "Súgó")}</span>
+            </button>
+          )}
+
+          {tempLayout.widgets.length > 0 && (
+            <button
+              onClick={handleTranslateExisting}
+              disabled={isTranslating}
+              title={t(
+                "Translate this panel's titles and labels into all app languages.",
+                "Preložiť názvy a popisky tohto panela do všetkých jazykov aplikácie.",
+                "Fordítsa le a panel címeit és feliratait az összes alkalmazásnyelvre."
+              )}
+              className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-50 disabled:opacity-60 transition-colors text-xs font-heading font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shrink-0"
+            >
+              {isTranslating ? (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              ) : (
+                <Languages className="h-4 w-4" />
+              )}
+              <span>{t("Translate", "Preložiť", "Fordítás")}</span>
             </button>
           )}
 
@@ -320,106 +463,45 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
         ) : (
           /* Render Generated Layout Grid */
           <div className="grid grid-cols-12 gap-6 text-left pb-2">
-            {tempLayout.widgets.map((w: any) => (
-              <div
-                key={w.id}
-                className={cn(
-                  "bg-white rounded-3xl border border-slate-200/80 shadow-sm p-6 flex flex-col justify-between overflow-hidden min-h-[140px] relative animate-in fade-in duration-300",
-                  getGridSpan(w.size)
-                )}
-              >
-                {/* Loader Overlay */}
-                {loadingWidgets[w.id] && (
-                  <div className="absolute inset-0 bg-white/70 backdrop-blur-[0.5px] z-50 flex items-center justify-center">
-                    <RefreshCw className="h-5 w-5 text-indigo-600 animate-spin" />
-                  </div>
-                )}
-
-                <div className="w-full flex items-center justify-between pb-3 mb-3 border-b border-slate-100/50">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                    {w.title}
-                  </span>
-                  <div
-                    className="w-7 h-7 rounded-xl flex items-center justify-center text-white scale-90"
-                    style={widgetErrors[w.id] ? undefined : { backgroundColor: w.color || dashboard.color }}
-                  >
-                    {widgetErrors[w.id] ? (
-                      <AlertCircle className="h-4 w-4 text-rose-500" />
-                    ) : w.type === "metric" ? (
-                      <LayoutDashboard className="h-4 w-4" />
-                    ) : w.type === "chart" ? (
-                      <Sparkles className="h-4 w-4" />
-                    ) : (
-                      <FileText className="h-4 w-4" />
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex-1 flex flex-col justify-center">
-                  {widgetErrors[w.id] ? (
-                    <div className="flex items-start gap-2 p-3 rounded-2xl bg-rose-50 border border-rose-100 text-rose-700 text-xs font-semibold leading-relaxed">
-                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                      <span>{widgetErrors[w.id]}</span>
-                    </div>
-                  ) : null}
-
-                  {!widgetErrors[w.id] && w.type === "metric" && (
-                    <div className="text-3xl font-black text-slate-800 tracking-tight">
-                      {(() => {
-                        if (w.metricValue !== undefined && w.metricValue !== "") {
-                          return w.metricValue;
-                        }
-                        const data = widgetData[w.id];
-                        if (data === undefined || data === null) {
-                          return "...";
-                        }
-                        if (Array.isArray(data)) {
-                          if (data.length === 0) return "0";
-                          const firstRow = data[0];
-                          if (typeof firstRow === "object" && firstRow !== null) {
-                            const values = Object.values(firstRow);
-                            if (values.length > 0) {
-                              const val = values[0];
-                              const keys = Object.keys(firstRow);
-                              const firstKeyLower = keys[0].toLowerCase();
-                              const titleLower = (w.title || "").toLowerCase();
-                              const isCurrency = 
-                                firstKeyLower.includes("value") || 
-                                firstKeyLower.includes("worth") || 
-                                firstKeyLower.includes("revenue") || 
-                                firstKeyLower.includes("price") ||
-                                titleLower.includes("value") ||
-                                titleLower.includes("worth") ||
-                                titleLower.includes("revenue");
-
-                              if (isCurrency && !isNaN(Number(val))) {
-                                return money(Number(val));
-                              }
-                              return typeof val === "number" ? val.toLocaleString() : String(val);
-                            }
-                          }
-                          return JSON.stringify(data);
-                        }
-                        if (typeof data === "object") {
-                          if (data.count !== undefined) return data.count;
-                          if (data.value !== undefined) return money(Number(data.value));
-                          return JSON.stringify(data);
-                        }
-                        return String(data);
-                      })()}
+            {tempLayout.widgets.map((w: any) => {
+              const WidgetIcon = WIDGET_ICONS[resolveWidgetType(w).type] || FileText;
+              return (
+                <div
+                  key={w.id}
+                  className={cn(
+                    "bg-white rounded-3xl border border-slate-200/80 shadow-sm p-6 flex flex-col justify-between overflow-hidden min-h-[140px] relative animate-in fade-in duration-300",
+                    getGridSpan(w.size)
+                  )}
+                >
+                  {/* Loader Overlay */}
+                  {loadingWidgets[w.id] && (
+                    <div className="absolute inset-0 bg-white/70 backdrop-blur-[0.5px] z-50 flex items-center justify-center">
+                      <RefreshCw className="h-5 w-5 text-indigo-600 animate-spin" />
                     </div>
                   )}
 
-                  {!widgetErrors[w.id] && w.type === "chart" && (
-                    <DashboardChart widget={w} data={widgetData[w.id]} />
-                  )}
+                  <div className="w-full flex items-center justify-between pb-3 mb-3 border-b border-slate-100/50">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                      {localize(w.title)}
+                    </span>
+                    <div
+                      className="w-7 h-7 rounded-xl flex items-center justify-center text-white scale-90"
+                      style={widgetErrors[w.id] ? undefined : { backgroundColor: w.color || dashboard.color }}
+                    >
+                      {widgetErrors[w.id] ? (
+                        <AlertCircle className="h-4 w-4 text-rose-500" />
+                      ) : (
+                        <WidgetIcon className="h-4 w-4" />
+                      )}
+                    </div>
+                  </div>
 
-                  {!widgetErrors[w.id] && w.type === "table" && (
-                    <DashboardTable widget={w} data={widgetData[w.id]} t={t} formatCurrency={money} systemLanguage={systemLanguage as Language} />
-                  )}
+                  <div className="flex-1 flex flex-col justify-center">
+                    {renderWidgetBody(w, w.id)}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -821,6 +903,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
 interface DashboardChartProps {
   widget: any;
   data: any;
+  localizedTitle?: string;
 }
 
 /* A goal/progress gauge is a plain percentage bar, not a Chart.js controller —
@@ -866,7 +949,7 @@ const GaugeWidget: React.FC<DashboardChartProps> = ({ widget, data }) => {
   );
 };
 
-const DashboardChart: React.FC<DashboardChartProps> = ({ widget, data }) => {
+const DashboardChart: React.FC<DashboardChartProps> = ({ widget, data, localizedTitle }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartInstanceRef = useRef<any>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
@@ -920,7 +1003,7 @@ const DashboardChart: React.FC<DashboardChartProps> = ({ widget, data }) => {
           labels: labels,
           datasets: [
             {
-              label: widget.title,
+              label: localizedTitle ?? widget.title,
               data: chartData,
               backgroundColor: bgColors,
               borderColor: borderColors,
@@ -970,7 +1053,7 @@ const DashboardChart: React.FC<DashboardChartProps> = ({ widget, data }) => {
         chartInstanceRef.current.destroy();
       }
     };
-  }, [widget, data]);
+  }, [widget, data, localizedTitle]);
 
   if (widget.chartType === "gauge") {
     return <GaugeWidget widget={widget} data={data} />;
@@ -998,9 +1081,10 @@ interface DashboardTableProps {
   t: (en: string, sk: string, hu: string) => string;
   formatCurrency?: (value: number) => string;
   systemLanguage: Language;
+  localize: (value: any) => string;
 }
 
-const DashboardTable: React.FC<DashboardTableProps> = ({ widget, data, t, formatCurrency = (v) => `€${v.toLocaleString()}`, systemLanguage }) => {
+const DashboardTable: React.FC<DashboardTableProps> = ({ widget, data, t, formatCurrency = (v) => `€${v.toLocaleString()}`, systemLanguage, localize }) => {
   const dataList = Array.isArray(data) ? data : [];
   const columns = widget.columns || [];
 
@@ -1027,7 +1111,7 @@ const DashboardTable: React.FC<DashboardTableProps> = ({ widget, data, t, format
             <tr className="border-b border-slate-100 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
               {columns.map((c: any, index: number) => (
                 <th key={index} className="py-2.5 px-3">
-                  {c.label}
+                  {localize(c.label)}
                 </th>
               ))}
             </tr>

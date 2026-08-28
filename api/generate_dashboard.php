@@ -118,7 +118,9 @@ Visual Design Guidelines:
    Example: If SQL is \"SELECT SUM(value) as achieved, 60000 as goal FROM leads WHERE status='accepted'\", then:
    dataKey: \"achieved\", targetKey: \"goal\".
 5. Tables: For `table` widgets, define:
-   - `columns`: List of { \"key\": \"db_column_or_alias\", \"label\": \"Display Title\", \"format\": \"currency\" | \"date\" | \"text\" }
+   - `columns`: List of { \"key\": \"db_column_or_alias\", \"label\": { \"en\": \"...\", \"sk\": \"...\", \"hu\": \"...\" }, \"format\": \"currency\" | \"date\" | \"text\" }
+
+6. Language: This app is used in English, Slovak, and Hungarian. Every user-visible piece of text you generate — the dashboard/widget `title` and every table column `label` — MUST be an object with all three translations, e.g. { \"en\": \"Total Leads\", \"sk\": \"Celkový počet leadov\", \"hu\": \"Leadek száma\" }, regardless of which language the user's prompt is written in. Never output a plain string for `title` or `label`. Do NOT translate SQL, column keys, or any other field — only human-facing display text.
 
 JSON Response Schema:
 {
@@ -126,13 +128,13 @@ JSON Response Schema:
     {
       \"id\": \"unique_string_id\",
       \"type\": \"metric\" | \"chart\" | \"table\",
-      \"title\": \"Widget Title\",
+      \"title\": { \"en\": \"Widget Title\", \"sk\": \"Názov modulu\", \"hu\": \"Modul címe\" },
       \"size\": \"sm\" | \"md\" | \"lg\" | \"full\",
       \"color\": \"indigo\" | \"blue\" | \"emerald\" | \"purple\" | \"amber\" | \"rose\" | \"pink\" | \"cyan\",
-      
+
       // For \"metric\" type:
       \"metricValue\": \"\", // Leave empty to load from query, or static string (optional)
-      
+
       // For \"chart\" type:
       \"chartType\": \"bar\" | \"line\" | \"pie\" | \"doughnut\" | \"gauge\",
       \"mapping\": {
@@ -143,7 +145,7 @@ JSON Response Schema:
 
       // For \"table\" type:
       \"columns\": [
-         { \"key\": \"field_name\", \"label\": \"Display Header\", \"format\": \"currency\" | \"date\" | \"text\" }
+         { \"key\": \"field_name\", \"label\": { \"en\": \"Display Header\", \"sk\": \"...\", \"hu\": \"...\" }, \"format\": \"currency\" | \"date\" | \"text\" }
       ],
 
       // Query specification for dynamic loading
