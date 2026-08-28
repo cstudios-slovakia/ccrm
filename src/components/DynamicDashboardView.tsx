@@ -823,9 +823,53 @@ interface DashboardChartProps {
   data: any;
 }
 
+/* A goal/progress gauge is a plain percentage bar, not a Chart.js controller —
+   Chart.js core ships no "gauge" type, so this is rendered natively instead of
+   being handed to `new Chart(...)`, which used to throw "gauge is not a
+   registered controller" and crash the whole dashboard section. */
+const GaugeWidget: React.FC<DashboardChartProps> = ({ widget, data }) => {
+  const dataList = Array.isArray(data) ? data : data ? [data] : [];
+  const row = dataList[0] || {};
+  const valueKey = widget.mapping?.dataKey || widget.mapping?.valueKey || "value";
+  const targetKey = widget.mapping?.targetKey;
+
+  const value = Number(row[valueKey] ?? 0);
+  const target = Number(
+    (targetKey ? row[targetKey] : undefined) ?? widget.target ?? row.target ?? 0
+  );
+  const pct = target > 0 ? Math.max(0, Math.min(100, Math.round((value / target) * 100))) : 0;
+
+  const barColors: Record<string, string> = {
+    indigo: "#4f46e5",
+    blue: "#2563eb",
+    emerald: "#059669",
+    purple: "#8b5cf6",
+    amber: "#d97706",
+    rose: "#e11d48",
+    cyan: "#0891b2",
+    pink: "#db2777"
+  };
+  const barColor = barColors[widget.color || "indigo"] || barColors.indigo;
+
+  return (
+    <div className="w-full flex flex-col justify-center gap-2 py-4">
+      <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+        <div
+          className="h-full rounded-full transition-all duration-500"
+          style={{ width: `${pct}%`, backgroundColor: barColor }}
+        />
+      </div>
+      <span className="text-xs font-black text-center" style={{ color: barColor }}>
+        {pct}%
+      </span>
+    </div>
+  );
+};
+
 const DashboardChart: React.FC<DashboardChartProps> = ({ widget, data }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartInstanceRef = useRef<any>(null);
+  const [renderError, setRenderError] = useState<string | null>(null);
 
   const chartPalettes: Record<string, string[]> = {
     indigo: ["#4f46e5", "#818cf8", "#312e81", "#c7d2fe", "#4338ca"],
@@ -839,6 +883,7 @@ const DashboardChart: React.FC<DashboardChartProps> = ({ widget, data }) => {
   };
 
   useEffect(() => {
+    if (widget.chartType === "gauge") return;
     if (!canvasRef.current || !data) return;
 
     if (chartInstanceRef.current) {
@@ -868,49 +913,57 @@ const DashboardChart: React.FC<DashboardChartProps> = ({ widget, data }) => {
     const ctx = canvasRef.current.getContext("2d");
     if (!ctx) return;
 
-    chartInstanceRef.current = new ChartGlob(ctx, {
-      type: widget.chartType || "bar",
-      data: {
-        labels: labels,
-        datasets: [
-          {
-            label: widget.title,
-            data: chartData,
-            backgroundColor: bgColors,
-            borderColor: borderColors,
-            borderWidth: isPie ? 2 : 3,
-            fill: widget.chartType === "line",
-            tension: 0.3
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            display: isPie,
-            position: "bottom",
-            labels: {
-              boxWidth: 10,
-              font: { size: 9, weight: "bold" }
+    try {
+      chartInstanceRef.current = new ChartGlob(ctx, {
+        type: widget.chartType || "bar",
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: widget.title,
+              data: chartData,
+              backgroundColor: bgColors,
+              borderColor: borderColors,
+              borderWidth: isPie ? 2 : 3,
+              fill: widget.chartType === "line",
+              tension: 0.3
             }
-          }
+          ]
         },
-        scales: isPie
-          ? undefined
-          : {
-              x: {
-                grid: { display: false },
-                ticks: { font: { size: 9, weight: "bold" } }
-              },
-              y: {
-                grid: { color: "#f1f5f9" },
-                ticks: { font: { size: 9, weight: "bold" } }
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: isPie,
+              position: "bottom",
+              labels: {
+                boxWidth: 10,
+                font: { size: 9, weight: "bold" }
               }
             }
-      }
-    });
+          },
+          scales: isPie
+            ? undefined
+            : {
+                x: {
+                  grid: { display: false },
+                  ticks: { font: { size: 9, weight: "bold" } }
+                },
+                y: {
+                  grid: { color: "#f1f5f9" },
+                  ticks: { font: { size: 9, weight: "bold" } }
+                }
+              }
+        }
+      });
+      setRenderError(null);
+    } catch (err: any) {
+      // A chart type Chart.js core doesn't ship a controller for (an AI-picked
+      // value outside the documented enum) used to throw here and take the
+      // whole dashboard section down. Contain it to this one widget instead.
+      setRenderError(err?.message || "Unsupported chart type.");
+    }
 
     return () => {
       if (chartInstanceRef.current) {
@@ -918,6 +971,18 @@ const DashboardChart: React.FC<DashboardChartProps> = ({ widget, data }) => {
       }
     };
   }, [widget, data]);
+
+  if (widget.chartType === "gauge") {
+    return <GaugeWidget widget={widget} data={data} />;
+  }
+
+  if (renderError) {
+    return (
+      <div className="h-[220px] w-full flex items-center justify-center text-center px-4">
+        <span className="text-xs font-semibold text-rose-600">{renderError}</span>
+      </div>
+    );
+  }
 
   return (
     <div className="h-[220px] w-full relative">
