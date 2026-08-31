@@ -93,3 +93,6 @@ __pycache__/
 # QA audit run output (reports, screenshots, traces, videos)
 /test-results/
 /playwright-report/
+
+# Design-reference screenshots captured for redesign exploration
+/design-screenshots/
