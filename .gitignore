@@ -52,6 +52,8 @@ api_key.txt
 uploads/
 **/uploads/
 server.md
+ccrm-license-private.json
+**/ccrm-license-private.json
 
 # Throwaway maintenance scripts and raw client data — never commit; these were
 # publicly served from the docroot and leaked PII (see security audit).

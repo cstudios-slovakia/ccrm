@@ -82,7 +82,7 @@ if (!function_exists('ccrm_license_public_keys')) {
      * but proceeds. A shipped product must have this filled in.
      */
     if (!defined('CCRM_LICENSE_PUBLIC_KEY')) {
-        define('CCRM_LICENSE_PUBLIC_KEY', '');
+        define('CCRM_LICENSE_PUBLIC_KEY', 'ed25519:recX+VRYjFX66vADkf/FxV7RqsHvMl1Vt44rETD/Q8w=');
     }
 
     /** Product discriminator, so a token minted for another product is refused. */
@@ -127,7 +127,8 @@ if (!function_exists('ccrm_license_public_keys')) {
     // Encoding helpers
     // -----------------------------------------------------------------------
 
-    function ccrm_license_b64url_encode(string $raw): string {
+    function ccrm_license_b64url_encode(string $raw): string
+    {
         return rtrim(strtr(base64_encode($raw), '+/', '-_'), '=');
     }
 
@@ -136,7 +137,8 @@ if (!function_exists('ccrm_license_public_keys')) {
      * caller present several encodings of the same bytes, and any of them would
      * then satisfy a signature that was computed over just one of them.
      */
-    function ccrm_license_b64url_decode(string $encoded): ?string {
+    function ccrm_license_b64url_decode(string $encoded): ?string
+    {
         if ($encoded === '' || !preg_match('/^[A-Za-z0-9_-]+$/', $encoded)) {
             return null;
         }
@@ -153,7 +155,8 @@ if (!function_exists('ccrm_license_public_keys')) {
     }
 
     /** Constant-time comparison that also refuses non-strings. */
-    function ccrm_license_equals($a, $b): bool {
+    function ccrm_license_equals($a, $b): bool
+    {
         if (!is_string($a) || !is_string($b)) {
             return false;
         }
@@ -171,7 +174,8 @@ if (!function_exists('ccrm_license_public_keys')) {
      * empty when licensing is not configured or when every configured key is
      * unusable on this PHP build (an Ed25519 key with no sodium, say).
      */
-    function ccrm_license_public_keys(): array {
+    function ccrm_license_public_keys(): array
+    {
         static $cached = null;
         if ($cached !== null) {
             return $cached;
@@ -217,7 +221,8 @@ if (!function_exists('ccrm_license_public_keys')) {
     }
 
     /** True once a usable signing key is compiled in, i.e. licensing is live. */
-    function ccrm_license_is_configured(): bool {
+    function ccrm_license_is_configured(): bool
+    {
         return ccrm_license_public_keys() !== [];
     }
 
@@ -229,7 +234,8 @@ if (!function_exists('ccrm_license_public_keys')) {
      * The claim's `alg` only selects which configured keys are eligible; it can
      * never introduce one.
      */
-    function ccrm_license_verify_signature(string $signedBytes, string $signature, string $alg): bool {
+    function ccrm_license_verify_signature(string $signedBytes, string $signature, string $alg): bool
+    {
         foreach (ccrm_license_public_keys() as $entry) {
             if ($entry['alg'] !== $alg) {
                 continue;
@@ -271,7 +277,8 @@ if (!function_exists('ccrm_license_public_keys')) {
      * those are policy, and belong to the caller that knows what it is comparing
      * against (ccrm_license_accept_token / ccrm_license_load).
      */
-    function ccrm_license_parse_token(?string $token): ?array {
+    function ccrm_license_parse_token(?string $token): ?array
+    {
         if (!is_string($token) || $token === '' || !ccrm_license_is_configured()) {
             return null;
         }
@@ -326,7 +333,8 @@ if (!function_exists('ccrm_license_public_keys')) {
      * Returns '' when the id cannot be resolved; callers treat that as "cannot
      * check right now" rather than inventing one.
      */
-    function ccrm_license_instance_id(\PDO $pdo): string {
+    function ccrm_license_instance_id(\PDO $pdo): string
+    {
         static $cached = null;
         if ($cached !== null) {
             return $cached;
@@ -352,7 +360,8 @@ if (!function_exists('ccrm_license_public_keys')) {
     }
 
     /** Version string of this build, read from the file the SPA exports it from. */
-    function ccrm_license_app_version(): string {
+    function ccrm_license_app_version(): string
+    {
         foreach ([dirname(__DIR__, 2) . '/src/utils/version.ts', dirname(__DIR__) . '/src/utils/version.ts'] as $file) {
             if (is_file($file)) {
                 $content = @file_get_contents($file);
@@ -377,7 +386,8 @@ if (!function_exists('ccrm_license_public_keys')) {
      * alphanumeric run is accepted and merely upper-cased, so an older or
      * differently shaped key from the vendor still activates.
      */
-    function ccrm_license_normalize_key(?string $raw): string {
+    function ccrm_license_normalize_key(?string $raw): string
+    {
         $value = strtoupper(trim((string) $raw));
         $value = preg_replace('/[^A-Z0-9]/', '', $value);
         if (!is_string($value) || strlen($value) < 12 || strlen($value) > 64) {
@@ -391,7 +401,8 @@ if (!function_exists('ccrm_license_public_keys')) {
     }
 
     /** Key with its middle hidden, for anyone allowed to see it but not copy it. */
-    function ccrm_license_mask_key(?string $key): string {
+    function ccrm_license_mask_key(?string $key): string
+    {
         $key = (string) $key;
         if ($key === '') {
             return '';
@@ -412,7 +423,8 @@ if (!function_exists('ccrm_license_public_keys')) {
     // -----------------------------------------------------------------------
 
     /** Raw stored row, or null when nothing has ever been activated. */
-    function ccrm_license_row(\PDO $pdo): ?array {
+    function ccrm_license_row(\PDO $pdo): ?array
+    {
         try {
             $stmt = $pdo->query("SELECT * FROM `licenses` WHERE `id` = 1 LIMIT 1");
             $row = $stmt ? $stmt->fetch(\PDO::FETCH_ASSOC) : false;
@@ -432,7 +444,8 @@ if (!function_exists('ccrm_license_public_keys')) {
      * reads `claim`, never the row's columns — which is what makes hand-editing
      * the table pointless.
      */
-    function ccrm_license_load(\PDO $pdo): array {
+    function ccrm_license_load(\PDO $pdo): array
+    {
         $row = ccrm_license_row($pdo);
         if ($row === null) {
             return ['claim' => null, 'row' => null];
@@ -455,7 +468,8 @@ if (!function_exists('ccrm_license_public_keys')) {
     }
 
     /** ISO date (Y-m-d) from a claim field, or null when absent/unparseable. */
-    function ccrm_license_claim_date(?array $claim, string $field): ?string {
+    function ccrm_license_claim_date(?array $claim, string $field): ?string
+    {
         if (!$claim || empty($claim[$field]) || !is_string($claim[$field])) {
             return null;
         }
@@ -464,7 +478,8 @@ if (!function_exists('ccrm_license_public_keys')) {
     }
 
     /** Unix timestamp from a claim field, or null. */
-    function ccrm_license_claim_time(?array $claim, string $field): ?int {
+    function ccrm_license_claim_time(?array $claim, string $field): ?int
+    {
         if (!$claim || empty($claim[$field]) || !is_string($claim[$field])) {
             return null;
         }
@@ -479,7 +494,8 @@ if (!function_exists('ccrm_license_public_keys')) {
      * reader can never see a row whose columns describe a different token than
      * the one stored beside them.
      */
-    function ccrm_license_store(\PDO $pdo, string $token, array $claim, ?string $actorUserId): void {
+    function ccrm_license_store(\PDO $pdo, string $token, array $claim, ?string $actorUserId): void
+    {
         // activated_by / activated_at record the FIRST activation of THIS key. A
         // routine background re-check must not rewrite them to whoever happened
         // to be logged in when it ran — so they are resolved here, in PHP, rather
@@ -518,22 +534,23 @@ if (!function_exists('ccrm_license_public_keys')) {
         $issuedAt = ccrm_license_claim_time($claim, 'issuedAt');
         $stmt = $pdo->prepare($sql);
         $stmt->execute([
-            ':key'         => (string) $claim['key'],
-            ':instance'    => (string) $claim['instance'],
-            ':token'       => $token,
-            ':status'      => substr((string) ($claim['status'] ?? 'unknown'), 0, 20),
-            ':expires'     => ccrm_license_claim_date($claim, 'expiresAt'),
-            ':maxUsers'    => isset($claim['maxUsers']) && $claim['maxUsers'] !== null ? (int) $claim['maxUsers'] : null,
-            ':customer'    => isset($claim['customer']) ? substr((string) $claim['customer'], 0, 190) : null,
-            ':plan'        => isset($claim['plan']) ? substr((string) $claim['plan'], 0, 60) : null,
-            ':issued'      => $issuedAt !== null ? date('Y-m-d H:i:s', $issuedAt) : null,
-            ':actor'       => $activatedBy !== null && $activatedBy !== '' ? substr((string) $activatedBy, 0, 50) : null,
+            ':key' => (string) $claim['key'],
+            ':instance' => (string) $claim['instance'],
+            ':token' => $token,
+            ':status' => substr((string) ($claim['status'] ?? 'unknown'), 0, 20),
+            ':expires' => ccrm_license_claim_date($claim, 'expiresAt'),
+            ':maxUsers' => isset($claim['maxUsers']) && $claim['maxUsers'] !== null ? (int) $claim['maxUsers'] : null,
+            ':customer' => isset($claim['customer']) ? substr((string) $claim['customer'], 0, 190) : null,
+            ':plan' => isset($claim['plan']) ? substr((string) $claim['plan'], 0, 60) : null,
+            ':issued' => $issuedAt !== null ? date('Y-m-d H:i:s', $issuedAt) : null,
+            ':actor' => $activatedBy !== null && $activatedBy !== '' ? substr((string) $activatedBy, 0, 50) : null,
             ':activatedAt' => $activatedAt !== null && $activatedAt !== '' ? (string) $activatedAt : null,
         ]);
     }
 
     /** Record that a check was attempted and failed, without touching the token. */
-    function ccrm_license_note_failure(\PDO $pdo, string $error): void {
+    function ccrm_license_note_failure(\PDO $pdo, string $error): void
+    {
         try {
             $pdo->prepare("UPDATE `licenses` SET `last_attempt_at` = NOW(), `last_error` = ? WHERE `id` = 1")
                 ->execute([substr($error, 0, 250)]);
@@ -617,7 +634,8 @@ if (!function_exists('ccrm_license_public_keys')) {
      * token is that we do not have to trust the transport, but there is no reason
      * to hand a network attacker the request either.
      */
-    function ccrm_license_request(string $action, array $fields): array {
+    function ccrm_license_request(string $action, array $fields): array
+    {
         if (!function_exists('curl_init')) {
             return ['ok' => false, 'error' => 'no_curl', 'detail' => 'PHP curl extension missing'];
         }
@@ -627,25 +645,25 @@ if (!function_exists('ccrm_license_public_keys')) {
         }
 
         $body = json_encode(array_merge($fields, [
-            'action'  => $action,
+            'action' => $action,
             'product' => (string) CCRM_LICENSE_PRODUCT,
-            'claimV'  => (int) CCRM_LICENSE_CLAIM_VERSION,
+            'claimV' => (int) CCRM_LICENSE_CLAIM_VERSION,
         ]), JSON_UNESCAPED_SLASHES);
 
         $ch = curl_init($endpoint);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_POST           => true,
-            CURLOPT_POSTFIELDS     => $body,
-            CURLOPT_HTTPHEADER     => ['Content-Type: application/json', 'Accept: application/json'],
-            CURLOPT_TIMEOUT        => (int) CCRM_LICENSE_HTTP_TIMEOUT,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $body,
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Accept: application/json'],
+            CURLOPT_TIMEOUT => (int) CCRM_LICENSE_HTTP_TIMEOUT,
             CURLOPT_CONNECTTIMEOUT => min(8, (int) CCRM_LICENSE_HTTP_TIMEOUT),
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_SSL_VERIFYHOST => 2,
             // A licence endpoint that redirects is a misconfiguration, and
             // following one is how a POST body ends up somewhere unintended.
             CURLOPT_FOLLOWLOCATION => false,
-            CURLOPT_USERAGENT      => 'CCRM/' . ccrm_license_app_version(),
+            CURLOPT_USERAGENT => 'CCRM/' . ccrm_license_app_version(),
         ]);
         $response = curl_exec($ch);
         $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -664,7 +682,8 @@ if (!function_exists('ccrm_license_public_keys')) {
      *
      * $response is false/'' when the request never completed.
      */
-    function ccrm_license_parse_server_response(int $httpCode, $response, string $curlError = ''): array {
+    function ccrm_license_parse_server_response(int $httpCode, $response, string $curlError = ''): array
+    {
         if ($response === false || $response === null || $response === '') {
             return ['ok' => false, 'error' => 'unreachable', 'detail' => $curlError ?: ('HTTP ' . $httpCode)];
         }
@@ -695,14 +714,15 @@ if (!function_exists('ccrm_license_public_keys')) {
     }
 
     /** Fields every licence request carries. */
-    function ccrm_license_request_context(\PDO $pdo, string $key, string $nonce): array {
+    function ccrm_license_request_context(\PDO $pdo, string $key, string $nonce): array
+    {
         return [
-            'key'        => $key,
-            'instance'   => ccrm_license_instance_id($pdo),
-            'host'       => substr((string) ($_SERVER['HTTP_HOST'] ?? php_uname('n')), 0, 190),
-            'version'    => ccrm_license_app_version(),
-            'seatsUsed'  => ccrm_license_seats_used($pdo),
-            'nonce'      => $nonce,
+            'key' => $key,
+            'instance' => ccrm_license_instance_id($pdo),
+            'host' => substr((string) ($_SERVER['HTTP_HOST'] ?? php_uname('n')), 0, 190),
+            'version' => ccrm_license_app_version(),
+            'seatsUsed' => ccrm_license_seats_used($pdo),
+            'nonce' => $nonce,
         ];
     }
 
@@ -710,7 +730,8 @@ if (!function_exists('ccrm_license_public_keys')) {
      * Activate a licence key against the server and store the resulting token.
      * Returns ['ok' => bool, 'error' => code|null].
      */
-    function ccrm_license_activate(\PDO $pdo, string $rawKey, ?string $actorUserId): array {
+    function ccrm_license_activate(\PDO $pdo, string $rawKey, ?string $actorUserId): array
+    {
         if (!ccrm_license_is_configured()) {
             return ['ok' => false, 'error' => 'not_configured'];
         }
@@ -743,7 +764,8 @@ if (!function_exists('ccrm_license_public_keys')) {
      * still signed, still bound to this instance, and still cannot be older than
      * the one already stored.
      */
-    function ccrm_license_import_token(\PDO $pdo, string $token, ?string $actorUserId): array {
+    function ccrm_license_import_token(\PDO $pdo, string $token, ?string $actorUserId): array
+    {
         if (!ccrm_license_is_configured()) {
             return ['ok' => false, 'error' => 'not_configured'];
         }
@@ -763,7 +785,8 @@ if (!function_exists('ccrm_license_public_keys')) {
      *
      * Returns ['ok' => bool, 'error' => code|null, 'skipped' => bool].
      */
-    function ccrm_license_refresh(\PDO $pdo, bool $force = false): array {
+    function ccrm_license_refresh(\PDO $pdo, bool $force = false): array
+    {
         if (!ccrm_license_is_configured()) {
             return ['ok' => false, 'error' => 'not_configured', 'skipped' => true];
         }
@@ -806,7 +829,8 @@ if (!function_exists('ccrm_license_public_keys')) {
     }
 
     /** Forget the stored licence (admin action). The app keeps working. */
-    function ccrm_license_remove(\PDO $pdo): void {
+    function ccrm_license_remove(\PDO $pdo): void
+    {
         $pdo->exec("DELETE FROM `licenses` WHERE `id` = 1");
     }
 
@@ -815,7 +839,8 @@ if (!function_exists('ccrm_license_public_keys')) {
     // -----------------------------------------------------------------------
 
     /** How many user accounts exist right now. */
-    function ccrm_license_seats_used(\PDO $pdo): int {
+    function ccrm_license_seats_used(\PDO $pdo): int
+    {
         try {
             return (int) $pdo->query("SELECT COUNT(*) FROM `users`")->fetchColumn();
         } catch (\Throwable $e) {
@@ -830,7 +855,8 @@ if (!function_exists('ccrm_license_public_keys')) {
      * shrinking a customer's team. No licence at all means no ceiling — an
      * unlicensed install must not be locked out of managing its own users.
      */
-    function ccrm_license_seat_limit(\PDO $pdo): ?int {
+    function ccrm_license_seat_limit(\PDO $pdo): ?int
+    {
         $loaded = ccrm_license_load($pdo);
         if ($loaded['claim'] === null) {
             return null;
@@ -853,7 +879,8 @@ if (!function_exists('ccrm_license_public_keys')) {
      * Existing accounts are NEVER touched, disabled or hidden when a licence is
      * downgraded — being over the limit only blocks adding more.
      */
-    function ccrm_license_can_add_users(\PDO $pdo, int $count = 1): bool {
+    function ccrm_license_can_add_users(\PDO $pdo, int $count = 1): bool
+    {
         $limit = ccrm_license_seat_limit($pdo);
         if ($limit === null) {
             return true;
@@ -883,7 +910,8 @@ if (!function_exists('ccrm_license_public_keys')) {
      * MySQL commonly runs UTC, and mixing the two silently shifts an expiry by a
      * day at exactly the moment it matters.
      */
-    function ccrm_license_state(\PDO $pdo): array {
+    function ccrm_license_state(\PDO $pdo): array
+    {
         $today = null;
         try {
             $today = $pdo->query("SELECT CURDATE()")->fetchColumn();
@@ -895,22 +923,22 @@ if (!function_exists('ccrm_license_public_keys')) {
         }
 
         $state = [
-            'configured'     => ccrm_license_is_configured(),
-            'status'         => 'unconfigured',
-            'valid'          => false,
-            'keyMasked'      => '',
-            'expiresAt'      => null,
-            'daysRemaining'  => null,
-            'warnDays'       => (int) CCRM_LICENSE_WARN_DAYS,
-            'maxUsers'       => null,
-            'seatsUsed'      => ccrm_license_seats_used($pdo),
-            'customer'       => null,
-            'plan'           => null,
-            'activatedAt'    => null,
-            'lastCheckAt'    => null,
-            'lastAttemptAt'  => null,
-            'lastError'      => null,
-            'offlineDays'    => null,
+            'configured' => ccrm_license_is_configured(),
+            'status' => 'unconfigured',
+            'valid' => false,
+            'keyMasked' => '',
+            'expiresAt' => null,
+            'daysRemaining' => null,
+            'warnDays' => (int) CCRM_LICENSE_WARN_DAYS,
+            'maxUsers' => null,
+            'seatsUsed' => ccrm_license_seats_used($pdo),
+            'customer' => null,
+            'plan' => null,
+            'activatedAt' => null,
+            'lastCheckAt' => null,
+            'lastAttemptAt' => null,
+            'lastError' => null,
+            'offlineDays' => null,
             'updatesAllowed' => true,
             'updatesBlockedReason' => null,
         ];
@@ -932,11 +960,11 @@ if (!function_exists('ccrm_license_public_keys')) {
             return $state;
         }
 
-        $state['keyMasked']     = ccrm_license_mask_key((string) $row['license_key']);
-        $state['activatedAt']   = $row['activated_at'] ?? null;
-        $state['lastCheckAt']   = $row['last_check_at'] ?? null;
+        $state['keyMasked'] = ccrm_license_mask_key((string) $row['license_key']);
+        $state['activatedAt'] = $row['activated_at'] ?? null;
+        $state['lastCheckAt'] = $row['last_check_at'] ?? null;
         $state['lastAttemptAt'] = $row['last_attempt_at'] ?? null;
-        $state['lastError']     = $row['last_error'] ?? null;
+        $state['lastError'] = $row['last_error'] ?? null;
 
         if ($claim === null) {
             // A row exists but its token does not verify: hand-edited, restored
@@ -949,7 +977,7 @@ if (!function_exists('ccrm_license_public_keys')) {
         }
 
         $state['customer'] = isset($claim['customer']) ? (string) $claim['customer'] : null;
-        $state['plan']     = isset($claim['plan']) ? (string) $claim['plan'] : null;
+        $state['plan'] = isset($claim['plan']) ? (string) $claim['plan'] : null;
         $state['maxUsers'] = ccrm_license_seat_limit($pdo);
         if (isset($claim['warnDays']) && is_numeric($claim['warnDays']) && (int) $claim['warnDays'] > 0) {
             $state['warnDays'] = (int) $claim['warnDays'];
@@ -985,7 +1013,7 @@ if (!function_exists('ccrm_license_public_keys')) {
             return $state;
         }
 
-        $state['valid']  = true;
+        $state['valid'] = true;
         $state['status'] = ($state['daysRemaining'] !== null && $state['daysRemaining'] <= $state['warnDays'])
             ? 'expiring'
             : 'active';
@@ -1008,7 +1036,8 @@ if (!function_exists('ccrm_license_public_keys')) {
      * round trip is worth it), then answers from the resulting state.
      * Returns ['allowed' => bool, 'reason' => code|null, 'state' => array].
      */
-    function ccrm_license_gate_update(\PDO $pdo): array {
+    function ccrm_license_gate_update(\PDO $pdo): array
+    {
         if (!ccrm_license_is_configured()) {
             return ['allowed' => true, 'reason' => 'not_configured', 'state' => ccrm_license_state($pdo)];
         }
@@ -1022,8 +1051,8 @@ if (!function_exists('ccrm_license_public_keys')) {
         $state = ccrm_license_state($pdo);
         return [
             'allowed' => (bool) $state['updatesAllowed'],
-            'reason'  => $state['updatesBlockedReason'],
-            'state'   => $state,
+            'reason' => $state['updatesBlockedReason'],
+            'state' => $state,
         ];
     }
 }
