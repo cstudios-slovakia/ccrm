@@ -3,10 +3,6 @@ import { Sparkles, Calendar, Loader2 } from "lucide-react";
 import type { Language } from "../utils/translations";
 import type { UpdateEntry } from "./UpdateNotesModal";
 import { useUserPref } from "../utils/userPrefs";
-import {
-    bundledUpdateNotes,
-    mergeBundledUpdateNotes,
-} from "../utils/bundledUpdateNotes";
 import { useUpdateFancybox, ZoomableUpdateImage } from "./ZoomableUpdateImage";
 
 interface UpdateNotesViewProps {
@@ -110,7 +106,13 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({
                     if (best) localizedList.push(best);
                 });
 
-                const allUpdates = mergeBundledUpdateNotes(localizedList);
+                // The CMS is the only source of release notes, so an entry that is
+                // not published there must never show up in the app.
+                const allUpdates = localizedList.sort(
+                    (a, b) =>
+                        new Date(b.postDate).getTime() -
+                        new Date(a.postDate).getTime(),
+                );
                 setUpdates(allUpdates);
 
                 // Mark as read when entering this view. The header reads the same
@@ -120,10 +122,14 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({
                 }
             } catch (err: any) {
                 console.error("Error fetching release notes:", err);
-                // The historical CMS note is unavailable offline, but the bundled
-                // release notes remain useful and should not leave this screen empty.
-                setUpdates(bundledUpdateNotes);
-                setError(null);
+                setUpdates([]);
+                setError(
+                    t(
+                        "Could not load update notes.",
+                        "Novinky sa nepodarilo načítať.",
+                        "A frissítéseket nem sikerült betölteni.",
+                    ),
+                );
             } finally {
                 setLoading(false);
             }
@@ -158,11 +164,12 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({
                     )}
                 </h3>
                 <p className="text-xs text-slate-400 mt-2">
-                    {t(
-                        "Check back later for new releases.",
-                        "Neskôr sa vráťte a skontrolujte nové verzie.",
-                        "Nézzen vissza később az új verziókért.",
-                    )}
+                    {error ||
+                        t(
+                            "Check back later for new releases.",
+                            "Neskôr sa vráťte a skontrolujte nové verzie.",
+                            "Nézzen vissza később az új verziókért.",
+                        )}
                 </p>
             </div>
         );
