@@ -13,6 +13,11 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.cdnfonts.com/css/google-sans" rel="stylesheet" />
+    <!-- Chart.js: window.Chart is read directly by ClientsView's financial report
+         charts and DynamicDashboardView's AI-generated chart widgets. There is no
+         bundled/npm chart library, so removing this (as a prior cleanup did) makes
+         every chart on both silently no-op with a console warning. -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </head>
   <body class="bg-[#0f111a] text-slate-100 font-sans antialiased overflow-x-hidden selection:bg-indigo-500/30 selection:text-indigo-200">

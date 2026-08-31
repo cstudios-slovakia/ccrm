@@ -118,7 +118,7 @@ export const SecretInput: React.FC<SecretInputProps> = ({
             type="button"
             onClick={() => setRevealed(!revealed)}
             disabled={disabled || value === ""}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-650 hover:scale-110 active:scale-95 transition-all duration-150 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 hover:scale-110 active:scale-95 transition-all duration-150 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100"
             title={
               revealed
                 ? t(language, "Hide", "Skryť", "Elrejtés")

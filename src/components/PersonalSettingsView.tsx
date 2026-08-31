@@ -345,11 +345,11 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
               <AlertOctagon className={`h-4 w-4 ${activeSubTab === "errors" ? "text-white" : "text-red-500"}`} /> {t("Error Logs", "Chyby a Výnimky", "Hibanaplók")}
             </button>
 
-            <div className="border-t border-slate-150 my-1 pt-2.5">
+            <div className="border-t border-slate-100 my-1 pt-2.5">
               <button
                 type="button"
                 onClick={handleClearCacheAndReload}
-                className="w-full text-left px-4 py-3 rounded-2xl font-black text-[10.5px] uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer text-amber-750 hover:text-amber-950 hover:bg-amber-50 border border-transparent"
+                className="w-full text-left px-4 py-3 rounded-2xl font-black text-[10.5px] uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer text-amber-700 hover:text-amber-950 hover:bg-amber-50 border border-transparent"
               >
                 <RefreshCw className="h-4 w-4 text-amber-500" /> {t("Clear Cache & Reload", "Vymazať cache a načítať", "Gyorsítótár törlése és újratöltés")}
               </button>
@@ -538,7 +538,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex justify-end pt-4 border-t border-emerald-150">
+                  <div className="flex justify-end pt-4 border-t border-emerald-100">
                     <button
                       type="button"
                       onClick={() => {
@@ -907,7 +907,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                   <button
                     type="button"
                     onClick={clearErrorLogs}
-                    className="px-3.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-750 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1 cursor-pointer"
+                    className="px-3.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1 cursor-pointer"
                   >
                     {t("Clear Logs", "Vymazať záznamy", "Naplók törlése")}
                   </button>
@@ -955,7 +955,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                           <td className="py-3 px-4 font-mono text-[10px] text-slate-600 truncate max-w-xs">
                             {log.request_uri}
                           </td>
-                          <td className="py-3 px-4 font-bold text-red-650 truncate max-w-sm">
+                          <td className="py-3 px-4 font-bold text-red-600 truncate max-w-sm">
                             {log.message}
                           </td>
                         </tr>
@@ -973,9 +973,9 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
       {/* Exception Detail Popup Modal */}
       {selectedLog && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="glass-panel w-full max-w-3xl bg-white rounded-3xl shadow-2xl border border-slate-250 overflow-hidden flex flex-col max-h-[85vh] text-left">
-            <div className="p-6 border-b border-slate-150 flex items-center justify-between bg-slate-50">
-              <div className="flex items-center gap-2 text-red-650">
+          <div className="glass-panel w-full max-w-3xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[85vh] text-left">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-2 text-red-600">
                 <AlertOctagon className="h-5 w-5 shrink-0" />
                 <h3 className="font-heading font-extrabold text-slate-900 uppercase tracking-wider text-xs">
                   {t("Exception / Error Details", "Detail výnimky / chyby", "Kivétel / hiba részletei")}
@@ -984,12 +984,12 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
               <button
                 type="button"
                 onClick={() => setSelectedLog(null)}
-                className="text-slate-450 hover:text-slate-800 p-1.5 hover:bg-slate-100 rounded-xl transition-all cursor-pointer font-bold text-sm"
+                className="text-slate-400 hover:text-slate-800 p-1.5 hover:bg-slate-100 rounded-xl transition-all cursor-pointer font-bold text-sm"
               >
                 ✕
               </button>
             </div>
-            <div className="p-6 overflow-y-auto space-y-4 font-medium text-slate-750 text-xs">
+            <div className="p-6 overflow-y-auto space-y-4 font-medium text-slate-700 text-xs">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-b border-slate-100 pb-4">
                 <div>
                   <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Date & Time", "Dátum a čas", "Dátum és idő")}</span>
@@ -997,7 +997,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                 </div>
                 <div>
                   <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Method & URI", "Metóda & URI", "Metódus és URI")}</span>
-                  <span className="font-mono text-[10.5px] text-slate-750 font-bold">{selectedLog.request_method} {selectedLog.request_uri}</span>
+                  <span className="font-mono text-[10.5px] text-slate-700 font-bold">{selectedLog.request_method} {selectedLog.request_uri}</span>
                 </div>
                 <div>
                   <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("File & Line", "Súbor a riadok", "Fájl és sor")}</span>
@@ -1015,7 +1015,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
               {selectedLog.file && (
                 <div className="space-y-1">
                   <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Full File Path", "Úplná cesta k súboru", "Teljes fájlútvonal")}</span>
-                  <div className="p-2.5 bg-slate-50 text-slate-600 rounded-xl font-mono text-[10.5px] border border-slate-150">
+                  <div className="p-2.5 bg-slate-50 text-slate-600 rounded-xl font-mono text-[10.5px] border border-slate-100">
                     {selectedLog.file} ({t("Line", "Riadok", "Sor")} {selectedLog.line})
                   </div>
                 </div>

@@ -166,7 +166,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
         <div className="absolute top-[25%] right-[10%] w-[48vw] h-[48vw] rounded-full bg-purple-200/45 mix-blend-multiply filter blur-[90px] animate-fluid-blob animation-delay-4000" />
       </div>
 
-      <div className="w-full max-w-2xl bg-white/70 border border-white/60 rounded-[32px] shadow-2xl shadow-indigo-150/30 backdrop-blur-xl p-6 md:p-10 relative z-10 text-slate-800 animate-in zoom-in duration-300">
+      <div className="w-full max-w-2xl bg-white/70 border border-white/60 rounded-[32px] shadow-2xl shadow-indigo-100/30 backdrop-blur-xl p-6 md:p-10 relative z-10 text-slate-800 animate-in zoom-in duration-300">
         
         {/* Language selector in Header */}
         <div className="absolute top-6 right-6 flex items-center gap-2 bg-slate-100/80 px-3 py-1.5 rounded-full border border-slate-200 text-[10px] font-black uppercase tracking-wider text-slate-600">
@@ -184,7 +184,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
             <Database className="h-7 w-7 text-white animate-bounce" />
           </div>
           <div>
-            <h2 className="text-2xl md:text-3xl font-heading font-black tracking-tight uppercase bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-650">
+            <h2 className="text-2xl md:text-3xl font-heading font-black tracking-tight uppercase bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-600">
               {t[lang].title}
             </h2>
             <p className="text-[10px] text-slate-500 uppercase tracking-widest font-black mt-1.5 max-w-md mx-auto leading-normal">
@@ -228,7 +228,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
               <div className="md:col-span-3 space-y-1.5 text-left">
                 <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider block pl-0.5">{t[lang].host}</label>
                 <div className="relative">
-                  <Server className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-450" />
+                  <Server className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                   <input
                     type="text"
                     required
@@ -286,7 +286,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
               <div className="space-y-1.5 text-left">
                 <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider block pl-0.5">{t[lang].pass}</label>
                 <div className="relative">
-                  <Key className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-450 z-10" />
+                  <Key className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 z-10" />
                   <PasswordInput
                     value={pass}
                     onChange={(e) => setPass(e.target.value)}
@@ -326,7 +326,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
                 className={`w-full p-5 rounded-[24px] border text-left transition-all relative overflow-hidden group cursor-pointer ${
                   installType === "demo"
                     ? "bg-indigo-50/70 border-indigo-500 shadow-lg shadow-indigo-100/40"
-                    : "bg-white/60 border-slate-200 hover:border-slate-350"
+                    : "bg-white/60 border-slate-200 hover:border-slate-300"
                 }`}
               >
                 <div className="flex items-start gap-4">
@@ -352,7 +352,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
                 className={`w-full p-5 rounded-[24px] border text-left transition-all relative overflow-hidden group cursor-pointer ${
                   installType === "fresh"
                     ? "bg-indigo-50/70 border-indigo-500 shadow-lg shadow-indigo-100/40"
-                    : "bg-white/60 border-slate-200 hover:border-slate-350"
+                    : "bg-white/60 border-slate-200 hover:border-slate-300"
                 }`}
               >
                 <div className="flex items-start gap-4">
@@ -376,7 +376,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
               {installType === "fresh" && (
                 <div className="p-5 rounded-[24px] border border-slate-200 bg-slate-50/50 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
                   <span className="font-heading font-black text-[9px] uppercase tracking-widest text-slate-500 flex items-center gap-2">
-                    <Key className="h-3.5 w-3.5 text-indigo-550" />
+                    <Key className="h-3.5 w-3.5 text-indigo-500" />
                     {lang === "sk" ? "Administrátorský účet" : lang === "hu" ? "Rendszergazdai fiók" : "Administrator account"}
                   </span>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -401,7 +401,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
                     placeholder={lang === "sk" ? "Heslo" : lang === "hu" ? "Jelszó" : "Password"}
                     className="w-full pl-4 pr-11 py-3 rounded-2xl bg-white border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold"
                   />
-                  <p className="text-xs text-slate-450 leading-relaxed">
+                  <p className="text-xs text-slate-400 leading-relaxed">
                     {lang === "sk"
                       ? "Ak necháte polia prázdne, vytvorí sa účet admin@crm.com s náhodným heslom, ktoré sa zobrazí po inštalácii."
                       : lang === "hu"
@@ -458,7 +458,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
                   <div>{generatedCreds.email}</div>
                   <div className="font-black mt-1 text-slate-900">{generatedCreds.password}</div>
                 </div>
-                <p className="text-[9px] text-amber-850 leading-relaxed font-semibold">
+                <p className="text-[9px] text-amber-800 leading-relaxed font-semibold">
                   {lang === "sk" ? "Heslo sa už nezobrazí. Po prihlásení si ho zmeňte." : lang === "hu" ? "A jelszó többé nem jelenik meg. Belépés után változtassa meg." : "This password will not be shown again. Change it after logging in."}
                 </p>
               </div>

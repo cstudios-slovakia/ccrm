@@ -166,16 +166,19 @@ curl_setopt($ch, CURLOPT_HTTPHEADER, [
     'Authorization: Bearer ' . $openAiKey
 ]);
 
+$financialModel = ccrm_ai_model();
 $payload = [
-    'model' => ccrm_ai_model(),
+    'model' => $financialModel,
     'messages' => [
         [
             'role' => 'user',
             'content' => $prompt
         ]
     ],
-    'temperature' => 0.3
 ];
+if (ccrm_ai_model_supports_temperature($financialModel)) {
+    $payload['temperature'] = 0.3;
+}
 
 curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload, JSON_INVALID_UTF8_SUBSTITUTE));
 $response = curl_exec($ch);

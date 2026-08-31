@@ -312,7 +312,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
               setIsCreating(false);
               setEditingType(null);
             }}
-            className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-650 transition-colors"
+            className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
           >
             <X className="h-5 w-5" />
           </button>
@@ -321,7 +321,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-heading font-black text-slate-450 uppercase tracking-widest mb-1.5">
+              <label className="block text-xs font-heading font-black text-slate-400 uppercase tracking-widest mb-1.5">
                 {t("Type Name", "Názov typu", "Típus neve")}
               </label>
               <input
@@ -334,7 +334,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-heading font-black text-slate-450 uppercase tracking-widest mb-1.5">
+              <label className="block text-xs font-heading font-black text-slate-400 uppercase tracking-widest mb-1.5">
                 {t("Description", "Popis", "Leírás")}
               </label>
               <textarea
@@ -350,7 +350,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
             <div className="grid grid-cols-2 gap-4">
               {/* Icon Picker Toggle */}
               <div>
-                <label className="block text-xs font-heading font-black text-slate-450 uppercase tracking-widest mb-1.5">
+                <label className="block text-xs font-heading font-black text-slate-400 uppercase tracking-widest mb-1.5">
                   {t("Icon", "Ikona", "Ikon")}
                 </label>
                 <button
@@ -369,7 +369,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
 
               {/* Color Picker */}
               <div>
-                <label className="block text-xs font-heading font-black text-slate-450 uppercase tracking-widest mb-1.5">
+                <label className="block text-xs font-heading font-black text-slate-400 uppercase tracking-widest mb-1.5">
                   {t("Theme Color", "Farba témy", "Téma színe")}
                 </label>
                 <div className="flex items-center gap-2 py-1">
@@ -426,7 +426,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
             {/* Custom Event Types for Timeline */}
             {hasTimeline && (
               <div className="space-y-3 pt-4 border-t border-slate-200">
-                <label className="block text-xs font-heading font-black text-slate-450 uppercase tracking-widest">
+                <label className="block text-xs font-heading font-black text-slate-400 uppercase tracking-widest">
                   {t("Timeline Event Types", "Typy udalostí časovej osi", "Idővonal eseménytípusok")}
                 </label>
 
@@ -434,7 +434,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                 <div className="space-y-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200 text-left">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[10px] font-black text-slate-450 uppercase mb-1">
+                      <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
                         {t("Event Type Name", "Názov typu udalosti", "Eseménytípus neve")}
                       </label>
                       <input
@@ -446,7 +446,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-black text-slate-450 uppercase mb-1">
+                      <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
                         {t("Icon", "Ikona", "Ikon")}
                       </label>
                       <div className="relative">
@@ -456,7 +456,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                           className="w-full flex items-center justify-between px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white cursor-pointer"
                         >
                           <div className="flex items-center gap-1.5">
-                            {renderIcon(newTeTypeIcon, "h-4 w-4 text-purple-650")}
+                            {renderIcon(newTeTypeIcon, "h-4 w-4 text-purple-600")}
                             <span>{newTeTypeIcon}</span>
                           </div>
                           <span className="text-slate-400">▼</span>
@@ -502,7 +502,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-black text-slate-450 uppercase mb-1">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
                       {t("Theme Color", "Farba témy", "Téma színe")}
                     </label>
                     <div className="flex items-center gap-2">
@@ -545,7 +545,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                           onClick={() => setSelectedTeTypeId(et.id)}
                           className={`flex items-center gap-1.5 px-2.5 py-1 border rounded-lg text-xs font-bold transition-all cursor-pointer select-none ${
                             isSelected
-                              ? "border-purple-600 bg-purple-50 text-purple-755"
+                              ? "border-purple-600 bg-purple-50 text-purple-700"
                               : "bg-slate-100 border-slate-200 text-slate-700 hover:border-slate-300"
                           }`}
                         >
@@ -653,7 +653,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                             <div className="bg-slate-50 p-4 rounded-2xl space-y-3 border border-slate-200">
                               <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                  <label className="block text-[10px] font-black text-slate-450 uppercase mb-1">
+                                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
                                     {t("Attribute Label", "Názov atribútu", "Attribútum neve")}
                                   </label>
                                   <input
@@ -664,7 +664,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                                   />
                                 </div>
                                 <div>
-                                  <label className="block text-[10px] font-black text-slate-450 uppercase mb-1">
+                                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
                                     {t("Type", "Typ", "Típus")}
                                   </label>
                                   <CustomSelect
@@ -677,7 +677,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
 
                               {["select", "radio", "checkbox"].includes(newTeAttrType) && (
                                 <div>
-                                  <label className="block text-[10px] font-black text-slate-450 uppercase mb-1">
+                                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
                                     {t("Options (comma separated)", "Možnosti (oddelené čiarkou)", "Opciók (vesszővel elválasztva)")}
                                   </label>
                                   <input
@@ -695,15 +695,15 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                                     type="checkbox"
                                     checked={newTeAttrRequired}
                                     onChange={e => setNewTeAttrRequired(e.target.checked)}
-                                    className="h-4 w-4 rounded border-slate-300 text-indigo-650"
+                                    className="h-4 w-4 rounded border-slate-300 text-indigo-600"
                                   />
-                                  <span className="text-xs font-semibold text-slate-655">{t("Required field", "Povinné pole", "Kötelező mező")}</span>
+                                  <span className="text-xs font-semibold text-slate-600">{t("Required field", "Povinné pole", "Kötelező mező")}</span>
                                 </label>
 
                                 <button
                                   type="button"
                                   onClick={handleAddTimelineAttribute}
-                                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-755 transition-all cursor-pointer"
+                                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 transition-all cursor-pointer"
                                 >
                                   <Plus className="h-4 w-4" />
                                   <span>{t("Add Attribute", "Pridať atribút", "Attribútum hozzáadása")}</span>
@@ -778,7 +778,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
               <div className="bg-slate-50 p-4 rounded-2xl space-y-3 border border-slate-200">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[10px] font-black text-slate-450 uppercase mb-1">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
                       {t("Attribute Label", "Názov atribútu", "Attribútum neve")}
                     </label>
                     <input
@@ -789,7 +789,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-black text-slate-450 uppercase mb-1">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
                       {t("Type", "Typ", "Típus")}
                     </label>
                     <CustomSelect
@@ -802,7 +802,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
 
                 {["select", "radio", "checkbox"].includes(newAttrType) && (
                   <div>
-                    <label className="block text-[10px] font-black text-slate-450 uppercase mb-1">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
                       {t("Options (comma separated)", "Možnosti (oddelené čiarkou)", "Opciók (vesszővel elválasztva)")}
                     </label>
                     <input
@@ -820,15 +820,15 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                       type="checkbox"
                       checked={newAttrRequired}
                       onChange={e => setNewAttrRequired(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 text-indigo-650"
+                      className="h-4 w-4 rounded border-slate-300 text-indigo-600"
                     />
-                    <span className="text-xs font-semibold text-slate-655">{t("Required field", "Povinné pole", "Kötelező mező")}</span>
+                    <span className="text-xs font-semibold text-slate-600">{t("Required field", "Povinné pole", "Kötelező mező")}</span>
                   </label>
 
                   <button
                     type="button"
                     onClick={handleAddAttribute}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-755 transition-all cursor-pointer"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 transition-all cursor-pointer"
                   >
                     <Plus className="h-4 w-4" />
                     <span>{t("Add Attribute", "Pridať atribút", "Attribútum hozzáadása")}</span>
@@ -919,7 +919,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
           <h3 className="font-heading font-black text-slate-800 text-[15px] uppercase tracking-widest">
             {t("Project Types", "Typy projektov", "Projekt típusok")}
           </h3>
-          <p className="text-[10px] font-black text-slate-450 uppercase tracking-wider mt-0.5">
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mt-0.5">
             {t("Configure dynamic templates and attributes schemas", "Konfigurácia šablón a atribútov pre projekty", "Sablonok és attribútum sémák beállítása")}
           </p>
         </div>
