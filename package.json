@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "node scripts/sync-backend.mjs && tsc -b && vite build",
+    "sync:backend": "node scripts/sync-backend.mjs",
+    "check:backend": "node scripts/sync-backend.mjs --check",
     "deploy": "node scripts/deploy.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
