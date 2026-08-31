@@ -3057,7 +3057,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         </div>
 
         {/* Quick Actions */}
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={() => handleOpenCreateModal("income", "global")}
             className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-2xl shadow-md shadow-emerald-600/20 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
@@ -3077,7 +3077,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       </div>
 
       {/* 2. SUB-NAVIGATION TABS */}
-      <div className="flex border-b border-slate-200  overflow-x-auto scrollbar-none gap-2">
+      <div className="flex border-b border-slate-200  overflow-x-auto scrollbar-none gap-2" role="tablist">
         {[
           { id: "overview", label: t("📊 Global Overview & Trend", "📊 Globálny prehľad & Trend", "📊 Globális áttekintés & Trend") },
           { id: "table", label: t("📋 Overview Table", "📋 Prehľadová tabuľka", "📋 Áttekintő táblázat") },
@@ -3087,6 +3087,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         ].map((tab) => (
           <button
             key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab.id}
             onClick={() => handleTabChange(tab.id as any)}
             className={`px-4 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
               activeTab === tab.id

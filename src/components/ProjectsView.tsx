@@ -211,7 +211,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
                 {t("Total Projects", "Projekty celkovo", "Összes projekt")}
               </span>
-              <span className="font-heading font-bold text-2xl text-slate-850 mt-1 block">
+              <span className="font-heading font-bold text-2xl text-slate-800 mt-1 block">
                 {totalProjects}
               </span>
             </div>
@@ -289,7 +289,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                       {t("Select Project Type", "Vyberte typ projektu", "Válasszon projekt típust")}
                     </span>
                     {projectTypes.length === 0 ? (
-                      <span className="block px-4 py-2 text-xs text-slate-450 italic text-left">
+                      <span className="block px-4 py-2 text-xs text-slate-400 italic text-left">
                         {t("No types configured.", "Nie sú nastavené typy.", "Nincsenek típusok.")}
                       </span>
                     ) : (
@@ -365,7 +365,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                     
                     {/* Assigned Managers */}
                     {p.managers && p.managers.length > 0 && (
-                      <div className="flex items-center gap-1 text-[11px] text-slate-450 font-bold mt-2">
+                      <div className="flex items-center gap-1 text-[11px] text-slate-400 font-bold mt-2">
                         <Users className="h-3.5 w-3.5 text-slate-400 shrink-0" />
                         <span className="truncate">{p.managers.join(", ")}</span>
                       </div>
@@ -376,7 +376,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                     {/* Roadmap Progress Bar */}
                     {pType.hasGantt && p.gantt && p.gantt.length > 0 && (
                       <div className="mt-4.5 space-y-1.5 shrink-0 select-none">
-                        <div className="flex items-center justify-between text-[10px] font-bold text-slate-450 uppercase">
+                        <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase">
                           <span>{t("Roadmap Progress", "Postup projektu", "Projekt haladása")}</span>
                           <span className="text-slate-700">{progress}%</span>
                         </div>

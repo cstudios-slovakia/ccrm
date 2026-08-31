@@ -3,7 +3,7 @@ import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { useUserPref } from "../utils/userPrefs";
 import { resolveAssigneeName } from "../utils/taskSelectors";
 import { liftAccent } from "../utils/accentColor";
-// import { createPortal } from "react-dom";
+import { createPortal } from "react-dom";
 import {
     Users,
     MapPin,
@@ -316,6 +316,132 @@ import {
 } from "../utils/localTime";
 import { formatMoney } from "../utils/currency";
 
+type LeadStatusSelectorProps = {
+    status: string;
+    onChange: (newStatus: string) => void;
+    isEditing?: boolean;
+    leadStates: string[];
+    leadStateParents: Record<string, string>;
+    leadStageGroups?: Record<string, "new" | "in_progress" | "closed">;
+    leadStateColors: Record<string, string>;
+    systemLanguage: Language;
+};
+
+/** Module-scoped so hover/filter re-renders of the grid do not remount the dropdown. */
+const LeadStatusSelector: React.FC<LeadStatusSelectorProps> = ({
+    status,
+    onChange,
+    isEditing = true,
+    leadStates,
+    leadStateParents,
+    leadStageGroups,
+    leadStateColors,
+    systemLanguage,
+}) => {
+    const sName = (status || "").toLowerCase();
+    const activeMain = leadStateParents[sName] || sName;
+    const hasSubstates = leadStates.some(
+        (s) => leadStateParents[s.toLowerCase()] === activeMain,
+    );
+    const activeSubstates = leadStates.filter(
+        (s) => leadStateParents[s.toLowerCase()] === activeMain,
+    );
+    const currentSub = leadStateParents[sName] ? sName : "";
+    const getStateColor = (stateName: string) => {
+        if (!leadStateColors) return "#64748b";
+        return leadStateColors[(stateName || "").toLowerCase()] || "#64748b";
+    };
+    const mainColor = getStateColor(activeMain);
+    const subColor = currentSub ? getStateColor(currentSub) : mainColor;
+
+    const majorStates = (["new", "in_progress", "closed"] as const).flatMap(
+        (group) =>
+            leadStates.filter(
+                (s) =>
+                    !leadStateParents[s.toLowerCase()] &&
+                    (leadStageGroups?.[s.toLowerCase()] || "in_progress") === group,
+            ),
+    );
+
+    if (!isEditing) {
+        if (leadStateParents[sName]) {
+            return (
+                <span
+                    className="inline-flex items-center px-2.5 py-1 rounded-full text-[9px] font-extrabold uppercase border shadow-sm text-white select-none leading-none tracking-wider"
+                    style={{
+                        background: `linear-gradient(135deg, ${mainColor}, ${subColor})`,
+                        borderColor: "transparent",
+                    }}
+                >
+                    {leadStateParents[sName].toUpperCase()} &gt; {sName.toUpperCase()}
+                </span>
+            );
+        }
+        return (
+            <span
+                className="inline-flex items-center px-2.5 py-1 rounded-full text-[9px] font-extrabold uppercase border shadow-sm text-white select-none leading-none tracking-wider"
+                style={{ backgroundColor: mainColor, borderColor: mainColor }}
+            >
+                {sName.toUpperCase()}
+            </span>
+        );
+    }
+
+    return (
+        <div
+            className="flex flex-col items-center lg:items-start gap-1 justify-center"
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+        >
+            <CustomSelect
+                size="sm"
+                value={activeMain}
+                onChange={onChange}
+                className="!font-black !uppercase !tracking-wider !shadow-sm"
+                style={{
+                    backgroundColor: `${mainColor}18`,
+                    color: mainColor,
+                    borderColor: `${mainColor}35`,
+                }}
+                options={majorStates.map((state) => ({
+                    value: state.toLowerCase(),
+                    label: state,
+                }))}
+            />
+            {hasSubstates && (
+                <CustomSelect
+                    size="sm"
+                    value={currentSub}
+                    onChange={(newSub) => onChange(newSub || activeMain)}
+                    className="!font-black !uppercase !tracking-wider !shadow-sm"
+                    style={{
+                        background: currentSub
+                            ? `linear-gradient(to right, ${mainColor}18, ${subColor}18)`
+                            : `${mainColor}10`,
+                        color: subColor,
+                        borderColor: `${subColor}30`,
+                    }}
+                    options={[
+                        {
+                            value: "",
+                            label:
+                                systemLanguage === "sk"
+                                    ? "-- Žiadny podstav --"
+                                    : systemLanguage === "hu"
+                                      ? "-- Nincs al-állapot --"
+                                      : "-- No Substate --",
+                        },
+                        ...activeSubstates.map((sub) => ({
+                            value: sub.toLowerCase(),
+                            label: `↳ ${sub}`,
+                        })),
+                    ]}
+                />
+            )}
+        </div>
+    );
+};
+
 // Separates the old from the new state inside a `status_change` event's content.
 // `timeline_events` has no column for the pair, so it is stored as plain text —
 // the timeline card splits it back apart to paint both states in their pipeline
@@ -395,7 +521,7 @@ const CalendarPane: React.FC<{
 
             <div className="grid grid-cols-8 gap-y-1 text-center items-center">
                 {/* Week column header */}
-                <span className="text-[8px] font-black text-slate-350 uppercase tracking-wider">
+                <span className="text-[8px] font-black text-slate-300 uppercase tracking-wider">
                     {systemLanguage === "sk"
                         ? "Týž"
                         : systemLanguage === "hu"
@@ -416,7 +542,7 @@ const CalendarPane: React.FC<{
                     return (
                         <React.Fragment key={weekIdx}>
                             {/* Week Number Label */}
-                            <span className="text-[9px] font-bold text-slate-450 py-1 bg-slate-50/50 rounded-lg">
+                            <span className="text-[9px] font-bold text-slate-400 py-1 bg-slate-50/50 rounded-lg">
                                 {weekNumbers[weekIdx]}
                             </span>
 
@@ -469,12 +595,12 @@ const CalendarPane: React.FC<{
                                         "bg-purple-100/65 text-purple-800 rounded-none h-7 w-full";
                                 } else {
                                     dayClass +=
-                                        "text-slate-700 hover:text-purple-650";
+                                        "text-slate-700 hover:text-purple-600";
                                 }
 
                                 if (isToday && !isStart && !isEnd && !inRange) {
                                     dayClass +=
-                                        " border-2 border-purple-650 bg-purple-50/50";
+                                        " border-2 border-purple-600 bg-purple-50/50";
                                 }
 
                                 return (
@@ -816,125 +942,24 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         );
     };
 
-    const StatusSelector: React.FC<{
-        status: string;
-        onChange: (newStatus: string) => void;
-        isEditing?: boolean;
-    }> = ({ status, onChange, isEditing = true }) => {
-        const sName = (status || "").toLowerCase();
-        const activeMain = leadStateParents[sName] || sName;
-        const hasSubstates = leadStates.some(
-            (s) => leadStateParents[s.toLowerCase()] === activeMain,
+    const StatusSelector = useMemo(() => {
+        const Bound: React.FC<{
+            status: string;
+            onChange: (newStatus: string) => void;
+            isEditing?: boolean;
+        }> = (props) => (
+            <LeadStatusSelector
+                {...props}
+                leadStates={leadStates}
+                leadStateParents={leadStateParents}
+                leadStageGroups={leadStageGroups}
+                leadStateColors={leadStateColors}
+                systemLanguage={systemLanguage}
+            />
         );
-        const activeSubstates = leadStates.filter(
-            (s) => leadStateParents[s.toLowerCase()] === activeMain,
-        );
-        const currentSub = leadStateParents[sName] ? sName : "";
-
-        const mainColor = getSafeStateColor(activeMain);
-        const subColor = currentSub ? getSafeStateColor(currentSub) : mainColor;
-
-        const handleMainChange = (newMain: string) => {
-            onChange(newMain);
-        };
-
-        const handleSubChange = (newSub: string) => {
-            if (newSub) {
-                onChange(newSub);
-            } else {
-                onChange(activeMain);
-            }
-        };
-
-        // Order major states exactly like the Settings pipeline table: grouped by
-        // stage group (new → in_progress → closed), preserving the configured
-        // leadStates order within each group.
-        const majorStates = (["new", "in_progress", "closed"] as const).flatMap(
-            (group) =>
-                leadStates.filter(
-                    (s) =>
-                        !leadStateParents[s.toLowerCase()] &&
-                        (leadStageGroups[s.toLowerCase()] || "in_progress") ===
-                            group,
-                ),
-        );
-
-        if (!isEditing) {
-            if (leadStateParents[sName]) {
-                return (
-                    <span
-                        className="inline-flex items-center px-2.5 py-1 rounded-full text-[9px] font-extrabold uppercase border shadow-sm text-white select-none leading-none tracking-wider"
-                        style={{
-                            background: `linear-gradient(135deg, ${mainColor}, ${subColor})`,
-                            borderColor: "transparent",
-                        }}
-                    >
-                        {leadStateParents[sName].toUpperCase()} &gt;{" "}
-                        {sName.toUpperCase()}
-                    </span>
-                );
-            } else {
-                return (
-                    <span
-                        className="inline-flex items-center px-2.5 py-1 rounded-full text-[9px] font-extrabold uppercase border shadow-sm text-white select-none leading-none tracking-wider"
-                        style={{
-                            backgroundColor: mainColor,
-                            borderColor: mainColor,
-                        }}
-                    >
-                        {sName.toUpperCase()}
-                    </span>
-                );
-            }
-        }
-
-        return (
-            <div className="flex flex-col items-center lg:items-start gap-1 justify-center">
-                {/* Main Dropdown */}
-                <CustomSelect
-                    size="sm"
-                    value={activeMain}
-                    onChange={handleMainChange}
-                    className="!font-black !uppercase !tracking-wider !shadow-sm"
-                    style={{
-                        backgroundColor: `${mainColor}18`,
-                        color: mainColor,
-                        borderColor: `${mainColor}35`,
-                    }}
-                    options={majorStates.map((state) => ({ value: state.toLowerCase(), label: state }))}
-                />
-
-                {/* Substate Dropdown */}
-                {hasSubstates && (
-                    <CustomSelect
-                        size="sm"
-                        value={currentSub}
-                        onChange={handleSubChange}
-                        className="!font-black !uppercase !tracking-wider !shadow-sm"
-                        style={{
-                            background: currentSub
-                                ? `linear-gradient(to right, ${mainColor}18, ${subColor}18)`
-                                : `${mainColor}10`,
-                            color: subColor,
-                            borderColor: `${subColor}30`,
-                        }}
-                        options={[
-                            {
-                                value: "",
-                                label:
-                                    systemLanguage === "sk"
-                                        ? "-- Žiadny podstav --"
-                                        : systemLanguage === "hu"
-                                          ? "-- Nincs al-állapot --"
-                                          : "-- No Substate --",
-                            },
-                            ...activeSubstates.map((sub) => ({ value: sub.toLowerCase(), label: `↳ ${sub}` })),
-                        ]}
-                    />
-                )}
-            </div>
-        );
-    };
+        Bound.displayName = "StatusSelector";
+        return Bound;
+    }, [leadStates, leadStateParents, leadStageGroups, leadStateColors, systemLanguage]);
 
     const getSafePMColor = (pmName: string) => {
         if (!projectManagerColors) return "#64748b";
@@ -2273,7 +2298,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 return {
                     dotBg: "bg-emerald-600 border-emerald-700 text-white shadow-md shadow-emerald-500/20",
                     badgeBg:
-                        "bg-emerald-55 text-emerald-700 border-emerald-200",
+                        "bg-emerald-50 text-emerald-700 border-emerald-200",
                 };
             case "appointment":
                 return {
@@ -2518,7 +2543,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 (window as any).previewFile(path, att.name);
                             }
                         }}
-                        className="flex items-center justify-between gap-2 bg-slate-50/50 p-2.5 rounded-xl border border-slate-150 hover:bg-slate-100/80 cursor-pointer transition-colors"
+                        className="flex items-center justify-between gap-2 bg-slate-50/50 p-2.5 rounded-xl border border-slate-100 hover:bg-slate-100/80 cursor-pointer transition-colors"
                     >
                         <div className="flex items-center gap-2 min-w-0">
                             <span className="text-[13px] shrink-0">
@@ -2554,7 +2579,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             </div>
                         </div>
                         {att.size && (
-                            <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-[8.5px] border border-amber-250 font-black shrink-0">
+                            <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-[8.5px] border border-amber-200 font-black shrink-0">
                                 {att.size}
                             </span>
                         )}
@@ -3080,7 +3105,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const renderEventTimestampFields = () => (
         <div className="grid grid-cols-2 gap-2">
             <div className="flex flex-col gap-1">
-                <label className="text-[8px] font-black text-slate-450 uppercase tracking-wider">
+                <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">
                     {t("Date", "Dátum", "Dátum")}
                 </label>
                 <input
@@ -3091,7 +3116,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 />
             </div>
             <div className="flex flex-col gap-1">
-                <label className="text-[8px] font-black text-slate-450 uppercase tracking-wider">
+                <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">
                     {t("Time", "Čas", "Idő")}
                 </label>
                 <input
@@ -4106,7 +4131,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             "A lead rekord nem található",
                         )}
                     </h2>
-                    <p className="text-xs text-slate-650 font-semibold">
+                    <p className="text-xs text-slate-600 font-semibold">
                         {t("The lead ID '", "ID leadu '", "A lead azonosító '")}
                         {initialSelectedLeadId}
                         {t(
@@ -4139,7 +4164,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         onClick={() => {
                             window.location.hash = "leads";
                         }}
-                        className="h-12 shrink-0 px-4.5 rounded-2xl bg-white border-2 border-slate-300 text-slate-700 hover:text-slate-955 hover:border-slate-850 transition-all text-xs font-extrabold uppercase tracking-wider leading-tight flex items-center gap-2 shadow-sm"
+                        className="h-12 shrink-0 px-4.5 rounded-2xl bg-white border-2 border-slate-300 text-slate-700 hover:text-slate-950 hover:border-slate-800 transition-all text-xs font-extrabold uppercase tracking-wider leading-tight flex items-center gap-2 shadow-sm"
                     >
                         <ArrowLeft className="h-4.5 w-4.5 stroke-[2.5] shrink-0" />{" "}
                         {getTranslation(systemLanguage, "common.back_to_leads")}
@@ -4148,9 +4173,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     <div className="flex flex-1 min-w-0 items-center justify-end gap-3 flex-wrap">
                         {/* AI Summary Purple Card */}
                         {!isOpenAiConfigured && !localSummary ? (
-                            <div className="flex min-w-0 items-center gap-2.5 bg-purple-50/50 border border-purple-250 p-2.5 px-3.5 rounded-2xl max-w-md text-xs font-bold text-purple-800 shadow-sm">
+                            <div className="flex min-w-0 items-center gap-2.5 bg-purple-50/50 border border-purple-200 p-2.5 px-3.5 rounded-2xl max-w-md text-xs font-bold text-purple-800 shadow-sm">
                                 <Brain className="h-5 w-5 text-purple-400 shrink-0" />
-                                <span className="text-[10px] text-purple-650 italic">
+                                <span className="text-[10px] text-purple-600 italic">
                                     {systemLanguage === "sk"
                                         ? "AI zhrnutie nie je k dispozícii. Nastavte OpenAI kľúč v nastaveniach."
                                         : systemLanguage === "hu"
@@ -4165,7 +4190,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 />
                                 <div>
                                     {isGeneratingSummary && !localSummary ? (
-                                        <span className="text-[10px] text-purple-650 italic animate-pulse flex items-center gap-1.5">
+                                        <span className="text-[10px] text-purple-600 italic animate-pulse flex items-center gap-1.5">
                                             <Loader2 className="h-3 w-3 animate-spin text-purple-600" />
                                             {systemLanguage === "sk"
                                                 ? "Generuje sa AI zhrnutie..."
@@ -4275,7 +4300,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     <div className="lg:col-span-5 space-y-6">
                         {/* 1. Client Profile Card (On Top) */}
                         {clientCardData && (
-                            <div className="glass-panel p-6 rounded-[28px] border-2 border-emerald-450 bg-emerald-50/70 shadow-xl space-y-4 text-emerald-950">
+                            <div className="glass-panel p-6 rounded-[28px] border-2 border-emerald-400 bg-emerald-50/70 shadow-xl space-y-4 text-emerald-950">
                                 <div className="border-b-2 border-emerald-200/50 pb-2 flex items-center justify-between gap-2">
                                     <span className="text-xs font-black text-emerald-700 uppercase tracking-wider flex items-center gap-1.5">
                                         <Briefcase className="h-4.5 w-4.5 text-emerald-600 stroke-[2.5] shrink-0" />{" "}
@@ -4284,7 +4309,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             "common.client_relationship_card",
                                         )}
                                     </span>
-                                    <span className="px-2 py-0.5 rounded-full text-[8px] font-black bg-emerald-100 text-emerald-800 border border-emerald-250 uppercase tracking-wider animate-pulse shrink-0">
+                                    <span className="px-2 py-0.5 rounded-full text-[8px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200 uppercase tracking-wider animate-pulse shrink-0">
                                         {getTranslation(
                                             systemLanguage,
                                             "common.synced_profile",
@@ -4298,7 +4323,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             {getInitials(clientCardData.name)}
                                         </div>
                                         <div>
-                                            <h4 className="text-sm font-black text-slate-850 line-clamp-1">
+                                            <h4 className="text-sm font-black text-slate-800 line-clamp-1">
                                                 {clientCardData.name}
                                             </h4>
                                             {isEditingLead ? (
@@ -4371,7 +4396,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         </div>
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-3 text-[11px] bg-white/70 p-3 rounded-xl border border-emerald-250/50">
+                                    <div className="grid grid-cols-2 gap-3 text-[11px] bg-white/70 p-3 rounded-xl border border-emerald-200/50">
                                         <div className="space-y-0.5">
                                             <span className="text-[8px] font-black text-emerald-700/60 uppercase tracking-wider block">
                                                 {getTranslation(
@@ -4386,7 +4411,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                         {clientCardData.phone}
                                                     </span>
                                                 ) : (
-                                                    <span className="text-slate-350 italic">
+                                                    <span className="text-slate-300 italic">
                                                         {getTranslation(
                                                             systemLanguage,
                                                             "profile.none_added",
@@ -4409,7 +4434,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                         {clientCardData.email}
                                                     </span>
                                                 ) : (
-                                                    <span className="text-slate-350 italic">
+                                                    <span className="text-slate-300 italic">
                                                         {getTranslation(
                                                             systemLanguage,
                                                             "profile.none_added",
@@ -4481,7 +4506,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         )}
 
                         {/* 2. Lead Details Panel (On Bottom) */}
-                        <div className="glass-panel p-6 rounded-[28px] border-2 border-blue-450 bg-white shadow-xl space-y-6 overflow-hidden relative">
+                        <div className="glass-panel p-6 rounded-[28px] border-2 border-blue-400 bg-white shadow-xl space-y-6 overflow-hidden relative">
                             {/* Block header — same shape as every other block header */}
                             <div className="border-b-2 border-slate-100 pb-2 flex items-center justify-between gap-2">
                                 <span className="text-xs font-black text-blue-700 uppercase tracking-wider flex items-center gap-1.5">
@@ -4634,7 +4659,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                                 {/* Lead state — always editable, no edit toggle needed */}
                                 <div className="space-y-1">
-                                    <label className="text-[9px] font-black text-slate-555 uppercase tracking-wider">
+                                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">
                                         {getTranslation(
                                             systemLanguage,
                                             "profile.lead_state",
@@ -4864,8 +4889,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                         key={cat}
                                                         className={`flex items-center gap-2 px-3 py-1.5 border rounded-xl cursor-pointer text-[9px] font-black uppercase transition-all select-none ${
                                                             isChecked
-                                                                ? "bg-blue-50 border-blue-300 text-blue-755 shadow-sm"
-                                                                : "bg-white border-slate-150 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                                                                ? "bg-blue-50 border-blue-300 text-blue-700 shadow-sm"
+                                                                : "bg-white border-slate-100 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
                                                         }`}
                                                     >
                                                         <input
@@ -4894,7 +4919,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                     );
                                                                 }
                                                             }}
-                                                            className="rounded border-slate-350 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5 shrink-0"
+                                                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5 shrink-0"
                                                         />
                                                         <span className="truncate">
                                                             {cat}
@@ -5088,9 +5113,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                         {/* 3. Pipeline Stage Gate & Tasks Card */}
                         <div className="glass-panel p-6 rounded-[28px] border-2 border-violet-400 bg-white shadow-xl space-y-4">
-                            <div className="border-b-2 border-slate-150 pb-2 flex items-center justify-between gap-2">
+                            <div className="border-b-2 border-slate-100 pb-2 flex items-center justify-between gap-2">
                                 <span className="text-xs font-black text-violet-700 uppercase tracking-wider flex items-center gap-1.5">
-                                    <CheckSquare className="h-4.5 w-4.5 text-violet-650 stroke-[2.5] shrink-0" />
+                                    <CheckSquare className="h-4.5 w-4.5 text-violet-600 stroke-[2.5] shrink-0" />
                                     {systemLanguage === "sk"
                                         ? "FÁZOVÁ BRÁNA A ÚLOHY"
                                         : systemLanguage === "hu"
@@ -5111,7 +5136,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     ).length;
                                     return (
                                         <span className="flex items-center gap-1">
-                                            <span className="px-2 py-0.5 rounded-full text-[8px] font-black bg-violet-50 text-violet-750 border border-violet-200">
+                                            <span className="px-2 py-0.5 rounded-full text-[8px] font-black bg-violet-50 text-violet-700 border border-violet-200">
                                                 {leadTasks.length -
                                                     archivedCount}
                                             </span>
@@ -5246,7 +5271,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                               ? "bg-emerald-50/20 border-emerald-100"
                                                               : task.isLocking
                                                                 ? "bg-rose-50/20 border-rose-200"
-                                                                : "bg-slate-50/50 border-slate-150"
+                                                                : "bg-slate-50/50 border-slate-100"
                                                     }`}
                                                 >
                                                     <div className="flex items-start gap-2.5">
@@ -5368,7 +5393,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                             "BLOKUJE: lead sa nedá posunúť do ďalšej fázy, kým nie je táto úloha dokončená.",
                                                                             "BLOKKOL: a lead nem léphet a következő fázisba, amíg ez a feladat el nem készül.",
                                                                         )}
-                                                                        className="inline-flex items-center gap-0.5 text-[7.5px] font-black text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded-md uppercase border border-rose-150 cursor-help"
+                                                                        className="inline-flex items-center gap-0.5 text-[7.5px] font-black text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded-md uppercase border border-rose-100 cursor-help"
                                                                     >
                                                                         <Lock className="h-2 w-2 text-rose-500" />
                                                                         {systemLanguage ===
@@ -5487,7 +5512,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                             unstyled
                                                                             className={`text-[7.5px] font-black px-1.5 py-0.5 rounded-md uppercase border max-w-[120px] ${
                                                                                 isMine
-                                                                                    ? "text-indigo-600 bg-indigo-50 border-indigo-150"
+                                                                                    ? "text-indigo-600 bg-indigo-50 border-indigo-100"
                                                                                     : "text-slate-500 bg-slate-100 border-slate-200"
                                                                             }`}
                                                                             options={
@@ -5663,8 +5688,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             }
                                             className={`w-full px-3 py-1.5 rounded-xl border font-black text-[9px] uppercase tracking-wider transition-all flex items-center justify-center gap-1 ${
                                                 inlineTaskIsLocking
-                                                    ? "bg-rose-50 border-rose-250 text-rose-700 font-extrabold"
-                                                    : "bg-slate-50 border-slate-200 text-slate-550"
+                                                    ? "bg-rose-50 border-rose-200 text-rose-700 font-extrabold"
+                                                    : "bg-slate-50 border-slate-200 text-slate-500"
                                             }`}
                                         >
                                             <Lock className="h-3 w-3" />
@@ -5724,7 +5749,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                                 <button
                                     type="submit"
-                                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-650 text-white font-black text-[10px] uppercase tracking-wider shadow hover:shadow-violet-600/10 hover:scale-[1.01] transition-all cursor-pointer border border-violet-550/20"
+                                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-black text-[10px] uppercase tracking-wider shadow hover:shadow-violet-600/10 hover:scale-[1.01] transition-all cursor-pointer border border-violet-500/20"
                                 >
                                     {systemLanguage === "sk"
                                         ? "+ Pridať úlohu fázovej brány"
@@ -5738,7 +5763,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                     {/* RIGHT PANEL: Timeline History & Quick Logger */}
                     <div className="lg:col-span-7">
-                        <div className="glass-panel p-6 rounded-[28px] border-2 border-blue-450 bg-white shadow-xl space-y-6">
+                        <div className="glass-panel p-6 rounded-[28px] border-2 border-blue-400 bg-white shadow-xl space-y-6">
                             {/* Logger form */}
                             <div>
                                 <h3 className="text-xs font-black text-blue-700 uppercase tracking-wider mb-4 flex items-center gap-1.5 border-b-2 border-slate-100 pb-2">
@@ -5785,7 +5810,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                             className={`py-2 rounded-lg font-black text-[9px] uppercase tracking-wider transition-all text-center flex items-center justify-center gap-1 ${
                                                                 logType === type
                                                                     ? `${colors.dotBg} border-2 shadow`
-                                                                    : "text-slate-550 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
+                                                                    : "text-slate-500 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
                                                             }`}
                                                         >
                                                             {renderEventIcon(
@@ -5830,7 +5855,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                         logType ===
                                                                         type
                                                                             ? `${colors.dotBg} border-2 shadow`
-                                                                            : "text-slate-550 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
+                                                                            : "text-slate-500 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
                                                                     }`}
                                                                 >
                                                                     {renderEventIcon(
@@ -5852,7 +5877,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                                     {/* Expand-down conditionally */}
                                     <div
-                                        className={`grid transition-all duration-300 ease-in-out ${logType ? "grid-rows-[1fr] opacity-100 mt-4 border-t border-slate-150 pt-4" : "grid-rows-[0fr] opacity-0 overflow-hidden"}`}
+                                        className={`grid transition-all duration-300 ease-in-out ${logType ? "grid-rows-[1fr] opacity-100 mt-4 border-t border-slate-100 pt-4" : "grid-rows-[0fr] opacity-0 overflow-hidden"}`}
                                     >
                                         <div className="overflow-hidden space-y-4">
                                             {/* Date and Time selectors for the event */}
@@ -6066,7 +6091,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                     logFileType ===
                                                                                     type
                                                                                         ? "bg-amber-700 text-white border border-amber-800 shadow"
-                                                                                        : "text-slate-550 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
+                                                                                        : "text-slate-500 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
                                                                                 }`}
                                                                             >
                                                                                 <span>
@@ -6416,9 +6441,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             </div>
 
                             {/* Chronological timeline */}
-                            <div className="border-t-2 border-slate-150 pt-6 space-y-4">
-                                <h3 className="text-xs font-black text-slate-450 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
-                                    <Clock className="h-4.5 w-4.5 text-blue-650 animate-pulse stroke-[2.5]" />{" "}
+                            <div className="border-t-2 border-slate-100 pt-6 space-y-4">
+                                <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
+                                    <Clock className="h-4.5 w-4.5 text-blue-600 animate-pulse stroke-[2.5]" />{" "}
                                     {getTranslation(
                                         systemLanguage,
                                         "common.chronological_timeline",
@@ -6497,7 +6522,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                         <div className="absolute -left-[7px] top-[14px] w-3 h-3 bg-white border-l-2 border-b-2 border-slate-200 transform rotate-45 hidden md:block"></div>
 
                                                         <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 border-b-2 border-slate-100 pb-2 mb-2.5">
-                                                            <h4 className="font-heading font-black text-[11px] uppercase tracking-tight text-slate-850 leading-snug break-words min-w-0 flex-1 basis-[60%] pt-0.5">
+                                                            <h4 className="font-heading font-black text-[11px] uppercase tracking-tight text-slate-800 leading-snug break-words min-w-0 flex-1 basis-[60%] pt-0.5">
                                                                 {event.title}
                                                             </h4>
                                                             <div className="flex flex-wrap items-center justify-end gap-1.5 ml-auto">
@@ -6510,7 +6535,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                             "",
                                                                     )}
                                                                 />
-                                                                <span className="px-2.5 py-0.5 rounded-full text-[8.5px] font-extrabold uppercase border bg-purple-50 text-purple-700 border-purple-250">
+                                                                <span className="px-2.5 py-0.5 rounded-full text-[8.5px] font-extrabold uppercase border bg-purple-50 text-purple-700 border-purple-200">
                                                                     {getTranslation(
                                                                         systemLanguage,
                                                                         "timeline.upcoming_meet",
@@ -6838,7 +6863,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     <div className="w-full border-t-2 border-dashed border-blue-400"></div>
                                                 </div>
                                                 <div className="relative flex justify-center">
-                                                    <span className="bg-blue-100 text-blue-750 text-[9px] font-black uppercase px-4 py-1.5 rounded-full border-2 border-blue-300 shadow-md flex items-center gap-1">
+                                                    <span className="bg-blue-100 text-blue-700 text-[9px] font-black uppercase px-4 py-1.5 rounded-full border-2 border-blue-300 shadow-md flex items-center gap-1">
                                                         <span className="h-2 w-2 rounded-full bg-blue-500 animate-ping" />{" "}
                                                         {getTranslation(
                                                             systemLanguage,
@@ -6917,7 +6942,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                         <div className="absolute -left-[7px] top-[14px] w-3 h-3 bg-white border-l-2 border-b-2 border-slate-200 transform rotate-45 hidden md:block"></div>
 
                                                         <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 border-b-2 border-slate-100 pb-2 mb-2.5">
-                                                            <h4 className="font-heading font-black text-[11px] uppercase tracking-tight text-slate-850 leading-snug break-words min-w-0 flex-1 basis-[60%] pt-0.5">
+                                                            <h4 className="font-heading font-black text-[11px] uppercase tracking-tight text-slate-800 leading-snug break-words min-w-0 flex-1 basis-[60%] pt-0.5">
                                                                 {event.title}
                                                             </h4>
                                                             {event.type ===
@@ -7351,8 +7376,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         // </div>
                                     // ) : timelineEmailDetailBody ? (
                                         // <div className="flex-1 flex flex-col justify-between">
-                                            // <div className="border-b border-slate-150 pb-3 mb-4 text-left">
-                                                // <p className="text-[10px] text-slate-550 font-bold">
+                                            // <div className="border-b border-slate-100 pb-3 mb-4 text-left">
+                                                // <p className="text-[10px] text-slate-500 font-bold">
                                                     // {t(
                                                         // "Subject:",
                                                         // "Predmet:",
@@ -7364,7 +7389,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                         // }
                                                     // </strong>
                                                 // </p>
-                                                // <p className="text-[10px] text-slate-550 font-bold mt-1">
+                                                // <p className="text-[10px] text-slate-500 font-bold mt-1">
                                                     // {t(
                                                         // "Date:",
                                                         // "Dátum:",
@@ -7411,7 +7436,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                           // `}
                                                     // />
                                                 // ) : (
-                                                    // <div className="text-left text-xs text-slate-700 font-semibold whitespace-pre-wrap leading-relaxed select-text p-4 bg-slate-50 rounded-2xl border border-slate-150">
+                                                    // <div className="text-left text-xs text-slate-700 font-semibold whitespace-pre-wrap leading-relaxed select-text p-4 bg-slate-50 rounded-2xl border border-slate-100">
                                                         // {timelineEmailDetailBody.text ||
                                                             // t(
                                                                 // "No message content.",
@@ -7574,7 +7599,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             className={`px-4 py-2.5 rounded-2xl text-xs font-extrabold border transition-all flex items-center gap-1.5 shadow-sm shrink-0 uppercase tracking-wider ${
                                 showFilters
                                     ? "bg-blue-50 border-blue-300 text-blue-700 font-black shadow-blue-100"
-                                    : "bg-white border-slate-200/60 hover:bg-slate-50 text-slate-650"
+                                    : "bg-white border-slate-200/60 hover:bg-slate-50 text-slate-600"
                             }`}
                         >
                             <SlidersHorizontal className="h-4 w-4 text-blue-500" />
@@ -7621,7 +7646,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 ${
                                     viewMode === "list"
                                         ? "bg-blue-600 text-white shadow-md shadow-blue-600/10"
-                                        : "text-slate-550 hover:text-slate-800 hover:bg-slate-200/50"
+                                        : "text-slate-500 hover:text-slate-800 hover:bg-slate-200/50"
                                 }`}
                             >
                                 <TableProperties className="h-3.5 w-3.5" />
@@ -7637,7 +7662,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 ${
                                     viewMode === "kanban"
                                         ? "bg-blue-600 text-white shadow-md shadow-blue-600/10"
-                                        : "text-slate-555 hover:text-slate-800 hover:bg-slate-200/50"
+                                        : "text-slate-500 hover:text-slate-800 hover:bg-slate-200/50"
                                 }`}
                             >
                                 <Layers className="h-3.5 w-3.5" />
@@ -7656,7 +7681,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 border shrink-0 ${
                                 compactMode
                                     ? "bg-indigo-600 border-indigo-700 text-white shadow-md shadow-indigo-600/10"
-                                    : "bg-white border-slate-200 text-slate-550 hover:text-slate-800 hover:bg-slate-200/50"
+                                    : "bg-white border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-200/50"
                             }`}
                         >
                             <Minimize2 className="h-3.5 w-3.5" />
@@ -7971,7 +7996,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             !isOfferDatePickerOpen,
                                         )
                                     }
-                                    className="w-full flex items-center justify-between gap-1.5 bg-white border border-slate-200/70 rounded-xl px-2.5 py-1.5 text-left text-[11px] font-bold text-slate-750 hover:border-blue-400 transition-colors"
+                                    className="w-full flex items-center justify-between gap-1.5 bg-white border border-slate-200/70 rounded-xl px-2.5 py-1.5 text-left text-[11px] font-bold text-slate-700 hover:border-blue-400 transition-colors"
                                 >
                                     <div className="flex items-center gap-1.5 truncate">
                                         <Calendar className="h-3.5 w-3.5 text-blue-500 shrink-0" />
@@ -8004,7 +8029,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 setOfferPresetName("All Time");
                                                 setIsOfferDatePickerOpen(false);
                                             }}
-                                            className="text-slate-400 hover:text-slate-650 rounded-full"
+                                            className="text-slate-400 hover:text-slate-600 rounded-full"
                                         >
                                             <X className="h-3 w-3" />
                                         </button>
@@ -8666,14 +8691,18 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             {(orderingMode === "state" ||
                                                 orderingMode === "pm") && (
                                                 <tr
-                                                    onClick={() =>
-                                                        toggleGroupCollapse(
-                                                            group.state,
-                                                        )
-                                                    }
+                                                    onClick={() => {
+                                                        const first = group.leads[0];
+                                                        if (first) {
+                                                            window.location.hash = `lead-${first.id}`;
+                                                            return;
+                                                        }
+                                                        toggleGroupCollapse(group.state);
+                                                    }}
                                                     className="block lg:table-row bg-transparent cursor-pointer hover:opacity-80 transition-all select-none"
                                                 >
-                                                    <td
+                                                    <th
+                                                        scope="colgroup"
                                                         colSpan={9}
                                                         className={`px-4 lg:px-6 font-bold align-middle select-none block lg:table-cell w-full lg:w-auto ${compactMode ? "py-1" : "py-1.5"}`}
                                                         style={{
@@ -8683,8 +8712,15 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     >
                                                         <div className="flex items-center justify-between w-full gap-2">
                                                             <div className="flex items-center gap-2 shrink-0">
-                                                                <span
-                                                                    className="text-[10px] select-none opacity-60"
+                                                                <button
+                                                                    type="button"
+                                                                    aria-expanded={!isCollapsed}
+                                                                    aria-label={isCollapsed ? "Expand group" : "Collapse group"}
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        toggleGroupCollapse(group.state);
+                                                                    }}
+                                                                    className="text-[10px] select-none opacity-60 hover:opacity-100 transition-opacity cursor-pointer"
                                                                     style={{
                                                                         color: stateColor,
                                                                         marginRight:
@@ -8694,7 +8730,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                     {isCollapsed
                                                                         ? "▶"
                                                                         : "▼"}
-                                                                </span>
+                                                                </button>
                                                                 <span
                                                                     className="text-[11px] font-black uppercase tracking-wider font-heading"
                                                                     style={{
@@ -8770,7 +8806,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                 )}
                                                             </span>
                                                         </div>
-                                                    </td>
+                                                    </th>
                                                 </tr>
                                             )}
 
@@ -8810,11 +8846,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                     );
 
                                                                 return (
-                                                                    <>
+                                                                    <React.Fragment key={lead.id}>
                                                                         <tr
-                                                                            key={
-                                                                                lead.id
-                                                                            }
                                                                             onMouseEnter={() =>
                                                                                 setHoveredLeadId(
                                                                                     lead.id,
@@ -9012,7 +9045,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                 ) : (
                                                                                     <div className="flex items-center gap-1">
                                                                                         <MapPin className="h-3.5 w-3.5 text-blue-400 shrink-0" />
-                                                                                        <span className="border-b border-transparent hover:border-blue-400/50 transition-all text-slate-650">
+                                                                                        <span className="border-b border-transparent hover:border-blue-400/50 transition-all text-slate-600">
                                                                                             {
                                                                                                 lead.city
                                                                                             }
@@ -9264,7 +9297,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                         lead,
                                                                                     )
                                                                                 }
-                                                                                className={`inline-flex items-center lg:table-cell px-0 lg:px-4 font-heading font-black text-blue-755 cursor-pointer mr-3.5 ${cellPy}`}
+                                                                                className={`inline-flex items-center lg:table-cell px-0 lg:px-4 font-heading font-black text-blue-700 cursor-pointer mr-3.5 ${cellPy}`}
                                                                             >
                                                                                 {isInlineEditing ? (
                                                                                     <input
@@ -9445,7 +9478,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                                     null,
                                                                                                 );
                                                                                             }}
-                                                                                            className="h-6 w-6 rounded bg-slate-200 text-slate-650 flex items-center justify-center shadow hover:bg-slate-350 transition-colors"
+                                                                                            className="h-6 w-6 rounded bg-slate-200 text-slate-600 flex items-center justify-center shadow hover:bg-slate-300 transition-colors"
                                                                                             title={t(
                                                                                                 "Cancel Inline Edit",
                                                                                                 "Zrušiť priamu úpravu",
@@ -9520,7 +9553,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                     className="p-0 border-none select-none block lg:table-cell w-full lg:w-auto"
                                                                                 >
                                                                                     <div
-                                                                                        className="w-full flex items-center gap-[1px] select-none bg-slate-205 transition-all duration-300 overflow-hidden"
+                                                                                        className="w-full flex items-center gap-[1px] select-none bg-slate-200 transition-all duration-300 overflow-hidden"
                                                                                         style={{
                                                                                             height:
                                                                                                 hoveredLeadId ===
@@ -9788,7 +9821,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                     colSpan={
                                                                                         9
                                                                                     }
-                                                                                    className="px-6 pb-3 pt-1 text-[10px] font-medium text-purple-650 tracking-wide text-left block lg:table-cell"
+                                                                                    className="px-6 pb-3 pt-1 text-[10px] font-medium text-purple-600 tracking-wide text-left block lg:table-cell"
                                                                                 >
                                                                                     <div className="flex items-center gap-2 flex-wrap">
                                                                                         <span
@@ -9812,7 +9845,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                 </td>
                                                                             </tr>
                                                                         )}
-                                                                    </>
+                                                                    </React.Fragment>
                                                                 );
                                                             })}
                                                         {hasMore && (
@@ -9925,7 +9958,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     </span>
                                                 </div>
                                                 <div className="flex items-center gap-1.5">
-                                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-slate-100 text-slate-500 border border-slate-205 leading-none shrink-0 shadow-sm">
+                                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-slate-100 text-slate-500 border border-slate-200 leading-none shrink-0 shadow-sm">
                                                         {group.leads.length}
                                                     </span>
                                                     <span className="text-[10px] font-extrabold text-indigo-700">
@@ -9941,7 +9974,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 className={`flex-1 flex flex-col overflow-y-auto max-h-[490px] pr-1.5 scrollbar-thin ${compactMode ? "gap-2" : "gap-3"}`}
                                             >
                                                 {group.leads.length === 0 ? (
-                                                    <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-[10px] font-black text-slate-350 uppercase tracking-widest border border-dashed border-slate-200 rounded-[20px] min-h-[250px] bg-slate-100/10">
+                                                    <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-[10px] font-black text-slate-300 uppercase tracking-widest border border-dashed border-slate-200 rounded-[20px] min-h-[250px] bg-slate-100/10">
                                                         {t(
                                                             "No Leads",
                                                             "Žiadne leady",
@@ -9990,7 +10023,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                             lead.id
                                                                         }
                                                                         draggable="true"
-                                                                        onDragStart={() => {
+                                                                        onDragStart={(e) => {
+                                                                            const target = e.target as HTMLElement;
+                                                                            if (target.closest('button, input, textarea, a, [aria-haspopup="listbox"]')) {
+                                                                                e.preventDefault();
+                                                                                return;
+                                                                            }
                                                                             setDraggedLeadId(
                                                                                 lead.id,
                                                                             );
@@ -10094,7 +10132,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                         {/* Row 4: Location & Client Type Badges */}
                                                                         <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                                                                             <div className="flex items-center gap-0.5 text-[8.5px] font-bold text-slate-500">
-                                                                                <MapPin className="h-3 w-3 text-slate-450 shrink-0" />
+                                                                                <MapPin className="h-3 w-3 text-slate-400 shrink-0" />
                                                                                 <span>
                                                                                     {
                                                                                         lead.city
@@ -10391,9 +10429,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 </div>
             </div>
 
-            {(isModalOpen || isClosingModal) && (
+            {(isModalOpen || isClosingModal) &&
+                typeof document !== "undefined" &&
+                createPortal(
                 <div
-                    className={`fixed inset-0 z-[9999] flex items-end justify-center bg-slate-900/35 backdrop-blur-sm ${isClosingModal ? "animate-fade-out" : "animate-fade-in"}`}
+                    className={`fixed inset-0 z-[100000] flex items-end justify-center bg-slate-900/35 backdrop-blur-sm ${isClosingModal ? "animate-fade-out" : "animate-fade-in"}`}
                 >
                     {/* Click backdrop to close */}
                     <div
@@ -10402,7 +10442,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     />
 
                     <div
-                        className={`w-full max-w-2xl rounded-t-[32px] border-t border-x border-blue-100 shadow-2xl p-7 space-y-6 relative z-10 ${isClosingModal ? "animate-slide-out-bottom" : "animate-slide-in-bottom"}`}
+                        className={`w-full max-w-2xl max-h-[min(100vh,100dvh)] overflow-y-auto rounded-t-[32px] border-t border-x border-blue-100 shadow-2xl p-7 space-y-6 relative z-10 ${isClosingModal ? "animate-slide-out-bottom" : "animate-slide-in-bottom"}`}
                         style={{
                             background: "rgb(var(--card))",
                             backdropFilter: "none",
@@ -10467,7 +10507,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${
                                                 clientMode === "new"
                                                     ? "bg-white text-blue-600 shadow-sm font-black"
-                                                    : "text-slate-550 hover:text-slate-800 font-bold"
+                                                    : "text-slate-500 hover:text-slate-800 font-bold"
                                             }`}
                                         >
                                             {t(
@@ -10490,7 +10530,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${
                                                 clientMode === "existing"
                                                     ? "bg-white text-blue-600 shadow-sm font-black"
-                                                    : "text-slate-550 hover:text-slate-800 font-bold"
+                                                    : "text-slate-500 hover:text-slate-800 font-bold"
                                             }`}
                                         >
                                             {t(
@@ -10709,7 +10749,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="space-y-1">
-                                    <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider flex items-center gap-1.5">
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
                                         <Flag className="h-3.5 w-3.5 text-blue-500" />{" "}
                                         {t(
                                             "Lead State",
@@ -10752,7 +10792,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             {/* Category interest selection grid */}
                             <div className="space-y-2 border-t border-slate-100 pt-3">
                                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                                    <Tag className="h-4 w-4 text-blue-605" />{" "}
+                                    <Tag className="h-4 w-4 text-blue-600" />{" "}
                                     {t(
                                         "Interested Categories / Services",
                                         "Kategórie záujmu / Služby",
@@ -10768,8 +10808,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 key={cat}
                                                 className={`flex items-center gap-2 px-3 py-1.5 border rounded-xl cursor-pointer text-[9px] font-black uppercase transition-all select-none ${
                                                     isChecked
-                                                        ? "bg-blue-50 border-blue-300 text-blue-750 shadow-sm"
-                                                        : "bg-white border-slate-150 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                                                        ? "bg-blue-50 border-blue-300 text-blue-700 shadow-sm"
+                                                        : "bg-white border-slate-100 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
                                                 }`}
                                             >
                                                 <input
@@ -10793,7 +10833,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                             );
                                                         }
                                                     }}
-                                                    className="rounded border-slate-350 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5 shrink-0"
+                                                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5 shrink-0"
                                                 />
                                                 <span className="truncate">
                                                     {cat}
@@ -10857,7 +10897,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         "Lead prioritás értékelése",
                                     )}
                                 </label>
-                                <div className="flex items-center gap-1 bg-slate-50 p-2 rounded-xl border border-slate-150 w-fit">
+                                <div className="flex items-center gap-1 bg-slate-50 p-2 rounded-xl border border-slate-100 w-fit">
                                     {renderStars(
                                         newLeadRating,
                                         setNewLeadRating,
@@ -10887,13 +10927,16 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             </div>
                         </form>
                     </div>
-                </div>
+                </div>,
+                document.body,
             )}
 
             {/* --- CLIENT INSPECT SLIDEOUT RIGHT DRAWER (Per rules.md) --- */}
-            {(selectedClientName || isClosingClient) && (
+            {(selectedClientName || isClosingClient) &&
+                typeof document !== "undefined" &&
+                createPortal(
                 <div
-                    className={`fixed inset-0 z-[9999] flex justify-end bg-slate-900/35 backdrop-blur-sm ${isClosingClient ? "animate-fade-out" : "animate-fade-in"}`}
+                    className={`fixed inset-0 z-[100000] flex justify-end bg-slate-900/35 backdrop-blur-sm ${isClosingClient ? "animate-fade-out" : "animate-fade-in"}`}
                 >
                     <div className="flex-1" onClick={closeClientDrawer} />
 
@@ -10905,7 +10948,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         }}
                     >
                         {/* Header info */}
-                        <div className="flex items-center justify-between border-b border-slate-150 pb-4">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                             <div className="flex items-center gap-3">
                                 <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500/10 to-emerald-500/20 text-emerald-700 border border-emerald-200 flex items-center justify-center font-heading font-black text-sm">
                                     {getInitials(
@@ -10915,7 +10958,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     )}
                                 </div>
                                 <div className="flex flex-col">
-                                    <span className="text-[9px] text-emerald-650 font-extrabold uppercase tracking-wider">
+                                    <span className="text-[9px] text-emerald-600 font-extrabold uppercase tracking-wider">
                                         {t(
                                             "Active Client Profile",
                                             "Aktívny profil klienta",
@@ -10982,7 +11025,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     onChange={(e) =>
                                         setEditClientCity(e.target.value)
                                     }
-                                    className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-850 focus:outline-none focus:bg-white focus:border-emerald-500"
+                                    className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none focus:bg-white focus:border-emerald-500"
                                 />
                             </div>
 
@@ -11081,7 +11124,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     )}
                                 </label>
 
-                                <div className="space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-150">
+                                <div className="space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-100">
                                     {selectedClientName &&
                                         leads
                                             .filter(
@@ -11138,7 +11181,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         </form>
 
                         {/* Bottom Actions */}
-                        <div className="pt-4 border-t border-slate-150 flex gap-3">
+                        <div className="pt-4 border-t border-slate-100 flex gap-3">
                             <button
                                 type="button"
                                 onClick={closeClientDrawer}
@@ -11160,7 +11203,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body,
             )}
         </div>
     );

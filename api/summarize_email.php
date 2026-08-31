@@ -233,16 +233,19 @@ Output structure:
 
 Email Subject: " . $subject . "\n\nEmail Content:\n" . $plainTextBody;
 
+$emailModel = ccrm_ai_model();
 $payload = [
-    'model' => ccrm_ai_model(),
+    'model' => $emailModel,
     'messages' => [
         [
             'role' => 'user',
             'content' => $prompt
         ]
     ],
-    'temperature' => 0.3
 ];
+if (ccrm_ai_model_supports_temperature($emailModel)) {
+    $payload['temperature'] = 0.3;
+}
 
 // IMAP-fetched bodies frequently contain bytes that are not valid UTF-8 (e.g.
 // Slovak text in ISO-8859-2 / Windows-1250). json_encode() returns false on

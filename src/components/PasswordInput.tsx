@@ -30,7 +30,7 @@ export function PasswordInput({ className = "", wrapperClassName = "", ...props 
         tabIndex={-1}
         onClick={() => setShow((s) => !s)}
         aria-label={show ? label("Hide password", "Skryť heslo", "Jelszó elrejtése") : label("Show password", "Zobraziť heslo", "Jelszó megjelenítése")}
-        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-650 cursor-pointer p-1 transition-colors active:scale-90"
+        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer p-1 transition-colors active:scale-90"
       >
         {show ? <Minus className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
       </button>

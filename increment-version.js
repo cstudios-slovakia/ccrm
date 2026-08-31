@@ -1,55 +1,54 @@
 import fs from "fs";
 import path from "path";
 
+/**
+ * Bump the patch digit in src/utils/version.ts.
+ *
+ * Two things this deliberately does NOT do, because both used to bite:
+ *
+ *  1. It never rewrites the whole file. The old version emitted a single
+ *     `export const VERSION = "…"` line, which silently deleted the
+ *     `VERSION_CODENAME` export next to it — a named import RagAiView.tsx
+ *     relies on, so the next `tsc -b` failed on an unrelated file.
+ *  2. It never "resets" on a version it cannot parse. Releases carry a codename
+ *     suffix ("1.8.34-Imbe"), which the old numeric split could not read, so it
+ *     fell through to a fallback that overwrote a real version with "1.1.0".
+ *     An unparseable version is now a loud failure with a non-zero exit.
+ */
 const versionFilePath = path.join(process.cwd(), "src", "utils", "version.ts");
 
-// Versions carry a release codename: "1.9.0-Jackfruit". Two bugs used to bite here:
-//
-//  1. `"1.9.0-Jackfruit".split(".").map(Number)` yields [1, 9, NaN], so the
-//     isNaN guard sent every real version down the "fallback" branch and reset
-//     it to 1.1.0.
-//  2. The file was rewritten from scratch with only the VERSION line, silently
-//     dropping VERSION_CODENAME — which RagAiView imports at module scope, so
-//     the RAG assistant ended up named `undefined`.
-//
-// So: parse the codename out, bump only the patch digit, and patch the existing
-// file in place instead of overwriting it.
-const VERSION_RE = /VERSION\s*=\s*"([^"]+)"/;
+/** `1.8.34-Imbe` -> major/minor/patch plus the untouched `-Imbe` suffix. */
+const VERSION_RE = /(VERSION\s*=\s*")(\d+)\.(\d+)\.(\d+)(-[^"]*)?(")/;
 
-const DEFAULT_FILE = `export const VERSION = "1.1.0";
-export const VERSION_CODENAME = VERSION.split("-")[1] || "Release";
-`;
-
-try {
-  if (!fs.existsSync(versionFilePath)) {
-    fs.writeFileSync(versionFilePath, DEFAULT_FILE, "utf8");
-    console.log("Initialized version file to 1.1.0");
-    process.exit(0);
-  }
-
-  const fileContent = fs.readFileSync(versionFilePath, "utf8");
-  const match = fileContent.match(VERSION_RE);
-  const currentVersion = match?.[1] ?? "1.1.0";
-
-  // "1.9.0-Jackfruit" -> numeric "1.9.0" + suffix "-Jackfruit"
-  const dash = currentVersion.indexOf("-");
-  const numeric = dash === -1 ? currentVersion : currentVersion.slice(0, dash);
-  const suffix = dash === -1 ? "" : currentVersion.slice(dash);
-
-  const parts = numeric.split(".").map(Number);
-  if (parts.length !== 3 || parts.some(Number.isNaN)) {
-    console.error(`Unrecognised version "${currentVersion}" — leaving it untouched.`);
-    process.exit(1);
-  }
-
-  parts[2] += 1;
-  const nextVersion = `${parts.join(".")}${suffix}`;
-
-  // Replace just the VERSION literal so every other export in the file survives.
-  const updated = fileContent.replace(VERSION_RE, `VERSION = "${nextVersion}"`);
-  fs.writeFileSync(versionFilePath, updated, "utf8");
-  console.log(`Auto-incremented version: ${currentVersion} -> ${nextVersion}`);
-} catch (error) {
-  console.error("Failed to auto-increment version:", error);
+function fail(message) {
+  console.error(`Failed to auto-increment version: ${message}`);
   process.exit(1);
 }
+
+if (!fs.existsSync(versionFilePath)) {
+  fail(`${versionFilePath} does not exist — refusing to create one from scratch.`);
+}
+
+const fileContent = fs.readFileSync(versionFilePath, "utf8");
+const match = fileContent.match(VERSION_RE);
+
+if (!match) {
+  const found = fileContent.match(/VERSION\s*=\s*"([^"]*)"/);
+  fail(
+    found
+      ? `cannot parse version "${found[1]}" (expected major.minor.patch with an optional -Codename suffix).`
+      : "no `export const VERSION = \"…\"` found in the file.",
+  );
+}
+
+const [, prefix, major, minor, patch, suffix = "", quote] = match;
+const currentVersion = `${major}.${minor}.${patch}${suffix}`;
+const nextVersion = `${major}.${minor}.${Number(patch) + 1}${suffix}`;
+
+// Replace only the version literal; every other line survives verbatim.
+fs.writeFileSync(
+  versionFilePath,
+  fileContent.replace(VERSION_RE, `${prefix}${nextVersion}${quote}`),
+  "utf8",
+);
+console.log(`Auto-incremented version: ${currentVersion} -> ${nextVersion}`);

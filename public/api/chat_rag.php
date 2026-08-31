@@ -1097,11 +1097,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'Content-Type: application/json',
         'Authorization: Bearer ' . $openAiKey
     ]);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
-        'model' => ccrm_ai_model(),
+    $chatModel = ccrm_ai_model();
+    $chatPayload = [
+        'model' => $chatModel,
         'messages' => $payloadMessages,
-        'temperature' => 0.4
-    ], JSON_INVALID_UTF8_SUBSTITUTE));
+    ];
+    if (ccrm_ai_model_supports_temperature($chatModel)) {
+        $chatPayload['temperature'] = 0.4;
+    }
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($chatPayload, JSON_INVALID_UTF8_SUBSTITUTE));
 
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);

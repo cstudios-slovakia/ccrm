@@ -142,7 +142,7 @@ export const LicenseSettings: React.FC<LicenseSettingsProps> = ({
         {configured && state && (
           <>
             {/* What the licence says */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-5 p-5 rounded-2xl bg-slate-50/70 border border-slate-150">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-5 p-5 rounded-2xl bg-slate-50/70 border border-slate-100">
               {state.keyMasked && (
                 <Field label={t("license.key_installed")}>
                   <code className="font-mono text-[11px] tracking-wider">{state.keyMasked}</code>

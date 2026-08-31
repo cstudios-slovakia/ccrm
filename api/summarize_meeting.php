@@ -88,16 +88,19 @@ Output structure:
 Meeting Notes:
 " . $notesText;
 
+$meetingModel = ccrm_ai_model();
 $payload = [
-    'model' => ccrm_ai_model(),
+    'model' => $meetingModel,
     'messages' => [
         [
             'role' => 'user',
             'content' => $prompt
         ]
     ],
-    'temperature' => 0.3
 ];
+if (ccrm_ai_model_supports_temperature($meetingModel)) {
+    $payload['temperature'] = 0.3;
+}
 
 curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload, JSON_INVALID_UTF8_SUBSTITUTE));
 $response = curl_exec($ch);

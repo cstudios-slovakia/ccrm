@@ -106,6 +106,8 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({
                     if (best) localizedList.push(best);
                 });
 
+                // The CMS is the only source of release notes, so an entry that is
+                // not published there must never show up in the app.
                 const sortedUpdates = [...localizedList].sort(
                     (a, b) =>
                         new Date(b.postDate).getTime() -
@@ -163,11 +165,12 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({
                     )}
                 </h3>
                 <p className="text-xs text-slate-400 mt-2">
-                    {t(
-                        "Check back later for new releases.",
-                        "Neskôr sa vráťte a skontrolujte nové verzie.",
-                        "Nézzen vissza később az új verziókért.",
-                    )}
+                    {error ||
+                        t(
+                            "Check back later for new releases.",
+                            "Neskôr sa vráťte a skontrolujte nové verzie.",
+                            "Nézzen vissza később az új verziókért.",
+                        )}
                 </p>
             </div>
         );
@@ -285,7 +288,7 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({
                                         {activeUpdate.title}
                                     </h2>
                                 </div>
-                                <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-455 mt-2 select-none">
+                                <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-400 mt-2 select-none">
                                     <Calendar className="h-3.5 w-3.5" />
                                     <span>
                                         {new Date(

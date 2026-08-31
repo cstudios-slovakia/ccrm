@@ -859,9 +859,19 @@ HTACCESS;
      * INTEGRATIONS_CONFIG, falling back to a sane default. Centralised so the
      * default is not scattered as a literal across every AI endpoint.
      */
-    function ccrm_ai_model(array $config = [], string $default = 'gpt-4o-mini'): string {
+    function ccrm_ai_model(array $config = [], string $default = 'gpt-5.6-luna'): string {
         $m = $config['aiModel'] ?? ($config['openAiModel'] ?? '');
         return (is_string($m) && $m !== '') ? $m : $default;
+    }
+
+    /**
+     * OpenAI's reasoning-model families (o1/o3/o4/gpt-5*) reject any
+     * 'temperature' value other than the default (1) — sending 0.2/0.3/0.4
+     * fails with "Unsupported value: 'temperature' does not support X".
+     * Only include the param for models that actually accept it.
+     */
+    function ccrm_ai_model_supports_temperature(string $model): bool {
+        return !preg_match('/^(o[1-9]|gpt-5)/i', trim($model));
     }
 
     /**

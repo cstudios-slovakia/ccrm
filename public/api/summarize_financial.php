@@ -8,11 +8,21 @@ require_once __DIR__ . '/auth.php';
 header('Content-Type: application/json');
 ccrm_send_cors('POST, OPTIONS');
 
+/**
+ * Every failure exit carries a stable machine-readable `code` next to the
+ * English `message`, so the browser can translate the real reason instead of
+ * falling back to a single generic toast. See translateAiApiError in
+ * src/utils/aiConfig.ts for the client half.
+ */
+function summary_error(int $status, string $code, string $message, array $extra = []): void {
+    http_response_code($status);
+    echo json_encode(array_merge(['success' => false, 'code' => $code, 'message' => $message], $extra));
+    exit;
+}
+
 if (php_sapi_name() !== 'cli') {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-        http_response_code(405);
-        echo json_encode(['success' => false, 'message' => 'Method Not Allowed']);
-        exit;
+        summary_error(405, 'method_not_allowed', 'Method Not Allowed');
     }
     // SECURITY: Authenticated users only
     ccrm_require_auth();
@@ -20,9 +30,7 @@ if (php_sapi_name() !== 'cli') {
 
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
-    http_response_code(503);
-    echo json_encode(['success' => false, 'installed' => false, 'message' => 'CRM is not installed yet.']);
-    exit;
+    summary_error(503, 'not_installed', 'CRM is not installed yet.', ['installed' => false]);
 }
 require_once $configFile;
 
@@ -30,9 +38,7 @@ $input = file_get_contents('php://input');
 $data = json_decode($input, true);
 
 if (!$data || empty($data['statementId'])) {
-    http_response_code(400);
-    echo json_encode(['success' => false, 'message' => 'Missing statementId parameter']);
-    exit;
+    summary_error(400, 'missing_statement_id', 'Missing statementId parameter');
 }
 
 $statementId = trim($data['statementId']);
@@ -41,26 +47,15 @@ $systemLanguage = $data['systemLanguage'] ?? 'en';
 try {
     $pdo = get_db_connection();
 } catch (\Exception $e) {
-    http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Database connection failed.']);
-    exit;
+    summary_error(500, 'db_error', 'Database connection failed.');
 }
 
 // Fetch integrations config to get OpenAI API key
-$stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'INTEGRATIONS_CONFIG'");
-$stmt->execute();
-$configJson = $stmt->fetchColumn();
-$integrationsConfig = $configJson ? json_decode($configJson, true) : [];
-$integrationsConfig = is_array($integrationsConfig) ? ccrm_decrypt_config_secrets($integrationsConfig, ccrm_integration_secret_keys()) : [];
-$openAiKey = $integrationsConfig['openAiKey'] ?? '';
+$integrationsConfig = ccrm_load_integrations_config($pdo);
+$openAiKey = trim((string)($integrationsConfig['openAiKey'] ?? ''));
 
-if (empty($openAiKey)) {
-    http_response_code(400);
-    echo json_encode([
-        'success' => false,
-        'message' => 'OpenAI API Key is not configured. Please configure it in Settings.'
-    ]);
-    exit;
+if ($openAiKey === '') {
+    summary_error(400, 'ai_key_missing', 'OpenAI API Key is not configured. Please configure it in Settings.');
 }
 
 // Helper function to fetch registeruz URLs
@@ -94,16 +89,12 @@ $statementUrl = "https://www.registeruz.sk/cruz-public/api/uctovna-zavierka?id="
 $statementMeta = fetch_registry_url($statementUrl);
 
 if (!$statementMeta) {
-    http_response_code(502);
-    echo json_encode(['success' => false, 'message' => 'Failed to retrieve statement metadata from RegisterUZ']);
-    exit;
+    summary_error(502, 'registry_unavailable', 'Failed to retrieve statement metadata from RegisterUZ');
 }
 
 $reportIds = $statementMeta['idUctovnychVykazov'] ?? [];
 if (empty($reportIds)) {
-    http_response_code(404);
-    echo json_encode(['success' => false, 'message' => 'No reports found for this financial statement']);
-    exit;
+    summary_error(404, 'no_statements', 'No reports found for this financial statement');
 }
 
 // 2. Fetch and compile report contents
@@ -175,16 +166,19 @@ curl_setopt($ch, CURLOPT_HTTPHEADER, [
     'Authorization: Bearer ' . $openAiKey
 ]);
 
+$financialModel = ccrm_ai_model();
 $payload = [
-    'model' => ccrm_ai_model(),
+    'model' => $financialModel,
     'messages' => [
         [
             'role' => 'user',
             'content' => $prompt
         ]
     ],
-    'temperature' => 0.3
 ];
+if (ccrm_ai_model_supports_temperature($financialModel)) {
+    $payload['temperature'] = 0.3;
+}
 
 curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload, JSON_INVALID_UTF8_SUBSTITUTE));
 $response = curl_exec($ch);
@@ -195,18 +189,18 @@ curl_close($ch);
 if ($httpCode !== 200 || !$response) {
     $errData = json_decode($response, true);
     $errMsg = $errData['error']['message'] ?? (!empty($curlErr) ? $curlErr : 'OpenAI API request failed');
-    http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'OpenAI Error: ' . $errMsg]);
-    exit;
+    // 401/403 means the stored key exists but OpenAI rejected it — a different
+    // problem from "no key at all", and one the user fixes in the same place.
+    $code = ($httpCode === 401 || $httpCode === 403) ? 'ai_key_invalid'
+          : (($httpCode === 429) ? 'ai_rate_limited' : 'ai_error');
+    summary_error(502, $code, 'OpenAI Error: ' . $errMsg, ['providerMessage' => $errMsg]);
 }
 
 $resData = json_decode($response, true);
 $aiReply = trim($resData['choices'][0]['message']['content'] ?? '');
 
 if (empty($aiReply)) {
-    http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Empty response from OpenAI']);
-    exit;
+    summary_error(502, 'ai_empty', 'Empty response from OpenAI');
 }
 
 echo json_encode([

@@ -1143,7 +1143,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                           className={cn(
                             "p-4 rounded-2xl border-2 text-left transition-all",
                             opt.disabled
-                              ? "border-slate-150 bg-slate-50 opacity-60 cursor-not-allowed"
+                              ? "border-slate-100 bg-slate-50 opacity-60 cursor-not-allowed"
                               : "cursor-pointer hover:scale-[1.01] active:scale-[0.99]",
                             !opt.disabled && draftMode === opt.mode
                               ? "border-indigo-500 bg-indigo-50/60 shadow-sm"

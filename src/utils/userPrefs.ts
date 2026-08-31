@@ -53,6 +53,12 @@ export interface UserPrefs {
    * also silence "expired", and a renewed key brings the notice back.
    */
   licenseNoticeSuppressed: string | null;
+  /**
+   * "Don't show again" on the banner that warns an AI section is unusable
+   * because no OpenAI key is configured. Per user, not per browser: someone who
+   * cannot administer the key should not be nagged on every device.
+   */
+  aiKeyBannerDismissed: boolean;
   /** Customised built-in RAG agent, or null while it is still the stock one. */
   ragDefaultAgent: any | null;
 }
@@ -67,6 +73,7 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   leadsVisibleStates: null,
   seenUpdateId: null,
   licenseNoticeSuppressed: null,
+  aiKeyBannerDismissed: false,
   ragDefaultAgent: null,
 };
 

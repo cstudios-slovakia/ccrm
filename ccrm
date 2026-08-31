@@ -233,6 +233,13 @@ function ccrm_update() {
         echo "Licence check skipped (CCRM is not installed here yet).\n";
     }
 
+    // Snapshot the version we're on before pulling, so the final summary can
+    // report what changed. Read from source rather than requiring/building it
+    // (there is no build step on the server).
+    $versionFile = __DIR__ . '/src/utils/version.ts';
+    $oldVersion = ccrm_read_version($versionFile);
+
+
     // 1. Check for local modifications blocking git pull
     echo "Checking git status...\n";
     exec("git diff --name-only", $dirtyFiles);
@@ -253,9 +260,31 @@ function ccrm_update() {
     //    always authoritative. Line-ending normalization or a stale FTP/rsync
     //    upload over the checkout can leave these hashed assets "modified"; that
     //    is noise, not a real change worth blocking a deploy over.
+    //  - every root file that also exists under public/ (api/*.php, sync.php,
+    //    upload.php, sw.js, manifest.json, icons, .htaccess, ...): the repo root
+    //    IS the docroot, and step 4 below publishes public/ -> dist/ -> root on
+    //    every run. The root copy is therefore publish OUTPUT, not input — its
+    //    git content is irrelevant because publish overwrites it moments later.
+    //    If a commit ever edits public/api/x.php without mirroring it to
+    //    api/x.php, the publish leaves the root copy permanently "modified" and
+    //    every subsequent update would refuse to run, with nothing on the server
+    //    to blame (this blocked deploys after v1.8.28/v1.8.30 for
+    //    api/agent_utils.php). Discarding is the correct resolution: git — and
+    //    specifically public/ — always wins. `npm run build` now runs
+    //    scripts/sync-backend.mjs so the two copies cannot drift in a commit;
+    //    this branch is the belt to that braces, and the drift warning after the
+    //    pull below reports it if it ever happens again.
     $isAutoRestore = function ($file) {
         static $exact = ['index.html', 'vendor/composer/installed.php'];
-        return in_array($file, $exact, true) || strpos($file, 'dist/') === 0;
+        if (in_array($file, $exact, true) || strpos($file, 'dist/') === 0) {
+            return true;
+        }
+        // Publish output: a root path with a public/ counterpart. Files under
+        // public/ itself are NOT publish output (nothing writes to public/), so
+        // a dirty public/... must still stop the update.
+        return strpos($file, 'public/') !== 0
+            && $file !== ''
+            && file_exists(__DIR__ . '/public/' . $file);
     };
     $toRestore = array_filter($dirty, $isAutoRestore);
     if (!empty($toRestore)) {
@@ -296,6 +325,14 @@ function ccrm_update() {
         echo "Error: git pull failed.\n";
         exit(1);
     }
+
+    // 2b. Report (but do not block on) backend copies that drifted apart in the
+    //     COMMIT itself — i.e. public/api/x.php and api/x.php holding different
+    //     code in git. Publish resolves it in public/'s favour, so the deploy is
+    //     still correct and consistent; it just means the repo is lying about
+    //     what the root copy contains, and someone should run
+    //     `npm run sync:backend` on the build machine and commit the result.
+    ccrm_report_backend_drift();
 
     // 3. Run composer install
     echo "Running composer install to update dependencies...\n";
@@ -371,7 +408,95 @@ function ccrm_update() {
         echo "Tip: set CCRM_HEALTHCHECK_URL to enable an automatic post-deploy health check.\n";
     }
 
-    echo "\nSuccess! CCRM updated successfully to the latest version.\n";
+    $newVersion = ccrm_read_version($versionFile);
+    if ($newVersion !== null && $oldVersion !== null && $oldVersion !== $newVersion) {
+        $from = ccrm_color($oldVersion, '33'); // yellow: what we came from
+        $to = ccrm_color($newVersion, '32');   // green: what we landed on
+        echo "\n" . ccrm_color('Success!', '32') . " CCRM updated from version $from to the latest $to.\n";
+    } elseif ($newVersion !== null) {
+        echo "\n" . ccrm_color('Success!', '32') . " CCRM updated successfully. Already on the latest version (" . ccrm_color($newVersion, '32') . ").\n";
+    } else {
+        echo "\n" . ccrm_color('Success!', '32') . " CCRM updated successfully to the latest version.\n";
+    }
+}
+
+// The backend PHP is committed twice: once under public/ (the source Vite
+// copies into dist/) and once in the repo root (the docroot the server actually
+// serves, refreshed from dist/ by the publish step). A commit that touches only
+// one of the two makes the deployed code and the repo-root code disagree, so
+// warn about it here — loudly, but without failing the deploy: publish already
+// resolved it in public/'s favour, which is the correct code.
+function ccrm_report_backend_drift() {
+    $lines = [];
+    exec("git ls-tree -r HEAD", $lines, $status);
+    if ($status !== 0 || empty($lines)) {
+        return;
+    }
+
+    $blobs = [];
+    foreach ($lines as $line) {
+        // "<mode> <type> <object>\t<path>"
+        $parts = explode("\t", $line, 2);
+        if (count($parts) !== 2) {
+            continue;
+        }
+        $meta = preg_split('/\s+/', trim($parts[0]));
+        if (count($meta) < 3) {
+            continue;
+        }
+        $blobs[$parts[1]] = $meta[2];
+    }
+
+    // Mirrored by scripts/sync-backend.mjs -- keep the exclusions in step with it.
+    $skip = ['index.html', 'assets/', 'update-screenshots/', 'config.php'];
+    $drift = [];
+    foreach ($blobs as $path => $hash) {
+        if (strpos($path, 'public/') !== 0) {
+            continue;
+        }
+        $rel = substr($path, strlen('public/'));
+        foreach ($skip as $prefix) {
+            if ($rel === $prefix || strpos($rel, $prefix) === 0) {
+                continue 2;
+            }
+        }
+        if (isset($blobs[$rel]) && $blobs[$rel] !== $hash) {
+            $drift[] = $rel;
+        }
+    }
+
+    if (empty($drift)) {
+        return;
+    }
+
+    echo ccrm_color('Warning:', '33') . " committed backend copies disagree between public/ and the repo root:\n";
+    foreach ($drift as $file) {
+        echo "  - $file (serving public/$file)\n";
+    }
+    echo "The deploy is fine -- publish always uses public/ -- but the repo-root copy is stale.\n";
+    echo "On the build machine run `npm run sync:backend` and commit the result.\n";
+}
+
+function ccrm_read_version($file) {
+    if (!file_exists($file)) {
+        return null;
+    }
+    $contents = file_get_contents($file);
+    if ($contents !== false && preg_match('/VERSION\s*=\s*"([^"]+)"/', $contents, $m)) {
+        return $m[1];
+    }
+    return null;
+}
+
+// Wraps text in an ANSI color code, but only when output is a real terminal
+// (a TTY) that's likely to render it -- avoids dumping escape codes into log
+// files or CI output when stdout is redirected.
+function ccrm_color($text, $code) {
+    $isTty = function_exists('posix_isatty') && defined('STDOUT') && posix_isatty(STDOUT);
+    if (!$isTty) {
+        return $text;
+    }
+    return "\033[{$code}m{$text}\033[0m";
 }
 
 function ccrm_migrate() {
