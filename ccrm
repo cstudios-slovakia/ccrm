@@ -45,6 +45,12 @@ function ccrm_update() {
     }
     echo "Deploy branch: $branch\n";
 
+    // Snapshot the version we're on before pulling, so the final summary can
+    // report what changed. Read from source rather than requiring/building it
+    // (there is no build step on the server).
+    $versionFile = __DIR__ . '/src/utils/version.ts';
+    $oldVersion = ccrm_read_version($versionFile);
+
     // 1. Check for local modifications blocking git pull
     echo "Checking git status...\n";
     exec("git diff --name-only", $dirtyFiles);
@@ -183,7 +189,38 @@ function ccrm_update() {
         echo "Tip: set CCRM_HEALTHCHECK_URL to enable an automatic post-deploy health check.\n";
     }
 
-    echo "\nSuccess! CCRM updated successfully to the latest version.\n";
+    $newVersion = ccrm_read_version($versionFile);
+    if ($newVersion !== null && $oldVersion !== null && $oldVersion !== $newVersion) {
+        $from = ccrm_color($oldVersion, '33'); // yellow: what we came from
+        $to = ccrm_color($newVersion, '32');   // green: what we landed on
+        echo "\n" . ccrm_color('Success!', '32') . " CCRM updated from version $from to the latest $to.\n";
+    } elseif ($newVersion !== null) {
+        echo "\n" . ccrm_color('Success!', '32') . " CCRM updated successfully. Already on the latest version (" . ccrm_color($newVersion, '32') . ").\n";
+    } else {
+        echo "\n" . ccrm_color('Success!', '32') . " CCRM updated successfully to the latest version.\n";
+    }
+}
+
+function ccrm_read_version($file) {
+    if (!file_exists($file)) {
+        return null;
+    }
+    $contents = file_get_contents($file);
+    if ($contents !== false && preg_match('/VERSION\s*=\s*"([^"]+)"/', $contents, $m)) {
+        return $m[1];
+    }
+    return null;
+}
+
+// Wraps text in an ANSI color code, but only when output is a real terminal
+// (a TTY) that's likely to render it -- avoids dumping escape codes into log
+// files or CI output when stdout is redirected.
+function ccrm_color($text, $code) {
+    $isTty = function_exists('posix_isatty') && defined('STDOUT') && posix_isatty(STDOUT);
+    if (!$isTty) {
+        return $text;
+    }
+    return "\033[{$code}m{$text}\033[0m";
 }
 
 function ccrm_migrate() {
