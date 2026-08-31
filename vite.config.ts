@@ -13,6 +13,13 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     base: "./",
     server: {
+      // CCRM_DEV_PORT pins this checkout to one fixed port so multiple worktrees
+      // (e.g. two branches checked out side by side) never drift onto each other's
+      // port when one dev server restarts. strictPort makes vite fail loudly on a
+      // clash instead of silently falling back to another port, which is what made
+      // two browser tabs quietly end up pointing at the same server before.
+      port: Number(env.CCRM_DEV_PORT) || 5173,
+      strictPort: true,
       // Dev-only: `npm run dev` serves the React app with HMR (instant reload on
       // save), but has no PHP/MySQL behind it. Forward the backend endpoints to the
       // Docker container (docker compose up -d, published on :8085 by default) so
