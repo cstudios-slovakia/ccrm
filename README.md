@@ -118,6 +118,11 @@ Checks the licence, pulls `origin/main`, runs `composer install`, publishes
 `dist/` over the docroot, and runs DB migrations — see the `ccrm` script at the
 repo root.
 
+This is the only update path today, and it needs an SSH session on the host.
+A design for updating from a button in the UI (and on a schedule) — feasibility,
+risks and a staged implementation plan — is written up in
+[`docs/in-app-updates.md`](docs/in-app-updates.md). **Not implemented yet.**
+
 ### Licensing
 
 An installation needs a valid licence key **to receive updates**. That is the

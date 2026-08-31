@@ -156,6 +156,12 @@ Effort: S (small, <1h) · M (medium) · L (large / architectural)
 
 ## 4. Build / deploy / hygiene — remaining
 
+- [ ] 🟠 **In-app updates (button + auto-update).** `php ccrm update` needs an SSH
+  session, but the app runs on several shared hostings where a panel-issued SSH
+  credential lasts about an hour — so a customer cannot update at all and we
+  cannot ship a fix without asking for fresh credentials first. Design,
+  feasibility and a five-stage plan: [`docs/in-app-updates.md`](docs/in-app-updates.md).
+  Working button after stage 3. (L — ~4-5 days total)
 - [ ] 🟠 **Restore the Vite source entry.** *Verified OK on `dev` as of `7161672`:*
   repo-root `index.html` points at `/src/main.tsx` and `vite build` transformed
   1,812 modules (real source compile, not a re-bundle of output). Keep it this way;
