@@ -5,6 +5,48 @@ import type { UpdateEntry } from "../components/UpdateNotesModal";
 // When the same version is later published in the CMS, the CMS entry wins.
 export const bundledUpdateNotes: UpdateEntry[] = [
   {
+    id: "bundled-1-8-43",
+    version: "1.8.43",
+    title: "AI dashboardy a spoľahlivejší asistent",
+    siteHandle: "default",
+    postDate: "2026-08-28",
+    contentMatrix: [
+      {
+        __typename: "textblock_Entry",
+        text: {
+          html: `<p><strong>CCRM 1.8.43</strong> uzatvára ďalšiu sériu vylepšení verzie Imbe. Hlavnou témou sú vlastné AI dashboard panely a spoľahlivejší AI asistent; zoznam nižšie zahŕňa iba zmeny, ktoré používateľ vidí alebo ktorých opravu priamo pocíti pri práci.</p>
+<h2>1. Vlastné AI dashboard panely</h2>
+<p>Panely, ktoré si AI asistent sám navrhne na nástenke, dostali plnú funkčnosť aj jednotný vzhľad.</p>
+<ul>
+  <li><strong>Skutočné widgety namiesto zástupných:</strong> Panel teraz vykresľuje všetky typy, ktoré AI vie navrhnúť – ukazovateľ (gauge), KPI číslo, graf aj zoznam – namiesto toho, aby niektoré typy zostali nefunkčné.</li>
+  <li><strong>Dostupné vo všetkých jazykoch aplikácie:</strong> Vlastné AI panely fungujú aj v anglickom a maďarskom rozhraní, nielen v slovenskom.</li>
+  <li><strong>Staré panely sa preložia automaticky:</strong> Panely vytvorené pred touto zmenou sa pri otvorení preložia samé, bez nutnosti ručne stláčať tlačidlo.</li>
+  <li><strong>Jednotný vzhľad a vrátený graf:</strong> Hlavička a šírka vlastných panelov zodpovedá ostatným dashboardom, medzery okolo prepínača AI modelu sú opravené a grafové widgety (Chart.js) opäť fungujú.</li>
+  <li><strong>Chyba sa ukáže hneď:</strong> Ak sa dáta pre panel nepodarí načítať, panel to oznámi namiesto toho, aby zostal navždy vo faze načítavania ("...").</li>
+</ul>
+<h2>2. Spoľahlivejší AI asistent</h2>
+<ul>
+  <li><strong>Zrozumiteľný dôvod zlyhania:</strong> Ak AI funkcia zlyhá – chýbajúci alebo neplatný kľúč, vyčerpaný limit, chýbajúce dáta – aplikácia povie prečo namiesto jednej všeobecnej hlášky, a pri probléme s kľúčom ponúkne priamy odkaz do Nastavení.</li>
+  <li><strong>Uložený kľúč už nevyzerá poškodený:</strong> Uložené API kľúče a heslá sa zobrazujú ako jasný stav "Uložené a zašifrované" namiesto radu bodiek či hviezdičiek, ktoré pôsobili ako chyba.</li>
+  <li><strong>Opravené modely gpt-5 a o-sériu:</strong> AI požiadavky na tieto modely už neposielajú nepodporovaný parameter teploty, ktorý spôsoboval zlyhanie odpovede.</li>
+</ul>
+<h2>3. Múdrejšia databáza poznatkov (RAG)</h2>
+<ul>
+  <li><strong>Termíny a expirácie:</strong> Asistent vie odpovedať na otázky o blížiacich sa aj presiahnutých termínoch, splatnostiach a exspiráciách naprieč úlohami a evidenciami.</li>
+  <li><strong>Finančný prehľad:</strong> Asistent vie na požiadanie zhrnúť príjmy, výdavky, cashflow a nezaplatené faktúry z modulu Financie.</li>
+  <li><strong>Presnejšie vyhľadávanie v zázname:</strong> Odpovede lepšie rozpoznávajú, na ktorý konkrétny záznam alebo evidenciu sa otázka vzťahuje.</li>
+</ul>
+<h2>4. Vyhľadávanie a opravy rozhrania</h2>
+<ul>
+  <li><strong>Úplnejšie vyhľadávanie klientov a leadov:</strong> Pri výbere klienta alebo leadu (napríklad v priečinku alebo zázname) sa už ponúkajú všetky zodpovedajúce záznamy bez ohľadu na ich stav.</li>
+  <li><strong>Rozbaľovacie menu a formuláre v bočných paneloch:</strong> Výberové polia sa už neschovávajú pod iné prvky a formuláre na vytvorenie úlohy či leadu zostávajú použiteľné aj v bočnom paneli.</li>
+  <li><strong>Opravené neviditeľné orámovania a text:</strong> Niekoľko jemných orámovaní a textových prvkov naprieč aplikáciou používalo neplatný odtieň farby, takže sa vôbec nezobrazovali; teraz sú viditeľné tak, ako boli navrhnuté.</li>
+</ul>`,
+        },
+      },
+    ],
+  },
+  {
     id: "bundled-1-7-90",
     version: "1.7.90",
     title: "Najnovšie vylepšenia",
