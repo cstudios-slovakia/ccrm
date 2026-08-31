@@ -794,7 +794,12 @@ ${log.payload || ''}
       }
     }
 
-    document.title = `${viewName} | ${systemName}`;
+    // Dev-only version suffix so worktrees running side by side on different
+    // vite ports are distinguishable by tab title; import.meta.env.DEV is
+    // false in a production build, so this never reaches deployed instances.
+    document.title = import.meta.env.DEV
+      ? `${viewName} | ${systemName} — ${VERSION}`
+      : `${viewName} | ${systemName}`;
   }, [activeTab, systemName, userLanguage, leads, customDashboards, unifiedEntries]);
   const taskAccess = (() => {
     if (!currentUser) {
