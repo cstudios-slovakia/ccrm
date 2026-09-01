@@ -93,7 +93,11 @@ const SUITE_KIND_MARKER = path.resolve('test-results', 'qa-suite-kind.txt');
  * would leak the previous run's kind.
  */
 export function inferSuiteKindFromArgv(argv: string[] = process.argv.slice(2)): SuiteKind {
-  if (argv.some((a) => a === '--grep' || a === '-g')) return 'partial';
+  /* Both spellings: playwright accepts `--grep pattern` and `--grep=pattern`,
+     and `scripts/qa/run-qa.mjs` passes the second. Matching only the separate
+     form let a scoped run label itself `full` and overwrite the last full
+     report — the one file that is supposed to survive a partial re-run. */
+  if (argv.some((a) => a === '-g' || a === '--grep' || /^--grep(-invert)?=/.test(a))) return 'partial';
   if (argv.some((a) => /\.spec\.[cm]?[tj]s$/.test(a))) return 'partial';
   return 'full';
 }
