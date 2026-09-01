@@ -20,6 +20,21 @@ export default defineConfig(({ mode }) => {
       // two browser tabs quietly end up pointing at the same server before.
       port: Number(env.CCRM_DEV_PORT) || 5173,
       strictPort: true,
+      watch: {
+        // Generated output, none of which the dev server should ever reload for.
+        // `test-results/` matters most: the QA audit writes screenshots, traces
+        // and reports into the project root while a dev server is running, and
+        // in this checkout the suite reuses the very server you develop against
+        // (`reuseExistingServer`), so every artefact it saved was waking that
+        // server's watcher for nothing.
+        ignored: [
+          '**/dist/**',
+          '**/test-results/**',
+          '**/playwright-report/**',
+          '**/uploads/**',
+          '**/vendor/**',
+        ],
+      },
       // Dev-only: `npm run dev` serves the React app with HMR (instant reload on
       // save), but has no PHP/MySQL behind it. Forward the backend endpoints to the
       // Docker container (docker compose up -d, published on :8085 by default) so
