@@ -25,9 +25,16 @@ export default defineConfig({
   expect: { timeout: 5000 },
 
   /* Each test gets its own browser context with its own mocked backend, so
-     modules are safe to audit concurrently. */
+     modules are safe to audit concurrently.
+
+     One worker is one Chromium instance, and each of those is a handful of
+     `chrome-headless-shell` processes. Three of them measured 63% of a 12-core
+     machine and made the desktop unusable, which is the whole reason this
+     default came down to two. `scripts/qa/run-qa.mjs` derives a worker count
+     from the machine's core count and passes it explicitly; this value is what
+     a bare `npx playwright test` gets. */
   fullyParallel: true,
-  workers: Number(process.env.QA_WORKERS ?? (process.env.CI ? 2 : 3)),
+  workers: Number(process.env.QA_WORKERS ?? 2),
 
   forbidOnly: !!process.env.CI,
   retries: Number(process.env.QA_RETRIES ?? 0),
@@ -42,7 +49,13 @@ export default defineConfig({
     baseURL: process.env.BASE_URL || 'http://localhost:5173',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    /* `retain-on-failure` reads as "only on failure", but playwright has to
+       record every test to be able to keep the ones that fail: it ran an
+       `ffmpeg` per worker throughout, ~7% of a 12-core machine, to encode video
+       that passing tests then deleted. Traces and failure screenshots already
+       show what a defect looked like, so video is opt-in for the rare case
+       where watching the sequence is the only way to understand a flake. */
+    video: process.env.QA_VIDEO === '1' ? 'retain-on-failure' : 'off',
     /* Wide enough for the desktop shell: the sidebar is `hidden lg:flex`, so a
        narrower viewport would hide the navigation the suite needs to click. */
     viewport: { width: 1440, height: 900 },
