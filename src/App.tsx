@@ -1672,6 +1672,15 @@ ${log.payload || ''}
   // outside the SPA (cron agents, AI summaries) that don't bump the version
   // still surface within a minute.
   useEffect(() => {
+    // Nothing to poll for until the app is installed, and polling through an
+    // install is actively harmful: `setup.php` writes config.php as part of a
+    // successful run, so the very next tick sees `installed: true` and one of
+    // the branches below flips `isInstalled` back on. That unmounts the wizard
+    // mid-flow — and on a fresh install step 3 is the only place the generated
+    // admin password is ever shown, so it is lost before it can be read. The
+    // wizard reloads the page itself once the user leaves step 3.
+    if (!isInstalled) return;
+
     let lastDataVersion: string | null = null;
     let tick = 0;
 
