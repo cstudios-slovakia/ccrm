@@ -1,4 +1,4 @@
-export const VERSION = "1.9.7-Jackfruit";
+export const VERSION = "1.9.8-Jackfruit";
 // Release codename ("Jackfruit"), used to name the RAG assistant. Kept as its own
 // export because RagAiView reads it at module scope — dropping it silently named
 // the assistant `undefined`.
