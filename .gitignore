@@ -44,6 +44,8 @@ docker-compose.override.yml
 
 # Local scratch / personal to-do notes (not part of the app)
 chyby na opravu.txt
+design-system
+CRM Application Design System.zip
 
 # Secrets / runtime-generated files — never commit real credentials.
 config.php

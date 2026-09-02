@@ -119,10 +119,11 @@ export const LicenseBanner: React.FC<LicenseBannerProps> = ({
           <p className={`text-sm font-heading font-black tracking-tight ${palette.title}`}>
             {headline}
           </p>
-          <p className={`text-xs font-semibold leading-relaxed ${palette.body}`}>
-            {t("license.banner.reassurance")}
-            {!isAdmin && ` ${t("license.banner.admin_only")}`}
-          </p>
+          {!isAdmin && (
+            <p className={`text-xs font-semibold leading-relaxed ${palette.body}`}>
+              {t("license.banner.admin_only")}
+            </p>
+          )}
         </div>
 
         <div className="flex items-center gap-2 shrink-0 flex-wrap">
