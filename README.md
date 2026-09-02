@@ -138,6 +138,28 @@ The database DDL lives in a single source of truth: `public/api/schema.php`,
 copied into `dist/api/schema.php` by `npm run build` (the PHP API and
 `.htaccess` live in `public/` and are copied into `dist/` on build).
 
+## Testing and QA
+
+Two layers, neither of which runs automatically — there is no CI, so running
+them is part of finishing a change:
+
+```bash
+npm run test:qa:setup   # once per machine — downloads the Chromium build
+npm run test:unit       # unit tests over src/**/*.test.ts (seconds, no browser)
+npm run test:qa         # browser QA audit, scoped to what you changed
+npm run test:qa:full    # the whole audit — before a release or a deploy
+```
+
+`npm run test:qa` drives the real app in a real browser and reports every
+action whose actual result differed from the expected one, with a screenshot
+and a proposed fix, in `test-results/qa-audit-report.md`
+(`npm run test:qa:report` opens it). It starts its own dev server and mocks the
+backend, so it never touches a real database.
+
+**Full guide: [docs/QA_TESTING.md](docs/QA_TESTING.md)** — the command
+reference, how the scoping picks tests, how to read a report, how to add a
+module or record a user journey, and the known gaps in coverage.
+
 ---
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.

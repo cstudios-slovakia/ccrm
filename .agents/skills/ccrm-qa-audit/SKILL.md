@@ -11,6 +11,11 @@ result differed from its **expected** result, with a proposed fix.
 This is **not** "click every pixel". Coverage is a declared ladder (below). If a
 surface is not on the ladder, it is a suite gap, not a silent pass.
 
+`docs/QA_TESTING.md` is the human-facing companion to this file: the same suite
+written as a developer workflow, plus the unit-test layer
+(`npm run test:unit`) that lives outside this skill. Keep the two in step — a
+change to what the suite covers needs both edits.
+
 ---
 
 ## 1. Running it
@@ -66,12 +71,17 @@ Environment switches:
 - `BASE_URL=…` — audit a deployed environment instead of localhost.
 
 **A defect fails the run.** Findings at `QA_FAIL_ON` or above throw in the test
-that found them (except canaries, which *pass* when they find their known bug).
-A green full run means nothing at HIGH or above was found.
+that found them. A green full run means nothing at HIGH or above was found.
 
-Canaries are inverted: they **fail the harness** if the known bug is missed.
-Do not fix Čas termínu or the Silvia `?tab=` parser to make canaries green.
-If those product bugs are fixed, **delete the canary**.
+**The suite currently has no canary**, and therefore no self-check. A canary is
+an inverted test that *passes* when it finds a known product bug and **fails the
+harness** when it misses one, proving the crawler can still see a defect. The two
+canaries that existed guarded the Čas termínu dropdown occlusion and the client
+timeline `?tab=` error screen; both product bugs were fixed, so `canary.spec.ts`
+was deleted (commit `636914c`) per the rule written at the top of it. Seed a new
+one against the next known bug — and when its bug is fixed, delete it rather
+than weakening it. `assertKnownBugDetected()` in `tests/e2e/helpers/gate.ts` is
+still there for exactly this.
 
 ---
 
@@ -106,8 +116,8 @@ until it is added here.
 | Create form | Labeled create buttons (header + main) before Plus-icon-only. Fill every field. **Every** dropdown in the form (no cap). Submit. | `crawler.spec.ts` |
 | Edit drawer | One edit control per module (pencil / "Upraviť"). Dropdowns inside, no submit. | `crawler.spec.ts` |
 | Page filters | Filter / status dropdowns on the landing view, capped (they mutate the view). | `crawler.spec.ts` |
-| Known bugs | Čas termínu occlusion; Silvia timeline `?tab=` error screen. | `canary.spec.ts` |
 | Pinned journeys | Chrome Recorder JSON in `tests/recordings/`. | `recorder.spec.ts` |
+| Known bugs | *(none — no canary is currently seeded; see §1.)* | — |
 
 `#dashboard` and `#tasks` are the same view. Only `#dashboard` is crawled;
 navigation still clicks both sidebar items.
@@ -215,5 +225,6 @@ When asked to test the app, audit buttons, or check for UI errors:
    and `VIEW_RENDERED_EMPTY` on a register usually mean the harness needs work,
    not the app. Third-party `shadergradient` throws are LOW noise.
 6. Do not "fix" a defect by loosening the check.
-7. Do not fix Čas termínu or the client `?tab=` parser unless the user asked to
-   fix those product bugs. They are oracles for the canaries.
+7. If a canary is ever seeded again, its bug is an oracle: do not fix that bug
+   to make the canary green, and delete the canary if the bug is fixed on
+   purpose.

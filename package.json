@@ -11,6 +11,7 @@
     "deploy": "node scripts/deploy.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
+    "test:unit": "node --test \"src/**/*.test.ts\"",
     "test:qa": "node scripts/qa/run-qa.mjs",
     "test:qa:full": "node scripts/qa/run-qa.mjs --full",
     "test:qa:module": "node scripts/qa/run-qa.mjs --module",
