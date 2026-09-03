@@ -3,8 +3,9 @@ import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { LoginView } from "./components/LoginView";
 import { TaskDashboardView } from "./components/TaskDashboardView";
-import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, FinancialRecord, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings } from "./types";
+import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, FinancialRecord, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings } from "./types";
 import { DEFAULT_LEAD_ASSIGNMENT, normalizeLeadAssignment } from "./utils/leadAssignment";
+import { DEFAULT_PROJECT_AUTO_CREATE, normalizeProjectAutoCreate } from "./utils/projectAutoCreate";
 import { VERSION } from "./utils/version";
 import { parseAppHash, workspaceResetKey } from "./utils/hash";
 import { SOCIAL_MEDIA_ENABLED } from "./utils/featureFlags";
@@ -125,6 +126,9 @@ const computeSettingsSig = (s: any): string => {
     // (which is what the server sends back) compare equal instead of pushing
     // forever. See normalizeLeadAssignment / ccrm_normalize_lead_assignment.
     normalizeLeadAssignment(s.leadAssignment),
+    // Normalized on both sides for the same reason. See normalizeProjectAutoCreate
+    // / ccrm_normalize_project_auto_create.
+    normalizeProjectAutoCreate(s.projectAutoCreate),
     s.taskStates ?? [],
     s.taskStateColors && Object.keys(s.taskStateColors).length ? s.taskStateColors : null,
     s.integrationsConfig ?? null,
@@ -537,6 +541,13 @@ function App() {
   // every device and by leads that never pass through this app at all (the
   // public webhook, workflow actions, imports).
   const [leadAssignment, setLeadAssignment] = useState<LeadAssignmentSettings>(DEFAULT_LEAD_ASSIGNMENT);
+
+  // Whether every new lead is paired with a freshly created project, and of
+  // which type (Projects → Settings). Like the rules above, the creation itself
+  // happens server-side so it also covers leads that never pass through this
+  // app — the public webhook and workflow actions — and so two devices syncing
+  // the same new lead cannot each produce a project for it.
+  const [projectAutoCreate, setProjectAutoCreate] = useState<ProjectAutoCreateSettings>(DEFAULT_PROJECT_AUTO_CREATE);
 
   const [integrationsConfig, setIntegrationsConfig] = useState<any>({
     emailProvider: "smtp",
@@ -1012,6 +1023,7 @@ ${log.payload || ''}
         leadStateParents,
         leadStateFollowUp,
         leadAssignment,
+        projectAutoCreate,
         taskStates,
         taskStateColors,
         integrationsConfig: nextIntegrationsConfig ?? integrationsConfigRef.current,
@@ -1124,6 +1136,24 @@ ${log.payload || ''}
                   : lead;
               })
             );
+          }
+          // Projects the server paired with brand-new leads (Projects →
+          // Settings → automatic project creation). Adopt them the same way:
+          // without this they would not appear until the next full pull, and a
+          // client still on protocol v1 would push its own project list back
+          // over them, taking them with it.
+          const created = out?.createdProjects;
+          if (Array.isArray(created) && created.length > 0) {
+            setProjects((prev) => {
+              const known = new Set(prev.map((p) => p.id));
+              const additions = (created as Project[]).filter(
+                (p) => p && typeof p.id === "string" && !known.has(p.id)
+              );
+              if (additions.length === 0) return prev;
+              const next = [...additions, ...prev];
+              projectsRef.current = next;
+              return next;
+            });
           }
           // Accounts the server refused because the licence has no seat left.
           // The push itself succeeded, so without this the new colleague would
@@ -1644,7 +1674,7 @@ ${log.payload || ''}
     const currentSig = computeSettingsSig({
       leadStates, leadSources, leadCategories, systemName, systemLanguage, systemCurrency,
       leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups,
-      leadStateParents, leadStateFollowUp, leadAssignment, taskStates, taskStateColors,
+      leadStateParents, leadStateFollowUp, leadAssignment, projectAutoCreate, taskStates, taskStateColors,
     });
     // Before we have ever seen the server's settings, just record the current
     // signature — there is nothing to push yet, and pushing here would echo the
@@ -1672,7 +1702,7 @@ ${log.payload || ''}
       // newest values.
       pushStateToServer();
     }, 700);
-  }, [leadStates, leadSources, leadCategories, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadAssignment, taskStates, taskStateColors, isInitialSyncResolved]);
+  }, [leadStates, leadSources, leadCategories, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadAssignment, projectAutoCreate, taskStates, taskStateColors, isInitialSyncResolved]);
 
   // Layout Hash change listener
   useEffect(() => {
@@ -1860,6 +1890,10 @@ ${log.payload || ''}
         setLeadStateFollowUp((prev) => s.leadStateFollowUp && JSON.stringify(s.leadStateFollowUp) !== JSON.stringify(prev) ? s.leadStateFollowUp : prev);
         setLeadAssignment((prev) => {
           const next = normalizeLeadAssignment(s.leadAssignment);
+          return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
+        });
+        setProjectAutoCreate((prev) => {
+          const next = normalizeProjectAutoCreate(s.projectAutoCreate);
           return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
         });
         setTaskStates((prev) => s.taskStates && JSON.stringify(s.taskStates) !== JSON.stringify(prev) ? s.taskStates : prev);
@@ -2223,6 +2257,7 @@ ${log.payload || ''}
           integrationsConfig={integrationsConfig}
           leadStageGroups={leadStageGroups}
           projectTypes={projectTypes}
+          projects={projects}
           setProjects={updateProjectsAndSync}
           setActiveTab={setActiveTab}
           leadStateFollowUp={leadStateFollowUp}
@@ -2328,6 +2363,7 @@ ${log.payload || ''}
             integrationsConfig={integrationsConfig}
             leadStageGroups={leadStageGroups}
             projectTypes={projectTypes}
+            projects={projects}
             setProjects={updateProjectsAndSync}
             setActiveTab={setActiveTab}
             leadStateFollowUp={leadStateFollowUp}
@@ -2346,6 +2382,8 @@ ${log.payload || ''}
             users={users}
             userLanguage={userLanguage}
             canEdit={getPermission("general_config") === "edit"}
+            projectAutoCreate={projectAutoCreate}
+            setProjectAutoCreate={setProjectAutoCreate}
             financialRecords={financialRecords}
             setFinancialRecords={updateFinancialRecordsAndSync}
             financialCategories={financialCategories}
@@ -2505,6 +2543,7 @@ ${log.payload || ''}
             taskStates={taskStates}
             leadStates={orderedLeadStates}
             leadSources={leadSources}
+            projectTypes={projectTypes}
             setAppTab={setActiveTab}
           />
         );

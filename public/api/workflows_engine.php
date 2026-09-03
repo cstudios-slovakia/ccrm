@@ -327,6 +327,59 @@ if (!function_exists('ccrm_workflow_related_record_id')) {
         }
         return null;
     }
+
+    /**
+     * The projects a "change project status" node should act on.
+     *
+     * Two ways to name them:
+     *   target 'project' — an explicit id, usually a variable such as
+     *                      {{$node-3.project_id}} from a create-lead node.
+     *   target 'lead'    — every project paired with the lead the workflow is
+     *                      about, optionally narrowed to one project type, and
+     *                      by default only the newest of them.
+     *
+     * Returns an empty array when nothing matches; the caller reports that as a
+     * skipped node rather than a failure, because "this lead has no project yet"
+     * is a normal outcome for a branch that runs on every lead.
+     */
+    function ccrm_workflow_target_projects(\PDO $pdo, $nodeData, $incomingPayload, $context): array {
+        if (($nodeData['target'] ?? 'lead') === 'project') {
+            $projectId = trim(ccrm_interpolate_variables($nodeData['project_id'] ?? '', $incomingPayload, $context));
+            if ($projectId === '') {
+                return [];
+            }
+            $stmt = $pdo->prepare("SELECT `id` FROM `projects` WHERE `id` = ?");
+            $stmt->execute([$projectId]);
+            return $stmt->fetchAll(\PDO::FETCH_COLUMN) ?: [];
+        }
+
+        // Prefer the record the previous node produced (a freshly created lead),
+        // and fall back to the one the workflow fired for — behind a condition or
+        // an AI node the incoming payload no longer carries it.
+        $leadId = ccrm_workflow_related_record_id($incomingPayload);
+        if ($leadId === null) {
+            $leadId = ccrm_workflow_related_record_id($context['trigger'] ?? null);
+        }
+        if ($leadId === null) {
+            return [];
+        }
+
+        $sql = "SELECT `id` FROM `projects` WHERE `lead_id` = ?";
+        $params = [$leadId];
+        $typeId = trim((string)($nodeData['project_type_id'] ?? ''));
+        if ($typeId !== '' && $typeId !== 'any') {
+            $sql .= " AND `project_type_id` = ?";
+            $params[] = $typeId;
+        }
+        // Newest first, so "latest" means the project the lead is working on now.
+        $sql .= " ORDER BY `created_at` DESC, `id` DESC";
+        if (($nodeData['scope'] ?? 'latest') !== 'all') {
+            $sql .= " LIMIT 1";
+        }
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll(\PDO::FETCH_COLUMN) ?: [];
+    }
 }
 
 if (!function_exists('ccrm_workflow_unreachable_nodes')) {
@@ -738,6 +791,11 @@ if (!function_exists('ccrm_execute_workflow')) {
                           $leadId, $name, $city, $clientType, $recordStatus, $owner, $value, $phone, $email,
                           $street, $postalCode, $country, $companyId, $taxId, $vatId, $contactPerson, $website
                         ]);
+                        // A lead an automation created is still a new lead, so it
+                        // gets the same paired project as one typed in by hand or
+                        // captured by the web form (Projects → Settings).
+                        $autoProject = ccrm_auto_create_project_for_lead($pdo, $leadId, $owner);
+
                         $outputPayload = [
                           'id' => $leadId,
                           'name' => $name,
@@ -746,7 +804,9 @@ if (!function_exists('ccrm_execute_workflow')) {
                           'email' => $email,
                           'phone' => $phone,
                           'city' => $city,
-                          'company_id' => $companyId
+                          'company_id' => $companyId,
+                          // Lets a later node address the project directly.
+                          'project_id' => $autoProject['id'] ?? null
                         ];
                     } elseif ($actionType === 'create_task') {
                         $title = ccrm_interpolate_variables($nodeData['title'] ?? '', $incomingPayload, $context);
@@ -830,6 +890,39 @@ if (!function_exists('ccrm_execute_workflow')) {
                         // server did not actually accept.
                         ccrm_send_system_mail($mailSettings, $to, $subject, $body);
                         $outputPayload = ['success' => true, 'to' => $to, 'subject' => $subject];
+                    } elseif ($actionType === 'update_project_status') {
+                        $newStatus = trim(ccrm_interpolate_variables($nodeData['status'] ?? '', $incomingPayload, $context));
+                        // A status outside the known set would render as a raw
+                        // string on a card no filter can reach, so refuse it
+                        // loudly rather than writing it and moving on.
+                        if (!in_array($newStatus, ccrm_project_statuses(), true)) {
+                            throw new \RuntimeException(
+                                'Unknown project status "' . $newStatus . '". Expected one of: '
+                                . implode(', ', ccrm_project_statuses()) . '.'
+                            );
+                        }
+
+                        $projectIds = ccrm_workflow_target_projects($pdo, $nodeData, $incomingPayload, $context);
+                        if (!$projectIds) {
+                            // Normal for a branch that runs on every lead: not
+                            // every lead has a project to move.
+                            $outputPayload = [
+                                'skipped' => true,
+                                'reason' => 'No project matched this node — the record has no paired project, or the id resolved to nothing.',
+                                'status' => $newStatus
+                            ];
+                        } else {
+                            $upd = $pdo->prepare("UPDATE `projects` SET `status` = ? WHERE `id` = ?");
+                            foreach ($projectIds as $pid) {
+                                $upd->execute([$newStatus, $pid]);
+                            }
+                            $outputPayload = [
+                                'status' => $newStatus,
+                                'project_id' => $projectIds[0],
+                                'project_ids' => $projectIds,
+                                'updated' => count($projectIds)
+                            ];
+                        }
                     } else {
                         // Other actions (Reply to email, SMS, Create document) are stubbed out or simulated for testing
                         $outputPayload = ['action' => $actionType, 'simulated' => true, 'time' => date('Y-m-d H:i:s')];

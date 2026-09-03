@@ -331,6 +331,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $pdo->beginTransaction();
 
+        // Next project manager in the configured rotation (Settings → Users);
+        // falls back to the primary user when auto-assignment is off. Never a
+        // hardcoded demo name. Held in a variable because an auto-created
+        // project below is put in the same person's hands.
+        $leadOwner = ccrm_auto_assign_owner($pdo) ?: ccrm_default_owner($pdo);
+
         // 1. Insert into leads
         $insLead = $pdo->prepare("INSERT INTO `leads` (`id`, `name`, `city`, `client_type`, `status`, `source`, `owner`, `value`, `rating`, `phone`, `email`, `contact_person`, `country`, `created_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
         $insLead->execute([
@@ -340,10 +346,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $clientType,
             $status,
             $source,
-            // Next project manager in the configured rotation (Settings → Users);
-            // falls back to the primary user when auto-assignment is off. Never a
-            // hardcoded demo name.
-            ccrm_auto_assign_owner($pdo) ?: ccrm_default_owner($pdo),
+            $leadOwner,
             $value,
             3,      // Default rating
             $phone,
@@ -372,6 +375,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $teContent
         ]);
 
+        // 4. Pair the lead with a project, when the operator asked for one
+        //    (Projects → Settings → automatic project creation). A web-form
+        //    lead is exactly the case the setting exists for.
+        $autoProject = ccrm_auto_create_project_for_lead($pdo, $newLeadId, $leadOwner);
+
         $pdo->commit();
 
         if ($idempotencyKey !== '') {
@@ -389,7 +397,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'name' => $name,
                 'status' => $status,
                 'source' => $source,
-                'categories' => $categories
+                'categories' => $categories,
+                'project_id' => $autoProject['id'] ?? null
             ]
         ]);
     } catch (\Exception $e) {

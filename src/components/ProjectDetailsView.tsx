@@ -707,9 +707,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               />
             </div>
 
-            {/* Lead / Client Link */}
+            {/* Lead / Client pairing — the project's half of the link. The
+                same pairing is edited from the lead's "Linked projects" card,
+                and both write the one field (`leadId`) that carries it. */}
             <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Associated Client", "Priradený klient", "Kapcsolódó ügyfél")}</label>
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Paired Lead / Client", "Spárovaný lead / klient", "Párosított lead / ügyfél")}</label>
               <SearchableClientSelect
                 leads={leads}
                 value={associatedLeadId}
@@ -719,6 +721,19 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 }}
                 userLanguage={userLanguage}
               />
+              <p className="mt-1 text-[9px] font-semibold text-slate-400 leading-snug">
+                {associatedLeadId
+                  ? t(
+                      "This project shows up on the lead's card too. Saved with the project.",
+                      "Tento projekt sa zobrazí aj na karte leadu. Uloží sa spolu s projektom.",
+                      "Ez a projekt a lead kartonján is megjelenik. A projekttel együtt mentődik.",
+                    )
+                  : t(
+                      "Not paired with anyone — pick a lead or client to link this project to.",
+                      "Nie je spárovaný s nikým — vyberte lead alebo klienta, s ktorým sa projekt prepojí.",
+                      "Nincs párosítva — válasszon leadet vagy ügyfelet a projekt összekapcsolásához.",
+                    )}
+              </p>
             </div>
 
             {/* Project Managers (Multiple selection) */}

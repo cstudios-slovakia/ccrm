@@ -89,6 +89,23 @@ export interface LeadAssignmentSettings {
   rotate: boolean;
 }
 
+/**
+ * Turns every incoming lead into a project automatically.
+ *
+ * Like {@link LeadAssignmentSettings}, the work is done server-side
+ * (ccrm_auto_create_project_for_lead in api/auth.php) so it covers the ways a
+ * lead can arrive without ever passing through this app — the public web-form
+ * webhook and workflow create_lead/create_client actions — and so two devices
+ * syncing the same new lead cannot produce two projects for it.
+ */
+export interface ProjectAutoCreateSettings {
+  enabled: boolean;
+  /** Project type every auto-created project is made from. "" until one is picked. */
+  projectTypeId: string;
+  /** Put the lead's project manager on the new project as its manager. */
+  assignOwner: boolean;
+}
+
 export interface Lead {
   id: string;
   name: string;             // Client name
@@ -409,12 +426,28 @@ export interface ProjectGanttRow {
   progress: number; // 0-100
 }
 
+/**
+ * The states a project can be in. One list, because three places used to spell
+ * it out separately (the projects filter, the project card, and now the
+ * workflow "change project status" action) and a fourth spelling would drift.
+ * Mirrored by ccrm_project_statuses() in api/auth.php, which validates what
+ * automations and the sync endpoint are allowed to write.
+ */
+export const PROJECT_STATUSES = ["active", "completed", "on_hold", "cancelled"] as const;
+export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
+
 export interface Project {
   id: string;
   projectTypeId: string;
+  /**
+   * The lead this project is paired with, or null when it stands alone. The
+   * pairing is edited from both ends — "Paired lead / client" on the project,
+   * and the "Linked projects" card on the lead — and one lead can carry
+   * several projects, so the lead side is always a lookup by this field.
+   */
   leadId?: string | null;
   clientId?: string | null;
-  status: string; // e.g. "active" | "completed" | "on_hold" | "cancelled"
+  status: string; // one of PROJECT_STATUSES
   managers: string[]; // employee ids or names
   data: Record<string, any>; // keyed by attribute.id
   timeline?: ProjectTimelineEvent[];

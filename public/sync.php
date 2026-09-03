@@ -785,6 +785,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $leadAssignment = ccrm_normalize_lead_assignment(
         isset($settings['LEAD_ASSIGNMENT']) ? json_decode($settings['LEAD_ASSIGNMENT'], true) : null
     );
+    // Whether every incoming lead is paired with a freshly created project, and
+    // of which type. Normalized on the way out for the same reason.
+    $projectAutoCreate = ccrm_normalize_project_auto_create(
+        isset($settings['PROJECT_AUTO_CREATE']) ? json_decode($settings['PROJECT_AUTO_CREATE'], true) : null
+    );
     $taskStates = isset($settings['TASK_STATES']) ? json_decode($settings['TASK_STATES'], true) : $defaultLists['taskStates'];
     $taskStateColors = isset($settings['TASK_STATE_COLORS']) ? json_decode($settings['TASK_STATE_COLORS'], true) : [];
     // An empty colour map would make every task state render in the same grey.
@@ -1471,6 +1476,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'leadStateParents' => $leadStateParents,
             'leadStateFollowUp' => $leadStateFollowUp,
             'leadAssignment' => $leadAssignment,
+            'projectAutoCreate' => $projectAutoCreate,
             'taskStates' => $taskStates,
             'taskStateColors' => $taskStateColors,
             'integrationsConfig' => $integrationsConfig,
@@ -1536,6 +1542,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // lead loop). Reported back so the client can show the assignment straight
     // away instead of pushing its own blank owner over it on the next sync.
     $assignedOwners = [];
+
+    // Projects the server created for brand-new leads (Projects → Settings →
+    // automatic project creation). Reported back for the same reason as the
+    // owners above: the client would otherwise not see them until the next full
+    // pull, and a v1 client would push its own project list straight back over
+    // them, taking them with it.
+    $createdProjects = [];
 
     // Email addresses of accounts this push tried to CREATE beyond the licensed
     // seat count. Reported back so the client can say which ones did not land,
@@ -1856,6 +1869,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // for everyone else simply by saving an unrelated setting.
                 'LEAD_ASSIGNMENT' => isset($s['leadAssignment']) && is_array($s['leadAssignment'])
                     ? json_encode(ccrm_normalize_lead_assignment($s['leadAssignment']))
+                    : null,
+                // Same contract: omitted means unchanged, so an older client
+                // cannot switch automatic project creation off for everyone.
+                'PROJECT_AUTO_CREATE' => isset($s['projectAutoCreate']) && is_array($s['projectAutoCreate'])
+                    ? json_encode(ccrm_normalize_project_auto_create($s['projectAutoCreate']))
                     : null,
                 'TASK_STATES' => json_encode($s['taskStates'] ?? []),
                 'TASK_STATE_COLORS' => json_encode($s['taskStateColors'] ?? []),
@@ -2410,6 +2428,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ccrm_date_only($l['createdAt'] ?? null) ?? date('Y-m-d'),
                     (isset($l['followUps']) && !empty($l['followUps'])) ? json_encode($l['followUps']) : null
                 ]);
+
+                // Automatic project creation (Projects → Settings). Runs before
+                // the workflow triggers below on purpose, so an automation
+                // reacting to `lead_created` already finds the project it may
+                // want to move. Returns null whenever the feature is off, the
+                // configured type is gone, or this lead already has a project.
+                if ($isNew) {
+                    $autoProject = ccrm_auto_create_project_for_lead($pdo, $leadId, (string)($l['owner'] ?? ''));
+                    if ($autoProject !== null) {
+                        $createdProjects[] = $autoProject;
+                    }
+                }
 
                 // Workflow Triggers
                 require_once __DIR__ . '/api/workflows_engine.php';
@@ -3472,6 +3502,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // New leads the server put an owner on, so the client can adopt the
             // assignment rather than pushing its blank owner back over it.
             'assignedOwners' => (object) $assignedOwners,
+            // Projects the server paired with brand-new leads, so the client can
+            // show them straight away instead of after the next full pull.
+            'createdProjects' => array_values($createdProjects),
         ]);
     } catch (\Throwable $e) {
         if (isset($pdo) && $pdo->inTransaction()) {

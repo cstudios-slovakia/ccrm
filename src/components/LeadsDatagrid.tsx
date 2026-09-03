@@ -50,6 +50,8 @@ import {
     Truck,
     Flag,
     Star,
+    Link2,
+    Unlink,
 } from "lucide-react";
 import type {
     Lead,
@@ -64,6 +66,7 @@ import type {
 } from "../types";
 import { DOCUMENT_EVENT_TYPES } from "../types";
 import { DEFAULT_LEAD_ASSIGNMENT, isAutoAssignActive } from "../utils/leadAssignment";
+import { pairableProjects, projectsForLead } from "../utils/projectAutoCreate";
 
 // Named preset deadline times offered in the gate quick-add picker, mirroring the
 // task dashboard's Add-task drawer. A "Custom" option reveals a free time input so
@@ -871,6 +874,8 @@ interface LeadsDatagridProps {
     integrationsConfig?: any;
     leadStageGroups?: Record<string, "new" | "in_progress" | "closed">;
     projectTypes?: ProjectType[];
+    /** Every project in the system; the ones paired with a lead are looked up by `leadId`. */
+    projects?: Project[];
     setProjects?: React.Dispatch<React.SetStateAction<Project[]>>;
     setActiveTab?: (tab: string) => void;
     leadStateFollowUp?: Record<string, boolean>;
@@ -907,6 +912,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     integrationsConfig,
     leadStageGroups = {},
     projectTypes = [],
+    projects = [],
     setProjects,
     setActiveTab,
     leadStateFollowUp = {},
@@ -1789,6 +1795,67 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
         setActiveTab("projects");
         window.location.hash = `projects?edit=${newProj.id}`;
+    };
+
+    /* ── LEAD ↔ PROJECT PAIRING ──────────────────────────────────────────
+       The pairing is one field on the project (`leadId`), edited from either
+       end: "Paired lead / client" on the project itself, and the card below on
+       the lead. One lead can carry several projects, so the lead side is always
+       a lookup rather than a stored list. */
+
+    // The unpaired project waiting in the "pair an existing project" picker.
+    const [pairProjectId, setPairProjectId] = useState("");
+
+    const openProject = (projectId: string) => {
+        if (!setActiveTab) return;
+        setActiveTab("projects");
+        window.location.hash = `projects?edit=${projectId}`;
+    };
+
+    const handlePairProject = (projectId: string) => {
+        if (!activeLead || !setProjects || !projectId) return;
+        setProjects((prev) =>
+            prev.map((p) =>
+                p.id === projectId
+                    ? { ...p, leadId: activeLead.id, clientId: activeLead.id }
+                    : p,
+            ),
+        );
+        setPairProjectId("");
+        (window as any).showToast(
+            t(
+                "Project paired with this lead.",
+                "Projekt bol spárovaný s týmto leadom.",
+                "A projekt párosítva lett ezzel a leaddel.",
+            ),
+        );
+    };
+
+    const handleUnpairProject = (projectId: string) => {
+        if (!setProjects) return;
+        if (
+            !window.confirm(
+                t(
+                    "Unpair this project from the lead? The project itself is kept.",
+                    "Zrušiť spárovanie projektu s leadom? Samotný projekt zostane zachovaný.",
+                    "Megszünteti a projekt párosítását a leaddel? Maga a projekt megmarad.",
+                ),
+            )
+        ) {
+            return;
+        }
+        setProjects((prev) =>
+            prev.map((p) =>
+                p.id === projectId ? { ...p, leadId: null, clientId: null } : p,
+            ),
+        );
+        (window as any).showToast(
+            t(
+                "Project unpaired.",
+                "Spárovanie projektu bolo zrušené.",
+                "A projekt párosítása megszűnt.",
+            ),
+        );
     };
 
     const [leadName, setLeadName] = useState("");
@@ -5770,6 +5837,191 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 </button>
                             </form>
                         </div>
+                        {/* 4. Linked Projects Card — the lead's half of the
+                            lead ↔ project pairing. The projects here are the
+                            ones whose `leadId` points at this lead; the same
+                            link is editable from the project itself. */}
+                        {setProjects && projectTypes.length > 0 && (() => {
+                            const linked = projectsForLead(projects, activeLead.id);
+                            const available = pairableProjects(projects);
+                            const typeOf = (typeId: string) =>
+                                projectTypes.find((pt) => pt.id === typeId);
+                            const statusLabel = (status: string) =>
+                                status === "completed"
+                                    ? t("Completed", "Dokončený", "Befejezett")
+                                    : status === "on_hold"
+                                      ? t("On Hold", "Pozastavený", "Függőben")
+                                      : status === "cancelled"
+                                        ? t("Cancelled", "Zrušený", "Törölt")
+                                        : t("Active", "Aktívny", "Aktív");
+                            const statusClass = (status: string) =>
+                                status === "completed"
+                                    ? "bg-emerald-50 text-emerald-600 border-emerald-100"
+                                    : status === "on_hold"
+                                      ? "bg-amber-50 text-amber-600 border-amber-100"
+                                      : status === "cancelled"
+                                        ? "bg-rose-50 text-rose-600 border-rose-100"
+                                        : "bg-purple-50 text-purple-600 border-purple-100";
+
+                            return (
+                                <div className="glass-panel p-6 rounded-[28px] border-2 border-purple-400 bg-white shadow-xl space-y-4">
+                                    <div className="border-b-2 border-slate-100 pb-2 flex items-center justify-between gap-2">
+                                        <span className="text-xs font-black text-purple-700 uppercase tracking-wider flex items-center gap-1.5">
+                                            <Briefcase className="h-4.5 w-4.5 text-purple-600 stroke-[2.5] shrink-0" />
+                                            {t(
+                                                "LINKED PROJECTS",
+                                                "SPÁROVANÉ PROJEKTY",
+                                                "KAPCSOLT PROJEKTEK",
+                                            )}
+                                        </span>
+                                        <span className="px-2 py-0.5 rounded-full text-[8px] font-black bg-purple-50 text-purple-700 border border-purple-200">
+                                            {linked.length}
+                                        </span>
+                                    </div>
+
+                                    {linked.length === 0 ? (
+                                        <p className="text-[11px] font-semibold text-slate-400 italic">
+                                            {t(
+                                                "No project is paired with this lead yet.",
+                                                "S týmto leadom zatiaľ nie je spárovaný žiadny projekt.",
+                                                "Még nincs projekt párosítva ehhez a leadhez.",
+                                            )}
+                                        </p>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            {linked.map((p) => {
+                                                const pType = typeOf(p.projectTypeId);
+                                                return (
+                                                    <div
+                                                        key={p.id}
+                                                        className="flex items-center gap-2.5 rounded-2xl border border-slate-200 bg-slate-50/60 px-3 py-2.5 hover:border-purple-300 transition-colors"
+                                                    >
+                                                        <span
+                                                            className="h-2.5 w-2.5 rounded-full shrink-0"
+                                                            style={{
+                                                                backgroundColor:
+                                                                    pType?.color ||
+                                                                    "#a855f7",
+                                                            }}
+                                                        />
+                                                        <div className="min-w-0 flex-1">
+                                                            <span className="block text-[11px] font-black text-slate-800 truncate">
+                                                                {pType?.name ||
+                                                                    t(
+                                                                        "Unknown project type",
+                                                                        "Neznámy typ projektu",
+                                                                        "Ismeretlen projekt típus",
+                                                                    )}
+                                                            </span>
+                                                            {p.managers &&
+                                                                p.managers.length > 0 && (
+                                                                    <span className="block text-[9px] font-bold text-slate-400 truncate mt-0.5">
+                                                                        {p.managers.join(
+                                                                            ", ",
+                                                                        )}
+                                                                    </span>
+                                                                )}
+                                                        </div>
+                                                        <span
+                                                            className={`px-2 py-0.5 rounded-full text-[8px] font-black border shrink-0 ${statusClass(p.status)}`}
+                                                        >
+                                                            {statusLabel(p.status)}
+                                                        </span>
+                                                        {setActiveTab && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() =>
+                                                                    openProject(p.id)
+                                                                }
+                                                                className="p-1.5 rounded-lg text-slate-400 hover:text-purple-600 hover:bg-purple-50 transition-colors cursor-pointer shrink-0"
+                                                                title={t(
+                                                                    "Open project",
+                                                                    "Otvoriť projekt",
+                                                                    "Projekt megnyitása",
+                                                                )}
+                                                            >
+                                                                <ArrowRight className="h-3.5 w-3.5" />
+                                                            </button>
+                                                        )}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                handleUnpairProject(p.id)
+                                                            }
+                                                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer shrink-0"
+                                                            title={t(
+                                                                "Unpair project",
+                                                                "Zrušiť spárovanie",
+                                                                "Párosítás megszüntetése",
+                                                            )}
+                                                        >
+                                                            <Unlink className="h-3.5 w-3.5" />
+                                                        </button>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+
+                                    {/* Pair an existing project. Only projects that
+                                        belong to nobody are offered — re-pointing one
+                                        that is already paired elsewhere would silently
+                                        take it off the other lead. */}
+                                    <div className="pt-1 space-y-2">
+                                        <label className="block text-[9px] font-black text-slate-400 uppercase tracking-wider">
+                                            {t(
+                                                "Pair an existing project",
+                                                "Spárovať existujúci projekt",
+                                                "Meglévő projekt párosítása",
+                                            )}
+                                        </label>
+                                        {available.length === 0 ? (
+                                            <p className="text-[10px] font-semibold text-slate-400 italic">
+                                                {t(
+                                                    "Every project already belongs to a lead. Use “Convert to Project” above to create a new one.",
+                                                    "Všetky projekty už patria niektorému leadu. Nový vytvoríte tlačidlom „Konvertovať na projekt“ vyššie.",
+                                                    "Minden projekt már egy leadhez tartozik. Újat a fenti „Konvertálás projektté” gombbal hozhat létre.",
+                                                )}
+                                            </p>
+                                        ) : (
+                                            <div className="flex items-center gap-2">
+                                                <div className="flex-1 min-w-0">
+                                                    <CustomSelect
+                                                        size="sm"
+                                                        value={pairProjectId}
+                                                        onChange={setPairProjectId}
+                                                        placeholder={t(
+                                                            "Choose a project...",
+                                                            "Vyberte projekt...",
+                                                            "Válasszon projektet...",
+                                                        )}
+                                                        options={available.map((p) => ({
+                                                            value: p.id,
+                                                            // Projects carry no name of
+                                                            // their own, so the type plus
+                                                            // the tail of the id is what
+                                                            // tells two of a kind apart.
+                                                            label: `${typeOf(p.projectTypeId)?.name || p.projectTypeId} · ${p.id.slice(-4)}`,
+                                                        }))}
+                                                    />
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    disabled={!pairProjectId}
+                                                    onClick={() =>
+                                                        handlePairProject(pairProjectId)
+                                                    }
+                                                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-black text-[9px] uppercase tracking-wider transition-colors cursor-pointer shrink-0"
+                                                >
+                                                    <Link2 className="h-3.5 w-3.5" />
+                                                    {t("Pair", "Spárovať", "Párosítás")}
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })()}
                     </div>
 
                     {/* RIGHT PANEL: Timeline History & Quick Logger */}

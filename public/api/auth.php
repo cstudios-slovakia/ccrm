@@ -436,6 +436,148 @@ if (!function_exists('ccrm_send_cors')) {
         return $next;
     }
 
+
+    /**
+     * The states a project may be in. Mirrors PROJECT_STATUSES in src/types —
+     * anything else reaching the `projects` table (from a workflow action, say)
+     * would render as a raw string on a card nothing can filter by.
+     *
+     * A function rather than a `const`: this whole block is inside a
+     * function_exists() guard, and PHP refuses to declare a top-level const in a
+     * conditional block.
+     */
+    function ccrm_project_statuses(): array {
+        return ['active', 'completed', 'on_hold', 'cancelled'];
+    }
+
+    /**
+     * Normalize an automatic-project-creation config blob to its canonical shape.
+     *
+     *   enabled        false — no project is created (the historical behaviour)
+     *   projectTypeId  the type every auto-created project is made from
+     *   assignOwner    put the lead's project manager on the project
+     *
+     * Applied to both the stored value and anything a client pushes, so a
+     * malformed blob can never reach the creation logic.
+     */
+    function ccrm_normalize_project_auto_create($cfg): array {
+        if (!is_array($cfg)) {
+            $cfg = [];
+        }
+        return [
+            'enabled' => ($cfg['enabled'] ?? false) === true,
+            'projectTypeId' => trim((string)($cfg['projectTypeId'] ?? '')),
+            // Assigning the lead's manager is the useful default; only an
+            // explicit false turns it off.
+            'assignOwner' => !array_key_exists('assignOwner', $cfg) || (bool)$cfg['assignOwner'],
+        ];
+    }
+
+
+    /** The stored automatic-project-creation config, normalized. Cached per request. */
+    function ccrm_project_auto_create_config(\PDO $pdo): array {
+        static $cached = null;
+        if ($cached !== null) {
+            return $cached;
+        }
+        $raw = false;
+        try {
+            $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'PROJECT_AUTO_CREATE'");
+            $stmt->execute();
+            $raw = $stmt->fetchColumn();
+        } catch (\Throwable $e) {
+            $raw = false;
+        }
+        $decoded = ($raw !== false && $raw !== null && $raw !== '') ? json_decode((string)$raw, true) : null;
+        $cached = ccrm_normalize_project_auto_create($decoded);
+        return $cached;
+    }
+
+    /**
+     * Create the project a brand-new lead is paired with, if the operator asked
+     * for one (Projects → Settings → automatic project creation).
+     *
+     * Returns the created project in the shape the client holds it in, or null
+     * when nothing was created — the feature is off, the configured project type
+     * has since been deleted, or this lead already has a project.
+     *
+     * Made server-side, and from one function, for the same reasons as
+     * ccrm_auto_assign_owner(): it has to cover leads that never pass through
+     * the app at all (the public web-form webhook, workflow create_lead
+     * actions), and two devices syncing the same new lead must not each produce
+     * their own project for it.
+     *
+     * Creation is deliberately limited to leads that have no project yet. That
+     * makes the call idempotent, so a retried sync — or a lead re-pushed by an
+     * older client that thinks it is new — cannot pile up duplicates.
+     */
+    function ccrm_auto_create_project_for_lead(\PDO $pdo, string $leadId, string $ownerName = ''): ?array {
+        $cfg = ccrm_project_auto_create_config($pdo);
+        if (!$cfg['enabled'] || $cfg['projectTypeId'] === '' || $leadId === '') {
+            return null;
+        }
+
+        try {
+            // The configured type may have been deleted since it was chosen.
+            // Creating against a missing type would violate the projects ->
+            // project_types foreign key and abort the whole sync transaction.
+            $typeStmt = $pdo->prepare("SELECT `id` FROM `project_types` WHERE `id` = ?");
+            $typeStmt->execute([$cfg['projectTypeId']]);
+            if ($typeStmt->fetchColumn() === false) {
+                return null;
+            }
+
+            $existing = $pdo->prepare("SELECT `id` FROM `projects` WHERE `lead_id` = ? LIMIT 1");
+            $existing->execute([$leadId]);
+            if ($existing->fetchColumn() !== false) {
+                return null;
+            }
+
+            $projectId = 'proj-' . sprintf('%04x%04x', mt_rand(0, 0xffff), mt_rand(0, 0xffff));
+            $pdo->prepare(
+                "INSERT INTO `projects` (`id`, `project_type_id`, `lead_id`, `client_id`, `status`)
+                 VALUES (?, ?, ?, ?, 'active')"
+            )->execute([$projectId, $cfg['projectTypeId'], $leadId, $leadId]);
+
+            $managers = [];
+            $ownerName = trim($ownerName);
+            if ($cfg['assignOwner'] && $ownerName !== '') {
+                $pdo->prepare("INSERT IGNORE INTO `project_managers` (`project_id`, `user_id`) VALUES (?, ?)")
+                    ->execute([$projectId, $ownerName]);
+                $managers[] = $ownerName;
+            }
+
+            // The per-type attribute row. Optional — sync.php's GET falls back to
+            // empty data when it is missing — so a type whose table has not been
+            // built yet must not take the project down with it.
+            try {
+                $dataTable = 'proj_data_' . preg_replace('/[^a-z0-9_]/', '', strtolower($cfg['projectTypeId']));
+                if ($pdo->query("SHOW TABLES LIKE " . $pdo->quote($dataTable))->rowCount() > 0) {
+                    $pdo->prepare("INSERT IGNORE INTO `{$dataTable}` (`id`, `project_id`) VALUES (?, ?)")
+                        ->execute([$projectId, $projectId]);
+                }
+            } catch (\Throwable $e) {
+                // Attributes stay empty; the project itself is already saved.
+            }
+
+            return [
+                'id' => $projectId,
+                'projectTypeId' => $cfg['projectTypeId'],
+                'leadId' => $leadId,
+                'clientId' => $leadId,
+                'status' => 'active',
+                'managers' => $managers,
+                'data' => (object)[],
+                'timeline' => [],
+                'gantt' => [],
+            ];
+        } catch (\Throwable $e) {
+            // A lead is worth more than the project that would have accompanied
+            // it: never let this take down the insert that triggered it.
+            return null;
+        }
+    }
+
     /** True if the given string already looks like a bcrypt/argon hash. */
     function ccrm_is_hash(string $value): bool {
         return (bool)preg_match('/^\$(2[aby]|argon2(id|i|d))\$/', $value);

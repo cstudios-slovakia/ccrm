@@ -11,6 +11,8 @@ import {
   Minus, Maximize2
 } from "lucide-react";
 import type { Language } from "../utils/translations";
+import type { ProjectType } from "../types";
+import { PROJECT_STATUSES } from "../types";
 import { CustomSelect } from "./ui/CustomSelect";
 
 const SYSTEM_COLORS = [
@@ -67,6 +69,8 @@ interface AutomationViewProps {
   taskStates: string[];
   leadStates: string[];
   leadSources: string[];
+  /** Used by the "change project status" action to narrow which project it moves. */
+  projectTypes?: ProjectType[];
   /** Switches the app's main view — used to deep-link into Settings. */
   setAppTab?: (tab: string) => void;
 }
@@ -862,6 +866,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
   taskStates,
   leadStates,
   leadSources,
+  projectTypes = [],
   setAppTab
 }) => {
   const [workflows, setWorkflows] = useState<any[]>([]);
@@ -1403,6 +1408,18 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
       } else if (subType === "send_email") {
         name = t("Send Email", "Odoslať e-mail", "E-mail küldése");
         data = { type: "send_email", to: "{{$trigger.email}}", subject: "Welcome to CCRM", body: "Hello {{$trigger.name}}, ..." };
+      } else if (subType === "update_project_status") {
+        name = t("Change Project Status", "Zmeniť stav projektu", "Projekt állapotának módosítása");
+        // Defaults to the project paired with the lead the workflow is about —
+        // the case that needs no configuration at all beyond the new status.
+        data = {
+          type: "update_project_status",
+          target: "lead",
+          project_type_id: "any",
+          scope: "latest",
+          project_id: "",
+          status: "active"
+        };
       } else {
         name = t("Create Client", "Vytvoriť klienta", "Ügyfél létrehozása");
         data = { type: "create_client", name: "{{$trigger.name}}", client_type: "business", status: "new" };
@@ -1976,6 +1993,20 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                       >
                         <CheckSquare className="h-4 w-4 text-amber-600" />
                         <span>{t("Create Task", "Vytvoriť úlohu", "Feladat létrehozása")}</span>
+                      </button>
+
+                      {/* Projects */}
+                      <div className="mt-1 px-3 py-1 text-[9px] font-extrabold text-purple-600 uppercase tracking-wider bg-purple-50/40 flex items-center gap-1 select-none mb-0.5">
+                        <span className="h-1.5 w-1.5 rounded-full bg-purple-500" />
+                        {t("Projects", "PROJEKTY", "PROJEKTEK")}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => addNode("action", "update_project_status")}
+                        className="w-full flex items-center gap-2.5 px-3.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-purple-50 hover:text-purple-900 text-left transition-colors cursor-pointer"
+                      >
+                        <Briefcase className="h-4 w-4 text-purple-500" />
+                        <span>{t("Change Project Status", "Zmeniť stav projektu", "Projekt állapota")}</span>
                       </button>
 
                       {/* Email */}
@@ -2998,6 +3029,117 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                               </div>
                             </div>
                           )}
+
+                          {node.data.type === "update_project_status" && (() => {
+                            const target = node.data.target || "lead";
+                            const statusLabels: Record<string, string> = {
+                              active: t("Active", "Aktívny", "Aktív"),
+                              completed: t("Completed", "Dokončený", "Befejezett"),
+                              on_hold: t("On Hold", "Pozastavený", "Függőben"),
+                              cancelled: t("Cancelled", "Zrušený", "Törölt"),
+                            };
+                            return (
+                              <div className="space-y-2">
+                                {/* Which project. "Paired with the lead" needs no
+                                    further configuration and covers the common
+                                    case; an explicit id is for a project a
+                                    previous node produced. */}
+                                <div>
+                                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t("Project", "Projekt", "Projekt")}</label>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    <div className="p-1.5 bg-slate-50 border border-slate-100 rounded-lg shrink-0 flex items-center justify-center">
+                                      <Briefcase className="h-3.5 w-3.5 text-slate-400" />
+                                    </div>
+                                    <CustomSelect
+                                      value={target}
+                                      onChange={(v) => updateActionField("target", v)}
+                                      options={[
+                                        { value: "lead", label: t("Paired with the lead", "Spárovaný s leadom", "A leadhez párosított") },
+                                        { value: "project", label: t("A specific project ID", "Konkrétne ID projektu", "Adott projekt azonosító") },
+                                      ]}
+                                    />
+                                  </div>
+                                </div>
+
+                                {target === "project" ? (
+                                  <VariableInputField
+                                    label={t("Project ID", "ID projektu", "Projekt azonosító")}
+                                    value={node.data.project_id || ""}
+                                    onChange={(val) => updateActionField("project_id", val)}
+                                    placeholder="e.g. {{$input.project_id}}"
+                                    icon={<Code className="h-3.5 w-3.5 text-slate-400" />}
+                                    nodes={nodes}
+                                    currentNodeId={node.id}
+                                  />
+                                ) : (
+                                  <div className="grid grid-cols-2 gap-1.5">
+                                    <div>
+                                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t("Of type", "Typu", "Típusa")}</label>
+                                      <div className="mt-0.5">
+                                        <CustomSelect
+                                          size="sm"
+                                          value={node.data.project_type_id || "any"}
+                                          onChange={(v) => updateActionField("project_type_id", v)}
+                                          options={[
+                                            { value: "any", label: t("Any type", "Akýkoľvek typ", "Bármely típus") },
+                                            ...projectTypes.map((pt) => ({ value: pt.id, label: pt.name })),
+                                          ]}
+                                        />
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <label className="flex items-center gap-1 text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                                        {t("How many", "Koľko", "Hány")}
+                                        <span
+                                          className="inline-flex shrink-0 cursor-help"
+                                          title={t(
+                                            "A lead can carry several projects. Newest only moves the one it is working on now.",
+                                            "Lead môže mať viacero projektov. Iba najnovší presunie ten, na ktorom sa práve pracuje.",
+                                            "Egy leadhez több projekt is tartozhat. A legújabb csak az éppen futót mozgatja.",
+                                          )}
+                                        >
+                                          <Info className="h-2.5 w-2.5 text-slate-300" />
+                                        </span>
+                                      </label>
+                                      <div className="mt-0.5">
+                                        <CustomSelect
+                                          size="sm"
+                                          value={node.data.scope || "latest"}
+                                          onChange={(v) => updateActionField("scope", v)}
+                                          options={[
+                                            { value: "latest", label: t("Newest only", "Iba najnovší", "Csak a legújabb") },
+                                            { value: "all", label: t("All of them", "Všetky", "Mindegyik") },
+                                          ]}
+                                        />
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+
+                                <div>
+                                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t("New Status", "Nový stav", "Új állapot")}</label>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    <div className="p-1.5 bg-slate-50 border border-slate-100 rounded-lg shrink-0 flex items-center justify-center">
+                                      <Activity className="h-3.5 w-3.5 text-slate-400" />
+                                    </div>
+                                    <CustomSelect
+                                      value={node.data.status || "active"}
+                                      onChange={(v) => updateActionField("status", v)}
+                                      options={PROJECT_STATUSES.map((s) => ({ value: s, label: statusLabels[s] }))}
+                                    />
+                                  </div>
+                                </div>
+
+                                <p className="text-[9px] font-semibold text-slate-400 leading-snug">
+                                  {t(
+                                    "A lead with no project yet is skipped, not failed — the run carries on.",
+                                    "Lead bez projektu sa preskočí, nejde o chybu — beh pokračuje ďalej.",
+                                    "A projekt nélküli leadet kihagyja, nem hiba — a futás folytatódik.",
+                                  )}
+                                </p>
+                              </div>
+                            );
+                          })()}
 
                           {node.data.type === "send_email" && (
                             <div className="space-y-2">

@@ -1,12 +1,13 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import * as Icons from "lucide-react";
 import { Plus, Trash2, Settings, Search, Users, Briefcase, ChevronDown } from "lucide-react";
-import type { Project, ProjectType, Lead, UserProfile, FinancialRecord, FinancialCategory } from "../types";
+import type { Project, ProjectAutoCreateSettings, ProjectType, Lead, UserProfile, FinancialRecord, FinancialCategory } from "../types";
 import { ProjectDetailsView } from "./ProjectDetailsView";
 import { ProjectSettings } from "./ProjectSettings";
 import { CustomSelect } from "./ui/CustomSelect";
 import type { Language } from "../utils/translations";
 import { readableOn } from "../utils/accentColor";
+import { parseAppHash } from "../utils/hash";
 
 interface ProjectsViewProps {
   projects: Project[];
@@ -17,6 +18,9 @@ interface ProjectsViewProps {
   users: UserProfile[];
   userLanguage: Language;
   canEdit: boolean;
+  /** Rules for turning every incoming lead into a project (edited in the Settings tab). */
+  projectAutoCreate?: ProjectAutoCreateSettings;
+  setProjectAutoCreate?: React.Dispatch<React.SetStateAction<ProjectAutoCreateSettings>>;
   financialRecords?: FinancialRecord[];
   setFinancialRecords?: React.Dispatch<React.SetStateAction<FinancialRecord[]>>;
   financialCategories?: FinancialCategory[];
@@ -33,6 +37,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   users,
   userLanguage,
   canEdit,
+  projectAutoCreate,
+  setProjectAutoCreate,
   financialRecords = [],
   setFinancialRecords,
   financialCategories = [],
@@ -73,6 +79,35 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       return matchesSearch && matchesStatus && matchesType;
     });
   }, [projects, projectTypes, leads, searchQuery, selectedStatusFilter, selectedTypeFilter]);
+
+  /* Deep link: `#projects?edit=<projectId>` opens that project directly.
+     "Convert to Project" on a lead has always navigated here with that query,
+     and the lead's "Linked projects" card does too — but nothing read it, so
+     both landed on the plain list and read as the action having done nothing.
+     The parameter is consumed once it has been honoured, otherwise saving the
+     project (which re-renders this list) would immediately re-open it. */
+  useEffect(() => {
+    const openFromHash = () => {
+      const { route, params } = parseAppHash(window.location.hash);
+      if (route !== "projects") return;
+      const id = params.get("edit");
+      if (!id) return;
+
+      const project = projects.find(p => p.id === id);
+      const type = project ? projectTypes.find(pt => pt.id === project.projectTypeId) : undefined;
+      // A project that has not arrived yet (or whose type was deleted) leaves
+      // the parameter in place, so the next render can still honour it.
+      if (!project || !type) return;
+
+      window.history.replaceState(null, "", "#projects");
+      setEditingProjectType(type);
+      setEditingProject(project);
+    };
+
+    openFromHash();
+    window.addEventListener("hashchange", openFromHash);
+    return () => window.removeEventListener("hashchange", openFromHash);
+  }, [projects, projectTypes]);
 
   const handleStartCreateProject = (type: ProjectType) => {
     setIsCreateDropdownOpen(false);
@@ -201,6 +236,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             setProjectTypes={setProjectTypes}
             userLanguage={userLanguage}
             canEdit={canEdit}
+            projectAutoCreate={projectAutoCreate}
+            setProjectAutoCreate={setProjectAutoCreate}
           />
         </div>
       ) : (

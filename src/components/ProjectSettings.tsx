@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 import * as Icons from "lucide-react";
-import { Plus, Trash2, ArrowUp, ArrowDown, Save, X } from "lucide-react";
+import { Plus, Trash2, ArrowUp, ArrowDown, Save, X, Workflow } from "lucide-react";
 import { CustomSelect } from "./ui/CustomSelect";
-import type { ProjectType, ProjectAttribute, ProjectAttributeType, TimelineEventType } from "../types";
+import type { ProjectAutoCreateSettings, ProjectType, ProjectAttribute, ProjectAttributeType, TimelineEventType } from "../types";
+import { DEFAULT_PROJECT_AUTO_CREATE, isProjectAutoCreateActive } from "../utils/projectAutoCreate";
 import type { Language } from "../utils/translations";
 
 interface ProjectSettingsProps {
@@ -10,6 +11,9 @@ interface ProjectSettingsProps {
   setProjectTypes: React.Dispatch<React.SetStateAction<ProjectType[]>>;
   userLanguage: Language;
   canEdit: boolean;
+  /** Rules for turning every incoming lead into a project. */
+  projectAutoCreate?: ProjectAutoCreateSettings;
+  setProjectAutoCreate?: React.Dispatch<React.SetStateAction<ProjectAutoCreateSettings>>;
 }
 
 const ALL_LUCIDE_ICONS = Object.keys(Icons).filter(key => {
@@ -36,7 +40,9 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
   projectTypes,
   setProjectTypes,
   userLanguage,
-  canEdit
+  canEdit,
+  projectAutoCreate = DEFAULT_PROJECT_AUTO_CREATE,
+  setProjectAutoCreate
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
   const attributeTypeLabel = (id: ProjectAttributeType) => {
@@ -993,6 +999,153 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
           ))}
         </div>
       )}
+      {/* ── AUTOMATIC CREATION FROM LEADS ──────────────────────────────────
+          Every lead that arrives gets a project of the chosen type, already
+          paired with it. The creation happens server-side, so it covers leads
+          that never pass through this app — the public web-form webhook and
+          workflow actions — and two devices syncing the same new lead cannot
+          each produce their own project for it. */}
+      {setProjectAutoCreate && (() => {
+        const active = isProjectAutoCreateActive(projectAutoCreate, projectTypes);
+        const chosenType = projectTypes.find(pt => pt.id === projectAutoCreate.projectTypeId);
+        const canToggle = canEdit && projectTypes.length > 0;
+        const update = (patch: Partial<ProjectAutoCreateSettings>) =>
+          setProjectAutoCreate(prev => ({ ...prev, ...patch }));
+
+        return (
+          <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass text-left space-y-5">
+            <div className="space-y-1">
+              <h3 className="font-heading font-black text-slate-800 text-[15px] uppercase tracking-widest flex items-center gap-2">
+                <Workflow className="h-4.5 w-4.5 text-indigo-500" />
+                {t("Automatic project creation", "Automatické vytváranie projektov", "Automatikus projektlétrehozás")}
+              </h3>
+              <p className="text-[11px] font-semibold text-slate-500 leading-relaxed max-w-3xl">
+                {t(
+                  "Every new lead is paired with a project of the type you choose — leads from the web form, from automations, from imports, and leads added by hand. Leads that already have a project are never given a second one.",
+                  "Každý nový lead sa spáruje s projektom zvoleného typu — leady z webového formulára, z automatizácií, z importov aj leady pridané ručne. Leady, ktoré už projekt majú, druhý nedostanú.",
+                  "Minden új lead a kiválasztott típusú projekttel lesz párosítva — a webűrlapról, automatizációkból és importokból érkező, valamint a kézzel hozzáadott leadek. A már projekttel rendelkező leadek nem kapnak másodikat.",
+                )}
+              </p>
+            </div>
+
+            {projectTypes.length === 0 ? (
+              <p className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
+                {t(
+                  "Create a project type first — there is nothing to create projects from yet.",
+                  "Najprv vytvorte typ projektu — zatiaľ nie je z čoho projekty vytvárať.",
+                  "Előbb hozzon létre egy projekt típust — jelenleg nincs miből projektet létrehozni.",
+                )}
+              </p>
+            ) : (
+              <>
+                {/* On/off */}
+                <div className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3.5">
+                  <button
+                    type="button"
+                    disabled={!canToggle}
+                    onClick={() => update({ enabled: !projectAutoCreate.enabled })}
+                    className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors mt-0.5 ${
+                      projectAutoCreate.enabled ? "bg-indigo-600" : "bg-slate-300"
+                    } ${canToggle ? "cursor-pointer hover:opacity-90" : "opacity-50 cursor-not-allowed"}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                      projectAutoCreate.enabled ? "translate-x-4" : "translate-x-0.5"
+                    }`} />
+                  </button>
+                  <div className="min-w-0">
+                    <span className="block text-[10px] font-black uppercase tracking-wider text-slate-700">
+                      {t("Create a project for every new lead", "Vytvoriť projekt pre každý nový lead", "Projekt létrehozása minden új leadhez")}
+                    </span>
+                    <span className="block text-[10px] font-semibold text-slate-400 mt-0.5 leading-snug">
+                      {t(
+                        "Off by default. Existing leads are left alone — this only applies to leads that arrive from now on.",
+                        "Predvolene vypnuté. Existujúcich leadov sa to netýka — platí len pre leady, ktoré prídu odteraz.",
+                        "Alapértelmezés szerint kikapcsolva. A meglévő leadeket nem érinti — csak a mostantól érkező leadekre vonatkozik.",
+                      )}
+                    </span>
+                  </div>
+                </div>
+
+                {projectAutoCreate.enabled && (
+                  <>
+                    {/* Which type */}
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">
+                        {t("Project type to create", "Typ vytváraného projektu", "Létrehozandó projekt típusa")}
+                      </label>
+                      <CustomSelect
+                        disabled={!canEdit}
+                        value={projectAutoCreate.projectTypeId}
+                        onChange={(v) => update({ projectTypeId: v })}
+                        placeholder={t("Choose a project type...", "Vyberte typ projektu...", "Válasszon projekt típust...")}
+                        options={projectTypes.map(pt => ({ value: pt.id, label: pt.name }))}
+                      />
+                    </div>
+
+                    {/* Manager */}
+                    <div className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3.5">
+                      <button
+                        type="button"
+                        disabled={!canEdit}
+                        onClick={() => update({ assignOwner: !projectAutoCreate.assignOwner })}
+                        className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors mt-0.5 ${
+                          projectAutoCreate.assignOwner ? "bg-indigo-600" : "bg-slate-300"
+                        } ${canEdit ? "cursor-pointer hover:opacity-90" : "opacity-50 cursor-not-allowed"}`}
+                      >
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                          projectAutoCreate.assignOwner ? "translate-x-4" : "translate-x-0.5"
+                        }`} />
+                      </button>
+                      <div className="min-w-0">
+                        <span className="block text-[10px] font-black uppercase tracking-wider text-slate-700">
+                          {t("Hand the project to the lead's manager", "Prideliť projekt manažérovi leadu", "A projekt a lead menedzseréhez kerül")}
+                        </span>
+                        <span className="block text-[10px] font-semibold text-slate-400 mt-0.5 leading-snug">
+                          {t(
+                            "The lead's project manager becomes the project's manager too. Leave it off to create projects nobody is on yet.",
+                            "Projektový manažér leadu sa stane aj manažérom projektu. Vypnite, ak majú projekty vznikať bez priradenej osoby.",
+                            "A lead projektmenedzsere a projekt menedzsere is lesz. Kapcsolja ki, ha a projektek felelős nélkül jöjjenek létre.",
+                          )}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* What the rules actually add up to. A type deleted after it
+                        was chosen leaves this looking configured while the server
+                        creates nothing. */}
+                    {active ? (
+                      <p className="text-[11px] font-bold text-slate-500 bg-white border border-slate-200 rounded-2xl px-4 py-3">
+                        <span className="text-slate-400 uppercase tracking-wider font-black mr-1.5">
+                          {t("Result", "Výsledok", "Eredmény")}:
+                        </span>
+                        {t(
+                          `Every new lead gets a "${chosenType?.name}" project, paired with it.`,
+                          `Každý nový lead dostane projekt typu „${chosenType?.name}“, spárovaný s ním.`,
+                          `Minden új lead egy „${chosenType?.name}” projektet kap, hozzá párosítva.`,
+                        )}
+                      </p>
+                    ) : (
+                      <p className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
+                        {projectAutoCreate.projectTypeId
+                          ? t(
+                              "The chosen project type no longer exists — pick another one, or no projects will be created.",
+                              "Zvolený typ projektu už neexistuje — vyberte iný, inak sa žiadne projekty nevytvoria.",
+                              "A kiválasztott projekt típus már nem létezik — válasszon másikat, különben nem jön létre projekt.",
+                            )
+                          : t(
+                              "No project type chosen yet — no projects will be created.",
+                              "Zatiaľ nie je vybraný typ projektu — žiadne projekty sa nevytvoria.",
+                              "Még nincs kiválasztva projekt típus — nem jön létre projekt.",
+                            )}
+                      </p>
+                    )}
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 };
