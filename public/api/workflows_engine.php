@@ -705,7 +705,15 @@ if (!function_exists('ccrm_execute_workflow')) {
                         // or a client died right after doing its work.
                         $recordStatus = ccrm_interpolate_variables($nodeData['status'] ?? ($actionType === 'create_client' ? 'client' : 'new'), $incomingPayload, $context);
                         $value = (float)ccrm_interpolate_variables($nodeData['value'] ?? '0', $incomingPayload, $context);
-                        $owner = ccrm_interpolate_variables($nodeData['owner'] ?? 'Alex', $incomingPayload, $context);
+                        // An unset owner used to fall back to the literal "Alex" —
+                        // a demo account name that does not exist on a real
+                        // install, so every workflow-created lead landed on
+                        // nobody. Use the same auto-assignment the rest of the
+                        // app uses, and the primary user if that is switched off.
+                        $owner = trim(ccrm_interpolate_variables($nodeData['owner'] ?? '', $incomingPayload, $context));
+                        if ($owner === '') {
+                            $owner = ccrm_auto_assign_owner($pdo) ?: ccrm_default_owner($pdo);
+                        }
                         $clientType = ($actionType === 'create_client') ? ($nodeData['client_type'] ?? 'person') : 'person';
 
                         $street = ccrm_interpolate_variables($nodeData['street'] ?? '', $incomingPayload, $context);

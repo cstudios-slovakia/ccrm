@@ -67,6 +67,28 @@ export interface TimelineEvent {
   author?: string;
 }
 
+/**
+ * Who a new lead is handed to when it arrives without an owner — leads captured
+ * by the public webhook, created by a workflow, imported, or added in the app
+ * without picking a project manager.
+ *
+ * The assignment itself is made server-side (sync.php / api/pipeline.php) so a
+ * single rotation cursor is shared by every device and every entry point; the
+ * client only edits these rules and shows the result.
+ */
+export type LeadAssignmentMode =
+  | "off"        // nobody is auto-assigned — new leads stay unassigned
+  | "selected"   // hand out to the chosen users, in the order they are listed
+  | "all";       // hand out to every registered user
+
+export interface LeadAssignmentSettings {
+  mode: LeadAssignmentMode;
+  /** Ordered pool for mode "selected"; ignored otherwise. Names, matching `Lead.owner`. */
+  users: string[];
+  /** true = round-robin through the pool; false = always the first user in it. */
+  rotate: boolean;
+}
+
 export interface Lead {
   id: string;
   name: string;             // Client name

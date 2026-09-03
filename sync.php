@@ -780,6 +780,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $leadStageGroups = isset($settings['LEAD_STAGE_GROUPS']) ? json_decode($settings['LEAD_STAGE_GROUPS'], true) : [];
     $leadStateParents = isset($settings['LEAD_STATE_PARENTS']) ? json_decode($settings['LEAD_STATE_PARENTS'], true) : (object)[];
     $leadStateFollowUp = isset($settings['LEAD_STATE_FOLLOWUP']) ? json_decode($settings['LEAD_STATE_FOLLOWUP'], true) : (object)[];
+    // Who new leads are handed to when they arrive without an owner. Normalized
+    // on the way out so the UI never has to defend against a malformed blob.
+    $leadAssignment = ccrm_normalize_lead_assignment(
+        isset($settings['LEAD_ASSIGNMENT']) ? json_decode($settings['LEAD_ASSIGNMENT'], true) : null
+    );
     $taskStates = isset($settings['TASK_STATES']) ? json_decode($settings['TASK_STATES'], true) : $defaultLists['taskStates'];
     $taskStateColors = isset($settings['TASK_STATE_COLORS']) ? json_decode($settings['TASK_STATE_COLORS'], true) : [];
     // An empty colour map would make every task state render in the same grey.
@@ -1465,6 +1470,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'leadStageGroups' => $leadStageGroups,
             'leadStateParents' => $leadStateParents,
             'leadStateFollowUp' => $leadStateFollowUp,
+            'leadAssignment' => $leadAssignment,
             'taskStates' => $taskStates,
             'taskStateColors' => $taskStateColors,
             'integrationsConfig' => $integrationsConfig,
@@ -1525,6 +1531,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // record it never touched, so for those this is normal and expected traffic
     // rather than anything worth surfacing.
     $conflictedIds = [];
+
+    // leadId => owner name, for new leads the server auto-assigned (see the
+    // lead loop). Reported back so the client can show the assignment straight
+    // away instead of pushing its own blank owner over it on the next sync.
+    $assignedOwners = [];
 
     // Email addresses of accounts this push tried to CREATE beyond the licensed
     // seat count. Reported back so the client can say which ones did not land,
@@ -1840,6 +1851,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'LEAD_STAGE_GROUPS' => json_encode($s['leadStageGroups'] ?? []),
                 'LEAD_STATE_PARENTS' => json_encode($s['leadStateParents'] ?? (object)[]),
                 'LEAD_STATE_FOLLOWUP' => json_encode($s['leadStateFollowUp'] ?? (object)[]),
+                // Omitted means unchanged (null is skipped below): an older client
+                // that knows nothing about auto-assignment must not switch it off
+                // for everyone else simply by saving an unrelated setting.
+                'LEAD_ASSIGNMENT' => isset($s['leadAssignment']) && is_array($s['leadAssignment'])
+                    ? json_encode(ccrm_normalize_lead_assignment($s['leadAssignment']))
+                    : null,
                 'TASK_STATES' => json_encode($s['taskStates'] ?? []),
                 'TASK_STATE_COLORS' => json_encode($s['taskStateColors'] ?? []),
                 'INTEGRATIONS_CONFIG' => $integrationsValue,
@@ -2330,13 +2347,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $address = $l['address'] ?? [];
 
+                $isNew = !isset($dbLeads[$leadId]);
+
+                // Auto-assignment: a brand-new lead that nobody was put on goes to
+                // the next project manager in the configured rotation (Settings →
+                // Users). Deliberately limited to inserts — re-running it on every
+                // sync would re-stamp an owner the moment somebody cleared one by
+                // hand, and would keep re-rotating leads that are already assigned.
+                // ccrm_auto_assign_owner() returns '' when the feature is off, so
+                // the fallback below stays exactly what it always was.
+                if ($isNew && trim((string)($l['owner'] ?? '')) === '') {
+                    $autoOwner = ccrm_auto_assign_owner($pdo);
+                    if ($autoOwner !== '') {
+                        $l['owner'] = $autoOwner;
+                        $assignedOwners[$leadId] = $autoOwner;
+                    }
+                }
+
                 // A lead pushed without an owner is stored under the fallback one,
                 // so the trigger payload has to carry that same name — otherwise
                 // {{$trigger.owner}} resolves to empty for exactly the leads that
                 // do have an owner in the database.
                 $l['owner'] = $l['owner'] ?? $defaultOwner;
 
-                $isNew = !isset($dbLeads[$leadId]);
                 $oldStatus = $isNew ? null : ($dbLeads[$leadId]['status'] ?? null);
 
                 $insLead->execute([
@@ -3436,6 +3469,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'conflicts' => (object) $conflictedIds,
             // Accounts refused by the licensed seat count, if any.
             'seatRejections' => array_values($seatRejections),
+            // New leads the server put an owner on, so the client can adopt the
+            // assignment rather than pushing its blank owner back over it.
+            'assignedOwners' => (object) $assignedOwners,
         ]);
     } catch (\Throwable $e) {
         if (isset($pdo) && $pdo->inTransaction()) {

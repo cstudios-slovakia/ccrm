@@ -60,8 +60,10 @@ import type {
     UserProfile,
     Project,
     ProjectType,
+    LeadAssignmentSettings,
 } from "../types";
 import { DOCUMENT_EVENT_TYPES } from "../types";
+import { DEFAULT_LEAD_ASSIGNMENT, isAutoAssignActive } from "../utils/leadAssignment";
 
 // Named preset deadline times offered in the gate quick-add picker, mirroring the
 // task dashboard's Add-task drawer. A "Custom" option reveals a free time input so
@@ -872,6 +874,8 @@ interface LeadsDatagridProps {
     setProjects?: React.Dispatch<React.SetStateAction<Project[]>>;
     setActiveTab?: (tab: string) => void;
     leadStateFollowUp?: Record<string, boolean>;
+    /** Rules for handing an ownerless new lead to a project manager (Settings -> Users). */
+    leadAssignment?: LeadAssignmentSettings;
     currencyCode?: string | null;
 }
 
@@ -906,12 +910,19 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     setProjects,
     setActiveTab,
     leadStateFollowUp = {},
+    leadAssignment = DEFAULT_LEAD_ASSIGNMENT,
     currencyCode,
 }) => {
     const t = (en: string, sk: string, hu: string) =>
         systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
     const money = (value: number, opts?: Intl.NumberFormatOptions) =>
         formatMoney(value, currencyCode, systemLanguage, opts);
+
+    // True when a new lead left without a project manager will actually be given
+    // one (Settings -> Users -> automatic lead assignment). The server makes the
+    // pick on sync, so the create form deliberately leaves the owner blank and
+    // says so, instead of quietly defaulting to whoever is first in the list.
+    const autoAssignActive = isAutoAssignActive(leadAssignment, projectManagers);
 
     // Lead states flagged as "follow-up" in Settings, in the configured order.
     // Each becomes its own checkbox on the lead so several follow-up rounds can be
@@ -7772,7 +7783,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             onClick={() => {
                                 setNewLeadStatus(leadStates[0] || "");
                                 setNewLeadSource(leadSources[0] || "");
-                                setNewLeadOwner(projectManagers[0] || "");
+                                setNewLeadOwner(
+                                    autoAssignActive
+                                        ? ""
+                                        : projectManagers[0] || "",
+                                );
                                 setIsModalOpen(true);
                             }}
                             className="w-full sm:w-auto px-5 py-3 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-extrabold shadow-lg shadow-blue-600/25 transition-all flex items-center justify-center gap-2 group hover:-translate-y-0.5"
@@ -10739,11 +10754,39 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     <CustomSelect
                                         value={newLeadOwner}
                                         onChange={(v) => setNewLeadOwner(v)}
-                                        options={projectManagers.map((pm) => ({
-                                            value: pm,
-                                            label: pm,
-                                        }))}
+                                        placeholder={t(
+                                            "Unassigned",
+                                            "Nepriradené",
+                                            "Nincs kiosztva",
+                                        )}
+                                        options={[
+                                            ...(autoAssignActive
+                                                ? [
+                                                      {
+                                                          value: "",
+                                                          label: t(
+                                                              "Assign automatically",
+                                                              "Priradiť automaticky",
+                                                              "Automatikus kiosztás",
+                                                          ),
+                                                      },
+                                                  ]
+                                                : []),
+                                            ...projectManagers.map((pm) => ({
+                                                value: pm,
+                                                label: pm,
+                                            })),
+                                        ]}
                                     />
+                                    {autoAssignActive && !newLeadOwner && (
+                                        <p className="text-[9px] font-semibold text-slate-400 leading-snug pt-0.5">
+                                            {t(
+                                                "The next manager in the rotation is picked when the lead is saved.",
+                                                "Pri uložení leadu sa vyberie ďalší manažér v poradí.",
+                                                "A lead mentésekor a sorban következő menedzser kerül kiválasztásra.",
+                                            )}
+                                        </p>
+                                    )}
                                 </div>
                             </div>
 

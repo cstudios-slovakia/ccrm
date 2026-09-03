@@ -3,7 +3,8 @@ import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { LoginView } from "./components/LoginView";
 import { TaskDashboardView } from "./components/TaskDashboardView";
-import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, FinancialRecord, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate } from "./types";
+import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, FinancialRecord, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings } from "./types";
+import { DEFAULT_LEAD_ASSIGNMENT, normalizeLeadAssignment } from "./utils/leadAssignment";
 import { VERSION } from "./utils/version";
 import { parseAppHash, workspaceResetKey } from "./utils/hash";
 import { SOCIAL_MEDIA_ENABLED } from "./utils/featureFlags";
@@ -120,6 +121,10 @@ const computeSettingsSig = (s: any): string => {
     s.leadStageGroups && Object.keys(s.leadStageGroups).length ? s.leadStageGroups : null,
     s.leadStateParents && Object.keys(s.leadStateParents).length ? s.leadStateParents : null,
     s.leadStateFollowUp && Object.keys(s.leadStateFollowUp).length ? s.leadStateFollowUp : null,
+    // Normalized on both sides so an absent value and an explicit "off" blob
+    // (which is what the server sends back) compare equal instead of pushing
+    // forever. See normalizeLeadAssignment / ccrm_normalize_lead_assignment.
+    normalizeLeadAssignment(s.leadAssignment),
     s.taskStates ?? [],
     s.taskStateColors && Object.keys(s.taskStateColors).length ? s.taskStateColors : null,
     s.integrationsConfig ?? null,
@@ -526,6 +531,12 @@ function App() {
   // Keyed by lowercased state name (admin-configurable in Settings). Robust to
   // renaming/removing states — a removed state's entry simply stops mattering.
   const [leadStateFollowUp, setLeadStateFollowUp] = useState<Record<string, boolean>>({});
+
+  // Who new leads without an owner are handed to (Settings → Users). The rules
+  // live here; the actual pick is made server-side so one rotation is shared by
+  // every device and by leads that never pass through this app at all (the
+  // public webhook, workflow actions, imports).
+  const [leadAssignment, setLeadAssignment] = useState<LeadAssignmentSettings>(DEFAULT_LEAD_ASSIGNMENT);
 
   const [integrationsConfig, setIntegrationsConfig] = useState<any>({
     emailProvider: "smtp",
@@ -1000,6 +1011,7 @@ ${log.payload || ''}
         leadStageGroups,
         leadStateParents,
         leadStateFollowUp,
+        leadAssignment,
         taskStates,
         taskStateColors,
         integrationsConfig: nextIntegrationsConfig ?? integrationsConfigRef.current,
@@ -1096,6 +1108,22 @@ ${log.payload || ''}
           const out = await res.json();
           if (out && typeof out.serverTime === "string") {
             baseSyncedAtRef.current = out.serverTime;
+          }
+          // Owners the server put on brand-new, unassigned leads (Settings →
+          // Users → auto-assignment). Adopt them locally: without this the
+          // client keeps its blank owner, shows the lead as unassigned until
+          // the next full pull, and pushes the blank straight back over the
+          // server's pick on the following sync.
+          const assigned = out?.assignedOwners;
+          if (assigned && typeof assigned === "object" && Object.keys(assigned).length > 0) {
+            setLeads((prev) =>
+              prev.map((lead) => {
+                const owner = assigned[lead.id];
+                return typeof owner === "string" && owner && !lead.owner
+                  ? { ...lead, owner }
+                  : lead;
+              })
+            );
           }
           // Accounts the server refused because the licence has no seat left.
           // The push itself succeeded, so without this the new colleague would
@@ -1616,7 +1644,7 @@ ${log.payload || ''}
     const currentSig = computeSettingsSig({
       leadStates, leadSources, leadCategories, systemName, systemLanguage, systemCurrency,
       leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups,
-      leadStateParents, leadStateFollowUp, taskStates, taskStateColors,
+      leadStateParents, leadStateFollowUp, leadAssignment, taskStates, taskStateColors,
     });
     // Before we have ever seen the server's settings, just record the current
     // signature — there is nothing to push yet, and pushing here would echo the
@@ -1644,7 +1672,7 @@ ${log.payload || ''}
       // newest values.
       pushStateToServer();
     }, 700);
-  }, [leadStates, leadSources, leadCategories, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, taskStates, taskStateColors, isInitialSyncResolved]);
+  }, [leadStates, leadSources, leadCategories, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadAssignment, taskStates, taskStateColors, isInitialSyncResolved]);
 
   // Layout Hash change listener
   useEffect(() => {
@@ -1830,6 +1858,10 @@ ${log.payload || ''}
         setLeadStageGroups((prev) => s.leadStageGroups && JSON.stringify(s.leadStageGroups) !== JSON.stringify(prev) ? s.leadStageGroups : prev);
         setLeadStateParents((prev) => s.leadStateParents && JSON.stringify(s.leadStateParents) !== JSON.stringify(prev) ? s.leadStateParents : prev);
         setLeadStateFollowUp((prev) => s.leadStateFollowUp && JSON.stringify(s.leadStateFollowUp) !== JSON.stringify(prev) ? s.leadStateFollowUp : prev);
+        setLeadAssignment((prev) => {
+          const next = normalizeLeadAssignment(s.leadAssignment);
+          return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
+        });
         setTaskStates((prev) => s.taskStates && JSON.stringify(s.taskStates) !== JSON.stringify(prev) ? s.taskStates : prev);
         setTaskStateColors((prev) => s.taskStateColors && JSON.stringify(s.taskStateColors) !== JSON.stringify(prev) ? s.taskStateColors : prev);
         if (s.integrationsConfig) syncIntegrationsConfig(s.integrationsConfig);
@@ -2076,6 +2108,8 @@ ${log.payload || ''}
           setLeadStageGroups={setLeadStageGroups}
           leadStateFollowUp={leadStateFollowUp}
           setLeadStateFollowUp={setLeadStateFollowUp}
+          leadAssignment={leadAssignment}
+          setLeadAssignment={setLeadAssignment}
           systemLanguage={systemLanguage}
           setSystemLanguage={setSystemLanguage}
           systemCurrency={systemCurrency}
@@ -2192,6 +2226,7 @@ ${log.payload || ''}
           setProjects={updateProjectsAndSync}
           setActiveTab={setActiveTab}
           leadStateFollowUp={leadStateFollowUp}
+          leadAssignment={leadAssignment}
           currencyCode={currencyCode}
         />
       );
@@ -2227,6 +2262,8 @@ ${log.payload || ''}
           setLeadStageGroups={setLeadStageGroups}
           leadStateFollowUp={leadStateFollowUp}
           setLeadStateFollowUp={setLeadStateFollowUp}
+          leadAssignment={leadAssignment}
+          setLeadAssignment={setLeadAssignment}
           systemLanguage={systemLanguage}
           setSystemLanguage={setSystemLanguage}
           systemCurrency={systemCurrency}
@@ -2294,6 +2331,7 @@ ${log.payload || ''}
             setProjects={updateProjectsAndSync}
             setActiveTab={setActiveTab}
             leadStateFollowUp={leadStateFollowUp}
+            leadAssignment={leadAssignment}
             currencyCode={currencyCode}
           />
         );

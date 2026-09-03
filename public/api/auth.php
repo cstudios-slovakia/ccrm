@@ -275,6 +275,167 @@ if (!function_exists('ccrm_send_cors')) {
         return $cached;
     }
 
+    /**
+     * Normalize a lead auto-assignment config blob to its canonical shape.
+     *
+     *   mode   'off'      — no auto-assignment (the historical behaviour)
+     *          'selected' — the pool is `users`, in the order the admin listed
+     *          'all'      — the pool is every registered user, ordered by name
+     *   users  ordered pool for mode 'selected'
+     *   rotate true  — round-robin: each new lead goes to the next in the pool
+     *          false — every new lead goes to the first user in the pool
+     *
+     * Applied to both the stored value and anything a client pushes, so a
+     * malformed blob can never reach the assignment logic.
+     */
+    function ccrm_normalize_lead_assignment($cfg): array {
+        if (!is_array($cfg)) {
+            $cfg = [];
+        }
+        $mode = $cfg['mode'] ?? 'off';
+        if (!in_array($mode, ['off', 'selected', 'all'], true)) {
+            $mode = 'off';
+        }
+        $users = [];
+        if (isset($cfg['users']) && is_array($cfg['users'])) {
+            foreach ($cfg['users'] as $u) {
+                $u = trim((string)$u);
+                if ($u !== '' && !in_array($u, $users, true)) {
+                    $users[] = $u;
+                }
+            }
+        }
+        return [
+            'mode'   => $mode,
+            'users'  => $users,
+            // Rotation is the useful default; only an explicit false turns it off.
+            'rotate' => !array_key_exists('rotate', $cfg) || (bool)$cfg['rotate'],
+        ];
+    }
+
+    /** The stored lead auto-assignment config, normalized. Cached per request. */
+    function ccrm_lead_assignment_config(\PDO $pdo): array {
+        static $cached = null;
+        if ($cached !== null) {
+            return $cached;
+        }
+        $raw = false;
+        try {
+            $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'LEAD_ASSIGNMENT'");
+            $stmt->execute();
+            $raw = $stmt->fetchColumn();
+        } catch (\Throwable $e) {
+            $raw = false;
+        }
+        $decoded = ($raw !== false && $raw !== null && $raw !== '') ? json_decode((string)$raw, true) : null;
+        $cached = ccrm_normalize_lead_assignment($decoded);
+        return $cached;
+    }
+
+    /**
+     * The ordered list of users new leads are handed out to. Empty when
+     * auto-assignment is off, or when nothing in the configured selection
+     * matches a user who still exists — a deleted colleague silently drops out
+     * of the rotation instead of stranding leads on a name nobody answers to.
+     */
+    function ccrm_lead_assignment_pool(\PDO $pdo): array {
+        $cfg = ccrm_lead_assignment_config($pdo);
+        if ($cfg['mode'] === 'off') {
+            return [];
+        }
+        try {
+            $stmt = $pdo->query("SELECT `name` FROM `users` ORDER BY `name` ASC");
+            $names = $stmt ? $stmt->fetchAll(\PDO::FETCH_COLUMN) : [];
+        } catch (\Throwable $e) {
+            return [];
+        }
+        $all = [];
+        foreach ($names as $n) {
+            $n = trim((string)$n);
+            if ($n !== '') {
+                $all[] = $n;
+            }
+        }
+        if ($cfg['mode'] === 'all') {
+            return $all;
+        }
+        // 'selected': keep the admin's chosen order, drop names that no longer exist.
+        $byLower = [];
+        foreach ($all as $n) {
+            $byLower[mb_strtolower($n)] = $n;
+        }
+        $pool = [];
+        foreach ($cfg['users'] as $u) {
+            $key = mb_strtolower($u);
+            if (isset($byLower[$key])) {
+                $pool[] = $byLower[$key];
+            }
+        }
+        return $pool;
+    }
+
+    /**
+     * Pick the owner for a brand-new lead that arrived without one.
+     *
+     * Returns '' when auto-assignment is not configured, so every caller keeps
+     * whatever fallback it had before rather than silently gaining one.
+     *
+     * The round-robin cursor stores the NAME handed out last, not an index: an
+     * index would quietly point at a different person the moment the pool is
+     * reordered or a colleague leaves. It is server-owned — clients never push
+     * it — and is written inside the caller's transaction, so a sync that rolls
+     * back does not burn a slot in the rotation.
+     */
+    function ccrm_auto_assign_owner(\PDO $pdo): string {
+        $pool = ccrm_lead_assignment_pool($pdo);
+        if (!$pool) {
+            return '';
+        }
+        $cfg = ccrm_lead_assignment_config($pdo);
+        if (!$cfg['rotate']) {
+            return $pool[0];
+        }
+
+        // Read the cursor once per request, then keep advancing it in memory so a
+        // sync carrying several new leads spreads them instead of handing every
+        // one of them to the same person.
+        static $cursor = null;
+        if ($cursor === null) {
+            $cursor = '';
+            try {
+                $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'LEAD_ASSIGNMENT_CURSOR'");
+                $stmt->execute();
+                $stored = $stmt->fetchColumn();
+                if ($stored !== false && $stored !== null) {
+                    $cursor = (string)$stored;
+                }
+            } catch (\Throwable $e) {
+                // No cursor readable — start at the top of the pool.
+            }
+        }
+
+        $idx = -1;
+        foreach ($pool as $i => $name) {
+            if (mb_strtolower($name) === mb_strtolower($cursor)) {
+                $idx = $i;
+                break;
+            }
+        }
+        $next = $pool[($idx + 1) % count($pool)];
+        $cursor = $next;
+
+        try {
+            $pdo->prepare(
+                "INSERT INTO `system_settings` (`key`, `value`) VALUES ('LEAD_ASSIGNMENT_CURSOR', ?)
+                 ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)"
+            )->execute([$next]);
+        } catch (\Throwable $e) {
+            // The in-memory cursor still advances for the rest of this request.
+        }
+
+        return $next;
+    }
+
     /** True if the given string already looks like a bcrypt/argon hash. */
     function ccrm_is_hash(string $value): bool {
         return (bool)preg_match('/^\$(2[aby]|argon2(id|i|d))\$/', $value);

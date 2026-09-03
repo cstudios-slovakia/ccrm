@@ -340,7 +340,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $clientType,
             $status,
             $source,
-            ccrm_default_owner($pdo), // Default owner: real primary user, not a demo name
+            // Next project manager in the configured rotation (Settings → Users);
+            // falls back to the primary user when auto-assignment is off. Never a
+            // hardcoded demo name.
+            ccrm_auto_assign_owner($pdo) ?: ccrm_default_owner($pdo),
             $value,
             3,      // Default rating
             $phone,
