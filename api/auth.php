@@ -585,6 +585,11 @@ if (!function_exists('ccrm_send_cors')) {
             return [
                 'id' => $projectId,
                 'projectTypeId' => $cfg['projectTypeId'],
+                // No name and no deadline: an auto-created project reads as its
+                // paired lead until someone names it (projectDisplayName), and
+                // only its manager knows when it is actually due.
+                'name' => '',
+                'deadline' => null,
                 'leadId' => $leadId,
                 'clientId' => $leadId,
                 'status' => 'active',

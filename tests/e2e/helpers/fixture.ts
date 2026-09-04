@@ -272,6 +272,8 @@ const PROJECT_TYPES = [
     color: '#4f46e5',
     hasTimeline: true,
     hasGantt: true,
+    hasDeadline: true,
+    deadlineWarningDays: 7,
     attributes: [
       { id: 'attr-area', name: 'Plocha (m²)', type: 'number', required: true },
       { id: 'attr-start', name: 'Začiatok realizácie', type: 'date', required: false },
@@ -300,9 +302,11 @@ const PROJECTS = [
   {
     id: 'project-1',
     projectTypeId: 'ptype-roof',
+    name: 'Strecha Silvia — etapa 1',
     leadId: 'lead-silvia',
     clientId: 'lead-silvia',
     status: 'active',
+    deadline: isoDate(4),
     managers: ['Erik'],
     data: { 'attr-area': 145, 'attr-start': isoDate(5), 'attr-note': 'Prístup z dvora.', 'attr-variant': 'Premium' },
     timeline: [
@@ -329,6 +333,21 @@ const PROJECTS = [
     status: 'on_hold',
     managers: ['Mária'],
     data: { 'attr-count': 24 },
+    timeline: [],
+    gantt: [],
+  },
+  {
+    // Late, and paired with nobody: before projects carried a name this one had
+    // nothing to be called at all.
+    id: 'project-3',
+    projectTypeId: 'ptype-roof',
+    name: 'Havarijná oprava — bytový dom Košice',
+    leadId: null,
+    clientId: null,
+    status: 'active',
+    deadline: isoDate(-6),
+    managers: [],
+    data: { 'attr-area': 62 },
     timeline: [],
     gantt: [],
   },

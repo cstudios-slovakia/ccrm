@@ -13,6 +13,7 @@ import type {
 import type { Language } from "../utils/translations";
 import { nowLocalStamp, formatTimestampLocalized, formatDateLocalized, todayLocal } from "../utils/localTime";
 import { formatMoney } from "../utils/currency";
+import { evaluateProjectDeadline, projectDisplayName } from "../utils/projects";
 import { CustomSelect } from "./ui/CustomSelect";
 
 const SearchableClientSelect: React.FC<{
@@ -125,6 +126,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const money = (v: number) => formatMoney(v, currencyCode, userLanguage);
 
   // Global state wiring
+  const [projectName, setProjectName] = useState("");
+  const [deadline, setDeadline] = useState("");
   const [status, setStatus] = useState("active");
   const [associatedLeadId, setAssociatedLeadId] = useState("");
   const [associatedClientId, setAssociatedClientId] = useState("");
@@ -196,6 +199,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
   useEffect(() => {
     if (project) {
+      setProjectName(project.name || "");
+      setDeadline(project.deadline || "");
       setStatus(project.status || "active");
       setAssociatedLeadId(project.leadId || "");
       setAssociatedClientId(project.clientId || "");
@@ -437,6 +442,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
     const updatedProject: Project = {
       ...project,
+      name: projectName.trim(),
+      // Only a type with deadlines on can hold one. Turning the switch off on
+      // the type would otherwise leave an invisible date behind that starts
+      // counting down again the moment someone turns it back on.
+      deadline: projectType.hasDeadline ? (deadline || null) : null,
       status,
       leadId: associatedLeadId || null,
       clientId: associatedClientId || null,
@@ -666,7 +676,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               {projectType.name}
             </span>
             <span className="font-heading font-bold text-sm text-slate-800 mt-1">
-              {leads.find(l => l.id === associatedLeadId)?.name || t("New Project", "Nový projekt", "Új projekt")}
+              {projectDisplayName(
+                { name: projectName, leadId: associatedLeadId },
+                leads,
+                t("New Project", "Nový projekt", "Új projekt"),
+              )}
             </span>
           </div>
         </div>
@@ -692,6 +706,29 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           </h4>
 
           <div className="flex-1 overflow-y-auto space-y-4 pr-1 scrollbar-thin">
+            {/* Project name. Projects used to have none and simply wore the
+                paired lead's, which left a project paired with nobody with no
+                name at all. Still optional: left empty, it reads as the lead. */}
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Project Name", "Názov projektu", "Projekt neve")}</label>
+              <input
+                value={projectName}
+                onChange={e => setProjectName(e.target.value)}
+                maxLength={200}
+                placeholder={t("e.g. Roof replacement, Kosice", "napr. Výmena strechy, Košice", "pl. Tetőcsere, Kassa")}
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              />
+              {!projectName.trim() && (
+                <p className="mt-1 text-[9px] font-semibold text-slate-400 leading-snug">
+                  {t(
+                    "Left empty, this project is listed under the name of the lead it is paired with.",
+                    "Ak ostane prázdny, projekt sa v zozname zobrazí pod menom spárovaného leadu.",
+                    "Üresen hagyva a projekt a hozzá párosított lead nevén szerepel a listában.",
+                  )}
+                </p>
+              )}
+            </div>
+
             {/* Status */}
             <div>
               <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Status", "Stav", "Állapot")}</label>
@@ -707,6 +744,52 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               />
             </div>
 
+            {/* Deadline. Only for a project type that is time-boxed — see
+                hasDeadline in Projects -> Settings -> project type. */}
+            {projectType.hasDeadline && (() => {
+              const dl = evaluateProjectDeadline({ deadline, status }, projectType, todayLocal());
+              return (
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Deadline", "Termín dokončenia", "Határidő")}</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="date"
+                      value={deadline}
+                      onChange={e => setDeadline(e.target.value)}
+                      className="flex-1 min-w-0 px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    />
+                    {deadline && (
+                      <button
+                        type="button"
+                        onClick={() => setDeadline("")}
+                        className="shrink-0 p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                        title={t("Clear deadline", "Zrušiť termín", "Határidő törlése")}
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                  {dl && (
+                    <p className={`mt-1.5 text-[10px] font-black uppercase tracking-wider ${
+                      dl.tone === "overdue"
+                        ? "text-rose-600"
+                        : dl.tone === "soon"
+                          ? "text-amber-600"
+                          : "text-slate-400"
+                    }`}>
+                      {dl.tone === "closed"
+                        ? t("Closed — the deadline no longer applies.", "Uzavretý — termín už neplatí.", "Lezárva — a határidő már nem érvényes.")
+                        : dl.isOverdue
+                          ? t(`${dl.overdueDays} days overdue`, `${dl.overdueDays} dní po termíne`, `${dl.overdueDays} nappal késésben`)
+                          : dl.daysLeft === 0
+                            ? t("Due today", "Termín je dnes", "Ma esedékes")
+                            : t(`${dl.daysLeft} days left`, `Ostáva ${dl.daysLeft} dní`, `${dl.daysLeft} nap van hátra`)}
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
+
             {/* Lead / Client pairing — the project's half of the link. The
                 same pairing is edited from the lead's "Linked projects" card,
                 and both write the one field (`leadId`) that carries it. */}
@@ -718,6 +801,13 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 onChange={id => {
                   setAssociatedLeadId(id);
                   setAssociatedClientId(id);
+                  // Pairing a lead names the project after it, but only while it
+                  // has no name yet — re-pairing never overwrites what somebody
+                  // deliberately typed.
+                  if (!projectName.trim()) {
+                    const paired = leads.find(l => l.id === id);
+                    if (paired?.name) setProjectName(paired.name);
+                  }
                 }}
                 userLanguage={userLanguage}
               />

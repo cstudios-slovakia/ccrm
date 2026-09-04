@@ -37,6 +37,8 @@ export interface UserPrefs {
   leadsViewMode: "list" | "kanban";
   /** Leads screen: dense rows. */
   leadsCompactMode: boolean;
+  /** Projects screen: roomy cards or a dense table. */
+  projectsViewMode: "grid" | "list";
   /** Leads screen: grouping / sorting. */
   leadsOrderingMode: "state" | "pm" | "created_newest" | "created_oldest" | "size" | "rating";
   /**
@@ -68,6 +70,7 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   themeMode: "system",
   errorSidebarEnabled: false,
   leadsViewMode: "list",
+  projectsViewMode: "grid",
   leadsCompactMode: false,
   leadsOrderingMode: "state",
   leadsVisibleStates: null,

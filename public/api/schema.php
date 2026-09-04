@@ -295,6 +295,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `attributes_json` LONGTEXT NOT NULL,
               `has_timeline` TINYINT(1) NOT NULL DEFAULT 0,
               `has_gantt` TINYINT(1) NOT NULL DEFAULT 0,
+              `has_deadline` TINYINT(1) NOT NULL DEFAULT 0,
+              `deadline_warning_days` INT NOT NULL DEFAULT 0,
               `timeline_event_types_json` LONGTEXT NULL,
               `timeline_attributes_json` LONGTEXT NULL,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -305,9 +307,11 @@ if (!function_exists('ccrm_schema_statements')) {
             "CREATE TABLE IF NOT EXISTS `projects` (
               `id` VARCHAR(50) NOT NULL PRIMARY KEY,
               `project_type_id` VARCHAR(50) NOT NULL,
+              `name` VARCHAR(200) NULL,
               `lead_id` VARCHAR(50) NULL,
               `client_id` VARCHAR(50) NULL,
               `status` VARCHAR(50) NOT NULL DEFAULT 'active',
+              `deadline` DATE NULL,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               FOREIGN KEY (`project_type_id`) REFERENCES `project_types` (`id`) ON DELETE CASCADE
@@ -814,6 +818,24 @@ if (!function_exists('ccrm_schema_statements')) {
         }
         if (!ccrm_column_exists($pdo, 'project_types', 'timeline_attributes_json')) {
             $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `timeline_attributes_json` LONGTEXT NULL");
+        }
+        // A project type can be time-boxed: its projects carry a deadline and the
+        // list counts down to it, warning `deadline_warning_days` days ahead.
+        // Both default to off, so existing types are untouched.
+        if (!ccrm_column_exists($pdo, 'project_types', 'has_deadline')) {
+            $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `has_deadline` TINYINT(1) NOT NULL DEFAULT 0 AFTER `has_gantt`");
+        }
+        if (!ccrm_column_exists($pdo, 'project_types', 'deadline_warning_days')) {
+            $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `deadline_warning_days` INT NOT NULL DEFAULT 0 AFTER `has_deadline`");
+        }
+        // Projects had no name of their own — they borrowed the paired lead's,
+        // which left an unpaired project unnameable. NULL on every existing row,
+        // and projectDisplayName() keeps showing the lead's name for those.
+        if (!ccrm_column_exists($pdo, 'projects', 'name')) {
+            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `name` VARCHAR(200) NULL AFTER `project_type_id`");
+        }
+        if (!ccrm_column_exists($pdo, 'projects', 'deadline')) {
+            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `deadline` DATE NULL AFTER `status`");
         }
         if (!ccrm_column_exists($pdo, 'tasks', 'deadline_time')) {
             $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `deadline_time` VARCHAR(5) NULL AFTER `deadline`");

@@ -993,6 +993,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'attributes' => json_decode($row['attributes_json'] ?? '[]', true),
                 'hasTimeline' => (int)$row['has_timeline'] === 1,
                 'hasGantt' => (int)$row['has_gantt'] === 1,
+                'hasDeadline' => (int)($row['has_deadline'] ?? 0) === 1,
+                'deadlineWarningDays' => (int)($row['deadline_warning_days'] ?? 0),
                 'timelineEventTypes' => json_decode($row['timeline_event_types_json'] ?? '[]', true),
                 'timelineAttributes' => json_decode($row['timeline_attributes_json'] ?? '[]', true)
             ];
@@ -1014,9 +1016,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             $projectItem = [
                 'id' => $projId,
                 'projectTypeId' => $ptId,
+                'name' => $pRow['name'] ?? '',
                 'leadId' => $pRow['lead_id'] ?? null,
                 'clientId' => $pRow['client_id'] ?? null,
                 'status' => $pRow['status'],
+                'deadline' => $pRow['deadline'] ?? null,
                 'managers' => $managersByProject[$projId] ?? [],
                 'data' => [],
                 'timeline' => [],
@@ -2106,7 +2110,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (isset($payload['projectTypes']) && is_array($payload['projectTypes'])) {
             $existingPtIds = $pdo->query("SELECT `id` FROM `project_types`")->fetchAll(PDO::FETCH_COLUMN);
             $processedPtIds = [];
-            $insPt = $pdo->prepare("INSERT INTO `project_types` (`id`, `name`, `description`, `icon`, `color`, `attributes_json`, `has_timeline`, `has_gantt`, `timeline_event_types_json`, `timeline_attributes_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `icon`=VALUES(`icon`), `color`=VALUES(`color`), `attributes_json`=VALUES(`attributes_json`), `has_timeline`=VALUES(`has_timeline`), `has_gantt`=VALUES(`has_gantt`), `timeline_event_types_json`=VALUES(`timeline_event_types_json`), `timeline_attributes_json`=VALUES(`timeline_attributes_json`)");
+            $insPt = $pdo->prepare("INSERT INTO `project_types` (`id`, `name`, `description`, `icon`, `color`, `attributes_json`, `has_timeline`, `has_gantt`, `has_deadline`, `deadline_warning_days`, `timeline_event_types_json`, `timeline_attributes_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `icon`=VALUES(`icon`), `color`=VALUES(`color`), `attributes_json`=VALUES(`attributes_json`), `has_timeline`=VALUES(`has_timeline`), `has_gantt`=VALUES(`has_gantt`), `has_deadline`=VALUES(`has_deadline`), `deadline_warning_days`=VALUES(`deadline_warning_days`), `timeline_event_types_json`=VALUES(`timeline_event_types_json`), `timeline_attributes_json`=VALUES(`timeline_attributes_json`)");
             
             foreach ($payload['projectTypes'] as $pt) {
                 if (!isset($pt['id'])) continue;
@@ -2119,6 +2123,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     json_encode($pt['attributes'] ?? []),
                     !empty($pt['hasTimeline']) ? 1 : 0,
                     !empty($pt['hasGantt']) ? 1 : 0,
+                    !empty($pt['hasDeadline']) ? 1 : 0,
+                    // Same clamp as normalizeDeadlineWarningDays on the client:
+                    // a positive whole number of days, or 0 for "only once late".
+                    max(0, min(365, (int)($pt['deadlineWarningDays'] ?? 0))),
                     json_encode($pt['timelineEventTypes'] ?? []),
                     json_encode($pt['timelineAttributes'] ?? [])
                 ]);
@@ -2161,7 +2169,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingProjIds = $pdo->query("SELECT `id` FROM `projects`")->fetchAll(PDO::FETCH_COLUMN);
             $processedProjIds = [];
 
-            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `lead_id`, `client_id`, `status`) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`)");
+            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `deadline`) VALUES (?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `deadline`=VALUES(`deadline`)");
 
             // Manager assignments are replaced per project, never globally. The old
             // unconditional `DELETE FROM project_managers` assumed every push carried
@@ -2177,12 +2185,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!isset($p['id']) || !isset($p['projectTypeId'])) continue;
                 $projId = $p['id'];
 
+                // A project's own name. Empty is stored as NULL rather than "",
+                // so "unnamed" has one representation and the client's fallback
+                // to the paired lead's name keeps working either way.
+                $projName = trim((string)($p['name'] ?? ''));
+                // Deadlines are calendar days. Anything that is not one — "", null,
+                // a stray timestamp — clears the column instead of making MySQL
+                // guess at a DATE it cannot parse.
+                $projDeadline = null;
+                if (preg_match('/^(\d{4}-\d{2}-\d{2})/', (string)($p['deadline'] ?? ''), $dm)) {
+                    $projDeadline = $dm[1];
+                }
+
                 $insProj->execute([
                     $projId,
                     $p['projectTypeId'],
+                    $projName === '' ? null : mb_substr($projName, 0, 200),
                     empty($p['leadId']) ? null : $p['leadId'],
                     empty($p['clientId']) ? null : $p['clientId'],
-                    $p['status'] ?? 'active'
+                    $p['status'] ?? 'active',
+                    $projDeadline
                 ]);
 
                 // Only rewrite this project's managers when the payload actually carries

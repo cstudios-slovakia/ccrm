@@ -404,6 +404,19 @@ export interface ProjectType {
   attributes: ProjectAttribute[];
   hasTimeline: boolean;
   hasGantt: boolean;
+  /**
+   * Projects of this type are time-boxed: they carry a deadline, and the list
+   * counts down to it. Off by default, so a type that is not time-boxed shows
+   * no deadline field and no countdown anywhere — the same opt-in shape as
+   * hasTimeline and hasGantt.
+   */
+  hasDeadline?: boolean;
+  /**
+   * How many days ahead of the deadline a project starts warning, which is what
+   * turns the countdown badge amber. 0 means "only once it is actually late".
+   * See normalizeDeadlineWarningDays in utils/projects.ts.
+   */
+  deadlineWarningDays?: number;
   timelineEventTypes?: TimelineEventType[];
 }
 
@@ -430,7 +443,7 @@ export interface ProjectGanttRow {
  * The states a project can be in. One list, because three places used to spell
  * it out separately (the projects filter, the project card, and now the
  * workflow "change project status" action) and a fourth spelling would drift.
- * Mirrored by ccrm_project_statuses() in api/auth.php, which validates what
+ * Mirrored by CCRM_PROJECT_STATUSES in api/auth.php, which validates what
  * automations and the sync endpoint are allowed to write.
  */
 export const PROJECT_STATUSES = ["active", "completed", "on_hold", "cancelled"] as const;
@@ -439,6 +452,14 @@ export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 export interface Project {
   id: string;
   projectTypeId: string;
+  /**
+   * What the project is called. Optional, and empty on every project created
+   * before it existed: projects used to borrow the paired lead's name and had
+   * no name of their own, which left an unpaired project literally unnameable.
+   * Prefilled from the lead when one is picked, then free to diverge — see
+   * projectDisplayName in utils/projects.ts for the fallback order.
+   */
+  name?: string;
   /**
    * The lead this project is paired with, or null when it stands alone. The
    * pairing is edited from both ends — "Paired lead / client" on the project,
@@ -450,6 +471,11 @@ export interface Project {
   status: string; // one of PROJECT_STATUSES
   managers: string[]; // employee ids or names
   data: Record<string, any>; // keyed by attribute.id
+  /**
+   * Due date as "YYYY-MM-DD", or null when none is set. Only ever shown for a
+   * project whose type has `hasDeadline`.
+   */
+  deadline?: string | null;
   timeline?: ProjectTimelineEvent[];
   gantt?: ProjectGanttRow[];
 }

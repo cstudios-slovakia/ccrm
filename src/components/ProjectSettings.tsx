@@ -1,9 +1,10 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import * as Icons from "lucide-react";
 import { Plus, Trash2, ArrowUp, ArrowDown, Save, X, Workflow } from "lucide-react";
 import { CustomSelect } from "./ui/CustomSelect";
 import type { ProjectAutoCreateSettings, ProjectType, ProjectAttribute, ProjectAttributeType, TimelineEventType } from "../types";
 import { DEFAULT_PROJECT_AUTO_CREATE, isProjectAutoCreateActive } from "../utils/projectAutoCreate";
+import { DEFAULT_DEADLINE_WARNING_DAYS, normalizeDeadlineWarningDays } from "../utils/projects";
 import type { Language } from "../utils/translations";
 
 interface ProjectSettingsProps {
@@ -14,6 +15,14 @@ interface ProjectSettingsProps {
   /** Rules for turning every incoming lead into a project. */
   projectAutoCreate?: ProjectAutoCreateSettings;
   setProjectAutoCreate?: React.Dispatch<React.SetStateAction<ProjectAutoCreateSettings>>;
+  /**
+   * Open straight into the "create project type" form. Set by the projects list
+   * when someone picks "New project type" from the + New Project dropdown,
+   * which used to dead-end at "No types configured" with nowhere to go.
+   */
+  autoStartCreate?: boolean;
+  /** Called once the request above has been honoured, so it fires only once. */
+  onAutoStartCreateHandled?: () => void;
 }
 
 const ALL_LUCIDE_ICONS = Object.keys(Icons).filter(key => {
@@ -42,7 +51,9 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
   userLanguage,
   canEdit,
   projectAutoCreate = DEFAULT_PROJECT_AUTO_CREATE,
-  setProjectAutoCreate
+  setProjectAutoCreate,
+  autoStartCreate = false,
+  onAutoStartCreateHandled
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
   const attributeTypeLabel = (id: ProjectAttributeType) => {
@@ -60,6 +71,8 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
   const [typeColor, setTypeColor] = useState("#a855f7"); // Default lavender
   const [hasTimeline, setHasTimeline] = useState(false);
   const [hasGantt, setHasGantt] = useState(false);
+  const [hasDeadline, setHasDeadline] = useState(false);
+  const [deadlineWarningDays, setDeadlineWarningDays] = useState(DEFAULT_DEADLINE_WARNING_DAYS);
   const [attributes, setAttributes] = useState<ProjectAttribute[]>([]);
 
   // Timeline Custom Events states
@@ -105,12 +118,24 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     setTypeColor("#a855f7");
     setHasTimeline(false);
     setHasGantt(false);
+    setHasDeadline(false);
+    setDeadlineWarningDays(DEFAULT_DEADLINE_WARNING_DAYS);
     setAttributes([]);
     setTimelineEventTypes([]);
     setSelectedTeTypeId(null);
     setIsCreating(true);
     setEditingType(null);
   };
+
+  /* The projects list can ask for the create form directly — see autoStartCreate.
+     The request is acknowledged straight away so it fires once and does not
+     re-open the form every time this component re-renders. */
+  useEffect(() => {
+    if (!autoStartCreate || !canEdit) return;
+    handleStartCreate();
+    onAutoStartCreateHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStartCreate, canEdit]);
 
   const handleStartEdit = (type: ProjectType) => {
     setEditingType(type);
@@ -120,6 +145,12 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     setTypeColor(type.color);
     setHasTimeline(type.hasTimeline);
     setHasGantt(type.hasGantt);
+    setHasDeadline(!!type.hasDeadline);
+    // A type saved before deadlines existed has no window of its own; offer the
+    // default rather than 0, which would read as "never warn me early".
+    setDeadlineWarningDays(
+      type.hasDeadline ? normalizeDeadlineWarningDays(type.deadlineWarningDays) : DEFAULT_DEADLINE_WARNING_DAYS
+    );
     setAttributes(type.attributes || []);
     setTimelineEventTypes(type.timelineEventTypes || []);
     setSelectedTeTypeId(type.timelineEventTypes && type.timelineEventTypes.length > 0 ? type.timelineEventTypes[0].id : null);
@@ -261,6 +292,10 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
       color: typeColor,
       hasTimeline,
       hasGantt,
+      hasDeadline,
+      // Only meaningful while deadlines are on. Storing 0 for a type with them
+      // off keeps the saved shape identical whichever way the switch was flipped.
+      deadlineWarningDays: hasDeadline ? normalizeDeadlineWarningDays(deadlineWarningDays) : 0,
       attributes,
       timelineEventTypes
     };
@@ -427,6 +462,53 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                   {t("Enable Gantt Chart (project roadmap)", "Povoliť Ganttov diagram", "Gantt diagram engedélyezése")}
                 </span>
               </label>
+
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  disabled={!canEdit}
+                  checked={hasDeadline}
+                  onChange={e => setHasDeadline(e.target.checked)}
+                  className="h-4.5 w-4.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <span className="text-sm font-semibold text-slate-700">
+                  {t("Enable Deadline (due date and countdown)", "Povoliť termín (dátum dokončenia a odpočet)", "Határidő engedélyezése (esedékesség és visszaszámlálás)")}
+                </span>
+              </label>
+
+              {/* How early the countdown starts warning. Off by default is not an
+                  option here — a deadline nobody is reminded of is just a date. */}
+              {hasDeadline && (
+                <div className="ml-7.5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 space-y-1.5">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                    {t("Warn this many days ahead", "Upozorniť toľkoto dní vopred", "Ennyi nappal előbb figyelmeztessen")}
+                  </label>
+                  <div className="flex items-center gap-2.5">
+                    <input
+                      type="number"
+                      min={0}
+                      max={365}
+                      disabled={!canEdit}
+                      value={deadlineWarningDays}
+                      onChange={e => setDeadlineWarningDays(normalizeDeadlineWarningDays(e.target.value))}
+                      className="w-24 px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    />
+                    <span className="text-[11px] font-semibold text-slate-500">
+                      {deadlineWarningDays > 0
+                        ? t(
+                            `Projects turn amber ${deadlineWarningDays} days before they are due, and red once late.`,
+                            `Projekty zožltnú ${deadlineWarningDays} dní pred termínom a sčervenajú po ňom.`,
+                            `A projektek ${deadlineWarningDays} nappal a határidő előtt sárgák, utána pirosak lesznek.`,
+                          )
+                        : t(
+                            "No early warning — projects are only flagged once they are late.",
+                            "Bez včasného upozornenia — projekty sa označia až po termíne.",
+                            "Nincs korai figyelmeztetés — a projektek csak lejárat után lesznek megjelölve.",
+                          )}
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Custom Event Types for Timeline */}
@@ -981,6 +1063,11 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                         {t("Gantt", "Gantt", "Gantt")}
                       </span>
                     )}
+                    {type.hasDeadline && (
+                      <span className="px-2 py-0.5 rounded-full bg-amber-50 text-[10px] font-bold text-amber-600 border border-amber-100">
+                        {t("Deadline", "Termín", "Határidő")}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -999,6 +1086,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
           ))}
         </div>
       )}
+
       {/* ── AUTOMATIC CREATION FROM LEADS ──────────────────────────────────
           Every lead that arrives gets a project of the chosen type, already
           paired with it. The creation happens server-side, so it covers leads
