@@ -123,6 +123,26 @@ A design for updating from a button in the UI (and on a schedule) — feasibilit
 risks and a staged implementation plan — is written up in
 [`docs/in-app-updates.md`](docs/in-app-updates.md). **Not implemented yet.**
 
+#### Tracking a different branch on a non-production box
+
+`php ccrm update` pulls `main` by default. A staging/demo instance can
+temporarily track a feature branch instead by exporting `CCRM_DEPLOY_BRANCH`
+before running update:
+
+```bash
+export CCRM_DEPLOY_BRANCH=1.6-grapefruit-fix
+php ccrm update
+```
+
+The run echoes `Deploy branch: <name>` so you can confirm what it pulled.
+Unset it (or set it back to `main`) to return the box to the production
+branch:
+
+```bash
+unset CCRM_DEPLOY_BRANCH
+php ccrm update
+```
+
 ### Licensing
 
 An installation needs a valid licence key **to receive updates**. That is the
