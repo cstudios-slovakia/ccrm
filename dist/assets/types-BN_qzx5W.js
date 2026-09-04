@@ -1,0 +1,1 @@
+var e=[`order`,`proforma_invoice`,`advance_receipt`,`invoice`,`delivery_note`],t=[`active`,`completed`,`on_hold`,`cancelled`];export{t as n,e as t};
