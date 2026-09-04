@@ -39,7 +39,7 @@ class LicenseSigner
      */
     public static function fromEnv(): self
     {
-        $path = getenv('CCRM_LICENSE_PRIVATE_KEY_PATH') ?: '';
+        $path = self::env('CCRM_LICENSE_PRIVATE_KEY_PATH');
         if ($path === '') {
             throw new RuntimeException('CCRM_LICENSE_PRIVATE_KEY_PATH is not set');
         }
@@ -71,6 +71,25 @@ class LicenseSigner
         }
 
         throw new RuntimeException('Unsupported signing algorithm: ' . $envelope['alg']);
+    }
+
+    /**
+     * Read one environment variable.
+     *
+     * `getenv()` alone is not enough. Craft's bootstrap loads `.env` through
+     * phpdotenv's *default* adapters, which write `$_ENV` and `$_SERVER` but
+     * deliberately never call `putenv()` — so under Craft `getenv()` returns
+     * false for everything in `.env`. The standalone mint script, on the other
+     * hand, does use `putenv()`. Check all three and both callers work.
+     */
+    private static function env(string $name): string
+    {
+        foreach ([$_SERVER[$name] ?? null, $_ENV[$name] ?? null, getenv($name)] as $value) {
+            if (is_string($value) && $value !== '') {
+                return $value;
+            }
+        }
+        return '';
     }
 
     public function algorithm(): string

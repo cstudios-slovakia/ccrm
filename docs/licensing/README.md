@@ -207,7 +207,19 @@ curl -s https://your-craft-site/ccrm-license/validate \
   -d '{"action":"validate","product":"ccrm","claimV":1,"key":"CCRM-…","instance":"0123456789abcdef0123456789abcdef","nonce":"test"}'
 ```
 
-A healthy answer is `{"success":true,"token":"…"}`.
+Or, from PowerShell — `curl` there is an alias for `Invoke-WebRequest`, so the
+line above silently becomes a GET and Craft answers with its **HTML** 405 page
+rather than JSON:
+
+```powershell
+$body = '{"action":"validate","product":"ccrm","claimV":1,"key":"CCRM-…","instance":"0123456789abcdef0123456789abcdef","nonce":"test"}'
+Invoke-RestMethod -Uri https://your-craft-site/ccrm-license/validate `
+  -Method Post -ContentType 'application/json' -Body $body -SkipHttpErrorCheck
+```
+
+A healthy answer is `{"success":true,"token":"…"}`. An HTML page instead of
+JSON means the request never arrived as a POST; `{"error":"unknown_key"}` means it
+did, and only the entry is missing.
 
 ### 6. Hand the customer their key
 
