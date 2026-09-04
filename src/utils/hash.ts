@@ -14,8 +14,13 @@ export function parseAppHash(hash: string): { route: string; params: URLSearchPa
   };
 }
 
-/** `#dashboard` and `#tasks` render the same view; remounting on that swap is a no-op that races open drawers. */
+/**
+ * Key that clears the workspace error boundary when the view changes.
+ *
+ * Plainly the route. `#dashboard` used to be an alias of `#tasks` and was
+ * folded into one key; they are now separate views (the widget dashboard and
+ * the task panel), so each gets its own.
+ */
 export function workspaceResetKey(hash: string): string {
-  const route = parseAppHash(hash).route;
-  return route === "tasks" ? "dashboard" : route;
+  return parseAppHash(hash).route;
 }

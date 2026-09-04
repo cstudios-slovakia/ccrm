@@ -1690,8 +1690,60 @@ export const CUSTOM_DASHBOARDS = [
   },
 ];
 
-/** Answers to the `query.action` of every widget above. */
+/**
+ * Answers to the `query.action` of every widget above, plus the fixed actions
+ * the built-in Dashboard's starter widgets use. Those read column names the
+ * widget presets hard-code (`status`, `count`, `owner`, …), so only the values
+ * are in Slovak.
+ */
 export const DASHBOARD_QUERY_RESULTS: Record<string, any> = {
+  leads_count: { count: 44 },
+  pipeline_value: { value: 294700 },
+  leads_by_status: [
+    { status: 'Nový', count: 11, total_value: 68400 },
+    { status: 'Kontaktovaný', count: 8, total_value: 51200 },
+    { status: 'Obhliadka', count: 6, total_value: 103900 },
+    { status: 'Ponuka odoslaná', count: 9, total_value: 156200 },
+    { status: 'Zákazka', count: 5, total_value: 98700 },
+    { status: 'Odmietnutý', count: 3, total_value: 14100 },
+  ],
+  leads_by_source: [
+    { source: 'Web', count: 14, total_value: 121400 },
+    { source: 'Odporúčanie', count: 11, total_value: 98600 },
+    { source: 'Facebook', count: 7, total_value: 42300 },
+    { source: 'Instagram', count: 5, total_value: 21800 },
+    { source: 'Showroom', count: 3, total_value: 8900 },
+  ],
+  tasks_summary: [
+    { status: 'Nová', count: 9 },
+    { status: 'Prebieha', count: 6 },
+    { status: 'Blokovaná', count: 2 },
+    { status: 'Hotová', count: 17 },
+  ],
+  tasks_by_owner: [
+    { owner: 'Erik Kováč', count: 12 },
+    { owner: 'Mária Tóthová', count: 9 },
+    { owner: 'Jozef Baláž', count: 7 },
+  ],
+  recent_leads: [
+    { id: 'd1', name: 'Mesto Nové Zámky — športová hala', status: 'Obhliadka', value: 96500, owner: 'Erik Kováč', created_at: isoDate(-2) },
+    { id: 'd2', name: 'Novák Stavby s.r.o.', status: 'Ponuka odoslaná', value: 86400, owner: 'Mária Tóthová', created_at: isoDate(-4) },
+    { id: 'd3', name: 'SVB Petržalka — Hálova 12', status: 'Ponuka odoslaná', value: 58600, owner: 'Mária Tóthová', created_at: isoDate(-6) },
+    { id: 'd4', name: 'Agrodružstvo Malanta', status: 'Nový', value: 41000, owner: 'Mária Tóthová', created_at: isoDate(-8) },
+    { id: 'd5', name: 'Šimon Frenko — Šahy', status: 'Ponuka odoslaná', value: 11200, owner: 'Jozef Baláž', created_at: isoDate(-9) },
+  ],
+  recent_tasks: [
+    { id: 't1', title: 'Obhliadka — športová hala', status: 'Prebieha', priority: 'high', owner: 'Erik Kováč', deadline: isoDate(2) },
+    { id: 't2', title: 'Pripraviť ponuku pre SVB Petržalka', status: 'Nová', priority: 'high', owner: 'Mária Tóthová', deadline: isoDate(3) },
+    { id: 't3', title: 'Objednať krytinu na Malantu', status: 'Blokovaná', priority: 'medium', owner: 'Jozef Baláž', deadline: isoDate(5) },
+    { id: 't4', title: 'Fakturácia — prvá etapa Novák', status: 'Nová', priority: 'medium', owner: 'Mária Tóthová', deadline: isoDate(6) },
+    { id: 't5', title: 'Zameranie strechy — Šahy', status: 'Hotová', priority: 'low', owner: 'Jozef Baláž', deadline: isoDate(-1) },
+  ],
+  recent_meetings: [
+    { id: 'm1', title: 'Úvodné stretnutie — Mesto Nové Zámky', created_at: isoDate(-1) },
+    { id: 'm2', title: 'Obhliadka SVB Petržalka', created_at: isoDate(-3) },
+    { id: 'm3', title: 'Rokovanie o cene — Novák Stavby', created_at: isoDate(-5) },
+  ],
   demo_pipeline_value: [{ hodnota: 294700 }],
   demo_new_leads: [{ pocet: 11 }],
   demo_win_rate: [{ percento: '42 %' }],

@@ -1,12 +1,28 @@
 import React, { useState } from "react";
 import * as Icons from "lucide-react";
-import { LayoutDashboard, ChevronLeft, ChevronRight, Settings, LogOut, TableProperties, Users, FolderOpen, BarChart3, Mail, Brain, PencilLine, Pencil, X, GripVertical, Download, Upload, Save, Trash2, Sparkles, Coins } from "lucide-react";
+import { LayoutDashboard, ChevronLeft, ChevronRight, Settings, LogOut, TableProperties, Users, FolderOpen, BarChart3, Mail, Brain, PencilLine, Pencil, X, GripVertical, Download, Upload, Save, Trash2, Sparkles, Coins, ListTodo } from "lucide-react";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { cn } from "../utils/cn";
 import { SOCIAL_MEDIA_ENABLED } from "../utils/featureFlags";
 import type { UserProfile, RolePermission, UnifiedEntryRegistry, CustomDashboard } from "../types";
 import { StartMenu } from "./StartMenu";
+import { isHomeDashboard } from "../utils/dashboardWidgets";
+
+/**
+ * `dashboard` used to BE the task panel — the tasks section was split out of it
+ * and the id now belongs to the widget dashboard. A navigation layout saved
+ * before the split lists only "dashboard", which would leave its owner with no
+ * way back to their tasks, so the new item is slotted in right behind it.
+ */
+const withTasksSection = (layout: string[]): string[] => {
+  if (layout.includes("tasks")) return layout;
+  const at = layout.indexOf("dashboard");
+  if (at === -1) return layout;
+  const next = [...layout];
+  next.splice(at + 1, 0, "tasks");
+  return next;
+};
 
 const ALL_LUCIDE_ICONS = Object.keys(Icons).filter(key => {
   return /^[A-Z][a-zA-Z0-9]*$/.test(key) && 
@@ -130,7 +146,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // Dynamic Custom Dashboards mapping
   const dynamicDashItems = React.useMemo(() => {
     return (customDashboards || [])
-      .filter(dash => !dash.archived)
+      // The built-in Dashboard is stored alongside the AI panels but has its own
+      // nav item, so it must not also be listed as a custom one.
+      .filter(dash => !dash.archived && !isHomeDashboard(dash.id))
       .map(dash => {
         const IconComponent = (Icons as any)[dash.icon] || LayoutDashboard;
         return {
@@ -224,7 +242,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // Layout resolution logic
   const defaultSystemLayout = React.useMemo(() => {
     return [
-      "dashboard", 
+      "dashboard",
+      "tasks",
       "overview", 
       "projects",
       "rag_ai", 
@@ -262,10 +281,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const resolvedLayout = React.useMemo(() => {
     if (canEditNav && Array.isArray(userMetadata?.navLayout) && userMetadata.navLayout.length > 0) {
       const stored: string[] = userMetadata.navLayout;
-      return stored;
+      return withTasksSection(stored);
     }
     if (userRole?.defaultNavLayout && Array.isArray(userRole.defaultNavLayout) && userRole.defaultNavLayout.length > 0) {
-      return userRole.defaultNavLayout;
+      return withTasksSection(userRole.defaultNavLayout);
     }
     // Default behavior: show all default items on the sidebar
     return defaultSystemLayout;
@@ -422,8 +441,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const allPossibleItems = React.useMemo(() => {
     return [
-      { id: "dashboard", label: systemLanguage === "sk" ? "Panel úloh" : systemLanguage === "hu" ? "Feladat Irányítópult" : "Task Dashboard", icon: LayoutDashboard, color: "#ff5d00" },
-      { id: "overview", label: getTranslation(systemLanguage, "sidebar.dashboard"), icon: BarChart3, color: "var(--color-cyan-600)" },
+      { id: "dashboard", label: getTranslation(systemLanguage, "sidebar.dashboard"), icon: LayoutDashboard, color: "var(--color-indigo-600)" },
+      { id: "tasks", label: getTranslation(systemLanguage, "sidebar.tasks"), icon: ListTodo, color: "#ff5d00" },
+      { id: "overview", label: getTranslation(systemLanguage, "sidebar.analytics"), icon: BarChart3, color: "var(--color-cyan-600)" },
       { id: "projects", label: systemLanguage === "sk" ? "Projekty" : systemLanguage === "hu" ? "Projektek" : "Projects", icon: Icons.Briefcase || LayoutDashboard, color: "var(--color-purple-500)", isLavender: true },
       { id: "rag_ai", label: systemLanguage === "sk" ? "RAG AI Asistent" : systemLanguage === "hu" ? "RAG AI Asszisztens" : "RAG AI Assistant", icon: Brain, color: "var(--color-violet-500)", isPurple: true },
       { id: "leads", label: getTranslation(systemLanguage, "sidebar.leads"), icon: TableProperties, color: "var(--color-blue-600)" },
@@ -990,7 +1010,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                 ? "bg-slate-100 border-slate-200 text-slate-800"
                                 : "bg-slate-50/50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900"))
                         : isActive
-                          ? (item.id === "dashboard"
+                          ? (item.id === "tasks"
                               ? "bg-[#ff5d00] border-[#ff5d00] text-white"
                               : item.id === "overview"
                                 ? "bg-cyan-600 border-cyan-700 text-white"
@@ -1000,8 +1020,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                     ? "bg-emerald-600 border-emerald-700 text-white"
                                     : item.id === "email"
                                       ? "bg-pink-600 border-pink-700 text-white"
-                                      : item.id === "tasks"
-                                        ? "bg-violet-600 border-violet-700 text-white"
+                                      : item.id === "dashboard"
+                                        ? "bg-indigo-600 border-indigo-700 text-white"
                                         : "bg-amber-700 border-amber-800 text-white"
                             )
                           : (isMobileMenuOpen 

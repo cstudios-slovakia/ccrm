@@ -820,6 +820,88 @@ export async function installBackendMocks(page: Page) {
       body: JSON.stringify({ success: true, data: [], items: [], agents: [], accounts: [], posts: [] }),
     }),
   );
+
+  // Dashboard widgets query the analytics endpoint per widget, so this must be
+  // registered AFTER the catch-all above: Playwright tries the most recently
+  // added matching route first. Registered before it, every widget was answered
+  // with an empty array and the crawler audited a dashboard of zeroes.
+  await page.route('**/api/dashboard_query.php', async (route) => {
+    let action = '';
+    let sql = '';
+    try {
+      const body = JSON.parse(route.request().postData() || '{}');
+      action = (body.action as string) || '';
+      sql = String(body?.params?.sql ?? body?.sql ?? '');
+    } catch {
+      action = '';
+    }
+
+    const data = (() => {
+      switch (action) {
+        case 'leads_count':
+          return { count: LEADS.length };
+        case 'pipeline_value':
+          return { value: LEADS.reduce((sum, lead) => sum + (Number(lead.value) || 0), 0) };
+        case 'leads_by_status':
+          return [
+            { status: 'new', count: 4, total_value: 18000 },
+            { status: 'contacted', count: 3, total_value: 21000 },
+            { status: 'offer sent', count: 2, total_value: 34000 },
+            { status: 'accepted', count: 2, total_value: 51000 },
+          ];
+        case 'leads_by_source':
+          return [
+            { source: 'website', count: 5, total_value: 42000 },
+            { source: 'referral', count: 3, total_value: 27000 },
+            { source: 'campaign', count: 2, total_value: 11000 },
+          ];
+        case 'tasks_summary':
+          return [
+            { status: 'todo', count: 5 },
+            { status: 'in_progress', count: 3 },
+            { status: 'done', count: 7 },
+          ];
+        case 'tasks_by_owner':
+          return [
+            { owner: 'Ada Admin', count: 6 },
+            { owner: 'Sam Sales', count: 4 },
+          ];
+        case 'recent_leads':
+          return LEADS.slice(0, 5).map((lead) => ({
+            id: lead.id,
+            name: lead.name,
+            status: lead.status,
+            value: lead.value,
+            owner: lead.owner,
+            created_at: lead.createdAt,
+          }));
+        case 'recent_tasks':
+          return TASKS.slice(0, 5).map((task) => ({
+            id: task.id,
+            title: task.title,
+            status: task.status,
+            priority: task.priority,
+            owner: task.owner,
+            deadline: task.deadline,
+          }));
+        case 'recent_meetings':
+          return [
+            { id: 'm1', title: 'Kick-off — Nordic Retail', created_at: '2026-01-20' },
+            { id: 'm2', title: 'Site survey', created_at: '2026-01-14' },
+          ];
+        // The `sql` action covers every widget the AI (or a preset) writes its
+        // own query for; the table it reads is enough to answer plausibly.
+        default:
+          return /\bfrom\s+tasks\b/i.test(sql) ? [{ count: 8 }] : [{ count: 4 }];
+      }
+    })();
+
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, data }),
+    });
+  });
   await page.route('**/upload.php', (route) =>
     route.fulfill({
       status: 200,

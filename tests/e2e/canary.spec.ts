@@ -33,14 +33,14 @@ test.describe('Known-bug canaries', () => {
   }) => {
     const crawler = new ViewCrawler(page, 'Canary: create-task deadline time', consoleCapture);
 
-    await gotoView(page, '#dashboard');
+    await gotoView(page, '#tasks');
     const create = page
       .locator('main')
       .getByRole('button', { name: /Vytvoriť novú úlohu|Create New Task|Új feladat/i })
       .first();
     if (!(await create.isVisible({ timeout: 4000 }).catch(() => false))) {
       throw new Error(
-        'Canary could not find the create-task button on #dashboard. The harness cannot prove Čas termínu.',
+        'Canary could not find the create-task button on #tasks. The harness cannot prove Čas termínu.',
       );
     }
     await create.click({ timeout: 4000 });

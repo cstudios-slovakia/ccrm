@@ -57,9 +57,17 @@ function answerApi(pathname: string, search: URLSearchParams, method: string, bo
       if (action === 'logs') return { success: true, logs: WORKFLOW_LOGS };
       return { success: true };
 
-    /* 09 — one answer per widget query action. */
-    case 'dashboard_query.php':
+    /* 09 — one answer per widget query action. The built-in Dashboard's starter
+       widgets write raw SELECTs instead of a named action, so those are told
+       apart by the table they read. */
+    case 'dashboard_query.php': {
+      if (action === 'sql') {
+        const sql = String(body?.params?.sql ?? body?.sql ?? '');
+        if (/\bfrom\s+tasks\b/i.test(sql)) return { success: true, data: [{ count: 17 }] };
+        if (/\bfrom\s+leads\b/i.test(sql)) return { success: true, data: [{ count: 11 }] };
+      }
       return { success: true, data: DASHBOARD_QUERY_RESULTS[action] ?? [] };
+    }
 
     case 'mail_broker.php':
       return { success: true, emails: [], total: 0, folders: { INBOX: 0, Sent: 0, Trash: 0 } };

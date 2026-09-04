@@ -5,12 +5,13 @@ import {
   Package, Coins, PencilLine, FolderOpen, Mail, Brain, Workflow,
   Globe, Sparkles, Settings, User, LogOut, Search, X, ChevronRight,
   Check, Pencil, GripVertical, Pin, RotateCcw, Plus,
-  Archive, EyeOff, Trash2, FolderPlus
+  Archive, EyeOff, Trash2, FolderPlus, ListTodo
 } from "lucide-react";
 import type { UserProfile, RolePermission, UnifiedEntryRegistry, CustomDashboard } from "../types";
 import type { Language } from "../utils/translations";
 import { getTranslation } from "../utils/translations";
 import { SOCIAL_MEDIA_ENABLED } from "../utils/featureFlags";
+import { isHomeDashboard } from "../utils/dashboardWidgets";
 
 interface StartMenuProps {
   isOpen: boolean;
@@ -241,10 +242,10 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     const items: NavMenuItem[] = [
       // 1. BUSINESS & OPERATIONS
       {
-        id: "dashboard",
-        label: t("Task Dashboard", "Panel úloh", "Feladat Irányítópult"),
+        id: "tasks",
+        label: getTranslation(systemLanguage, "sidebar.tasks"),
         description: t("Kanban workflow, sprints & team tasks", "Kanban nástenka, šprinty a tímové úlohy", "Kanban tábla, sprintek és feladatok"),
-        icon: LayoutDashboard,
+        icon: ListTodo,
         color: "#ff5d00",
         bgColor: "rgba(255, 93, 0, 0.12)",
         defaultSection: "operations"
@@ -306,8 +307,17 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
       // 2. ANALYTICS & DASHBOARDS
       {
-        id: "overview",
+        id: "dashboard",
         label: getTranslation(systemLanguage, "sidebar.dashboard"),
+        description: t("Widget board of live metrics, charts & tables", "Nástenka so živými metrikami, grafmi a tabuľkami", "Élő mutatók, diagramok és táblázatok"),
+        icon: LayoutDashboard,
+        color: "var(--color-indigo-600)",
+        bgColor: "rgba(79, 70, 229, 0.12)",
+        defaultSection: "analytics"
+      },
+      {
+        id: "overview",
+        label: getTranslation(systemLanguage, "sidebar.analytics"),
         description: t("Executive BI overview & marketing funnel metrics", "Manažérske BI reporty a marketingové metriky", "Vezetői BI és marketing mutatók"),
         icon: BarChart3,
         color: "var(--color-cyan-600)",
@@ -317,7 +327,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
       // Dynamic Custom Dashboards
       ...customDashboards
-        .filter((d) => !d.archived)
+        // The built-in Dashboard lives in the same list but has its own entry.
+        .filter((d) => !d.archived && !isHomeDashboard(d.id))
         .map((d) => {
           const IconComp = (Icons as any)[d.icon] || LayoutDashboard;
           return {

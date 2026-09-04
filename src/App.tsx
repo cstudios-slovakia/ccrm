@@ -9,6 +9,7 @@ import { DEFAULT_PROJECT_AUTO_CREATE, normalizeProjectAutoCreate } from "./utils
 import { normalizeLeadStateSla, type LeadStateSla } from "./utils/leadSla";
 import { VERSION } from "./utils/version";
 import { parseAppHash, workspaceResetKey } from "./utils/hash";
+import { HOME_DASHBOARD_ID, buildDefaultHomeDashboard } from "./utils/dashboardWidgets";
 import { SOCIAL_MEDIA_ENABLED } from "./utils/featureFlags";
 import type { MeetingNote } from "./components/MeetingRoomView";
 import { getTranslation, formatTranslation } from "./utils/translations";
@@ -803,10 +804,10 @@ ${log.payload || ''}
           viewName = getTranslation(userLanguage, "sidebar.settings");
           break;
         case "overview":
-          viewName = getTranslation(userLanguage, "sidebar.dashboard");
+          viewName = getTranslation(userLanguage, "sidebar.analytics");
           break;
         case "tasks":
-          viewName = t("Tasks", "Úlohy", "Feladatok");
+          viewName = getTranslation(userLanguage, "sidebar.tasks");
           break;
         case "projects":
           viewName = t("Projects", "Projekty", "Projektek");
@@ -833,8 +834,10 @@ ${log.payload || ''}
           viewName = t("Invoices & Price Offers", "Cenové ponuky a faktúry", "Árajánlatok és számlák");
           break;
         case "dashboard":
+          viewName = getTranslation(userLanguage, "sidebar.dashboard");
+          break;
         default:
-          viewName = t("Task Dashboard", "Panel úloh", "Feladat Irányítópult");
+          viewName = getTranslation(userLanguage, "sidebar.tasks");
           break;
       }
     }
@@ -1262,6 +1265,17 @@ ${log.payload || ''}
       return nextDashboards;
     });
   };
+
+  /**
+   * The Dashboard section is stored as a reserved entry in `customDashboards`,
+   * so it syncs and versions exactly like a user-made AI panel. Until someone
+   * saves a change to it there is nothing on the server, and the starter layout
+   * from `buildDefaultHomeDashboard()` stands in.
+   */
+  const homeDashboard = useMemo(
+    () => customDashboards.find(d => d.id === HOME_DASHBOARD_ID) || buildDefaultHomeDashboard(),
+    [customDashboards]
+  );
 
   const updateRolesAndSync = (newRoles: RolePermission[] | ((prev: RolePermission[]) => RolePermission[])) => {
     setRoles(prev => {
@@ -2517,6 +2531,22 @@ ${log.payload || ''}
           />
         );
 
+      case "dashboard":
+        return (
+          <DynamicDashboardView
+            dashboard={homeDashboard}
+            variant="home"
+            onSaveDashboard={(updated: CustomDashboard) => {
+              updateCustomDashboardsAndSync((prev) =>
+                prev.some(d => d.id === HOME_DASHBOARD_ID)
+                  ? prev.map(d => (d.id === HOME_DASHBOARD_ID ? updated : d))
+                  : [...prev, updated]
+              );
+            }}
+            systemLanguage={userLanguage}
+            currencyCode={currencyCode}
+          />
+        );
       case "overview":
         return (
           <Dashboard 
@@ -2872,10 +2902,10 @@ ${log.payload || ''}
             }}
             onAddTask={() => {
               const route = parseAppHash(activeTab).route;
-              // Dashboard and the task panel are the same view. Navigating
-              // dashboard → tasks remounts the calendar (ErrorBoundary resetKey)
-              // and races the create drawer against that remount.
-              if (route !== "tasks" && route !== "dashboard") {
+              // Already on the task panel: navigating to it again would remount
+              // the calendar (ErrorBoundary resetKey) and race the create drawer
+              // against that remount.
+              if (route !== "tasks") {
                 setActiveTab("tasks");
                 window.location.hash = "tasks";
               }

@@ -141,15 +141,16 @@ async function expandSidebar(page: Page) {
 
 test('00 — prehľad, navigácia a úlohy', async ({ page }) => {
   /* `#overview` is the marketing performance dashboard; `#dashboard` is the
-     personal calendar. Only the funnel is captured here: the KPI cards above it
-     read 0 € because that view decides "won" from the English state name
-     `accepted`, which no Slovak pipeline uses. See the note in demoData's
-     SETTINGS — fixing it in the data would cost the leads screen its phases. */
+     widget board and `#tasks` the task panel with the calendar. Only the funnel
+     is captured from overview: the KPI cards above it read 0 € because that view
+     decides "won" from the English state name `accepted`, which no Slovak
+     pipeline uses. See the note in demoData's SETTINGS — fixing it in the data
+     would cost the leads screen its phases. */
   await open(page, '#overview');
   await shotScrolled(page, '00-prehlad-lievik', 340);
 
   await open(page, '#dashboard');
-  await shot(page, '00-moj-kalendar');
+  await shot(page, '00-nastenka');
 
   if (await expandSidebar(page)) await shot(page, '00-navigacia-moduly');
 

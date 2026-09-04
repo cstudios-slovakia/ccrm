@@ -4,6 +4,8 @@ export const translations: Record<Language, Record<string, string>> = {
   en: {
     // Sidebar
     "sidebar.dashboard": "Dashboard",
+    "sidebar.tasks": "Tasks",
+    "sidebar.analytics": "Analytics",
     "sidebar.leads": "Leads Pipeline",
     "sidebar.clients": "Clients Registry",
     "sidebar.files": "Document Files",
@@ -542,7 +544,9 @@ export const translations: Record<Language, Record<string, string>> = {
   },
   sk: {
     // Sidebar
-    "sidebar.dashboard": "Prehľad",
+    "sidebar.dashboard": "Nástenka",
+    "sidebar.tasks": "Úlohy",
+    "sidebar.analytics": "Prehľad",
     "sidebar.leads": "Obchodná nástenka",
     "sidebar.clients": "Adresár klientov",
     "sidebar.files": "Súbory a dokumenty",
@@ -1080,7 +1084,9 @@ export const translations: Record<Language, Record<string, string>> = {
   },
   hu: {
     // Sidebar
-    "sidebar.dashboard": "Vezérlőpult",
+    "sidebar.dashboard": "Irányítópult",
+    "sidebar.tasks": "Feladatok",
+    "sidebar.analytics": "Analitika",
     "sidebar.leads": "Értékesítési tölcsér",
     "sidebar.clients": "Ügyfélnyilvántartás",
     "sidebar.files": "Dokumentumtár",

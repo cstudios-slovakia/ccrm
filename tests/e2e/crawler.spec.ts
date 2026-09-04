@@ -9,8 +9,8 @@ import { dismissOverlays, gotoView, startSession, type ConsoleCapture } from './
  * `.agents/skills/ccrm-qa-audit/SKILL.md` and fails on any high-severity
  * defect it discovers.
  *
- * `#dashboard` and `#tasks` are the same view (`TaskDashboardView`); only
- * dashboard is crawled. Navigation still clicks both sidebar items.
+ * `#dashboard` (the widget dashboard) and `#tasks` (the kanban task panel) are
+ * separate views and are both crawled.
  */
 
 interface ModuleUnderTest {
@@ -22,6 +22,7 @@ interface ModuleUnderTest {
 
 const MODULES: ModuleUnderTest[] = [
   { name: 'Dashboard', hash: '#dashboard' },
+  { name: 'Tasks', hash: '#tasks' },
   { name: 'Leads / Pipeline', hash: '#leads', drilldown: true },
   { name: 'Clients Register', hash: '#clients', drilldown: true },
   { name: 'Projects', hash: '#projects', drilldown: true },
