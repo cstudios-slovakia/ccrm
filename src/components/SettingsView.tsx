@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import type { UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, ProjectType, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, LeadAssignmentMode } from "../types";
 import { resolveAssignmentPool } from "../utils/leadAssignment";
+import { normalizeSlaDays, type LeadStateSla } from "../utils/leadSla";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { ProjectSettings } from "./ProjectSettings";
@@ -108,6 +109,10 @@ interface SettingsViewProps {
   setLeadStageGroups: React.Dispatch<React.SetStateAction<Record<string, "new" | "in_progress" | "closed">>>;
   leadStateFollowUp: Record<string, boolean>;
   setLeadStateFollowUp: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+  // Per-phase SLA in days, keyed by lowercased state name. A phase without an
+  // entry has no limit. See utils/leadSla.ts.
+  leadStateSla: LeadStateSla;
+  setLeadStateSla: React.Dispatch<React.SetStateAction<LeadStateSla>>;
   leadAssignment: LeadAssignmentSettings;
   setLeadAssignment: React.Dispatch<React.SetStateAction<LeadAssignmentSettings>>;
 
@@ -216,6 +221,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setLeadStageGroups,
   leadStateFollowUp,
   setLeadStateFollowUp,
+  leadStateSla,
+  setLeadStateSla,
   leadAssignment,
   setLeadAssignment,
   systemLanguage,
@@ -4391,6 +4398,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 {getTranslation(userLanguage, "settings.states.desc")}
               </p>
 
+              {/* SLA limits need saying out loud: the column is a number box with
+                  no obvious meaning, and where the warning turns up is the whole
+                  point of setting one. */}
+              <p className="text-[10px] text-slate-400 font-semibold tracking-wide text-left leading-relaxed">
+                {t(
+                  "SLA limit — the most days a lead may sit in a phase without moving on. Past the limit it is flagged in the leads list and on the lead itself. Leave it empty for no limit; closed phases are the end of the pipeline and have none.",
+                  "Limit SLA — najviac dní, ktoré môže lead stráviť vo fáze bez posunu ďalej. Po prekročení limitu ho označíme v zozname leadov aj priamo na leade. Prázdne pole znamená bez limitu; uzavreté fázy sú koniec pipeline a limit nemajú.",
+                  "SLA-határidő — legfeljebb hány napig maradhat egy lead egy fázisban továbblépés nélkül. A határidő után megjelöljük a leadek listájában és magán a leaden is. Üresen hagyva nincs határidő; a lezárt fázisok a folyamat végét jelentik, ezért nincs határidejük.",
+                )}
+              </p>
+
               <div className="border border-slate-200/80 rounded-2xl overflow-hidden shadow-inner bg-white/50">
                 <table className="w-full text-left border-collapse">
                   <thead>
@@ -4399,6 +4417,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-44">{getTranslation(userLanguage, "settings.states.th_color")}</th>
                       <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">{getTranslation(userLanguage, "settings.states.th_name")}</th>
                       <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-36">{getTranslation(userLanguage, "settings.states.th_group")}</th>
+                      <th
+                        className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-32"
+                        title={t(
+                          "Maximum days a lead may stay in this phase before it is flagged as overdue.",
+                          "Maximálny počet dní, ktoré môže lead stráviť v tejto fáze, kým bude označený ako po termíne.",
+                          "Legfeljebb hány napig maradhat egy lead ebben a fázisban, mielőtt késésként jelöljük.",
+                        )}
+                      >
+                        {t("SLA limit", "Limit SLA", "SLA-határidő")}
+                      </th>
                       <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-28 text-center">{t("Follow-up", "Follow-up", "Follow-up")}</th>
                       <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-16 text-center">{getTranslation(userLanguage, "settings.states.th_delete")}</th>
                     </tr>
@@ -4469,7 +4497,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 isDragOver ? "bg-indigo-50/60 scale-[0.99] border-2 border-dashed border-indigo-300" : "bg-slate-100/70"
                               }`}
                             >
-                              <td colSpan={6} className="py-3 px-4 font-black uppercase text-slate-800 tracking-wide select-none">
+                              <td colSpan={7} className="py-3 px-4 font-black uppercase text-slate-800 tracking-wide select-none">
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-2">
                                     <span className="text-[11px] text-slate-900 font-extrabold uppercase">{item.name}</span>
@@ -4621,6 +4649,66 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                     : (userLanguage === "sk" ? "UZAVRETÉ" : userLanguage === "hu" ? "LEZÁRT" : "CLOSED")
                                 }
                               </span>
+                            </td>
+
+                            {/* 4a. SLA LIMIT — days a lead may stay in this phase before it is flagged */}
+                            <td className="py-3 px-4 align-middle select-none">
+                              {(() => {
+                                const slaKey = state.toLowerCase();
+                                const canEdit = getPermission("pipeline_stages") === "edit";
+                                // A closed phase is where the pipeline ends, so
+                                // "not moved on in time" means nothing there.
+                                if (resolvedGroup === "closed") {
+                                  return (
+                                    <span
+                                      className="text-[9px] font-black uppercase tracking-widest text-slate-300 cursor-help"
+                                      title={t(
+                                        "Closed phases end the pipeline — there is nothing left to move on to.",
+                                        "Uzavreté fázy sú koncom pipeline — nie je kam sa posunúť ďalej.",
+                                        "A lezárt fázisok lezárják a folyamatot — nincs hová továbblépni.",
+                                      )}
+                                    >
+                                      —
+                                    </span>
+                                  );
+                                }
+                                const days = leadStateSla[slaKey] || 0;
+                                return (
+                                  <div className="flex items-center gap-1.5">
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      max={3650}
+                                      step={1}
+                                      inputMode="numeric"
+                                      value={days || ""}
+                                      placeholder="—"
+                                      disabled={!canEdit}
+                                      onChange={(e) => {
+                                        const next = normalizeSlaDays(e.target.value);
+                                        setLeadStateSla(prev => {
+                                          const copy = { ...prev };
+                                          // Empty and zero both mean "no limit",
+                                          // and it is stored as the absence of a
+                                          // key so the settings blob has one shape.
+                                          if (next > 0) copy[slaKey] = next;
+                                          else delete copy[slaKey];
+                                          return copy;
+                                        });
+                                      }}
+                                      title={t(
+                                        "Maximum days in this phase. Empty = no limit.",
+                                        "Maximálny počet dní v tejto fáze. Prázdne = bez limitu.",
+                                        "Legfeljebb hány nap ebben a fázisban. Üres = nincs határidő.",
+                                      )}
+                                      className={`w-16 px-2.5 py-1.5 rounded-lg bg-white border text-xs font-black text-slate-700 text-center focus:outline-none focus:border-indigo-500 transition-colors ${days ? "border-amber-300 bg-amber-50/60" : "border-slate-200"} ${canEdit ? "" : "opacity-50 cursor-not-allowed"}`}
+                                    />
+                                    <span className={`text-[9px] font-black uppercase tracking-widest ${days ? "text-amber-600" : "text-slate-300"}`}>
+                                      {t("days", "dní", "nap")}
+                                    </span>
+                                  </div>
+                                );
+                              })()}
                             </td>
 
                             {/* 4b. FOLLOW-UP TOGGLE — leads in this state show a "Follow-up done" checkbox */}

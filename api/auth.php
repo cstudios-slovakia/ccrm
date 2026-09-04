@@ -436,7 +436,6 @@ if (!function_exists('ccrm_send_cors')) {
         return $next;
     }
 
-
     /**
      * The states a project may be in. Mirrors PROJECT_STATUSES in src/types —
      * anything else reaching the `projects` table (from a workflow action, say)
@@ -473,6 +472,29 @@ if (!function_exists('ccrm_send_cors')) {
         ];
     }
 
+    /**
+     * Per-phase SLA limits, normalized: lowercased state name -> whole positive
+     * days. Mirrors normalizeLeadStateSla in src/utils/leadSla.ts, key sorting
+     * included — the client compares this blob against its own to decide whether
+     * settings actually changed, and two spellings of the same map would make it
+     * push settings forever.
+     */
+    function ccrm_normalize_lead_state_sla($map): array {
+        if (!is_array($map)) {
+            return [];
+        }
+        $out = [];
+        foreach ($map as $state => $days) {
+            $key = strtolower(trim((string)$state));
+            $n = (int)$days;
+            if ($key === '' || $n <= 0) {
+                continue;
+            }
+            $out[$key] = min($n, 3650);
+        }
+        ksort($out);
+        return $out;
+    }
 
     /** The stored automatic-project-creation config, normalized. Cached per request. */
     function ccrm_project_auto_create_config(\PDO $pdo): array {

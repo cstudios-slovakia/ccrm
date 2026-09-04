@@ -308,6 +308,28 @@ dialog[open]::backdrop {
   color: #1e3a8a !important; /* High-contrast blue-900 */
 }
 
+/* Pipeline SLA breach — a lead has sat in one phase past its configured limit.
+   Deliberately a flicker rather than a soft pulse: it has to be noticed in a
+   list of a hundred rows. Honoured only where motion is welcome; with reduced
+   motion the badge simply stays at full strength, which is still the loud one
+   of the two states. */
+@keyframes sla-flicker {
+  0%, 100% { opacity: 1; }
+  45% { opacity: 0.3; }
+  55% { opacity: 0.3; }
+}
+
+.animate-sla-flicker {
+  animation: sla-flicker 1.1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-sla-flicker {
+    animation: none;
+    opacity: 1;
+  }
+}
+
 /* Fluid shader gradient animations */
 @keyframes fluid-blob {
   0% {

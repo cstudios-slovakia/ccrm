@@ -780,6 +780,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $leadStageGroups = isset($settings['LEAD_STAGE_GROUPS']) ? json_decode($settings['LEAD_STAGE_GROUPS'], true) : [];
     $leadStateParents = isset($settings['LEAD_STATE_PARENTS']) ? json_decode($settings['LEAD_STATE_PARENTS'], true) : (object)[];
     $leadStateFollowUp = isset($settings['LEAD_STATE_FOLLOWUP']) ? json_decode($settings['LEAD_STATE_FOLLOWUP'], true) : (object)[];
+    // How many days a lead may sit in each pipeline phase before the app flags it.
+    // Normalized on the way out so the client never has to defend against a
+    // malformed blob, and so its own normalization compares equal to this one.
+    $leadStateSla = ccrm_normalize_lead_state_sla(
+        isset($settings['LEAD_STATE_SLA']) ? json_decode($settings['LEAD_STATE_SLA'], true) : null
+    );
     // Who new leads are handed to when they arrive without an owner. Normalized
     // on the way out so the UI never has to defend against a malformed blob.
     $leadAssignment = ccrm_normalize_lead_assignment(
@@ -1475,6 +1481,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'leadStageGroups' => $leadStageGroups,
             'leadStateParents' => $leadStateParents,
             'leadStateFollowUp' => $leadStateFollowUp,
+            // Empty has to travel as {} — an empty PHP array encodes as [], which
+            // the client would read as a list and normalize back to {} forever.
+            'leadStateSla' => $leadStateSla ?: (object)[],
             'leadAssignment' => $leadAssignment,
             'projectAutoCreate' => $projectAutoCreate,
             'taskStates' => $taskStates,
@@ -1864,6 +1873,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'LEAD_STAGE_GROUPS' => json_encode($s['leadStageGroups'] ?? []),
                 'LEAD_STATE_PARENTS' => json_encode($s['leadStateParents'] ?? (object)[]),
                 'LEAD_STATE_FOLLOWUP' => json_encode($s['leadStateFollowUp'] ?? (object)[]),
+                // Omitted means unchanged (null is skipped below), the same
+                // contract as the auto-assignment settings underneath: a client
+                // that knows nothing about SLA limits must not clear everyone
+                // else's by saving an unrelated setting.
+                'LEAD_STATE_SLA' => isset($s['leadStateSla']) && is_array($s['leadStateSla'])
+                    ? json_encode((object)ccrm_normalize_lead_state_sla($s['leadStateSla']))
+                    : null,
                 // Omitted means unchanged (null is skipped below): an older client
                 // that knows nothing about auto-assignment must not switch it off
                 // for everyone else simply by saving an unrelated setting.

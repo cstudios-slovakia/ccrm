@@ -52,6 +52,7 @@ import {
     Star,
     Link2,
     Unlink,
+    AlarmClock,
 } from "lucide-react";
 import type {
     Lead,
@@ -67,6 +68,7 @@ import type {
 import { DOCUMENT_EVENT_TYPES } from "../types";
 import { DEFAULT_LEAD_ASSIGNMENT, isAutoAssignActive } from "../utils/leadAssignment";
 import { pairableProjects, projectsForLead } from "../utils/projectAutoCreate";
+import { evaluateLeadSla, type LeadSlaStatus, type LeadStateSla } from "../utils/leadSla";
 
 // Named preset deadline times offered in the gate quick-add picker, mirroring the
 // task dashboard's Add-task drawer. A "Custom" option reveals a free time input so
@@ -320,6 +322,60 @@ import {
     // formatTimestampLocalized — only used by the commented-out e-mail full view
 } from "../utils/localTime";
 import { formatMoney } from "../utils/currency";
+
+// "1 deň / 2-4 dni / 5+ dní" — Slovak counts differently above four, and a badge
+// reading "3 dní" is the kind of thing an operator never stops noticing.
+const slaDays = (n: number, lang: Language): string =>
+    lang === "sk"
+        ? `${n} ${n === 1 ? "deň" : n < 5 ? "dni" : "dní"}`
+        : lang === "hu"
+          ? `${n} nap`
+          : `${n} ${n === 1 ? "day" : "days"}`;
+
+/*
+  "This lead has been sitting in its phase past its limit."
+
+  The limit is set per phase in Settings -> Pipeline stages (see utils/leadSla.ts);
+  this badge is what an operator actually sees for it, in the leads list, on the
+  kanban card and on the lead itself. It flickers on purpose: a breached lead is
+  one row among a hundred, and a static amber pill is exactly what the eye learns
+  to skip. The animation is `animate-sla-flicker` in index.css and holds still
+  under prefers-reduced-motion.
+*/
+const SlaBreachBadge: React.FC<{
+    sla: LeadSlaStatus;
+    lang: Language;
+    /** "full" spells the numbers out (lead detail); "compact" is the list pill. */
+    variant?: "compact" | "full";
+}> = ({ sla, lang, variant = "compact" }) => {
+    const days = (n: number) => slaDays(n, lang);
+
+    const title =
+        lang === "sk"
+            ? `V tejto fáze už ${days(sla.daysInPhase)} — limit je ${days(sla.limitDays)}, prekročený o ${days(sla.overdueDays)}. Posuňte lead do ďalšej fázy.`
+            : lang === "hu"
+              ? `Már ${days(sla.daysInPhase)} ebben a fázisban — a határidő ${days(sla.limitDays)}, ${days(sla.overdueDays)} késés. Léptesse tovább a leadet.`
+              : `In this phase for ${days(sla.daysInPhase)} — the limit is ${days(sla.limitDays)}, so it is ${days(sla.overdueDays)} overdue. Move the lead on.`;
+
+    return (
+        <span
+            role="status"
+            title={title}
+            className={`animate-sla-flicker inline-flex items-center gap-1 shrink-0 rounded-full border border-rose-300 bg-rose-50 text-rose-700 font-black uppercase tracking-wider cursor-help ${
+                variant === "full"
+                    ? "px-2.5 py-1 text-[10px]"
+                    : "px-1.5 py-0.5 text-[9px]"
+            }`}
+        >
+            <AlarmClock
+                className={variant === "full" ? "h-3.5 w-3.5 stroke-[2.5]" : "h-3 w-3 stroke-[2.5]"}
+            />
+            {variant === "full"
+                ? `${lang === "sk" ? "SLA prekročené" : lang === "hu" ? "SLA túllépve" : "SLA overdue"} · ${sla.daysInPhase}/${sla.limitDays} ${lang === "hu" ? "nap" : lang === "sk" ? "dní" : "days"}`
+                : `+${sla.overdueDays} ${lang === "hu" ? "nap" : lang === "sk" ? "d" : "d"}`}
+        </span>
+    );
+};
 
 type LeadStatusSelectorProps = {
     status: string;
@@ -879,6 +935,8 @@ interface LeadsDatagridProps {
     setProjects?: React.Dispatch<React.SetStateAction<Project[]>>;
     setActiveTab?: (tab: string) => void;
     leadStateFollowUp?: Record<string, boolean>;
+    /** Per-phase SLA in days, keyed by lowercased state name (Settings -> Pipeline stages). */
+    leadStateSla?: LeadStateSla;
     /** Rules for handing an ownerless new lead to a project manager (Settings -> Users). */
     leadAssignment?: LeadAssignmentSettings;
     currencyCode?: string | null;
@@ -916,6 +974,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     setProjects,
     setActiveTab,
     leadStateFollowUp = {},
+    leadStateSla = {},
     leadAssignment = DEFAULT_LEAD_ASSIGNMENT,
     currencyCode,
 }) => {
@@ -937,6 +996,31 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const followUpStates = leadStates.filter(
         (s) => !!leadStateFollowUp[s.toLowerCase()],
     );
+
+    /*
+      Leads past the SLA limit of the phase they are in, keyed by lead id.
+      Only breached leads are kept, so every call site is a plain lookup.
+
+      Recomputed whenever the leads or the limits change, which is also what keeps
+      "today" from going stale in a tab left open across midnight — any edit to any
+      lead re-reads the clock.
+    */
+    const breachedSlaById = useMemo(() => {
+        const out: Record<string, LeadSlaStatus> = {};
+        if (!Object.keys(leadStateSla).length) return out;
+        const today = todayLocal();
+        leads.forEach((l) => {
+            const sla = evaluateLeadSla(
+                l,
+                leadStateSla,
+                leadStageGroups,
+                leadStateParents,
+                today,
+            );
+            if (sla?.isBreached) out[l.id] = sla;
+        });
+        return out;
+    }, [leads, leadStateSla, leadStageGroups, leadStateParents]);
     const getSafeStateColor = (stateName: string) => {
         if (!leadStateColors) return "#64748b";
         const key = (stateName || "").toLowerCase();
@@ -4743,13 +4827,40 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             "profile.lead_state",
                                         )}
                                     </label>
-                                    <div className="select-none">
+                                    <div className="select-none flex items-center gap-2 flex-wrap">
                                         <StatusSelector
                                             status={leadStatus}
                                             onChange={handleDirectLeadStateChange}
                                             isEditing={true}
                                         />
+                                        {breachedSlaById[activeLead.id] && (
+                                            <SlaBreachBadge
+                                                sla={breachedSlaById[activeLead.id]}
+                                                lang={systemLanguage}
+                                                variant="full"
+                                            />
+                                        )}
                                     </div>
+
+                                    {/* The badge alone says a limit was passed; this
+                                        says by how long and since when, which is what
+                                        someone opening the lead is about to ask. */}
+                                    {breachedSlaById[activeLead.id] && (
+                                        <p className="text-[10px] font-bold text-rose-600 leading-relaxed pt-1">
+                                            {(() => {
+                                                const sla = breachedSlaById[activeLead.id];
+                                                const since = formatDateLocalized(
+                                                    sla.enteredAt.slice(0, 10),
+                                                    systemLanguage,
+                                                );
+                                                return t(
+                                                    `Unchanged since ${since} — ${slaDays(sla.overdueDays, systemLanguage)} past this phase's limit of ${slaDays(sla.limitDays, systemLanguage)}.`,
+                                                    `Bez zmeny od ${since} — o ${slaDays(sla.overdueDays, systemLanguage)} viac, než dovoľuje limit tejto fázy (${slaDays(sla.limitDays, systemLanguage)}).`,
+                                                    `${since} óta változatlan — ${slaDays(sla.overdueDays, systemLanguage)} a fázis ${slaDays(sla.limitDays, systemLanguage)} határidején túl.`,
+                                                );
+                                            })()}
+                                        </p>
+                                    )}
                                 </div>
                             </div>
 
@@ -5837,6 +5948,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 </button>
                             </form>
                         </div>
+
                         {/* 4. Linked Projects Card — the lead's half of the
                             lead ↔ project pairing. The projects here are the
                             ones whose `leadId` points at this lead; the same
@@ -9635,6 +9747,21 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                                 )
                                                                                             }
                                                                                         />
+                                                                                        {breachedSlaById[
+                                                                                            lead.id
+                                                                                        ] && (
+                                                                                            <SlaBreachBadge
+                                                                                                sla={
+                                                                                                    breachedSlaById[
+                                                                                                        lead
+                                                                                                            .id
+                                                                                                    ]
+                                                                                                }
+                                                                                                lang={
+                                                                                                    systemLanguage
+                                                                                                }
+                                                                                            />
+                                                                                        )}
                                                                                     </div>
 
                                                                                     {/* Next Task or Next State */}
@@ -10314,10 +10441,21 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                 : "p-4 gap-2.5"
                                                                         }`}
                                                                     >
-                                                                        {/* Row 1: Hover Actions */}
+                                                                        {/* Row 1: SLA warning (always on) + hover actions */}
                                                                         <div
-                                                                            className={`flex items-center justify-end shrink-0 ${compactMode ? "h-2" : "h-4"}`}
+                                                                            className={`flex items-center justify-between gap-1 shrink-0 ${compactMode ? "min-h-2" : "min-h-4"}`}
                                                                         >
+                                                                            {/* Kanban is the other reading of the same list, so a
+                                                                                breached lead has to be as obvious here as in a row. */}
+                                                                            {breachedSlaById[lead.id] ? (
+                                                                                <SlaBreachBadge
+                                                                                    sla={breachedSlaById[lead.id]}
+                                                                                    lang={systemLanguage}
+                                                                                />
+                                                                            ) : (
+                                                                                <span />
+                                                                            )}
+
                                                                             {/* Card quick actions on hover */}
                                                                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                                                 <button

@@ -690,6 +690,10 @@ const SETTINGS = {
   leadStageGroups: {},
   leadStateParents: {},
   leadStateFollowUp: { contacted: true },
+  // A phase SLA short enough that `lead-novak` (offer sent, 25 days old, never
+  // moved) is breached, so the audit walks the overdue badge in the list, the
+  // kanban card and the lead detail rather than only the settings input.
+  leadStateSla: { 'offer sent': 5 },
   taskStates: TASK_STATES,
   taskStateColors: { New: '#3b82f6', 'In progress': '#f59e0b', Blocked: '#ef4444', Done: '#10b981' },
 };

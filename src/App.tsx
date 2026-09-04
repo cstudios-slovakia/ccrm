@@ -6,6 +6,7 @@ import { TaskDashboardView } from "./components/TaskDashboardView";
 import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, FinancialRecord, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings } from "./types";
 import { DEFAULT_LEAD_ASSIGNMENT, normalizeLeadAssignment } from "./utils/leadAssignment";
 import { DEFAULT_PROJECT_AUTO_CREATE, normalizeProjectAutoCreate } from "./utils/projectAutoCreate";
+import { normalizeLeadStateSla, type LeadStateSla } from "./utils/leadSla";
 import { VERSION } from "./utils/version";
 import { parseAppHash, workspaceResetKey } from "./utils/hash";
 import { SOCIAL_MEDIA_ENABLED } from "./utils/featureFlags";
@@ -122,6 +123,9 @@ const computeSettingsSig = (s: any): string => {
     s.leadStageGroups && Object.keys(s.leadStageGroups).length ? s.leadStageGroups : null,
     s.leadStateParents && Object.keys(s.leadStateParents).length ? s.leadStateParents : null,
     s.leadStateFollowUp && Object.keys(s.leadStateFollowUp).length ? s.leadStateFollowUp : null,
+    // Normalized on both sides so "no SLA anywhere" has one spelling whichever
+    // side you ask. See normalizeLeadStateSla / ccrm_normalize_lead_state_sla.
+    normalizeLeadStateSla(s.leadStateSla),
     // Normalized on both sides so an absent value and an explicit "off" blob
     // (which is what the server sends back) compare equal instead of pushing
     // forever. See normalizeLeadAssignment / ccrm_normalize_lead_assignment.
@@ -535,6 +539,11 @@ function App() {
   // Keyed by lowercased state name (admin-configurable in Settings). Robust to
   // renaming/removing states — a removed state's entry simply stops mattering.
   const [leadStateFollowUp, setLeadStateFollowUp] = useState<Record<string, boolean>>({});
+
+  // Per-state SLA: how many days a lead may sit in that phase before the leads
+  // list and the lead detail start flagging it. Keyed by lowercased state name;
+  // a state without an entry simply has no limit. See utils/leadSla.ts.
+  const [leadStateSla, setLeadStateSla] = useState<LeadStateSla>({});
 
   // Who new leads without an owner are handed to (Settings → Users). The rules
   // live here; the actual pick is made server-side so one rotation is shared by
@@ -1022,6 +1031,7 @@ ${log.payload || ''}
         leadStageGroups,
         leadStateParents,
         leadStateFollowUp,
+        leadStateSla,
         leadAssignment,
         projectAutoCreate,
         taskStates,
@@ -1674,7 +1684,7 @@ ${log.payload || ''}
     const currentSig = computeSettingsSig({
       leadStates, leadSources, leadCategories, systemName, systemLanguage, systemCurrency,
       leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups,
-      leadStateParents, leadStateFollowUp, leadAssignment, projectAutoCreate, taskStates, taskStateColors,
+      leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors,
     });
     // Before we have ever seen the server's settings, just record the current
     // signature — there is nothing to push yet, and pushing here would echo the
@@ -1702,7 +1712,7 @@ ${log.payload || ''}
       // newest values.
       pushStateToServer();
     }, 700);
-  }, [leadStates, leadSources, leadCategories, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadAssignment, projectAutoCreate, taskStates, taskStateColors, isInitialSyncResolved]);
+  }, [leadStates, leadSources, leadCategories, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, isInitialSyncResolved]);
 
   // Layout Hash change listener
   useEffect(() => {
@@ -1888,6 +1898,10 @@ ${log.payload || ''}
         setLeadStageGroups((prev) => s.leadStageGroups && JSON.stringify(s.leadStageGroups) !== JSON.stringify(prev) ? s.leadStageGroups : prev);
         setLeadStateParents((prev) => s.leadStateParents && JSON.stringify(s.leadStateParents) !== JSON.stringify(prev) ? s.leadStateParents : prev);
         setLeadStateFollowUp((prev) => s.leadStateFollowUp && JSON.stringify(s.leadStateFollowUp) !== JSON.stringify(prev) ? s.leadStateFollowUp : prev);
+        setLeadStateSla((prev) => {
+          const next = normalizeLeadStateSla(s.leadStateSla);
+          return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
+        });
         setLeadAssignment((prev) => {
           const next = normalizeLeadAssignment(s.leadAssignment);
           return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
@@ -2142,6 +2156,8 @@ ${log.payload || ''}
           setLeadStageGroups={setLeadStageGroups}
           leadStateFollowUp={leadStateFollowUp}
           setLeadStateFollowUp={setLeadStateFollowUp}
+          leadStateSla={leadStateSla}
+          setLeadStateSla={setLeadStateSla}
           leadAssignment={leadAssignment}
           setLeadAssignment={setLeadAssignment}
           systemLanguage={systemLanguage}
@@ -2261,6 +2277,7 @@ ${log.payload || ''}
           setProjects={updateProjectsAndSync}
           setActiveTab={setActiveTab}
           leadStateFollowUp={leadStateFollowUp}
+          leadStateSla={leadStateSla}
           leadAssignment={leadAssignment}
           currencyCode={currencyCode}
         />
@@ -2297,6 +2314,8 @@ ${log.payload || ''}
           setLeadStageGroups={setLeadStageGroups}
           leadStateFollowUp={leadStateFollowUp}
           setLeadStateFollowUp={setLeadStateFollowUp}
+          leadStateSla={leadStateSla}
+          setLeadStateSla={setLeadStateSla}
           leadAssignment={leadAssignment}
           setLeadAssignment={setLeadAssignment}
           systemLanguage={systemLanguage}
@@ -2367,6 +2386,7 @@ ${log.payload || ''}
             setProjects={updateProjectsAndSync}
             setActiveTab={setActiveTab}
             leadStateFollowUp={leadStateFollowUp}
+            leadStateSla={leadStateSla}
             leadAssignment={leadAssignment}
             currencyCode={currencyCode}
           />
