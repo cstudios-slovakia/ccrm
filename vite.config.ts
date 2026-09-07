@@ -1,5 +1,24 @@
-import { defineConfig, loadEnv } from 'vite'
+import { defineConfig, loadEnv, type Plugin, type ViteDevServer } from 'vite'
 import react from '@vitejs/plugin-react'
+import path from 'node:path'
+
+// The PostCSS chain imports scripts/postcss-dark-palette.mjs once, when the dev
+// server boots. Vite restarts itself when postcss.config.js changes but knows
+// nothing about the modules that file imports, so editing the dark-mode plugin
+// changed nothing on screen: index.css does recompile on save, but through the
+// plugin instance already sitting in memory. The symptom is maddening — the
+// source is right, the compiled CSS is right, the browser is served last hour's
+// output — so watch the file ourselves and restart the server on a change.
+const watchDarkPalettePlugin = (): Plugin => ({
+  name: 'ccrm:watch-postcss-dark-palette',
+  configureServer(server: ViteDevServer) {
+    const plugin = path.resolve(process.cwd(), 'scripts/postcss-dark-palette.mjs')
+    server.watcher.add(plugin)
+    server.watcher.on('change', (changed) => {
+      if (path.resolve(changed) === plugin) void server.restart()
+    })
+  },
+})
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
@@ -10,7 +29,7 @@ export default defineConfig(({ mode }) => {
   const backendTarget = `http://localhost:${env.CCRM_DEV_BACKEND_PORT || '8085'}`
 
   return {
-    plugins: [react()],
+    plugins: [react(), watchDarkPalettePlugin()],
     base: "./",
     server: {
       // CCRM_DEV_PORT pins this checkout to one fixed port so multiple worktrees

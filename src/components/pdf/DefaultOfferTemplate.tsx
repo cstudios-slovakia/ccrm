@@ -250,12 +250,16 @@ export const DefaultOfferTemplate: React.FC<DefaultOfferTemplateProps> = ({
         <div className="overflow-x-auto mt-2">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="bg-slate-900 text-white font-bold text-[11px] uppercase tracking-wider">
-                <th className="p-2.5 rounded-l-lg">{t("Item", "Položka", "Tétel")}</th>
+              {/* Paper, not screen: a solid dark band reads as UI chrome in a
+                  document and costs a strip of toner on every copy. The weight
+                  comes from the rule underneath instead — the same
+                  `border-b-2 border-slate-900` the document header uses. */}
+              <tr className="bg-slate-100 text-slate-700 font-bold text-[11px] uppercase tracking-wider border-b-2 border-slate-900">
+                <th className="p-2.5">{t("Item", "Položka", "Tétel")}</th>
                 <th className="p-2.5">{t("Specification", "Špecifikácia / Popis", "Leírás")}</th>
                 <th className="p-2.5 text-center">{t("Qty", "Množstvo", "Mennyiség")}</th>
                 <th className="p-2.5 text-right">{t("Unit price", "Jedn. cena", "Egységár")}</th>
-                <th className="p-2.5 text-right rounded-r-lg">{t("Total", "Spolu", "Összesen")}</th>
+                <th className="p-2.5 text-right">{t("Total", "Spolu", "Összesen")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -310,13 +314,13 @@ export const DefaultOfferTemplate: React.FC<DefaultOfferTemplateProps> = ({
       </div>
 
       {/* 7. Total banner */}
-      <div className="mt-4 bg-slate-950 text-white rounded-xl p-4 flex flex-col sm:flex-row justify-between items-center gap-2 shadow-lg print:shadow-none">
-        <div className="font-bold text-sm tracking-wide text-slate-200 uppercase text-center sm:text-left">
+      <div className="mt-4 bg-slate-50 border-2 border-slate-900 rounded-xl p-4 flex flex-col sm:flex-row justify-between items-center gap-2">
+        <div className="font-bold text-sm tracking-wide text-slate-700 uppercase text-center sm:text-left">
           {offer.type === "price_offer"
             ? t("Estimated price for the complete delivery", "Predbežná cena za komplexnú dodávku a montáž", "Becsült ár a teljes szállításra")
             : t("Total amount due", "Celková suma na úhradu", "Fizetendő összeg")}
         </div>
-        <div className="text-2xl sm:text-3xl font-black text-orange-400 tracking-tight whitespace-nowrap">
+        <div className="text-2xl sm:text-3xl font-black text-orange-600 tracking-tight whitespace-nowrap">
           {formattedPrice}
         </div>
       </div>
