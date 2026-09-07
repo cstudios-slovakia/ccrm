@@ -7,7 +7,7 @@ import { cn } from "../utils/cn";
 import { BlockEditor } from "./BlockEditor";
 import type { EditorBlock } from "./BlockEditor";
 import { Markdown } from "../utils/markdown";
-import { todayLocal } from "../utils/localTime";
+import { todayLocal, formatDateLocalized, localeCodeFor } from "../utils/localTime";
 import { CustomSelect } from "./ui/CustomSelect";
 
 const parseNotesToBlocks = (notes: string): EditorBlock[] => {
@@ -1513,7 +1513,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                         <div className="flex flex-wrap items-center gap-1.5 text-[9px] text-slate-400 font-bold uppercase tracking-wider">
                           <span className="flex items-center gap-0.5">
                             <Calendar className="h-3 w-3" />
-                            {task.dueDate || t("No deadline", "Bez termínu", "Nincs határidő")}
+                            {task.dueDate ? formatDateLocalized(task.dueDate, systemLanguage) : t("No deadline", "Bez termínu", "Nincs határidő")}
                           </span>
                           <span>•</span>
                           <span className={cn(
@@ -1798,7 +1798,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                       {/* Date Badge */}
                       <div className="flex flex-col items-center justify-center bg-slate-50 border border-slate-200/60 rounded-xl p-2 w-16 shrink-0 text-center">
                         <span className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider leading-none">
-                          {new Date(m.date).toLocaleString('default', { month: 'short' })}
+                          {new Date(m.date).toLocaleString(localeCodeFor(systemLanguage), { month: 'short' })}
                         </span>
                         <span className="text-base font-heading font-black text-slate-800 leading-tight">
                           {new Date(m.date).getDate()}

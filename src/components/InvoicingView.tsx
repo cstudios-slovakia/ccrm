@@ -16,7 +16,7 @@ import { CustomAiOfferTemplate } from "./pdf/CustomAiOfferTemplate";
 import { CustomSelect } from "./ui/CustomSelect";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { formatMoney, resolveCurrencySymbol } from "../utils/currency";
-import { todayLocal, nowLocalStamp } from "../utils/localTime";
+import { todayLocal, nowLocalStamp, formatDateLocalized } from "../utils/localTime";
 import { cn } from "../utils/cn";
 
 interface InvoicingViewProps {
@@ -932,7 +932,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                       <div className="font-bold text-slate-900">{offer.clientName}</div>
                       {offer.location && <div className="text-[11px] text-slate-400">{offer.location}</div>}
                     </td>
-                    <td className="p-4 align-top text-slate-600 whitespace-nowrap">{offer.issuedAt}</td>
+                    <td className="p-4 align-top text-slate-600 whitespace-nowrap">{formatDateLocalized(offer.issuedAt, lang)}</td>
                     <td className="p-4 align-top text-right font-bold text-slate-900 whitespace-nowrap">
                       {money(offer.totalPrice)}
                     </td>
@@ -1168,7 +1168,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                         onChange={setSelectedTemplateId}
                         options={aiCustomTemplates.map(tpl => ({
                           value: tpl.id,
-                          label: `${tpl.name} (${(tpl.createdAt || "").slice(0, 10)})`
+                          label: `${tpl.name} (${formatDateLocalized(tpl.createdAt, lang)})`
                         }))}
                       />
                     </div>

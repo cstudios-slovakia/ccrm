@@ -2174,7 +2174,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">{t("Selected Data Node", "Vybraný dátový bod", "Kiválasztott adatpont")}</span>
                           <span className="text-xs font-black text-slate-800 mt-0.5">{pt.label}</span>
                           <div className="flex items-center justify-center gap-3 mt-1 text-[11px] font-bold">
-                            <span className="text-slate-500">{t("Date", "Dátum", "Dátum")}: <strong className="text-slate-700">{pt.date}</strong></span>
+                            <span className="text-slate-500">{t("Date", "Dátum", "Dátum")}: <strong className="text-slate-700">{formatTimestampLocalized(pt.date, systemLanguage)}</strong></span>
                             <span className="text-slate-500">{t("Change", "Zmena", "Változás")}: <strong className="text-slate-700">+{inspectingChart.valuePrefix}{pt.value.toLocaleString()}{inspectingChart.valueSuffix}</strong></span>
                             <span className="text-slate-500">{t("Value", "Hodnota", "Érték")}: <strong style={{ color: inspectingChart.color }}>{inspectingChart.valuePrefix}{pt.cumulative.toLocaleString()}{inspectingChart.valueSuffix}</strong></span>
                           </div>
@@ -2208,7 +2208,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     >
                       <div className="flex flex-col min-w-0 pr-2">
                         <span className="text-[11px] font-bold text-slate-800 truncate leading-snug">{pt.label}</span>
-                        <span className="text-[8px] text-slate-400 font-bold mt-0.5">{pt.date}</span>
+                        <span className="text-[8px] text-slate-400 font-bold mt-0.5">{formatTimestampLocalized(pt.date, systemLanguage)}</span>
                       </div>
                       <div className="flex flex-col items-end shrink-0">
                         <strong className="text-xs font-black text-slate-800">

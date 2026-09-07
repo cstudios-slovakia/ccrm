@@ -2,6 +2,7 @@ import React from "react";
 import type { InvoiceOffer, CompanyBillingSettings, UspCardItem } from "../../types";
 import type { Language } from "../../utils/translations";
 import { formatMoney } from "../../utils/currency";
+import { formatDateLocalized } from "../../utils/localTime";
 
 interface DefaultOfferTemplateProps {
   offer: InvoiceOffer;
@@ -85,7 +86,7 @@ export const DefaultOfferTemplate: React.FC<DefaultOfferTemplateProps> = ({
   const hasParameters = Boolean(offer.durationText || offer.startDateText || offer.warrantyText);
 
   return (
-    <div className="print-document bg-white text-slate-900 font-sans p-8 md:p-12 max-w-[920px] mx-auto shadow-2xl rounded-2xl border border-slate-200 print:shadow-none print:border-none print:p-0 print:max-w-none print:rounded-none text-[13px] leading-relaxed select-text">
+    <div className="print-document force-light bg-white text-slate-900 font-sans p-8 md:p-12 max-w-[920px] mx-auto shadow-2xl rounded-2xl border border-slate-200 print:shadow-none print:border-none print:max-w-none print:rounded-none text-[13px] leading-relaxed select-text">
       {/* 1. Brand & contact */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center pb-6 border-b border-slate-100 gap-4">
         <div className="flex items-center gap-3.5 min-w-0">
@@ -150,7 +151,7 @@ export const DefaultOfferTemplate: React.FC<DefaultOfferTemplateProps> = ({
           </div>
           <div>
             <span className="font-bold text-slate-700">{t("Date", "Dátum", "Dátum")}:</span>{" "}
-            <span className="font-medium text-slate-800">{offer.issuedAt}</span>
+            <span className="font-medium text-slate-800">{formatDateLocalized(offer.issuedAt, language)}</span>
           </div>
           {offer.location && (
             <div>
@@ -167,13 +168,13 @@ export const DefaultOfferTemplate: React.FC<DefaultOfferTemplateProps> = ({
           {offer.dueDate && offer.type !== "price_offer" && (
             <div>
               <span className="font-bold text-slate-700">{t("Due date", "Splatnosť", "Fizetési határidő")}:</span>{" "}
-              <span className="font-medium text-slate-800">{offer.dueDate}</span>
+              <span className="font-medium text-slate-800">{formatDateLocalized(offer.dueDate, language)}</span>
             </div>
           )}
           {offer.validUntil && offer.type === "price_offer" && (
             <div>
               <span className="font-bold text-slate-700">{t("Valid until", "Platnosť do", "Érvényes")}:</span>{" "}
-              <span className="font-medium text-slate-800">{offer.validUntil}</span>
+              <span className="font-medium text-slate-800">{formatDateLocalized(offer.validUntil, language)}</span>
             </div>
           )}
         </div>

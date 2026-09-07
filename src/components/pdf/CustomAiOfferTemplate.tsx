@@ -2,6 +2,7 @@ import React from "react";
 import type { InvoiceOffer, CompanyBillingSettings, AiCustomTemplate, UspCardItem } from "../../types";
 import type { Language } from "../../utils/translations";
 import { formatMoney } from "../../utils/currency";
+import { formatDateLocalized } from "../../utils/localTime";
 
 interface CustomAiOfferTemplateProps {
   offer: InvoiceOffer;
@@ -113,7 +114,7 @@ export const CustomAiOfferTemplate: React.FC<CustomAiOfferTemplateProps> = ({
   const hasParameters = Boolean(offer.durationText || offer.startDateText || offer.warrantyText);
 
   return (
-    <div className="print-document bg-white text-slate-900 font-sans p-8 md:p-12 max-w-[920px] mx-auto shadow-2xl rounded-3xl border border-slate-200 print:shadow-none print:border-none print:p-0 print:max-w-none print:rounded-none text-[13px] leading-relaxed select-text">
+    <div className="print-document force-light bg-white text-slate-900 font-sans p-8 md:p-12 max-w-[920px] mx-auto shadow-2xl rounded-3xl border border-slate-200 print:shadow-none print:border-none print:max-w-none print:rounded-none text-[13px] leading-relaxed select-text">
       {/* Accent bar */}
       <div
         className="h-2 w-full rounded-full mb-6"
@@ -195,7 +196,7 @@ export const CustomAiOfferTemplate: React.FC<CustomAiOfferTemplateProps> = ({
           </div>
           <div>
             <span className="font-bold text-slate-700">{t("Issued", "Dátum vystavenia", "Kiállítva")}:</span>{" "}
-            <span className="font-medium text-slate-800">{offer.issuedAt}</span>
+            <span className="font-medium text-slate-800">{formatDateLocalized(offer.issuedAt, language)}</span>
           </div>
           {offer.location && (
             <div>

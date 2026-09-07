@@ -604,7 +604,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
       case "timeline":
         return <DashboardTimeline widget={widget} data={data} t={t} systemLanguage={systemLanguage as Language} localize={localize} />;
       case "accordion":
-        return <DashboardAccordion widget={widget} data={data} t={t} localize={localize} />;
+        return <DashboardAccordion widget={widget} data={data} t={t} localize={localize} systemLanguage={systemLanguage as Language} />;
       case "tabs":
         if (depth > 0) {
           // Tabs nested inside tabs have no sane layout and no fetched data.
@@ -2112,7 +2112,8 @@ const DashboardAccordion: React.FC<{
   data: any;
   t: (en: string, sk: string, hu: string) => string;
   localize: (value: any) => string;
-}> = ({ widget, data, t }) => {
+  systemLanguage: Language;
+}> = ({ widget, data, t, systemLanguage }) => {
   const [openIndex, setOpenIndex] = useState<number | null>(0);
   const dataList = Array.isArray(data) ? data : [];
   if (dataList.length === 0) return <EmptyRows t={t} />;
@@ -2143,7 +2144,7 @@ const DashboardAccordion: React.FC<{
               </span>
               <div className="flex items-center gap-2 shrink-0">
                 {subtitleKey && row[subtitleKey] ? (
-                  <span className="text-[10px] font-bold text-slate-400">{String(row[subtitleKey])}</span>
+                  <span className="text-[10px] font-bold text-slate-400">{formatTimestamp(row[subtitleKey], systemLanguage)}</span>
                 ) : null}
                 <ChevronDown
                   className={cn(

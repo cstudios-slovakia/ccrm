@@ -49,6 +49,7 @@ import {
 } from "lucide-react";
 import { CustomSelect } from "./ui/CustomSelect";
 import { formatMoney } from "../utils/currency";
+import { formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
 import type { Language } from "../utils/translations";
 
 const formatCurrency = (val: number, lang: Language, currency?: string | null) =>
@@ -2567,7 +2568,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                           { value: "", label: t("Auto: Earliest Expiration (FEFO)", "Auto: Najskoršia exspirácia (FEFO)", "Legkorábbi lejárat") },
                                           ...itemBatches.map(b => ({
                                             value: b.id,
-                                            label: `${b.batchNumber} (Exp: ${b.expirationDate}, ${b.currentQuantity} ${selItem.unit})`,
+                                            label: `${b.batchNumber} (Exp: ${formatDateLocalized(b.expirationDate, systemLanguage)}, ${b.currentQuantity} ${selItem.unit})`,
                                           })),
                                         ]}
                                         size="sm"
@@ -3990,7 +3991,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                               </div>
                                             </td>
                                             <td className="py-2.5 px-3 font-mono text-slate-700">
-                                              {batch.expirationDate ? batch.expirationDate.slice(0, 10) : "-"}
+                                              {batch.expirationDate ? formatDateLocalized(batch.expirationDate, systemLanguage) : "-"}
                                             </td>
                                             <td className="py-2.5 px-3">
                                               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 ${
@@ -4111,7 +4112,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                             return (
                               <tr key={mov.id} className="hover:bg-slate-50/60 transition">
                                 <td className="py-3 px-3.5 font-mono text-slate-500 text-[11px]">
-                                  {mov.issuedAt ? mov.issuedAt.slice(0, 16) : mov.createdAt?.slice(0, 16)}
+                                  {formatTimestampLocalized(mov.issuedAt ? mov.issuedAt.slice(0, 16) : mov.createdAt?.slice(0, 16), systemLanguage)}
                                 </td>
                                 <td className="py-3 px-3.5">
                                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
@@ -4593,7 +4594,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       return selBatch ? (
                         <div className="flex items-center gap-2">
                           <span className="font-mono font-bold text-slate-900">{selBatch.batchNumber}</span>
-                          <span className="text-slate-500 font-mono">({selBatch.expirationDate?.slice(0, 10)})</span>
+                          <span className="text-slate-500 font-mono">({formatDateLocalized(selBatch.expirationDate, systemLanguage)})</span>
                           {expStatus && (
                             <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
                               expStatus.status === "expired" ? "bg-rose-100 text-rose-800" : expStatus.status === "warning" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"
@@ -4664,7 +4665,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                               <div>
                                 <div className="flex items-center gap-2">
                                   <span className="font-mono font-bold">{b.batchNumber}</span>
-                                  <span className="font-mono text-[11px] opacity-80">({b.expirationDate?.slice(0, 10)})</span>
+                                  <span className="font-mono text-[11px] opacity-80">({formatDateLocalized(b.expirationDate, systemLanguage)})</span>
                                   {bIdx === 0 && (
                                     <span className="px-1.5 py-0.2 rounded bg-amber-200 text-amber-900 text-[9px] font-black uppercase">
                                       FEFO
@@ -5359,7 +5360,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                               {mov.type === "inward" ? t("Receipt", "Príjemka", "Bevétel") : mov.type === "outward" ? t("Issue", "Výdajka", "Kiadás") : t("Transfer", "Prevodka", "Átadás")}
                             </span>
                             <span className="text-xs text-slate-400">&bull;</span>
-                            <span className="text-xs text-slate-500 font-mono">{mov.issuedAt}</span>
+                            <span className="text-xs text-slate-500 font-mono">{formatTimestampLocalized(mov.issuedAt, systemLanguage)}</span>
                           </div>
 
                           <div className="text-xs text-slate-600 mt-1 flex flex-wrap items-center gap-2">
@@ -5851,7 +5852,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       </td>
 
                       <td className="py-3 px-4 font-mono font-bold text-slate-900">
-                        {batch.expirationDate}
+                        {formatDateLocalized(batch.expirationDate, systemLanguage)}
                       </td>
 
                       <td className="py-3 px-4 text-right font-black text-slate-900 text-sm">
@@ -6718,7 +6719,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               </div>
 
               <div className="text-right text-xs">
-                <div className="font-bold text-slate-900">{t("Date", "Dátum", "Dátum")}: {selectedMovementForPrint.issuedAt}</div>
+                <div className="font-bold text-slate-900">{t("Date", "Dátum", "Dátum")}: {formatTimestampLocalized(selectedMovementForPrint.issuedAt, systemLanguage)}</div>
                 <div className="text-slate-400 mt-1">{t("Author", "Vystavil", "Kiállította")}: {selectedMovementForPrint.createdBy}</div>
               </div>
             </div>
