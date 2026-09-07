@@ -14,6 +14,10 @@ import { cn } from "../utils/cn";
 import { BlockEditor } from "./BlockEditor";
 import { VoiceRecorderCard } from "./VoiceRecorderCard";
 import { CustomSelect } from "./ui/CustomSelect";
+import { CompanyLookupSpinner, CompanySuggestions } from "./ui/CompanySuggestions";
+import { useCompanyLookup } from "../utils/useCompanyLookup";
+import type { CompanyDetails, CompanySuggestion } from "../utils/companyRegistry";
+import { registryCountryOf } from "../utils/companyRegistry";
 import { TimelineAuthorBadge } from "./TimelineAuthorBadge";
 import { TimelineCollapsible } from "./TimelineCollapsible";
 import type { EditorBlock } from "./BlockEditor";
@@ -32,6 +36,9 @@ import { resolveCurrencySymbol, formatMoney } from "../utils/currency";
 import { resolveAssigneeName } from "../utils/taskSelectors";
 import { todayLocal, nowLocalStamp, formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
 import { chartTheme, useAppearance } from "../utils/theme";
+
+/** The inputs that search the company registers, in both client forms. */
+type CompanyLookupField = "name" | "companyId" | "taxId" | "vatId";
 
 interface ClientsViewProps {
   leads: Lead[];
@@ -413,12 +420,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [newClientValue, setNewClientValue] = useState("");
   const [newClientCategories, setNewClientCategories] = useState<string[]>([]);
 
-  // RegisterUZ autocomplete state
-  const [suggestions, setSuggestions] = useState<any[]>([]);
-  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
-  const [activeSuggestionInput, setActiveSuggestionInput] = useState<"name" | "companyId" | "profileName" | "profileCompanyId" | null>(null);
-  const suggestionTimeoutRef = useRef<any>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  // Company registry type-ahead for the register drawer. The client profile
+  // panel keeps its own instance, declared next to the profile form state.
+  const registerLookup = useCompanyLookup<CompanyLookupField>({
+    country: newClientCountry,
+    enabled: newClientType !== "person"
+  });
 
   // VAT validation state
   const [newClientVatStatus, setNewClientVatStatus] = useState<"idle" | "checking" | "valid" | "invalid" | "error">("idle");
@@ -578,337 +585,103 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
 
 
+  // A private person has no entry in any company register.
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setSuggestions([]);
-        setActiveSuggestionInput(null);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (newClientType === "person") {
-      setSuggestions([]);
-      setIsLoadingSuggestions(false);
-      setActiveSuggestionInput(null);
-    }
+    if (newClientType === "person") registerLookup.close();
   }, [newClientType]);
 
-  useEffect(() => {
-    return () => {
-      if (suggestionTimeoutRef.current) {
-        clearTimeout(suggestionTimeoutRef.current);
-      }
-    };
-  }, []);
+  // ------------------------------------------------------- company registry
+  // Typing a name, IČO, DIČ or IČ DPH into the register drawer searches the
+  // public registers; picking a row fills in everything they publish. Both
+  // Slovak registers are covered, so a sole trader (zrsr.sk) resolves exactly
+  // like a company (orsr.sk) does — see utils/companyRegistry.ts.
 
-  const fetchSuggestions = async (val: string, inputType: "name" | "companyId" | "profileName" | "profileCompanyId", country: string = newClientCountry) => {
-    if (val.trim().length < 3) {
-      setSuggestions([]);
-      setIsLoadingSuggestions(false);
-      setActiveSuggestionInput(inputType);
+  const registryToast = (message: string, kind?: string) => {
+    if (typeof (window as any).showToast === "function") (window as any).showToast(message, kind);
+  };
+
+  const registryLoadingMsg = t("Loading company details...", "Načítavam údaje z registra...", "Cégadatok betöltése...");
+  const registrySuccessMsg = t("Company details loaded successfully!", "Údaje o firme úspešne načítané!", "Cégadatok sikeresen betöltve!");
+  const registryErrorMsg = t("Error loading company details.", "Chyba pri načítaní údajov z registra.", "Hiba a cégadatok betöltésekor.");
+
+  /** Prefix a bare DIČ into an IČ DPH the way each country writes it. */
+  const registryVatId = (taxId: string, country: string) =>
+    taxId ? `${registryCountryOf(country) === "CZ" ? "CZ" : "SK"}${taxId}` : "";
+
+  const applyRegistryToNewClient = (details: CompanyDetails) => {
+    if (details.name) setNewClientName(details.name);
+    if (details.companyId) setNewClientCompanyId(details.companyId);
+    if (details.taxId) setNewClientTaxId(details.taxId);
+    if (details.street) setNewClientStreet(details.street);
+    if (details.city) setNewClientCity(details.city);
+    if (details.postalCode) setNewClientPostalCode(details.postalCode);
+    if (details.country) setNewClientCountry(details.country);
+    // The statutory body doubles as a contact person, but never over one the
+    // user has already written down.
+    if (details.contactPerson && !newClientContactPerson.trim()) setNewClientContactPerson(details.contactPerson);
+
+    setNewClientEstablishmentDate(details.establishmentDate || "");
+    setNewClientLegalForm(details.legalForm || "");
+    setNewClientSkNace(details.skNace || "");
+    setNewClientOrganizationSize(details.organizationSize || "");
+    setNewClientOwnershipType(details.ownershipType || "");
+    setNewClientDataSource(details.dataSource || "");
+    setNewClientDissolutionDate(details.dissolutionDate || "");
+    setNewClientRegion(details.region || "");
+    setNewClientDistrict(details.district || "");
+
+    // Sole traders have no published DIČ, so there is no IČ DPH to derive and
+    // whatever the user typed stays — only the verdict badge resets.
+    if (details.vatId) {
+      setNewClientVatId(details.vatId);
+      validateVatCode(details.vatId, false);
+    } else {
+      setNewClientVatStatus("idle");
+      setNewClientVatResult(null);
+    }
+  };
+
+  const handleSelectRegistrySuggestion = async (item: CompanySuggestion) => {
+    registryToast(registryLoadingMsg);
+    const details = await registerLookup.select(item, newClientCountry);
+
+    if (details) {
+      applyRegistryToNewClient(details);
+      registryToast(registrySuccessMsg);
       return;
     }
 
-    const isSlovakia = country === "Slovakia";
-    const isCzechia = country === "Czechia" || country === "Czech Republic";
-
-    if (!isSlovakia && !isCzechia) {
-      setSuggestions([]);
-      setIsLoadingSuggestions(false);
-      setActiveSuggestionInput(inputType);
-      return;
+    // The register answered the search but not the detail call — keep what the
+    // picked row already carried instead of dropping the choice.
+    if (item.name) setNewClientName(item.name);
+    if (item.companyId) setNewClientCompanyId(item.companyId);
+    if (item.taxId) {
+      setNewClientTaxId(item.taxId);
+      const vat = registryVatId(item.taxId, newClientCountry);
+      setNewClientVatId(vat);
+      if (vat) validateVatCode(vat, false);
     }
-
-    setIsLoadingSuggestions(true);
-    setActiveSuggestionInput(inputType);
-    try {
-      const endpoint = isSlovakia
-        ? `/api/registeruz.php?action=suggest&query=${encodeURIComponent(val)}`
-        : `/api/ares_cz.php?action=suggest&query=${encodeURIComponent(val)}`;
-      const res = await fetch(endpoint);
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        setSuggestions(data);
-      } else {
-        setSuggestions([]);
-      }
-    } catch (err) {
-      console.error("Error fetching suggestions", err);
-      setSuggestions([]);
-    } finally {
-      setIsLoadingSuggestions(false);
-    }
+    registryToast(registryErrorMsg, "error");
   };
 
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setNewClientName(val);
-    
-    if (newClientType === "person") return;
-    
-    if (suggestionTimeoutRef.current) {
-      clearTimeout(suggestionTimeoutRef.current);
-    }
-    
-    suggestionTimeoutRef.current = setTimeout(() => {
-      fetchSuggestions(val, "name");
-    }, 350);
+    setNewClientName(e.target.value);
+    registerLookup.search("name", e.target.value, newClientCountry);
   };
 
   const handleCompanyIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setNewClientCompanyId(val);
-    
-    if (newClientType === "person") return;
-    
-    if (suggestionTimeoutRef.current) {
-      clearTimeout(suggestionTimeoutRef.current);
-    }
-    
-    suggestionTimeoutRef.current = setTimeout(() => {
-      fetchSuggestions(val, "companyId", newClientCountry);
-    }, 350);
+    setNewClientCompanyId(e.target.value);
+    registerLookup.search("companyId", e.target.value, newClientCountry);
   };
 
-  const handleProfileNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setProfileName(val);
-    
-    if (profileType === "person") return;
-    
-    if (suggestionTimeoutRef.current) {
-      clearTimeout(suggestionTimeoutRef.current);
-    }
-    
-    suggestionTimeoutRef.current = setTimeout(() => {
-      fetchSuggestions(val, "profileName", profileCountry);
-    }, 350);
+  const handleTaxIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setNewClientTaxId(e.target.value);
+    registerLookup.search("taxId", e.target.value, newClientCountry);
   };
 
-  const handleProfileCompanyIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setProfileCompanyId(val);
-    
-    if (profileType === "person") return;
-    
-    if (suggestionTimeoutRef.current) {
-      clearTimeout(suggestionTimeoutRef.current);
-    }
-    
-    suggestionTimeoutRef.current = setTimeout(() => {
-      fetchSuggestions(val, "profileCompanyId", profileCountry);
-    }, 350);
-  };
-
-  const stripHtml = (html: string) => {
-    return html.replace(/<[^>]*>/g, "");
-  };
-
-  const handleSelectSuggestion = async (item: any) => {
-    const isProfile = activeSuggestionInput === "profileName" || activeSuggestionInput === "profileCompanyId";
-    
-    setSuggestions([]);
-    setActiveSuggestionInput(null);
-    
-    const loadingMsg = systemLanguage === "sk" ? "Načítavam údaje z registra..." : systemLanguage === "hu" ? "Cégadatok betöltése..." : "Loading company details...";
-    const successMsg = systemLanguage === "sk" ? "Údaje o firme úspešne načítané!" : systemLanguage === "hu" ? "Cégadatok sikeresen betöltve!" : "Company details loaded successfully!";
-    const errorMsg = systemLanguage === "sk" ? "Chyba pri načítaní údajov z registra." : systemLanguage === "hu" ? "Hiba a cégadatok betöltésekor." : "Error loading company details.";
-    
-    if (typeof (window as any).showToast === "function") {
-      (window as any).showToast(loadingMsg);
-    }
-    
-    const country = isProfile ? profileCountry : newClientCountry;
-    const isSlovakia = country === "Slovakia";
-    const isCzechia = country === "Czechia" || country === "Czech Republic";
-
-    try {
-      const endpoint = isSlovakia
-        ? `/api/registeruz.php?action=detail&id=${item.id}`
-        : `/api/ares_cz.php?action=detail&id=${item.id}`;
-
-      const res = await fetch(endpoint);
-      if (!res.ok) throw new Error("Failed to fetch detail");
-      const detail = await res.json();
-      
-      if (isSlovakia) {
-        if (detail && detail.id) {
-          const nameVal = detail.nazovUJ || stripHtml(item.entityName) || "";
-          const companyIdVal = detail.ico || item.entNumber || "";
-          const taxIdVal = detail.dic || item.taxNumber || "";
-          
-          let vatVal = "";
-          if (detail.dic) {
-            vatVal = `SK${detail.dic}`;
-          } else if (item.taxNumber) {
-            vatVal = `SK${item.taxNumber}`;
-          }
-          
-          if (isProfile) {
-            setProfileName(nameVal);
-            setProfileCompanyId(companyIdVal);
-            setProfileTaxId(taxIdVal);
-            setProfileVatId(vatVal);
-            setProfileCity(detail.mesto || "");
-            setProfileStreet(detail.ulica || "");
-            setProfilePostalCode(detail.psc || "");
-            setProfileCountry("Slovakia");
-            setProfileEstablishmentDate(detail.datumZalozenia || "");
-            setProfileLegalForm(detail.pravnaForma || "");
-            setProfileSkNace(detail.skNace || "");
-            setProfileOrganizationSize(detail.velkostOrganizacie || "");
-            setProfileOwnershipType(detail.druhVlastnictva || "");
-            setProfileDataSource(detail.zdrojDat || "");
-            setProfileDissolutionDate(detail.datumZrusenia || "");
-            setProfileRegion(detail.kraj || "");
-            setProfileDistrict(detail.okres || "");
-          } else {
-            setNewClientName(nameVal);
-            setNewClientCompanyId(companyIdVal);
-            setNewClientTaxId(taxIdVal);
-            setNewClientVatId(vatVal);
-            if (vatVal) {
-              validateVatCode(vatVal, false);
-            } else {
-              setNewClientVatStatus("idle");
-              setNewClientVatResult(null);
-            }
-            setNewClientCity(detail.mesto || "");
-            setNewClientStreet(detail.ulica || "");
-            setNewClientPostalCode(detail.psc || "");
-            setNewClientCountry("Slovakia");
-            setNewClientEstablishmentDate(detail.datumZalozenia || "");
-            setNewClientLegalForm(detail.pravnaForma || "");
-            setNewClientSkNace(detail.skNace || "");
-            setNewClientOrganizationSize(detail.velkostOrganizacie || "");
-            setNewClientOwnershipType(detail.druhVlastnictva || "");
-            setNewClientDataSource(detail.zdrojDat || "");
-            setNewClientDissolutionDate(detail.datumZrusenia || "");
-            setNewClientRegion(detail.kraj || "");
-            setNewClientDistrict(detail.okres || "");
-          }
-          
-          if (typeof (window as any).showToast === "function") {
-            (window as any).showToast(successMsg);
-          }
-        } else {
-          throw new Error("Invalid detail response");
-        }
-      } else if (isCzechia) {
-        if (detail && (detail.ico || detail.icoId)) {
-          const nameVal = detail.obchodniJmeno || stripHtml(item.entityName) || "";
-          const companyIdVal = detail.ico || item.entNumber || "";
-          
-          let rawDic = detail.dic || item.taxNumber || "";
-          let cleanedTaxId = rawDic;
-          if (rawDic.toUpperCase().startsWith("CZ")) {
-            cleanedTaxId = rawDic.substring(2);
-          }
-          
-          let vatVal = rawDic;
-          if (!vatVal && detail.ico) {
-            vatVal = `CZ${detail.ico}`;
-          }
-          
-          const sidlo = detail.sidlo || {};
-          const cityVal = sidlo.nazevObce || "";
-          const streetPart = sidlo.nazevUlice || sidlo.nazevCastiObce || sidlo.nazevObce || "";
-          const houseNo = sidlo.cisloDomovni || "";
-          const orientNo = sidlo.cisloOrientacni || "";
-          let streetVal = streetPart;
-          if (houseNo || orientNo) {
-            streetVal += " " + houseNo + (orientNo ? "/" + orientNo : "");
-          }
-          
-          if (isProfile) {
-            setProfileName(nameVal);
-            setProfileCompanyId(companyIdVal);
-            setProfileTaxId(cleanedTaxId);
-            setProfileVatId(vatVal);
-            setProfileStreet(streetVal.trim());
-            setProfileCity(cityVal);
-            setProfilePostalCode(sidlo.psc ? String(sidlo.psc) : "");
-            setProfileCountry(profileCountry);
-            setProfileEstablishmentDate(detail.datumVzniku || "");
-            setProfileLegalForm(detail.pravniForma || "");
-            setProfileRegion(sidlo.nazevKraje || "");
-            setProfileDistrict(sidlo.nazevOkresu || "");
-          } else {
-            setNewClientName(nameVal);
-            setNewClientCompanyId(companyIdVal);
-            setNewClientTaxId(cleanedTaxId);
-            setNewClientVatId(vatVal);
-            if (vatVal) {
-              validateVatCode(vatVal, false);
-            } else {
-              setNewClientVatStatus("idle");
-              setNewClientVatResult(null);
-            }
-            setNewClientStreet(streetVal.trim());
-            setNewClientCity(cityVal);
-            setNewClientPostalCode(sidlo.psc ? String(sidlo.psc) : "");
-            setNewClientCountry(newClientCountry);
-            setNewClientEstablishmentDate(detail.datumVzniku || "");
-            setNewClientLegalForm(detail.pravniForma || "");
-            setNewClientRegion(sidlo.nazevKraje || "");
-            setNewClientDistrict(sidlo.nazevOkresu || "");
-          }
-          
-          if (typeof (window as any).showToast === "function") {
-            (window as any).showToast(successMsg);
-          }
-        } else {
-          throw new Error("Invalid detail response");
-        }
-      }
-    } catch (err) {
-      console.error("Error fetching detail", err);
-      const isCzech = country === "Czechia" || country === "Czech Republic";
-      
-      const nameVal = stripHtml(item.entityName) || "";
-      const companyIdVal = item.entNumber || "";
-      
-      let rawTax = item.taxNumber || "";
-      let cleanedTax = rawTax;
-      if (isCzech && rawTax.toUpperCase().startsWith("CZ")) {
-        cleanedTax = rawTax.substring(2);
-      }
-      
-      let vatVal = rawTax;
-      if (!vatVal && item.entNumber) {
-        vatVal = isCzech ? `CZ${item.entNumber}` : `SK${item.entNumber}`;
-      } else if (vatVal && !isCzech && !vatVal.toUpperCase().startsWith("SK")) {
-        vatVal = `SK${vatVal}`;
-      }
-      
-      if (isProfile) {
-        setProfileName(nameVal);
-        setProfileCompanyId(companyIdVal);
-        setProfileTaxId(cleanedTax);
-        setProfileVatId(vatVal);
-      } else {
-        setNewClientName(nameVal);
-        setNewClientCompanyId(companyIdVal);
-        setNewClientTaxId(cleanedTax);
-        setNewClientVatId(vatVal);
-        if (vatVal) {
-          validateVatCode(vatVal, false);
-        } else {
-          setNewClientVatStatus("idle");
-          setNewClientVatResult(null);
-        }
-      }
-
-      if (typeof (window as any).showToast === "function") {
-        (window as any).showToast(errorMsg, "error");
-      }
-    }
+  const handleVatIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setNewClientVatId(e.target.value);
+    registerLookup.search("vatId", e.target.value, newClientCountry);
   };
 
   useEffect(() => {
@@ -1360,6 +1133,82 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [profileRegion, setProfileRegion] = useState("");
   const [profileDistrict, setProfileDistrict] = useState("");
   const [profileCategories, setProfileCategories] = useState<string[]>([]);
+
+  // The same registry autofill as the register drawer, on the client profile.
+  const profileLookup = useCompanyLookup<CompanyLookupField>({
+    country: profileCountry,
+    enabled: isEditingProfile && profileType !== "person"
+  });
+
+  const applyRegistryToProfile = (details: CompanyDetails) => {
+    if (details.name) setProfileName(details.name);
+    if (details.companyId) setProfileCompanyId(details.companyId);
+    if (details.taxId) setProfileTaxId(details.taxId);
+    if (details.street) setProfileStreet(details.street);
+    if (details.city) setProfileCity(details.city);
+    if (details.postalCode) setProfilePostalCode(details.postalCode);
+    if (details.country) setProfileCountry(details.country);
+    if (details.contactPerson && !profileContactPerson.trim()) setProfileContactPerson(details.contactPerson);
+
+    setProfileEstablishmentDate(details.establishmentDate || "");
+    setProfileLegalForm(details.legalForm || "");
+    setProfileSkNace(details.skNace || "");
+    setProfileOrganizationSize(details.organizationSize || "");
+    setProfileOwnershipType(details.ownershipType || "");
+    setProfileDataSource(details.dataSource || "");
+    setProfileDissolutionDate(details.dissolutionDate || "");
+    setProfileRegion(details.region || "");
+    setProfileDistrict(details.district || "");
+
+    if (details.vatId) {
+      setProfileVatId(details.vatId);
+      validateVatCode(details.vatId, true);
+    } else {
+      setProfileVatStatus("idle");
+      setProfileVatResult(null);
+    }
+  };
+
+  const handleSelectProfileSuggestion = async (item: CompanySuggestion) => {
+    registryToast(registryLoadingMsg);
+    const details = await profileLookup.select(item, profileCountry);
+
+    if (details) {
+      applyRegistryToProfile(details);
+      registryToast(registrySuccessMsg);
+      return;
+    }
+
+    if (item.name) setProfileName(item.name);
+    if (item.companyId) setProfileCompanyId(item.companyId);
+    if (item.taxId) {
+      setProfileTaxId(item.taxId);
+      const vat = registryVatId(item.taxId, profileCountry);
+      setProfileVatId(vat);
+      if (vat) validateVatCode(vat, true);
+    }
+    registryToast(registryErrorMsg, "error");
+  };
+
+  const handleProfileNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setProfileName(e.target.value);
+    profileLookup.search("name", e.target.value, profileCountry);
+  };
+
+  const handleProfileCompanyIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setProfileCompanyId(e.target.value);
+    profileLookup.search("companyId", e.target.value, profileCountry);
+  };
+
+  const handleProfileTaxIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setProfileTaxId(e.target.value);
+    profileLookup.search("taxId", e.target.value, profileCountry);
+  };
+
+  const handleProfileVatIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setProfileVatId(e.target.value);
+    profileLookup.search("vatId", e.target.value, profileCountry);
+  };
 
   // Timeline events whose truncated content the user expanded via "Show more"
   const [expandedTimelineEventIds, setExpandedTimelineEventIds] = useState<Set<string>>(new Set());
@@ -2763,31 +2612,15 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           : "bg-transparent border-0 pl-0 text-slate-900 text-sm font-black cursor-default select-all"
                       }`}
                     />
-                    {isEditingProfile && isLoadingSuggestions && activeSuggestionInput === "profileName" && (
-                      <div className="absolute right-3 top-2.5">
-                        <Loader2 className="h-4 w-4 animate-spin text-emerald-500" />
-                      </div>
-                    )}
+                    <CompanyLookupSpinner visible={isEditingProfile && profileLookup.isLoading && profileLookup.activeField === "name"} />
                   </div>
-                  {isEditingProfile && activeSuggestionInput === "profileName" && suggestions.length > 0 && (
-                    <div 
-                      ref={dropdownRef}
-                      className="absolute left-0 right-0 top-full mt-1 bg-white rounded-2xl border border-slate-200 shadow-xl max-h-60 overflow-y-auto z-[999]"
-                    >
-                      {suggestions.map((item, idx) => (
-                        <div
-                          key={item.id || idx}
-                          onClick={() => handleSelectSuggestion(item)}
-                          className="px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer border-b border-slate-100 last:border-0 text-left cursor-pointer"
-                        >
-                          <div className="font-bold text-slate-800 text-[11px]">{stripHtml(item.entityName)}</div>
-                          <div className="text-[10px] text-slate-400 mt-0.5">
-                            {item.entNumber && `IČO: ${item.entNumber}`}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <CompanySuggestions
+                    suggestions={profileLookup.suggestions}
+                    visible={isEditingProfile && profileLookup.activeField === "name"}
+                    onSelect={handleSelectProfileSuggestion}
+                    onDismiss={profileLookup.close}
+                    systemLanguage={systemLanguage}
+                  />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">{getTranslation(systemLanguage, "profile.client_type")}</label>
@@ -2947,59 +2780,72 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                 : "bg-transparent border-0 pl-0 text-slate-900 font-black cursor-default select-all"
                             }`}
                           />
-                          {isEditingProfile && isLoadingSuggestions && activeSuggestionInput === "profileCompanyId" && (
-                            <div className="absolute right-2 top-2">
-                              <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-500" />
-                            </div>
-                          )}
+                          <CompanyLookupSpinner
+                            visible={isEditingProfile && profileLookup.isLoading && profileLookup.activeField === "companyId"}
+                            className="right-2"
+                          />
                         </div>
-                        {isEditingProfile && activeSuggestionInput === "profileCompanyId" && suggestions.length > 0 && (
-                          <div 
-                            ref={dropdownRef}
-                            className="absolute left-0 right-0 top-full mt-1 bg-white rounded-2xl border border-slate-200 shadow-xl max-h-60 overflow-y-auto z-[999]"
-                          >
-                            {suggestions.map((item, idx) => (
-                              <div
-                                key={item.id || idx}
-                                onClick={() => handleSelectSuggestion(item)}
-                                className="px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer border-b border-slate-100 last:border-0 text-left cursor-pointer"
-                              >
-                                <div className="font-bold text-slate-800 text-[11px]">{stripHtml(item.entityName)}</div>
-                                <div className="text-[10px] text-slate-400 mt-0.5">
-                                  {item.entNumber && `IČO: ${item.entNumber}`}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">{getTranslation(systemLanguage, "profile.tax_id")}</label>
-                        <input
-                          type="text"
-                          readOnly={!isEditingProfile}
-                          value={profileTaxId}
-                          onChange={(e) => setProfileTaxId(e.target.value)}
-                          className={`w-full px-2 py-1.5 rounded-lg focus:outline-none ${
-                            isEditingProfile 
-                              ? "bg-white border-2 border-slate-200 text-slate-800" 
-                              : "bg-transparent border-0 pl-0 text-slate-900 font-black cursor-default select-all"
-                          }`}
+                        <CompanySuggestions
+                          suggestions={profileLookup.suggestions}
+                          visible={isEditingProfile && profileLookup.activeField === "companyId"}
+                          onSelect={handleSelectProfileSuggestion}
+                          onDismiss={profileLookup.close}
+                          systemLanguage={systemLanguage}
                         />
                       </div>
-                      <div className="space-y-1">
+                      <div className="space-y-1 relative">
+                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">{getTranslation(systemLanguage, "profile.tax_id")}</label>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            readOnly={!isEditingProfile}
+                            value={profileTaxId}
+                            onChange={handleProfileTaxIdChange}
+                            className={`w-full px-2 py-1.5 rounded-lg focus:outline-none pr-7 ${
+                              isEditingProfile
+                                ? "bg-white border-2 border-slate-200 text-slate-800"
+                                : "bg-transparent border-0 pl-0 text-slate-900 font-black cursor-default select-all"
+                            }`}
+                          />
+                          <CompanyLookupSpinner
+                            visible={isEditingProfile && profileLookup.isLoading && profileLookup.activeField === "taxId"}
+                            className="right-2"
+                          />
+                        </div>
+                        <CompanySuggestions
+                          suggestions={profileLookup.suggestions}
+                          visible={isEditingProfile && profileLookup.activeField === "taxId"}
+                          onSelect={handleSelectProfileSuggestion}
+                          onDismiss={profileLookup.close}
+                          systemLanguage={systemLanguage}
+                        />
+                      </div>
+                      <div className="space-y-1 relative">
                         <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">{getTranslation(systemLanguage, "profile.vat_id")}</label>
-                        <input
-                          type="text"
-                          readOnly={!isEditingProfile}
-                          value={profileVatId}
-                          onChange={(e) => setProfileVatId(e.target.value)}
-                          onBlur={() => validateVatCode(profileVatId, true)}
-                          className={`w-full px-2 py-1.5 rounded-lg focus:outline-none ${
-                            isEditingProfile 
-                              ? "bg-white border-2 border-slate-200 text-slate-800" 
-                              : "bg-transparent border-0 pl-0 text-slate-900 font-black cursor-default select-all"
-                          }`}
+                        <div className="relative">
+                          <input
+                            type="text"
+                            readOnly={!isEditingProfile}
+                            value={profileVatId}
+                            onChange={handleProfileVatIdChange}
+                            onBlur={() => validateVatCode(profileVatId, true)}
+                            className={`w-full px-2 py-1.5 rounded-lg focus:outline-none pr-7 ${
+                              isEditingProfile
+                                ? "bg-white border-2 border-slate-200 text-slate-800"
+                                : "bg-transparent border-0 pl-0 text-slate-900 font-black cursor-default select-all"
+                            }`}
+                          />
+                          <CompanyLookupSpinner
+                            visible={isEditingProfile && profileLookup.isLoading && profileLookup.activeField === "vatId"}
+                            className="right-2"
+                          />
+                        </div>
+                        <CompanySuggestions
+                          suggestions={profileLookup.suggestions}
+                          visible={isEditingProfile && profileLookup.activeField === "vatId"}
+                          onSelect={handleSelectProfileSuggestion}
+                          onDismiss={profileLookup.close}
+                          systemLanguage={systemLanguage}
                         />
                         {renderVatValidation(profileVatStatus, profileVatResult)}
                       </div>
@@ -3708,7 +3554,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                             <div className="h-0.5 bg-emerald-500/35 flex-1"></div>
                             <span className="text-[9px] font-black uppercase text-emerald-800 bg-emerald-100 border-2 border-emerald-300 px-4 py-1.5 rounded-full tracking-widest shadow-sm flex items-center gap-1.5 shrink-0 select-text">
                               <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping"></span>
-                              {t("Today", "Dnes", "Ma")} ({new Date().toISOString().substring(0, 10)})
+                              {t("Today", "Dnes", "Ma")} ({formatDateLocalized(todayLocal(), systemLanguage)})
                             </span>
                             <div className="h-0.5 bg-emerald-500/35 flex-1"></div>
                           </div>
@@ -5118,33 +4964,15 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         placeholder={systemLanguage === "sk" ? "napr. Ján Novák alebo Acme Corp" : systemLanguage === "hu" ? "pl. Kiss János vagy Acme Corp" : "e.g. Ján Novák or Acme Corp"}
                         className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold pr-9"
                       />
-                      {isLoadingSuggestions && activeSuggestionInput === "name" && (
-                        <div className="absolute right-3 top-2.5">
-                          <Loader2 className="h-4 w-4 animate-spin text-emerald-500" />
-                        </div>
-                      )}
+                      <CompanyLookupSpinner visible={registerLookup.isLoading && registerLookup.activeField === "name"} />
                     </div>
-                    {activeSuggestionInput === "name" && suggestions.length > 0 && (
-                      <div 
-                        ref={dropdownRef}
-                        className="absolute left-0 right-0 top-full mt-1 bg-white rounded-2xl border border-slate-200 shadow-xl max-h-60 overflow-y-auto z-[999]"
-                      >
-                        {suggestions.map((item, idx) => (
-                          <div
-                            key={item.id || idx}
-                            onClick={() => handleSelectSuggestion(item)}
-                            className="px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer border-b border-slate-100 last:border-0 text-left cursor-pointer"
-                          >
-                            <div className="font-bold text-slate-800 text-[11px]">{stripHtml(item.entityName)}</div>
-                            <div className="text-[10px] text-slate-400 mt-0.5">
-                              {item.entNumber && `IČO: ${item.entNumber}`}
-                              {item.entNumber && item.taxNumber && " | "}
-                              {item.taxNumber && `DIČ: ${item.taxNumber}`}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    <CompanySuggestions
+                      suggestions={registerLookup.suggestions}
+                      visible={registerLookup.activeField === "name"}
+                      onSelect={handleSelectRegistrySuggestion}
+                      onDismiss={registerLookup.close}
+                      systemLanguage={systemLanguage}
+                    />
                   </div>
                   
                   <div className="md:col-span-1 space-y-1">
@@ -5304,59 +5132,61 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           placeholder={t("e.g. 36123456", "napr. 36123456", "pl. 36123456")}
                           className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold pr-9"
                         />
-                        {isLoadingSuggestions && activeSuggestionInput === "companyId" && (
-                          <div className="absolute right-3 top-2.5">
-                            <Loader2 className="h-4 w-4 animate-spin text-emerald-500" />
-                          </div>
-                        )}
+                        <CompanyLookupSpinner visible={registerLookup.isLoading && registerLookup.activeField === "companyId"} />
                       </div>
-                      {activeSuggestionInput === "companyId" && suggestions.length > 0 && (
-                        <div 
-                          ref={dropdownRef}
-                          className="absolute left-0 right-0 top-full mt-1 bg-white rounded-2xl border border-slate-200 shadow-xl max-h-60 overflow-y-auto z-[999]"
-                        >
-                          {suggestions.map((item, idx) => (
-                            <div
-                              key={item.id || idx}
-                              onClick={() => handleSelectSuggestion(item)}
-                              className="px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer border-b border-slate-100 last:border-0 text-left cursor-pointer"
-                            >
-                              <div className="font-bold text-slate-800 text-[11px]">{stripHtml(item.entityName)}</div>
-                              <div className="text-[10px] text-slate-400 mt-0.5">
-                                {item.entNumber && `IČO: ${item.entNumber}`}
-                                {item.entNumber && item.taxNumber && " | "}
-                                {item.taxNumber && `DIČ: ${item.taxNumber}`}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      <CompanySuggestions
+                        suggestions={registerLookup.suggestions}
+                        visible={registerLookup.activeField === "companyId"}
+                        onSelect={handleSelectRegistrySuggestion}
+                        onDismiss={registerLookup.close}
+                        systemLanguage={systemLanguage}
+                      />
                     </div>
                     
-                    <div className="space-y-1">
+                    <div className="space-y-1 relative">
                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
                         {systemLanguage === "sk" ? "DIČ (Daňové registračné číslo)" : systemLanguage === "hu" ? "Adószám (DIČ)" : "Tax ID (DIČ)"}
                       </label>
-                      <input
-                        type="text"
-                        value={newClientTaxId}
-                        onChange={(e) => setNewClientTaxId(e.target.value)}
-                        placeholder={t("e.g. 2021234567", "napr. 2021234567", "pl. 2021234567")}
-                        className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold"
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={newClientTaxId}
+                          onChange={handleTaxIdChange}
+                          placeholder={t("e.g. 2021234567", "napr. 2021234567", "pl. 2021234567")}
+                          className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold pr-9"
+                        />
+                        <CompanyLookupSpinner visible={registerLookup.isLoading && registerLookup.activeField === "taxId"} />
+                      </div>
+                      <CompanySuggestions
+                        suggestions={registerLookup.suggestions}
+                        visible={registerLookup.activeField === "taxId"}
+                        onSelect={handleSelectRegistrySuggestion}
+                        onDismiss={registerLookup.close}
+                        systemLanguage={systemLanguage}
                       />
                     </div>
 
-                    <div className="space-y-1">
+                    <div className="space-y-1 relative">
                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
                         {systemLanguage === "sk" ? "IČ DPH" : systemLanguage === "hu" ? "Közösségi adószám (IČ DPH)" : "VAT ID (IČ DPH)"}
                       </label>
-                      <input
-                        type="text"
-                        value={newClientVatId}
-                        onChange={(e) => setNewClientVatId(e.target.value)}
-                        onBlur={() => validateVatCode(newClientVatId, false)}
-                        placeholder={t("e.g. SK2021234567", "napr. SK2021234567", "pl. SK2021234567")}
-                        className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold"
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={newClientVatId}
+                          onChange={handleVatIdChange}
+                          onBlur={() => validateVatCode(newClientVatId, false)}
+                          placeholder={t("e.g. SK2021234567", "napr. SK2021234567", "pl. SK2021234567")}
+                          className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold pr-9"
+                        />
+                        <CompanyLookupSpinner visible={registerLookup.isLoading && registerLookup.activeField === "vatId"} />
+                      </div>
+                      <CompanySuggestions
+                        suggestions={registerLookup.suggestions}
+                        visible={registerLookup.activeField === "vatId"}
+                        onSelect={handleSelectRegistrySuggestion}
+                        onDismiss={registerLookup.close}
+                        systemLanguage={systemLanguage}
                       />
                       {renderVatValidation(newClientVatStatus, newClientVatResult)}
                     </div>
