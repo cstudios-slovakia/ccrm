@@ -11,20 +11,27 @@ import {
   type RegistryCountry,
 } from "./companyRegistry";
 
-const SUGGEST_TIMEOUT_MS = 15000;
+// Long enough for RPO's name search, which regularly takes 4-15 s where
+// RegisterUZ answers in 0.15 s. That is why the two are asked separately.
+const SUGGEST_TIMEOUT_MS = 25000;
 const DETAIL_TIMEOUT_MS = 20000;
+
+/** A single register, or "" for whatever the backend queries by default. */
+export type SuggestSource = "ruz" | "rpo" | "";
 
 export async function fetchCompanySuggestions(
   query: string,
   country: string | null | undefined,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  source: SuggestSource = ""
 ): Promise<CompanySuggestion[]> {
   const registry = registryCountryOf(country);
   if (!registry || !isCompanyQuerySearchable(query)) return [];
 
   const url =
     `/api/company_registry.php?action=suggest&country=${registry}` +
-    `&query=${encodeURIComponent(query.trim())}`;
+    `&query=${encodeURIComponent(query.trim())}` +
+    (source ? `&sources=${source}` : "");
 
   const res = await fetchWithTimeout(url, { signal }, SUGGEST_TIMEOUT_MS);
   if (!res.ok) throw new Error(`Registry suggest failed (${res.status})`);

@@ -3,9 +3,12 @@ import test from "node:test";
 import {
   applyCompanyDetailsToLead,
   companyAddressFields,
+  foldCompanyName,
   identifierDigits,
   isCompanyQuerySearchable,
   looksLikeIdentifier,
+  mergeCompanySuggestions,
+  COMPANY_MAX_SUGGESTIONS,
   registerLabel,
   registryCountryOf,
   suggestionSubtitle,
@@ -178,4 +181,80 @@ test("applyCompanyDetailsToLead never overwrites with a blank registry value", (
   assert.equal(merged.vatId, "SK1020304050");
   // A named buyer beats the statutory body.
   assert.equal(merged.contactPerson, "Viera N. (buyer)");
+});
+
+// --------------------------------------------------------------------------
+// Merging the two registers, which are asked separately and answer at very
+// different speeds — RegisterUZ in ~0.15 s, RPO's name search in 4-15 s.
+// --------------------------------------------------------------------------
+
+test("foldCompanyName ignores case, diacritics and punctuation", () => {
+  assert.equal(foldCompanyName("ESET, spol. s r.o."), "eset spol s r o");
+  assert.equal(foldCompanyName("Viera Nováková"), "viera novakova");
+  assert.equal(foldCompanyName("KONEX  elektro"), "konex elektro");
+  assert.equal(foldCompanyName(""), "");
+});
+
+test("mergeCompanySuggestions folds the two registers into one row per IČO", () => {
+  const fromRpo = suggestion({ source: "rpo", taxId: "", registerUzId: "", rank: -60 });
+  const fromRuz = suggestion({
+    source: "ruz",
+    id: "154048",
+    registerUzId: "154048",
+    taxId: "2020317068",
+    street: "",
+    city: "",
+    postalCode: "",
+    register: "other",
+    rank: -30,
+  });
+
+  const merged = mergeCompanySuggestions([fromRuz], [fromRpo]);
+
+  assert.equal(merged.length, 1);
+  // RPO owns the identity, RegisterUZ contributes the DIČ it alone publishes.
+  assert.equal(merged[0].source, "rpo");
+  assert.equal(merged[0].register, "orsr");
+  assert.equal(merged[0].street, "Einsteinova 24");
+  assert.equal(merged[0].taxId, "2020317068");
+  assert.equal(merged[0].registerUzId, "154048");
+  // The better of the two scores survives.
+  assert.equal(merged[0].rank, -60);
+});
+
+test("mergeCompanySuggestions orders by rank, then by name", () => {
+  const rows = [
+    suggestion({ companyId: "1", name: "Beta s.r.o.", rank: -30 }),
+    suggestion({ companyId: "2", name: "Alfa s.r.o.", rank: -30 }),
+    suggestion({ companyId: "3", name: "Exact Match s.r.o.", rank: -100 }),
+    suggestion({ companyId: "4", name: "Dissolved s.r.o.", rank: 20 }),
+  ];
+
+  assert.deepEqual(
+    mergeCompanySuggestions(rows).map(item => item.name),
+    ["Exact Match s.r.o.", "Alfa s.r.o.", "Beta s.r.o.", "Dissolved s.r.o."]
+  );
+});
+
+test("mergeCompanySuggestions keeps rows the registers could not identify", () => {
+  const named = suggestion({ companyId: "", name: "No IČO s.r.o.", rank: -10 });
+  const merged = mergeCompanySuggestions([suggestion({ rank: -60 })], [named]);
+
+  assert.equal(merged.length, 2);
+  assert.equal(merged[1].name, "No IČO s.r.o.");
+});
+
+test("mergeCompanySuggestions survives a register that answered with nothing", () => {
+  const only = suggestion({ rank: -60 });
+
+  assert.deepEqual(mergeCompanySuggestions([only], []), [only]);
+  assert.deepEqual(mergeCompanySuggestions([], []), []);
+});
+
+test("mergeCompanySuggestions caps the list at what the dropdown shows", () => {
+  const many = Array.from({ length: 40 }, (_, i) =>
+    suggestion({ companyId: String(i), name: `Company ${i}`, rank: i })
+  );
+
+  assert.equal(mergeCompanySuggestions(many).length, COMPANY_MAX_SUGGESTIONS);
 });

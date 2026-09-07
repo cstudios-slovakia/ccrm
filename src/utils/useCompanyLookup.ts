@@ -5,16 +5,23 @@
 // flight requests, `activeField` says which input the dropdown belongs to, and
 // `select(item)` resolves the picked row into the full CompanyDetails record the
 // form then spreads over its own state.
+//
+// A Slovak search asks the two registers separately and shows each reply as it
+// lands, because they answer at wildly different speeds: RegisterUZ in ~0.15 s,
+// RPO's name search in 4-15 s. Waiting for both would make every name lookup as
+// slow as the slower one, so the list appears at once and the sole traders --
+// which only RPO knows -- drop into it a few seconds later.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   COMPANY_QUERY_DEBOUNCE_MS,
   isCompanyQuerySearchable,
+  mergeCompanySuggestions,
   registryCountryOf,
   type CompanyDetails,
   type CompanySuggestion,
 } from "./companyRegistry";
-import { fetchCompanyDetails, fetchCompanySuggestions } from "./companyRegistryApi";
+import { fetchCompanyDetails, fetchCompanySuggestions, type SuggestSource } from "./companyRegistryApi";
 
 export interface UseCompanyLookupOptions {
   /** Country the form currently holds — decides which register is queried. */
@@ -26,6 +33,7 @@ export interface UseCompanyLookupOptions {
 export interface CompanyLookup<Field extends string = string> {
   activeField: Field | null;
   suggestions: CompanySuggestion[];
+  /** True until every register has answered — rows may already be showing. */
   isLoading: boolean;
   /** True while a picked suggestion is being expanded into full details. */
   isResolving: boolean;
@@ -86,24 +94,38 @@ export function useCompanyLookup<Field extends string = string>(
       }
 
       setIsLoading(true);
+      setSuggestions([]);
       const seq = ++requestSeq.current;
 
-      timerRef.current = setTimeout(async () => {
+      timerRef.current = setTimeout(() => {
         const controller = new AbortController();
         abortRef.current = controller;
-        try {
-          const results = await fetchCompanySuggestions(value, target, controller.signal);
-          if (seq !== requestSeq.current) return;
-          setSuggestions(results);
-        } catch (err) {
-          if (seq !== requestSeq.current) return;
-          if ((err as { name?: string })?.name !== "AbortError") {
-            console.error("Company registry suggest failed", err);
-          }
-          setSuggestions([]);
-        } finally {
-          if (seq === requestSeq.current) setIsLoading(false);
-        }
+
+        // Slovakia: the fast register and the slow one, asked in parallel and
+        // rendered as they answer. Czechia is a single source, so one request.
+        const sources: SuggestSource[] = registryCountryOf(target) === "SK" ? ["ruz", "rpo"] : [""];
+        const replies: CompanySuggestion[][] = sources.map(() => []);
+        let pending = sources.length;
+
+        sources.forEach((source, index) => {
+          fetchCompanySuggestions(value, target, controller.signal, source)
+            .then(results => {
+              if (seq !== requestSeq.current) return;
+              replies[index] = results;
+              setSuggestions(mergeCompanySuggestions(...replies));
+            })
+            .catch(err => {
+              // One register being down or slow must not empty a list the other
+              // one already filled.
+              if ((err as { name?: string })?.name !== "AbortError") {
+                console.error(`Company registry suggest failed (${source || "default"})`, err);
+              }
+            })
+            .finally(() => {
+              pending -= 1;
+              if (pending === 0 && seq === requestSeq.current) setIsLoading(false);
+            });
+        });
       }, COMPANY_QUERY_DEBOUNCE_MS);
     },
     [cancelPending, country, enabled]

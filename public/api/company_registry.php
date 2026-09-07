@@ -17,9 +17,17 @@
  *
  * Czech lookups go to ARES, same as before.
  *
+ * A name search is answered at the speed of the slowest register, and RPO's
+ * fullName search is slow — seconds, where RegisterUZ answers in ~0.15 s. So the
+ * caller may ask for one register at a time (`sources`) and merge the two
+ * replies itself, showing the fast one immediately. Every suggestion carries its
+ * `rank` for exactly that: the client merges by sorting on it, and the scoring
+ * stays here, in one place.
+ *
  * Actions:
- *   ?action=suggest&query=<name|IČO|DIČ>&country=SK|CZ
+ *   ?action=suggest&query=<name|IČO|DIČ>&country=SK|CZ&sources=ruz|rpo
  *       -> { success: true, results: [suggestion] }
+ *       `sources` is Slovakia-only; omitted, both registers are queried at once.
  *   ?action=detail&source=rpo|ruz|ares&id=<id>&ico=<ico>&country=SK|CZ
  *       -> { success: true, ...details }
  *
@@ -31,6 +39,9 @@ require_once __DIR__ . '/auth.php';
 const CCRM_REGISTRY_SUGGEST_TTL = 21600;   // 6 h — names and IČO barely move
 const CCRM_REGISTRY_DETAIL_TTL  = 86400;   // 24 h
 const CCRM_REGISTRY_MAX_RESULTS = 15;
+// Bumped whenever the suggestion shape changes, so cached payloads written by
+// an older build are ignored rather than served without their new fields.
+const CCRM_REGISTRY_CACHE_VERSION = 'v2';
 const CCRM_REGISTRY_UA = 'Mozilla/5.0 (compatible; CCRM company lookup)';
 
 header('Content-Type: application/json; charset=utf-8');
@@ -55,14 +66,18 @@ if ($action === 'suggest') {
         exit;
     }
 
-    $cacheKey = 'suggest-' . $country . '-' . mb_strtolower($query);
+    $sources = strtolower(trim((string)($_GET['sources'] ?? '')));
+    if ($sources !== 'ruz' && $sources !== 'rpo') $sources = '';
+
+    $cacheKey = 'suggest-' . CCRM_REGISTRY_CACHE_VERSION . '-' . $country . '-' . $sources
+        . '-' . mb_strtolower($query);
     $cached = ccrm_registry_cache_get($cacheKey, CCRM_REGISTRY_SUGGEST_TTL);
     if ($cached !== null) {
         echo $cached;
         exit;
     }
 
-    $results = $country === 'CZ' ? ccrm_cz_suggest($query) : ccrm_sk_suggest($query);
+    $results = $country === 'CZ' ? ccrm_cz_suggest($query) : ccrm_sk_suggest($query, $sources);
 
     $payload = ccrm_json(['success' => true, 'results' => $results]);
     if ($results) ccrm_registry_cache_put($cacheKey, $payload);
@@ -117,24 +132,37 @@ exit;
  * merged on IČO, so an entity shows up once carrying whatever each source knows
  * (RPO: address, legal form, which register it sits in; RegisterUZ: DIČ and the
  * id the financial-statement panel needs).
+ *
+ * `$only` narrows this to a single register ('ruz' or 'rpo'). The caller then
+ * gets RegisterUZ's answer without waiting on RPO's slow name search, and merges
+ * the two replies as they arrive — see the `rank` field on every suggestion.
  */
-function ccrm_sk_suggest(string $query): array {
+function ccrm_sk_suggest(string $query, string $only = ''): array {
     $digits = ccrm_digits($query);
     $isIdentifier = $digits !== '' && preg_match('/^(SK)?[\s\d]+$/i', $query) === 1;
 
-    $requests = [
-        'ruz' => 'https://www.registeruz.sk/cruz-public/domain/suggestion/search?query='
-            . rawurlencode($isIdentifier ? $digits : $query),
-    ];
+    $requests = [];
 
-    if (!$isIdentifier) {
-        $requests['rpo'] = 'https://api.statistics.sk/rpo/v1/search?fullName=' . rawurlencode($query) . '&onlyActive=true';
-    } elseif (strlen($digits) <= 8) {
-        // 8-digit IČO. A 10-digit DIČ only RegisterUZ can resolve.
-        $requests['rpo'] = 'https://api.statistics.sk/rpo/v1/search?identifier=' . rawurlencode($digits);
+    if ($only !== 'rpo') {
+        $requests['ruz'] = 'https://www.registeruz.sk/cruz-public/domain/suggestion/search?query='
+            . rawurlencode($isIdentifier ? $digits : $query);
     }
 
-    $responses = ccrm_fetch_parallel($requests, 9);
+    if ($only !== 'ruz') {
+        if (!$isIdentifier) {
+            $requests['rpo'] = 'https://api.statistics.sk/rpo/v1/search?fullName=' . rawurlencode($query) . '&onlyActive=true';
+        } elseif (strlen($digits) <= 8) {
+            // 8-digit IČO. A 10-digit DIČ only RegisterUZ can resolve.
+            $requests['rpo'] = 'https://api.statistics.sk/rpo/v1/search?identifier=' . rawurlencode($digits);
+        }
+    }
+
+    if (!$requests) return [];
+
+    // Alone, RPO gets the room its name search actually needs; paired with
+    // RegisterUZ it still may not hold the response back past 9 s.
+    $budget = ($only === 'rpo' && !$isIdentifier) ? 25 : 9;
+    $responses = ccrm_fetch_parallel($requests, $budget);
 
     /** @var array<string, array> $byIco */
     $byIco = [];
@@ -540,6 +568,8 @@ function ccrm_rank_suggestions(array &$results, string $query, string $digits): 
     $needle = ccrm_fold($query);
 
     $score = static function (array $item) use ($needle, $digits): int {
+        // Lower is better. The value is published as `rank` so a client merging
+        // two single-register replies orders them exactly as this would have.
         $s = 0;
         if ($digits !== '' && ($item['companyId'] === $digits || $item['taxId'] === $digits)) $s -= 100;
         $name = ccrm_fold((string)$item['name']);
@@ -551,8 +581,11 @@ function ccrm_rank_suggestions(array &$results, string $query, string $digits): 
         return $s;
     };
 
-    usort($results, static function (array $a, array $b) use ($score) {
-        $diff = $score($a) - $score($b);
+    foreach ($results as &$item) $item['rank'] = $score($item);
+    unset($item);
+
+    usort($results, static function (array $a, array $b) {
+        $diff = $a['rank'] - $b['rank'];
         if ($diff !== 0) return $diff;
         return strcmp(ccrm_fold((string)$a['name']), ccrm_fold((string)$b['name']));
     });

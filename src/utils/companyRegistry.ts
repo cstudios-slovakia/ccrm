@@ -29,6 +29,12 @@ export interface CompanySuggestion {
   postalCode: string;
   register: RegistrySource;
   active: boolean;
+  /**
+   * How well the row matches the query — lower is better, scored by the backend.
+   * It travels with the row so two single-register replies can be merged into one
+   * correctly ordered list without the ranking rules being written twice.
+   */
+  rank?: number;
 }
 
 export interface CompanyDetails {
@@ -86,6 +92,81 @@ export const COMPANY_QUERY_MIN_LENGTH = 3;
 
 /** How long to wait after the last keystroke before asking the registers. */
 export const COMPANY_QUERY_DEBOUNCE_MS = 350;
+
+/** Rows in the dropdown. Matches CCRM_REGISTRY_MAX_RESULTS on the backend. */
+export const COMPANY_MAX_SUGGESTIONS = 15;
+
+/**
+ * Lowercase, strip diacritics and collapse punctuation — the TypeScript twin of
+ * ccrm_fold(), used only to break ties between rows of equal rank.
+ */
+export function foldCompanyName(value: string): string {
+  return (value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+/**
+ * Folds one entity's two register rows into one.
+ *
+ * RPO wins on identity — it is the register of record for the name, the address
+ * and which register the entity sits in — while RegisterUZ contributes the DIČ
+ * and its own id, which RPO does not publish. Same rule as the backend applies
+ * when it merges both replies itself.
+ */
+function combineSuggestions(a: CompanySuggestion, b: CompanySuggestion): CompanySuggestion {
+  const base = a.source === "rpo" ? a : b.source === "rpo" ? b : a;
+  const other = base === a ? b : a;
+  const pick = (primary: string, fallback: string) => (primary && primary.trim() ? primary : fallback);
+
+  return {
+    ...base,
+    name: pick(base.name, other.name),
+    taxId: pick(base.taxId, other.taxId),
+    registerUzId: pick(base.registerUzId, other.registerUzId),
+    street: pick(base.street, other.street),
+    city: pick(base.city, other.city),
+    postalCode: pick(base.postalCode, other.postalCode),
+    register: base.register !== "other" ? base.register : other.register,
+    rank: Math.min(a.rank ?? 0, b.rank ?? 0)
+  };
+}
+
+/**
+ * Merges the replies of the separately queried registers into the single list the
+ * dropdown shows: one row per IČO, ordered by the rank the backend assigned.
+ *
+ * Called again on every reply, so the list stays correct while the slow register
+ * is still on its way — a caller can render after the first one lands.
+ */
+export function mergeCompanySuggestions(...groups: CompanySuggestion[][]): CompanySuggestion[] {
+  const byCompanyId = new Map<string, CompanySuggestion>();
+  const withoutId: CompanySuggestion[] = [];
+
+  for (const group of groups) {
+    for (const item of group || []) {
+      if (!item) continue;
+      if (!item.companyId) {
+        withoutId.push(item);
+        continue;
+      }
+      const seen = byCompanyId.get(item.companyId);
+      byCompanyId.set(item.companyId, seen ? combineSuggestions(seen, item) : item);
+    }
+  }
+
+  const merged = [...byCompanyId.values(), ...withoutId];
+  merged.sort((a, b) => {
+    const diff = (a.rank ?? 0) - (b.rank ?? 0);
+    if (diff !== 0) return diff;
+    return foldCompanyName(a.name).localeCompare(foldCompanyName(b.name));
+  });
+
+  return merged.slice(0, COMPANY_MAX_SUGGESTIONS);
+}
 
 /**
  * Maps a country as the forms store it ("Slovakia", "Czech Republic", "SK", …)
