@@ -48,6 +48,22 @@
  *
  * Everything else rides the inverted variables and needs no rule here.
  *
+ * OPTING A SUBTREE OUT
+ * --------------------
+ * A printable price offer or invoice is a paper document, not a screen: it is
+ * white with dark type whatever the app is themed to. Because dark mode here is
+ * a redefinition of the palette *variables* on <html>, a subtree can be taken
+ * back out of it by redefining those same variables on itself. This plugin
+ * emits that block for `.force-light` — every variable the `[data-theme="dark"]`
+ * root sets, pinned back to the value it has in light mode. Generated for the
+ * same reason as the clones: a variable added to the dark block next month is
+ * undone inside the island without anyone remembering to update a list.
+ *
+ * (The pinned clones above keep applying inside the island, and that is
+ * correct: what they pin back *is* the original light value. The two `bg-white`
+ * / `border-white` substitutions are the exception, so the island also points
+ * `--dark-surface` and `--dark-hairline` back at plain white.)
+ *
  * WHY GENERATE RATHER THAN HAND-WRITE
  * -----------------------------------
  * The clone reuses Tailwind's own selector, so every variant — `hover:`,
@@ -125,30 +141,75 @@ const WHITE_VAR = /var\(--color-white\)/g;
  * `bg-white` in dark mode. Defined in src/index.css next to the rest of the
  * dark palette so the colours all live in one place.
  */
-const DARK_SURFACE = 'var(--dark-surface)';
+const DARK_SURFACE_VAR = '--dark-surface';
+const DARK_SURFACE = `var(${DARK_SURFACE_VAR})`;
 /** `border-white` in dark mode — a faint light hairline, not a white line. */
-const DARK_HAIRLINE = 'var(--dark-hairline)';
+const DARK_HAIRLINE_VAR = '--dark-hairline';
+const DARK_HAIRLINE = `var(${DARK_HAIRLINE_VAR})`;
+
+/** Class that takes its subtree back out of dark mode — see OPTING A SUBTREE
+ *  OUT above. Carried by the printable offer / invoice document. */
+const LIGHT_ISLAND = '.force-light';
 
 /** Rules that define variables rather than consume them. */
 const isDefinitionSelector = (selector) =>
   selector.includes(':root') || selector.includes(':host') || selector.startsWith('*');
 
+/** The `[data-theme="dark"]` block itself, as opposed to something *inside* a
+ *  dark page — `[data-theme="dark"] .from-[#e8efff]` sets a variable too, but
+ *  it is a utility override and has no business in the island. */
+const isDarkRootSelector = (selector) =>
+  selector.split(',').some((part) => part.trim() === '[data-theme="dark"]');
+
 /**
- * The original palette, read out of the `:root` block Tailwind emits for its
- * `@theme`. Pinning substitutes these literals, so a pinned declaration is
- * immune to the dark overrides applied to the same variable.
+ * The original values, read out of the `:root` blocks — Tailwind's own `@theme`
+ * output plus the app's token defaults. Pinning substitutes these literals, so
+ * a pinned declaration is immune to the dark overrides applied to the same
+ * variable, and the light island re-declares them verbatim.
  */
 const collectOriginalPalette = (root) => {
   const palette = new Map();
   root.walkRules((rule) => {
     if (!isDefinitionSelector(rule.selector)) return;
-    rule.walkDecls(/^--color-/, (decl) => {
+    rule.walkDecls(/^--/, (decl) => {
       // First definition wins: Tailwind's own `@theme` output comes before any
       // dark override the app layers on top.
       if (!palette.has(decl.prop)) palette.set(decl.prop, decl.value);
     });
   });
   return palette;
+};
+
+/**
+ * `.force-light`: every custom property the dark theme root redefines, set back
+ * to its light value. Returns null when there is no dark root to undo.
+ */
+const buildLightIsland = (root, palette, Rule) => {
+  const darkProps = new Set();
+  root.walkRules((rule) => {
+    if (!isDarkRootSelector(rule.selector)) return;
+    rule.walkDecls(/^--/, (decl) => darkProps.add(decl.prop));
+  });
+  if (!darkProps.size) return null;
+
+  const white = palette.get('--color-white') || '#fff';
+  const island = new Rule({ selector: `:where(html[data-theme="dark"]) ${LIGHT_ISLAND}` });
+
+  // Form controls, scrollbars and the default canvas inside the island.
+  island.append({ prop: 'color-scheme', value: 'light' });
+  // What the `bg-white` / `border-white` pins resolve through.
+  island.append({ prop: DARK_SURFACE_VAR, value: white });
+  island.append({ prop: DARK_HAIRLINE_VAR, value: white });
+
+  darkProps.forEach((prop) => {
+    if (prop === DARK_SURFACE_VAR || prop === DARK_HAIRLINE_VAR) return;
+    const original = palette.get(prop);
+    // A variable the dark theme invents outright has no light value to restore;
+    // nothing in a light document reads it either.
+    if (original) island.append({ prop, value: original });
+  });
+
+  return island;
 };
 
 /**
@@ -235,8 +296,16 @@ const darkPalette = () => ({
       clones.push({ container: node, clone });
     });
 
+    // Built before the clones land, so the scan for the dark theme root only
+    // ever sees hand-written CSS and never this plugin's own output.
+    const island = buildLightIsland(root, palette, Rule);
+
     // Appended after the walk so the walker never descends into its own output.
     clones.forEach(({ container, clone }) => container.append(clone));
+
+    // Last in the file: an island declaration then beats anything else that
+    // targets the same element with the same specificity.
+    if (island) root.append(island);
   },
 });
 

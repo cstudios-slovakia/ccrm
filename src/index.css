@@ -844,37 +844,68 @@ dialog[open]::backdrop {
    PRINT: isolate the invoice / price-offer document.
 
    window.print() used to spool the whole app shell — sidebar, header, sticky
-   bars, the modal backdrop — around the document. Everything is hidden here and
-   only the element carrying `.print-document` (the offer/invoice template) is
-   restored, lifted to the top-left of the sheet at full width.
+   bars, the modal backdrop — around the document. Everything is removed here
+   and only the element carrying `.print-document` (the offer/invoice template)
+   reaches the sheet.
+
+   The document itself is a paper document, not a screen: `.force-light` on the
+   template opts its subtree out of the app's theme so it prints white with dark
+   type whatever the app is set to. See scripts/postcss-dark-palette.mjs.
 --------------------------------------------------------------------------- */
 @media print {
   /* Scoped with :has() so printing any other page of the app is untouched —
-     without it, every print outside the invoicing screens came out blank. */
-  body:has(.print-document) * {
-    visibility: hidden;
+     without it, every print outside the invoicing screens came out blank.
+
+     Everything that is neither the document, nor an ancestor of it, nor inside
+     it is taken out of the layout. This used to be `visibility: hidden`, which
+     hides the app shell but leaves it occupying space: the document had to be
+     absolutely positioned over the top of it, and was then sized and clipped by
+     the preview modal's `fixed inset-0` / `max-h-[90vh]` / `overflow-hidden`
+     instead of by the sheet — so the right-hand column and the whole footer
+     block fell off the page and every offer printed as a single cropped sheet. */
+  body:has(.print-document)
+    *:not(:has(.print-document)):not(.print-document):not(.print-document *) {
+    display: none !important;
   }
 
-  body:has(.print-document) .print-document,
-  body:has(.print-document) .print-document * {
-    visibility: visible;
+  /* The ancestors that survive are pure wrappers on paper: no fixed
+     positioning, no scroll container, no modal chrome. With those gone the
+     document is in normal flow from the top of the first sheet and paginates
+     by itself. */
+  body:has(.print-document),
+  body:has(.print-document) :has(.print-document) {
+    display: block !important;
+    position: static !important;
+    overflow: visible !important;
+    width: auto !important;
+    max-width: none !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    filter: none !important;
+    transform: none !important;
+    animation: none !important;
   }
 
   .print-document {
-    position: absolute;
-    top: 0;
-    left: 0;
     width: 100%;
     max-width: none;
     margin: 0;
-    padding: 0;
+    /* The sheet has no page margin (see @page below), so the whitespace around
+       the document is its own padding — which is what lets the document run
+       closer to the edges than a browser page box allows. */
+    padding: 10mm;
     box-shadow: none;
     border: none;
     border-radius: 0;
-  }
-
-  /* Keep the dark price banner and coloured table header readable on paper. */
-  .print-document {
+    /* Keep the dark price banner and coloured table header readable on paper. */
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
@@ -886,7 +917,11 @@ dialog[open]::backdrop {
     page-break-inside: avoid;
   }
 
+  /* Zero margin is also what suppresses Chrome's own page header and footer —
+     the print date and document title across the top, the URL and page counter
+     across the bottom. There is no CSS switch for those; they are drawn in the
+     page margin, so a page box without one leaves them nowhere to go. */
   @page {
-    margin: 14mm;
+    margin: 0;
   }
 }
