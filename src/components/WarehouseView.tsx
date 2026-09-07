@@ -48,6 +48,11 @@ import {
   Warehouse as WarehouseIcon
 } from "lucide-react";
 import { CustomSelect } from "./ui/CustomSelect";
+import { CompanyLookupSpinner, CompanySuggestions } from "./ui/CompanySuggestions";
+import { useCompanyLookup } from "../utils/useCompanyLookup";
+import { fetchCompanyDetailsByCompanyId } from "../utils/companyRegistryApi";
+import { registryCountryOf } from "../utils/companyRegistry";
+import type { CompanyDetails, CompanyLookupField, CompanySuggestion } from "../utils/companyRegistry";
 import { formatMoney } from "../utils/currency";
 import { formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
 import type { Language } from "../utils/translations";
@@ -600,117 +605,73 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     }).sort((a, b) => new Date(a.expirationDate).getTime() - new Date(b.expirationDate).getTime());
   }, [warehouseBatches, warehouseItems, warehouses]);
 
-  // ARES / RegisterUZ Auto-fill helper
-  const handleFetchAres = async (icoInput: string) => {
-    const ico = icoInput.replace(/\s+/g, "");
-    if (!ico || ico.length < 6) {
+  // ------------------------------------------------------- company registry
+  // The supplier form searches the same registers as the client forms: type a
+  // name, IČO, DIČ or IČ DPH and pick a row, or press Auto-Fill with an IČO
+  // already in the field. Sole traders (zrsr.sk) resolve like companies do.
+  const supplierLookup = useCompanyLookup<CompanyLookupField>({ country: supplierForm.country });
+
+  const searchSupplierRegistry = (field: CompanyLookupField, value: string) => {
+    supplierLookup.search(field, value, supplierForm.country);
+  };
+
+  const applyRegistryToSupplier = (details: CompanyDetails) => {
+    setSupplierForm(prev => ({
+      ...prev,
+      name: details.name || prev.name,
+      companyId: details.companyId || prev.companyId,
+      taxId: details.taxId || prev.taxId,
+      vatId: details.vatId || prev.vatId,
+      street: details.street || prev.street,
+      city: details.city || prev.city,
+      postalCode: details.postalCode || prev.postalCode,
+      country: details.country || prev.country
+    }));
+
+    if (typeof (window as any).showToast === "function") {
+      (window as any).showToast(t("Supplier details loaded from the business register.", "Údaje dodávateľa boli načítané z registra.", "A beszállító adatai betöltve a cégjegyzékből."));
+    }
+  };
+
+  const handleSelectSupplierSuggestion = async (item: CompanySuggestion) => {
+    const details = await supplierLookup.select(item, supplierForm.country);
+
+    if (details) {
+      applyRegistryToSupplier(details);
+      return;
+    }
+
+    // Detail lookup failed — keep what the picked row already carried.
+    setSupplierForm(prev => ({
+      ...prev,
+      name: item.name || prev.name,
+      companyId: item.companyId || prev.companyId,
+      taxId: item.taxId || prev.taxId,
+      vatId: item.taxId ? `${registryCountryOf(prev.country) === "CZ" ? "CZ" : "SK"}${item.taxId}` : prev.vatId
+    }));
+    if (typeof (window as any).showToast === "function") {
+      (window as any).showToast(t("Error loading company details.", "Chyba pri načítaní údajov z registra.", "Hiba a cégadatok betöltésekor."), "error");
+    }
+  };
+
+  /** The Auto-Fill button: one IČO, no suggestion picked. */
+  const handleFetchRegistry = async (icoInput: string) => {
+    const ico = icoInput.replace(/\D+/g, "");
+    if (ico.length < 6) {
       alert(t("Please enter a valid 8-digit IČO number.", "Zadajte platné 8-miestne IČO.", "Kérjük, adjon meg érvényes 8 jegyű adószámot."));
       return;
     }
 
     setIsAresLoading(true);
     try {
-      // 1. Try Slovak Register (RegisterUZ via /api/registeruz.php)
-      try {
-        const skRes = await fetch(`/api/registeruz.php?action=lookup&ico=${encodeURIComponent(ico)}`);
-        if (skRes.ok) {
-          const skData = await skRes.json();
-          if (skData && (skData.nazovUJ || skData.ico)) {
-            const nameVal = skData.nazovUJ || "";
-            const companyIdVal = skData.ico || ico;
-            const taxIdVal = skData.dic || "";
-            let vatVal = "";
-            if (skData.dic) {
-              vatVal = skData.dic.toUpperCase().startsWith("SK") ? skData.dic : `SK${skData.dic}`;
-            }
-
-            setSupplierForm(prev => ({
-              ...prev,
-              name: nameVal || prev.name,
-              companyId: companyIdVal,
-              taxId: taxIdVal || prev.taxId,
-              vatId: vatVal || prev.vatId,
-              street: skData.ulica || prev.street,
-              city: skData.mesto || prev.city,
-              postalCode: skData.psc || prev.postalCode,
-              country: "Slovakia"
-            }));
-
-            if (typeof (window as any).showToast === "function") {
-              (window as any).showToast(t("Supplier details loaded from Slovak Register.", "Údaje dodávateľa boli úspešne načítané z registra.", "A beszállító adatai sikeresen betöltve."));
-            }
-            return;
-          }
-        }
-      } catch (skErr) {
-        console.warn("RegisterUZ lookup error:", skErr);
+      // Without a country the number is tried against both registers — an
+      // 8-digit IČO looks the same on either side of the border.
+      const details = await fetchCompanyDetailsByCompanyId(ico, registryCountryOf(supplierForm.country) ? supplierForm.country : null);
+      if (details) {
+        applyRegistryToSupplier(details);
+        return;
       }
-
-      // 2. Try Czech Register (ARES CZ via /api/ares_cz.php or direct ARES fallback)
-      try {
-        let czData: any = null;
-        try {
-          const czRes = await fetch(`/api/ares_cz.php?action=detail&id=${encodeURIComponent(ico)}`);
-          if (czRes.ok) {
-            czData = await czRes.json();
-          }
-        } catch {}
-
-        if (!czData || !czData.obchodniJmeno) {
-          const directAres = await fetch(`https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/ekonomicke-subjekty/${encodeURIComponent(ico)}`);
-          if (directAres.ok) {
-            czData = await directAres.json();
-          }
-        }
-
-        if (czData && (czData.obchodniJmeno || czData.ico)) {
-          const nameVal = czData.obchodniJmeno || "";
-          const companyIdVal = czData.ico || ico;
-          let rawDic = czData.dic || "";
-          let cleanedTaxId = rawDic;
-          if (rawDic.toUpperCase().startsWith("CZ")) {
-            cleanedTaxId = rawDic.substring(2);
-          }
-          let vatVal = rawDic;
-          if (!vatVal && czData.ico) {
-            vatVal = `CZ${czData.ico}`;
-          }
-
-          const sidlo = czData.sidlo || {};
-          const cityVal = sidlo.nazevObce || "";
-          const streetPart = sidlo.nazevUlice || sidlo.nazevCastiObce || sidlo.nazevObce || "";
-          const houseNo = sidlo.cisloDomovni || "";
-          const orientNo = sidlo.cisloOrientacni || "";
-          let streetVal = streetPart;
-          if (houseNo || orientNo) {
-            streetVal += " " + houseNo + (orientNo ? "/" + orientNo : "");
-          }
-          if (!streetVal && czData.textovaAdresa) {
-            streetVal = czData.textovaAdresa;
-          }
-
-          setSupplierForm(prev => ({
-            ...prev,
-            name: nameVal || prev.name,
-            companyId: companyIdVal,
-            taxId: cleanedTaxId || prev.taxId,
-            vatId: vatVal || prev.vatId,
-            street: streetVal.trim() || prev.street,
-            city: cityVal || prev.city,
-            postalCode: sidlo.psc ? String(sidlo.psc) : prev.postalCode,
-            country: "Czech Republic"
-          }));
-
-          if (typeof (window as any).showToast === "function") {
-            (window as any).showToast(t("Supplier details loaded from Czech ARES.", "Údaje dodávateľa boli úspešne načítané z ARES.", "A beszállító adatai sikeresen betöltve az ARES-ből."));
-          }
-          return;
-        }
-      } catch (czErr) {
-        console.warn("ARES fetch failed:", czErr);
-      }
-
-      alert(t("Company not found in Slovak (RegisterUZ) or Czech (ARES) register.", "Spoločnosť sa nenašla v obchodnom registri (SR ani ČR).", "A vállalat nem található a cégjegyzékben."));
+      alert(t("Company not found in the Slovak or Czech business register.", "Spoločnosť sa nenašla v obchodnom registri (SR ani ČR).", "A vállalat nem található a cégjegyzékben."));
     } catch (err) {
       console.warn("Register fetch failed", err);
       alert(t("Lookup failed. Please enter details manually.", "Vyhľadávanie v registri zlyhalo. Vyplňte údaje ručne.", "A lekérdezés sikertelen."));
@@ -6354,7 +6315,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     {editingSupplier ? t("Edit Supplier", "Upraviť dodávateľa", "Beszállító szerkesztése") : t("New Supplier", "Nový dodávateľ", "Új beszállító")}
                   </h3>
                   <p className="text-xs text-slate-500">
-                    {t("Enter IČO to auto-fill invoicing details from business register (SK/CZ)", "Zadajte IČO pre automatické načítanie údajov z registra (SR/ČR)", "Adószám megadása az automatikus kitöltéshez (SK/CZ)")}
+                    {t("Type a name, IČO, DIČ or IČ DPH to auto-fill from the business register (SK/CZ)", "Začnite písať názov, IČO, DIČ alebo IČ DPH — údaje sa načítajú z registra (SR/ČR)", "Írjon nevet, adószámot vagy közösségi adószámot az automatikus kitöltéshez (SK/CZ)")}
                   </p>
                 </div>
               </div>
@@ -6373,20 +6334,33 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     IČO {t("(Company Registration #)", "(Identifikačné číslo)", "(Cégjegyzékszám)")}
                   </label>
                   <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={supplierForm.companyId}
-                      onChange={(e) => setSupplierForm({ ...supplierForm, companyId: e.target.value })}
-                      placeholder="napr. 48123456"
-                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
-                    />
+                    <div className="relative flex-1">
+                      <input
+                        type="text"
+                        value={supplierForm.companyId}
+                        onChange={(e) => {
+                          setSupplierForm({ ...supplierForm, companyId: e.target.value });
+                          searchSupplierRegistry("companyId", e.target.value);
+                        }}
+                        placeholder="napr. 48123456"
+                        className="w-full px-3.5 py-2 pr-9 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                      />
+                      <CompanyLookupSpinner visible={supplierLookup.isLoading && supplierLookup.activeField === "companyId"} />
+                      <CompanySuggestions
+                        suggestions={supplierLookup.suggestions}
+                        visible={supplierLookup.activeField === "companyId"}
+                        onSelect={handleSelectSupplierSuggestion}
+                        onDismiss={supplierLookup.close}
+                        systemLanguage={systemLanguage}
+                      />
+                    </div>
                     <button
                       type="button"
-                      disabled={isAresLoading}
-                      onClick={() => handleFetchAres(supplierForm.companyId)}
+                      disabled={isAresLoading || supplierLookup.isResolving}
+                      onClick={() => handleFetchRegistry(supplierForm.companyId)}
                       className="px-3.5 py-2 bg-blue-900 hover:bg-blue-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shrink-0 transition"
                     >
-                      {isAresLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                      {isAresLoading || supplierLookup.isResolving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
                       <span>{t("Auto-Fill", "Načítať z registra", "Kitöltés")}</span>
                     </button>
                   </div>
@@ -6407,40 +6381,79 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   </div>
                 </div>
 
-                <div className="sm:col-span-3">
+                <div className="sm:col-span-3 relative">
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                     {t("Company Name", "Obchodné meno dodávateľa", "Cégnév")} *
                   </label>
-                  <input
-                    type="text"
-                    value={supplierForm.name}
-                    onChange={(e) => setSupplierForm({ ...supplierForm, name: e.target.value })}
-                    placeholder={t("e.g. Supplier s.r.o.", "napr. Dodávateľ s.r.o.", "pl. Beszállító Kft.")}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={supplierForm.name}
+                      onChange={(e) => {
+                        setSupplierForm({ ...supplierForm, name: e.target.value });
+                        searchSupplierRegistry("name", e.target.value);
+                      }}
+                      placeholder={t("e.g. Supplier s.r.o.", "napr. Dodávateľ s.r.o.", "pl. Beszállító Kft.")}
+                      className="w-full px-3.5 py-2 pr-9 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                    />
+                    <CompanyLookupSpinner visible={supplierLookup.isLoading && supplierLookup.activeField === "name"} />
+                  </div>
+                  <CompanySuggestions
+                    suggestions={supplierLookup.suggestions}
+                    visible={supplierLookup.activeField === "name"}
+                    onSelect={handleSelectSupplierSuggestion}
+                    onDismiss={supplierLookup.close}
+                    systemLanguage={systemLanguage}
                   />
                 </div>
 
-                <div>
+                <div className="relative">
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                     DIČ
                   </label>
-                  <input
-                    type="text"
-                    value={supplierForm.taxId}
-                    onChange={(e) => setSupplierForm({ ...supplierForm, taxId: e.target.value })}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={supplierForm.taxId}
+                      onChange={(e) => {
+                        setSupplierForm({ ...supplierForm, taxId: e.target.value });
+                        searchSupplierRegistry("taxId", e.target.value);
+                      }}
+                      className="w-full px-3.5 py-2 pr-9 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                    />
+                    <CompanyLookupSpinner visible={supplierLookup.isLoading && supplierLookup.activeField === "taxId"} />
+                  </div>
+                  <CompanySuggestions
+                    suggestions={supplierLookup.suggestions}
+                    visible={supplierLookup.activeField === "taxId"}
+                    onSelect={handleSelectSupplierSuggestion}
+                    onDismiss={supplierLookup.close}
+                    systemLanguage={systemLanguage}
                   />
                 </div>
 
-                <div>
+                <div className="relative">
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                     IČ DPH (VAT ID)
                   </label>
-                  <input
-                    type="text"
-                    value={supplierForm.vatId}
-                    onChange={(e) => setSupplierForm({ ...supplierForm, vatId: e.target.value })}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={supplierForm.vatId}
+                      onChange={(e) => {
+                        setSupplierForm({ ...supplierForm, vatId: e.target.value });
+                        searchSupplierRegistry("vatId", e.target.value);
+                      }}
+                      className="w-full px-3.5 py-2 pr-9 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                    />
+                    <CompanyLookupSpinner visible={supplierLookup.isLoading && supplierLookup.activeField === "vatId"} />
+                  </div>
+                  <CompanySuggestions
+                    suggestions={supplierLookup.suggestions}
+                    visible={supplierLookup.activeField === "vatId"}
+                    onSelect={handleSelectSupplierSuggestion}
+                    onDismiss={supplierLookup.close}
+                    systemLanguage={systemLanguage}
                   />
                 </div>
 

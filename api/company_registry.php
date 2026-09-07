@@ -466,6 +466,9 @@ function ccrm_cz_suggest(string $query): array {
             'active'       => empty($sub['datumZaniku']),
         ];
     }
+
+    ccrm_rank_suggestions($out, $query, $digits);
+
     return $out;
 }
 
@@ -498,7 +501,7 @@ function ccrm_cz_detail(string $ico): ?array {
         'city'               => trim((string)($sidlo['nazevObce'] ?? '')),
         'postalCode'         => ccrm_digits((string)($sidlo['psc'] ?? '')),
         'region'             => trim((string)($sidlo['nazevKraje'] ?? '')),
-        'district'           => trim((string)($sidlo['nazevOkresu'] ?? '')),
+        'district'           => trim((string)($sidlo['nazevOkresu'] ?? $sidlo['nazevSpravnihoObvodu'] ?? '')),
         'legalForm'          => trim((string)($data['pravniForma'] ?? '')),
         'legalFormCode'      => trim((string)($data['pravniForma'] ?? '')),
         'establishmentDate'  => trim((string)($data['datumVzniku'] ?? '')),
@@ -555,14 +558,20 @@ function ccrm_rank_suggestions(array &$results, string $query, string $digits): 
     });
 }
 
-/** Lowercase and strip diacritics, so "Novák" matches a typed "novak". */
+/**
+ * Lowercase, strip diacritics and collapse punctuation, so a typed "novak" matches
+ * "Novák" and "eset spol" matches "ESET, spol. s r.o." — the commas and dots in a
+ * Slovak trade name must not decide the ranking.
+ */
 function ccrm_fold(string $value): string {
     $value = mb_strtolower(trim($value), 'UTF-8');
     $map = [
         'á'=>'a','ä'=>'a','č'=>'c','ď'=>'d','é'=>'e','ě'=>'e','í'=>'i','ĺ'=>'l','ľ'=>'l','ň'=>'n',
         'ó'=>'o','ô'=>'o','ř'=>'r','ŕ'=>'r','š'=>'s','ť'=>'t','ú'=>'u','ů'=>'u','ý'=>'y','ž'=>'z',
     ];
-    return strtr($value, $map);
+    $value = strtr($value, $map);
+    $value = (string)preg_replace('/[^a-z0-9]+/u', ' ', $value);
+    return trim($value);
 }
 
 function ccrm_digits($value): string {

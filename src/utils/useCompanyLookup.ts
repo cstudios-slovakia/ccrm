@@ -51,8 +51,6 @@ export function useCompanyLookup<Field extends string = string>(
   const abortRef = useRef<AbortController | null>(null);
   // Guards against a slow earlier response overwriting a newer one.
   const requestSeq = useRef(0);
-  const countryRef = useRef<string | null | undefined>(country);
-  countryRef.current = country;
 
   const cancelPending = useCallback(() => {
     if (timerRef.current) {
@@ -77,7 +75,7 @@ export function useCompanyLookup<Field extends string = string>(
     (field: Field, value: string, countryOverride?: string | null) => {
       setActiveField(field);
 
-      const target = countryOverride !== undefined ? countryOverride : countryRef.current;
+      const target = countryOverride !== undefined ? countryOverride : country;
       cancelPending();
 
       if (!enabled || !registryCountryOf(target) || !isCompanyQuerySearchable(value)) {
@@ -108,12 +106,12 @@ export function useCompanyLookup<Field extends string = string>(
         }
       }, COMPANY_QUERY_DEBOUNCE_MS);
     },
-    [cancelPending, enabled]
+    [cancelPending, country, enabled]
   );
 
   const select = useCallback(
     async (item: CompanySuggestion, countryOverride?: string | null): Promise<CompanyDetails | null> => {
-      const target = countryOverride !== undefined ? countryOverride : countryRef.current;
+      const target = countryOverride !== undefined ? countryOverride : country;
       cancelPending();
       requestSeq.current += 1;
       setSuggestions([]);
@@ -132,7 +130,7 @@ export function useCompanyLookup<Field extends string = string>(
         setIsResolving(false);
       }
     },
-    [cancelPending]
+    [cancelPending, country]
   );
 
   return { activeField, suggestions, isLoading, isResolving, search, select, close };

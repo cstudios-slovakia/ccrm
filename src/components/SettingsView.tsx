@@ -14,6 +14,10 @@ import type { Language } from "../utils/translations";
 import { ProjectSettings } from "./ProjectSettings";
 import { PasswordInput } from "./PasswordInput";
 import { CustomSelect } from "./ui/CustomSelect";
+import { CompanyLookupSpinner, CompanySuggestions } from "./ui/CompanySuggestions";
+import { useCompanyLookup } from "../utils/useCompanyLookup";
+import { EUROPEAN_COUNTRIES, registryCountryOf } from "../utils/companyRegistry";
+import type { CompanyDetails, CompanyLookupField, CompanySuggestion } from "../utils/companyRegistry";
 import { cn } from "../utils/cn";
 import { SecretInput } from "./ui/SecretInput";
 import { CURRENCY_OPTIONS, currencyForRegion } from "../utils/currency";
@@ -821,6 +825,57 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setBillingForm(prev => ({ ...prev, ...companyBillingSettings }));
     }
   }, [companyBillingSettings]);
+
+  // ------------------------------------------------------- company registry
+  // The billing identity is filled from the same public registers as the client
+  // forms: type a name, IČO, DIČ or IČ DPH, pick the row, and the address block
+  // underneath fills itself. Sole traders (zrsr.sk) resolve like companies do.
+  // The country has no saved value on a fresh install, and the register has to
+  // be picked before the first search — Slovakia is where this CRM is used.
+  const billingCountry = billingForm.country || "Slovakia";
+  const billingLookup = useCompanyLookup<CompanyLookupField>({
+    country: billingCountry,
+    enabled: getPermission("general_config") === "edit"
+  });
+
+  const searchBillingRegistry = (field: CompanyLookupField, value: string) => {
+    billingLookup.search(field, value, billingCountry);
+  };
+
+  const applyRegistryToBilling = (details: CompanyDetails) => {
+    setBillingForm(prev => ({
+      ...prev,
+      companyName: details.name || prev.companyName,
+      companyId: details.companyId || prev.companyId,
+      taxId: details.taxId || prev.taxId,
+      vatId: details.vatId || prev.vatId,
+      street: details.street || prev.street,
+      city: details.city || prev.city,
+      postalCode: details.postalCode || prev.postalCode,
+      country: details.country || prev.country
+    }));
+  };
+
+  const handleSelectBillingSuggestion = async (item: CompanySuggestion) => {
+    (window as any).showToast?.(t("Loading company details...", "Načítavam údaje z registra...", "Cégadatok betöltése..."));
+    const details = await billingLookup.select(item, billingCountry);
+
+    if (details) {
+      applyRegistryToBilling(details);
+      (window as any).showToast?.(t("Company details loaded successfully!", "Údaje o firme úspešne načítané!", "Cégadatok sikeresen betöltve!"));
+      return;
+    }
+
+    // Detail lookup failed — keep what the picked row already carried.
+    setBillingForm(prev => ({
+      ...prev,
+      companyName: item.name || prev.companyName,
+      companyId: item.companyId || prev.companyId,
+      taxId: item.taxId || prev.taxId,
+      vatId: item.taxId ? `${registryCountryOf(billingCountry) === "CZ" ? "CZ" : "SK"}${item.taxId}` : prev.vatId
+    }));
+    (window as any).showToast?.(t("Error loading company details.", "Chyba pri načítaní údajov z registra.", "Hiba a cégadatok betöltésekor."), "error");
+  };
 
   // External Invoicing Integrations State
   const [extInvoicingForm, setExtInvoicingForm] = React.useState<ExternalInvoicingConfig>({
@@ -2686,15 +2741,29 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   {/* Company Name & Subtitle */}
                   <div className="md:col-span-2 space-y-3">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
+                      <div className="relative">
                         <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
                           {t("Company Name", "Obchodné meno spoločnosti", "Cégnév")}
                         </label>
-                        <input
-                          type="text"
-                          value={billingForm.companyName}
-                          onChange={e => setBillingForm(prev => ({ ...prev, companyName: e.target.value }))}
-                          className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={billingForm.companyName}
+                            onChange={e => {
+                              setBillingForm(prev => ({ ...prev, companyName: e.target.value }));
+                              searchBillingRegistry("name", e.target.value);
+                            }}
+                            placeholder={t("Type a name or IČO to load from the register", "Začnite písať názov alebo IČO — údaje sa načítajú z registra", "Írjon nevet vagy adószámot a cégregiszterből való betöltéshez")}
+                            className="w-full p-2.5 pr-9 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                          />
+                          <CompanyLookupSpinner visible={billingLookup.isLoading && billingLookup.activeField === "name"} />
+                        </div>
+                        <CompanySuggestions
+                          suggestions={billingLookup.suggestions}
+                          visible={billingLookup.activeField === "name"}
+                          onSelect={handleSelectBillingSuggestion}
+                          onDismiss={billingLookup.close}
+                          systemLanguage={userLanguage}
                         />
                       </div>
 
@@ -2712,31 +2781,70 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div>
+                      <div className="relative">
                         <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">IČO</label>
-                        <input
-                          type="text"
-                          value={billingForm.companyId || ""}
-                          onChange={e => setBillingForm(prev => ({ ...prev, companyId: e.target.value }))}
-                          className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-semibold focus:outline-none"
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={billingForm.companyId || ""}
+                            onChange={e => {
+                              setBillingForm(prev => ({ ...prev, companyId: e.target.value }));
+                              searchBillingRegistry("companyId", e.target.value);
+                            }}
+                            className="w-full p-2.5 pr-9 bg-white border border-slate-200 rounded-xl text-xs font-mono font-semibold focus:outline-none"
+                          />
+                          <CompanyLookupSpinner visible={billingLookup.isLoading && billingLookup.activeField === "companyId"} />
+                        </div>
+                        <CompanySuggestions
+                          suggestions={billingLookup.suggestions}
+                          visible={billingLookup.activeField === "companyId"}
+                          onSelect={handleSelectBillingSuggestion}
+                          onDismiss={billingLookup.close}
+                          systemLanguage={userLanguage}
                         />
                       </div>
-                      <div>
+                      <div className="relative">
                         <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">DIČ</label>
-                        <input
-                          type="text"
-                          value={billingForm.taxId || ""}
-                          onChange={e => setBillingForm(prev => ({ ...prev, taxId: e.target.value }))}
-                          className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-semibold focus:outline-none"
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={billingForm.taxId || ""}
+                            onChange={e => {
+                              setBillingForm(prev => ({ ...prev, taxId: e.target.value }));
+                              searchBillingRegistry("taxId", e.target.value);
+                            }}
+                            className="w-full p-2.5 pr-9 bg-white border border-slate-200 rounded-xl text-xs font-mono font-semibold focus:outline-none"
+                          />
+                          <CompanyLookupSpinner visible={billingLookup.isLoading && billingLookup.activeField === "taxId"} />
+                        </div>
+                        <CompanySuggestions
+                          suggestions={billingLookup.suggestions}
+                          visible={billingLookup.activeField === "taxId"}
+                          onSelect={handleSelectBillingSuggestion}
+                          onDismiss={billingLookup.close}
+                          systemLanguage={userLanguage}
                         />
                       </div>
-                      <div>
+                      <div className="relative">
                         <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">IČ DPH</label>
-                        <input
-                          type="text"
-                          value={billingForm.vatId || ""}
-                          onChange={e => setBillingForm(prev => ({ ...prev, vatId: e.target.value }))}
-                          className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-semibold focus:outline-none"
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={billingForm.vatId || ""}
+                            onChange={e => {
+                              setBillingForm(prev => ({ ...prev, vatId: e.target.value }));
+                              searchBillingRegistry("vatId", e.target.value);
+                            }}
+                            className="w-full p-2.5 pr-9 bg-white border border-slate-200 rounded-xl text-xs font-mono font-semibold focus:outline-none"
+                          />
+                          <CompanyLookupSpinner visible={billingLookup.isLoading && billingLookup.activeField === "vatId"} />
+                        </div>
+                        <CompanySuggestions
+                          suggestions={billingLookup.suggestions}
+                          visible={billingLookup.activeField === "vatId"}
+                          onSelect={handleSelectBillingSuggestion}
+                          onDismiss={billingLookup.close}
+                          systemLanguage={userLanguage}
                         />
                       </div>
                     </div>
@@ -2785,6 +2893,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       value={billingForm.postalCode || ""}
                       onChange={e => setBillingForm(prev => ({ ...prev, postalCode: e.target.value }))}
                       className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                      {t("Country", "Krajina", "Ország")}
+                    </label>
+                    <CustomSelect
+                      value={billingCountry}
+                      onChange={value => setBillingForm(prev => ({ ...prev, country: value }))}
+                      options={EUROPEAN_COUNTRIES.map(country => ({ value: country, label: country }))}
                     />
                   </div>
                 </div>

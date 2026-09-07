@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  applyCompanyDetailsToLead,
   companyAddressFields,
-  companyDetailsToLeadFields,
   identifierDigits,
   isCompanyQuerySearchable,
   looksLikeIdentifier,
@@ -129,20 +129,53 @@ test("companyAddressFields carries the address the form stores", () => {
   });
 });
 
-test("companyDetailsToLeadFields prefers the readable legal form", () => {
-  const fields = companyDetailsToLeadFields(details());
-  assert.equal(fields.legalForm, "Spoločnosť s ručením obmedzeným");
-  assert.equal(fields.vatId, "SK2020317068");
-  assert.equal(fields.contactPerson, "Miroslav Trnka");
-  assert.equal(fields.district, "Bratislava V");
+test("applyCompanyDetailsToLead fills the record and its nested address", () => {
+  const lead = {
+    name: "Eset",
+    city: "",
+    companyId: "31333532",
+    address: { street: "", city: "", postalCode: "", country: "" },
+  };
+
+  const merged = applyCompanyDetailsToLead(lead, details());
+
+  assert.equal(merged.name, "ESET, spol. s r.o.");
+  assert.equal(merged.city, "Bratislava");
+  assert.equal(merged.vatId, "SK2020317068");
+  assert.equal(merged.legalForm, "Spoločnosť s ručením obmedzeným");
+  assert.equal(merged.contactPerson, "Miroslav Trnka");
+  assert.deepEqual(merged.address, {
+    street: "Einsteinova 24",
+    city: "Bratislava",
+    postalCode: "85101",
+    country: "Slovakia",
+  });
 });
 
-test("companyDetailsToLeadFields omits empty values so it never wipes typed data", () => {
-  // A sole trader: zrsr publishes no DIČ, so the DIČ the user typed must survive.
-  const fields = companyDetailsToLeadFields(
-    details({ taxId: "", vatId: "", register: "zrsr", contactPerson: "Viera Nováková" })
+test("applyCompanyDetailsToLead never overwrites with a blank registry value", () => {
+  // A sole trader: zrsr.sk publishes no DIČ, so a typed one must survive.
+  const lead = {
+    name: "Viera Nováková",
+    city: "Sečovce",
+    taxId: "1020304050",
+    vatId: "SK1020304050",
+    contactPerson: "Viera N. (buyer)",
+  };
+
+  const merged = applyCompanyDetailsToLead(
+    lead,
+    details({
+      name: "Viera Nováková",
+      taxId: "",
+      vatId: "",
+      register: "zrsr",
+      contactPerson: "Viera Nováková",
+      city: "Sečovce",
+    })
   );
-  assert.equal("taxId" in fields, false);
-  assert.equal("vatId" in fields, false);
-  assert.equal(fields.contactPerson, "Viera Nováková");
+
+  assert.equal(merged.taxId, "1020304050");
+  assert.equal(merged.vatId, "SK1020304050");
+  // A named buyer beats the statutory body.
+  assert.equal(merged.contactPerson, "Viera N. (buyer)");
 });

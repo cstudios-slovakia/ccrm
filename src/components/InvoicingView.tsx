@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   FileText, Plus, Search, Printer, Eye, Trash2, Pencil,
   AlertCircle, Sparkles, Package, ExternalLink, Award, Layers,
@@ -14,6 +14,10 @@ import type { Language } from "../utils/translations";
 import { DefaultOfferTemplate } from "./pdf/DefaultOfferTemplate";
 import { CustomAiOfferTemplate } from "./pdf/CustomAiOfferTemplate";
 import { CustomSelect } from "./ui/CustomSelect";
+import { CompanyLookupSpinner, CompanySuggestions } from "./ui/CompanySuggestions";
+import { useCompanyLookup } from "../utils/useCompanyLookup";
+import { applyCompanyDetailsToLead, registryCountryOf } from "../utils/companyRegistry";
+import type { CompanyLookupField, CompanySuggestion } from "../utils/companyRegistry";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { formatMoney, resolveCurrencySymbol } from "../utils/currency";
 import { todayLocal, nowLocalStamp, formatDateLocalized } from "../utils/localTime";
@@ -443,6 +447,43 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
     if (!editingId) {
       setDraftDocumentNumber(nextDocumentNumber(type));
     }
+  };
+
+  // ------------------------------------------------------ company registry
+  // A document is only as good as the client block printed on it. When the lead
+  // was captured without its IČO, DIČ or full address, this pulls the missing
+  // fields straight from the public registers (companies and sole traders alike)
+  // and writes them back onto the client, so the CRM and the invoice agree.
+  const [registryQuery, setRegistryQuery] = useState("");
+
+  const registryCountry =
+    selectedLead?.address?.country || companyBillingSettings?.country || "Slovakia";
+
+  const clientLookup = useCompanyLookup<CompanyLookupField>({ country: registryCountry });
+
+  // Seed the box with what the client already carries, so completing a half-filled
+  // lead is a click on a suggestion rather than typing the name out again.
+  useEffect(() => {
+    setRegistryQuery(selectedLead ? selectedLead.companyId || selectedLead.name || "" : "");
+  }, [selectedLeadId]);
+
+  const handleSelectClientSuggestion = async (item: CompanySuggestion) => {
+    if (!selectedLead) return;
+
+    const details = await clientLookup.select(item, registryCountry);
+    if (!details) {
+      (window as any).showToast?.(
+        t("Error loading company details.", "Chyba pri načítaní údajov z registra.", "Hiba a cégadatok betöltésekor."),
+        "error"
+      );
+      return;
+    }
+
+    setLeads(prev => prev.map(lead => (lead.id === selectedLead.id ? applyCompanyDetailsToLead(lead, details) : lead)));
+    setRegistryQuery(details.companyId || details.name || "");
+    (window as any).showToast?.(
+      t("Client details loaded from the register.", "Údaje klienta boli načítané z registra.", "Az ügyfél adatai betöltve a cégjegyzékből.")
+    );
   };
 
   // ------------------------------------------------------------ draft assembly
@@ -1264,6 +1305,52 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                           </div>
                         ))}
                       </div>
+
+                      {registryCountryOf(registryCountry) && (
+                        <div className="pt-3 border-t border-slate-200 space-y-1.5">
+                          <label className={labelClass}>
+                            {t(
+                              "Complete from the business register",
+                              "Doplniť údaje z obchodného registra",
+                              "Kiegészítés a cégjegyzékből"
+                            )}
+                          </label>
+                          <div className="relative">
+                            <div className="relative">
+                              <input
+                                type="text"
+                                value={registryQuery}
+                                onChange={e => {
+                                  setRegistryQuery(e.target.value);
+                                  clientLookup.search("name", e.target.value, registryCountry);
+                                }}
+                                onFocus={() => clientLookup.search("name", registryQuery, registryCountry)}
+                                placeholder={t(
+                                  "Company name, IČO, DIČ or IČ DPH…",
+                                  "Názov firmy, IČO, DIČ alebo IČ DPH…",
+                                  "Cégnév, adószám vagy közösségi adószám…"
+                                )}
+                                className={`${inputClass} pr-9`}
+                              />
+                              <CompanyLookupSpinner visible={clientLookup.isLoading || clientLookup.isResolving} />
+                            </div>
+                            <CompanySuggestions
+                              suggestions={clientLookup.suggestions}
+                              visible={clientLookup.activeField === "name"}
+                              onSelect={handleSelectClientSuggestion}
+                              onDismiss={clientLookup.close}
+                              systemLanguage={systemLanguage}
+                            />
+                          </div>
+                          <p className="text-[10px] text-slate-400 font-medium">
+                            {t(
+                              "Picking a match updates this client in the CRM, not just this document.",
+                              "Vybraná zhoda sa uloží ku klientovi v CRM, nielen do tohto dokladu.",
+                              "A kiválasztott találat a CRM ügyféladatait is frissíti, nem csak ezt a bizonylatot."
+                            )}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
 

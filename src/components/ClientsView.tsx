@@ -16,7 +16,7 @@ import { VoiceRecorderCard } from "./VoiceRecorderCard";
 import { CustomSelect } from "./ui/CustomSelect";
 import { CompanyLookupSpinner, CompanySuggestions } from "./ui/CompanySuggestions";
 import { useCompanyLookup } from "../utils/useCompanyLookup";
-import type { CompanyDetails, CompanySuggestion } from "../utils/companyRegistry";
+import type { CompanyDetails, CompanyLookupField, CompanySuggestion } from "../utils/companyRegistry";
 import { registryCountryOf } from "../utils/companyRegistry";
 import { TimelineAuthorBadge } from "./TimelineAuthorBadge";
 import { TimelineCollapsible } from "./TimelineCollapsible";
@@ -36,9 +36,6 @@ import { resolveCurrencySymbol, formatMoney } from "../utils/currency";
 import { resolveAssigneeName } from "../utils/taskSelectors";
 import { todayLocal, nowLocalStamp, formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
 import { chartTheme, useAppearance } from "../utils/theme";
-
-/** The inputs that search the company registers, in both client forms. */
-type CompanyLookupField = "name" | "companyId" | "taxId" | "vatId";
 
 interface ClientsViewProps {
   leads: Lead[];

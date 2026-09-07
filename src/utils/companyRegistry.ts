@@ -64,6 +64,23 @@ export interface CompanyDetails {
   active: boolean;
 }
 
+/** The inputs that search the registers: a trade name, an IČO, a DIČ or an IČ DPH. */
+export type CompanyLookupField = "name" | "companyId" | "taxId" | "vatId";
+
+/**
+ * The countries the client and company forms offer. Only Slovakia and Czechia
+ * have a register behind them; the rest are plain address data.
+ */
+export const EUROPEAN_COUNTRIES = [
+  "Slovakia", "Hungary", "Austria", "Czechia", "Poland",
+  "Germany", "France", "Italy", "Spain", "United Kingdom",
+  "Netherlands", "Belgium", "Switzerland", "Czech Republic",
+  "Bulgaria", "Croatia", "Cyprus", "Denmark", "Estonia",
+  "Finland", "Greece", "Ireland", "Latvia", "Lithuania",
+  "Luxembourg", "Malta", "Portugal", "Romania", "Slovenia",
+  "Sweden"
+];
+
 /** Shortest query the registers answer usefully. */
 export const COMPANY_QUERY_MIN_LENGTH = 3;
 
@@ -149,37 +166,66 @@ export function companyAddressFields(details: CompanyDetails): CompanyAddressFie
 }
 
 /**
- * The registry values a Lead (client) record can hold. Kept as its own function
- * so the new-client form, the client profile and the invoicing wizard all fill
- * exactly the same set of fields from the same source.
+ * Merges registry details into a client record. Every form that already holds a
+ * Lead (the invoicing wizard, and anything else that refreshes a client from the
+ * register) goes through here, so one pick fills the same fields everywhere.
  *
- * Only non-empty values are returned: a registry that does not publish DIČ for
- * sole traders must not wipe a DIČ the user typed by hand.
+ * Empty registry values never overwrite what is already stored: sole traders
+ * have no published DIČ, and losing a hand-typed one to a blank would be worse
+ * than not filling it at all. The contact person is only ever added, never
+ * replaced — a named buyer beats the statutory body.
  */
-export function companyDetailsToLeadFields(details: CompanyDetails): Record<string, string> {
-  const fields: Record<string, string> = {
-    name: details.name,
-    companyId: details.companyId,
-    taxId: details.taxId,
-    vatId: details.vatId,
-    street: details.street,
-    city: details.city,
-    postalCode: details.postalCode,
-    country: details.country,
-    establishmentDate: details.establishmentDate,
-    legalForm: details.legalForm,
-    skNace: details.skNace,
-    organizationSize: details.organizationSize,
-    ownershipType: details.ownershipType,
-    dataSource: details.dataSource,
-    dissolutionDate: details.dissolutionDate,
-    region: details.region,
-    district: details.district,
-    contactPerson: details.contactPerson,
-  };
+export function applyCompanyDetailsToLead<T extends CompanyBackedRecord>(lead: T, details: CompanyDetails): T {
+  const keep = (next: string, current?: string) => next || current || "";
 
-  for (const key of Object.keys(fields)) {
-    if (!fields[key]) delete fields[key];
-  }
-  return fields;
+  return {
+    ...lead,
+    name: keep(details.name, lead.name),
+    city: keep(details.city, lead.city),
+    companyId: keep(details.companyId, lead.companyId),
+    taxId: keep(details.taxId, lead.taxId),
+    vatId: keep(details.vatId, lead.vatId),
+    contactPerson: (lead.contactPerson || "").trim() || details.contactPerson || "",
+    address: {
+      ...(lead.address || {}),
+      street: keep(details.street, lead.address?.street),
+      city: keep(details.city, lead.address?.city),
+      postalCode: keep(details.postalCode, lead.address?.postalCode),
+      country: keep(details.country, lead.address?.country),
+    },
+    establishmentDate: keep(details.establishmentDate, lead.establishmentDate),
+    legalForm: keep(details.legalForm, lead.legalForm),
+    skNace: keep(details.skNace, lead.skNace),
+    organizationSize: keep(details.organizationSize, lead.organizationSize),
+    ownershipType: keep(details.ownershipType, lead.ownershipType),
+    dataSource: keep(details.dataSource, lead.dataSource),
+    dissolutionDate: keep(details.dissolutionDate, lead.dissolutionDate),
+    region: keep(details.region, lead.region),
+    district: keep(details.district, lead.district),
+  };
+}
+
+/** The client-record fields the registry writes into — a structural subset of Lead. */
+export interface CompanyBackedRecord {
+  name: string;
+  city: string;
+  companyId?: string;
+  taxId?: string;
+  vatId?: string;
+  contactPerson?: string;
+  address?: {
+    street?: string;
+    city?: string;
+    postalCode?: string;
+    country?: string;
+  };
+  establishmentDate?: string;
+  legalForm?: string;
+  skNace?: string;
+  organizationSize?: string;
+  ownershipType?: string;
+  dataSource?: string;
+  dissolutionDate?: string;
+  region?: string;
+  district?: string;
 }
