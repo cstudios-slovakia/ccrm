@@ -5835,11 +5835,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       <code>company_name</code> <span className="text-[10px] text-slate-400 font-normal">{userLanguage === "sk" ? "alebo" : userLanguage === "hu" ? "vagy" : "or"}</span> <code>contact_name</code>
                     </div>
                     <p className="text-[10px] text-slate-500 leading-relaxed">
-                      {userLanguage === "sk" 
-                        ? "Aspoň jedno z týchto dvoch polí musí byť uvedené v tele JSON na identifikáciu prichádzajúceho kontaktu alebo obchodného záznamu." 
-                        : userLanguage === "hu" 
-                          ? "Legalább az egyik mezőt meg kell adni a JSON törzsben a bejövő kapcsolat vagy üzleti rekord azonosításához." 
-                          : "At least one of these two fields must be provided in the JSON body to identify the incoming contact or business record."
+                      {userLanguage === "sk"
+                        ? "Aspoň jedno z týchto dvoch polí musí byť v tele JSON. company_name sa stane názvom klienta a lead sa založí ako firma; contact_name sa uloží ako kontaktná osoba — alebo ako samotný klient, ak firma nie je uvedená."
+                        : userLanguage === "hu"
+                          ? "Legalább az egyik mezőt meg kell adni a JSON törzsben. A company_name lesz az ügyfél neve, és a lead cégként jön létre; a contact_name a kapcsolattartó — vagy maga az ügyfél, ha nincs cég megadva."
+                          : "At least one of these two fields must be provided in the JSON body. company_name becomes the client's name and files the lead as a business; contact_name is stored as the contact person there — or as the client itself when no company is given."
                       }
                     </p>
                   </div>
@@ -5849,8 +5849,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">{getTranslation(userLanguage, "settings.api.optional_fields")}</span>
                   <ul className="text-xs text-slate-700 space-y-2 leading-relaxed font-semibold">
                     <li><code>email</code>, <code>phone</code>, <code>city</code>, <code>country</code> <span className="text-[10px] text-slate-400 font-normal">({userLanguage === "sk" ? "Osobné údaje" : userLanguage === "hu" ? "Személyes adatok" : "Personal info"})</span></li>
-                    <li><code>message</code> <span className="text-[10px] text-slate-400 font-normal">({userLanguage === "sk" ? "Mapované do poznámky na časovej osi leadu" : userLanguage === "hu" ? "A lead idővonal jegyzetébe kerül leképezésre" : "Mapped into Lead timeline note"})</span></li>
-                    <li><code>value</code> <span className="text-[10px] text-slate-400 font-normal">({userLanguage === "sk" ? "Číselná hodnota leadu - predvolená hodnota 0" : userLanguage === "hu" ? "Numerikus lead érték - alapértelmezetten 0" : "Numerical lead worth - defaults to 0"})</span></li>
+                    <li><code>message</code> <span className="text-[10px] text-slate-400 font-normal">({userLanguage === "sk" ? "Uloží sa do časovej osi leadu aj do poľa „Záujem klienta“. Označené riadky v ňom (Firma:, Budget:) sa načítajú, ak dané pole chýba" : userLanguage === "hu" ? "A lead idővonalára és az „Ügyfél érdeklődése” mezőbe kerül. A benne lévő címkézett sorokat (Firma:, Budget:) beolvassuk, ha a mező hiányzik" : "Saved to the lead timeline and to \"Client interest\". Labelled lines inside it (Firma:, Budget:) are read when the matching field is missing"})</span></li>
+                    <li><code>value</code> <span className="text-[10px] text-slate-400 font-normal">{userLanguage === "sk" ? "alebo" : userLanguage === "hu" ? "vagy" : "or"}</span> <code>budget</code> <span className="text-[10px] text-slate-400 font-normal">({userLanguage === "sk" ? "Hodnota leadu v EUR - z rozsahu ako 3500€-5000€ sa vezme dolná hranica, predvolene 0" : userLanguage === "hu" ? "Lead értéke EUR-ban - a 3500€-5000€ tartományból az alsó határ kerül be, alapértelmezetten 0" : "Lead worth in EUR - a range like 3500€-5000€ is read as its lower bound, defaults to 0"})</span></li>
                     <li><code>source_id</code> <span className="text-[10px] text-slate-400 font-normal">({userLanguage === "sk" ? "ID zdroja návštevnosti - mapuje sa na zoznam aktívnych nastavení" : userLanguage === "hu" ? "A forgalmi csatorna azonosítója - az aktív beállítások listájára képeződik le" : "ID of the traffic channel - maps to active settings list"})</span></li>
                   </ul>
                 </div>
