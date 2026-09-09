@@ -278,18 +278,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $status = $leadStates[0];
     }
 
+    // `source_id` and `category_id` are the permanent ids the CRM shows beside
+    // each entry in Settings, NOT positions in the lists above. A form written
+    // against this endpoint outlives any number of reorderings in the CRM, so
+    // resolving by position (which is what this did up to 1.9.19) meant that
+    // dragging one category a row up quietly re-filed every submission that
+    // named it. See ccrm_normalize_list_ids in api/schema.php.
+    $leadSourceIds = get_db_setting($pdo, 'LEAD_SOURCE_IDS', []);
+    $leadCategoryIds = get_db_setting($pdo, 'LEAD_CATEGORY_IDS', []);
+
     // Determine source
     $source = 'website';
-    $sourceId = isset($payload['source_id']) ? intval($payload['source_id']) : 0;
-    if ($sourceId > 0 && isset($leadSources[$sourceId - 1])) {
-        $source = $leadSources[$sourceId - 1];
+    $matchedSource = ccrm_resolve_list_id(
+        isset($payload['source_id']) ? intval($payload['source_id']) : 0,
+        $leadSources,
+        $leadSourceIds
+    );
+    if ($matchedSource !== null) {
+        $source = $matchedSource;
     }
 
     // Determine category
     $categories = [];
-    $categoryId = isset($payload['category_id']) ? intval($payload['category_id']) : 0;
-    if ($categoryId > 0 && isset($leadCategories[$categoryId - 1])) {
-        $categories[] = $leadCategories[$categoryId - 1];
+    $matchedCategory = ccrm_resolve_list_id(
+        isset($payload['category_id']) ? intval($payload['category_id']) : 0,
+        $leadCategories,
+        $leadCategoryIds
+    );
+    if ($matchedCategory !== null) {
+        $categories[] = $matchedCategory;
     }
 
     // Create the new lead ID

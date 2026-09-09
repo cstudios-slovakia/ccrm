@@ -9,6 +9,7 @@ import {
 import type { UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, ProjectType, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, LeadAssignmentMode } from "../types";
 import { resolveAssignmentPool } from "../utils/leadAssignment";
 import { normalizeSlaDays, type LeadStateSla } from "../utils/leadSla";
+import { listIdFor, nextListId, type ListIds } from "../utils/listIds";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { ProjectSettings } from "./ProjectSettings";
@@ -90,6 +91,12 @@ interface SettingsViewProps {
   setLeadSources: React.Dispatch<React.SetStateAction<string[]>>;
   leadCategories: string[];
   setLeadCategories: React.Dispatch<React.SetStateAction<string[]>>;
+  // The permanent id a website form uses to name one source / category. Not the
+  // row's position: see src/utils/listIds.ts.
+  leadSourceIds: ListIds;
+  setLeadSourceIds: React.Dispatch<React.SetStateAction<ListIds>>;
+  leadCategoryIds: ListIds;
+  setLeadCategoryIds: React.Dispatch<React.SetStateAction<ListIds>>;
   
   // Real dynamic Users list
   users: UserProfile[];
@@ -209,6 +216,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setLeadSources,
   leadCategories,
   setLeadCategories,
+  leadSourceIds,
+  setLeadSourceIds,
+  leadCategoryIds,
+  setLeadCategoryIds,
   users,
   setUsers,
   roles,
@@ -287,6 +298,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     if (leadSources.some((s) => s.toLowerCase() === next)) { toastNameExists(); return; }
     setLeadSources((prev) => prev.map((s) => (s === oldName ? next : s)));
     setLeadSourceColors((prev) => migrateMapKey(prev, oldName, next));
+    // The id belongs to the source, not to its name — a rename must not send
+    // the web forms that already point at it somewhere else.
+    setLeadSourceIds((prev) => migrateMapKey(prev, oldName, next));
     setLeads?.((prev) => prev.map((l) => (l.source === oldName ? { ...l, source: next } : l)));
   };
 
@@ -317,6 +331,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     if (leadCategories.some((c) => c.toLowerCase() === next.toLowerCase())) { toastNameExists(); return; }
     setLeadCategories((prev) => prev.map((c) => (c === oldName ? next : c)));
     setLeadCategoryColors((prev) => migrateMapKey(prev, oldName, next));
+    // Same as for sources: the id follows the category through a rename.
+    setLeadCategoryIds((prev) => migrateMapKey(prev, oldName, next));
     setLeads?.((prev) =>
       prev.map((l) =>
         l.categories?.includes(oldName)
@@ -1817,6 +1833,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       ...prev,
       [val]: "#10b981"
     }));
+    // Next id above the highest ever issued, so a number retired by an earlier
+    // deletion is never handed to something new.
+    setLeadSourceIds(prev => (val in prev ? prev : { ...prev, [val]: nextListId(prev) }));
     setNewSource("");
   };
 
@@ -1840,6 +1859,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           : `Are you sure you want to remove the source "${source}"?`
     )) {
       setLeadSources(leadSources.filter((s) => s !== source));
+      // leadSourceIds is deliberately left alone. The entry stays behind as a
+      // tombstone so its number can never be re-issued to a different source —
+      // a form still posting it then matches nothing, instead of the wrong
+      // thing. See src/utils/listIds.ts.
       setLeadSourceColors(prev => {
         const next = { ...prev };
         delete next[source.toLowerCase()];
@@ -1868,6 +1891,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       ...prev,
       [val]: "#6366f1"
     }));
+    // Same as for sources — never reuse a retired id.
+    setLeadCategoryIds(prev => (val in prev ? prev : { ...prev, [val]: nextListId(prev) }));
     setNewCategory("");
   };
 
@@ -1891,6 +1916,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           : `Are you sure you want to remove the category "${cat}"?`
     )) {
       setLeadCategories(leadCategories.filter((c) => c !== cat));
+      // Left out of leadCategoryIds on purpose — see handleRemoveSource.
       setLeadCategoryColors(prev => {
         const next = { ...prev };
         delete next[cat];
@@ -5008,7 +5034,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           {/* 3. SOURCE NAME */}
                           <td className="py-3 px-4 align-middle">
                             <div className="flex items-center gap-3">
-                              <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-500 border border-slate-200/60 px-2 py-0.5 rounded-md">ID: {idx + 1}</span>
+                              <span
+                                className="text-[10px] font-mono font-bold bg-slate-100 text-slate-500 border border-slate-200/60 px-2 py-0.5 rounded-md"
+                                title={t(
+                                  "Permanent ID — web forms send it, and it never changes when you reorder or rename",
+                                  "Trvalé ID — posielajú ho webové formuláre a nemení sa pri zmene poradia ani premenovaní",
+                                  "Állandó azonosító — a webűrlapok ezt küldik, és átrendezéskor vagy átnevezéskor sem változik",
+                                )}
+                              >ID: {listIdFor(source, leadSourceIds) || idx + 1}</span>
                               <InlineRenameName
                                 value={source}
                                 canEdit={getPermission("traffic_sources") === "edit"}
@@ -5166,7 +5199,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           {/* 3. CATEGORY NAME */}
                           <td className="py-3 px-4 align-middle">
                             <div className="flex items-center gap-3">
-                              <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-500 border border-slate-200/60 px-2 py-0.5 rounded-md">ID: {idx + 1}</span>
+                              <span
+                                className="text-[10px] font-mono font-bold bg-slate-100 text-slate-500 border border-slate-200/60 px-2 py-0.5 rounded-md"
+                                title={t(
+                                  "Permanent ID — web forms send it, and it never changes when you reorder or rename",
+                                  "Trvalé ID — posielajú ho webové formuláre a nemení sa pri zmene poradia ani premenovaní",
+                                  "Állandó azonosító — a webűrlapok ezt küldik, és átrendezéskor vagy átnevezéskor sem változik",
+                                )}
+                              >ID: {listIdFor(cat, leadCategoryIds) || idx + 1}</span>
                               <InlineRenameName
                                 value={cat}
                                 canEdit={getPermission("traffic_sources") === "edit"}
@@ -5821,7 +5861,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     "country": "Slovakia",
     "message": "We need a new ecommerce website.",
     "value": 4500,
-    "source_id": 1
+    "source_id": 1,
+    "category_id": 2
   }'`}
                 </pre>
               </div>
@@ -5851,7 +5892,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <li><code>email</code>, <code>phone</code>, <code>city</code>, <code>country</code> <span className="text-[10px] text-slate-400 font-normal">({userLanguage === "sk" ? "Osobné údaje" : userLanguage === "hu" ? "Személyes adatok" : "Personal info"})</span></li>
                     <li><code>message</code> <span className="text-[10px] text-slate-400 font-normal">({userLanguage === "sk" ? "Uloží sa do časovej osi leadu aj do poľa „Záujem klienta“. Označené riadky v ňom (Firma:, Budget:) sa načítajú, ak dané pole chýba" : userLanguage === "hu" ? "A lead idővonalára és az „Ügyfél érdeklődése” mezőbe kerül. A benne lévő címkézett sorokat (Firma:, Budget:) beolvassuk, ha a mező hiányzik" : "Saved to the lead timeline and to \"Client interest\". Labelled lines inside it (Firma:, Budget:) are read when the matching field is missing"})</span></li>
                     <li><code>value</code> <span className="text-[10px] text-slate-400 font-normal">{userLanguage === "sk" ? "alebo" : userLanguage === "hu" ? "vagy" : "or"}</span> <code>budget</code> <span className="text-[10px] text-slate-400 font-normal">({userLanguage === "sk" ? "Hodnota leadu v EUR - z rozsahu ako 3500€-5000€ sa vezme dolná hranica, predvolene 0" : userLanguage === "hu" ? "Lead értéke EUR-ban - a 3500€-5000€ tartományból az alsó határ kerül be, alapértelmezetten 0" : "Lead worth in EUR - a range like 3500€-5000€ is read as its lower bound, defaults to 0"})</span></li>
-                    <li><code>source_id</code> <span className="text-[10px] text-slate-400 font-normal">({userLanguage === "sk" ? "ID zdroja návštevnosti - mapuje sa na zoznam aktívnych nastavení" : userLanguage === "hu" ? "A forgalmi csatorna azonosítója - az aktív beállítások listájára képeződik le" : "ID of the traffic channel - maps to active settings list"})</span></li>
+                    <li><code>source_id</code>, <code>category_id</code> <span className="text-[10px] text-slate-400 font-normal">({userLanguage === "sk" ? "ID zdroja návštevnosti a kategórie záujmu - nájdete ich v stĺpci ID v Nastaveniach → Zdroje leadov. Sú trvalé: zmena poradia ani premenovanie ich nemení" : userLanguage === "hu" ? "A forgalmi csatorna és az érdeklődési kategória azonosítója - a Beállítások → Lead források ID oszlopában találhatók. Állandóak: sem az átrendezés, sem az átnevezés nem változtatja meg őket" : "IDs of the traffic channel and the interest category - read them from the ID column in Settings → Lead sources. They are permanent: neither reordering nor renaming changes them"})</span></li>
                   </ul>
                 </div>
               </div>

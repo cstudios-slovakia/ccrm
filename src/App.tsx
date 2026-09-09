@@ -7,6 +7,7 @@ import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, Uni
 import { DEFAULT_LEAD_ASSIGNMENT, normalizeLeadAssignment } from "./utils/leadAssignment";
 import { DEFAULT_PROJECT_AUTO_CREATE, normalizeProjectAutoCreate } from "./utils/projectAutoCreate";
 import { normalizeLeadStateSla, type LeadStateSla } from "./utils/leadSla";
+import { listIdsSignature, normalizeListIds, type ListIds } from "./utils/listIds";
 import { VERSION } from "./utils/version";
 import { parseAppHash, workspaceResetKey } from "./utils/hash";
 import { HOME_DASHBOARD_ID, buildDefaultHomeDashboard } from "./utils/dashboardWidgets";
@@ -118,6 +119,12 @@ const computeSettingsSig = (s: any): string => {
     s.leadStates ?? [],
     s.leadSources ?? [],
     s.leadCategories ?? [],
+    // Normalized on both sides so an install that has never stored an id map
+    // compares equal to the one the server derives. Reduced to a sorted array
+    // of pairs because two equal maps with their keys written in a different
+    // order would stringify differently and push forever. See listIdsSignature.
+    listIdsSignature(normalizeListIds(s.leadSources ?? [], s.leadSourceIds)),
+    listIdsSignature(normalizeListIds(s.leadCategories ?? [], s.leadCategoryIds)),
     s.leadStateColors && Object.keys(s.leadStateColors).length ? s.leadStateColors : null,
     s.leadSourceColors && Object.keys(s.leadSourceColors).length ? s.leadSourceColors : null,
     s.leadCategoryColors && Object.keys(s.leadCategoryColors).length ? s.leadCategoryColors : null,
@@ -498,6 +505,14 @@ function App() {
   const [leadCategories, setLeadCategories] = useState<string[]>([
     "Products", "Services"
   ]);
+
+  // The permanent id each source / category answers to when a website form
+  // names it (`source_id` / `category_id` in the /api/pipeline.php payload).
+  // Kept apart from the lists above precisely so that reordering them in
+  // Settings cannot change what a form already deployed means — see
+  // src/utils/listIds.ts. Filled in from the server on the first sync.
+  const [leadSourceIds, setLeadSourceIds] = useState<ListIds>({});
+  const [leadCategoryIds, setLeadCategoryIds] = useState<ListIds>({});
 
   const [leadStateColors, setLeadStateColors] = useState<Record<string, string>>({
     "new": "#3b82f6",
@@ -1028,6 +1043,8 @@ ${log.payload || ''}
         leadStates,
         leadSources,
         leadCategories,
+        leadSourceIds,
+        leadCategoryIds,
         leadStateColors,
         leadSourceColors,
         leadCategoryColors,
@@ -1696,7 +1713,8 @@ ${log.payload || ''}
   useEffect(() => {
     if (!isInstalled || !isInitialSyncResolved) return;
     const currentSig = computeSettingsSig({
-      leadStates, leadSources, leadCategories, systemName, systemLanguage, systemCurrency,
+      leadStates, leadSources, leadCategories, leadSourceIds, leadCategoryIds,
+      systemName, systemLanguage, systemCurrency,
       leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups,
       leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors,
     });
@@ -1726,7 +1744,7 @@ ${log.payload || ''}
       // newest values.
       pushStateToServer();
     }, 700);
-  }, [leadStates, leadSources, leadCategories, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, isInitialSyncResolved]);
+  }, [leadStates, leadSources, leadCategories, leadSourceIds, leadCategoryIds, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, isInitialSyncResolved]);
 
   // Layout Hash change listener
   useEffect(() => {
@@ -1909,6 +1927,17 @@ ${log.payload || ''}
         setLeadStateColors((prev) => s.leadStateColors && JSON.stringify(s.leadStateColors) !== JSON.stringify(prev) ? s.leadStateColors : prev);
         setLeadSourceColors((prev) => s.leadSourceColors && JSON.stringify(s.leadSourceColors) !== JSON.stringify(prev) ? s.leadSourceColors : prev);
         setLeadCategoryColors((prev) => s.leadCategoryColors && JSON.stringify(s.leadCategoryColors) !== JSON.stringify(prev) ? s.leadCategoryColors : prev);
+        // Normalized against the list that arrived with them, so an install
+        // upgrading from positional ids adopts the same 1..N map the backend
+        // just froze instead of an empty one.
+        setLeadSourceIds((prev) => {
+          const next = normalizeListIds(s.leadSources ?? leadSources, s.leadSourceIds);
+          return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
+        });
+        setLeadCategoryIds((prev) => {
+          const next = normalizeListIds(s.leadCategories ?? leadCategories, s.leadCategoryIds);
+          return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
+        });
         setLeadStageGroups((prev) => s.leadStageGroups && JSON.stringify(s.leadStageGroups) !== JSON.stringify(prev) ? s.leadStageGroups : prev);
         setLeadStateParents((prev) => s.leadStateParents && JSON.stringify(s.leadStateParents) !== JSON.stringify(prev) ? s.leadStateParents : prev);
         setLeadStateFollowUp((prev) => s.leadStateFollowUp && JSON.stringify(s.leadStateFollowUp) !== JSON.stringify(prev) ? s.leadStateFollowUp : prev);
@@ -2162,6 +2191,10 @@ ${log.payload || ''}
           setLeadStateColors={setLeadStateColors}
           leadCategories={leadCategories}
           setLeadCategories={setLeadCategories}
+          leadSourceIds={leadSourceIds}
+          setLeadSourceIds={setLeadSourceIds}
+          leadCategoryIds={leadCategoryIds}
+          setLeadCategoryIds={setLeadCategoryIds}
           leadSourceColors={leadSourceColors}
           setLeadSourceColors={setLeadSourceColors}
           leadCategoryColors={leadCategoryColors}
@@ -2321,6 +2354,10 @@ ${log.payload || ''}
           setLeadStateColors={setLeadStateColors}
           leadCategories={leadCategories}
           setLeadCategories={setLeadCategories}
+          leadSourceIds={leadSourceIds}
+          setLeadSourceIds={setLeadSourceIds}
+          leadCategoryIds={leadCategoryIds}
+          setLeadCategoryIds={setLeadCategoryIds}
           leadSourceColors={leadSourceColors}
           setLeadSourceColors={setLeadSourceColors}
           leadCategoryColors={leadCategoryColors}

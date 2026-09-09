@@ -777,6 +777,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $leadStateColors = isset($settings['LEAD_STATE_COLORS']) ? json_decode($settings['LEAD_STATE_COLORS'], true) : [];
     $leadSourceColors = isset($settings['LEAD_SOURCE_COLORS']) ? json_decode($settings['LEAD_SOURCE_COLORS'], true) : [];
     $leadCategoryColors = isset($settings['LEAD_CATEGORY_COLORS']) ? json_decode($settings['LEAD_CATEGORY_COLORS'], true) : [];
+    // Permanent ids for the two lists a website form addresses by number
+    // (`source_id` / `category_id` in /api/pipeline.php). Normalized on the way
+    // out — as the client normalizes on the way in — so an install that has
+    // never saved them still sees exactly the map the backend resolves against,
+    // and the settings signature compares equal instead of pushing forever.
+    // See ccrm_normalize_list_ids / normalizeListIds.
+    $leadSourceIds = ccrm_normalize_list_ids(
+        $leadSources,
+        isset($settings['LEAD_SOURCE_IDS']) ? json_decode($settings['LEAD_SOURCE_IDS'], true) : []
+    );
+    $leadCategoryIds = ccrm_normalize_list_ids(
+        $leadCategories,
+        isset($settings['LEAD_CATEGORY_IDS']) ? json_decode($settings['LEAD_CATEGORY_IDS'], true) : []
+    );
     $leadStageGroups = isset($settings['LEAD_STAGE_GROUPS']) ? json_decode($settings['LEAD_STAGE_GROUPS'], true) : [];
     $leadStateParents = isset($settings['LEAD_STATE_PARENTS']) ? json_decode($settings['LEAD_STATE_PARENTS'], true) : (object)[];
     $leadStateFollowUp = isset($settings['LEAD_STATE_FOLLOWUP']) ? json_decode($settings['LEAD_STATE_FOLLOWUP'], true) : (object)[];
@@ -1479,6 +1493,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'leadStates' => $leadStates,
             'leadSources' => $leadSources,
             'leadCategories' => $leadCategories,
+            // Empty has to travel as {} for the same reason leadStateSla does.
+            'leadSourceIds' => $leadSourceIds ?: (object)[],
+            'leadCategoryIds' => $leadCategoryIds ?: (object)[],
             'leadStateColors' => $leadStateColors,
             'leadSourceColors' => $leadSourceColors,
             'leadCategoryColors' => $leadCategoryColors,
@@ -1871,6 +1888,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'LEAD_STATES' => json_encode($s['leadStates'] ?? []),
                 'LEAD_SOURCES' => json_encode($s['leadSources'] ?? []),
                 'LEAD_CATEGORIES' => json_encode($s['leadCategories'] ?? []),
+                // Omitted (or empty) means unchanged, the same contract as the
+                // SLA and auto-assignment blobs below: a client that predates
+                // permanent ids must not be able to wipe the map and send every
+                // web form already deployed back to positional numbering.
+                'LEAD_SOURCE_IDS' => !empty($s['leadSourceIds']) && is_array($s['leadSourceIds'])
+                    ? json_encode(ccrm_normalize_list_ids($s['leadSources'] ?? [], $s['leadSourceIds']), JSON_UNESCAPED_UNICODE)
+                    : null,
+                'LEAD_CATEGORY_IDS' => !empty($s['leadCategoryIds']) && is_array($s['leadCategoryIds'])
+                    ? json_encode(ccrm_normalize_list_ids($s['leadCategories'] ?? [], $s['leadCategoryIds']), JSON_UNESCAPED_UNICODE)
+                    : null,
                 'LEAD_STATE_COLORS' => json_encode($s['leadStateColors'] ?? []),
                 'LEAD_SOURCE_COLORS' => json_encode($s['leadSourceColors'] ?? []),
                 'LEAD_CATEGORY_COLORS' => json_encode($s['leadCategoryColors'] ?? []),

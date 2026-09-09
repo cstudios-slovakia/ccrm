@@ -925,6 +925,7 @@ if (!function_exists('ccrm_schema_statements')) {
         }
         ccrm_migrate_updated_at_precision($pdo);
         ccrm_migrate_task_states($pdo);
+        ccrm_migrate_list_ids($pdo);
         ccrm_backfill_task_completion_attribution($pdo);
         ccrm_seed_default_financial_categories($pdo);
     }
@@ -992,6 +993,48 @@ if (!function_exists('ccrm_schema_statements')) {
                 // same-second window. Never block the sync over this.
                 if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
             }
+        }
+    }
+
+    /**
+     * Freeze the numeric ids that /api/pipeline.php resolves `source_id` and
+     * `category_id` against.
+     *
+     * Until 1.9.19 there was no id to store: the number WAS the item's position
+     * in LEAD_SOURCES / LEAD_CATEGORIES, so reordering either list in Settings
+     * silently re-pointed every form already live on the customer's website.
+     * Seeding from the current order — which is exactly what the positional
+     * scheme was handing out right up to this upgrade — makes today's numbers
+     * permanent rather than incidental, so no existing integration changes
+     * meaning on the way in.
+     *
+     * Runs once per list: a map that already exists is the operator's, and
+     * re-deriving it from the order is the very bug this removes.
+     */
+    function ccrm_migrate_list_ids(PDO $pdo): void {
+        $pairs = [
+            'LEAD_SOURCES' => 'LEAD_SOURCE_IDS',
+            'LEAD_CATEGORIES' => 'LEAD_CATEGORY_IDS',
+        ];
+        try {
+            $read = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = ?");
+            $write = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
+            foreach ($pairs as $listKey => $idsKey) {
+                $read->execute([$idsKey]);
+                $existing = json_decode((string)$read->fetchColumn(), true);
+                if (is_array($existing) && $existing) continue; // already seeded
+
+                $read->execute([$listKey]);
+                $names = json_decode((string)$read->fetchColumn(), true);
+                if (!is_array($names) || !$names) continue; // list not configured yet
+
+                $write->execute([$idsKey, json_encode(ccrm_normalize_list_ids($names, []), JSON_UNESCAPED_UNICODE)]);
+            }
+        } catch (\Throwable $e) {
+            // Never block a sync over this. pipeline.php normalises on the fly
+            // from the same list, so an unseeded install still resolves ids —
+            // this only makes the answer durable.
+            if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
         }
     }
 
@@ -1133,6 +1176,74 @@ if (!function_exists('ccrm_schema_statements')) {
     }
 
     /**
+     * Permanent numeric ids for the two operator-editable lists a website form
+     * can address by number: LEAD_SOURCES (`source_id`) and LEAD_CATEGORIES
+     * (`category_id`) in the /api/pipeline.php payload.
+     *
+     * Mirror of normalizeListIds in src/utils/listIds.ts — the rules, and why an
+     * id may never be derived from a list position, are written out there. Both
+     * ends must build the same map from the same inputs, or the settings sync
+     * would push the difference back and forth forever.
+     */
+    function ccrm_normalize_list_ids($names, $saved): array {
+        $out = [];
+        // A JSON list ([...]) is not a name -> id map; only an object is.
+        $isMap = is_array($saved) && (!$saved || array_keys($saved) !== range(0, count($saved) - 1));
+        if ($isMap) {
+            foreach ($saved as $key => $value) {
+                $id = (int)$value;
+                if ((string)$key !== '' && $id > 0) {
+                    $out[(string)$key] = $id;
+                }
+            }
+        }
+
+        $list = [];
+        foreach ((is_array($names) ? $names : []) as $name) {
+            if (is_string($name) && $name !== '') $list[] = $name;
+        }
+
+        $missing = [];
+        foreach ($list as $name) {
+            if (!isset($out[$name])) $missing[$name] = true;
+        }
+        if (!$missing) return $out;
+
+        // Nothing usable stored: reproduce the old positional numbering one last
+        // time, so the ids frozen here are the ones live forms already send.
+        if (!$out) {
+            foreach (array_values($list) as $idx => $name) {
+                if (!isset($out[$name])) $out[$name] = $idx + 1;
+            }
+            return $out;
+        }
+
+        $next = max($out) + 1;
+        foreach (array_keys($missing) as $name) {
+            $out[(string)$name] = $next++;
+        }
+        return $out;
+    }
+
+    /**
+     * The list entry an incoming `source_id` / `category_id` names, or null when
+     * nothing answers to it.
+     *
+     * Deliberately walks the live list rather than the id map: an id retired by
+     * a deletion stays in the map as a tombstone precisely so it can never be
+     * re-issued, and it must not resolve to anything either.
+     */
+    function ccrm_resolve_list_id(int $id, $names, $savedIds): ?string {
+        if ($id <= 0 || !is_array($names)) return null;
+        $ids = ccrm_normalize_list_ids($names, $savedIds);
+        foreach ($names as $name) {
+            if (!is_string($name) || $name === '') continue;
+            if (isset($ids[$name]) && (int)$ids[$name] === $id) return $name;
+        }
+        return null;
+    }
+
+    /**
      * Colour map for task states. Blue → amber → red → green reads as a natural
      * workflow; states beyond the fourth cycle through the same palette.
      */
@@ -1171,6 +1282,11 @@ if (!function_exists('ccrm_schema_statements')) {
             'LEAD_STATES' => $enc($leadStates),
             'LEAD_SOURCES' => $enc($leadSources),
             'LEAD_CATEGORIES' => $enc($leadCategories),
+            // Permanent ids for the two lists /api/pipeline.php addresses by
+            // number. See ccrm_normalize_list_ids: these must never be derived
+            // from list order, or reordering re-points live web forms.
+            'LEAD_SOURCE_IDS' => $enc(ccrm_normalize_list_ids($leadSources, [])),
+            'LEAD_CATEGORY_IDS' => $enc(ccrm_normalize_list_ids($leadCategories, [])),
             'LEAD_STATE_COLORS' => $enc(array_combine($leadStates, ['#3b82f6', '#0ea5e9', '#6366f1', '#10b981', '#ef4444'])),
             'LEAD_SOURCE_COLORS' => $enc(array_combine($leadSources, ['#10b981', '#3b82f6', '#ec4899', '#8b5cf6'])),
             'LEAD_CATEGORY_COLORS' => $enc(array_combine($leadCategories, ['#f59e0b', '#10b981'])),
