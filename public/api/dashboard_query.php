@@ -207,8 +207,34 @@ try {
             break;
 
         case 'leads_by_status':
+            // Optional `statuses` filter, written by the dashboard editor's phase
+            // picker. GROUP BY can only ever return phases that some lead sits in,
+            // so a picked phase with no leads is filled in as a zero row here —
+            // otherwise an empty phase would silently drop out of the widget. The
+            // rows also come back in the picked (pipeline) order rather than by
+            // count, so the widget reads like the pipeline it describes.
+            $wanted = $data['params']['statuses'] ?? null;
+            $wanted = is_array($wanted)
+                ? array_values(array_filter(array_map(fn($s) => trim((string)$s), $wanted), fn($s) => $s !== ''))
+                : [];
+
             $stmt = $pdo->query("SELECT `status`, COUNT(*) as `count`, SUM(`value`) as `total_value` FROM `leads` GROUP BY `status` ORDER BY `count` DESC");
-            $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            if (empty($wanted)) {
+                $result = $rows;
+                break;
+            }
+
+            $byStatus = [];
+            foreach ($rows as $row) {
+                $byStatus[mb_strtolower(trim((string)($row['status'] ?? '')))] = $row;
+            }
+            $result = [];
+            foreach ($wanted as $status) {
+                $result[] = $byStatus[mb_strtolower($status)]
+                    ?? ['status' => $status, 'count' => 0, 'total_value' => 0];
+            }
             break;
 
         case 'leads_by_source':

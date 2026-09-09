@@ -2216,6 +2216,7 @@ ${log.payload || ''}
             }}
             systemLanguage={userLanguage}
             currencyCode={currencyCode}
+            pipelineStages={orderedLeadStates}
           />
         );
       }
@@ -2545,6 +2546,7 @@ ${log.payload || ''}
             }}
             systemLanguage={userLanguage}
             currencyCode={currencyCode}
+            pipelineStages={orderedLeadStates}
           />
         );
       case "overview":

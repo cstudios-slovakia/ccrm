@@ -25,6 +25,12 @@ interface DynamicDashboardViewProps {
    * be reset back to the starter widgets. "custom" is a user-created AI panel.
    */
   variant?: "custom" | "home";
+  /**
+   * Every configured pipeline phase, in pipeline order. A stage-by-phase widget
+   * can only ever report the phases leads actually sit in, so the editor's phase
+   * picker needs the full list from Settings to offer the empty ones too.
+   */
+  pipelineStages?: string[];
 }
 
 /** Where a `tabs` widget's per-tab query result is stored in the data/error maps. */
@@ -69,6 +75,17 @@ const CHART_BASE_TYPES: Record<string, string> = {
 const CHART_TYPES = [...Object.keys(CHART_BASE_TYPES), "gauge"];
 
 const canonical = (value: any) => String(value ?? "").toLowerCase().replace(/[\s_-]/g, "");
+
+/**
+ * The one query action whose result is a pipeline breakdown, and so the only
+ * widget the editor offers a phase picker for. Its rows are
+ * `{ status, count, total_value }` and it accepts a `statuses` param naming
+ * which phases to report — including phases no lead sits in.
+ */
+const STAGE_QUERY_ACTION = "leads_by_status";
+
+/** Phase names compare case- and separator-insensitively, like everywhere else. */
+const sameStage = (a: any, b: any) => canonical(a) === canonical(b);
 
 /** Solid accent for the widget palette names the AI is allowed to pick from. */
 const ACCENT_COLORS: Record<string, string> = {
@@ -158,6 +175,15 @@ const adaptWidgetToType = (widget: any, nextType: string, sampleRow: any): any =
     next.mapping = mapping;
   }
 
+  if (nextType === "metric") {
+    // A metric shows one figure out of the first row, and the row's first column
+    // is rarely it — a phase breakdown leads with the phase name. Point the card
+    // at the first numeric column instead.
+    const mapping = { ...(widget.mapping || {}) };
+    if (!mapping.dataKey && numericKey) mapping.dataKey = numericKey;
+    next.mapping = mapping;
+  }
+
   if (nextType === "table") {
     if (!Array.isArray(widget.columns) || widget.columns.length === 0) {
       const keys = sampleRow && typeof sampleRow === "object" ? Object.keys(sampleRow).slice(0, 5) : [];
@@ -199,7 +225,8 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   onSaveDashboard,
   systemLanguage,
   currencyCode,
-  variant = "custom"
+  variant = "custom",
+  pipelineStages = []
 }) => {
   const isHome = variant === "home";
   const t = (en: string, sk: string, hu: string) =>
@@ -494,6 +521,52 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
 
   const changeWidgetType = (id: string, nextType: string) =>
     mutateWidgets(ws => ws.map(w => (w.id === id ? adaptWidgetToType(w, nextType, sampleRowOf(id)) : w)));
+
+  /**
+   * Phases a stage-breakdown widget can be narrowed to: everything Settings has
+   * configured, plus any phase the widget is already reporting or filtering on.
+   * The union matters after a phase is renamed or retired in Settings — the old
+   * name stays pickable for as long as leads still carry it, instead of the
+   * widget quietly filtering on a phase the editor no longer shows.
+   */
+  const stageOptionsFor = (widget: any): string[] => {
+    if (widget?.query?.action !== STAGE_QUERY_ACTION) return [];
+    const data = widgetData[widget.id];
+    const fromData = Array.isArray(data) ? data.map((row: any) => row?.status) : [];
+    const picked = widget?.query?.params?.statuses;
+    const seen = new Set<string>();
+    return [...pipelineStages, ...fromData, ...(Array.isArray(picked) ? picked : [])]
+      .map(stage => String(stage ?? "").trim())
+      .filter(stage => {
+        if (!stage) return false;
+        const key = canonical(stage);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  };
+
+  /** Which phases a widget currently reports. Empty means "whatever has leads". */
+  const stageSelectionOf = (widget: any): string[] => {
+    const picked = widget?.query?.params?.statuses;
+    return Array.isArray(picked) ? picked.filter(Boolean) : [];
+  };
+
+  const setWidgetStages = (id: string, statuses: string[]) =>
+    mutateWidgets(ws =>
+      ws.map(w => {
+        if (w.id !== id) return w;
+        const query = { ...(w.query || {}) };
+        query.params = { ...(query.params || {}), statuses };
+        return { ...w, query };
+      })
+    );
+
+  /** Which column a metric card shows — `count` or `total_value` on a phase widget. */
+  const setWidgetMetricKey = (id: string, dataKey: string) =>
+    mutateWidgets(ws =>
+      ws.map(w => (w.id === id ? { ...w, mapping: { ...(w.mapping || {}), dataKey } } : w))
+    );
 
   /**
    * Widget titles are `{ en, sk, hu }`. A rename types one language, so the
@@ -899,6 +972,10 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                       onSize={(size) => updateWidget(w.id, { size })}
                       onType={(type) => changeWidgetType(w.id, type)}
                       onChartType={(chartType) => updateWidget(w.id, { chartType })}
+                      stageOptions={stageOptionsFor(w)}
+                      stageSelection={stageSelectionOf(w)}
+                      onStages={(statuses) => setWidgetStages(w.id, statuses)}
+                      onMetricKey={(dataKey) => setWidgetMetricKey(w.id, dataKey)}
                       onColor={(color) => updateWidget(w.id, { color })}
                       onRename={(value) => renameWidget(w.id, value)}
                       onDuplicate={() => duplicateWidget(w.id)}
@@ -1553,9 +1630,16 @@ const WidgetEditBar: React.FC<{
   onRename: (value: string) => void;
   onDuplicate: () => void;
   onRemove: () => void;
+  /** Every phase this widget could report on; empty for widgets that have none. */
+  stageOptions: string[];
+  /** The phases it reports now; empty means "whatever currently has leads". */
+  stageSelection: string[];
+  onStages: (statuses: string[]) => void;
+  onMetricKey: (dataKey: string) => void;
 }> = ({
   widget, index, total, title, isDragging, t,
-  onDragStart, onDragEnd, onMove, onSize, onType, onChartType, onColor, onRename, onDuplicate, onRemove
+  onDragStart, onDragEnd, onMove, onSize, onType, onChartType, onColor, onRename, onDuplicate, onRemove,
+  stageOptions, stageSelection, onStages, onMetricKey
 }) => {
   const resolvedType = resolveWidgetType(widget).type;
   const currentSize = (WIDGET_SIZES as string[]).includes(widget.size) ? (widget.size as WidgetSize) : "full";
@@ -1574,6 +1658,24 @@ const WidgetEditBar: React.FC<{
 
   const selectClass =
     "h-7 rounded-lg border border-slate-200 bg-white px-2 text-[10px] font-black uppercase tracking-wider text-slate-600 cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500";
+
+  const hasSelection = stageSelection.length > 0;
+
+  /**
+   * Plain click solos a phase — that is the whole point of the picker, and with
+   * a long pipeline toggling the other nine off would be absurd. Ctrl/Cmd/Shift
+   * adds and removes instead, starting from "everything" when nothing is picked
+   * yet. The last phase cannot be removed: a widget reporting no phase at all
+   * would fall back to reporting all of them, which is not what the click meant.
+   */
+  const toggleStage = (stage: string, additive: boolean): string[] => {
+    if (!additive) return [stage];
+    const base = hasSelection ? stageSelection : stageOptions;
+    const isOn = base.some(s => sameStage(s, stage));
+    if (!isOn) return [...base, stage];
+    const next = base.filter(s => !sameStage(s, stage));
+    return next.length > 0 ? next : base;
+  };
 
   return (
     <div className="-mt-2 mb-3 pb-3 border-b border-dashed border-indigo-100 space-y-2">
@@ -1699,6 +1801,68 @@ const WidgetEditBar: React.FC<{
           ))}
         </div>
       </div>
+
+      {stageOptions.length > 0 && (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 shrink-0">
+            {t("Phases", "Fázy", "Fázisok")}
+          </span>
+
+          {stageOptions.map(stage => {
+            // No selection at all is the pre-picker default: the query reports
+            // every phase that has leads, so every chip is on.
+            const isOn = !hasSelection || stageSelection.some(s => sameStage(s, stage));
+            return (
+              <button
+                key={stage}
+                type="button"
+                onClick={(e) => onStages(toggleStage(stage, e.ctrlKey || e.metaKey || e.shiftKey))}
+                title={t(
+                  "Click for this phase only, Ctrl+click to add or remove one",
+                  "Kliknutím zobrazíte iba túto fázu, Ctrl+klik pridá alebo odoberie",
+                  "Kattintson csak ehhez a fázishoz, Ctrl+kattintás hozzáad vagy elvesz"
+                )}
+                className={cn(
+                  "h-6 px-2 rounded-lg text-[10px] font-bold capitalize transition-all cursor-pointer border",
+                  isOn
+                    ? "bg-indigo-50 border-indigo-200 text-indigo-700"
+                    : "bg-white border-slate-200 text-slate-400 hover:text-slate-600 hover:border-slate-300"
+                )}
+              >
+                {stage}
+              </button>
+            );
+          })}
+
+          <button
+            type="button"
+            onClick={() => onStages(stageOptions)}
+            title={t(
+              "Show every phase, including the empty ones",
+              "Zobraziť všetky fázy vrátane prázdnych",
+              "Minden fázis megjelenítése, az üreseket is"
+            )}
+            className="h-6 px-2 rounded-lg text-[10px] font-black uppercase tracking-wider text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
+          >
+            {t("All", "Všetky", "Mind")}
+          </button>
+
+          {/* One phase is a single figure, so the card can drop the breakdown and
+              just show the number — which of the two columns is the question the
+              chips cannot answer. */}
+          {resolvedType === "metric" && (
+            <select
+              value={canonical(widget.mapping?.dataKey) === "totalvalue" ? "total_value" : "count"}
+              onChange={(e) => onMetricKey(e.target.value)}
+              className={cn(selectClass, "ml-auto")}
+              title={t("Figure to show", "Zobrazené číslo", "Megjelenített szám")}
+            >
+              <option value="count">{t("Count", "Počet", "Darab")}</option>
+              <option value="total_value">{t("Value", "Hodnota", "Érték")}</option>
+            </select>
+          )}
+        </div>
+      )}
     </div>
   );
 };
@@ -1720,17 +1884,22 @@ const DashboardMetric: React.FC<{
       if (data.length === 0) return "0";
       const firstRow = data[0];
       if (typeof firstRow === "object" && firstRow !== null) {
-        const values = Object.values(firstRow);
-        if (values.length > 0) {
-          const val = values[0];
-          const keys = Object.keys(firstRow);
-          const firstKeyLower = keys[0].toLowerCase();
+        const keys = Object.keys(firstRow);
+        if (keys.length > 0) {
+          // `mapping.dataKey` names the column the card is about. Without it the
+          // first column is the only guess available, which is right for a
+          // single-figure query and wrong for anything shaped like a breakdown.
+          const key = widget.mapping?.dataKey && keys.includes(widget.mapping.dataKey)
+            ? widget.mapping.dataKey
+            : keys[0];
+          const val = firstRow[key];
+          const keyLower = key.toLowerCase();
           const titleLower = localizedTitle.toLowerCase();
           const isCurrency =
-            firstKeyLower.includes("value") ||
-            firstKeyLower.includes("worth") ||
-            firstKeyLower.includes("revenue") ||
-            firstKeyLower.includes("price") ||
+            keyLower.includes("value") ||
+            keyLower.includes("worth") ||
+            keyLower.includes("revenue") ||
+            keyLower.includes("price") ||
             titleLower.includes("value") ||
             titleLower.includes("worth") ||
             titleLower.includes("revenue");
@@ -1738,7 +1907,12 @@ const DashboardMetric: React.FC<{
           if (isCurrency && !isNaN(Number(val))) {
             return money(Number(val));
           }
-          return typeof val === "number" ? val.toLocaleString() : String(val);
+          if (typeof val === "number") return val.toLocaleString();
+          // COUNT(*) arrives from PDO as a string; a count is still a number.
+          if (typeof val === "string" && val.trim() !== "" && !isNaN(Number(val))) {
+            return Number(val).toLocaleString();
+          }
+          return String(val);
         }
       }
       return JSON.stringify(data);

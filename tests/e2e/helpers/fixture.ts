@@ -847,10 +847,12 @@ export async function installBackendMocks(page: Page) {
   await page.route('**/api/dashboard_query.php', async (route) => {
     let action = '';
     let sql = '';
+    let statuses: string[] = [];
     try {
       const body = JSON.parse(route.request().postData() || '{}');
       action = (body.action as string) || '';
       sql = String(body?.params?.sql ?? body?.sql ?? '');
+      statuses = Array.isArray(body?.params?.statuses) ? body.params.statuses.map(String) : [];
     } catch {
       action = '';
     }
@@ -861,13 +863,25 @@ export async function installBackendMocks(page: Page) {
           return { count: LEADS.length };
         case 'pipeline_value':
           return { value: LEADS.reduce((sum, lead) => sum + (Number(lead.value) || 0), 0) };
-        case 'leads_by_status':
-          return [
+        case 'leads_by_status': {
+          const rows = [
             { status: 'new', count: 4, total_value: 18000 },
             { status: 'contacted', count: 3, total_value: 21000 },
             { status: 'offer sent', count: 2, total_value: 34000 },
             { status: 'accepted', count: 2, total_value: 51000 },
           ];
+          if (statuses.length === 0) return rows;
+          // Mirrors the real endpoint: the picked phases, in the picked order,
+          // with a zero row standing in for a phase no lead sits in.
+          return statuses.map(
+            (status) =>
+              rows.find((row) => row.status.toLowerCase() === status.trim().toLowerCase()) ?? {
+                status,
+                count: 0,
+                total_value: 0,
+              },
+          );
+        }
         case 'leads_by_source':
           return [
             { source: 'website', count: 5, total_value: 42000 },
