@@ -125,23 +125,41 @@ risks and a staged implementation plan — is written up in
 
 #### Tracking a different branch on a non-production box
 
-`php ccrm update` pulls `main` by default. A staging/demo instance can
-temporarily track a feature branch instead by exporting `CCRM_DEPLOY_BRANCH`
-before running update:
+An install updates from **the branch it has checked out**, so a box put on a
+feature branch keeps following that branch with a plain `php ccrm update` — no
+configuration needed. Production sits on `main`, so nothing changes there.
 
-```bash
-export CCRM_DEPLOY_BRANCH=1.6-grapefruit-fix
-php ccrm update
+Every run echoes where the choice came from:
+
+```
+Deploy branch: 1.9-jackfruit (checked-out branch)
 ```
 
-The run echoes `Deploy branch: <name>` so you can confirm what it pulled.
-Unset it (or set it back to `main`) to return the box to the production
-branch:
+To pin a box to a branch other than the one checked out, record it in the
+checkout's own git config:
 
 ```bash
-unset CCRM_DEPLOY_BRANCH
-php ccrm update
+git config ccrm.deployBranch 1.6-grapefruit-fix
+php ccrm update      # -> Deploy branch: 1.6-grapefruit-fix (git config ccrm.deployBranch)
 ```
+
+Prefer this over `export CCRM_DEPLOY_BRANCH=...` in `~/.bashrc`: an environment
+variable is invisible to cron and to the shell you exported it in, so the next
+plain `php ccrm update` silently reverts to the old branch. `git config` lives
+with the checkout and holds for every invocation. Undo it with
+`git config --unset ccrm.deployBranch`.
+
+`CCRM_DEPLOY_BRANCH=<branch>` still works and still wins, as a one-off override
+for a single run:
+
+```bash
+CCRM_DEPLOY_BRANCH=main php ccrm update
+```
+
+The pull is **fast-forward only**. A deployment checkout has no history of its
+own, so anything else means the checkout and the branch have genuinely diverged
+— the update stops and says which branch it is on versus which one it was told
+to pull, instead of merging an unrelated branch into a live site.
 
 ### Licensing
 

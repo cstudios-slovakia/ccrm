@@ -178,18 +178,63 @@ function ccrm_license_cli($sub, $value) {
     }
 }
 
+/**
+ * The branch `ccrm update` pulls from, and where that choice came from.
+ *
+ * Most explicit source wins:
+ *
+ *   1. CCRM_DEPLOY_BRANCH=<branch> — a one-off override for this invocation.
+ *   2. `git config ccrm.deployBranch <branch>` — persistent for this checkout,
+ *      and the right way to pin a box that permanently follows something other
+ *      than main. An env var in ~/.bashrc is not: it is invisible to cron, and
+ *      to the shell you exported it in, which is how an install ends up being
+ *      told to pull `main` into a feature-branch checkout and dying on
+ *      "divergent branches".
+ *   3. the branch that is actually checked out — a checkout on X updates from
+ *      origin/X. Production sits on `main`, so nothing changes there.
+ *   4. `main`, when HEAD is detached and git can tell us nothing.
+ *
+ * @return array{0: string, 1: string} [branch, human-readable source]
+ */
+function ccrm_deploy_branch() {
+    $env = trim((string) getenv('CCRM_DEPLOY_BRANCH'));
+    if ($env !== '') {
+        return array($env, 'CCRM_DEPLOY_BRANCH');
+    }
+
+    $out = array();
+    exec("git config --get ccrm.deployBranch", $out, $status);
+    $configured = $status === 0 ? trim((string) reset($out)) : '';
+    if ($configured !== '') {
+        return array($configured, 'git config ccrm.deployBranch');
+    }
+
+    $head = ccrm_current_branch();
+    if ($head !== '') {
+        return array($head, 'checked-out branch');
+    }
+
+    return array('main', 'default');
+}
+
+/**
+ * The checked-out branch name, or '' when HEAD is detached or this is not a git
+ * checkout.
+ */
+function ccrm_current_branch() {
+    $out = array();
+    exec("git rev-parse --abbrev-ref HEAD", $out, $status);
+    $head = $status === 0 ? trim((string) reset($out)) : '';
+    return $head === 'HEAD' ? '' : $head;
+}
+
 function ccrm_update() {
     echo "Starting CCRM Update Process...\n";
 
-    // Deploy branch: defaults to `main` (what production instances pull). A
-    // non-production box (staging/demo) can temporarily track a feature branch
-    // instead by exporting CCRM_DEPLOY_BRANCH=<branch> before running update.
-    // Unset it (or set it back to `main`) to return to the production branch.
-    $branch = trim((string) getenv('CCRM_DEPLOY_BRANCH'));
-    if ($branch === '') {
-        $branch = 'main';
-    }
-    echo "Deploy branch: $branch\n";
+    // Which branch this install tracks. See ccrm_deploy_branch() for where the
+    // answer comes from and why the checked-out branch is the sane default.
+    list($branch, $branchSource) = ccrm_deploy_branch();
+    echo "Deploy branch: $branch ($branchSource)\n";
 
     // 0. Licence gate.
     //
@@ -290,7 +335,7 @@ function ccrm_update() {
     if (!empty($toRestore)) {
         foreach ($toRestore as $file) {
             echo "Restoring $file to avoid conflict...\n";
-            passthru("git checkout -- " . escapeshellarg($file));
+            passthru("git checkout — " . escapeshellarg($file));
         }
     }
 
@@ -320,9 +365,29 @@ function ccrm_update() {
 
     // 2. Pull latest code
     echo "Pulling latest code from origin/$branch...\n";
-    passthru("git pull origin " . escapeshellarg($branch), $pullResult);
+    // --ff-only: a deployment checkout has no history of its own, so this pull is
+    // always a fast-forward. Without the flag git either refuses outright ("Need
+    // to specify how to reconcile divergent branches") or — once someone follows
+    // that hint and sets pull.rebase — quietly merges an unrelated branch into
+    // the live site. Failing is the correct outcome; the operator gets told what
+    // is actually wrong below instead of a wall of git hints.
+    passthru("git pull --ff-only origin " . escapeshellarg($branch), $pullResult);
     if ($pullResult !== 0) {
         echo "Error: git pull failed.\n";
+        $head = ccrm_current_branch();
+        if ($head !== '' && $head !== $branch) {
+            echo "\n";
+            echo "This checkout is on branch '$head', but the update was told to pull '$branch'.\n";
+            echo "If '$head' is the branch this install should follow, record it once:\n";
+            echo "  git config ccrm.deployBranch " . escapeshellarg($head) . "\n";
+            echo "and every future `php ccrm update` follows it — no environment variable,\n";
+            echo "so it holds for cron too, and for a shell you did not export it in.\n";
+        } else {
+            echo "\n";
+            echo "The checkout is not a fast-forward of origin/$branch: it has commits of\n";
+            echo "its own, or the branch was rewritten upstream. Inspect with:\n";
+            echo "  git log --oneline origin/$branch..HEAD\n";
+        }
         exit(1);
     }
 
@@ -373,7 +438,7 @@ function ccrm_update() {
             // frontend is always exactly the one we just pulled. (Extra untracked
             // old bundles left in dist/assets are harmless — index.html points at
             // the correct hash.)
-            passthru("git checkout -- dist/index.html dist/assets");
+            passthru("git checkout — dist/index.html dist/assets");
         }
         \CCRM\Installer::copyDir(__DIR__ . '/dist', __DIR__, ['config.php']);
     }
@@ -447,7 +512,7 @@ function ccrm_report_backend_drift() {
         $blobs[$parts[1]] = $meta[2];
     }
 
-    // Mirrored by scripts/sync-backend.mjs -- keep the exclusions in step with it.
+    // Mirrored by scripts/sync-backend.mjs — keep the exclusions in step with it.
     $skip = ['index.html', 'assets/', 'update-screenshots/', 'config.php'];
     $drift = [];
     foreach ($blobs as $path => $hash) {
@@ -473,7 +538,7 @@ function ccrm_report_backend_drift() {
     foreach ($drift as $file) {
         echo "  - $file (serving public/$file)\n";
     }
-    echo "The deploy is fine -- publish always uses public/ -- but the repo-root copy is stale.\n";
+    echo "The deploy is fine — publish always uses public/ — but the repo-root copy is stale.\n";
     echo "On the build machine run `npm run sync:backend` and commit the result.\n";
 }
 
@@ -489,7 +554,7 @@ function ccrm_read_version($file) {
 }
 
 // Wraps text in an ANSI color code, but only when output is a real terminal
-// (a TTY) that's likely to render it -- avoids dumping escape codes into log
+// (a TTY) that's likely to render it — avoids dumping escape codes into log
 // files or CI output when stdout is redirected.
 function ccrm_color($text, $code) {
     $isTty = function_exists('posix_isatty') && defined('STDOUT') && posix_isatty(STDOUT);
