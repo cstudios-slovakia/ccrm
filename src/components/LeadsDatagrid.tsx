@@ -3744,12 +3744,25 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         setSelectedExistingClient("");
     };
 
+    // The grid's own universe. A `client-*` id is a client-register record (a won
+    // client, or a contact pulled in from invoicing) and `unassigned-docs` is a
+    // synthetic bucket -- neither is a pipeline lead. The header counters have to
+    // start from the same set the list renders, or an install whose leads table is
+    // all imported clients reports "434 active" above an empty pipeline.
+    const pipelineLeads = useMemo(
+        () =>
+            leads.filter(
+                (lead) =>
+                    lead.id !== "unassigned-docs" &&
+                    !(lead.id || "").startsWith("client-"),
+            ),
+        [leads],
+    );
+
     // Filter and Sort leads
     const processedLeads = useMemo(() => {
-        return leads
+        return pipelineLeads
             .filter((lead) => {
-                if (lead.id === "unassigned-docs") return false;
-                if (lead.id && lead.id.startsWith("client-")) return false;
                 // Email and phone are searchable too: leads that share a client name are
                 // otherwise indistinguishable in the list, and the contact details are the
                 // only thing that tells them apart.
@@ -3864,7 +3877,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             })
             .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     }, [
-        leads,
+        pipelineLeads,
         searchQuery,
         selectedState,
         selectedSource,
@@ -7883,7 +7896,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                       : "Leads Status"}
                             </span>
                             <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black bg-blue-50 text-blue-600 border border-blue-100 uppercase tracking-wider">
-                                {leads.length}{" "}
+                                {pipelineLeads.length}{" "}
                                 {systemLanguage === "sk"
                                     ? "aktívnych"
                                     : systemLanguage === "hu"
@@ -8951,7 +8964,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     </div>
                 )}
 
-                {leads.length === 0 && (
+                {pipelineLeads.length === 0 && (
                     <div className="flex flex-col items-center justify-center text-center py-16 px-6 gap-3">
                         <div className="h-14 w-14 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center">
                             <TableProperties className="h-7 w-7 text-blue-500" />
@@ -10828,7 +10841,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         <strong className="text-blue-600">
                             {processedLeads.length}
                         </strong>{" "}
-                        {t("of", "z", "/")} {leads.length}{" "}
+                        {t("of", "z", "/")} {pipelineLeads.length}{" "}
                         {t("leads", "leadov", "lead")}
                     </div>
                 </div>
