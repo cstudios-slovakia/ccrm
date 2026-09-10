@@ -1936,8 +1936,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     : null,
                 // Same contract: omitted means unchanged, so an older client
                 // cannot switch automatic project creation off for everyone.
+                // The per-category rules get the contract one level down as
+                // well: a client that predates them sends no `categoryTypes`
+                // key at all, and reading that as "no rules" would wipe the
+                // operator's mapping the first time such a client saved
+                // anything unrelated. A client that knows about them always
+                // sends the key, empty map included, so clearing the last rule
+                // still works.
                 'PROJECT_AUTO_CREATE' => isset($s['projectAutoCreate']) && is_array($s['projectAutoCreate'])
-                    ? json_encode(ccrm_normalize_project_auto_create($s['projectAutoCreate']))
+                    ? json_encode(ccrm_normalize_project_auto_create(
+                        array_key_exists('categoryTypes', $s['projectAutoCreate'])
+                            ? $s['projectAutoCreate']
+                            : array_merge(
+                                $s['projectAutoCreate'],
+                                ['categoryTypes' => (array)ccrm_project_auto_create_config($pdo)['categoryTypes']]
+                            )
+                    ))
                     : null,
                 'TASK_STATES' => json_encode($s['taskStates'] ?? []),
                 'TASK_STATE_COLORS' => json_encode($s['taskStateColors'] ?? []),
@@ -2514,11 +2528,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Automatic project creation (Projects → Settings). Runs before
                 // the workflow triggers below on purpose, so an automation
                 // reacting to `lead_created` already finds the project it may
-                // want to move. Returns null whenever the feature is off, the
-                // configured type is gone, or this lead already has a project.
+                // want to move. Returns an empty list whenever the feature is
+                // off, no rule matches, the configured types are gone, or this
+                // lead already has a project of each of them.
+                //
+                // The lead's categories are handed over rather than read back:
+                // `lead_categories` is only written further down, so the table
+                // still holds nothing for a lead that arrived in this payload.
                 if ($isNew) {
-                    $autoProject = ccrm_auto_create_project_for_lead($pdo, $leadId, (string)($l['owner'] ?? ''));
-                    if ($autoProject !== null) {
+                    $leadCategoryNames = [];
+                    if (isset($l['categories']) && is_array($l['categories'])) {
+                        foreach ($l['categories'] as $catName) {
+                            $catName = trim((string)$catName);
+                            if ($catName !== '') {
+                                $leadCategoryNames[] = $catName;
+                            }
+                        }
+                    }
+                    foreach (ccrm_auto_create_project_for_lead($pdo, $leadId, (string)($l['owner'] ?? ''), $leadCategoryNames) as $autoProject) {
                         $createdProjects[] = $autoProject;
                     }
                 }

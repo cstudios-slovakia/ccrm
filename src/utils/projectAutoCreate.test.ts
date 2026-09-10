@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  autoCreateTypeIdsForLead,
   DEFAULT_PROJECT_AUTO_CREATE,
   isProjectAutoCreateActive,
   normalizeProjectAutoCreate,
@@ -38,12 +39,29 @@ test("the normalized shape is stable, so the settings signature cannot flip-flop
     JSON.stringify(normalizeProjectAutoCreate(undefined)),
     JSON.stringify(normalizeProjectAutoCreate({ enabled: false, projectTypeId: "", assignOwner: true })),
   );
+  // Same map, keys written the other way round — the same JSON, for the same
+  // reason. PHP sorts it with ksort(); see ccrm_normalize_project_auto_create.
+  assert.equal(
+    JSON.stringify(normalizeProjectAutoCreate({ categoryTypes: { Website: "ptype-roof", Marketing: "ptype-solar" } })),
+    JSON.stringify(normalizeProjectAutoCreate({ categoryTypes: { Marketing: "ptype-solar", Website: "ptype-roof" } })),
+  );
+});
+
+test("a category rule needs both halves to survive normalization", () => {
+  assert.deepEqual(
+    normalizeProjectAutoCreate({
+      categoryTypes: { "  Website  ": "  ptype-roof  ", Marketing: "", "": "ptype-solar", Broken: 7 },
+    }).categoryTypes,
+    { Website: "ptype-roof" },
+  );
+  assert.deepEqual(normalizeProjectAutoCreate({ categoryTypes: ["ptype-roof"] }).categoryTypes, {});
+  assert.deepEqual(normalizeProjectAutoCreate({ categoryTypes: "ptype-roof" }).categoryTypes, {});
 });
 
 test("the project type is trimmed and assignOwner needs an explicit false to turn off", () => {
   assert.deepEqual(
     normalizeProjectAutoCreate({ enabled: true, projectTypeId: "  ptype-roof  " }),
-    { enabled: true, projectTypeId: "ptype-roof", assignOwner: true },
+    { enabled: true, projectTypeId: "ptype-roof", categoryTypes: {}, assignOwner: true },
   );
   assert.equal(
     normalizeProjectAutoCreate({ enabled: true, projectTypeId: "x", assignOwner: false }).assignOwner,
@@ -58,12 +76,79 @@ test("a project type that has since been deleted makes the rules inert", () => {
   assert.equal(isProjectAutoCreateActive({ ...cfg, projectTypeId: "ptype-solar" }, TYPES), true);
 });
 
+test("a category rule alone is enough to make the feature active", () => {
+  // No fallback type at all, but leads in that category still get a project.
+  const cfg = normalizeProjectAutoCreate({ enabled: true, categoryTypes: { Roofs: "ptype-roof" } });
+  assert.equal(isProjectAutoCreateActive(cfg, TYPES), true);
+  assert.equal(
+    isProjectAutoCreateActive(normalizeProjectAutoCreate({ enabled: true, categoryTypes: { Roofs: "ptype-gone" } }), TYPES),
+    false,
+  );
+});
+
 test("enabled without a chosen type is not active", () => {
-  assert.equal(isProjectAutoCreateActive({ enabled: true, projectTypeId: "", assignOwner: true }, TYPES), false);
+  assert.equal(isProjectAutoCreateActive(normalizeProjectAutoCreate({ enabled: true }), TYPES), false);
 });
 
 test("a chosen type does nothing while the feature is switched off", () => {
-  assert.equal(isProjectAutoCreateActive({ enabled: false, projectTypeId: "ptype-roof", assignOwner: true }, TYPES), false);
+  assert.equal(
+    isProjectAutoCreateActive(normalizeProjectAutoCreate({ enabled: false, projectTypeId: "ptype-roof" }), TYPES),
+    false,
+  );
+});
+
+test("a lead gets one project per interest category that names a type", () => {
+  const cfg = normalizeProjectAutoCreate({
+    enabled: true,
+    projectTypeId: "ptype-roof",
+    categoryTypes: { Roofs: "ptype-roof", Solar: "ptype-solar" },
+  });
+  assert.deepEqual(autoCreateTypeIdsForLead(cfg, ["Solar", "Roofs"], TYPES), ["ptype-solar", "ptype-roof"]);
+  // Two categories naming the same type still make one project, not two.
+  const sameType = normalizeProjectAutoCreate({
+    enabled: true,
+    categoryTypes: { Roofs: "ptype-roof", Tiles: "ptype-roof" },
+  });
+  assert.deepEqual(autoCreateTypeIdsForLead(sameType, ["Roofs", "Tiles"], TYPES), ["ptype-roof"]);
+});
+
+test("a lead no rule matched falls back to the single configured type", () => {
+  const cfg = normalizeProjectAutoCreate({
+    enabled: true,
+    projectTypeId: "ptype-roof",
+    categoryTypes: { Solar: "ptype-solar" },
+  });
+  assert.deepEqual(autoCreateTypeIdsForLead(cfg, [], TYPES), ["ptype-roof"]);
+  assert.deepEqual(autoCreateTypeIdsForLead(cfg, undefined, TYPES), ["ptype-roof"]);
+  assert.deepEqual(autoCreateTypeIdsForLead(cfg, ["Something else"], TYPES), ["ptype-roof"]);
+
+  // ...and with no fallback configured, it simply gets nothing.
+  const noFallback = normalizeProjectAutoCreate({ enabled: true, categoryTypes: { Solar: "ptype-solar" } });
+  assert.deepEqual(autoCreateTypeIdsForLead(noFallback, ["Something else"], TYPES), []);
+});
+
+test("a category matches however it happens to be capitalized on the lead", () => {
+  const cfg = normalizeProjectAutoCreate({ enabled: true, categoryTypes: { Solar: "ptype-solar" } });
+  assert.deepEqual(autoCreateTypeIdsForLead(cfg, ["  sOLAR "], TYPES), ["ptype-solar"]);
+});
+
+test("a category pointing at a deleted type falls through to the fallback", () => {
+  // Never returned for creation: the insert would fail against the foreign key.
+  const cfg = normalizeProjectAutoCreate({
+    enabled: true,
+    projectTypeId: "ptype-roof",
+    categoryTypes: { Solar: "ptype-gone" },
+  });
+  assert.deepEqual(autoCreateTypeIdsForLead(cfg, ["Solar"], TYPES), ["ptype-roof"]);
+});
+
+test("nothing is created while the feature is switched off", () => {
+  const cfg = normalizeProjectAutoCreate({
+    enabled: false,
+    projectTypeId: "ptype-roof",
+    categoryTypes: { Solar: "ptype-solar" },
+  });
+  assert.deepEqual(autoCreateTypeIdsForLead(cfg, ["Solar"], TYPES), []);
 });
 
 test("a lead's projects are every project pointing at it, in the given order", () => {

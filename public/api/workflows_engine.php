@@ -792,9 +792,10 @@ if (!function_exists('ccrm_execute_workflow')) {
                           $street, $postalCode, $country, $companyId, $taxId, $vatId, $contactPerson, $website
                         ]);
                         // A lead an automation created is still a new lead, so it
-                        // gets the same paired project as one typed in by hand or
-                        // captured by the web form (Projects → Settings).
-                        $autoProject = ccrm_auto_create_project_for_lead($pdo, $leadId, $owner);
+                        // gets the same paired projects as one typed in by hand or
+                        // captured by the web form (Projects → Settings). It carries
+                        // no interest categories, so it lands on the fallback type.
+                        $autoProjects = ccrm_auto_create_project_for_lead($pdo, $leadId, $owner);
 
                         $outputPayload = [
                           'id' => $leadId,
@@ -806,7 +807,8 @@ if (!function_exists('ccrm_execute_workflow')) {
                           'city' => $city,
                           'company_id' => $companyId,
                           // Lets a later node address the project directly.
-                          'project_id' => $autoProject['id'] ?? null
+                          'project_id' => $autoProjects[0]['id'] ?? null,
+                          'project_ids' => array_column($autoProjects, 'id')
                         ];
                     } elseif ($actionType === 'create_task') {
                         $title = ccrm_interpolate_variables($nodeData['title'] ?? '', $incomingPayload, $context);

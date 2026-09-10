@@ -453,7 +453,8 @@ if (!function_exists('ccrm_send_cors')) {
      * Normalize an automatic-project-creation config blob to its canonical shape.
      *
      *   enabled        false — no project is created (the historical behaviour)
-     *   projectTypeId  the type every auto-created project is made from
+     *   projectTypeId  the type a lead no category rule matched is given
+     *   categoryTypes  interest category name -> the type a lead in it is given
      *   assignOwner    put the lead's project manager on the project
      *
      * Applied to both the stored value and anything a client pushes, so a
@@ -463,9 +464,33 @@ if (!function_exists('ccrm_send_cors')) {
         if (!is_array($cfg)) {
             $cfg = [];
         }
+
+        // Category -> project type, keeping only entries with both halves.
+        // Sorted because the client folds this blob into its settings
+        // signature as JSON: the same map with its keys in another order
+        // would read as a change and push settings forever. See
+        // normalizeProjectAutoCreate in src/utils/projectAutoCreate.ts, which
+        // sorts identically.
+        $categoryTypes = [];
+        $rawMap = $cfg['categoryTypes'] ?? null;
+        if (is_array($rawMap)) {
+            foreach ($rawMap as $name => $typeId) {
+                $name = trim((string)$name);
+                $typeId = is_string($typeId) ? trim($typeId) : '';
+                if ($name !== '' && $typeId !== '') {
+                    $categoryTypes[$name] = $typeId;
+                }
+            }
+            ksort($categoryTypes);
+        }
+
         return [
             'enabled' => ($cfg['enabled'] ?? false) === true,
             'projectTypeId' => trim((string)($cfg['projectTypeId'] ?? '')),
+            // Left as a PHP array: an empty one encodes as [] rather than {},
+            // which normalizeProjectAutoCreate() on the client already reads
+            // as "no entries".
+            'categoryTypes' => $categoryTypes,
             // Assigning the lead's manager is the useful default; only an
             // explicit false turns it off.
             'assignOwner' => !array_key_exists('assignOwner', $cfg) || (bool)$cfg['assignOwner'],
@@ -516,12 +541,88 @@ if (!function_exists('ccrm_send_cors')) {
     }
 
     /**
-     * Create the project a brand-new lead is paired with, if the operator asked
-     * for one (Projects → Settings → automatic project creation).
+     * The interest categories a lead carries, as stored.
      *
-     * Returns the created project in the shape the client holds it in, or null
-     * when nothing was created — the feature is off, the configured project type
-     * has since been deleted, or this lead already has a project.
+     * Only reached when a caller has none to hand: sync.php writes
+     * `lead_categories` after the lead row, so it passes its own list instead
+     * of asking for one that is not there yet.
+     */
+    function ccrm_lead_category_names(\PDO $pdo, string $leadId): array {
+        try {
+            $stmt = $pdo->prepare("SELECT `category_name` FROM `lead_categories` WHERE `lead_id` = ?");
+            $stmt->execute([$leadId]);
+            $names = [];
+            foreach ($stmt->fetchAll(\PDO::FETCH_COLUMN) as $name) {
+                $name = trim((string)$name);
+                if ($name !== '') {
+                    $names[] = $name;
+                }
+            }
+            return $names;
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    /**
+     * The project types a lead carrying $categories should be given a project
+     * of — one per mapped category, in the order the lead lists them, never
+     * the same type twice.
+     *
+     * A lead whose categories are empty, or map to nothing, falls back to the
+     * single configured type; when that is empty too, it gets nothing.
+     *
+     * Mirrors autoCreateTypeIdsForLead() in src/utils/projectAutoCreate.ts,
+     * which is what the settings card uses to say what will happen.
+     */
+    function ccrm_auto_create_project_type_ids(array $cfg, array $categories): array {
+        // Category names reach us from a lead row, which may have been written
+        // when the category was spelled differently; matching without regard to
+        // case costs nothing and saves a silently unmatched lead. mbstring is
+        // not guaranteed on every host, and without it a name with diacritics
+        // simply has to match exactly.
+        $fold = function ($value): string {
+            $value = trim((string)$value);
+            return function_exists('mb_strtolower') ? mb_strtolower($value, 'UTF-8') : strtolower($value);
+        };
+
+        $byLowerName = [];
+        foreach (((array)($cfg['categoryTypes'] ?? [])) as $name => $typeId) {
+            $key = $fold($name);
+            if ($key !== '' && is_string($typeId) && trim($typeId) !== '') {
+                $byLowerName[$key] = trim($typeId);
+            }
+        }
+
+        $ids = [];
+        foreach ($categories as $name) {
+            $key = $fold($name);
+            if ($key !== '' && isset($byLowerName[$key]) && !in_array($byLowerName[$key], $ids, true)) {
+                $ids[] = $byLowerName[$key];
+            }
+        }
+
+        if ($ids) {
+            return $ids;
+        }
+        $fallback = trim((string)($cfg['projectTypeId'] ?? ''));
+        return $fallback !== '' ? [$fallback] : [];
+    }
+
+    /**
+     * Create the projects a brand-new lead is paired with, if the operator
+     * asked for any (Projects → Settings → automatic project creation).
+     *
+     * Which types those are depends on the lead's interest categories: each
+     * mapped category contributes one project, and a lead that matches none
+     * falls back to the single configured type. $categories may be passed in by
+     * a caller that has not written `lead_categories` yet (sync.php); leave it
+     * null to read what is stored.
+     *
+     * Returns the created projects in the shape the client holds them in — an
+     * empty list when nothing was created, because the feature is off, no type
+     * applies, the configured types have since been deleted, or this lead
+     * already has a project of every type it would get.
      *
      * Made server-side, and from one function, for the same reasons as
      * ccrm_auto_assign_owner(): it has to cover leads that never pass through
@@ -529,80 +630,94 @@ if (!function_exists('ccrm_send_cors')) {
      * actions), and two devices syncing the same new lead must not each produce
      * their own project for it.
      *
-     * Creation is deliberately limited to leads that have no project yet. That
-     * makes the call idempotent, so a retried sync — or a lead re-pushed by an
-     * older client that thinks it is new — cannot pile up duplicates.
+     * Creation skips any type this lead already has a project of. That makes
+     * the call idempotent, so a retried sync — or a lead re-pushed by an older
+     * client that thinks it is new — cannot pile up duplicates.
      */
-    function ccrm_auto_create_project_for_lead(\PDO $pdo, string $leadId, string $ownerName = ''): ?array {
+    function ccrm_auto_create_project_for_lead(\PDO $pdo, string $leadId, string $ownerName = '', ?array $categories = null): array {
         $cfg = ccrm_project_auto_create_config($pdo);
-        if (!$cfg['enabled'] || $cfg['projectTypeId'] === '' || $leadId === '') {
-            return null;
+        if (!$cfg['enabled'] || $leadId === '') {
+            return [];
         }
 
+        $created = [];
         try {
-            // The configured type may have been deleted since it was chosen.
-            // Creating against a missing type would violate the projects ->
-            // project_types foreign key and abort the whole sync transaction.
+            $names = $categories === null ? ccrm_lead_category_names($pdo, $leadId) : $categories;
+            $typeIds = ccrm_auto_create_project_type_ids($cfg, $names);
+            if (!$typeIds) {
+                return [];
+            }
+
             $typeStmt = $pdo->prepare("SELECT `id` FROM `project_types` WHERE `id` = ?");
-            $typeStmt->execute([$cfg['projectTypeId']]);
-            if ($typeStmt->fetchColumn() === false) {
-                return null;
-            }
-
-            $existing = $pdo->prepare("SELECT `id` FROM `projects` WHERE `lead_id` = ? LIMIT 1");
-            $existing->execute([$leadId]);
-            if ($existing->fetchColumn() !== false) {
-                return null;
-            }
-
-            $projectId = 'proj-' . sprintf('%04x%04x', mt_rand(0, 0xffff), mt_rand(0, 0xffff));
-            $pdo->prepare(
+            $existing = $pdo->prepare("SELECT `id` FROM `projects` WHERE `lead_id` = ? AND `project_type_id` = ? LIMIT 1");
+            $insProject = $pdo->prepare(
                 "INSERT INTO `projects` (`id`, `project_type_id`, `lead_id`, `client_id`, `status`)
                  VALUES (?, ?, ?, ?, 'active')"
-            )->execute([$projectId, $cfg['projectTypeId'], $leadId, $leadId]);
-
-            $managers = [];
+            );
+            $insManager = $pdo->prepare("INSERT IGNORE INTO `project_managers` (`project_id`, `user_id`) VALUES (?, ?)");
             $ownerName = trim($ownerName);
-            if ($cfg['assignOwner'] && $ownerName !== '') {
-                $pdo->prepare("INSERT IGNORE INTO `project_managers` (`project_id`, `user_id`) VALUES (?, ?)")
-                    ->execute([$projectId, $ownerName]);
-                $managers[] = $ownerName;
-            }
 
-            // The per-type attribute row. Optional — sync.php's GET falls back to
-            // empty data when it is missing — so a type whose table has not been
-            // built yet must not take the project down with it.
-            try {
-                $dataTable = 'proj_data_' . preg_replace('/[^a-z0-9_]/', '', strtolower($cfg['projectTypeId']));
-                if ($pdo->query("SHOW TABLES LIKE " . $pdo->quote($dataTable))->rowCount() > 0) {
-                    $pdo->prepare("INSERT IGNORE INTO `{$dataTable}` (`id`, `project_id`) VALUES (?, ?)")
-                        ->execute([$projectId, $projectId]);
+            foreach ($typeIds as $typeId) {
+                // A configured type may have been deleted since it was chosen.
+                // Creating against a missing type would violate the projects ->
+                // project_types foreign key and abort the whole sync transaction.
+                $typeStmt->execute([$typeId]);
+                if ($typeStmt->fetchColumn() === false) {
+                    continue;
                 }
-            } catch (\Throwable $e) {
-                // Attributes stay empty; the project itself is already saved.
-            }
 
-            return [
-                'id' => $projectId,
-                'projectTypeId' => $cfg['projectTypeId'],
-                // No name and no deadline: an auto-created project reads as its
-                // paired lead until someone names it (projectDisplayName), and
-                // only its manager knows when it is actually due.
-                'name' => '',
-                'deadline' => null,
-                'leadId' => $leadId,
-                'clientId' => $leadId,
-                'status' => 'active',
-                'managers' => $managers,
-                'data' => (object)[],
-                'timeline' => [],
-                'gantt' => [],
-            ];
+                $existing->execute([$leadId, $typeId]);
+                if ($existing->fetchColumn() !== false) {
+                    continue;
+                }
+
+                $projectId = 'proj-' . sprintf('%04x%04x', mt_rand(0, 0xffff), mt_rand(0, 0xffff));
+                $insProject->execute([$projectId, $typeId, $leadId, $leadId]);
+
+                $managers = [];
+                if ($cfg['assignOwner'] && $ownerName !== '') {
+                    $insManager->execute([$projectId, $ownerName]);
+                    $managers[] = $ownerName;
+                }
+
+                // The per-type attribute row. Optional — sync.php's GET falls back to
+                // empty data when it is missing — so a type whose table has not been
+                // built yet must not take the project down with it.
+                try {
+                    $dataTable = 'proj_data_' . preg_replace('/[^a-z0-9_]/', '', strtolower($typeId));
+                    if ($pdo->query("SHOW TABLES LIKE " . $pdo->quote($dataTable))->rowCount() > 0) {
+                        $pdo->prepare("INSERT IGNORE INTO `{$dataTable}` (`id`, `project_id`) VALUES (?, ?)")
+                            ->execute([$projectId, $projectId]);
+                    }
+                } catch (\Throwable $e) {
+                    // Attributes stay empty; the project itself is already saved.
+                }
+
+                $created[] = [
+                    'id' => $projectId,
+                    'projectTypeId' => $typeId,
+                    // No name and no deadline: an auto-created project reads as its
+                    // paired lead until someone names it (projectDisplayName), and
+                    // only its manager knows when it is actually due.
+                    'name' => '',
+                    'deadline' => null,
+                    'leadId' => $leadId,
+                    'clientId' => $leadId,
+                    'status' => 'active',
+                    'managers' => $managers,
+                    'data' => (object)[],
+                    'timeline' => [],
+                    'gantt' => [],
+                ];
+            }
         } catch (\Throwable $e) {
-            // A lead is worth more than the project that would have accompanied
-            // it: never let this take down the insert that triggered it.
-            return null;
+            // A lead is worth more than the projects that would have accompanied
+            // it: never let this take down the insert that triggered it. Whatever
+            // was created before the failure is real, so it is still returned.
+            return $created;
         }
+
+        return $created;
     }
 
     /** True if the given string already looks like a bcrypt/argon hash. */

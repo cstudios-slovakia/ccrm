@@ -6,7 +6,7 @@ import {
   Eye, Pencil, Minus, GripVertical, ArrowLeft, Activity, Clock, CheckSquare,
   Menu, ArrowUp, FolderOpen, Search, FileText, Building2, Sparkles
 } from "lucide-react";
-import type { UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, ProjectType, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, LeadAssignmentMode } from "../types";
+import type { UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, ProjectType, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, LeadAssignmentMode, ProjectAutoCreateSettings } from "../types";
 import { resolveAssignmentPool } from "../utils/leadAssignment";
 import { normalizeSlaDays, type LeadStateSla } from "../utils/leadSla";
 import { listIdFor, nextListId, type ListIds } from "../utils/listIds";
@@ -91,6 +91,11 @@ interface SettingsViewProps {
   setLeadSources: React.Dispatch<React.SetStateAction<string[]>>;
   leadCategories: string[];
   setLeadCategories: React.Dispatch<React.SetStateAction<string[]>>;
+  /**
+   * Only so a renamed or deleted category takes its automatic-project rule with
+   * it (Projects -> Settings). The rules themselves are edited over there.
+   */
+  setProjectAutoCreate?: React.Dispatch<React.SetStateAction<ProjectAutoCreateSettings>>;
   // The permanent id a website form uses to name one source / category. Not the
   // row's position: see src/utils/listIds.ts.
   leadSourceIds: ListIds;
@@ -216,6 +221,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setLeadSources,
   leadCategories,
   setLeadCategories,
+  setProjectAutoCreate,
   leadSourceIds,
   setLeadSourceIds,
   leadCategoryIds,
@@ -333,6 +339,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setLeadCategoryColors((prev) => migrateMapKey(prev, oldName, next));
     // Same as for sources: the id follows the category through a rename.
     setLeadCategoryIds((prev) => migrateMapKey(prev, oldName, next));
+    // And so does the project type new leads in this category are given —
+    // otherwise a rename quietly stops creating those projects.
+    setProjectAutoCreate?.((prev) => ({ ...prev, categoryTypes: migrateMapKey(prev.categoryTypes, oldName, next) }));
     setLeads?.((prev) =>
       prev.map((l) =>
         l.categories?.includes(oldName)
@@ -1921,6 +1930,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         const next = { ...prev };
         delete next[cat];
         return next;
+      });
+      // A rule pointing at a category nobody can pick any more would sit in the
+      // settings blob forever, invisible in the UI that edits it.
+      setProjectAutoCreate?.(prev => {
+        if (!(cat in prev.categoryTypes)) return prev;
+        const categoryTypes = { ...prev.categoryTypes };
+        delete categoryTypes[cat];
+        return { ...prev, categoryTypes };
       });
     }
   };

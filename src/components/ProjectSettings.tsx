@@ -15,6 +15,8 @@ interface ProjectSettingsProps {
   /** Rules for turning every incoming lead into a project. */
   projectAutoCreate?: ProjectAutoCreateSettings;
   setProjectAutoCreate?: React.Dispatch<React.SetStateAction<ProjectAutoCreateSettings>>;
+  /** The interest categories a lead can carry, so each can be given its own project type. */
+  leadCategories?: string[];
   /**
    * Open straight into the "create project type" form. Set by the projects list
    * when someone picks "New project type" from the + New Project dropdown,
@@ -53,6 +55,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
   canEdit,
   projectAutoCreate = DEFAULT_PROJECT_AUTO_CREATE,
   setProjectAutoCreate,
+  leadCategories = [],
   autoStartCreate = false,
   onAutoStartCreateHandled
 }) => {
@@ -1089,8 +1092,9 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
       )}
 
       {/* ── AUTOMATIC CREATION FROM LEADS ──────────────────────────────────
-          Every lead that arrives gets a project of the chosen type, already
-          paired with it. The creation happens server-side, so it covers leads
+          Every lead that arrives gets a project already paired with it — one
+          per interest category that names a type, or a single project of the
+          fallback type. The creation happens server-side, so it covers leads
           that never pass through this app — the public web-form webhook and
           workflow actions — and two devices syncing the same new lead cannot
           each produce their own project for it. */}
@@ -1100,6 +1104,24 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
         const canToggle = canEdit && projectTypes.length > 0;
         const update = (patch: Partial<ProjectAutoCreateSettings>) =>
           setProjectAutoCreate(prev => ({ ...prev, ...patch }));
+        const NO_TYPE_LABEL = t("No project", "Žiadny projekt", "Nincs projekt");
+
+        /** The map with one category pointed at a type, or cleared of it. */
+        const setCategoryType = (map: Record<string, string>, category: string, typeId: string) => {
+          const next = { ...map };
+          if (typeId) next[category] = typeId;
+          else delete next[category];
+          return next;
+        };
+
+        // Only the rules that will actually fire: a type deleted after it was
+        // chosen must not be read out as if it still creates something.
+        const mappedRules = leadCategories
+          .map((category) => ({
+            category,
+            type: projectTypes.find(pt => pt.id === projectAutoCreate.categoryTypes[category])?.name,
+          }))
+          .filter((r): r is { category: string; type: string } => !!r.type);
 
         return (
           <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass text-left space-y-5">
@@ -1110,9 +1132,9 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
               </h3>
               <p className="text-[11px] font-semibold text-slate-500 leading-relaxed max-w-3xl">
                 {t(
-                  "Every new lead is paired with a project of the type you choose — leads from the web form, from automations, from imports, and leads added by hand. Leads that already have a project are never given a second one.",
-                  "Každý nový lead sa spáruje s projektom zvoleného typu — leady z webového formulára, z automatizácií, z importov aj leady pridané ručne. Leady, ktoré už projekt majú, druhý nedostanú.",
-                  "Minden új lead a kiválasztott típusú projekttel lesz párosítva — a webűrlapról, automatizációkból és importokból érkező, valamint a kézzel hozzáadott leadek. A már projekttel rendelkező leadek nem kapnak másodikat.",
+                  "Every new lead is paired with a project — leads from the web form, from automations, from imports, and leads added by hand. Each interest category can name its own project type, so a lead ticking two of them gets one project of each. A lead whose interests match no rule falls back to the type below.",
+                  "Každý nový lead sa spáruje s projektom — leady z webového formulára, z automatizácií, z importov aj leady pridané ručne. Každá kategória záujmu môže mať vlastný typ projektu, takže lead s dvoma kategóriami dostane projekt z každej. Lead, ktorého záujmy nezodpovedajú žiadnemu pravidlu, dostane záložný typ nižšie.",
+                  "Minden új lead projekttel lesz párosítva — a webűrlapról, automatizációkból és importokból érkező, valamint a kézzel hozzáadott leadek. Minden érdeklődési kategóriának saját projekt típusa lehet, így a két kategóriát megjelölő lead mindegyikből kap egyet. Az egyik szabályra sem illeszkedő lead az alábbi tartalék típust kapja.",
                 )}
               </p>
             </div>
@@ -1157,18 +1179,70 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
 
                 {projectAutoCreate.enabled && (
                   <>
-                    {/* Which type */}
+                    {/* One rule per interest category. The map is keyed by the
+                        category name, which is what a lead stores; SettingsView
+                        carries the entry across a rename and drops it on a
+                        delete, exactly as it does for the colour map. */}
                     <div>
                       <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">
-                        {t("Project type to create", "Typ vytváraného projektu", "Létrehozandó projekt típusa")}
+                        {t("Project type per interest category", "Typ projektu podľa kategórie záujmu", "Projekt típus érdeklődési kategóriánként")}
+                      </label>
+                      {leadCategories.length === 0 ? (
+                        <p className="text-[11px] font-bold text-slate-500 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3">
+                          {t(
+                            "No interest categories are configured — add them in Settings to give each its own project type.",
+                            "Nie sú nastavené žiadne kategórie záujmu — pridajte ich v Nastaveniach, aby mohla každá dostať vlastný typ projektu.",
+                            "Nincsenek beállított érdeklődési kategóriák — adja hozzá őket a Beállításokban, hogy mindegyik saját projekt típust kaphasson.",
+                          )}
+                        </p>
+                      ) : (
+                        <div className="rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
+                          {leadCategories.map((cat) => (
+                            <div key={cat} className="flex items-center gap-3 px-4 py-2.5">
+                              <span className="text-[11px] font-black text-slate-700 truncate flex-1 min-w-0" title={cat}>
+                                {cat}
+                              </span>
+                              <div className="w-full max-w-[16rem] shrink-0">
+                                <CustomSelect
+                                  size="sm"
+                                  disabled={!canEdit}
+                                  value={projectAutoCreate.categoryTypes[cat] || ""}
+                                  onChange={(v) => update({ categoryTypes: setCategoryType(projectAutoCreate.categoryTypes, cat, v) })}
+                                  placeholder={NO_TYPE_LABEL}
+                                  options={[
+                                    { value: "", label: NO_TYPE_LABEL },
+                                    ...projectTypes.map(pt => ({ value: pt.id, label: pt.name })),
+                                  ]}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Everything the rules above did not catch */}
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">
+                        {t("Type for leads no rule matched", "Typ pre leady bez zhody", "Típus a szabályt nem találó leadekhez")}
                       </label>
                       <CustomSelect
                         disabled={!canEdit}
                         value={projectAutoCreate.projectTypeId}
                         onChange={(v) => update({ projectTypeId: v })}
-                        placeholder={t("Choose a project type...", "Vyberte typ projektu...", "Válasszon projekt típust...")}
-                        options={projectTypes.map(pt => ({ value: pt.id, label: pt.name }))}
+                        placeholder={NO_TYPE_LABEL}
+                        options={[
+                          { value: "", label: NO_TYPE_LABEL },
+                          ...projectTypes.map(pt => ({ value: pt.id, label: pt.name })),
+                        ]}
                       />
+                      <p className="text-[10px] font-semibold text-slate-400 mt-1.5 leading-snug">
+                        {t(
+                          "Used for a lead that carries no interest category, or none that names a type above.",
+                          "Použije sa pre lead bez kategórie záujmu, alebo keď žiadna z jeho kategórií nemá vyššie určený typ.",
+                          "Az érdeklődési kategória nélküli leadhez használja, vagy ha egyik kategóriája sem nevez meg fenti típust.",
+                        )}
+                      </p>
                     </div>
 
                     {/* Manager */}
@@ -1203,23 +1277,49 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                         was chosen leaves this looking configured while the server
                         creates nothing. */}
                     {active ? (
-                      <p className="text-[11px] font-bold text-slate-500 bg-white border border-slate-200 rounded-2xl px-4 py-3">
-                        <span className="text-slate-400 uppercase tracking-wider font-black mr-1.5">
+                      <div className="text-[11px] font-bold text-slate-500 bg-white border border-slate-200 rounded-2xl px-4 py-3 space-y-1">
+                        <span className="block text-slate-400 uppercase tracking-wider font-black">
                           {t("Result", "Výsledok", "Eredmény")}:
                         </span>
-                        {t(
-                          `Every new lead gets a "${chosenType?.name}" project, paired with it.`,
-                          `Každý nový lead dostane projekt typu „${chosenType?.name}“, spárovaný s ním.`,
-                          `Minden új lead egy „${chosenType?.name}” projektet kap, hozzá párosítva.`,
+                        {mappedRules.map(({ category, type }) => (
+                          <span key={category} className="block">
+                            {t(
+                              `A lead interested in "${category}" gets a "${type}" project.`,
+                              `Lead so záujmom „${category}“ dostane projekt typu „${type}“.`,
+                              `A „${category}” iránt érdeklődő lead „${type}” projektet kap.`,
+                            )}
+                          </span>
+                        ))}
+                        {mappedRules.length > 0 && (
+                          <span className="block text-slate-400">
+                            {t(
+                              "A lead in several of them gets one project of each.",
+                              "Lead s viacerými z nich dostane projekt z každej.",
+                              "A több ilyen kategóriával rendelkező lead mindegyikből kap egyet.",
+                            )}
+                          </span>
                         )}
-                      </p>
+                        <span className="block">
+                          {chosenType
+                            ? t(
+                                `Every other lead gets a "${chosenType.name}" project.`,
+                                `Každý ostatný lead dostane projekt typu „${chosenType.name}“.`,
+                                `Minden más lead „${chosenType.name}” projektet kap.`,
+                              )
+                            : t(
+                                "A lead matching none of these rules gets no project.",
+                                "Lead, ktorý nezodpovedá žiadnemu pravidlu, projekt nedostane.",
+                                "Az egyik szabályra sem illeszkedő lead nem kap projektet.",
+                              )}
+                        </span>
+                      </div>
                     ) : (
                       <p className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
-                        {projectAutoCreate.projectTypeId
+                        {projectAutoCreate.projectTypeId || Object.keys(projectAutoCreate.categoryTypes).length > 0
                           ? t(
-                              "The chosen project type no longer exists — pick another one, or no projects will be created.",
-                              "Zvolený typ projektu už neexistuje — vyberte iný, inak sa žiadne projekty nevytvoria.",
-                              "A kiválasztott projekt típus már nem létezik — válasszon másikat, különben nem jön létre projekt.",
+                              "The chosen project types no longer exist — pick others, or no projects will be created.",
+                              "Zvolené typy projektov už neexistujú — vyberte iné, inak sa žiadne projekty nevytvoria.",
+                              "A kiválasztott projekt típusok már nem léteznek — válasszon másikat, különben nem jön létre projekt.",
                             )
                           : t(
                               "No project type chosen yet — no projects will be created.",

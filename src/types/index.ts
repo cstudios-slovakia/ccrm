@@ -100,8 +100,21 @@ export interface LeadAssignmentSettings {
  */
 export interface ProjectAutoCreateSettings {
   enabled: boolean;
-  /** Project type every auto-created project is made from. "" until one is picked. */
+  /**
+   * The type a lead no category rule matched is given a project of — the lead
+   * carries no interest category, or none of the ones it carries is mapped
+   * below. "" leaves such a lead without a project.
+   */
   projectTypeId: string;
+  /**
+   * Interest category name -> the project type a lead in that category gets.
+   * A lead in several mapped categories gets one project per category.
+   *
+   * Keyed by name rather than by the permanent list id, because the name is the
+   * identity everywhere else in the app (a lead stores category names, the
+   * colour map is keyed by name); a rename carries the entry across with it.
+   */
+  categoryTypes: Record<string, string>;
   /** Put the lead's project manager on the new project as its manager. */
   assignOwner: boolean;
 }

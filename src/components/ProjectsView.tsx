@@ -25,6 +25,8 @@ interface ProjectsViewProps {
   /** Rules for turning every incoming lead into a project (edited in the Settings tab). */
   projectAutoCreate?: ProjectAutoCreateSettings;
   setProjectAutoCreate?: React.Dispatch<React.SetStateAction<ProjectAutoCreateSettings>>;
+  /** Interest categories, so each can be given its own auto-created project type. */
+  leadCategories?: string[];
   financialRecords?: FinancialRecord[];
   setFinancialRecords?: React.Dispatch<React.SetStateAction<FinancialRecord[]>>;
   financialCategories?: FinancialCategory[];
@@ -43,6 +45,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   canEdit,
   projectAutoCreate,
   setProjectAutoCreate,
+  leadCategories = [],
   financialRecords = [],
   setFinancialRecords,
   financialCategories = [],
@@ -314,6 +317,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             canEdit={canEdit}
             projectAutoCreate={projectAutoCreate}
             setProjectAutoCreate={setProjectAutoCreate}
+            leadCategories={leadCategories}
             autoStartCreate={pendingTypeCreate}
             onAutoStartCreateHandled={() => setPendingTypeCreate(false)}
           />

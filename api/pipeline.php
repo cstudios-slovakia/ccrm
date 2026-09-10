@@ -535,10 +535,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $teContent
         ]);
 
-        // 4. Pair the lead with a project, when the operator asked for one
+        // 4. Pair the lead with its projects, when the operator asked for any
         //    (Projects → Settings → automatic project creation). A web-form
-        //    lead is exactly the case the setting exists for.
-        $autoProject = ccrm_auto_create_project_for_lead($pdo, $newLeadId, $leadOwner);
+        //    lead is exactly the case the setting exists for, and the interests
+        //    it ticked are what decide which types it gets.
+        $autoProjects = ccrm_auto_create_project_for_lead($pdo, $newLeadId, $leadOwner, $categories);
 
         $pdo->commit();
 
@@ -558,7 +559,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'status' => $status,
                 'source' => $source,
                 'categories' => $categories,
-                'project_id' => $autoProject['id'] ?? null
+                // The first project stays under the key integrations already
+                // read; `project_ids` carries the rest, one per matched
+                // interest category.
+                'project_id' => $autoProjects[0]['id'] ?? null,
+                'project_ids' => array_column($autoProjects, 'id')
             ]
         ]);
     } catch (\Exception $e) {

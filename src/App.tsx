@@ -2195,6 +2195,7 @@ ${log.payload || ''}
           setLeadSourceIds={setLeadSourceIds}
           leadCategoryIds={leadCategoryIds}
           setLeadCategoryIds={setLeadCategoryIds}
+          setProjectAutoCreate={setProjectAutoCreate}
           leadSourceColors={leadSourceColors}
           setLeadSourceColors={setLeadSourceColors}
           leadCategoryColors={leadCategoryColors}
@@ -2359,6 +2360,7 @@ ${log.payload || ''}
           setLeadSourceIds={setLeadSourceIds}
           leadCategoryIds={leadCategoryIds}
           setLeadCategoryIds={setLeadCategoryIds}
+          setProjectAutoCreate={setProjectAutoCreate}
           leadSourceColors={leadSourceColors}
           setLeadSourceColors={setLeadSourceColors}
           leadCategoryColors={leadCategoryColors}
@@ -2457,6 +2459,7 @@ ${log.payload || ''}
             canEdit={getPermission("general_config") === "edit"}
             projectAutoCreate={projectAutoCreate}
             setProjectAutoCreate={setProjectAutoCreate}
+            leadCategories={leadCategories}
             financialRecords={financialRecords}
             setFinancialRecords={updateFinancialRecordsAndSync}
             financialCategories={financialCategories}
