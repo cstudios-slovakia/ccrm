@@ -3,10 +3,12 @@ import * as Icons from "lucide-react";
 import { 
   Folder, FolderPlus, Plus, ChevronRight, Calendar, 
   FileText, Trash2, Edit3, Move, X, Download, 
-  UploadCloud, Search, Briefcase, Users
+  UploadCloud, Search, Briefcase, Users, Hash, Coins
 } from "lucide-react";
 import type { UnifiedEntryRegistry, UnifiedEntryRow } from "../types";
 import { formatDateLocalized } from "../utils/localTime";
+import { CURRENCY_OPTIONS, currencyForRegion, formatMoney } from "../utils/currency";
+import { CustomSelect } from "./ui/CustomSelect";
 
 interface UnifiedEntryViewProps {
   registry: UnifiedEntryRegistry;
@@ -15,6 +17,9 @@ interface UnifiedEntryViewProps {
   systemLanguage: "en" | "sk" | "hu";
   leads?: any[]; // Passed down from App to allow linking client
   subPath?: string | null;
+  /** Configured system currency ("" / null = follow the display language). Only the
+      default for a new money entry — every row carries its own currency. */
+  systemCurrency?: string | null;
 }
 
 // Resolved dynamically from Lucide Icons collection
@@ -25,7 +30,8 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
   setRows,
   systemLanguage,
   leads = [],
-  subPath = null
+  subPath = null,
+  systemCurrency = null
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
   const [searchQuery, setSearchQuery] = useState("");
@@ -49,6 +55,10 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
   const [leadSearchQuery, setLeadSearchQuery] = useState("");
   const [isLeadDropdownOpen, setIsLeadDropdownOpen] = useState(false);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
+  const [formNumber, setFormNumber] = useState("");
+  const [formMoneyAmount, setFormMoneyAmount] = useState("");
+  const defaultCurrency = systemCurrency || currencyForRegion(systemLanguage);
+  const [formMoneyCurrency, setFormMoneyCurrency] = useState(defaultCurrency);
   const [formFile, setFormFile] = useState<{
     fileName: string;
     fileSize: string;
@@ -79,6 +89,9 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
         setFormLeadId(entryRow.leadId || "");
         const ld = entryRow.leadId ? leads.find(l => l.id === entryRow.leadId) : null;
         setLeadSearchQuery(ld ? ld.name : "");
+        setFormNumber(entryRow.numberValue !== undefined && entryRow.numberValue !== null ? String(entryRow.numberValue) : "");
+        setFormMoneyAmount(entryRow.moneyAmount !== undefined && entryRow.moneyAmount !== null ? String(entryRow.moneyAmount) : "");
+        setFormMoneyCurrency(entryRow.moneyCurrency || defaultCurrency);
         setFormFile(entryRow.fileName ? {
           fileName: entryRow.fileName,
           fileSize: entryRow.fileSize || "",
@@ -93,6 +106,8 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
   const isFileActive = registry.modules.includes("file") || (registry.foldersEnabled && registry.folderModules?.includes("file"));
   const isClientActive = registry.modules.includes("client") || (registry.foldersEnabled && registry.folderModules?.includes("client"));
   const isLeadActive = registry.modules.includes("lead") || (registry.foldersEnabled && registry.folderModules?.includes("lead"));
+  const isNumberActive = registry.modules.includes("number") || (registry.foldersEnabled && registry.folderModules?.includes("number"));
+  const isMoneyActive = registry.modules.includes("money") || (registry.foldersEnabled && registry.folderModules?.includes("money"));
 
   const folderSingularEn = registry.folderName || "Folder";
   const folderSingularSk = registry.folderName || "priečinok";
@@ -188,6 +203,9 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
     setClientSearchQuery("");
     setFormLeadId("");
     setLeadSearchQuery("");
+    setFormNumber("");
+    setFormMoneyAmount("");
+    setFormMoneyCurrency(defaultCurrency);
     setFormFile(null);
     setIsEditing(true);
   };
@@ -202,6 +220,9 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
     setClientSearchQuery("");
     setFormLeadId("");
     setLeadSearchQuery("");
+    setFormNumber("");
+    setFormMoneyAmount("");
+    setFormMoneyCurrency(defaultCurrency);
     setFormFile(null);
     setIsEditing(true);
   };
@@ -218,6 +239,9 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
     setFormLeadId(row.leadId || "");
     const ld = row.leadId ? leads.find(l => l.id === row.leadId) : null;
     setLeadSearchQuery(ld ? ld.name : "");
+    setFormNumber(row.numberValue !== undefined && row.numberValue !== null ? String(row.numberValue) : "");
+    setFormMoneyAmount(row.moneyAmount !== undefined && row.moneyAmount !== null ? String(row.moneyAmount) : "");
+    setFormMoneyCurrency(row.moneyCurrency || defaultCurrency);
     setFormFile(row.fileName ? {
       fileName: row.fileName,
       fileSize: row.fileSize || "",
@@ -225,6 +249,15 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
       filePath: row.filePath || ""
     } : null);
     setIsEditing(true);
+  };
+
+  // An empty box means "no value", not zero — the row keeps the field unset so
+  // the table shows a dash rather than a misleading 0.
+  const parseAmount = (raw: string): number | undefined => {
+    const trimmed = raw.trim().replace(",", ".");
+    if (!trimmed) return undefined;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : undefined;
   };
 
   const handleSaveEntry = (e: React.FormEvent) => {
@@ -245,6 +278,9 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
             warningDays: activeModules.includes("due_date") ? formWarningDays : undefined,
             clientId: activeModules.includes("client") ? formClientId : undefined,
             leadId: activeModules.includes("lead") ? formLeadId : undefined,
+            numberValue: activeModules.includes("number") ? parseAmount(formNumber) : undefined,
+            moneyAmount: activeModules.includes("money") ? parseAmount(formMoneyAmount) : undefined,
+            moneyCurrency: activeModules.includes("money") ? formMoneyCurrency : undefined,
             fileName: activeModules.includes("file") ? formFile?.fileName : undefined,
             fileSize: activeModules.includes("file") ? formFile?.fileSize : undefined,
             fileType: activeModules.includes("file") ? formFile?.fileType : undefined,
@@ -265,6 +301,9 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
         warningDays: activeModules.includes("due_date") ? formWarningDays : undefined,
         clientId: activeModules.includes("client") ? formClientId : undefined,
         leadId: activeModules.includes("lead") ? formLeadId : undefined,
+        numberValue: activeModules.includes("number") ? parseAmount(formNumber) : undefined,
+        moneyAmount: activeModules.includes("money") ? parseAmount(formMoneyAmount) : undefined,
+        moneyCurrency: activeModules.includes("money") ? formMoneyCurrency : undefined,
         fileName: activeModules.includes("file") ? formFile?.fileName : undefined,
         fileSize: activeModules.includes("file") ? formFile?.fileSize : undefined,
         fileType: activeModules.includes("file") ? formFile?.fileType : undefined,
@@ -293,6 +332,9 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
           warningDays: activeModules.includes("due_date") ? formWarningDays : undefined,
           clientId: activeModules.includes("client") ? formClientId : undefined,
           leadId: activeModules.includes("lead") ? formLeadId : undefined,
+          numberValue: activeModules.includes("number") ? parseAmount(formNumber) : undefined,
+          moneyAmount: activeModules.includes("money") ? parseAmount(formMoneyAmount) : undefined,
+          moneyCurrency: activeModules.includes("money") ? formMoneyCurrency : undefined,
           fileName: activeModules.includes("file") ? formFile?.fileName : undefined,
           fileSize: activeModules.includes("file") ? formFile?.fileSize : undefined,
           fileType: activeModules.includes("file") ? formFile?.fileType : undefined,
@@ -560,6 +602,50 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
     );
   };
 
+  const renderNumberField = () => (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+        {t("Number", "Číslo", "Szám")}
+      </label>
+      <input
+        type="number"
+        step="any"
+        value={formNumber}
+        onChange={(e) => setFormNumber(e.target.value)}
+        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700"
+        placeholder={t("e.g. 12", "napr. 12", "pl. 12")}
+      />
+    </div>
+  );
+
+  // Amount and currency travel together: the currency is stored on the row, so
+  // two entries in the same registry can be priced in different currencies.
+  const renderMoneyField = () => (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+        {t("Amount", "Suma", "Összeg")}
+      </label>
+      <div className="flex items-center gap-2">
+        <input
+          type="number"
+          step="any"
+          value={formMoneyAmount}
+          onChange={(e) => setFormMoneyAmount(e.target.value)}
+          className="flex-1 min-w-0 px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700"
+          placeholder={t("e.g. 1500", "napr. 1500", "pl. 1500")}
+        />
+        <div className="w-28 shrink-0">
+          <CustomSelect
+            value={formMoneyCurrency}
+            onChange={setFormMoneyCurrency}
+            className="!text-xs"
+            options={CURRENCY_OPTIONS.map(c => ({ value: c.code, label: `${c.code} ${c.symbol}` }))}
+          />
+        </div>
+      </div>
+    </div>
+  );
+
   const handleDeleteItem = (id: string, isFolder: boolean) => {
     const confirmMsg = isFolder
       ? t(
@@ -801,6 +887,12 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
               </div>
             )}
 
+            {/* Number module */}
+            {activeModules.includes("number") && renderNumberField()}
+
+            {/* Money module */}
+            {activeModules.includes("money") && renderMoneyField()}
+
             {/* Client module */}
             {activeModules.includes("client") && renderClientSelector()}
 
@@ -964,6 +1056,8 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                   <th className="py-3.5 px-6">{t(`Title / ${folderSingularEn}`, `Názov / ${folderSingularSk}`, `Cím / ${folderSingularHu}`)}</th>
                   {isDueDateActive && <th className="py-3.5 px-4">{t("Due Date", "Termín", "Határidő")}</th>}
                   {isFileActive && <th className="py-3.5 px-4">{t("Attachment", "Súbor", "Melléklet")}</th>}
+                  {isNumberActive && <th className="py-3.5 px-4">{t("Number", "Číslo", "Szám")}</th>}
+                  {isMoneyActive && <th className="py-3.5 px-4">{t("Amount", "Suma", "Összeg")}</th>}
                   {isClientActive && <th className="py-3.5 px-4">{t("Client", "Klient", "Ügyfél")}</th>}
                   {isLeadActive && <th className="py-3.5 px-4">{t("Lead", "Lead", "Lead")}</th>}
                   <th className="py-3.5 px-6 text-right">{t("Actions", "Akcie", "Műveletek")}</th>
@@ -1107,6 +1201,34 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                               <span className="max-w-[150px] truncate">{row.fileName}</span>
                               <span className="text-[9px] text-slate-400 font-medium">({row.fileSize})</span>
                             </a>
+                          ) : (
+                            <span className="text-slate-300">-</span>
+                          )}
+                        </td>
+                      )}
+
+                      {/* Number */}
+                      {isNumberActive && (
+                        <td className="py-3 px-4 text-slate-500">
+                          {rowModules.includes("number") && row.numberValue !== undefined && row.numberValue !== null ? (
+                            <span className="inline-flex items-center gap-1.5 text-slate-700 font-bold tabular-nums">
+                              <Hash className="h-3.5 w-3.5 text-slate-400" />
+                              {row.numberValue.toLocaleString()}
+                            </span>
+                          ) : (
+                            <span className="text-slate-300">-</span>
+                          )}
+                        </td>
+                      )}
+
+                      {/* Money */}
+                      {isMoneyActive && (
+                        <td className="py-3 px-4 text-slate-500">
+                          {rowModules.includes("money") && row.moneyAmount !== undefined && row.moneyAmount !== null ? (
+                            <span className="inline-flex items-center gap-1.5 text-slate-700 font-bold tabular-nums">
+                              <Coins className="h-3.5 w-3.5 text-slate-400" />
+                              {formatMoney(row.moneyAmount, row.moneyCurrency || defaultCurrency, systemLanguage, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
                           ) : (
                             <span className="text-slate-300">-</span>
                           )}
@@ -1316,6 +1438,12 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                     )}
                   </div>
                 )}
+
+                {/* Number module */}
+                {activeFormModules.includes("number") && renderNumberField()}
+
+                {/* Money module */}
+                {activeFormModules.includes("money") && renderMoneyField()}
 
                 {/* Client module */}
                 {activeFormModules.includes("client") && renderClientSelector()}

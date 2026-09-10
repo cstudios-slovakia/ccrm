@@ -329,6 +329,8 @@ function execute_autonomous_run($pdo, $ragPdo, $agent, $openAiKey) {
                 if (!empty($r['client_name'])) $block .= "- Client: " . $r['client_name'] . "\n";
                 if (!empty($r['due_date'])) $block .= "- Due Date: " . $r['due_date'] . "\n";
                 if (!empty($r['file_name'])) $block .= "- File Attachment: " . $r['file_name'] . "\n";
+                if (isset($r['number_value']) && $r['number_value'] !== null) $block .= "- Number: " . (0 + $r['number_value']) . "\n";
+                if (isset($r['money_amount']) && $r['money_amount'] !== null) $block .= "- Amount / Suma: " . (0 + $r['money_amount']) . " " . ($r['money_currency'] ?: '') . "\n";
 
                 $context_blocks[] = [
                     'text' => $block,

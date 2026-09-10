@@ -636,6 +636,20 @@ const UNIFIED_ENTRIES = [
     warningDays: 30,
     archived: false,
   },
+  {
+    id: 'ue-technika',
+    name: 'Technika a náradie',
+    entryName: 'Zariadenie',
+    folderName: 'Kategória',
+    icon: 'Wrench',
+    color: '#f59e0b',
+    modules: ['title', 'number', 'money'],
+    folderModules: ['title'],
+    foldersEnabled: true,
+    showFolderSummary: false,
+    warningDays: 30,
+    archived: false,
+  },
 ];
 
 const UNIFIED_ENTRIES_DATA = {
@@ -664,6 +678,12 @@ const UNIFIED_ENTRIES_DATA = {
       filePath: '/uploads/revizia.pdf',
       clientId: 'lead-novak',
     },
+  ],
+  'ue-technika': [
+    { id: 'ue-t-f-1', parentId: null, isFolder: true, title: 'Elektrické náradie', icon: 'Folder' },
+    { id: 'ue-t-1', parentId: 'ue-t-f-1', isFolder: false, title: 'Falcovačka Schlebach Pico', numberValue: 2, moneyAmount: 8450, moneyCurrency: 'EUR' },
+    { id: 'ue-t-2', parentId: 'ue-t-f-1', isFolder: false, title: 'Zvárací automat Leister', numberValue: 1, moneyAmount: 3200, moneyCurrency: 'CZK' },
+    { id: 'ue-t-3', parentId: null, isFolder: false, title: 'Montážna plošina Genie Z-45', numberValue: 1, moneyAmount: 24900, moneyCurrency: 'EUR' },
   ],
 };
 

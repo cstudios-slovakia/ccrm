@@ -1559,7 +1559,7 @@ export const UNIFIED_ENTRIES = [
   {
     id: 'ue-technika', name: 'Technika a náradie', entryName: 'Zariadenie', folderName: 'Kategória',
     icon: 'Wrench', color: '#f59e0b',
-    modules: ['title', 'due_date', 'file'], folderModules: ['title'],
+    modules: ['title', 'due_date', 'file', 'number', 'money'], folderModules: ['title'],
     foldersEnabled: true, showFolderSummary: false, warningDays: 30, archived: false,
   },
   {
@@ -1603,10 +1603,10 @@ export const UNIFIED_ENTRIES_DATA = {
   'ue-technika': [
     { id: 'folder-naradie', parentId: null, isFolder: true, title: 'Elektrické náradie', icon: 'Folder' },
     { id: 'folder-lesenie', parentId: null, isFolder: true, title: 'Lešenie a plošiny', icon: 'Folder' },
-    { id: 'entry-t1', parentId: 'folder-naradie', isFolder: false, title: 'Falcovačka Schlebach Pico', dueDate: isoDate(75) },
-    { id: 'entry-t2', parentId: 'folder-naradie', isFolder: false, title: 'Horúcovzdušný zvárací automat Leister', dueDate: isoDate(30) },
-    { id: 'entry-t3', parentId: 'folder-lesenie', isFolder: false, title: 'Fasádne lešenie 420 m² — sada', dueDate: isoDate(150) },
-    { id: 'entry-t4', parentId: 'folder-lesenie', isFolder: false, title: 'Montážna plošina Genie Z-45', dueDate: isoDate(12) },
+    { id: 'entry-t1', parentId: 'folder-naradie', isFolder: false, title: 'Falcovačka Schlebach Pico', dueDate: isoDate(75), numberValue: 2, moneyAmount: 8450, moneyCurrency: 'EUR' },
+    { id: 'entry-t2', parentId: 'folder-naradie', isFolder: false, title: 'Horúcovzdušný zvárací automat Leister', dueDate: isoDate(30), numberValue: 1, moneyAmount: 5980, moneyCurrency: 'EUR' },
+    { id: 'entry-t3', parentId: 'folder-lesenie', isFolder: false, title: 'Fasádne lešenie 420 m² — sada', dueDate: isoDate(150), numberValue: 420, moneyAmount: 12300, moneyCurrency: 'CZK' },
+    { id: 'entry-t4', parentId: 'folder-lesenie', isFolder: false, title: 'Montážna plošina Genie Z-45', dueDate: isoDate(12), numberValue: 1, moneyAmount: 24900, moneyCurrency: 'EUR' },
   ],
   'ue-skolenia': [
     { id: 'folder-erik', parentId: null, isFolder: true, title: 'Erik Kováč', icon: 'Folder' },

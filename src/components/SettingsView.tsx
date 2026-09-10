@@ -2441,7 +2441,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             { id: "due_date", label: t("Due Date", "Termín (Due Date)", "Határidő") },
                             { id: "file", label: t("File", "Súbor (File)", "Fájl") },
                             { id: "client", label: t("Client", "Klient (Client)", "Ügyfél") },
-                            { id: "lead", label: t("Lead", "Lead", "Lead") }
+                            { id: "lead", label: t("Lead", "Lead", "Lead") },
+                            { id: "number", label: t("Number", "Číslo (Number)", "Szám") },
+                            { id: "money", label: t("Money", "Suma (Money)", "Összeg") }
                           ].map((mod) => {
                             const isChecked = ueModules.includes(mod.id);
                             return (
@@ -2515,7 +2517,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               { id: "due_date", label: t("Due Date", "Termín (Due Date)", "Határidő") },
                               { id: "file", label: t("File", "Súbor (File)", "Fájl") },
                               { id: "client", label: t("Client", "Klient (Client)", "Ügyfél") },
-                              { id: "lead", label: t("Lead", "Lead", "Lead") }
+                              { id: "lead", label: t("Lead", "Lead", "Lead") },
+                              { id: "number", label: t("Number", "Číslo (Number)", "Szám") },
+                              { id: "money", label: t("Money", "Suma (Money)", "Összeg") }
                             ].map((mod) => {
                               const isChecked = ueFolderModules.includes(mod.id);
                               return (

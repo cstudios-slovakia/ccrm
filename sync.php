@@ -954,6 +954,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                         if (isset($r['lead_id'])) {
                             $rowItem['leadId'] = $r['lead_id'];
                         }
+                        if (isset($r['number_value'])) {
+                            $rowItem['numberValue'] = (float)$r['number_value'];
+                        }
+                        if (isset($r['money_amount'])) {
+                            $rowItem['moneyAmount'] = (float)$r['money_amount'];
+                            $rowItem['moneyCurrency'] = $r['money_currency'];
+                        }
                         if (isset($r['warning_days'])) {
                             $rowItem['warningDays'] = (int)$r['warning_days'];
                         }
@@ -1699,6 +1706,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (in_array('lead', $allActiveModules)) {
                     if (!ccrm_column_exists($pdo, $tableName, 'lead_id')) {
                         $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `lead_id` VARCHAR(50) NULL");
+                    }
+                }
+                if (in_array('number', $allActiveModules)) {
+                    if (!ccrm_column_exists($pdo, $tableName, 'number_value')) {
+                        $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `number_value` DECIMAL(20,4) NULL");
+                    }
+                }
+                if (in_array('money', $allActiveModules)) {
+                    if (!ccrm_column_exists($pdo, $tableName, 'money_amount')) {
+                        $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `money_amount` DECIMAL(20,4) NULL, ADD COLUMN `money_currency` VARCHAR(10) NULL");
                     }
                 }
             }
@@ -2964,6 +2981,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 $updates[] = "`lead_id` = ?";
                                 $params[] = $row['leadId'] ?? null;
                             }
+                            if (in_array('number', $rowModules) && ccrm_column_exists($pdo, $tableName, 'number_value')) {
+                                $updates[] = "`number_value` = ?";
+                                $params[] = (isset($row['numberValue']) && $row['numberValue'] !== '') ? (float)$row['numberValue'] : null;
+                            }
+                            if (in_array('money', $rowModules) && ccrm_column_exists($pdo, $tableName, 'money_amount')) {
+                                $updates[] = "`money_amount` = ?";
+                                $updates[] = "`money_currency` = ?";
+                                $params[] = (isset($row['moneyAmount']) && $row['moneyAmount'] !== '') ? (float)$row['moneyAmount'] : null;
+                                $params[] = $row['moneyCurrency'] ?? null;
+                            }
                             $params[] = $rowId; // for WHERE id = ?
                             $updateSql = "UPDATE `{$tableName}` SET " . implode(", ", $updates) . " WHERE `id` = ?";
                             $pdo->prepare($updateSql)->execute($params);
@@ -3019,6 +3046,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 $fields[] = "`lead_id`";
                                 $placeholders[] = "?";
                                 $params[] = $row['leadId'] ?? null;
+                            }
+                            if (in_array('number', $rowModules) && ccrm_column_exists($pdo, $tableName, 'number_value')) {
+                                $fields[] = "`number_value`";
+                                $placeholders[] = "?";
+                                $params[] = (isset($row['numberValue']) && $row['numberValue'] !== '') ? (float)$row['numberValue'] : null;
+                            }
+                            if (in_array('money', $rowModules) && ccrm_column_exists($pdo, $tableName, 'money_amount')) {
+                                $fields[] = "`money_amount`";
+                                $fields[] = "`money_currency`";
+                                $placeholders[] = "?";
+                                $placeholders[] = "?";
+                                $params[] = (isset($row['moneyAmount']) && $row['moneyAmount'] !== '') ? (float)$row['moneyAmount'] : null;
+                                $params[] = $row['moneyCurrency'] ?? null;
                             }
                             $insertSql = "INSERT INTO `{$tableName}` (" . implode(", ", $fields) . ") VALUES (" . implode(", ", $placeholders) . ")";
                             $pdo->prepare($insertSql)->execute($params);

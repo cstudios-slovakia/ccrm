@@ -349,6 +349,9 @@ export interface UnifiedEntryRow {
   filePath?: string;
   clientId?: string; // Links entry/folder to a Client/Lead ID
   leadId?: string; // Links entry/folder to a Lead ID
+  numberValue?: number;
+  moneyAmount?: number;
+  moneyCurrency?: string; // Per-entry currency for moneyAmount, e.g. "EUR"
   warningDays?: number;
   icon?: string;
 }

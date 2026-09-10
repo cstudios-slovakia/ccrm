@@ -2269,6 +2269,7 @@ ${log.payload || ''}
             systemLanguage={userLanguage}
             leads={leads}
             subPath={subPath}
+            systemCurrency={currencyCode}
           />
         );
       }
