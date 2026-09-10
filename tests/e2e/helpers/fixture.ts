@@ -279,10 +279,17 @@ const PROJECT_TYPES = [
       { id: 'attr-start', name: 'Začiatok realizácie', type: 'date', required: false },
       { id: 'attr-note', name: 'Poznámka', type: 'textarea', required: false },
       { id: 'attr-variant', name: 'Variant', type: 'select', required: false, options: ['Štandard', 'Premium'] },
+      { id: 'attr-budget', name: 'Rozpočet', type: 'money', required: false },
     ],
     timelineEventTypes: [
       { id: 'pet-visit', name: 'Obhliadka', color: '#0ea5e9', icon: 'Eye', attributes: [] },
-      { id: 'pet-work', name: 'Realizácia', color: '#16a34a', icon: 'Hammer', attributes: [] },
+      {
+        id: 'pet-work',
+        name: 'Realizácia',
+        color: '#16a34a',
+        icon: 'Hammer',
+        attributes: [{ id: 'attr-cost', name: 'Náklad etapy', type: 'money', required: false }],
+      },
     ],
   },
   {
@@ -308,7 +315,13 @@ const PROJECTS = [
     status: 'active',
     deadline: isoDate(4),
     managers: ['Erik'],
-    data: { 'attr-area': 145, 'attr-start': isoDate(5), 'attr-note': 'Prístup z dvora.', 'attr-variant': 'Premium' },
+    data: {
+      'attr-area': 145,
+      'attr-start': isoDate(5),
+      'attr-note': 'Prístup z dvora.',
+      'attr-variant': 'Premium',
+      'attr-budget': { amount: 18400, currency: 'EUR' },
+    },
     timeline: [
       {
         id: 'pev-1',

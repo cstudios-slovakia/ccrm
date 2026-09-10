@@ -12,8 +12,14 @@ import type {
 } from "../types";
 import type { Language } from "../utils/translations";
 import { nowLocalStamp, formatTimestampLocalized, formatDateLocalized, todayLocal } from "../utils/localTime";
-import { formatMoney } from "../utils/currency";
 import { evaluateProjectDeadline, projectDisplayName } from "../utils/projects";
+import {
+  CURRENCY_OPTIONS,
+  currencyForRegion,
+  formatMoney,
+  isMoneyValueEmpty,
+  parseMoneyValue,
+} from "../utils/currency";
 import { CustomSelect } from "./ui/CustomSelect";
 
 const SearchableClientSelect: React.FC<{
@@ -124,6 +130,72 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
   const money = (v: number) => formatMoney(v, currencyCode, userLanguage);
+  // What a money attribute starts on. Only the default: the currency is stored
+  // with the value, so each record keeps whichever one it was actually filled in.
+  const defaultCurrency = currencyCode || currencyForRegion(userLanguage);
+
+  /**
+   * The input pair behind a `money` attribute — amount on the left, its own
+   * currency on the right. Shared by project attributes and timeline event
+   * attributes so the two cannot drift apart.
+   */
+  /**
+   * A list-valued attribute (a multi-option checkbox, a files list) is stored in
+   * a free-form column, so sync.php JSON-encodes it on the way in and the
+   * project-data table hands the text straight back. Local state holds the array
+   * itself. Read both, or a saved checkbox selection comes back as a string,
+   * fails `Array.isArray`, and silently reads as nothing ticked.
+   */
+  const asList = (rawVal: unknown): any[] => {
+    if (Array.isArray(rawVal)) return rawVal;
+    if (typeof rawVal === "string" && rawVal.trim().startsWith("[")) {
+      try {
+        const parsed = JSON.parse(rawVal);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  };
+
+  const renderMoneyInput = (
+    rawVal: unknown,
+    updateVal: (next: any) => void,
+    compact = false
+  ) => {
+    const current = parseMoneyValue(rawVal, defaultCurrency);
+    const inputClass = compact
+      ? "flex-1 min-w-0 px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-800"
+      : "flex-1 min-w-0 px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800";
+    return (
+      <div className="flex items-center gap-2">
+        <input
+          type="number"
+          step="any"
+          value={current.amount === null ? "" : String(current.amount)}
+          onChange={e => {
+            const raw = e.target.value.trim().replace(",", ".");
+            const parsed = Number(raw);
+            updateVal({
+              amount: raw === "" || !Number.isFinite(parsed) ? null : parsed,
+              currency: current.currency,
+            });
+          }}
+          className={inputClass}
+          placeholder={t("Amount", "Čiastka", "Összeg")}
+        />
+        <div className="w-28 shrink-0">
+          <CustomSelect
+            value={current.currency}
+            onChange={code => updateVal({ amount: current.amount, currency: code })}
+            className="!text-xs"
+            options={CURRENCY_OPTIONS.map(c => ({ value: c.code, label: `${c.code} ${c.symbol}` }))}
+          />
+        </div>
+      </div>
+    );
+  };
 
   // Global state wiring
   const [projectName, setProjectName] = useState("");
@@ -402,7 +474,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           path: `/uploads/${eventId}_${resData.fileName || file.name}`
         };
 
-        const currentFiles = dynamicData[attrId] ? (Array.isArray(dynamicData[attrId]) ? dynamicData[attrId] : JSON.parse(dynamicData[attrId] || "[]")) : [];
+        const currentFiles = asList(dynamicData[attrId]);
         const nextFiles = [...currentFiles, uploadedFile];
 
         setDynamicData(prev => ({
@@ -420,7 +492,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   };
 
   const handleRemoveFile = (attrId: string, fileIndex: number) => {
-    const currentFiles = dynamicData[attrId] ? (Array.isArray(dynamicData[attrId]) ? dynamicData[attrId] : JSON.parse(dynamicData[attrId] || "[]")) : [];
+    const currentFiles = asList(dynamicData[attrId]);
     const nextFiles = currentFiles.filter((_: any, idx: number) => idx !== fileIndex);
     setDynamicData(prev => ({
       ...prev,
@@ -433,7 +505,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     for (const attr of projectType.attributes || []) {
       if (attr.required) {
         const val = dynamicData[attr.id];
-        if (val === undefined || val === null || val === "" || (Array.isArray(val) && val.length === 0)) {
+        const missing = attr.type === "money"
+          ? isMoneyValueEmpty(val, defaultCurrency)
+          : (val === undefined || val === null || val === "" || (Array.isArray(val) && val.length === 0));
+        if (missing) {
           alert(`"${attr.name}" ${t("is required.", "je povinné.", "megadása kötelező.")}`);
           return;
         }
@@ -470,7 +545,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     for (const attr of activeTimelineAttributes) {
       if (attr.required) {
         const val = timelineEventData[attr.id];
-        if (val === undefined || val === null || val === "" || (Array.isArray(val) && val.length === 0)) {
+        const missing = attr.type === "money"
+          ? isMoneyValueEmpty(val, defaultCurrency)
+          : (val === undefined || val === null || val === "" || (Array.isArray(val) && val.length === 0));
+        if (missing) {
           alert(`"${attr.name}" ${t("is required.", "je povinné.", "megadása kötelező.")}`);
           return;
         }
@@ -899,6 +977,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                       />
                     )}
 
+                    {/* Money — amount plus the currency this record is in */}
+                    {attr.type === "money" && renderMoneyInput(dynamicData[attr.id], updateVal)}
+
                     {/* Date */}
                     {attr.type === "date" && (
                       <input
@@ -944,7 +1025,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                       <div className="space-y-1 py-1">
                         {attr.options ? (
                           attr.options.map(opt => {
-                            const checkedList = Array.isArray(val) ? val : [];
+                            const checkedList = asList(val);
                             const isChecked = checkedList.includes(opt);
                             return (
                               <label key={opt} className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-600">
@@ -1000,7 +1081,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     {attr.type === "files" && (
                       <div className="space-y-2">
                         <div className="flex flex-col gap-1.5">
-                          {((Array.isArray(val) ? val : JSON.parse(val || "[]")) as any[]).map((f, fIdx) => (
+                          {asList(val).map((f, fIdx) => (
                             <div key={fIdx} className="flex items-center justify-between p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold">
                               <a 
                                 href={f.path} 
@@ -1237,6 +1318,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                               className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-800"
                             />
                           )}
+                          {attr.type === "money" && renderMoneyInput(timelineEventData[attr.id], updateVal, true)}
                           {attr.type === "date" && (
                             <input
                               type="date"
@@ -1281,7 +1363,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                             <div className="space-y-1 py-1">
                               {attr.options ? (
                                 attr.options.map(opt => {
-                                  const checkedList = Array.isArray(val) ? val : [];
+                                  const checkedList = asList(val);
                                   const isChecked = checkedList.includes(opt);
                                   return (
                                     <label key={opt} className="flex items-center gap-2 cursor-pointer text-xs text-slate-700 select-none">
@@ -1333,13 +1415,13 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                           {attr.type === "files" && (
                             <div className="space-y-2">
                               <div className="flex flex-col gap-1.5">
-                                {((Array.isArray(val) ? val : JSON.parse(val || "[]")) as any[]).map((f, fIdx) => (
+                                {asList(val).map((f, fIdx) => (
                                   <div key={fIdx} className="flex items-center justify-between p-2 bg-white border border-slate-200 rounded-xl text-[10.5px]">
                                     <span className="truncate max-w-[150px] font-bold text-slate-700">{f.name}</span>
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        const currentFiles = Array.isArray(val) ? val : JSON.parse(val || "[]");
+                                        const currentFiles = asList(val);
                                         const next = currentFiles.filter((_: any, idx: number) => idx !== fIdx);
                                         updateVal(next);
                                       }}
@@ -1379,7 +1461,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                       if (resData.success) {
                                         const sizeStr = file.size > 1024 * 1024 ? (file.size / (1024 * 1024)).toFixed(1) + " MB" : (file.size / 1024).toFixed(0) + " KB";
                                         const uploaded = { name: resData.fileName || file.name, size: sizeStr, path: `/uploads/${eventId}_${resData.fileName || file.name}` };
-                                        const current = Array.isArray(val) ? val : JSON.parse(val || "[]");
+                                        const current = asList(val);
                                         updateVal([...current, uploaded]);
                                       }
                                     } catch (err) {
@@ -1454,11 +1536,18 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                 if (rawVal === undefined || rawVal === null || rawVal === "" || (Array.isArray(rawVal) && rawVal.length === 0)) return null;
 
                                 let renderedVal = rawVal;
-                                if (attr.type === "contact") {
+                                if (attr.type === "money") {
+                                  const parsed = parseMoneyValue(rawVal, defaultCurrency);
+                                  if (parsed.amount === null) return null;
+                                  renderedVal = formatMoney(parsed.amount, parsed.currency, userLanguage, {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  });
+                                } else if (attr.type === "contact") {
                                   const c = leads.find(l => l.id === rawVal);
                                   renderedVal = c ? c.name : rawVal;
                                 } else if (attr.type === "files") {
-                                  const filesList = Array.isArray(rawVal) ? rawVal : JSON.parse(rawVal || "[]");
+                                  const filesList = asList(rawVal);
                                   renderedVal = (
                                     <div className="flex flex-col gap-1 mt-0.5">
                                       {filesList.map((f: any, fIdx: number) => (

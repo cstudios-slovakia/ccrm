@@ -39,6 +39,7 @@ const ATTRIBUTE_TYPES: { id: ProjectAttributeType; label: [string, string, strin
   { id: "time", label: ["Time", "Čas", "Idő"] },
   { id: "datetime", label: ["Date & Time", "Dátum a čas", "Dátum és idő"] },
   { id: "number", label: ["Number", "Číslo", "Szám"] },
+  { id: "money", label: ["Money (amount + currency)", "Suma (Čiastka + mena)", "Összeg (összeg + pénznem)"] },
   { id: "checkbox", label: ["Checkbox", "Zaškrtávacie pole", "Jelölőnégyzet"] },
   { id: "radio", label: ["Radio Button", "Prepínač", "Választógomb"] },
   { id: "files", label: ["File Upload", "Nahranie súboru", "Fájlfeltöltés"] },

@@ -836,6 +836,7 @@ export const PROJECT_TYPES = [
       { id: 'attr-variant', name: 'Typ krytiny', type: 'select', required: false, options: ['Pálená', 'Betónová', 'Plechová', 'mPVC'] },
       { id: 'attr-note', name: 'Poznámka k prístupu', type: 'textarea', required: false },
       { id: 'attr-scaffold', name: 'Lešenie v cene', type: 'checkbox', required: false },
+      { id: 'attr-budget', name: 'Rozpočet', type: 'money', required: false },
     ],
     timelineEventTypes: [
       { id: 'pet-visit', name: 'Obhliadka', color: '#0ea5e9', icon: 'Eye', attributes: [] },
@@ -854,6 +855,7 @@ export const PROJECT_TYPES = [
     hasGantt: true,
     attributes: [
       { id: 'attr-count', name: 'Počet otvorov', type: 'number', required: true },
+      { id: 'attr-budget', name: 'Rozpočet', type: 'money', required: false },
       { id: 'attr-profile', name: 'Profil', type: 'select', required: false, options: ['Plast 6-komorový', 'Hliník', 'Drevo EURO'] },
     ],
     timelineEventTypes: [

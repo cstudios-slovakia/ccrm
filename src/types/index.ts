@@ -377,6 +377,7 @@ export type ProjectAttributeType =
   | "time" 
   | "datetime" 
   | "number" 
+  | "money" 
   | "checkbox" 
   | "radio" 
   | "files"
