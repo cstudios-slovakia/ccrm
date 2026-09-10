@@ -302,6 +302,58 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   const [draggedWidgetId, setDraggedWidgetId] = useState<string | null>(null);
   const [dragOverWidgetId, setDragOverWidgetId] = useState<string | null>(null);
 
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  // A native HTML5 drag does not scroll the app's own scroll container (<main>)
+  // for us, so with a long layout a card could never be dragged above the top
+  // edge of the viewport — the rows scrolled off the top were unreachable as
+  // drop targets. Nudge the container ourselves while the pointer sits near one
+  // of its edges.
+  useEffect(() => {
+    if (!draggedWidgetId) return;
+
+    const findScroller = (): HTMLElement => {
+      let node = rootRef.current?.parentElement || null;
+      while (node) {
+        const overflowY = getComputedStyle(node).overflowY;
+        if (/(auto|scroll|overlay)/.test(overflowY) && node.scrollHeight > node.clientHeight) return node;
+        node = node.parentElement;
+      }
+      return (document.scrollingElement as HTMLElement) || document.documentElement;
+    };
+
+    const scroller = findScroller();
+    const isPage = scroller === document.scrollingElement || scroller === document.documentElement;
+    const EDGE = 100;      // px from an edge where auto-scrolling kicks in
+    const MAX_SPEED = 24;  // px per frame right at the edge
+
+    let pointerY: number | null = null;
+    let frame = 0;
+
+    const step = () => {
+      frame = requestAnimationFrame(step);
+      if (pointerY === null) return;
+      const top = isPage ? 0 : scroller.getBoundingClientRect().top;
+      const bottom = isPage ? window.innerHeight : scroller.getBoundingClientRect().bottom;
+      const fromTop = pointerY - top;
+      const fromBottom = bottom - pointerY;
+      if (fromTop < EDGE) {
+        scroller.scrollTop -= MAX_SPEED * (1 - Math.max(fromTop, 0) / EDGE);
+      } else if (fromBottom < EDGE) {
+        scroller.scrollTop += MAX_SPEED * (1 - Math.max(fromBottom, 0) / EDGE);
+      }
+    };
+
+    const onDragOver = (e: DragEvent) => { pointerY = e.clientY; };
+    window.addEventListener("dragover", onDragOver);
+    frame = requestAnimationFrame(step);
+
+    return () => {
+      window.removeEventListener("dragover", onDragOver);
+      cancelAnimationFrame(frame);
+    };
+  }, [draggedWidgetId]);
+
   const prevDashIdRef = useRef(dashboard.id);
 
   useEffect(() => {
@@ -713,7 +765,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   };
 
   return (
-    <div className="w-full space-y-6 animate-in fade-in slide-in-from-top-4 duration-300">
+    <div ref={rootRef} className="w-full space-y-6 animate-in fade-in slide-in-from-top-4 duration-300">
       {/* HEADER — same shape as every other module: title block on the left,
           actions on the right, hairline rule underneath. This view used to paint
           its own full-bleed background and padding on top of the app's own
@@ -1030,12 +1082,17 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
         {/* Prompt Bar docked at the bottom of the workspace in Edit Mode. Sticky
             (not the old viewport-fixed overlay) so it stays anchored to this
             view's own scroll flow like the rest of the app instead of floating
-            over — and clipping — the last row of widgets. */}
+            over — and clipping — the last row of widgets.
+
+            The sticky wrapper is full-width while the bar itself is only
+            max-w-3xl, so its transparent left/right margins used to swallow
+            every click on the widgets underneath. Only the bar takes pointer
+            events. */}
         {isEditMode && tempLayout.widgets.length > 0 && (
-          <div className="sticky bottom-6 z-40 mt-6 animate-in slide-in-from-bottom-6 duration-300">
+          <div className="sticky bottom-6 z-40 mt-6 pointer-events-none animate-in slide-in-from-bottom-6 duration-300">
             <form
               onSubmit={handleRunPrompt}
-              className="max-w-3xl mx-auto bg-white/90 backdrop-blur-md border border-slate-200/80 rounded-[28px] shadow-2xl p-4 flex items-center gap-3.5"
+              className="pointer-events-auto max-w-3xl mx-auto bg-white/90 backdrop-blur-md border border-slate-200/80 rounded-[28px] shadow-2xl p-4 flex items-center gap-3.5"
             >
               <textarea
                 rows={1}
