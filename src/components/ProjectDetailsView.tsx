@@ -19,7 +19,7 @@ import {
   isMoneyValueEmpty,
   parseMoneyValue,
 } from "../utils/currency";
-import { evaluateProjectDeadline, projectDisplayName, projectStatusOptions } from "../utils/projects";
+import { evaluateProjectDeadline, projectDisplayName, projectStatusBadgeClass, projectStatusDotClass, projectStatusOptions } from "../utils/projects";
 import { CustomSelect } from "./ui/CustomSelect";
 
 const SearchableClientSelect: React.FC<{
@@ -197,6 +197,76 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     );
   };
 
+  /**
+   * A custom attribute as it reads outside edit mode — the value alone, in the
+   * shape its type deserves (a money amount in its own currency, a file as a
+   * link, a multi-option checkbox as chips), never an input box.
+   */
+  const renderAttrValue = (attr: any, rawVal: any): React.ReactNode => {
+    const empty = <span className="text-slate-300 italic font-semibold">—</span>;
+
+    switch (attr.type) {
+      case "money": {
+        if (isMoneyValueEmpty(rawVal, defaultCurrency)) return empty;
+        const m = parseMoneyValue(rawVal, defaultCurrency);
+        return <span className="font-black text-slate-800">{formatMoney(m.amount || 0, m.currency, userLanguage)}</span>;
+      }
+      case "date":
+        return rawVal ? formatDateLocalized(rawVal, userLanguage) : empty;
+      case "datetime":
+        return rawVal ? formatTimestampLocalized(String(rawVal).replace("T", " "), userLanguage) : empty;
+      case "textarea":
+        return rawVal ? <span className="whitespace-pre-line leading-relaxed">{rawVal}</span> : empty;
+      case "checkbox": {
+        if (!attr.options) return rawVal
+          ? t("Yes", "Áno", "Igen")
+          : <span className="text-slate-300 italic font-semibold">{t("No", "Nie", "Nem")}</span>;
+        const picked = asList(rawVal);
+        if (picked.length === 0) return empty;
+        return (
+          <div className="flex flex-wrap gap-1.5">
+            {picked.map(opt => (
+              <span key={String(opt)} className="px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-[10px] font-black uppercase tracking-wider text-slate-600">
+                {String(opt)}
+              </span>
+            ))}
+          </div>
+        );
+      }
+      case "files": {
+        const files = asList(rawVal);
+        if (files.length === 0) return empty;
+        return (
+          <div className="flex flex-col gap-1">
+            {files.map((f: any, i: number) => (
+              <a
+                key={i}
+                href={f.path}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 text-indigo-600 hover:text-indigo-800 truncate"
+              >
+                <FileText className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                <span className="truncate">{f.name}</span>
+              </a>
+            ))}
+          </div>
+        );
+      }
+      case "contact": {
+        const contact = leads.find(l => l.id === rawVal);
+        if (!contact) return empty;
+        return (
+          <a href={`#lead-${contact.id}`} className="text-indigo-600 hover:text-indigo-800 font-black">
+            {contact.name}
+          </a>
+        );
+      }
+      default:
+        return rawVal === "" || rawVal === null || rawVal === undefined ? empty : String(rawVal);
+    }
+  };
+
   // Global state wiring
   const [projectName, setProjectName] = useState("");
   const [deadline, setDeadline] = useState("");
@@ -207,6 +277,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   // The paired lead is shown as the same green client card the lead view has;
   // the picker only comes back while re-pairing.
   const [pickingClient, setPickingClient] = useState(false);
+  // The left card reads as a card, not as a form. A project is looked at far
+  // more often than it is changed, so the inputs only come out on Edit.
+  const [isEditing, setIsEditing] = useState(false);
   const [dynamicData, setDynamicData] = useState<Record<string, any>>({});
   const [timeline, setTimeline] = useState<ProjectTimelineEvent[]>([]);
   const [gantt, setGantt] = useState<ProjectGanttRow[]>([]);
@@ -281,6 +354,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       setAssociatedClientId(project.clientId || "");
       setSelectedManagers(project.managers || []);
       setPickingClient(false);
+      setIsEditing(false);
       setDynamicData(project.data || {});
       setTimeline(project.timeline || []);
       setGantt(project.gantt || []);
@@ -504,9 +578,15 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     }));
   };
 
-  const handleSave = () => {
+  /**
+   * Writes the project back. `overrides` lets a single control save straight
+   * away without waiting for its own state to settle — the status dropdown
+   * stays live outside edit mode and saves the value it was just given.
+   * Returns false when a required attribute blocked the save.
+   */
+  const handleSave = (overrides: Partial<Project> = {}, validate = true): boolean => {
     // Basic validations for required dynamic attributes
-    for (const attr of projectType.attributes || []) {
+    for (const attr of (validate ? projectType.attributes || [] : [])) {
       if (attr.required) {
         const val = dynamicData[attr.id];
         const missing = attr.type === "money"
@@ -514,7 +594,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           : (val === undefined || val === null || val === "" || (Array.isArray(val) && val.length === 0));
         if (missing) {
           alert(`"${attr.name}" ${t("is required.", "je povinné.", "megadása kötelező.")}`);
-          return;
+          return false;
         }
       }
     }
@@ -532,10 +612,27 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       managers: selectedManagers,
       data: dynamicData,
       timeline,
-      gantt
+      gantt,
+      ...overrides
     };
 
     onSave(updatedProject);
+    return true;
+  };
+
+  /** Drops whatever edit mode changed and puts the card back in reading shape. */
+  const handleCancelEdit = () => {
+    if (project) {
+      setProjectName(project.name || "");
+      setDeadline(project.deadline || "");
+      setStatus(project.status || "active");
+      setAssociatedLeadId(project.leadId || "");
+      setAssociatedClientId(project.clientId || "");
+      setSelectedManagers(project.managers || []);
+      setDynamicData(project.data || {});
+    }
+    setPickingClient(false);
+    setIsEditing(false);
   };
 
   // Timeline Handlers
@@ -769,7 +866,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
         <div className="flex items-center gap-2">
           <button
-            onClick={handleSave}
+            onClick={() => handleSave()}
             className="flex items-center gap-1.5 px-4.5 py-2 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs uppercase tracking-wider transition-all shadow-md cursor-pointer"
           >
             <Icons.Save className="h-4.5 w-4.5" />
@@ -781,16 +878,260 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       {/* Workspace Body */}
       <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-12 gap-6 p-6 min-h-0 bg-slate-50/50">
         
-        {/* LEFT COLUMN: Metadata & Custom Attributes Card */}
-        <div className="lg:col-span-4 flex flex-col h-full overflow-hidden bg-white border border-slate-200 rounded-3xl p-5 shadow-sm text-left">
-          <h4 className="text-xs font-heading font-black text-slate-900 uppercase tracking-widest pb-3 border-b border-slate-100 mb-4 shrink-0">
-            {t("Project Card Details", "Detaily karty projektu", "Projekt részletei")}
-          </h4>
+        {/* LEFT COLUMN: the paired client on its own card, then the project's
+            own card. Both read as cards — a project is looked at far more
+            often than it is changed, so the inputs only come out on Edit. */}
+        <div className="lg:col-span-4 flex flex-col h-full min-h-0 overflow-y-auto gap-4 pr-1 scrollbar-thin text-left">
 
-          <div className="flex-1 overflow-y-auto space-y-4 pr-1 scrollbar-thin">
+          {/* Lead / Client pairing — the project's half of the link. The
+              same pairing is edited from the lead's "Linked projects" card,
+              and both write the one field (`leadId`) that carries it. */}
+          {(() => {
+            const pairedLead = leads.find(l => l.id === associatedLeadId);
+            const pairWith = (id: string) => {
+              setAssociatedLeadId(id);
+              setAssociatedClientId(id);
+              setPickingClient(false);
+              // Pairing a lead names the project after it, but only while it
+              // has no name yet — re-pairing never overwrites what somebody
+              // deliberately typed.
+              if (!projectName.trim()) {
+                const paired = leads.find(l => l.id === id);
+                if (paired?.name) setProjectName(paired.name);
+              }
+            };
+
+            if (!pairedLead || pickingClient) {
+              // Outside edit mode there is nothing to pick — just the note
+              // that this project hangs on nobody, and a way in.
+              if (!isEditing) {
+                return (
+                  <div className="shrink-0 bg-white border border-dashed border-slate-300 rounded-3xl p-5 shadow-sm text-center">
+                    <Icons.Unlink className="h-5 w-5 text-slate-300 mx-auto mb-2" />
+                    <p className="text-[11px] font-bold text-slate-500 leading-snug">
+                      {t(
+                        "This project is not paired with any lead or client.",
+                        "Tento projekt nie je spárovaný so žiadnym leadom ani klientom.",
+                        "Ez a projekt nincs leaddel vagy ügyféllel párosítva.",
+                      )}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => { setIsEditing(true); setPickingClient(true); }}
+                      className="mt-2.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
+                    >
+                      {t("Pair now", "Spárovať", "Párosítás")}
+                    </button>
+                  </div>
+                );
+              }
+              return (
+                <div className="shrink-0 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Paired Lead / Client", "Spárovaný lead / klient", "Párosított lead / ügyfél")}</label>
+                  <SearchableClientSelect
+                    leads={leads}
+                    value={associatedLeadId}
+                    onChange={pairWith}
+                    userLanguage={userLanguage}
+                  />
+                  {pairedLead && (
+                    <button
+                      type="button"
+                      onClick={() => setPickingClient(false)}
+                      className="mt-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                    >
+                      {t("Keep current pairing", "Ponechať súčasné spárovanie", "Jelenlegi párosítás megtartása")}
+                    </button>
+                  )}
+                  <p className="mt-1 text-[9px] font-semibold text-slate-400 leading-snug">
+                    {t(
+                      "Not paired with anyone — pick a lead or client to link this project to.",
+                      "Nie je spárovaný s nikým — vyberte lead alebo klienta, s ktorým sa projekt prepojí.",
+                      "Nincs párosítva — válasszon leadet vagy ügyfelet a projekt összekapcsolásához.",
+                    )}
+                  </p>
+                </div>
+              );
+            }
+
+            // The same green card the lead view shows for its client, so a
+            // pairing reads the same from either end of the link.
+            const initials = pairedLead.name
+              .split(/\s+/)
+              .filter(Boolean)
+              .slice(0, 2)
+              .map(w => w[0]?.toUpperCase() || "")
+              .join("") || "?";
+            const clientTypeLabel =
+              pairedLead.clientType === "business"
+                ? `🏢 ${t("Company / Business", "Firma / Podnikanie", "Cég / Vállalkozás")}`
+                : pairedLead.clientType === "partner"
+                  ? `🤝 ${t("Dealer Partner", "Obchodný partner", "Kereskedő partner")}`
+                  : `👤 ${t("Private Person", "Súkromná osoba", "Magánszemély")}`;
+            const addr = pairedLead.address;
+            const city = addr?.city || pairedLead.city || "";
+            const addressText = [addr?.street, city].filter(Boolean).join(", ") + (addr?.postalCode ? ` (${addr.postalCode})` : "");
+            const noneAdded = <span className="text-slate-300 italic">{getTranslation(userLanguage, "profile.none_added")}</span>;
+
+            return (
+              <div className="shrink-0 rounded-3xl border-2 border-emerald-400 bg-emerald-50/70 shadow-md p-4 space-y-3 text-emerald-950">
+                <div className="border-b-2 border-emerald-200/50 pb-2 flex items-center justify-between gap-2 flex-wrap">
+                  <span className="text-[10px] font-black text-emerald-700 uppercase tracking-wider flex items-center gap-1.5 min-w-0">
+                    <Icons.Briefcase className="h-4 w-4 text-emerald-600 stroke-[2.5] shrink-0" />
+                    <span>{getTranslation(userLanguage, "common.client_relationship_card")}</span>
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[8px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200 uppercase tracking-wider shrink-0">
+                    {getTranslation(userLanguage, "common.synced_profile")}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-2 border-emerald-700 flex items-center justify-center font-heading font-black text-sm shadow shrink-0">
+                    {initials}
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="text-sm font-black text-slate-800 line-clamp-1">{pairedLead.name}</h4>
+                    <span className="text-[9px] font-extrabold uppercase tracking-wide text-emerald-700">{clientTypeLabel}</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-[11px] bg-white/70 p-3 rounded-xl border border-emerald-200/50">
+                  <div className="space-y-0.5 min-w-0">
+                    <span className="text-[8px] font-black text-emerald-700/60 uppercase tracking-wider block">
+                      {getTranslation(userLanguage, "profile.phone_number")}
+                    </span>
+                    <span className="font-extrabold text-slate-700 block truncate">
+                      {pairedLead.phone ? (
+                        <span className="flex items-center gap-1"><Phone className="h-3 w-3 text-emerald-600 shrink-0" />{pairedLead.phone}</span>
+                      ) : noneAdded}
+                    </span>
+                  </div>
+                  <div className="space-y-0.5 min-w-0">
+                    <span className="text-[8px] font-black text-emerald-700/60 uppercase tracking-wider block">
+                      {getTranslation(userLanguage, "profile.email_address")}
+                    </span>
+                    <span className="font-extrabold text-slate-700 block truncate">
+                      {pairedLead.email ? (
+                        <span className="flex items-center gap-1"><Mail className="h-3 w-3 text-emerald-600 shrink-0" /><span className="truncate">{pairedLead.email}</span></span>
+                      ) : noneAdded}
+                    </span>
+                  </div>
+                  <div className="space-y-0.5 col-span-2 border-t border-emerald-200/50 pt-2 mt-1">
+                    <span className="text-[8px] font-black text-emerald-700/60 uppercase tracking-wider block">
+                      {getTranslation(userLanguage, "profile.location_address")}
+                    </span>
+                    <span className="font-extrabold text-slate-700 block">
+                      {addressText ? (
+                        <span className="flex items-center gap-1"><Icons.MapPin className="h-3.5 w-3.5 text-emerald-600 shrink-0" /><span className="line-clamp-1">{addressText}</span></span>
+                      ) : noneAdded}
+                    </span>
+                  </div>
+                  {pairedLead.website && (
+                    <div className="space-y-0.5 col-span-2 border-t border-emerald-200/50 pt-2 mt-1">
+                      <span className="text-[8px] font-black text-emerald-700/60 uppercase tracking-wider block">
+                        {getTranslation(userLanguage, "profile.website_link")}
+                      </span>
+                      <a
+                        href={`https://${pairedLead.website.replace(/^https?:\/\//, "")}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-extrabold text-blue-600 hover:underline flex items-center gap-1"
+                      >
+                        <Icons.Globe className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                        <span className="truncate">{pairedLead.website}</span>
+                      </a>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between gap-2 pt-1 flex-wrap">
+                  {isEditing && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setPickingClient(true)}
+                      className="px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider text-emerald-700 hover:bg-emerald-100 transition-colors cursor-pointer flex items-center gap-1"
+                      title={t("Pair with a different lead or client", "Spárovať s iným leadom alebo klientom", "Másik leaddel vagy ügyféllel párosítás")}
+                    >
+                      <Icons.Repeat className="h-3 w-3" />
+                      {t("Change", "Zmeniť", "Módosítás")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setAssociatedLeadId(""); setAssociatedClientId(""); setPickingClient(false); }}
+                      className="px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer flex items-center gap-1"
+                      title={t("Unpair this project", "Zrušiť spárovanie projektu", "Párosítás megszüntetése")}
+                    >
+                      <Icons.Unlink className="h-3 w-3" />
+                      {t("Unpair", "Odpojiť", "Leválasztás")}
+                    </button>
+                  </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => { window.location.hash = `client-${encodeURIComponent(pairedLead.name)}`; }}
+                    className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-black uppercase tracking-wider shadow transition-all active:scale-95 flex items-center justify-center gap-1.5 border border-emerald-700 cursor-pointer"
+                  >
+                    {getTranslation(userLanguage, "common.view_full_profile")}
+                    <ArrowLeft className="h-3.5 w-3.5 rotate-180" />
+                  </button>
+                </div>
+
+                {isEditing && (
+                <p className="text-[9px] font-semibold text-emerald-800/60 leading-snug">
+                  {t(
+                    "This project shows up on the lead's card too. Saved with the project.",
+                    "Tento projekt sa zobrazí aj na karte leadu. Uloží sa spolu s projektom.",
+                    "Ez a projekt a lead kartonján is megjelenik. A projekttel együtt mentődik.",
+                  )}
+                </p>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* PROJECT CARD DETAILS */}
+          <div className="shrink-0 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 mb-4">
+              <h4 className="text-xs font-heading font-black text-slate-900 uppercase tracking-widest">
+                {t("Project Card Details", "Detaily karty projektu", "Projekt részletei")}
+              </h4>
+              {!isEditing ? (
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(true)}
+                  className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-[10px] font-black uppercase tracking-wider text-slate-500 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50 transition-colors cursor-pointer"
+                >
+                  <Edit3 className="h-3.5 w-3.5" />
+                  {t("Edit", "Upraviť", "Szerkesztés")}
+                </button>
+              ) : (
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleCancelEdit}
+                    className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                  >
+                    {t("Cancel", "Zrušiť", "Mégse")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { if (handleSave()) setIsEditing(false); }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black uppercase tracking-wider shadow-sm transition-all active:scale-95 cursor-pointer"
+                  >
+                    <Icons.Save className="h-3.5 w-3.5" />
+                    {t("Save", "Uložiť", "Mentés")}
+                  </button>
+                </div>
+              )}
+            </div>
+
+          <div className="space-y-4">
             {/* Project name. Projects used to have none and simply wore the
                 paired lead's, which left a project paired with nobody with no
-                name at all. Still optional: left empty, it reads as the lead. */}
+                name at all. Still optional: left empty, it reads as the lead.
+                Only in edit mode — the header already carries the name. */}
+            {isEditing && (
             <div>
               <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Project Name", "Názov projektu", "Projekt neve")}</label>
               <input
@@ -810,14 +1151,26 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 </p>
               )}
             </div>
+            )}
 
-            {/* Status */}
+            {/* Status. Stays live outside edit mode — moving a project along is
+                the one thing done from the card itself, so it saves on the spot.
+                Each status wears its own colour, badge and dropdown row alike. */}
             <div>
               <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Status", "Stav", "Állapot")}</label>
               <CustomSelect
                 value={status}
-                onChange={v => setStatus(v)}
-                options={projectStatusOptions(t)}
+                onChange={v => {
+                  setStatus(v);
+                  if (!isEditing) handleSave({ status: v }, false);
+                }}
+                className={`!font-black ${projectStatusBadgeClass(status)}`}
+                icon={<span className={`h-2 w-2 rounded-full shrink-0 inline-block ${projectStatusDotClass(status)}`} />}
+                options={projectStatusOptions(t).map(o => ({
+                  value: o.value,
+                  label: o.label,
+                  icon: <span className={`h-2.5 w-2.5 rounded-full shrink-0 inline-block ${projectStatusDotClass(o.value)}`} />,
+                }))}
               />
             </div>
 
@@ -828,6 +1181,13 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               return (
                 <div>
                   <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Deadline", "Termín dokončenia", "Határidő")}</label>
+                  {!isEditing ? (
+                    <p className="text-xs font-bold text-slate-800">
+                      {deadline
+                        ? formatDateLocalized(deadline, userLanguage)
+                        : <span className="text-slate-300 italic font-semibold">{t("No deadline set", "Bez termínu", "Nincs határidő")}</span>}
+                    </p>
+                  ) : (
                   <div className="flex items-center gap-2">
                     <input
                       type="date"
@@ -846,6 +1206,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                       </button>
                     )}
                   </div>
+                  )}
                   {dl && (
                     <p className={`mt-1.5 text-[10px] font-black uppercase tracking-wider ${
                       dl.tone === "overdue"
@@ -867,188 +1228,6 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               );
             })()}
 
-            {/* Lead / Client pairing — the project's half of the link. The
-                same pairing is edited from the lead's "Linked projects" card,
-                and both write the one field (`leadId`) that carries it. */}
-            <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Paired Lead / Client", "Spárovaný lead / klient", "Párosított lead / ügyfél")}</label>
-              {(() => {
-                const pairedLead = leads.find(l => l.id === associatedLeadId);
-                const pairWith = (id: string) => {
-                  setAssociatedLeadId(id);
-                  setAssociatedClientId(id);
-                  setPickingClient(false);
-                  // Pairing a lead names the project after it, but only while it
-                  // has no name yet — re-pairing never overwrites what somebody
-                  // deliberately typed.
-                  if (!projectName.trim()) {
-                    const paired = leads.find(l => l.id === id);
-                    if (paired?.name) setProjectName(paired.name);
-                  }
-                };
-
-                if (!pairedLead || pickingClient) {
-                  return (
-                    <>
-                      <SearchableClientSelect
-                        leads={leads}
-                        value={associatedLeadId}
-                        onChange={pairWith}
-                        userLanguage={userLanguage}
-                      />
-                      {pairedLead && (
-                        <button
-                          type="button"
-                          onClick={() => setPickingClient(false)}
-                          className="mt-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
-                        >
-                          {t("Keep current pairing", "Ponechať súčasné spárovanie", "Jelenlegi párosítás megtartása")}
-                        </button>
-                      )}
-                      <p className="mt-1 text-[9px] font-semibold text-slate-400 leading-snug">
-                        {t(
-                          "Not paired with anyone — pick a lead or client to link this project to.",
-                          "Nie je spárovaný s nikým — vyberte lead alebo klienta, s ktorým sa projekt prepojí.",
-                          "Nincs párosítva — válasszon leadet vagy ügyfelet a projekt összekapcsolásához.",
-                        )}
-                      </p>
-                    </>
-                  );
-                }
-
-                // The same green card the lead view shows for its client, so a
-                // pairing reads the same from either end of the link.
-                const initials = pairedLead.name
-                  .split(/\s+/)
-                  .filter(Boolean)
-                  .slice(0, 2)
-                  .map(w => w[0]?.toUpperCase() || "")
-                  .join("") || "?";
-                const clientTypeLabel =
-                  pairedLead.clientType === "business"
-                    ? `🏢 ${t("Company / Business", "Firma / Podnikanie", "Cég / Vállalkozás")}`
-                    : pairedLead.clientType === "partner"
-                      ? `🤝 ${t("Dealer Partner", "Obchodný partner", "Kereskedő partner")}`
-                      : `👤 ${t("Private Person", "Súkromná osoba", "Magánszemély")}`;
-                const addr = pairedLead.address;
-                const city = addr?.city || pairedLead.city || "";
-                const addressText = [addr?.street, city].filter(Boolean).join(", ") + (addr?.postalCode ? ` (${addr.postalCode})` : "");
-                const noneAdded = <span className="text-slate-300 italic">{getTranslation(userLanguage, "profile.none_added")}</span>;
-
-                return (
-                  <div className="rounded-[22px] border-2 border-emerald-400 bg-emerald-50/70 shadow-md p-4 space-y-3 text-emerald-950">
-                    <div className="border-b-2 border-emerald-200/50 pb-2 flex items-center justify-between gap-2 flex-wrap">
-                      <span className="text-[10px] font-black text-emerald-700 uppercase tracking-wider flex items-center gap-1.5 min-w-0">
-                        <Icons.Briefcase className="h-4 w-4 text-emerald-600 stroke-[2.5] shrink-0" />
-                        <span>{getTranslation(userLanguage, "common.client_relationship_card")}</span>
-                      </span>
-                      <span className="px-2 py-0.5 rounded-full text-[8px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200 uppercase tracking-wider shrink-0">
-                        {getTranslation(userLanguage, "common.synced_profile")}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-2 border-emerald-700 flex items-center justify-center font-heading font-black text-sm shadow shrink-0">
-                        {initials}
-                      </div>
-                      <div className="min-w-0">
-                        <h4 className="text-sm font-black text-slate-800 line-clamp-1">{pairedLead.name}</h4>
-                        <span className="text-[9px] font-extrabold uppercase tracking-wide text-emerald-700">{clientTypeLabel}</span>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3 text-[11px] bg-white/70 p-3 rounded-xl border border-emerald-200/50">
-                      <div className="space-y-0.5 min-w-0">
-                        <span className="text-[8px] font-black text-emerald-700/60 uppercase tracking-wider block">
-                          {getTranslation(userLanguage, "profile.phone_number")}
-                        </span>
-                        <span className="font-extrabold text-slate-700 block truncate">
-                          {pairedLead.phone ? (
-                            <span className="flex items-center gap-1"><Phone className="h-3 w-3 text-emerald-600 shrink-0" />{pairedLead.phone}</span>
-                          ) : noneAdded}
-                        </span>
-                      </div>
-                      <div className="space-y-0.5 min-w-0">
-                        <span className="text-[8px] font-black text-emerald-700/60 uppercase tracking-wider block">
-                          {getTranslation(userLanguage, "profile.email_address")}
-                        </span>
-                        <span className="font-extrabold text-slate-700 block truncate">
-                          {pairedLead.email ? (
-                            <span className="flex items-center gap-1"><Mail className="h-3 w-3 text-emerald-600 shrink-0" /><span className="truncate">{pairedLead.email}</span></span>
-                          ) : noneAdded}
-                        </span>
-                      </div>
-                      <div className="space-y-0.5 col-span-2 border-t border-emerald-200/50 pt-2 mt-1">
-                        <span className="text-[8px] font-black text-emerald-700/60 uppercase tracking-wider block">
-                          {getTranslation(userLanguage, "profile.location_address")}
-                        </span>
-                        <span className="font-extrabold text-slate-700 block">
-                          {addressText ? (
-                            <span className="flex items-center gap-1"><Icons.MapPin className="h-3.5 w-3.5 text-emerald-600 shrink-0" /><span className="line-clamp-1">{addressText}</span></span>
-                          ) : noneAdded}
-                        </span>
-                      </div>
-                      {pairedLead.website && (
-                        <div className="space-y-0.5 col-span-2 border-t border-emerald-200/50 pt-2 mt-1">
-                          <span className="text-[8px] font-black text-emerald-700/60 uppercase tracking-wider block">
-                            {getTranslation(userLanguage, "profile.website_link")}
-                          </span>
-                          <a
-                            href={`https://${pairedLead.website.replace(/^https?:\/\//, "")}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="font-extrabold text-blue-600 hover:underline flex items-center gap-1"
-                          >
-                            <Icons.Globe className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                            <span className="truncate">{pairedLead.website}</span>
-                          </a>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex items-center justify-between gap-2 pt-1 flex-wrap">
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => setPickingClient(true)}
-                          className="px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider text-emerald-700 hover:bg-emerald-100 transition-colors cursor-pointer flex items-center gap-1"
-                          title={t("Pair with a different lead or client", "Spárovať s iným leadom alebo klientom", "Másik leaddel vagy ügyféllel párosítás")}
-                        >
-                          <Icons.Repeat className="h-3 w-3" />
-                          {t("Change", "Zmeniť", "Módosítás")}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => { setAssociatedLeadId(""); setAssociatedClientId(""); setPickingClient(false); }}
-                          className="px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer flex items-center gap-1"
-                          title={t("Unpair this project", "Zrušiť spárovanie projektu", "Párosítás megszüntetése")}
-                        >
-                          <Icons.Unlink className="h-3 w-3" />
-                          {t("Unpair", "Odpojiť", "Leválasztás")}
-                        </button>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => { window.location.hash = `client-${encodeURIComponent(pairedLead.name)}`; }}
-                        className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-black uppercase tracking-wider shadow transition-all active:scale-95 flex items-center justify-center gap-1.5 border border-emerald-700 cursor-pointer"
-                      >
-                        {getTranslation(userLanguage, "common.view_full_profile")}
-                        <ArrowLeft className="h-3.5 w-3.5 rotate-180" />
-                      </button>
-                    </div>
-
-                    <p className="text-[9px] font-semibold text-emerald-800/60 leading-snug">
-                      {t(
-                        "This project shows up on the lead's card too. Saved with the project.",
-                        "Tento projekt sa zobrazí aj na karte leadu. Uloží sa spolu s projektom.",
-                        "Ez a projekt a lead kartonján is megjelenik. A projekttel együtt mentődik.",
-                      )}
-                    </p>
-                  </div>
-                );
-              })()}
-            </div>
-
             {/* Project Managers. A project can carry several, so the dropdown
                 adds one at a time and the chosen ones sit above it as the same
                 coloured chips the lead view wears for its manager. */}
@@ -1061,11 +1240,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     return (
                       <span
                         key={name}
-                        className="inline-flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider shadow-sm"
+                        className={`inline-flex items-center gap-1 pl-2.5 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider shadow-sm ${isEditing ? "pr-1" : "pr-2.5"}`}
                         style={{ backgroundColor: `${color}15`, color, borderColor: `${color}30` }}
                       >
                         <Icons.User className="h-3 w-3 shrink-0" />
                         <span className="truncate max-w-[10rem]">{name}</span>
+                        {isEditing && (
                         <button
                           type="button"
                           onClick={() => setSelectedManagers(prev => prev.filter(m => m !== name))}
@@ -1074,12 +1254,13 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         >
                           <X className="h-3 w-3" />
                         </button>
+                        )}
                       </span>
                     );
                   })}
                 </div>
               )}
-              {(() => {
+              {isEditing && (() => {
                 const available = users.filter(u => !selectedManagers.includes(u.name));
                 return (
                   <CustomSelect
@@ -1104,7 +1285,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 );
               })()}
               {selectedManagers.length === 0 && (
-                <p className="mt-1 text-[9px] font-semibold text-slate-400 leading-snug">
+                <p className="text-xs font-semibold text-slate-300 italic">
                   {t(
                     "Nobody is on this project yet.",
                     "Na projekte zatiaľ nikto nie je priradený.",
@@ -1127,9 +1308,13 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 return (
                   <div key={attr.id}>
                     <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
-                      {attr.name} {attr.required && <span className="text-red-500">*</span>}
+                      {attr.name} {isEditing && attr.required && <span className="text-red-500">*</span>}
                     </label>
 
+                    {!isEditing ? (
+                      <div className="text-xs font-bold text-slate-800">{renderAttrValue(attr, dynamicData[attr.id])}</div>
+                    ) : (
+                    <>
                     {/* Textfield */}
                     {attr.type === "textfield" && (
                       <input
@@ -1350,11 +1535,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         })()}
                       </div>
                     )}
+                    </>
+                    )}
 
                   </div>
                 );
               })}
             </div>
+          </div>
           </div>
         </div>
 

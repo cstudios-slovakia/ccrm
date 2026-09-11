@@ -212,3 +212,21 @@ export const projectStatusBadgeClass = (status: string | undefined | null): stri
       return "bg-slate-50 text-slate-500 border-slate-200";
   }
 };
+
+/** The coloured dot that carries a status in a dropdown row or trigger. */
+export const projectStatusDotClass = (status: string | undefined | null): string => {
+  switch (String(status ?? "").trim()) {
+    case "new":
+      return "bg-sky-500";
+    case "active":
+      return "bg-purple-500";
+    case "completed":
+      return "bg-emerald-500";
+    case "on_hold":
+      return "bg-amber-500";
+    case "cancelled":
+      return "bg-rose-500";
+    default:
+      return "bg-slate-400";
+  }
+};
