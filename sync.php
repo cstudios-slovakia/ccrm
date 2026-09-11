@@ -1047,6 +1047,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'clientId' => $pRow['client_id'] ?? null,
                 'status' => $pRow['status'],
                 'deadline' => $pRow['deadline'] ?? null,
+                'delayReason' => $pRow['delay_reason'] ?? null,
                 'managers' => $managersByProject[$projId] ?? [],
                 'data' => [],
                 'timeline' => [],
@@ -2232,7 +2233,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingProjIds = $pdo->query("SELECT `id` FROM `projects`")->fetchAll(PDO::FETCH_COLUMN);
             $processedProjIds = [];
 
-            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `deadline`) VALUES (?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `deadline`=VALUES(`deadline`)");
+            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `deadline`, `delay_reason`) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `deadline`=VALUES(`deadline`), `delay_reason`=VALUES(`delay_reason`)");
 
             // Manager assignments are replaced per project, never globally. The old
             // unconditional `DELETE FROM project_managers` assumed every push carried
@@ -2260,6 +2261,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $projDeadline = $dm[1];
                 }
 
+                // Why the project is late. Required by the client once a project
+                // is actually past its deadline; empty is stored as NULL so
+                // "not late" and "late but unexplained" read the same way back.
+                $projDelayReason = trim((string)($p['delayReason'] ?? ''));
+                $projDelayReason = $projDelayReason === '' ? null : mb_substr($projDelayReason, 0, 500);
+
                 $insProj->execute([
                     $projId,
                     $p['projectTypeId'],
@@ -2267,7 +2274,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     empty($p['leadId']) ? null : $p['leadId'],
                     empty($p['clientId']) ? null : $p['clientId'],
                     $p['status'] ?? 'active',
-                    $projDeadline
+                    $projDeadline,
+                    $projDelayReason
                 ]);
 
                 // Only rewrite this project's managers when the payload actually carries

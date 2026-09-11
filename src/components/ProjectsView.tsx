@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import * as Icons from "lucide-react";
-import { Plus, Trash2, Settings, Search, Users, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, CalendarClock } from "lucide-react";
-import type { Project, ProjectAutoCreateSettings, ProjectType, Lead, UserProfile, FinancialRecord, FinancialCategory } from "../types";
+import { Plus, Trash2, Settings, Search, Users, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, CalendarClock, Flag } from "lucide-react";
+import type { Project, ProjectAutoCreateSettings, ProjectStatus, ProjectType, Lead, UserProfile, FinancialRecord, FinancialCategory } from "../types";
 import { ProjectDetailsView } from "./ProjectDetailsView";
 import { ProjectSettings } from "./ProjectSettings";
 import { CustomSelect } from "./ui/CustomSelect";
@@ -12,9 +12,12 @@ import {
   DEFAULT_PROJECT_STATUS,
   evaluateProjectDeadline,
   projectDisplayName,
+  projectDelayReason,
+  projectNeedsDelayReason,
   projectStatusBadgeClass,
   projectStatusLabel,
   projectStatusOptions,
+  projectStatusOrder,
 } from "../utils/projects";
 import type { ProjectDeadlineStatus } from "../utils/projects";
 import { todayLocal, formatDateLocalized } from "../utils/localTime";
@@ -46,12 +49,36 @@ const STAT_CHIP_TONES = {
     active: "bg-emerald-600 border-emerald-600 text-white",
     count: "text-emerald-600",
   },
+  amber: {
+    idle: "border-slate-200 text-slate-500 hover:border-amber-200 hover:text-amber-600",
+    active: "bg-amber-600 border-amber-600 text-white",
+    count: "text-amber-600",
+  },
   rose: {
     idle: "border-slate-200 text-slate-500 hover:border-rose-200 hover:text-rose-600",
     active: "bg-rose-600 border-rose-600 text-white",
     count: "text-rose-600",
   },
 } as const;
+
+/*
+  One tone per project status, matching the badge colours in utils/projects.ts —
+  a chip and the badge on the row it counts wear the same colour.
+*/
+const STATUS_CHIP_TONES: Record<ProjectStatus, typeof STAT_CHIP_TONES[keyof typeof STAT_CHIP_TONES]> = {
+  new: STAT_CHIP_TONES.sky,
+  active: STAT_CHIP_TONES.purple,
+  completed: STAT_CHIP_TONES.emerald,
+  on_hold: STAT_CHIP_TONES.amber,
+  cancelled: STAT_CHIP_TONES.rose,
+};
+
+/*
+  The status dropdown in the filter bar. The chips above it do the same job and
+  carry the counts as well, so it is hidden rather than deleted — everything it
+  needs is still wired up, and one constant brings it back.
+*/
+const SHOW_STATUS_DROPDOWN = false;
 
 /** The "no manager assigned" row in the manager filter. Not a real name. */
 const UNASSIGNED_MANAGER = "__unassigned__";
@@ -135,11 +162,26 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     return ids;
   }, [projects, projectTypes, today]);
 
-  // Counts behind the summary strip.
+  /* Projects past their deadline with nobody having written down why — the red
+     flag. Counted here so the flag filter and the badges on the rows are the
+     same verdict. */
+  const unexplainedIds = useMemo(() => {
+    const ids = new Set<string>();
+    projects.forEach(p => {
+      const dl = evaluateProjectDeadline(p, projectTypes.find(pt => pt.id === p.projectTypeId), today);
+      if (projectNeedsDelayReason(p, dl)) ids.add(p.id);
+    });
+    return ids;
+  }, [projects, projectTypes, today]);
+
+  // Counts behind the summary strip. One chip per real project status, so the
+  // strip and the (now hidden) status dropdown can never offer different lists.
   const totalProjects = projects.length;
-  const newCount = projects.filter(p => p.status === "new").length;
-  const activeCount = projects.filter(p => p.status === "active").length;
-  const completedCount = projects.filter(p => p.status === "completed").length;
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    projects.forEach(p => { counts[p.status] = (counts[p.status] || 0) + 1; });
+    return counts;
+  }, [projects]);
   const overdueCount = overdueIds.size;
 
   /* Who the list can be narrowed to. Projects store manager NAMES, not ids (see
@@ -321,6 +363,37 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     </span>
   );
 
+  /* The red flag. A project past its deadline carries one: filled and shouting
+     while the delay is unexplained, quiet and holding the reason as its tooltip
+     once someone has written it down. Nothing at all when the project is on
+     time — the badge above already says so. */
+  const renderDelayFlag = (p: Project, dl: ProjectDeadlineStatus | null) => {
+    if (!dl?.isOverdue) return null;
+    const reason = projectDelayReason(p);
+
+    return reason ? (
+      <span
+        className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-slate-200 bg-slate-50 text-[10px] font-bold text-slate-500 whitespace-nowrap max-w-[12rem]"
+        title={t(`Reason for the delay: ${reason}`, `Dôvod meškania: ${reason}`, `A késés oka: ${reason}`)}
+      >
+        <Flag className="h-3 w-3 shrink-0" />
+        <span className="truncate">{reason}</span>
+      </span>
+    ) : (
+      <span
+        className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-rose-300 bg-rose-600 text-[10px] font-black uppercase tracking-wider text-white whitespace-nowrap animate-pulse"
+        title={t(
+          "Past the deadline and no reason given — open the project and explain the delay.",
+          "Po termíne a bez zdôvodnenia — otvorte projekt a vysvetlite meškanie.",
+          "Határidőn túl, indoklás nélkül — nyissa meg a projektet és indokolja a késést.",
+        )}
+      >
+        <Flag className="h-3 w-3 shrink-0 fill-current" />
+        <span>{t("Reason missing", "Chýba dôvod", "Hiányzó indoklás")}</span>
+      </span>
+    );
+  };
+
   /* "+ New Project" — the primary action, and since 1.9 the button that sits
      where the old "Projects List" tab used to: the list is the only view now,
      so a tab that switched to it had nothing to do. */
@@ -456,23 +529,26 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         </div>
       ) : (
         <>
-          {/* Summary strip. Three tall cards that only ever stated the obvious
-              are now one compact row — and every chip is the filter for what it
-              counts, so the numbers do something instead of merely sitting
-              there. "Overdue" is the one that earns its place: it is the only
-              number here you cannot read off the list at a glance. */}
+          {/* Summary strip — and the status filter itself. It used to show four
+              hand-picked chips next to a dropdown carrying the real list, so
+              two controls filtered the same thing and disagreed about what the
+              statuses were. The chips are now the whole list, straight from
+              PROJECT_STATUSES, and the dropdown below is hidden.
+
+              "Overdue" is deliberately not among them: it is not a status — a
+              project can be late in any of them — so it sits apart, as the red
+              flag it is. */}
           <div className="flex flex-wrap items-center gap-2 select-none">
             {([
               { key: "all", label: t("All", "Všetky", "Összes"), count: totalProjects, tone: STAT_CHIP_TONES.slate },
-              { key: "new", label: projectStatusLabel("new", t), count: newCount, tone: STAT_CHIP_TONES.sky },
-              { key: "active", label: projectStatusLabel("active", t), count: activeCount, tone: STAT_CHIP_TONES.purple },
-              { key: "completed", label: projectStatusLabel("completed", t), count: completedCount, tone: STAT_CHIP_TONES.emerald },
-              { key: "overdue", label: t("Overdue", "Po termíne", "Késésben"), count: overdueCount, tone: STAT_CHIP_TONES.rose },
+              ...projectStatusOrder().map(value => ({
+                key: value as string,
+                label: projectStatusLabel(value, t),
+                count: statusCounts[value] || 0,
+                tone: STATUS_CHIP_TONES[value],
+              })),
             ]).map(({ key, label, count, tone }) => {
-              const isOverdueChip = key === "overdue";
-              const active = isOverdueChip
-                ? overdueOnly
-                : !overdueOnly && selectedStatusFilter === key;
+              const active = selectedStatusFilter === key;
 
               return (
                 <button
@@ -480,11 +556,6 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                   type="button"
                   aria-pressed={active}
                   onClick={() => {
-                    if (isOverdueChip) {
-                      setOverdueOnly(v => !v);
-                      return;
-                    }
-                    setOverdueOnly(false);
                     // A second click on the chip you are already filtered by
                     // clears the filter, rather than being a no-op.
                     setSelectedStatusFilter(prev => (prev === key ? "all" : key));
@@ -502,6 +573,45 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                 </button>
               );
             })}
+
+            {/* The red flag, on its own side of a divider: late projects, and
+                how many of them still owe an explanation. */}
+            <span className="h-6 w-px bg-slate-200 mx-0.5 hidden sm:block" />
+            <button
+              type="button"
+              aria-pressed={overdueOnly}
+              onClick={() => setOverdueOnly(v => !v)}
+              title={t(
+                "Projects past their deadline",
+                "Projekty po termíne",
+                "Határidőn túli projektek",
+              )}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl border shadow-sm transition-all cursor-pointer active:scale-[0.98] ${
+                overdueOnly ? STAT_CHIP_TONES.rose.active : `bg-white/95 ${STAT_CHIP_TONES.rose.idle}`
+              }`}
+            >
+              <Flag className={`h-3.5 w-3.5 shrink-0 ${overdueOnly ? "text-white" : "text-rose-500"}`} />
+              <span className={`font-heading font-bold text-base leading-none tabular-nums ${overdueOnly ? "text-white" : STAT_CHIP_TONES.rose.count}`}>
+                {overdueCount}
+              </span>
+              <span className="text-[10px] font-black uppercase tracking-widest leading-none">
+                {t("Overdue", "Po termíne", "Késésben")}
+              </span>
+              {unexplainedIds.size > 0 && (
+                <span
+                  className={`px-1.5 py-0.5 rounded-full text-[9px] font-black tabular-nums ${
+                    overdueOnly ? "bg-white/20 text-white" : "bg-rose-100 text-rose-700"
+                  }`}
+                  title={t(
+                    `${unexplainedIds.size} without a reason for the delay`,
+                    `${unexplainedIds.size} bez zdôvodnenia meškania`,
+                    `${unexplainedIds.size} késési indoklás nélkül`,
+                  )}
+                >
+                  {t(`${unexplainedIds.size} unexplained`, `${unexplainedIds.size} bez dôvodu`, `${unexplainedIds.size} indoklás nélkül`)}
+                </span>
+              )}
+            </button>
           </div>
 
           {/* One filter bar, one row. The three dropdowns used to be full-width
@@ -521,7 +631,10 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               />
             </div>
 
-            {/* Status */}
+            {/* Status — hidden. The chips above are the status filter now;
+                this is kept wired to the same state so it can be brought back
+                by flipping SHOW_STATUS_DROPDOWN. */}
+            {SHOW_STATUS_DROPDOWN && (
             <div className="w-full sm:w-40 shrink-0">
               <CustomSelect
                 className="h-10"
@@ -533,6 +646,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                 ]}
               />
             </div>
+            )}
 
             {/* Type */}
             <div className="w-full sm:w-40 shrink-0">
@@ -682,7 +796,12 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                               : <span className="text-slate-300">—</span>}
                           </td>
                           <td className="px-4 py-3">
-                            {dl ? renderDeadlineBadge(dl) : <span className="text-slate-300 text-xs">—</span>}
+                            {dl ? (
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {renderDeadlineBadge(dl)}
+                                {renderDelayFlag(p, dl)}
+                              </div>
+                            ) : <span className="text-slate-300 text-xs">—</span>}
                           </td>
                           <td className="px-4 py-3">
                             {pType.hasGantt && p.gantt && p.gantt.length > 0 ? (
@@ -786,7 +905,12 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                     <div className="flex-1 min-h-[20px]" />
 
                     {/* Deadline countdown */}
-                    {dl && <div className="mt-4 shrink-0 select-none">{renderDeadlineBadge(dl)}</div>}
+                    {dl && (
+                      <div className="mt-4 shrink-0 select-none flex flex-wrap items-center gap-1.5">
+                        {renderDeadlineBadge(dl)}
+                        {renderDelayFlag(p, dl)}
+                      </div>
+                    )}
 
                     {/* Roadmap Progress Bar */}
                     {pType.hasGantt && p.gantt && p.gantt.length > 0 && (

@@ -120,6 +120,35 @@ export const evaluateProjectDeadline = (
   };
 };
 
+/*
+  ── THE RED FLAG ────────────────────────────────────────
+
+  A missed deadline is noticed by the badge above. What it could not do was
+  make anyone account for it: a project could sit weeks past its date with the
+  whole story living in someone's head. Once a project is genuinely late it
+  carries a mandatory `delayReason`, and until that is written down the project
+  wears a red flag in the list and refuses to be saved from its own card.
+
+  Only "late" asks for it. A finished, cancelled or still-on-time project has
+  nothing to explain, and evaluateProjectDeadline() is the single judge of
+  which is which.
+*/
+
+/** The delay reason as stored, trimmed; "" when there is none. */
+export const projectDelayReason = (
+  project: Pick<Project, "delayReason"> | undefined | null,
+): string => String(project?.delayReason ?? "").trim();
+
+/**
+ * True when this project is past its deadline and nobody has said why yet.
+ * Pass the deadline verdict the caller already computed, so a list and a card
+ * looking at the same project can never disagree.
+ */
+export const projectNeedsDelayReason = (
+  project: Pick<Project, "delayReason"> | undefined | null,
+  deadline: ProjectDeadlineStatus | null | undefined,
+): boolean => !!deadline?.isOverdue && projectDelayReason(project) === "";
+
 /**
  * What to call this project on screen: its own name, else the paired lead's,
  * else whatever the caller wants to say about a project with neither (the

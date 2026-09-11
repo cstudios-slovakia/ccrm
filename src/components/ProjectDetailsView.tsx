@@ -270,6 +270,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   // Global state wiring
   const [projectName, setProjectName] = useState("");
   const [deadline, setDeadline] = useState("");
+  /* Why the project is late. Mandatory once it actually is — see the red flag
+     block under the deadline. */
+  const [delayReason, setDelayReason] = useState("");
   const [status, setStatus] = useState("active");
   const [associatedLeadId, setAssociatedLeadId] = useState("");
   const [associatedClientId, setAssociatedClientId] = useState("");
@@ -349,6 +352,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     if (project) {
       setProjectName(project.name || "");
       setDeadline(project.deadline || "");
+      setDelayReason(project.delayReason || "");
       setStatus(project.status || "active");
       setAssociatedLeadId(project.leadId || "");
       setAssociatedClientId(project.clientId || "");
@@ -585,6 +589,26 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
    * Returns false when a required attribute blocked the save.
    */
   const handleSave = (overrides: Partial<Project> = {}, validate = true): boolean => {
+    /* A project past its deadline owes an explanation. Checked against the
+       values being saved — moving it to Completed or pushing the deadline out
+       settles the debt in the same keystroke, so neither has to be fought
+       through an alert. */
+    if (validate) {
+      const nextStatus = String(overrides.status ?? status);
+      const nextDeadline = overrides.deadline !== undefined ? (overrides.deadline || "") : deadline;
+      const dl = evaluateProjectDeadline({ deadline: nextDeadline, status: nextStatus }, projectType, todayLocal());
+      const nextReason = String(overrides.delayReason ?? delayReason).trim();
+      if (dl?.isOverdue && !nextReason) {
+        alert(t(
+          "This project is past its deadline — a reason for the delay is required.",
+          "Projekt je po termíne — zdôvodnenie meškania je povinné.",
+          "A projekt határidőn túl van — a késés indoklása kötelező.",
+        ));
+        setIsEditing(true);
+        return false;
+      }
+    }
+
     // Basic validations for required dynamic attributes
     for (const attr of (validate ? projectType.attributes || [] : [])) {
       if (attr.required) {
@@ -606,6 +630,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       // the type would otherwise leave an invisible date behind that starts
       // counting down again the moment someone turns it back on.
       deadline: projectType.hasDeadline ? (deadline || null) : null,
+      // Only kept while it is still the answer to something: a project that is
+      // no longer late has no delay to explain, and leaving the old text behind
+      // would make it reappear the next time a date slips.
+      delayReason: projectType.hasDeadline ? (delayReason.trim() || null) : null,
       status,
       leadId: associatedLeadId || null,
       clientId: associatedClientId || null,
@@ -625,6 +653,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     if (project) {
       setProjectName(project.name || "");
       setDeadline(project.deadline || "");
+      setDelayReason(project.delayReason || "");
       setStatus(project.status || "active");
       setAssociatedLeadId(project.leadId || "");
       setAssociatedClientId(project.clientId || "");
@@ -1224,6 +1253,71 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                             : t(`${dl.daysLeft} days left`, `Ostáva ${dl.daysLeft} dní`, `${dl.daysLeft} nap van hátra`)}
                     </p>
                   )}
+
+                  {/* The red flag. Once the project is genuinely past its date,
+                      the reason for the delay is a required field: the card
+                      refuses to save without one, and until it is written down
+                      the project wears a flag everywhere it is listed. */}
+                  {dl?.isOverdue && (
+                    <div className="mt-3 p-3 rounded-2xl border border-rose-200 bg-rose-50">
+                      <label className="flex items-center gap-1.5 text-[10px] font-black text-rose-700 uppercase tracking-wider mb-1.5">
+                        <Icons.Flag className="h-3.5 w-3.5 shrink-0 fill-current" />
+                        <span>{t("Reason for the delay", "Dôvod meškania", "A késés oka")}</span>
+                        <span className="text-rose-500">*</span>
+                      </label>
+
+                      {isEditing ? (
+                        <>
+                          <textarea
+                            value={delayReason}
+                            onChange={e => setDelayReason(e.target.value)}
+                            rows={2}
+                            maxLength={500}
+                            placeholder={t(
+                              "e.g. waiting on the client's approval of the design",
+                              "napr. čakáme na schválenie návrhu klientom",
+                              "pl. az ügyfél jóváhagyására várunk",
+                            )}
+                            className={`w-full px-3 py-2 rounded-xl border text-xs font-semibold bg-white text-slate-800 resize-y focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 ${
+                              delayReason.trim() ? "border-rose-200" : "border-rose-400"
+                            }`}
+                          />
+                          {!delayReason.trim() && (
+                            <p className="mt-1 text-[9px] font-bold text-rose-600 leading-snug">
+                              {t(
+                                "Required while the project is past its deadline — it cannot be saved without one.",
+                                "Povinné, kým je projekt po termíne — bez neho sa projekt nedá uložiť.",
+                                "Kötelező, amíg a projekt határidőn túl van — enélkül nem menthető.",
+                              )}
+                            </p>
+                          )}
+                        </>
+                      ) : delayReason.trim() ? (
+                        <p className="text-xs font-semibold text-slate-700 whitespace-pre-wrap break-words">
+                          {delayReason}
+                        </p>
+                      ) : (
+                        <>
+                          <p className="text-[11px] font-bold text-rose-600 leading-snug">
+                            {t(
+                              "No reason given yet — this project is flagged in the list until one is.",
+                              "Zatiaľ bez zdôvodnenia — projekt je v zozname označený, kým ho nedoplníte.",
+                              "Még nincs indoklás — a projekt megjelölve marad a listában, amíg meg nem adja.",
+                            )}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setIsEditing(true)}
+                            className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-600 text-white text-[10px] font-black uppercase tracking-wider hover:bg-rose-700 transition-colors cursor-pointer"
+                          >
+                            <Icons.Flag className="h-3 w-3 shrink-0" />
+                            <span>{t("Explain the delay", "Zdôvodniť meškanie", "Késés indoklása")}</span>
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+
                 </div>
               );
             })()}

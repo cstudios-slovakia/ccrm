@@ -507,6 +507,13 @@ export interface Project {
    * project whose type has `hasDeadline`.
    */
   deadline?: string | null;
+  /**
+   * Why this project is running late. Required — and only required — once the
+   * project is actually past its deadline: the red flag on the list stays lit
+   * until someone writes down what happened, so a slipped date is explained
+   * rather than merely noticed. Empty on every project that is not late.
+   */
+  delayReason?: string | null;
   timeline?: ProjectTimelineEvent[];
   gantt?: ProjectGanttRow[];
 }

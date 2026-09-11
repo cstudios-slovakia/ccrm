@@ -5,7 +5,9 @@ import {
   DEFAULT_PROJECT_STATUS,
   evaluateProjectDeadline,
   normalizeDeadlineWarningDays,
+  projectDelayReason,
   projectDisplayName,
+  projectNeedsDelayReason,
   projectStatusBadgeClass,
   projectStatusLabel,
   projectStatusOptions,
@@ -198,4 +200,32 @@ test("the dropdown offers every status, new first", () => {
   const options = projectStatusOptions(en);
   assert.deepEqual(options.map((o) => o.value), [...PROJECT_STATUSES]);
   assert.equal(options[0].label, "New");
+});
+
+test("a late project owes a reason, and only a late one", () => {
+  const late = project({ deadline: "2026-08-20" });
+  const lateDl = evaluateProjectDeadline(late, type(), TODAY);
+  assert.equal(lateDl?.isOverdue, true);
+  assert.equal(projectNeedsDelayReason(late, lateDl), true);
+
+  // Explained — the flag goes out.
+  const explained = project({ deadline: "2026-08-20", delayReason: "  waiting on the client  " });
+  assert.equal(projectDelayReason(explained), "waiting on the client");
+  assert.equal(projectNeedsDelayReason(explained, lateDl), false);
+
+  // Whitespace is not an explanation.
+  assert.equal(projectNeedsDelayReason(project({ delayReason: "   " }), lateDl), true);
+
+  // Still on time, no deadline at all, or already closed: nothing to explain.
+  const onTime = project({ deadline: "2026-12-01" });
+  assert.equal(projectNeedsDelayReason(onTime, evaluateProjectDeadline(onTime, type(), TODAY)), false);
+  assert.equal(projectNeedsDelayReason(late, evaluateProjectDeadline(late, type({ hasDeadline: false }), TODAY)), false);
+  const closed = project({ deadline: "2026-08-20", status: "completed" });
+  assert.equal(projectNeedsDelayReason(closed, evaluateProjectDeadline(closed, type(), TODAY)), false);
+});
+
+test("a missing delay reason reads as empty, never as \"null\"", () => {
+  assert.equal(projectDelayReason(project()), "");
+  assert.equal(projectDelayReason(project({ delayReason: null })), "");
+  assert.equal(projectDelayReason(undefined), "");
 });
