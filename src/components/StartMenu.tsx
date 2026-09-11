@@ -11,6 +11,7 @@ import type { UserProfile, RolePermission, UnifiedEntryRegistry, CustomDashboard
 import type { Language } from "../utils/translations";
 import { getTranslation } from "../utils/translations";
 import { SOCIAL_MEDIA_ENABLED } from "../utils/featureFlags";
+import { FlockIcon } from "./icons/FlockIcon";
 
 interface StartMenuProps {
   isOpen: boolean;
@@ -386,6 +387,16 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         defaultSection: "collaboration"
       });
     }
+
+    items.push({
+      id: "sai",
+      label: "SAI",
+      description: t("Swarm AI predictive market rehearsals & strategic simulation", "Prediktívna simulácia trhu a strategický nácvik so Swarm AI", "Prediktív szimuláció és stratégiai próba Swarm AI-val"),
+      icon: FlockIcon,
+      color: "#8b5cf6",
+      bgColor: "rgba(139, 92, 246, 0.12)",
+      defaultSection: "collaboration"
+    });
 
     items.push({
       id: "automation",

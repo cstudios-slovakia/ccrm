@@ -7,6 +7,7 @@ import { cn } from "../utils/cn";
 import { SOCIAL_MEDIA_ENABLED } from "../utils/featureFlags";
 import type { UserProfile, RolePermission, UnifiedEntryRegistry, CustomDashboard } from "../types";
 import { StartMenu } from "./StartMenu";
+import { FlockIcon } from "./icons/FlockIcon";
 
 const ALL_LUCIDE_ICONS = Object.keys(Icons).filter(key => {
   return /^[A-Z][a-zA-Z0-9]*$/.test(key) && 
@@ -228,6 +229,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       "overview", 
       "projects",
       "rag_ai", 
+      "sai",
       "leads", 
       "clients", 
       "warehouse",
@@ -425,6 +427,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       { id: "overview", label: getTranslation(systemLanguage, "sidebar.dashboard"), icon: BarChart3, color: "#0891b2" },
       { id: "projects", label: systemLanguage === "sk" ? "Projekty" : systemLanguage === "hu" ? "Projektek" : "Projects", icon: Icons.Briefcase || LayoutDashboard, color: "#a855f7", isLavender: true },
       { id: "rag_ai", label: systemLanguage === "sk" ? "RAG AI Asistent" : systemLanguage === "hu" ? "RAG AI Asszisztens" : "RAG AI Assistant", icon: Brain, color: "#8b5cf6", isPurple: true },
+      { id: "sai", label: "SAI", icon: FlockIcon, color: "#8b5cf6", isPurpleToGreen: true },
       { id: "leads", label: getTranslation(systemLanguage, "sidebar.leads"), icon: TableProperties, color: "#2563eb" },
       { id: "clients", label: getTranslation(systemLanguage, "sidebar.clients"), icon: Users, color: "#059669" },
       { id: "warehouse", label: getTranslation(systemLanguage, "sidebar.warehouse"), icon: Icons.Package || Icons.Boxes || FolderOpen, color: "#1e3a8a", isNavy: true },
@@ -554,6 +557,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       ? (isActive
                           ? "text-white font-bold"
                           : "text-slate-450 hover:text-slate-700 hover:bg-slate-100/50")
+                      : item.isPurpleToGreen
+                        ? (isActive
+                            ? "bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 text-white font-bold shadow-lg shadow-purple-600/30 border border-purple-500/20"
+                            : "text-purple-600 hover:text-emerald-600 hover:bg-gradient-to-r hover:from-purple-50/60 hover:to-emerald-50/60")
                       : item.isPurple
                         ? (isActive
                             ? "bg-purple-600 text-white font-bold shadow-lg shadow-purple-600/30 border border-purple-500/20"
@@ -617,6 +624,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       ? "text-slate-700 font-semibold"
                       : (item.isCustomUE || item.isCustomDash)
                         ? (isActive ? "text-white font-bold" : "text-slate-500 font-semibold group-hover:text-slate-700")
+                        : item.isPurpleToGreen
+                          ? (isActive ? "text-white font-bold" : "text-transparent bg-clip-text bg-gradient-to-r from-purple-700 to-emerald-600 font-bold")
                         : item.isPurple 
                           ? (isActive ? "text-white font-bold" : "text-purple-600 font-bold")
                           : item.isLavender
@@ -953,7 +962,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     isMobileMenuOpen 
                       ? "w-full px-5 py-3.5 rounded-2xl gap-3 text-left font-black" 
                       : "h-11 w-11 rounded-xl justify-center",
-                    item.isPurple
+                    item.isPurpleToGreen
+                      ? (isActive
+                          ? "bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 border-purple-700 text-white shadow-md shadow-purple-500/20"
+                          : (isMobileMenuOpen
+                              ? "bg-purple-50/80 border-purple-200 text-purple-700"
+                              : "bg-purple-50/50 border-purple-100 text-purple-600 hover:bg-purple-100"))
+                    : item.isPurple
                       ? (isActive
                           ? "bg-purple-600 border-purple-700 text-white"
                           : (isMobileMenuOpen

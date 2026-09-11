@@ -68,6 +68,7 @@ const FilesView = safeLazy(() => import("./components/FilesView").then(m => ({ d
 const PersonalSettingsView = safeLazy(() => import("./components/PersonalSettingsView").then(m => ({ default: m.PersonalSettingsView })));
 const EmailView = safeLazy(() => import("./components/EmailView").then(m => ({ default: m.EmailView })));
 const RagAiView = safeLazy(() => import("./components/RagAiView").then(m => ({ default: m.RagAiView })));
+const SaiModule = safeLazy(() => import("./components/sai/SaiModule").then(m => ({ default: m.SaiModule })));
 const ProjectsView = safeLazy(() => import("./components/ProjectsView").then(m => ({ default: m.ProjectsView })));
 const MeetingRoomView = safeLazy(() => import("./components/MeetingRoomView").then(m => ({ default: m.MeetingRoomView })));
 const UnifiedEntryView = safeLazy(() => import("./components/UnifiedEntryView").then(m => ({ default: m.UnifiedEntryView })));
@@ -708,6 +709,9 @@ ${log.payload || ''}
           break;
         case "rag_ai":
           viewName = t("RAG AI Assistant", "RAG AI Asistent", "RAG AI Asszisztens");
+          break;
+        case "sai":
+          viewName = "SAI";
           break;
         case "automation":
           viewName = t("Automation", "Automatizácia", "Automatizálás");
@@ -2180,6 +2184,10 @@ ${log.payload || ''}
       case "rag_ai":
         return (
           <RagAiView systemLanguage={userLanguage} currentUser={activeUser} leads={leads} />
+        );
+      case "sai":
+        return (
+          <SaiModule />
         );
       case "meetings":
         return (
