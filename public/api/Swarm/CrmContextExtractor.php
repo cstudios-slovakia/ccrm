@@ -58,7 +58,19 @@ class CrmContextExtractor {
             }
         }
 
-        // 3. Lost Deal Objections
+        // 3. Client Projects & Deliverables
+        if ($allSources || in_array('projects', $sources)) {
+            $projects = $this->extractProjects($cutoffDate);
+            if (!empty($projects)) {
+                $sections[] = "\n--- Client Projects, Scopes & Delivery Milestones ---";
+                foreach ($projects as $p) {
+                    $sections[] = "- [{$p['status_label']}] {$p['title']} (Client: {$p['client_name']}) - {$p['summary']}";
+                }
+                $totalSampled += count($projects);
+            }
+        }
+
+        // 4. Lost Deal Objections
         if ($allSources || in_array('lost_deal_objections', $sources)) {
             $objections = $this->extractRecentObjections($cutoffDate);
             if (!empty($objections)) {
@@ -103,6 +115,53 @@ class CrmContextExtractor {
                     $sections[] = "- {$em['lead_name']} ({$em['date']}) [{$em['title']}]: " . mb_substr(strip_tags($em['content']), 0, 180);
                 }
                 $totalSampled += count($emails);
+            }
+        }
+
+        // 7. Uploaded Commercial Files & Documents
+        if ($allSources || in_array('files', $sources)) {
+            $files = $this->extractFilesAndDocuments($cutoffDate);
+            if (!empty($files)) {
+                $sections[] = "\n--- Uploaded Commercial Files, Contracts & Document Attachments ---";
+                foreach ($files as $f) {
+                    $fileSnippet = "- {$f['lead_name']} ({$f['date']}) [{$f['title']}]";
+                    if (!empty($f['file_name'])) {
+                        $fileSnippet .= " (File: {$f['file_name']})";
+                    }
+                    if (!empty($f['content'])) {
+                        $fileSnippet .= ": " . mb_substr(strip_tags($f['content']), 0, 220);
+                    }
+                    $sections[] = $fileSnippet;
+                }
+                $totalSampled += count($files);
+            }
+        }
+
+        // 8. Unified Entries (Custom Registries & Modules)
+        $hasUeSource = $allSources;
+        if (!$hasUeSource) {
+            foreach ($sources as $s) {
+                if ($s === 'unified_entries' || str_starts_with($s, 'ue_')) {
+                    $hasUeSource = true;
+                    break;
+                }
+            }
+        }
+        if ($hasUeSource) {
+            $ueRecords = $this->extractUnifiedEntries($cutoffDate, $sources);
+            if (!empty($ueRecords)) {
+                $sections[] = "\n--- Unified Custom Entity Records & Data Assets ---";
+                foreach ($ueRecords as $ur) {
+                    $ueSnippet = "- [{$ur['registry_name']}] {$ur['title']}";
+                    if (!empty($ur['client_name'])) {
+                        $ueSnippet .= " (Client: {$ur['client_name']})";
+                    }
+                    if (!empty($ur['file_name'])) {
+                        $ueSnippet .= " [File: {$ur['file_name']}]";
+                    }
+                    $sections[] = $ueSnippet;
+                }
+                $totalSampled += count($ueRecords);
             }
         }
 
@@ -184,16 +243,16 @@ class CrmContextExtractor {
     private function extractRecentObjections(string $cutoffDate): array {
         try {
             $stmt = $this->pdo->prepare("
-                SELECT te.`title`, te.`content`, te.`created_at` as `date`, l.`name` as `lead_name`
+                SELECT te.`title`, te.`content`, te.`timestamp` as `date`, l.`name` as `lead_name`
                 FROM `timeline_events` te
                 JOIN `leads` l ON te.`lead_id` = l.`id`
-                WHERE te.`created_at` >= ?
+                WHERE te.`timestamp` >= ?
                   AND (
                     te.`content` LIKE '%cena%' OR te.`content` LIKE '%drah%' 
                     OR te.`content` LIKE '%price%' OR te.`content` LIKE '%expensive%'
                     OR te.`content` LIKE '%odmiet%' OR te.`content` LIKE '%reject%'
                   )
-                ORDER BY te.`created_at` DESC
+                ORDER BY te.`timestamp` DESC
                 LIMIT 25
             ");
             $stmt->execute([$cutoffDate]);
@@ -206,15 +265,15 @@ class CrmContextExtractor {
     private function extractCompetitorIntel(string $cutoffDate): array {
         try {
             $stmt = $this->pdo->prepare("
-                SELECT te.`title`, te.`content`, te.`created_at` as `date`, l.`name` as `lead_name`
+                SELECT te.`title`, te.`content`, te.`timestamp` as `date`, l.`name` as `lead_name`
                 FROM `timeline_events` te
                 JOIN `leads` l ON te.`lead_id` = l.`id`
-                WHERE te.`created_at` >= ?
+                WHERE te.`timestamp` >= ?
                   AND (
                     te.`content` LIKE '%konkuren%' OR te.`content` LIKE '%compet%'
                     OR te.`content` LIKE '%vendor%' OR te.`content` LIKE '%alternat%'
                   )
-                ORDER BY te.`created_at` DESC
+                ORDER BY te.`timestamp` DESC
                 LIMIT 25
             ");
             $stmt->execute([$cutoffDate]);
@@ -227,16 +286,16 @@ class CrmContextExtractor {
     private function extractMeetingNotes(string $cutoffDate): array {
         try {
             $stmt = $this->pdo->prepare("
-                SELECT te.`title`, te.`content`, te.`created_at` as `date`, l.`name` as `lead_name`
+                SELECT te.`title`, te.`content`, te.`timestamp` as `date`, l.`name` as `lead_name`
                 FROM `timeline_events` te
                 JOIN `leads` l ON te.`lead_id` = l.`id`
-                WHERE te.`created_at` >= ?
+                WHERE te.`timestamp` >= ?
                   AND (
-                    te.`type` = 'meeting' 
+                    te.`type` = 'appointment' OR te.`type` = 'note'
                     OR te.`title` LIKE '%meeting%' OR te.`title` LIKE '%stretnutie%'
                     OR te.`title` LIKE '%rokovanie%' OR te.`title` LIKE '%call%'
                   )
-                ORDER BY te.`created_at` DESC
+                ORDER BY te.`timestamp` DESC
                 LIMIT 25
             ");
             $stmt->execute([$cutoffDate]);
@@ -249,16 +308,177 @@ class CrmContextExtractor {
     private function extractClientEmails(string $cutoffDate): array {
         try {
             $stmt = $this->pdo->prepare("
-                SELECT te.`title`, te.`content`, te.`created_at` as `date`, l.`name` as `lead_name`
+                SELECT te.`title`, te.`content`, te.`timestamp` as `date`, l.`name` as `lead_name`
                 FROM `timeline_events` te
                 JOIN `leads` l ON te.`lead_id` = l.`id`
-                WHERE te.`created_at` >= ?
+                WHERE te.`timestamp` >= ?
                   AND (te.`type` = 'email' OR te.`title` LIKE '%email%')
-                ORDER BY te.`created_at` DESC
+                ORDER BY te.`timestamp` DESC
                 LIMIT 25
             ");
             $stmt->execute([$cutoffDate]);
             return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (\Exception $e) {
+            return [];
+        }
+    }
+
+    private function extractFilesAndDocuments(string $cutoffDate): array {
+        try {
+            $stmt = $this->pdo->prepare("
+                SELECT te.`title`, te.`content`, te.`file_name`, te.`timestamp` as `date`, l.`name` as `lead_name`
+                FROM `timeline_events` te
+                JOIN `leads` l ON te.`lead_id` = l.`id`
+                WHERE te.`timestamp` >= ?
+                  AND (
+                    (te.`file_name` IS NOT NULL AND te.`file_name` != '')
+                    OR te.`type` IN ('offer', 'order', 'proforma_invoice', 'invoice')
+                    OR te.`title` LIKE '%ponuka%' OR te.`title` LIKE '%offer%'
+                    OR te.`title` LIKE '%zmluva%' OR te.`title` LIKE '%contract%'
+                    OR te.`title` LIKE '%faktura%' OR te.`title` LIKE '%invoice%'
+                    OR te.`content` LIKE '%Document Content%'
+                  )
+                ORDER BY te.`timestamp` DESC
+                LIMIT 30
+            ");
+            $stmt->execute([$cutoffDate]);
+            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (\Exception $e) {
+            return [];
+        }
+    }
+
+    private function extractUnifiedEntries(string $cutoffDate, array $sources = []): array {
+        try {
+            $registriesStmt = $this->pdo->query("SELECT `id`, `name`, `entry_name`, `folder_name` FROM `unified_entries` WHERE `archived` = 0");
+            $registries = $registriesStmt->fetchAll(PDO::FETCH_ASSOC);
+            if (empty($registries)) {
+                return [];
+            }
+
+            $allRecords = [];
+            foreach ($registries as $reg) {
+                $regSlug = 'ue_' . $reg['id'];
+                if (!empty($sources) && !in_array('unified_entries', $sources) && !in_array($regSlug, $sources)) {
+                    continue;
+                }
+
+                $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($reg['id']));
+                $tableName = "ue_" . $safeId;
+                $chkTable = $this->pdo->query("SHOW TABLES LIKE '{$tableName}'")->rowCount() > 0;
+                if (!$chkTable) {
+                    continue;
+                }
+
+                $stmt = $this->pdo->query("
+                    SELECT ue.`id`, ue.`title`, ue.`file_name`, COALESCE(l.`name`, '') as `client_name`
+                    FROM `{$tableName}` ue
+                    LEFT JOIN `leads` l ON ue.`client_id` = l.`id`
+                    ORDER BY ue.`updated_at` DESC
+                    LIMIT 25
+                ");
+                while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                    if (!empty($row['title']) || !empty($row['file_name'])) {
+                        $allRecords[] = [
+                            'registry_name' => $reg['name'],
+                            'title' => $row['title'] ?: ($row['file_name'] ?: 'Record'),
+                            'client_name' => $row['client_name'] ?: null,
+                            'file_name' => $row['file_name'] ?: null
+                        ];
+                    }
+                }
+            }
+            return $allRecords;
+        } catch (\Exception $e) {
+            return [];
+        }
+    }
+
+    private function extractProjects(string $cutoffDate): array {
+        try {
+            $chk = $this->pdo->query("SHOW TABLES LIKE 'projects'")->rowCount() > 0;
+            if (!$chk) return [];
+
+            $stmt = $this->pdo->prepare("
+                SELECT p.`id`, p.`project_type_id`, p.`lead_id`, p.`client_id`, p.`status`, 
+                       p.`created_at`, p.`updated_at`,
+                       pt.`name` as `type_name`, pt.`description` as `type_desc`,
+                       COALESCE(l.`name`, 'Klient') as `client_name`,
+                       l.`value` as `deal_value`
+                FROM `projects` p
+                LEFT JOIN `project_types` pt ON p.`project_type_id` = pt.`id`
+                LEFT JOIN `leads` l ON l.`id` = COALESCE(p.`client_id`, p.`lead_id`)
+                WHERE p.`created_at` >= ? OR p.`updated_at` >= ?
+                ORDER BY p.`updated_at` DESC
+                LIMIT 30
+            ");
+            $stmt->execute([$cutoffDate, $cutoffDate]);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            if (empty($rows)) return [];
+
+            $projects = [];
+            foreach ($rows as $r) {
+                $projId = $r['id'];
+                $ptId = $r['project_type_id'];
+                $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($ptId));
+
+                $customDetails = [];
+                $dataTable = "proj_data_" . $safeId;
+                if ($this->pdo->query("SHOW TABLES LIKE '{$dataTable}'")->rowCount() > 0) {
+                    $dStmt = $this->pdo->prepare("SELECT * FROM `{$dataTable}` WHERE `project_id` = ?");
+                    $dStmt->execute([$projId]);
+                    $dRow = $dStmt->fetch(PDO::FETCH_ASSOC);
+                    if ($dRow) {
+                        foreach ($dRow as $col => $val) {
+                            if (str_starts_with($col, 'attr_') && !empty($val)) {
+                                $cleanVal = is_string($val) ? trim($val) : json_encode($val);
+                                if ($cleanVal !== '') {
+                                    $customDetails[] = $cleanVal;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                $progressSummary = '';
+                $ganttTable = "proj_gantt_" . $safeId;
+                if ($this->pdo->query("SHOW TABLES LIKE '{$ganttTable}'")->rowCount() > 0) {
+                    $gStmt = $this->pdo->prepare("SELECT `title`, `progress` FROM `{$ganttTable}` WHERE `project_id` = ?");
+                    $gStmt->execute([$projId]);
+                    $gRows = $gStmt->fetchAll(PDO::FETCH_ASSOC);
+                    if (!empty($gRows)) {
+                        $avgProg = round(array_sum(array_column($gRows, 'progress')) / count($gRows));
+                        $taskCount = count($gRows);
+                        $progressSummary = "Gantt: {$taskCount} úloh ({$avgProg}% hotovo)";
+                    }
+                }
+
+                $projectTitle = !empty($customDetails) ? implode(', ', array_slice($customDetails, 0, 2)) : ($r['type_name'] ?: 'Projekt');
+                $summaryParts = [];
+                if (!empty($r['type_name'])) $summaryParts[] = "Typ: " . $r['type_name'];
+                if ($progressSummary) $summaryParts[] = $progressSummary;
+                if (!empty($r['deal_value']) && (float)$r['deal_value'] > 0) {
+                    $summaryParts[] = "Rozpočet: " . number_format((float)$r['deal_value'], 0, '.', ' ') . " €";
+                }
+
+                $statusLabel = match($r['status']) {
+                    'completed' => 'Dokončený',
+                    'on_hold' => 'Pozastavený',
+                    'cancelled' => 'Zrušený',
+                    default => 'Aktívny'
+                };
+
+                $projects[] = [
+                    'id' => $projId,
+                    'title' => $projectTitle,
+                    'status_label' => $statusLabel,
+                    'client_name' => $r['client_name'],
+                    'summary' => implode(' | ', $summaryParts),
+                    'date' => substr($r['updated_at'] ?: $r['created_at'], 0, 10)
+                ];
+            }
+
+            return $projects;
         } catch (\Exception $e) {
             return [];
         }

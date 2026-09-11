@@ -340,8 +340,8 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
         setActiveReport(null);
 
         // Step 1: Prep phase 1
-        const activeSrcCount = config.crmDataSources ? config.crmDataSources.length : 6;
-        setPrepStepMessage(`[Demo Mode] Extracting CRM context (${config.lookbackMonths}-month horizon, ${activeSrcCount}/6 sources active)...`);
+        const activeSrcCount = config.crmDataSources ? config.crmDataSources.length : 8;
+        setPrepStepMessage(`[Demo Mode] Extracting CRM context (${config.lookbackMonths}-month horizon, ${activeSrcCount} sources active)...`);
         await new Promise(r => setTimeout(r, 600));
 
         // Step 2: Prep phase 2
@@ -414,13 +414,13 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
       setActiveReport(null);
 
       // Step 2: Extract CRM Context with Lookback Window & Selected Sources
-      const activeSrcCount = config.crmDataSources ? config.crmDataSources.length : 6;
+      const activeSrcCount = config.crmDataSources ? config.crmDataSources.length : 8;
       const attachedDocsCount = config.contextDocuments ? config.contextDocuments.length : 0;
       setPrepStepMessage(
         attachedDocsCount > 0 
           ? `Extracting CRM intelligence (${config.lookbackMonths}-mo horizon, ${activeSrcCount} sources) & processing ${attachedDocsCount} attached document(s)...`
           : activeSrcCount > 0
-            ? `Extracting selected CRM intelligence (${config.lookbackMonths}-month horizon, ${activeSrcCount}/6 sources active)...`
+            ? `Extracting selected CRM intelligence (${config.lookbackMonths}-month horizon, ${activeSrcCount} sources active)...`
             : 'Grounded exclusively on Seed Scenario announcement memo (all CRM sources turned off)...'
       );
       const crmContext = await fetchCrmContext(config.lookbackMonths, config.crmDataSources);

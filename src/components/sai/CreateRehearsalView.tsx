@@ -14,6 +14,7 @@ import {
   Save,
   Database,
   Building2,
+  Briefcase,
   AlertTriangle,
   Swords,
   MessageSquare,
@@ -79,6 +80,15 @@ export const CRM_SOURCE_OPTIONS: CrmSourceOption[] = [
     icon: Building2,
     badge: 'Klienti',
     badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200'
+  },
+  {
+    id: 'projects',
+    title: 'Klientske projekty & Zákazky',
+    category: 'Realizácia & Zákazky',
+    description: 'Aktívne a dokončené klientske projekty, rozsah zákaziek, harmonogramy a termíny dodania.',
+    icon: Briefcase,
+    badge: 'Projekty',
+    badgeColor: 'bg-orange-50 text-orange-700 border-orange-200'
   },
   {
     id: 'lost_deal_objections',

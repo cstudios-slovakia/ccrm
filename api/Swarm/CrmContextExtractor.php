@@ -58,7 +58,19 @@ class CrmContextExtractor {
             }
         }
 
-        // 3. Lost Deal Objections
+        // 3. Client Projects & Deliverables
+        if ($allSources || in_array('projects', $sources)) {
+            $projects = $this->extractProjects($cutoffDate);
+            if (!empty($projects)) {
+                $sections[] = "\n--- Client Projects, Scopes & Delivery Milestones ---";
+                foreach ($projects as $p) {
+                    $sections[] = "- [{$p['status_label']}] {$p['title']} (Client: {$p['client_name']}) - {$p['summary']}";
+                }
+                $totalSampled += count($projects);
+            }
+        }
+
+        // 4. Lost Deal Objections
         if ($allSources || in_array('lost_deal_objections', $sources)) {
             $objections = $this->extractRecentObjections($cutoffDate);
             if (!empty($objections)) {
@@ -377,6 +389,96 @@ class CrmContextExtractor {
                 }
             }
             return $allRecords;
+        } catch (\Exception $e) {
+            return [];
+        }
+    }
+
+    private function extractProjects(string $cutoffDate): array {
+        try {
+            $chk = $this->pdo->query("SHOW TABLES LIKE 'projects'")->rowCount() > 0;
+            if (!$chk) return [];
+
+            $stmt = $this->pdo->prepare("
+                SELECT p.`id`, p.`project_type_id`, p.`lead_id`, p.`client_id`, p.`status`, 
+                       p.`created_at`, p.`updated_at`,
+                       pt.`name` as `type_name`, pt.`description` as `type_desc`,
+                       COALESCE(l.`name`, 'Klient') as `client_name`,
+                       l.`value` as `deal_value`
+                FROM `projects` p
+                LEFT JOIN `project_types` pt ON p.`project_type_id` = pt.`id`
+                LEFT JOIN `leads` l ON l.`id` = COALESCE(p.`client_id`, p.`lead_id`)
+                WHERE p.`created_at` >= ? OR p.`updated_at` >= ?
+                ORDER BY p.`updated_at` DESC
+                LIMIT 30
+            ");
+            $stmt->execute([$cutoffDate, $cutoffDate]);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            if (empty($rows)) return [];
+
+            $projects = [];
+            foreach ($rows as $r) {
+                $projId = $r['id'];
+                $ptId = $r['project_type_id'];
+                $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($ptId));
+
+                $customDetails = [];
+                $dataTable = "proj_data_" . $safeId;
+                if ($this->pdo->query("SHOW TABLES LIKE '{$dataTable}'")->rowCount() > 0) {
+                    $dStmt = $this->pdo->prepare("SELECT * FROM `{$dataTable}` WHERE `project_id` = ?");
+                    $dStmt->execute([$projId]);
+                    $dRow = $dStmt->fetch(PDO::FETCH_ASSOC);
+                    if ($dRow) {
+                        foreach ($dRow as $col => $val) {
+                            if (str_starts_with($col, 'attr_') && !empty($val)) {
+                                $cleanVal = is_string($val) ? trim($val) : json_encode($val);
+                                if ($cleanVal !== '') {
+                                    $customDetails[] = $cleanVal;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                $progressSummary = '';
+                $ganttTable = "proj_gantt_" . $safeId;
+                if ($this->pdo->query("SHOW TABLES LIKE '{$ganttTable}'")->rowCount() > 0) {
+                    $gStmt = $this->pdo->prepare("SELECT `title`, `progress` FROM `{$ganttTable}` WHERE `project_id` = ?");
+                    $gStmt->execute([$projId]);
+                    $gRows = $gStmt->fetchAll(PDO::FETCH_ASSOC);
+                    if (!empty($gRows)) {
+                        $avgProg = round(array_sum(array_column($gRows, 'progress')) / count($gRows));
+                        $taskCount = count($gRows);
+                        $progressSummary = "Gantt: {$taskCount} úloh ({$avgProg}% hotovo)";
+                    }
+                }
+
+                $projectTitle = !empty($customDetails) ? implode(', ', array_slice($customDetails, 0, 2)) : ($r['type_name'] ?: 'Projekt');
+                $summaryParts = [];
+                if (!empty($r['type_name'])) $summaryParts[] = "Typ: " . $r['type_name'];
+                if ($progressSummary) $summaryParts[] = $progressSummary;
+                if (!empty($r['deal_value']) && (float)$r['deal_value'] > 0) {
+                    $summaryParts[] = "Rozpočet: " . number_format((float)$r['deal_value'], 0, '.', ' ') . " €";
+                }
+
+                $statusLabel = match($r['status']) {
+                    'completed' => 'Dokončený',
+                    'on_hold' => 'Pozastavený',
+                    'cancelled' => 'Zrušený',
+                    default => 'Aktívny'
+                };
+
+                $projects[] = [
+                    'id' => $projId,
+                    'title' => $projectTitle,
+                    'status_label' => $statusLabel,
+                    'client_name' => $r['client_name'],
+                    'summary' => implode(' | ', $summaryParts),
+                    'date' => substr($r['updated_at'] ?: $r['created_at'], 0, 10)
+                ];
+            }
+
+            return $projects;
         } catch (\Exception $e) {
             return [];
         }
