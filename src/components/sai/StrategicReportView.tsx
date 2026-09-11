@@ -1,6 +1,11 @@
 import React, { useState } from 'react';
-import type { StrategicReport } from '../../utils/swarm/types';
+import type { 
+  StrategicReport, 
+  SwarmAgentProfile, 
+  SwarmPost 
+} from '../../utils/swarm/types';
 import { Markdown } from '../../utils/markdown';
+import { QaAssistantDrawer } from './QaAssistantDrawer';
 import { 
   Target, 
   ShieldCheck, 
@@ -14,14 +19,22 @@ import {
 
 interface StrategicReportViewProps {
   report: StrategicReport;
-  onOpenQaDrawer: () => void;
+  onOpenQaDrawer?: () => void;
   onOpenAgentDirectory: () => void;
+  agents?: SwarmAgentProfile[];
+  posts?: SwarmPost[];
+  hypothesis?: string;
+  isDemoMode?: boolean;
 }
 
 export const StrategicReportView: React.FC<StrategicReportViewProps> = ({
   report,
   onOpenQaDrawer,
-  onOpenAgentDirectory
+  onOpenAgentDirectory,
+  agents = [],
+  posts = [],
+  hypothesis = '',
+  isDemoMode = false
 }) => {
   const [copied, setCopied] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Record<number, boolean>>({});
@@ -38,53 +51,68 @@ export const StrategicReportView: React.FC<StrategicReportViewProps> = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleFocusChatbot = () => {
+    if (onOpenQaDrawer) {
+      onOpenQaDrawer();
+    }
+    const el = document.getElementById('sai-interrogation-input');
+    if (el) {
+      el.focus();
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  };
+
   const playbook = report.strategicPlaybook;
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-12">
-      
-      {/* Header Banner */}
-      <div className="p-8 rounded-3xl bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white shadow-xl relative overflow-hidden">
-        <div className="relative z-10 space-y-3">
-          <div className="flex items-center gap-2">
-            <span className="px-3 py-1 rounded-full text-[11px] font-bold tracking-wider uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-              Validated Market Rehearsal Briefing
-            </span>
-            <span className="text-xs text-slate-400 font-mono">
-              {new Date(report.generatedAt).toLocaleDateString()}
-            </span>
-          </div>
+    <div className="w-full max-w-[1700px] mx-auto pb-12">
+      <div className="flex flex-col lg:flex-row items-start gap-6">
+        
+        {/* Left Column: Strategic Report Content */}
+        <div className="flex-1 min-w-0 space-y-6 w-full">
+          
+          {/* Header Banner */}
+          <div className="p-8 rounded-3xl bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white shadow-xl relative overflow-hidden">
+            <div className="relative z-10 space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="px-3 py-1 rounded-full text-[11px] font-bold tracking-wider uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  Validated Market Rehearsal Briefing
+                </span>
+                <span className="text-xs text-slate-400 font-mono">
+                  {new Date(report.generatedAt).toLocaleDateString()}
+                </span>
+              </div>
 
-          <h1 className="text-2xl font-black tracking-tight text-white">{report.title}</h1>
-          <p className="text-sm text-slate-300 leading-relaxed font-normal">{report.summary}</p>
+              <h1 className="text-2xl font-black tracking-tight text-white">{report.title}</h1>
+              <p className="text-sm text-slate-300 leading-relaxed font-normal">{report.summary}</p>
 
-          <div className="pt-4 flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={onOpenQaDrawer}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-emerald-500 hover:opacity-95 text-xs font-bold text-white shadow-md transition cursor-pointer"
-            >
-              <MessageSquare className="w-4 h-4" />
-              <span>Cross-Examine with Q&A Chatbot</span>
-            </button>
-            <button
-              type="button"
-              onClick={onOpenAgentDirectory}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-xs font-bold text-slate-200 border border-slate-700 transition cursor-pointer"
-            >
-              <span>Interview Simulated Agents</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleCopyMarkdown}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800/60 hover:bg-slate-700 text-xs font-medium text-slate-300 transition ml-auto"
-            >
-              {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copied ? 'Copied' : 'Copy Markdown'}</span>
-            </button>
+              <div className="pt-4 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleFocusChatbot}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-emerald-500 hover:opacity-95 text-xs font-bold text-white shadow-md transition cursor-pointer"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  <span>Ask Intelligence Chatbot</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={onOpenAgentDirectory}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-xs font-bold text-slate-200 border border-slate-700 transition cursor-pointer"
+                >
+                  <span>Interview Simulated Agents</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCopyMarkdown}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800/60 hover:bg-slate-700 text-xs font-medium text-slate-300 transition ml-auto"
+                >
+                  {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copied ? 'Copied' : 'Copy Markdown'}</span>
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
 
       {/* Strategic Playbook Callout Box (The "What Strategy to Use to Achieve the Goal?" Section) */}
       {playbook && (
@@ -187,6 +215,22 @@ export const StrategicReportView: React.FC<StrategicReportViewProps> = ({
         })}
       </div>
 
+        </div>
+
+        {/* Right Column: Always Visible Chatbot Card */}
+        <div className="w-full lg:w-[420px] xl:w-[460px] 2xl:w-[500px] shrink-0 sticky top-4">
+          <QaAssistantDrawer
+            isOpen={true}
+            embedded={true}
+            report={report}
+            agents={agents}
+            posts={posts}
+            hypothesis={hypothesis}
+            isDemoMode={isDemoMode}
+          />
+        </div>
+
+      </div>
     </div>
   );
 };

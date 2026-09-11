@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import type { 
   SwarmAgentProfile, 
   SwarmPost, 
@@ -7,28 +7,32 @@ import type {
 import { askChiefAnalyst, interviewAgent } from '../../utils/swarm/chatAssistant';
 import { getDemoAnalystAnswer, getDemoAgentAnswer } from '../../utils/swarm/demoData';
 import { Markdown } from '../../utils/markdown';
-import { X, Send, Bot, User, Sparkles } from 'lucide-react';
+import { X, Send, Bot, User, Sparkles, RotateCcw } from 'lucide-react';
 
 interface QaAssistantDrawerProps {
-  isOpen: boolean;
-  onClose: () => void;
+  isOpen?: boolean;
+  onClose?: () => void;
   report: StrategicReport | null;
   agents: SwarmAgentProfile[];
   posts: SwarmPost[];
   hypothesis: string;
   initialAgent?: SwarmAgentProfile | null;
   isDemoMode?: boolean;
+  embedded?: boolean;
+  className?: string;
 }
 
 export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
-  isOpen,
+  isOpen = true,
   onClose,
   report,
   agents,
   posts,
   hypothesis,
   initialAgent = null,
-  isDemoMode = false
+  isDemoMode = false,
+  embedded = false,
+  className = ""
 }) => {
   const [activeTab, setActiveTab] = useState<'analyst' | 'agent'>(initialAgent ? 'agent' : 'analyst');
   const [selectedAgent, setSelectedAgent] = useState<SwarmAgentProfile | null>(initialAgent || agents[0] || null);
@@ -43,12 +47,17 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
 
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [analystMessages.length, agentMessages.length, isLoading]);
 
-  const handleSend = async () => {
-    if (!inputValue.trim() || isLoading) return;
-    const userText = inputValue.trim();
+  if (!isOpen && !embedded) return null;
+
+  const triggerSend = async (textToSend: string) => {
+    if (!textToSend.trim() || isLoading) return;
+    const userText = textToSend.trim();
     setInputValue('');
 
     if (activeTab === 'analyst') {
@@ -104,33 +113,67 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
     }
   };
 
+  const handleSend = () => {
+    triggerSend(inputValue);
+  };
+
+  const handleResetChat = () => {
+    if (activeTab === 'analyst') {
+      setAnalystMessages([
+        {
+          sender: 'assistant',
+          text: "Hello! I am your Chief Intelligence Analyst. I observed the entire market simulation and can answer any questions regarding agent reactions, primary objections, and competitive strategies."
+        }
+      ]);
+    } else {
+      setAgentMessages([]);
+    }
+  };
+
   return (
-    <div className="fixed inset-y-0 right-0 z-[1300] w-full max-w-lg bg-white shadow-2xl border-l border-slate-200/90 flex flex-col animate-in slide-in-from-right duration-300">
+    <div className={
+      embedded 
+        ? `rounded-3xl bg-white border border-slate-200/80 shadow-md flex flex-col h-[calc(100vh-140px)] sticky top-4 overflow-hidden ${className}`
+        : `fixed inset-y-0 right-0 z-[1300] w-full max-w-lg bg-white shadow-2xl border-l border-slate-200/90 flex flex-col animate-in slide-in-from-right duration-300 ${className}`
+    }>
       
-      {/* Drawer Header */}
-      <div className="p-5 bg-gradient-to-r from-purple-50 via-indigo-50 to-emerald-50 border-b border-slate-200 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-600 to-emerald-500 text-white flex items-center justify-center shadow-sm">
+      {/* Header */}
+      <div className="p-4 bg-gradient-to-r from-purple-50 via-indigo-50 to-emerald-50 border-b border-slate-200 flex items-center justify-between">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-600 to-emerald-500 text-white flex items-center justify-center shadow-sm shrink-0">
             <Bot className="w-4 h-4" />
           </div>
-          <div>
-            <h3 className="text-sm font-bold text-slate-900">Simulation Interrogation Hub</h3>
-            <p className="text-[11px] text-slate-500">Cross-examine analyst findings & agent motives</p>
+          <div className="min-w-0">
+            <h3 className="text-sm font-bold text-slate-900 truncate">Simulation Interrogation Hub</h3>
+            <p className="text-[11px] text-slate-500 truncate">Cross-examine analyst findings & agent motives</p>
           </div>
         </div>
-        <button
-          onClick={onClose}
-          className="p-1.5 rounded-xl hover:bg-slate-200/60 text-slate-400 hover:text-slate-700 transition"
-        >
-          <X className="w-5 h-5" />
-        </button>
+        <div className="flex items-center gap-1 shrink-0 ml-2">
+          <button
+            type="button"
+            onClick={handleResetChat}
+            title="Reset conversation"
+            className="p-1.5 rounded-xl hover:bg-slate-200/60 text-slate-400 hover:text-slate-700 transition cursor-pointer"
+          >
+            <RotateCcw className="w-4 h-4" />
+          </button>
+          {!embedded && onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 rounded-xl hover:bg-slate-200/60 text-slate-400 hover:text-slate-700 transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Tabs */}
-      <div className="px-5 pt-3 border-b border-slate-100 flex items-center gap-4">
+      <div className="px-5 pt-3 border-b border-slate-100 flex items-center gap-4 bg-white">
         <button
           onClick={() => setActiveTab('analyst')}
-          className={`pb-2.5 text-xs font-bold border-b-2 transition ${
+          className={`pb-2.5 text-xs font-bold border-b-2 transition cursor-pointer ${
             activeTab === 'analyst' 
               ? 'border-indigo-600 text-indigo-600' 
               : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -140,7 +183,7 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
         </button>
         <button
           onClick={() => setActiveTab('agent')}
-          className={`pb-2.5 text-xs font-bold border-b-2 transition ${
+          className={`pb-2.5 text-xs font-bold border-b-2 transition cursor-pointer ${
             activeTab === 'agent' 
               ? 'border-indigo-600 text-indigo-600' 
               : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -152,8 +195,8 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
 
       {/* Agent Selector (If on Agent tab) */}
       {activeTab === 'agent' && (
-        <div className="px-5 py-2.5 bg-slate-50 border-b border-slate-200/70 flex items-center gap-2">
-          <span className="text-[11px] font-bold text-slate-600 uppercase">Agent:</span>
+        <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200/70 flex items-center gap-2">
+          <span className="text-[11px] font-bold text-slate-600 uppercase shrink-0">Agent:</span>
           <select
             value={selectedAgent?.id || ''}
             onChange={e => {
@@ -161,7 +204,7 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
               setSelectedAgent(a || null);
               setAgentMessages([]);
             }}
-            className="flex-1 text-xs py-1 px-2.5 rounded-lg border border-slate-300 bg-white font-medium focus:ring-1 focus:ring-indigo-500"
+            className="flex-1 text-xs py-1 px-2.5 rounded-lg border border-slate-300 bg-white font-medium focus:ring-1 focus:ring-indigo-500 truncate"
           >
             {agents.map(a => (
               <option key={a.id} value={a.id}>
@@ -173,7 +216,7 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
       )}
 
       {/* Message History */}
-      <div className="flex-1 overflow-y-auto p-5 space-y-3.5 scrollbar-thin scrollbar-thumb-slate-200">
+      <div className="flex-1 overflow-y-auto p-4 space-y-3.5 scrollbar-thin scrollbar-thumb-slate-200">
         {(activeTab === 'analyst' ? analystMessages : agentMessages).map((m, idx) => (
           <div 
             key={idx} 
@@ -186,15 +229,69 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
             }`}>
               {m.sender === 'user' ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
             </div>
-            <div className={`p-3 rounded-2xl text-xs leading-relaxed max-w-[80%] ${
+            <div className={`p-3 rounded-2xl text-xs leading-relaxed max-w-[85%] ${
               m.sender === 'user' 
                 ? 'bg-indigo-600 text-white rounded-tr-none whitespace-pre-wrap' 
-                : 'bg-slate-100 text-slate-800 rounded-tl-none border border-slate-200/70'
+                : 'bg-slate-50 text-slate-800 rounded-tl-none border border-slate-200/80 shadow-xs'
             }`}>
-              {m.sender === 'user' ? m.text : <Markdown content={m.text} className="space-y-1.5" />}
+              {m.sender === 'user' ? m.text : <Markdown content={m.text} className="space-y-1.5 text-xs text-slate-800 leading-relaxed" />}
             </div>
           </div>
         ))}
+
+        {/* Quick Suggestion Chips for Chief Analyst */}
+        {activeTab === 'analyst' && analystMessages.length <= 1 && (
+          <div className="pt-2 space-y-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+              Suggested Questions:
+            </span>
+            <div className="space-y-1.5">
+              {[
+                "What were the primary objections raised by agents?",
+                "How did competitors retaliate in the simulation?",
+                "What strategy should we prioritize to achieve the goal?"
+              ].map((prompt, pIdx) => (
+                <button
+                  key={pIdx}
+                  type="button"
+                  onClick={() => triggerSend(prompt)}
+                  className="w-full text-left px-3 py-2 rounded-xl bg-indigo-50/70 hover:bg-indigo-100/90 border border-indigo-200/60 text-indigo-700 text-xs font-medium transition cursor-pointer flex items-center justify-between group"
+                >
+                  <span className="truncate">{prompt}</span>
+                  <span className="text-[11px] opacity-60 group-hover:opacity-100 transition ml-2 shrink-0">→</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Interview Agent Welcome Banner */}
+        {activeTab === 'agent' && agentMessages.length === 0 && selectedAgent && (
+          <div className="p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-200/70 text-xs space-y-2">
+            <div className="font-bold text-emerald-800 flex items-center gap-1.5">
+              <span>Interviewing {selectedAgent.displayName} (@{selectedAgent.username})</span>
+            </div>
+            <p className="text-emerald-700 text-[11px] leading-relaxed">
+              Ask this {selectedAgent.profession} directly why they took an <strong>{selectedAgent.stance}</strong> stance, or what would convince them.
+            </p>
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {[
+                "Why did you object to this offer?",
+                "What concession would make you convert?",
+                "How does this compare to current tools?"
+              ].map((q, qIdx) => (
+                <button
+                  key={qIdx}
+                  type="button"
+                  onClick={() => triggerSend(q)}
+                  className="px-2.5 py-1 rounded-lg bg-white border border-emerald-300 text-emerald-800 text-[11px] font-semibold hover:bg-emerald-100 transition cursor-pointer"
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {isLoading && (
           <div className="flex items-center gap-2 text-slate-400 text-xs italic pl-9">
@@ -202,27 +299,30 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
             <span>Thinking...</span>
           </div>
         )}
+
+        <div ref={messagesEndRef} />
       </div>
 
       {/* Input Form */}
-      <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center gap-2">
+      <div className="p-3.5 bg-slate-50 border-t border-slate-200 flex items-center gap-2">
         <input
+          id="sai-interrogation-input"
           type="text"
           value={inputValue}
           onChange={e => setInputValue(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSend()}
           placeholder={
             activeTab === 'analyst' 
-              ? 'Ask why a specific objection arose...' 
+              ? 'Ask why an objection arose, next steps...' 
               : `Ask ${selectedAgent?.displayName || 'agent'} why they took that stance...`
           }
-          className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white"
+          className="flex-1 px-3 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white font-sans"
         />
         <button
           type="button"
           onClick={handleSend}
           disabled={!inputValue.trim() || isLoading}
-          className="p-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white shadow-sm transition cursor-pointer"
+          className="p-2 rounded-xl bg-gradient-to-r from-purple-600 to-emerald-500 hover:opacity-95 disabled:opacity-40 text-white shadow-sm transition cursor-pointer shrink-0"
         >
           <Send className="w-4 h-4" />
         </button>

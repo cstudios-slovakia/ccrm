@@ -680,9 +680,16 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
         {activeView === 'report' && activeReport && (
           <StrategicReportView
             report={activeReport}
+            agents={agents}
+            posts={posts}
+            hypothesis={activeHypothesis}
+            isDemoMode={demoModeActive}
             onOpenQaDrawer={() => {
-              setInterviewAgent(null);
-              setIsQaOpen(true);
+              const el = document.getElementById('sai-interrogation-input');
+              if (el) {
+                el.focus();
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }
             }}
             onOpenAgentDirectory={() => {
               setActiveView('running');
@@ -701,17 +708,19 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
         isDemoMode={demoModeActive}
       />
 
-      {/* Slide-out QA Assistant Drawer */}
-      <QaAssistantDrawer
-        isOpen={isQaOpen}
-        onClose={() => setIsQaOpen(false)}
-        report={activeReport}
-        agents={agents}
-        posts={posts}
-        hypothesis={activeHypothesis}
-        initialAgent={interviewAgent}
-        isDemoMode={demoModeActive}
-      />
+      {/* Slide-out QA Assistant Drawer (for War Room / other non-report views) */}
+      {activeView !== 'report' && (
+        <QaAssistantDrawer
+          isOpen={isQaOpen}
+          onClose={() => setIsQaOpen(false)}
+          report={activeReport}
+          agents={agents}
+          posts={posts}
+          hypothesis={activeHypothesis}
+          initialAgent={interviewAgent}
+          isDemoMode={demoModeActive}
+        />
+      )}
 
     </div>
   );
