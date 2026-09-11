@@ -6,6 +6,7 @@ import type {
 } from '../../utils/swarm/types';
 import { askChiefAnalyst, interviewAgent } from '../../utils/swarm/chatAssistant';
 import { getDemoAnalystAnswer, getDemoAgentAnswer } from '../../utils/swarm/demoData';
+import { Markdown } from '../../utils/markdown';
 import { X, Send, Bot, User, Sparkles } from 'lucide-react';
 
 interface QaAssistantDrawerProps {
@@ -185,12 +186,12 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
             }`}>
               {m.sender === 'user' ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
             </div>
-            <div className={`p-3 rounded-2xl text-xs leading-relaxed max-w-[80%] whitespace-pre-wrap ${
+            <div className={`p-3 rounded-2xl text-xs leading-relaxed max-w-[80%] ${
               m.sender === 'user' 
-                ? 'bg-indigo-600 text-white rounded-tr-none' 
+                ? 'bg-indigo-600 text-white rounded-tr-none whitespace-pre-wrap' 
                 : 'bg-slate-100 text-slate-800 rounded-tl-none border border-slate-200/70'
             }`}>
-              {m.text}
+              {m.sender === 'user' ? m.text : <Markdown content={m.text} className="space-y-1.5" />}
             </div>
           </div>
         ))}

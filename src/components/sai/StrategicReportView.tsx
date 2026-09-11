@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { StrategicReport } from '../../utils/swarm/types';
+import { Markdown } from '../../utils/markdown';
 import { 
   Target, 
   ShieldCheck, 
@@ -177,8 +178,8 @@ export const StrategicReportView: React.FC<StrategicReportViewProps> = ({
               </button>
 
               {!isCollapsed && (
-                <div className="px-6 pb-6 pt-2 text-xs text-slate-700 leading-relaxed space-y-3 border-t border-slate-100/80 whitespace-pre-wrap font-sans">
-                  {section.content}
+                <div className="px-6 pb-6 pt-4 text-xs text-slate-700 leading-relaxed border-t border-slate-100/80 font-sans">
+                  <Markdown content={section.content} className="space-y-2.5 text-xs text-slate-700 leading-relaxed" />
                 </div>
               )}
             </div>

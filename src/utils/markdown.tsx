@@ -89,9 +89,14 @@ export const parseMarkdown = (text: string): React.ReactNode[] => {
   let currentListItems: React.ReactNode[] = [];
   let currentListType: "ul" | "ol" | null = null;
   let currentParagraphLines: string[] = [];
+  let currentBlockquoteLines: string[] = [];
 
   let currentTableHeader: string[] = [];
   let currentTableRows: string[][] | null = null;
+
+  let isCodeBlock = false;
+  let currentCodeBlockLang = "";
+  let currentCodeBlockLines: string[] = [];
 
   const isSeparatorLine = (line: string): boolean => {
     return /^\s*\|(?:\s*:?-+:?\s*\|)+\s*$/.test(line);
@@ -141,19 +146,32 @@ export const parseMarkdown = (text: string): React.ReactNode[] => {
     if (currentListItems.length > 0) {
       if (currentListType === "ul") {
         elements.push(
-          <ul key={`ul-${key}`} className="list-disc pl-5 my-2 space-y-1 text-left">
+          <ul key={`ul-${key}`} className="list-disc pl-5 my-2 space-y-1.5 text-left">
             {currentListItems}
           </ul>
         );
       } else if (currentListType === "ol") {
         elements.push(
-          <ol key={`ol-${key}`} className="list-decimal pl-5 my-2 space-y-1 text-left">
+          <ol key={`ol-${key}`} className="list-decimal pl-5 my-2 space-y-1.5 text-left">
             {currentListItems}
           </ol>
         );
       }
       currentListItems = [];
       currentListType = null;
+    }
+  };
+
+  const closeBlockquote = (key: string) => {
+    if (currentBlockquoteLines.length > 0) {
+      elements.push(
+        <blockquote key={`bq-${key}`} className="my-2.5 pl-3.5 border-l-4 border-indigo-400/80 bg-indigo-50/40 rounded-r-xl py-2 pr-3 text-xs italic text-slate-700 space-y-1">
+          {currentBlockquoteLines.map((line, idx) => (
+            <div key={idx}>{parseInlineStyles(line)}</div>
+          ))}
+        </blockquote>
+      );
+      currentBlockquoteLines = [];
     }
   };
 
@@ -177,6 +195,54 @@ export const parseMarkdown = (text: string): React.ReactNode[] => {
     const line = lines[i];
     const trimmed = line.trim();
 
+    // Fenced code block handling
+    if (trimmed.startsWith("```")) {
+      if (!isCodeBlock) {
+        closeTable(`code-${i}`);
+        closeList(`code-${i}`);
+        closeParagraph(`code-${i}`);
+        closeBlockquote(`code-${i}`);
+        isCodeBlock = true;
+        currentCodeBlockLang = trimmed.substring(3).trim();
+        currentCodeBlockLines = [];
+        continue;
+      } else {
+        elements.push(
+          <div key={`codeblock-${i}`} className="my-3 rounded-2xl overflow-hidden border border-slate-800 bg-slate-900 text-slate-100 shadow-sm text-left">
+            {currentCodeBlockLang && (
+              <div className="px-4 py-1.5 bg-slate-950/80 border-b border-slate-800 text-[10px] font-mono uppercase tracking-wider text-slate-400">
+                {currentCodeBlockLang}
+              </div>
+            )}
+            <pre className="p-4 text-xs font-mono overflow-x-auto leading-relaxed">
+              <code>{currentCodeBlockLines.join("\n")}</code>
+            </pre>
+          </div>
+        );
+        isCodeBlock = false;
+        currentCodeBlockLang = "";
+        currentCodeBlockLines = [];
+        continue;
+      }
+    }
+
+    if (isCodeBlock) {
+      currentCodeBlockLines.push(line);
+      continue;
+    }
+
+    // Blockquote
+    const bqMatch = line.match(/^(\s*)>\s?(.*)$/);
+    if (bqMatch) {
+      closeTable(`bq-${i}`);
+      closeList(`bq-${i}`);
+      closeParagraph(`bq-${i}`);
+      currentBlockquoteLines.push(bqMatch[2]);
+      continue;
+    } else if (currentBlockquoteLines.length > 0) {
+      closeBlockquote(`bq-end-${i}`);
+    }
+
     // Table parsing
     if (trimmed.startsWith("|")) {
       const isHeader = !currentTableRows && (i + 1 < lines.length && isSeparatorLine(lines[i + 1]));
@@ -184,6 +250,7 @@ export const parseMarkdown = (text: string): React.ReactNode[] => {
       if (isHeader) {
         closeList(`table-hdr-${i}`);
         closeParagraph(`table-hdr-${i}`);
+        closeBlockquote(`table-hdr-${i}`);
         
         currentTableHeader = parseTableRow(line);
         i++; // Skip the separator line
@@ -207,6 +274,7 @@ export const parseMarkdown = (text: string): React.ReactNode[] => {
       closeTable(`hr-${i}`);
       closeList(`hr-${i}`);
       closeParagraph(`hr-${i}`);
+      closeBlockquote(`hr-${i}`);
       elements.push(<hr key={`hr-${i}`} className="my-3 border-slate-200" />);
       continue;
     }
@@ -216,6 +284,7 @@ export const parseMarkdown = (text: string): React.ReactNode[] => {
       closeTable(`h-${i}`);
       closeList(`h-${i}`);
       closeParagraph(`h-${i}`);
+      closeBlockquote(`h-${i}`);
       
       const level = (trimmed.match(/^#+/) || [""])[0].length;
       const content = trimmed.substring(level).trim();
@@ -236,6 +305,7 @@ export const parseMarkdown = (text: string): React.ReactNode[] => {
     if (ulMatch) {
       closeTable(`ul-item-${i}`);
       closeParagraph(`ul-item-${i}`);
+      closeBlockquote(`ul-item-${i}`);
       if (currentListType !== "ul") {
         closeList(`ul-switch-${i}`);
         currentListType = "ul";
@@ -255,14 +325,21 @@ export const parseMarkdown = (text: string): React.ReactNode[] => {
     if (olMatch) {
       closeTable(`ol-item-${i}`);
       closeParagraph(`ol-item-${i}`);
+      closeBlockquote(`ol-item-${i}`);
       if (currentListType !== "ol") {
         closeList(`ol-switch-${i}`);
         currentListType = "ol";
       }
       const indent = olMatch[1].length;
+      const itemNum = parseInt(olMatch[2], 10);
       const content = olMatch[3];
       currentListItems.push(
-        <li key={`li-${i}`} style={{ marginLeft: `${indent * 6}px` }} className="text-xs font-medium text-slate-700">
+        <li 
+          key={`li-${i}`} 
+          value={isNaN(itemNum) ? undefined : itemNum}
+          style={{ marginLeft: `${indent * 6}px` }} 
+          className="text-xs font-medium text-slate-700"
+        >
           {parseInlineStyles(content)}
         </li>
       );
@@ -274,12 +351,14 @@ export const parseMarkdown = (text: string): React.ReactNode[] => {
       closeTable(`empty-${i}`);
       closeList(`empty-${i}`);
       closeParagraph(`empty-${i}`);
+      closeBlockquote(`empty-${i}`);
       continue;
     }
 
     // Regular line
     closeTable(`text-${i}`);
     closeList(`text-${i}`);
+    closeBlockquote(`text-${i}`);
     currentParagraphLines.push(line);
   }
 
@@ -287,18 +366,26 @@ export const parseMarkdown = (text: string): React.ReactNode[] => {
   closeTable("final-table");
   closeList("final-list");
   closeParagraph("final-paragraph");
+  closeBlockquote("final-bq");
 
   return elements;
 };
 
-// Parser for inline styles: bold (**text**), italic (*text*), and code (`code`)
+// Parser for inline styles: bold (**text**), italic (*text*), code (`code`), links ([text](url))
 const parseInlineStyles = (text: string): React.ReactNode => {
   const parts: React.ReactNode[] = [];
   let index = 0;
 
-  // Regex matches: **bold** / __bold__, *italic* / _italic_, `code`
-  const inlineRegex = /(\*\*|__)(.*?)\1|(\*|_)(.*?)\3|(`)(.*?)\5/g;
+  // Regex matches: **bold** / __bold__, *italic* / _italic_, `code`, [link](url)
+  const inlineRegex = /(\*\*|__)(.*?)\1|(\*|_)(.*?)\3|(`)(.*?)\5|\[(.*?)\]\(((?:https?:\/\/|\/)[^\s\)]+)\)/g;
   let match;
+
+  const parseInnerStyles = (inner: string): React.ReactNode => {
+    if (!/[*_`\[]/.test(inner)) {
+      return renderTextWithFilePills(inner);
+    }
+    return parseInlineStyles(inner);
+  };
 
   while ((match = inlineRegex.exec(text)) !== null) {
     // Add preceding plain text
@@ -308,13 +395,26 @@ const parseInlineStyles = (text: string): React.ReactNode => {
 
     if (match[1]) {
       // Bold
-      parts.push(<strong key={match.index} className="font-extrabold text-slate-900">{match[2]}</strong>);
+      parts.push(<strong key={match.index} className="font-extrabold text-slate-900">{parseInnerStyles(match[2])}</strong>);
     } else if (match[3]) {
       // Italic
-      parts.push(<em key={match.index} className="italic text-slate-800">{match[4]}</em>);
+      parts.push(<em key={match.index} className="italic text-slate-800">{parseInnerStyles(match[4])}</em>);
     } else if (match[5]) {
       // Inline Code
       parts.push(<code key={match.index} className="bg-slate-100/80 px-1 py-0.5 rounded text-[10.5px] font-mono text-purple-700 border border-slate-200/50">{match[6]}</code>);
+    } else if (match[7] && match[8]) {
+      // Link [label](url)
+      parts.push(
+        <a 
+          key={match.index} 
+          href={match[8]} 
+          target="_blank" 
+          rel="noopener noreferrer" 
+          className="text-indigo-600 hover:text-indigo-800 underline font-semibold transition"
+        >
+          {match[7]}
+        </a>
+      );
     }
 
     index = inlineRegex.lastIndex;
@@ -330,8 +430,9 @@ const parseInlineStyles = (text: string): React.ReactNode => {
 
 interface MarkdownProps {
   content: string;
+  className?: string;
 }
 
-export const Markdown: React.FC<MarkdownProps> = ({ content }) => {
-  return <div className="space-y-1.5">{parseMarkdown(content)}</div>;
+export const Markdown: React.FC<MarkdownProps> = ({ content, className = "space-y-1.5" }) => {
+  return <div className={className}>{parseMarkdown(content || "")}</div>;
 };

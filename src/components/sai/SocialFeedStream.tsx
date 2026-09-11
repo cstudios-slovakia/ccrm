@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import type { SwarmPost } from '../../utils/swarm/types';
+import { Markdown } from '../../utils/markdown';
 import { MessageSquare, Heart, Repeat2, Sparkles } from 'lucide-react';
 
 interface SocialFeedStreamProps {
@@ -97,7 +98,7 @@ export const SocialFeedStream: React.FC<SocialFeedStreamProps> = ({
 
               {/* Post Content */}
               <div className="mt-2 text-xs text-slate-700 leading-relaxed pl-10">
-                {post.content}
+                <Markdown content={post.content} className="space-y-1" />
               </div>
 
               {/* Engagement Stats */}
