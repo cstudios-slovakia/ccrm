@@ -10,7 +10,7 @@ import type {
   ProjectTimelineEvent, ProjectGanttRow,
   FinancialRecord, FinancialCategory, FinancialStatus, FinancialType
 } from "../types";
-import type { Language } from "../utils/translations";
+import { getTranslation, type Language } from "../utils/translations";
 import { nowLocalStamp, formatTimestampLocalized, formatDateLocalized, todayLocal } from "../utils/localTime";
 import {
   CURRENCY_OPTIONS,
@@ -204,6 +204,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const [associatedLeadId, setAssociatedLeadId] = useState("");
   const [associatedClientId, setAssociatedClientId] = useState("");
   const [selectedManagers, setSelectedManagers] = useState<string[]>([]);
+  // The paired lead is shown as the same green client card the lead view has;
+  // the picker only comes back while re-pairing.
+  const [pickingClient, setPickingClient] = useState(false);
   const [dynamicData, setDynamicData] = useState<Record<string, any>>({});
   const [timeline, setTimeline] = useState<ProjectTimelineEvent[]>([]);
   const [gantt, setGantt] = useState<ProjectGanttRow[]>([]);
@@ -277,6 +280,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       setAssociatedLeadId(project.leadId || "");
       setAssociatedClientId(project.clientId || "");
       setSelectedManagers(project.managers || []);
+      setPickingClient(false);
       setDynamicData(project.data || {});
       setTimeline(project.timeline || []);
       setGantt(project.gantt || []);
@@ -868,12 +872,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 and both write the one field (`leadId`) that carries it. */}
             <div>
               <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Paired Lead / Client", "Spárovaný lead / klient", "Párosított lead / ügyfél")}</label>
-              <SearchableClientSelect
-                leads={leads}
-                value={associatedLeadId}
-                onChange={id => {
+              {(() => {
+                const pairedLead = leads.find(l => l.id === associatedLeadId);
+                const pairWith = (id: string) => {
                   setAssociatedLeadId(id);
                   setAssociatedClientId(id);
+                  setPickingClient(false);
                   // Pairing a lead names the project after it, but only while it
                   // has no name yet — re-pairing never overwrites what somebody
                   // deliberately typed.
@@ -881,49 +885,233 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     const paired = leads.find(l => l.id === id);
                     if (paired?.name) setProjectName(paired.name);
                   }
-                }}
-                userLanguage={userLanguage}
-              />
-              <p className="mt-1 text-[9px] font-semibold text-slate-400 leading-snug">
-                {associatedLeadId
-                  ? t(
-                      "This project shows up on the lead's card too. Saved with the project.",
-                      "Tento projekt sa zobrazí aj na karte leadu. Uloží sa spolu s projektom.",
-                      "Ez a projekt a lead kartonján is megjelenik. A projekttel együtt mentődik.",
-                    )
-                  : t(
-                      "Not paired with anyone — pick a lead or client to link this project to.",
-                      "Nie je spárovaný s nikým — vyberte lead alebo klienta, s ktorým sa projekt prepojí.",
-                      "Nincs párosítva — válasszon leadet vagy ügyfelet a projekt összekapcsolásához.",
-                    )}
-              </p>
+                };
+
+                if (!pairedLead || pickingClient) {
+                  return (
+                    <>
+                      <SearchableClientSelect
+                        leads={leads}
+                        value={associatedLeadId}
+                        onChange={pairWith}
+                        userLanguage={userLanguage}
+                      />
+                      {pairedLead && (
+                        <button
+                          type="button"
+                          onClick={() => setPickingClient(false)}
+                          className="mt-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                        >
+                          {t("Keep current pairing", "Ponechať súčasné spárovanie", "Jelenlegi párosítás megtartása")}
+                        </button>
+                      )}
+                      <p className="mt-1 text-[9px] font-semibold text-slate-400 leading-snug">
+                        {t(
+                          "Not paired with anyone — pick a lead or client to link this project to.",
+                          "Nie je spárovaný s nikým — vyberte lead alebo klienta, s ktorým sa projekt prepojí.",
+                          "Nincs párosítva — válasszon leadet vagy ügyfelet a projekt összekapcsolásához.",
+                        )}
+                      </p>
+                    </>
+                  );
+                }
+
+                // The same green card the lead view shows for its client, so a
+                // pairing reads the same from either end of the link.
+                const initials = pairedLead.name
+                  .split(/\s+/)
+                  .filter(Boolean)
+                  .slice(0, 2)
+                  .map(w => w[0]?.toUpperCase() || "")
+                  .join("") || "?";
+                const clientTypeLabel =
+                  pairedLead.clientType === "business"
+                    ? `🏢 ${t("Company / Business", "Firma / Podnikanie", "Cég / Vállalkozás")}`
+                    : pairedLead.clientType === "partner"
+                      ? `🤝 ${t("Dealer Partner", "Obchodný partner", "Kereskedő partner")}`
+                      : `👤 ${t("Private Person", "Súkromná osoba", "Magánszemély")}`;
+                const addr = pairedLead.address;
+                const city = addr?.city || pairedLead.city || "";
+                const addressText = [addr?.street, city].filter(Boolean).join(", ") + (addr?.postalCode ? ` (${addr.postalCode})` : "");
+                const noneAdded = <span className="text-slate-300 italic">{getTranslation(userLanguage, "profile.none_added")}</span>;
+
+                return (
+                  <div className="rounded-[22px] border-2 border-emerald-400 bg-emerald-50/70 shadow-md p-4 space-y-3 text-emerald-950">
+                    <div className="border-b-2 border-emerald-200/50 pb-2 flex items-center justify-between gap-2 flex-wrap">
+                      <span className="text-[10px] font-black text-emerald-700 uppercase tracking-wider flex items-center gap-1.5 min-w-0">
+                        <Icons.Briefcase className="h-4 w-4 text-emerald-600 stroke-[2.5] shrink-0" />
+                        <span>{getTranslation(userLanguage, "common.client_relationship_card")}</span>
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[8px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200 uppercase tracking-wider shrink-0">
+                        {getTranslation(userLanguage, "common.synced_profile")}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-2 border-emerald-700 flex items-center justify-center font-heading font-black text-sm shadow shrink-0">
+                        {initials}
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="text-sm font-black text-slate-800 line-clamp-1">{pairedLead.name}</h4>
+                        <span className="text-[9px] font-extrabold uppercase tracking-wide text-emerald-700">{clientTypeLabel}</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 text-[11px] bg-white/70 p-3 rounded-xl border border-emerald-200/50">
+                      <div className="space-y-0.5 min-w-0">
+                        <span className="text-[8px] font-black text-emerald-700/60 uppercase tracking-wider block">
+                          {getTranslation(userLanguage, "profile.phone_number")}
+                        </span>
+                        <span className="font-extrabold text-slate-700 block truncate">
+                          {pairedLead.phone ? (
+                            <span className="flex items-center gap-1"><Phone className="h-3 w-3 text-emerald-600 shrink-0" />{pairedLead.phone}</span>
+                          ) : noneAdded}
+                        </span>
+                      </div>
+                      <div className="space-y-0.5 min-w-0">
+                        <span className="text-[8px] font-black text-emerald-700/60 uppercase tracking-wider block">
+                          {getTranslation(userLanguage, "profile.email_address")}
+                        </span>
+                        <span className="font-extrabold text-slate-700 block truncate">
+                          {pairedLead.email ? (
+                            <span className="flex items-center gap-1"><Mail className="h-3 w-3 text-emerald-600 shrink-0" /><span className="truncate">{pairedLead.email}</span></span>
+                          ) : noneAdded}
+                        </span>
+                      </div>
+                      <div className="space-y-0.5 col-span-2 border-t border-emerald-200/50 pt-2 mt-1">
+                        <span className="text-[8px] font-black text-emerald-700/60 uppercase tracking-wider block">
+                          {getTranslation(userLanguage, "profile.location_address")}
+                        </span>
+                        <span className="font-extrabold text-slate-700 block">
+                          {addressText ? (
+                            <span className="flex items-center gap-1"><Icons.MapPin className="h-3.5 w-3.5 text-emerald-600 shrink-0" /><span className="line-clamp-1">{addressText}</span></span>
+                          ) : noneAdded}
+                        </span>
+                      </div>
+                      {pairedLead.website && (
+                        <div className="space-y-0.5 col-span-2 border-t border-emerald-200/50 pt-2 mt-1">
+                          <span className="text-[8px] font-black text-emerald-700/60 uppercase tracking-wider block">
+                            {getTranslation(userLanguage, "profile.website_link")}
+                          </span>
+                          <a
+                            href={`https://${pairedLead.website.replace(/^https?:\/\//, "")}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-extrabold text-blue-600 hover:underline flex items-center gap-1"
+                          >
+                            <Icons.Globe className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                            <span className="truncate">{pairedLead.website}</span>
+                          </a>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 pt-1 flex-wrap">
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setPickingClient(true)}
+                          className="px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider text-emerald-700 hover:bg-emerald-100 transition-colors cursor-pointer flex items-center gap-1"
+                          title={t("Pair with a different lead or client", "Spárovať s iným leadom alebo klientom", "Másik leaddel vagy ügyféllel párosítás")}
+                        >
+                          <Icons.Repeat className="h-3 w-3" />
+                          {t("Change", "Zmeniť", "Módosítás")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setAssociatedLeadId(""); setAssociatedClientId(""); setPickingClient(false); }}
+                          className="px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer flex items-center gap-1"
+                          title={t("Unpair this project", "Zrušiť spárovanie projektu", "Párosítás megszüntetése")}
+                        >
+                          <Icons.Unlink className="h-3 w-3" />
+                          {t("Unpair", "Odpojiť", "Leválasztás")}
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => { window.location.hash = `client-${encodeURIComponent(pairedLead.name)}`; }}
+                        className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-black uppercase tracking-wider shadow transition-all active:scale-95 flex items-center justify-center gap-1.5 border border-emerald-700 cursor-pointer"
+                      >
+                        {getTranslation(userLanguage, "common.view_full_profile")}
+                        <ArrowLeft className="h-3.5 w-3.5 rotate-180" />
+                      </button>
+                    </div>
+
+                    <p className="text-[9px] font-semibold text-emerald-800/60 leading-snug">
+                      {t(
+                        "This project shows up on the lead's card too. Saved with the project.",
+                        "Tento projekt sa zobrazí aj na karte leadu. Uloží sa spolu s projektom.",
+                        "Ez a projekt a lead kartonján is megjelenik. A projekttel együtt mentődik.",
+                      )}
+                    </p>
+                  </div>
+                );
+              })()}
             </div>
 
-            {/* Project Managers (Multiple selection) */}
+            {/* Project Managers. A project can carry several, so the dropdown
+                adds one at a time and the chosen ones sit above it as the same
+                coloured chips the lead view wears for its manager. */}
             <div>
               <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Project Managers", "Projektoví manažéri", "Projektmenedzserek")}</label>
-              <div className="border border-slate-200 rounded-xl p-2.5 bg-white space-y-1.5 max-h-32 overflow-y-auto scrollbar-thin">
-                {users.map(u => {
-                  const isChecked = selectedManagers.includes(u.name);
-                  return (
-                    <label key={u.email} className="flex items-center gap-2 cursor-pointer select-none text-xs font-semibold text-slate-700">
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={() => {
-                          if (isChecked) {
-                            setSelectedManagers(prev => prev.filter(m => m !== u.name));
-                          } else {
-                            setSelectedManagers(prev => [...prev, u.name]);
-                          }
-                        }}
-                        className="h-4 w-4 rounded border-slate-300 text-indigo-600"
-                      />
-                      <span>{u.name}</span>
-                    </label>
-                  );
-                })}
-              </div>
+              {selectedManagers.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {selectedManagers.map(name => {
+                    const color = users.find(u => u.name === name)?.color || "#64748b";
+                    return (
+                      <span
+                        key={name}
+                        className="inline-flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider shadow-sm"
+                        style={{ backgroundColor: `${color}15`, color, borderColor: `${color}30` }}
+                      >
+                        <Icons.User className="h-3 w-3 shrink-0" />
+                        <span className="truncate max-w-[10rem]">{name}</span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedManagers(prev => prev.filter(m => m !== name))}
+                          className="ml-0.5 p-0.5 rounded-full hover:bg-black/10 transition-colors cursor-pointer"
+                          title={t("Remove", "Odobrať", "Eltávolítás")}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+              {(() => {
+                const available = users.filter(u => !selectedManagers.includes(u.name));
+                return (
+                  <CustomSelect
+                    value=""
+                    onChange={name => {
+                      if (name && !selectedManagers.includes(name)) setSelectedManagers(prev => [...prev, name]);
+                    }}
+                    disabled={available.length === 0}
+                    placeholder={
+                      available.length === 0
+                        ? t("Everyone is assigned", "Priradení sú všetci", "Mindenki hozzá van rendelve")
+                        : selectedManagers.length > 0
+                          ? t("Add another manager...", "Pridať ďalšieho manažéra...", "További menedzser hozzáadása...")
+                          : t("Assign a manager...", "Priradiť manažéra...", "Menedzser kijelölése...")
+                    }
+                    options={available.map(u => ({
+                      value: u.name,
+                      label: u.name,
+                      icon: <span className="h-2.5 w-2.5 rounded-full shrink-0 inline-block" style={{ backgroundColor: u.color || "#64748b" }} />,
+                    }))}
+                  />
+                );
+              })()}
+              {selectedManagers.length === 0 && (
+                <p className="mt-1 text-[9px] font-semibold text-slate-400 leading-snug">
+                  {t(
+                    "Nobody is on this project yet.",
+                    "Na projekte zatiaľ nikto nie je priradený.",
+                    "Még senki sincs hozzárendelve a projekthez.",
+                  )}
+                </p>
+              )}
             </div>
 
             <div className="border-t border-slate-200 my-4 shrink-0" />
