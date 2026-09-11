@@ -868,6 +868,34 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"list" | "editor" | "logs" | "settings">("list");
   const [selectedWorkflow, setSelectedWorkflow] = useState<any>(null);
+  const isInternalHashUpdateRef = React.useRef(false);
+
+  const navigateToTab = (
+    tab: "list" | "editor" | "logs" | "settings",
+    opts?: { id?: string | number; replace?: boolean }
+  ) => {
+    setActiveTab(tab);
+    let newHash = "automation";
+    if (tab === "editor") {
+      newHash = opts?.id ? `automation/editor?id=${opts.id}` : "automation/editor";
+    } else if (tab === "logs") {
+      newHash = opts?.id ? `automation/logs?id=${opts.id}` : "automation/logs";
+    } else if (tab === "settings") {
+      newHash = "automation/settings";
+    } else {
+      newHash = "automation";
+    }
+
+    const currentHash = window.location.hash.replace(/^#/, "");
+    if (currentHash !== newHash) {
+      isInternalHashUpdateRef.current = true;
+      if (opts?.replace) {
+        window.history.replaceState(null, "", `#${newHash}`);
+      } else {
+        window.location.hash = newHash;
+      }
+    }
+  };
   
   // Settings state
   // AI provider keys live in Settings -> INTEGRATIONS_CONFIG; this config only
@@ -1182,6 +1210,52 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
     fetchSettings();
   }, []);
 
+  // Synchronize active view with URL hash (#automation, #automation/editor?id=..., #automation/logs?id=..., #automation/settings)
+  useEffect(() => {
+    const syncFromHash = () => {
+      if (isInternalHashUpdateRef.current) {
+        isInternalHashUpdateRef.current = false;
+        return;
+      }
+      const rawHash = window.location.hash.replace(/^#/, "");
+      if (!rawHash.startsWith("automation")) return;
+
+      const [pathPart, queryPart] = rawHash.split("?");
+      const segments = pathPart.split("/").filter(Boolean);
+      const sub = segments[1] || "list";
+      const params = new URLSearchParams(queryPart || "");
+      const wfId = params.get("id");
+
+      if (sub === "editor") {
+        if (wfId && workflows.length > 0) {
+          const found = workflows.find((w) => String(w.id) === String(wfId));
+          if (found) {
+            handleEditWorkflow(found, false);
+            return;
+          }
+        }
+        setActiveTab("editor");
+      } else if (sub === "logs") {
+        if (wfId && workflows.length > 0) {
+          const found = workflows.find((w) => String(w.id) === String(wfId));
+          if (found) {
+            handleViewLogs(found, false);
+            return;
+          }
+        }
+        setActiveTab("logs");
+      } else if (sub === "settings") {
+        setActiveTab("settings");
+      } else {
+        setActiveTab("list");
+      }
+    };
+
+    syncFromHash();
+    window.addEventListener("hashchange", syncFromHash);
+    return () => window.removeEventListener("hashchange", syncFromHash);
+  }, [workflows]);
+
   // Save Settings
   const saveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1270,7 +1344,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
   };
 
   // Initialize new workflow editor
-  const handleNewWorkflow = () => {
+  const handleNewWorkflow = (shouldUpdateHash = true) => {
     setSelectedWorkflow(null);
     setWorkflowName("");
     setWorkflowDesc("");
@@ -1285,11 +1359,15 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
     setNodes(initialNodes);
     setEdges([]);
     setSelectedNode(initialNodes[0]);
-    setActiveTab("editor");
+    if (shouldUpdateHash) {
+      navigateToTab("editor");
+    } else {
+      setActiveTab("editor");
+    }
   };
 
   // Open existing workflow editor
-  const handleEditWorkflow = (wf: any) => {
+  const handleEditWorkflow = (wf: any, shouldUpdateHash = true) => {
     setSelectedWorkflow(wf);
     setWorkflowName(wf.name);
     setWorkflowDesc(wf.description || "");
@@ -1298,14 +1376,22 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
     setNodes(wf.nodes || []);
     setEdges(wf.edges || []);
     setSelectedNode(wf.nodes?.[0] || null);
-    setActiveTab("editor");
+    if (shouldUpdateHash) {
+      navigateToTab("editor", { id: wf.id });
+    } else {
+      setActiveTab("editor");
+    }
     setSelectedLog(null);
   };
 
   // Open logs view
-  const handleViewLogs = async (wf: any) => {
+  const handleViewLogs = async (wf: any, shouldUpdateHash = true) => {
     setSelectedWorkflow(wf);
-    setActiveTab("logs");
+    if (shouldUpdateHash) {
+      navigateToTab("logs", { id: wf?.id });
+    } else {
+      setActiveTab("logs");
+    }
     try {
       const res = await fetch(`/api/workflows.php?action=logs&id=${wf.id}`);
       const data = await res.json();
@@ -1344,7 +1430,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
       const data = await res.json();
       if (data.success) {
         showToast(t("Workflow saved successfully", "Workflow bol úspešne uložený", "A munkafolyamat sikeresen mentve"));
-        setActiveTab("list");
+        navigateToTab("list");
         fetchWorkflows();
       } else {
         showToast(data.message || "Failed to save workflow", "error");
@@ -1681,7 +1767,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
             <>
               <button
                 type="button"
-                onClick={() => setActiveTab("settings")}
+                onClick={() => navigateToTab("settings")}
                 className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors text-xs font-heading font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shrink-0"
               >
                 <Settings className="h-4 w-4" />
@@ -1689,7 +1775,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
               </button>
               <button
                 type="button"
-                onClick={handleNewWorkflow}
+                onClick={() => handleNewWorkflow()}
                 className="px-5 py-3 rounded-2xl bg-[#0b1329] text-white hover:bg-slate-900 shadow-md shadow-[#0b1329]/20 transition-all font-heading font-bold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95 shrink-0"
               >
                 <Plus className="h-4.5 w-4.5" />
@@ -1700,7 +1786,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
             <button
               type="button"
               onClick={() => {
-                setActiveTab("list");
+                navigateToTab("list");
                 fetchWorkflows();
               }}
               className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors text-xs font-heading font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shrink-0"
@@ -1734,7 +1820,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                 </p>
                 <button
                   type="button"
-                  onClick={handleNewWorkflow}
+                  onClick={() => handleNewWorkflow()}
                   className="px-5 py-3 rounded-2xl bg-[#0b1329] text-white hover:bg-slate-900 shadow-md shadow-[#0b1329]/20 transition-all font-heading font-bold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95"
                 >
                   <Plus className="h-4.5 w-4.5" />
@@ -3263,7 +3349,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
               <div className="p-6 border-t border-slate-200 bg-slate-50/80 flex items-center justify-between gap-2 shrink-0">
                 <button
                   type="button"
-                  onClick={() => setActiveTab("list")}
+                  onClick={() => navigateToTab("list")}
                   className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors text-xs font-heading font-bold uppercase tracking-wider cursor-pointer"
                 >
                   {t("Cancel", "Zrušiť", "Mégse")}

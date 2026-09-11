@@ -95,10 +95,126 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
   const [isQaOpen, setIsQaOpen] = useState<boolean>(false);
   const [interviewAgent, setInterviewAgent] = useState<SwarmAgentProfile | null>(null);
 
+  // URL Hash Navigation Synchronizer
+  const isInternalHashUpdateRef = useRef(false);
+
+  const navigateView = (
+    view: 'list' | 'create' | 'running' | 'report',
+    opts?: { id?: string; draftId?: string; isDemo?: boolean; replace?: boolean }
+  ) => {
+    setActiveView(view);
+
+    let newHash = 'sai';
+    if (opts?.isDemo) {
+      newHash = 'sai/demo';
+    } else if (view === 'create') {
+      newHash = opts?.draftId ? `sai/create?draftId=${opts.draftId}` : 'sai/create';
+    } else if (view === 'running') {
+      const targetId = opts?.id || activeSimulationId;
+      newHash = targetId ? `sai/war-room?id=${targetId}` : 'sai/war-room';
+    } else if (view === 'report') {
+      const targetId = opts?.id || activeSimulationId;
+      newHash = targetId ? `sai/report?id=${targetId}` : 'sai/report';
+    } else {
+      newHash = 'sai';
+    }
+
+    const currentHash = window.location.hash.replace(/^#/, '');
+    if (currentHash !== newHash) {
+      isInternalHashUpdateRef.current = true;
+      if (opts?.replace) {
+        window.history.replaceState(null, '', `#${newHash}`);
+      } else {
+        window.location.hash = newHash;
+      }
+    }
+  };
+
   // Initial load
   useEffect(() => {
     loadSimulations();
   }, []);
+
+  // Listen to hash changes for deep linking and browser Back/Forward navigation
+  useEffect(() => {
+    const syncFromHash = async () => {
+      if (isInternalHashUpdateRef.current) {
+        isInternalHashUpdateRef.current = false;
+        return;
+      }
+
+      const rawHash = window.location.hash.replace(/^#/, '');
+      if (!rawHash.startsWith('sai')) {
+        return;
+      }
+
+      const [pathPart, queryPart] = rawHash.split('?');
+      const segments = pathPart.split('/').filter(Boolean);
+      const subView = segments[1] || 'list';
+      const params = new URLSearchParams(queryPart || '');
+      const id = params.get('id') || undefined;
+      const draftId = params.get('draftId') || undefined;
+
+      if (subView === 'demo') {
+        setIsGuidedDemoOpen(true);
+        return;
+      } else {
+        setIsGuidedDemoOpen(false);
+      }
+
+      if (subView === 'create' || subView === 'new') {
+        if (draftId) {
+          try {
+            const cp = await fetchResumeCheckpoint(draftId);
+            if (cp) {
+              setEditingDraftData({
+                id: cp.simulationId || draftId,
+                title: cp.title,
+                hypothesis: cp.hypothesis,
+                seed_document: '',
+                lookback_months: 12,
+                total_rounds: cp.totalRounds || 8,
+                status: 'draft'
+              });
+            }
+          } catch (e) {
+            console.error('Error loading draft from hash:', e);
+          }
+        } else {
+          setEditingDraftData(null);
+        }
+        setActiveView('create');
+      } else if (subView === 'war-room' || subView === 'running' || subView === 'live') {
+        if (id && id !== activeSimulationId) {
+          if (id === DEMO_SIMULATION_CHECKPOINT.simulationId) {
+            handleLoadDemoSimulation(false);
+            setActiveView('running');
+          } else {
+            await handleOpenPastSimulation({ id, title: 'Simulation', status: 'running' }, false);
+            setActiveView('running');
+          }
+        } else {
+          setActiveView('running');
+        }
+      } else if (subView === 'report' || subView === 'briefing' || subView === 'results') {
+        if (id && id !== activeSimulationId) {
+          if (id === DEMO_SIMULATION_CHECKPOINT.simulationId) {
+            handleLoadDemoSimulation(false);
+          } else {
+            await handleOpenPastSimulation({ id, title: 'Simulation', status: 'completed' }, false);
+          }
+        } else {
+          setActiveView('report');
+        }
+      } else {
+        setActiveView('list');
+      }
+    };
+
+    syncFromHash();
+    window.addEventListener('hashchange', syncFromHash);
+    return () => window.removeEventListener('hashchange', syncFromHash);
+  }, [activeSimulationId]);
 
   const loadSimulations = async () => {
     setLoadingList(true);
@@ -113,7 +229,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
   };
 
   // Load Pre-computed Demo Simulation
-  const handleLoadDemoSimulation = () => {
+  const handleLoadDemoSimulation = (shouldUpdateHash = true) => {
     setActiveSimulationId(DEMO_SIMULATION_CHECKPOINT.simulationId);
     setActiveTitle(DEMO_SIMULATION_CHECKPOINT.title);
     setActiveHypothesis(DEMO_SIMULATION_CHECKPOINT.hypothesis);
@@ -128,17 +244,21 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
     setMetricsHistory(DEMO_METRICS_HISTORY);
     setLatestMetrics(DEMO_METRICS_HISTORY[DEMO_METRICS_HISTORY.length - 1]);
     setActiveReport(DEMO_STRATEGIC_REPORT);
-    setActiveView('report');
+    if (shouldUpdateHash) {
+      navigateView('report', { id: DEMO_SIMULATION_CHECKPOINT.simulationId });
+    } else {
+      setActiveView('report');
+    }
   };
 
   // Start a fresh new rehearsal
   const handleStartNewRehearsal = () => {
     setEditingDraftData(null);
-    setActiveView('create');
+    navigateView('create');
   };
 
   // Open an existing draft in the create view
-  const handleOpenDraft = (sim: any) => {
+  const handleOpenDraft = (sim: any, shouldUpdateHash = true) => {
     setEditingDraftData({
       id: sim.id,
       title: sim.title,
@@ -150,19 +270,24 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
       total_rounds: sim.total_rounds ? Number(sim.total_rounds) : 8,
       status: 'draft'
     });
-    setActiveView('create');
+    if (shouldUpdateHash) {
+      navigateView('create', { draftId: sim.id });
+    } else {
+      setActiveView('create');
+    }
   };
 
   // Launch New Simulation Rehearsal (optionally continuing an existing draft)
   const handleLaunchSimulation = async (config: SimulationParameters, existingDraftId?: string) => {
     setEditingDraftData(null);
     setIsPreparing(true);
-    setActiveView('running');
 
     // Demo Mode Fast Execution Path
     if (demoModeActive) {
       try {
         const demoSimId = existingDraftId || `demo-sim-${Date.now()}`;
+        setActiveSimulationId(demoSimId);
+        navigateView('running', { id: demoSimId });
         setActiveSimulationId(demoSimId);
         setActiveTitle(config.title);
         setActiveHypothesis(config.hypothesis);
@@ -210,7 +335,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
 
         setActiveReport(DEMO_STRATEGIC_REPORT);
         setIsPreparing(false);
-        setActiveView('report');
+        navigateView('report', { id: demoSimId });
         return;
       } catch (err) {
         console.error('Demo simulation error:', err);
@@ -236,6 +361,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
       });
       const simId = initRes.id;
       setActiveSimulationId(simId);
+      navigateView('running', { id: simId });
       setActiveTitle(config.title);
       setActiveHypothesis(config.hypothesis);
       setActiveSeed(config.seedDocument);
@@ -314,7 +440,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
 
       setActiveReport(report);
       setIsPreparing(false);
-      setActiveView('report');
+      navigateView('report', { id: simId });
 
       // Final save of report into checkpoint
       const finalSnapshot: SimulationCheckpoint = {
@@ -342,9 +468,9 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
   };
 
   // Open past simulation
-  const handleOpenPastSimulation = async (sim: any) => {
+  const handleOpenPastSimulation = async (sim: any, shouldUpdateHash = true) => {
     if (sim.status === 'draft') {
-      handleOpenDraft(sim);
+      handleOpenDraft(sim, shouldUpdateHash);
       return;
     }
 
@@ -356,8 +482,8 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
       }
 
       setActiveSimulationId(checkpoint.simulationId || sim.id);
-      setActiveTitle(checkpoint.title || sim.title);
-      setActiveHypothesis(checkpoint.hypothesis || sim.hypothesis);
+      setActiveTitle(checkpoint.title || sim.title || 'Market Rehearsal');
+      setActiveHypothesis(checkpoint.hypothesis || sim.hypothesis || '');
       setCurrentRound(checkpoint.currentRound || 0);
       setTotalRounds(checkpoint.totalRounds || sim.total_rounds || 8);
       setGraph(checkpoint.graph || { nodes: [], edges: [] });
@@ -372,10 +498,18 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
 
       if (checkpoint.finalReport) {
         setActiveReport(checkpoint.finalReport);
-        setActiveView('report');
+        if (shouldUpdateHash) {
+          navigateView('report', { id: sim.id });
+        } else {
+          setActiveView('report');
+        }
       } else {
         setActiveReport(null);
-        setActiveView('running');
+        if (shouldUpdateHash) {
+          navigateView('running', { id: sim.id });
+        } else {
+          setActiveView('running');
+        }
       }
     } catch (err) {
       console.error('Error opening simulation:', err);
@@ -394,7 +528,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
       if (ok) {
         setPastSimulations(prev => prev.filter(s => s.id !== id));
         if (activeSimulationId === id) {
-          setActiveView('list');
+          navigateView('list');
         }
       }
     } catch (err) {
@@ -437,7 +571,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
         <div className="flex items-center gap-2.5">
           <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200 text-xs font-bold">
             <button
-              onClick={() => setActiveView('list')}
+              onClick={() => navigateView('list')}
               className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
                 activeView === 'list' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'
               }`}
@@ -454,7 +588,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
             )}
             {activeSimulationId && (
               <button
-                onClick={() => setActiveView('running')}
+                onClick={() => navigateView('running')}
                 className={`px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 cursor-pointer ${
                   activeView === 'running' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'
                 }`}
@@ -465,7 +599,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
             )}
             {activeSimulationId && activeReport && (
               <button
-                onClick={() => setActiveView('report')}
+                onClick={() => navigateView('report')}
                 className={`px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 cursor-pointer ${
                   activeView === 'report' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'
                 }`}
@@ -506,7 +640,10 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
 
             {demoModeActive && (
               <button
-                onClick={() => setIsGuidedDemoOpen(true)}
+                onClick={() => {
+                  setIsGuidedDemoOpen(true);
+                  navigateView(activeView, { isDemo: true });
+                }}
                 className="px-3 py-2 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition cursor-pointer"
                 title="Watch animated step-by-step demonstration of the full simulation workflow"
               >
@@ -607,14 +744,17 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
                 </div>
                 <div className="flex flex-wrap items-center gap-2.5 self-end md:self-center shrink-0">
                   <button
-                    onClick={() => setIsGuidedDemoOpen(true)}
+                    onClick={() => {
+                      setIsGuidedDemoOpen(true);
+                      navigateView(activeView, { isDemo: true });
+                    }}
                     className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 text-slate-950 font-black text-xs shadow-lg transition flex items-center gap-2 cursor-pointer"
                   >
                     <Play className="w-4 h-4 fill-slate-950" />
                     <span>Watch Full Process Walkthrough (6 Steps)</span>
                   </button>
                   <button
-                    onClick={handleLoadDemoSimulation}
+                    onClick={() => handleLoadDemoSimulation()}
                     className="px-4 py-2.5 rounded-2xl bg-slate-800/80 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-700 transition flex items-center gap-1.5 cursor-pointer"
                   >
                     <span>Jump to Final Results</span>
@@ -741,7 +881,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
           <CreateRehearsalView
             initialData={editingDraftData}
             onBack={() => {
-              setActiveView('list');
+              navigateView('list');
               setEditingDraftData(null);
             }}
             onLaunch={handleLaunchSimulation}
@@ -786,7 +926,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
               }
             }}
             onOpenAgentDirectory={() => {
-              setActiveView('running');
+              navigateView('running');
             }}
           />
         )}
@@ -810,7 +950,10 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
       {/* Interactive Guided Process Demo Walkthrough Modal */}
       <GuidedDemoWalkthrough
         isOpen={isGuidedDemoOpen}
-        onClose={() => setIsGuidedDemoOpen(false)}
+        onClose={() => {
+          setIsGuidedDemoOpen(false);
+          navigateView(activeView);
+        }}
         onStartRealRehearsal={() => {
           setIsGuidedDemoOpen(false);
           handleStartNewRehearsal();
