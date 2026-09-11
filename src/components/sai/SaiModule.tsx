@@ -529,7 +529,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
       </header>
 
       {/* Main Content Area */}
-      <div className={`flex-1 p-6 ${activeView === 'running' ? 'overflow-hidden' : 'overflow-visible'}`}>
+      <div className={`flex-1 p-6 ${activeView === 'running' ? 'overflow-hidden flex flex-col min-h-0' : 'overflow-visible'}`}>
         
         {/* Preparation Banner */}
         {isPreparing && (
@@ -755,7 +755,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
 
         {/* View 2: Live War Room */}
         {activeView === 'running' && (
-          <div className="h-[calc(100vh-140px)]">
+          <div className="h-[calc(100vh-140px)] min-h-0 flex flex-col overflow-hidden">
             <LiveWarRoom
               title={activeTitle}
               currentRound={currentRound}

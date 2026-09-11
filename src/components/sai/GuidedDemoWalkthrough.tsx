@@ -8,7 +8,6 @@ import {
   X, 
   Zap, 
   ShieldCheck, 
-  Activity, 
   Clock, 
   Users, 
   MessageSquare,
@@ -536,14 +535,14 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
             </div>
           )}
 
-          {/* STAGE 3: Swarm Ingestion & Knowledge Graph */}
+          {/* STAGE 3: Swarm Persona Synthesis */}
           {currentStep === 3 && (
             <div className="flex-1 flex flex-col space-y-4 animate-in fade-in slide-in-from-bottom-3 duration-300">
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 flex-1">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 flex-1 min-h-0">
                 
                 {/* Persona Ingestion Feed */}
-                <div className="lg:col-span-5 bg-white rounded-3xl border border-slate-200/80 shadow-sm p-5 flex flex-col">
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="lg:col-span-5 bg-white rounded-3xl border border-slate-200/80 shadow-sm p-5 flex flex-col h-[520px] min-h-0 overflow-hidden">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
                     <div className="flex items-center gap-2">
                       <Users className="w-4 h-4 text-indigo-600" />
                       <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
@@ -555,26 +554,26 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                     </span>
                   </div>
 
-                  <div className="flex-1 overflow-y-auto space-y-3 pt-3 pr-1 divide-y divide-slate-100">
+                  <div className="flex-1 min-h-0 overflow-y-auto space-y-2.5 pt-3 pr-1 scrollbar-thin scrollbar-thumb-slate-200">
                     {DEMO_AGENTS.map((agent, i) => (
                       <div 
                         key={agent.id} 
-                        className="pt-3 first:pt-0 animate-in fade-in slide-in-from-left duration-300"
+                        className="p-3 bg-slate-50/70 hover:bg-white border border-slate-200/80 rounded-2xl shadow-xs transition duration-200 animate-in fade-in slide-in-from-left duration-300 flex flex-col space-y-1.5"
                         style={{ animationDelay: `${i * 120}ms` }}
                       >
                         <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs text-white ${
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs text-white shrink-0 ${
                               agent.stance === 'opposing' ? 'bg-rose-500' : agent.stance === 'supportive' ? 'bg-emerald-600' : 'bg-slate-600'
                             }`}>
                               {agent.displayName.charAt(0)}
                             </div>
-                            <div>
-                              <div className="text-xs font-bold text-slate-900">{agent.displayName}</div>
-                              <div className="text-[10.5px] text-slate-500">{agent.profession}</div>
+                            <div className="min-w-0">
+                              <div className="text-xs font-bold text-slate-900 truncate">{agent.displayName}</div>
+                              <div className="text-[10.5px] text-slate-500 truncate">{agent.profession}</div>
                             </div>
                           </div>
-                          <span className={`px-2 py-0.5 rounded-full text-[9.5px] font-bold uppercase ${
+                          <span className={`px-2 py-0.5 rounded-full text-[9.5px] font-bold uppercase shrink-0 ${
                             agent.stance === 'opposing' 
                               ? 'bg-rose-50 text-rose-700 border border-rose-200' 
                               : agent.stance === 'supportive'
@@ -584,7 +583,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                             {agent.stance}
                           </span>
                         </div>
-                        <p className="text-[11px] text-slate-600 mt-1.5 pl-10 leading-relaxed italic">
+                        <p className="text-[11px] text-slate-600 pl-10 leading-relaxed italic">
                           "{agent.userChar}"
                         </p>
                       </div>
@@ -593,8 +592,8 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                 </div>
 
                 {/* Dynamic Swarm Knowledge Graph */}
-                <div className="lg:col-span-7 bg-white rounded-3xl border border-slate-200/80 shadow-sm p-5 flex flex-col">
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="lg:col-span-7 bg-white rounded-3xl border border-slate-200/80 shadow-sm p-5 flex flex-col h-[520px] min-h-0 overflow-hidden">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
                     <div className="flex items-center gap-2">
                       <Layers className="w-4 h-4 text-purple-600" />
                       <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
@@ -606,8 +605,8 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                     </span>
                   </div>
 
-                  <div className="flex-1 min-h-[400px] mt-3 rounded-2xl overflow-hidden border border-slate-200 bg-slate-950">
-                    <SwarmGraphCanvas graph={DEMO_GRAPH} activeEntityId="node_procurement" />
+                  <div className="flex-1 min-h-0 mt-3 rounded-2xl overflow-hidden border border-slate-200 bg-slate-950 flex flex-col">
+                    <SwarmGraphCanvas graph={DEMO_GRAPH} activeEntityId="node_procurement" className="w-full h-full min-h-0" />
                   </div>
                 </div>
 
@@ -618,35 +617,24 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
           {/* STAGE 4: Autonomous Live War Room */}
           {currentStep === 4 && (
             <div className="flex-1 flex flex-col space-y-4 animate-in fade-in slide-in-from-bottom-3 duration-300">
-              {/* War Room Ticker HUD */}
-              <div className="p-4 rounded-3xl bg-white border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4">
+              {/* Simulation Header Status Bar */}
+              <div className="p-4 rounded-3xl bg-white border border-slate-200 shadow-sm flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-purple-600 to-emerald-500 flex items-center justify-center text-white shadow-md">
-                    <Activity className="w-5 h-5 animate-pulse" />
+                  <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center">
+                    <Play className="w-5 h-5 fill-white animate-pulse" />
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-sm font-bold text-slate-900">Simulating Round {warRoomRound} of 3</h3>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        Autonomous Stream Active
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-500">Day-to-night diurnal cycle modeling customer reactions</p>
+                    <h3 className="text-sm font-bold text-slate-900">Stage 4: Autonomous Market Rehearsal Running</h3>
+                    <p className="text-xs text-slate-500">Personas interact, debate, and react to proposed changes in real-time</p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-4 text-xs">
-                  <div className="p-2 px-3 rounded-xl bg-slate-50 border border-slate-200">
-                    <span className="text-[10px] text-slate-400 block font-bold uppercase">Simulated Time</span>
-                    <span className="font-bold text-slate-800">{warRoomRound === 1 ? '09:15 CET' : warRoomRound === 2 ? '15:30 CET' : '21:45 CET'}</span>
+                  <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200">
+                    <span className="text-[10px] text-slate-400 block font-bold uppercase">Simulation Time</span>
+                    <span className="font-bold text-slate-700">14:00 CET</span>
                   </div>
-                  <div className="p-2 px-3 rounded-xl bg-slate-50 border border-slate-200">
-                    <span className="text-[10px] text-slate-400 block font-bold uppercase">Net Sentiment</span>
-                    <span className={`font-bold ${currentMetric.averageSentiment >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                      {currentMetric.averageSentiment > 0 ? `+${currentMetric.averageSentiment.toFixed(2)}` : currentMetric.averageSentiment.toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="p-2 px-3 rounded-xl bg-slate-50 border border-slate-200">
+                  <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200">
                     <span className="text-[10px] text-slate-400 block font-bold uppercase">Viral Index</span>
                     <span className="font-bold text-purple-600">{currentMetric.viralIndex}%</span>
                   </div>
@@ -654,10 +642,10 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
               </div>
 
               {/* Feed & Graph Columns */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 flex-1">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 flex-1 min-h-0">
                 {/* Live Feed Stream */}
-                <div className="lg:col-span-6 bg-white rounded-3xl border border-slate-200 shadow-sm p-4 flex flex-col h-[480px]">
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="lg:col-span-6 bg-white rounded-3xl border border-slate-200 shadow-sm p-4 flex flex-col h-[500px] min-h-0 overflow-hidden">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
                     <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                       <MessageSquare className="w-4 h-4 text-indigo-600" />
                       Autonomous Social Stream ({warRoomPosts.length} Posts)
@@ -665,26 +653,29 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                     <span className="text-[10px] font-bold text-slate-400">Auto-streaming</span>
                   </div>
 
-                  <div className="flex-1 overflow-y-auto space-y-3 pt-3 divide-y divide-slate-100 pr-1">
+                  <div className="flex-1 min-h-0 overflow-y-auto space-y-3 pt-3 pr-1 scrollbar-thin scrollbar-thumb-slate-200">
                     {[...warRoomPosts].reverse().map(post => (
-                      <div key={post.id} className="pt-3 first:pt-0 animate-in fade-in slide-in-from-top-2 duration-300">
+                      <div 
+                        key={post.id} 
+                        className="p-3.5 bg-slate-50/70 hover:bg-white border border-slate-200/80 rounded-2xl shadow-xs transition duration-200 animate-in fade-in slide-in-from-top-2 duration-300 group flex flex-col space-y-2"
+                      >
                         <div className="flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-full bg-indigo-600 text-white font-bold text-xs flex items-center justify-center">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-7 h-7 rounded-full bg-indigo-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
                               {post.agentName.charAt(0)}
                             </div>
-                            <div>
-                              <span className="font-bold text-slate-900">{post.agentName}</span>
-                              <span className="text-[10px] text-slate-400 font-mono ml-1.5">@{post.agentUsername}</span>
+                            <div className="min-w-0">
+                              <span className="font-bold text-slate-900 group-hover:text-indigo-600 transition truncate">{post.agentName}</span>
+                              <span className="text-[10px] text-slate-400 font-mono ml-1.5 truncate">@{post.agentUsername}</span>
                             </div>
                           </div>
-                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
+                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase shrink-0 ${
                             post.sentimentScore > 0.2 ? 'bg-emerald-50 text-emerald-700' : post.sentimentScore < -0.2 ? 'bg-rose-50 text-rose-700' : 'bg-slate-100 text-slate-600'
                           }`}>
                             {post.sentimentScore > 0.2 ? 'Supportive' : post.sentimentScore < -0.2 ? 'Opposing' : 'Neutral'}
                           </span>
                         </div>
-                        <div className="text-xs text-slate-700 mt-1.5 pl-9 leading-relaxed">
+                        <div className="text-xs text-slate-700 mt-1 leading-relaxed">
                           <Markdown content={post.content} />
                         </div>
                       </div>
@@ -693,8 +684,8 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                 </div>
 
                 {/* Graph Canvas */}
-                <div className="lg:col-span-6 bg-slate-950 rounded-3xl border border-slate-800 shadow-sm p-2 flex flex-col h-[480px]">
-                  <SwarmGraphCanvas graph={DEMO_GRAPH} activeEntityId="node_procurement" />
+                <div className="lg:col-span-6 bg-slate-950 rounded-3xl border border-slate-800 shadow-sm p-2 flex flex-col h-[500px] min-h-0 overflow-hidden">
+                  <SwarmGraphCanvas graph={DEMO_GRAPH} activeEntityId="node_procurement" className="w-full h-full min-h-0" />
                 </div>
               </div>
             </div>

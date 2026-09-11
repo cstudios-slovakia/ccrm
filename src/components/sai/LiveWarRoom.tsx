@@ -42,10 +42,10 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
   const progressPercent = Math.min(100, Math.round((currentRound / totalRounds) * 100));
 
   return (
-    <div className="flex flex-col h-full space-y-4">
+    <div className="flex flex-col h-full space-y-4 min-h-0 overflow-hidden">
       
       {/* Top War Room HUD */}
-      <div className="p-4 rounded-3xl bg-white border border-slate-200/80 shadow-sm flex flex-wrap items-center justify-between gap-4">
+      <div className="p-4 rounded-3xl bg-white border border-slate-200/80 shadow-sm flex flex-wrap items-center justify-between gap-4 shrink-0">
         
         {/* Title & Simulation Status */}
         <div className="flex items-center gap-3">
@@ -114,7 +114,7 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
       </div>
 
       {/* Progress Bar */}
-      <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden shadow-inner">
+      <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden shadow-inner shrink-0">
         <div 
           className="h-full bg-gradient-to-r from-purple-600 via-indigo-500 to-emerald-400 transition-all duration-500"
           style={{ width: `${progressPercent}%` }}
@@ -122,22 +122,22 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
       </div>
 
       {/* Main Split Grid: Left Graph, Right Feed */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 min-h-[500px]">
+      <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-4 overflow-hidden">
         
         {/* Left 7 Columns: Knowledge Graph */}
-        <div className="lg:col-span-7 h-full">
+        <div className="lg:col-span-7 h-full min-h-0 flex flex-col overflow-hidden">
           <SwarmGraphCanvas 
             graph={graph} 
             activeEntityId={activeEntityId} 
-            className="h-full min-h-[450px]" 
+            className="w-full h-full min-h-0" 
           />
         </div>
 
         {/* Right 5 Columns: Live Feed Stream */}
-        <div className="lg:col-span-5 h-full">
+        <div className="lg:col-span-5 h-full min-h-0 flex flex-col overflow-hidden">
           <SocialFeedStream 
             posts={posts} 
-            className="h-full min-h-[450px]" 
+            className="w-full h-full min-h-0" 
           />
         </div>
 

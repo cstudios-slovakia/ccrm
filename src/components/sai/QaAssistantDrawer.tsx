@@ -216,7 +216,7 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
       )}
 
       {/* Message History */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3.5 scrollbar-thin scrollbar-thumb-slate-200">
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3.5 scrollbar-thin scrollbar-thumb-slate-200">
         {(activeTab === 'analyst' ? analystMessages : agentMessages).map((m, idx) => (
           <div 
             key={idx} 
