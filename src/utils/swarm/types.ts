@@ -48,7 +48,7 @@ export interface SwarmPost {
   agentName: string;
   agentUsername: string;
   agentProfession: string;
-  platform: 'twitter' | 'reddit';
+  platform: 'chitchat' | 'forum' | 'twitter' | 'reddit';
   actionType: 'POST' | 'REPOST' | 'QUOTE' | 'LIKE' | 'COMMENT';
   targetPostId?: number;
   content: string;
@@ -91,7 +91,7 @@ export interface SimulationParameters {
   contextDocuments?: SwarmContextDocument[];
   swarmScale: number; // 15, 30, 60
   totalRounds: number; // 5 to 30
-  platforms: 'dual' | 'twitter' | 'reddit';
+  platforms: 'dual' | 'chitchat' | 'forum' | 'twitter' | 'reddit';
   diurnalCycle: boolean;
   llmModel: string;
 }

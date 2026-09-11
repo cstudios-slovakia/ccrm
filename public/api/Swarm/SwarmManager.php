@@ -156,7 +156,7 @@ class SwarmManager {
                 `id` INT AUTO_INCREMENT PRIMARY KEY,
                 `round_num` INT NOT NULL,
                 `agent_id` INT NOT NULL,
-                `platform` ENUM('twitter', 'reddit') NOT NULL,
+                `platform` VARCHAR(50) NOT NULL DEFAULT 'chitchat',
                 `action_type` ENUM('POST', 'REPOST', 'QUOTE', 'LIKE', 'COMMENT') NOT NULL,
                 `target_post_id` INT NULL,
                 `content` TEXT,
@@ -168,6 +168,13 @@ class SwarmManager {
 
         foreach ($sqls as $sql) {
             $this->pdo->exec($sql);
+        }
+
+        // Ensure platform column supports 'chitchat' and 'forum' on existing tables
+        try {
+            $this->pdo->exec("ALTER TABLE `{$prefix}posts` MODIFY COLUMN `platform` VARCHAR(50) NOT NULL DEFAULT 'chitchat'");
+        } catch (\Throwable $e) {
+            // Ignore if already modified or not supported
         }
     }
 
@@ -186,10 +193,13 @@ class SwarmManager {
                 VALUES (?, ?, ?, ?, ?, ?)
             ");
             foreach ($newPosts as $p) {
+                $rawPlatform = strtolower($p['platform'] ?? 'chitchat');
+                $platform = in_array($rawPlatform, ['forum', 'reddit'], true) ? 'forum' : 'chitchat';
+
                 $stmtPost->execute([
                     $round,
                     (int)($p['agent_id'] ?? 0),
-                    ($p['platform'] ?? 'twitter') === 'reddit' ? 'reddit' : 'twitter',
+                    $platform,
                     strtoupper($p['action_type'] ?? 'POST'),
                     !empty($p['target_post_id']) ? (int)$p['target_post_id'] : null,
                     $p['content'] ?? ''

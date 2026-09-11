@@ -190,7 +190,7 @@ Output JSON strictly matching:
 {
   "action": "POST" | "QUOTE" | "COMMENT" | "LIKE" | "DO_NOTHING",
   "target_post_id": number | null,
-  "content": "Short tweet or reddit thought (1-3 sentences) in character",
+  "content": "Short chitchat message or forum thought (1-3 sentences) in character",
   "updated_stance": "supportive" | "opposing" | "neutral",
   "sentiment_score": number between -1.0 and 1.0
 }`;
@@ -237,7 +237,7 @@ What action do you take this round?`;
         agentName: agent.displayName,
         agentUsername: agent.username,
         agentProfession: agent.profession,
-        platform: Math.random() > 0.4 ? 'twitter' : 'reddit',
+        platform: Math.random() > 0.4 ? 'chitchat' : 'forum',
         actionType: decision.action || 'POST',
         targetPostId: decision.target_post_id || undefined,
         content: decision.content || `Observing developments on ${this.title}.`,

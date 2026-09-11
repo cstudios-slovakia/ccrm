@@ -113,7 +113,7 @@ LIMIT 50;
 ### Tier 2: Simulation Controls (Smart Defaults)
 * **Swarm Scale**: Quick (15 Agents) / Standard (30 Agents) / Deep (60 Agents).
 * **Duration**: 5 to 30 Rounds (~24 to 72 simulated hours).
-* **Platforms**: Twitter only / Reddit only / Dual-platform (Default).
+* **Platforms**: Chitchat only / Forum only / Dual-platform (Default).
 * **Diurnal Day/Night Cycle**: European (CET) / US / Flat pacing.
 * **LLM Model**: Qwen-plus / DeepSeek V3 / GPT-4o-mini.
 
@@ -214,7 +214,7 @@ CREATE TABLE sim<sim_id>_posts (
     id INT AUTO_INCREMENT PRIMARY KEY,
     round_num INT NOT NULL,
     agent_id INT NOT NULL,
-    platform ENUM('twitter', 'reddit') NOT NULL,
+    platform VARCHAR(50) NOT NULL DEFAULT 'chitchat', -- 'chitchat' or 'forum'
     action_type ENUM('POST', 'REPOST', 'QUOTE', 'LIKE', 'COMMENT') NOT NULL,
     target_post_id INT NULL,
     content TEXT,

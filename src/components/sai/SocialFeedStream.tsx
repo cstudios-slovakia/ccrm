@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import type { SwarmPost } from '../../utils/swarm/types';
 import { Markdown } from '../../utils/markdown';
-import { MessageSquare, Heart, Repeat2, Sparkles } from 'lucide-react';
+import { MessageSquare, Heart, Repeat2, Sparkles, MessageCircle, MessagesSquare } from 'lucide-react';
 
 interface SocialFeedStreamProps {
   posts: SwarmPost[];
@@ -117,15 +117,18 @@ export const SocialFeedStream: React.FC<SocialFeedStreamProps> = ({
                     <span>{post.commentsCount || 0}</span>
                   </span>
                 </div>
-                <span className="flex items-center gap-1 text-[10px] text-slate-400 font-medium">
-                  {post.platform === 'twitter' ? (
-                    <svg className="w-3 h-3 text-slate-600 fill-current" viewBox="0 0 24 24">
-                      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-                    </svg>
+                <span className="flex items-center gap-1.5 text-[10px] font-medium">
+                  {post.platform === 'forum' || post.platform === 'reddit' ? (
+                    <span className="flex items-center gap-1 text-amber-700 font-semibold bg-amber-50 px-1.5 py-0.5 rounded-md border border-amber-200/80">
+                      <MessagesSquare className="w-3 h-3 text-amber-600" />
+                      <span>Forum</span>
+                    </span>
                   ) : (
-                    <MessageSquare className="w-3 h-3 text-orange-500" />
+                    <span className="flex items-center gap-1 text-indigo-700 font-semibold bg-indigo-50 px-1.5 py-0.5 rounded-md border border-indigo-200/80">
+                      <MessageCircle className="w-3 h-3 text-indigo-600" />
+                      <span>Chitchat</span>
+                    </span>
                   )}
-                  <span className="capitalize">{post.platform}</span>
                 </span>
               </div>
             </div>
