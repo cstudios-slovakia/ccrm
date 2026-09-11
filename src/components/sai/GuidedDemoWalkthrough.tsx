@@ -605,7 +605,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                     </span>
                   </div>
 
-                  <div className="flex-1 min-h-0 mt-3 rounded-2xl overflow-hidden border border-slate-200 bg-slate-950 flex flex-col">
+                  <div className="flex-1 min-h-0 mt-3 rounded-2xl overflow-hidden border border-slate-200/80 bg-slate-50 flex flex-col">
                     <SwarmGraphCanvas graph={DEMO_GRAPH} activeEntityId="node_procurement" className="w-full h-full min-h-0" />
                   </div>
                 </div>
@@ -684,7 +684,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                 </div>
 
                 {/* Graph Canvas */}
-                <div className="lg:col-span-6 bg-slate-950 rounded-3xl border border-slate-800 shadow-sm p-2 flex flex-col h-[500px] min-h-0 overflow-hidden">
+                <div className="lg:col-span-6 bg-white rounded-3xl border border-slate-200 shadow-sm p-3 flex flex-col h-[500px] min-h-0 overflow-hidden">
                   <SwarmGraphCanvas graph={DEMO_GRAPH} activeEntityId="node_procurement" className="w-full h-full min-h-0" />
                 </div>
               </div>
