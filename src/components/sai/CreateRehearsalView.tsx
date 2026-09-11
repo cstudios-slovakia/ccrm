@@ -21,7 +21,8 @@ import {
   CheckSquare,
   Square,
   Info,
-  FolderOpen
+  FolderOpen,
+  Coins
 } from 'lucide-react';
 import type { SimulationParameters } from '../../utils/swarm/types';
 import { PreflightEstimatorModal } from './PreflightEstimatorModal';
@@ -118,6 +119,13 @@ export const CRM_SOURCE_OPTIONS: CrmSourceOption[] = [
 ];
 
 export const DEFAULT_CRM_SOURCES = CRM_SOURCE_OPTIONS.map(s => s.id);
+
+export const MODEL_PRICING: Record<string, { ratePerM: number; label: string }> = {
+  'gpt-5.6-luna': { ratePerM: 0.25, label: 'GPT-5.6 Luna' },
+  'gpt-5.6-terra': { ratePerM: 1.50, label: 'GPT-5.6 Terra' },
+  'deepseek-chat': { ratePerM: 0.28, label: 'DeepSeek Chat' },
+  'gpt-4o-mini': { ratePerM: 0.20, label: 'GPT-4o Mini' },
+};
 
 interface CreateRehearsalViewProps {
   initialData?: DraftData | null;
@@ -266,6 +274,25 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
 
   // Estimator Modal
   const [showEstimatorModal, setShowEstimatorModal] = useState<boolean>(false);
+
+  // Dynamic real-time resource & price estimation
+  const { estimatedTokens, estimatedCalls, estimatedCost } = useMemo(() => {
+    const ontologyTokens = 3000;
+    const profileTokens = swarmScale * 600;
+    const turnsPerSim = Math.round(swarmScale * totalRounds * (diurnalCycle ? 0.7 : 1.0));
+    const simulationTokens = turnsPerSim * 450;
+    const reportTokens = 8000;
+    const totalTokens = ontologyTokens + profileTokens + simulationTokens + reportTokens;
+    const totalCalls = turnsPerSim + swarmScale + 6;
+    const rate = MODEL_PRICING[llmModel]?.ratePerM ?? 0.25;
+    const cost = (totalTokens / 1_000_000) * rate;
+
+    return {
+      estimatedTokens: totalTokens,
+      estimatedCalls: totalCalls,
+      estimatedCost: cost,
+    };
+  }, [swarmScale, totalRounds, diurnalCycle, llmModel]);
 
   // Re-sync if initialData changes
   useEffect(() => {
@@ -929,14 +956,53 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             </button>
           </div>
 
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="px-7 py-3 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 hover:from-purple-700 hover:to-emerald-600 text-white font-extrabold text-xs shadow-md hover:shadow-lg transition flex items-center gap-2 cursor-pointer disabled:opacity-60"
-          >
-            <span>Proceed to Token Estimation & Launch</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
+          <div className="flex flex-wrap sm:flex-nowrap items-center gap-3.5">
+            {/* Live Price & Resource Estimator */}
+            <div
+              onClick={() => setShowEstimatorModal(true)}
+              className="group flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-slate-50/95 hover:bg-purple-50/60 border border-slate-200/90 hover:border-purple-300 transition-all duration-200 shadow-xs cursor-pointer select-none"
+              title={`Click to preview full token breakdown (~${estimatedTokens.toLocaleString()} tokens, ~${estimatedCalls} API calls across ${swarmScale} agents and ${totalRounds} rounds with ${MODEL_PRICING[llmModel]?.label || llmModel})`}
+              role="button"
+              tabIndex={0}
+            >
+              <div className="w-9 h-9 rounded-xl bg-purple-100/90 group-hover:bg-purple-200/80 border border-purple-200/70 flex items-center justify-center text-purple-700 transition-transform duration-200 group-hover:scale-105 shrink-0 shadow-xs">
+                <Coins className="w-4 h-4 text-purple-600" />
+              </div>
+              <div className="flex flex-col text-left">
+                <div className="flex items-center gap-1.5 leading-none">
+                  <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">
+                    Est. Cost
+                  </span>
+                  {isDemoMode ? (
+                    <span className="px-1.5 py-0.5 text-[9px] font-black bg-emerald-100 text-emerald-800 rounded uppercase tracking-wider">
+                      Demo Free
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-bold text-purple-600">
+                      {MODEL_PRICING[llmModel]?.label || 'Model'}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-baseline gap-1.5 mt-1">
+                  <span className="text-sm sm:text-base font-black text-slate-900 tracking-tight leading-none group-hover:text-purple-700 transition-colors">
+                    {isDemoMode ? '€0.000' : `~€${estimatedCost.toFixed(3)}`}
+                  </span>
+                  <span className="text-[11px] text-slate-400 font-semibold leading-none">
+                    ~{(estimatedTokens / 1000).toFixed(0)}k tkns
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="px-7 py-3 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 hover:from-purple-700 hover:to-emerald-600 text-white font-extrabold text-xs shadow-md hover:shadow-lg transition flex items-center gap-2 cursor-pointer disabled:opacity-60 shrink-0"
+            >
+              <span>Proceed to Token Estimation & Launch</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
       </form>
