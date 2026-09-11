@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import * as Icons from "lucide-react";
-import { Plus, Trash2, Settings, Search, Users, Briefcase, ChevronDown, LayoutGrid, Rows3, CalendarClock } from "lucide-react";
+import { Plus, Trash2, Settings, Search, Users, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, CalendarClock } from "lucide-react";
 import type { Project, ProjectAutoCreateSettings, ProjectType, Lead, UserProfile, FinancialRecord, FinancialCategory } from "../types";
 import { ProjectDetailsView } from "./ProjectDetailsView";
 import { ProjectSettings } from "./ProjectSettings";
@@ -19,6 +19,42 @@ import {
 import type { ProjectDeadlineStatus } from "../utils/projects";
 import { todayLocal, formatDateLocalized } from "../utils/localTime";
 import { useUserPref } from "../utils/userPrefs";
+
+/*
+  The summary strip's chips. Each tone is written out in full because Tailwind
+  only ships the class names it can literally see — a class assembled at runtime
+  from `bg-${tone}-600` would compile to nothing.
+*/
+const STAT_CHIP_TONES = {
+  slate: {
+    idle: "border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700",
+    active: "bg-slate-900 border-slate-900 text-white",
+    count: "text-slate-800",
+  },
+  sky: {
+    idle: "border-slate-200 text-slate-500 hover:border-sky-200 hover:text-sky-600",
+    active: "bg-sky-600 border-sky-600 text-white",
+    count: "text-sky-600",
+  },
+  purple: {
+    idle: "border-slate-200 text-slate-500 hover:border-purple-200 hover:text-purple-600",
+    active: "bg-purple-600 border-purple-600 text-white",
+    count: "text-purple-600",
+  },
+  emerald: {
+    idle: "border-slate-200 text-slate-500 hover:border-emerald-200 hover:text-emerald-600",
+    active: "bg-emerald-600 border-emerald-600 text-white",
+    count: "text-emerald-600",
+  },
+  rose: {
+    idle: "border-slate-200 text-slate-500 hover:border-rose-200 hover:text-rose-600",
+    active: "bg-rose-600 border-rose-600 text-white",
+    count: "text-rose-600",
+  },
+} as const;
+
+/** The "no manager assigned" row in the manager filter. Not a real name. */
+const UNASSIGNED_MANAGER = "__unassigned__";
 
 interface ProjectsViewProps {
   projects: Project[];
@@ -65,6 +101,10 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStatusFilter, setSelectedStatusFilter] = useState("all");
   const [selectedTypeFilter, setSelectedTypeFilter] = useState("all");
+  const [selectedManagerFilter, setSelectedManagerFilter] = useState("all");
+  /* Its own dimension rather than another status: a project can be late in any
+     status, so "overdue" cannot live in the status dropdown. */
+  const [overdueOnly, setOverdueOnly] = useState(false);
 
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [editingProjectType, setEditingProjectType] = useState<ProjectType | null>(null);
@@ -84,10 +124,33 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   // One clock for every countdown on the screen.
   const today = todayLocal();
 
-  // Compute stats for summary badges
+  /* One deadline verdict per project, so the summary strip's "overdue" count
+     and the filter behind it can never disagree about which projects are late. */
+  const overdueIds = useMemo(() => {
+    const ids = new Set<string>();
+    projects.forEach(p => {
+      const dl = evaluateProjectDeadline(p, projectTypes.find(pt => pt.id === p.projectTypeId), today);
+      if (dl?.isOverdue) ids.add(p.id);
+    });
+    return ids;
+  }, [projects, projectTypes, today]);
+
+  // Counts behind the summary strip.
   const totalProjects = projects.length;
+  const newCount = projects.filter(p => p.status === "new").length;
   const activeCount = projects.filter(p => p.status === "active").length;
   const completedCount = projects.filter(p => p.status === "completed").length;
+  const overdueCount = overdueIds.size;
+
+  /* Who the list can be narrowed to. Projects store manager NAMES, not ids (see
+     ProjectDetailsView), so the options are names too: everyone who is already
+     managing something, plus every user who could be given a project. */
+  const managerOptions = useMemo(() => {
+    const names = new Set<string>();
+    projects.forEach(p => (p.managers || []).forEach(m => { if (m) names.add(m); }));
+    users.forEach(u => { if (u.name) names.add(u.name); });
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [projects, users]);
 
   const filteredProjects = useMemo(() => {
     return projects.filter(p => {
@@ -105,10 +168,16 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       
       const matchesStatus = selectedStatusFilter === "all" || p.status === selectedStatusFilter;
       const matchesType = selectedTypeFilter === "all" || p.projectTypeId === selectedTypeFilter;
+      const matchesManager =
+        selectedManagerFilter === "all" ||
+        (selectedManagerFilter === UNASSIGNED_MANAGER
+          ? !(p.managers && p.managers.length > 0)
+          : (p.managers || []).includes(selectedManagerFilter));
+      const matchesOverdue = !overdueOnly || overdueIds.has(p.id);
 
-      return matchesSearch && matchesStatus && matchesType;
+      return matchesSearch && matchesStatus && matchesType && matchesManager && matchesOverdue;
     });
-  }, [projects, projectTypes, leads, searchQuery, selectedStatusFilter, selectedTypeFilter]);
+  }, [projects, projectTypes, leads, searchQuery, selectedStatusFilter, selectedTypeFilter, selectedManagerFilter, overdueOnly, overdueIds]);
 
   /* Deep link: `#projects?edit=<projectId>` opens that project directly.
      "Convert to Project" on a lead has always navigated here with that query,
@@ -251,6 +320,57 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       <span>{deadlineLabel(dl)}</span>
     </span>
   );
+
+  /* "+ New Project" — the primary action, and since 1.9 the button that sits
+     where the old "Projects List" tab used to: the list is the only view now,
+     so a tab that switched to it had nothing to do. */
+  const createProjectControl = (
+    <div className="relative select-none" ref={createDropdownRef}>
+      <button
+        onClick={() => setIsCreateDropdownOpen(!isCreateDropdownOpen)}
+        className="flex items-center gap-1.5 px-5 py-2.5 rounded-2xl bg-indigo-600 text-white font-black text-xs uppercase tracking-wider hover:bg-indigo-700 shadow-md shadow-indigo-600/10 cursor-pointer"
+      >
+        <Plus className="h-4.5 w-4.5" />
+        <span>{t("New Project", "Nový projekt", "Új projekt")}</span>
+        <ChevronDown className="h-4 w-4 shrink-0 ml-1" />
+      </button>
+
+      {isCreateDropdownOpen && (
+        <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-white border border-slate-200 shadow-xl py-2 z-[950] animate-in slide-in-from-top-2 duration-250">
+          <span className="block px-4 py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2 mb-1.5 text-left">
+            {t("Select Project Type", "Vyberte typ projektu", "Válasszon projekt típust")}
+          </span>
+          {projectTypes.length === 0 ? (
+            <span className="block px-4 py-2 text-xs text-slate-400 italic text-left">
+              {t("No types configured yet.", "Zatiaľ nie sú nastavené typy.", "Még nincsenek típusok.")}
+            </span>
+          ) : (
+            projectTypes.map(type => (
+              <button
+                key={type.id}
+                onClick={() => handleStartCreateProject(type)}
+                className="w-full text-left px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors flex items-center gap-2 cursor-pointer"
+              >
+                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: type.color }} />
+                <span>{type.name}</span>
+              </button>
+            ))
+          )}
+
+          {/* The way out of an empty list — and the shortcut for adding
+              another type without hunting through the settings tab. */}
+          <button
+            onClick={handleStartCreateProjectType}
+            className="w-full text-left px-4 py-2 mt-1.5 border-t border-slate-100 pt-2.5 text-xs font-bold text-indigo-600 hover:bg-indigo-50 transition-colors flex items-center gap-2 cursor-pointer"
+          >
+            <Plus className="h-3.5 w-3.5 shrink-0" />
+            <span>{t("New project type", "Nový typ projektu", "Új projekt típus")}</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
   if (editingProject && editingProjectType) {
     return (
       <ProjectDetailsView
@@ -289,29 +409,34 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           </p>
         </div>
 
-        {/* Tab Controls */}
+        {/* Actions. Settings used to be the second half of a two-tab switcher,
+            which read as two equal views of this screen — it is not one, it is
+            configuration you visit rarely. It is now a single quiet button in,
+            and a single way back out; the space the "Projects List" tab wasted
+            (a tab that switched to the view you were already on) belongs to the
+            action people actually come here for. */}
         <div className="flex items-center gap-2 self-start md:self-auto">
-          <button
-            onClick={() => setActiveSubTab("list")}
-            className={`px-4 py-2 rounded-xl font-heading font-bold text-xs uppercase tracking-wider transition-all cursor-pointer ${
-              activeSubTab === "list"
-                ? "bg-slate-900 text-white"
-                : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
-            }`}
-          >
-            {t("Projects List", "Zoznam projektov", "Projektek listája")}
-          </button>
-          <button
-            onClick={() => setActiveSubTab("settings")}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl font-heading font-bold text-xs uppercase tracking-wider transition-all cursor-pointer ${
-              activeSubTab === "settings"
-                ? "bg-slate-900 text-white"
-                : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
-            }`}
-          >
-            <Settings className="h-4 w-4" />
-            <span>{t("Settings", "Nastavenia", "Beállítások")}</span>
-          </button>
+          {activeSubTab === "settings" ? (
+            <button
+              onClick={() => setActiveSubTab("list")}
+              className="flex items-center gap-1.5 pl-3 pr-4 py-2.5 rounded-2xl border border-slate-200 bg-white text-slate-600 font-heading font-bold text-xs uppercase tracking-wider hover:bg-slate-50 hover:text-slate-900 transition-all cursor-pointer"
+            >
+              <ChevronLeft className="h-4 w-4 shrink-0" />
+              <span>{t("Back to projects", "Späť na projekty", "Vissza a projektekhez")}</span>
+            </button>
+          ) : (
+            <>
+              {canEdit && createProjectControl}
+              <button
+                onClick={() => setActiveSubTab("settings")}
+                title={t("Project settings", "Nastavenia projektov", "Projekt beállítások")}
+                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-slate-400 font-heading font-bold text-xs uppercase tracking-wider hover:bg-slate-100 hover:text-slate-700 transition-all cursor-pointer"
+              >
+                <Settings className="h-4 w-4 shrink-0" />
+                <span className="hidden sm:inline">{t("Settings", "Nastavenia", "Beállítások")}</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -331,50 +456,75 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         </div>
       ) : (
         <>
-          {/* Summary badging widgets */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="glass-panel p-4.5 rounded-3xl border border-white/60 bg-white/95 shadow-glass text-left">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
-                {t("Total Projects", "Projekty celkovo", "Összes projekt")}
-              </span>
-              <span className="font-heading font-bold text-2xl text-slate-800 mt-1 block">
-                {totalProjects}
-              </span>
-            </div>
-            <div className="glass-panel p-4.5 rounded-3xl border border-white/60 bg-white/95 shadow-glass text-left">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
-                {t("Active Projects", "Aktívne projekty", "Aktív projektek")}
-              </span>
-              <span className="font-heading font-bold text-2xl text-purple-600 mt-1 block">
-                {activeCount}
-              </span>
-            </div>
-            <div className="glass-panel p-4.5 rounded-3xl border border-white/60 bg-white/95 shadow-glass text-left">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
-                {t("Completed Projects", "Dokončené projekty", "Befejezett projektek")}
-              </span>
-              <span className="font-heading font-bold text-2xl text-emerald-600 mt-1 block">
-                {completedCount}
-              </span>
-            </div>
+          {/* Summary strip. Three tall cards that only ever stated the obvious
+              are now one compact row — and every chip is the filter for what it
+              counts, so the numbers do something instead of merely sitting
+              there. "Overdue" is the one that earns its place: it is the only
+              number here you cannot read off the list at a glance. */}
+          <div className="flex flex-wrap items-center gap-2 select-none">
+            {([
+              { key: "all", label: t("All", "Všetky", "Összes"), count: totalProjects, tone: STAT_CHIP_TONES.slate },
+              { key: "new", label: projectStatusLabel("new", t), count: newCount, tone: STAT_CHIP_TONES.sky },
+              { key: "active", label: projectStatusLabel("active", t), count: activeCount, tone: STAT_CHIP_TONES.purple },
+              { key: "completed", label: projectStatusLabel("completed", t), count: completedCount, tone: STAT_CHIP_TONES.emerald },
+              { key: "overdue", label: t("Overdue", "Po termíne", "Késésben"), count: overdueCount, tone: STAT_CHIP_TONES.rose },
+            ]).map(({ key, label, count, tone }) => {
+              const isOverdueChip = key === "overdue";
+              const active = isOverdueChip
+                ? overdueOnly
+                : !overdueOnly && selectedStatusFilter === key;
+
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => {
+                    if (isOverdueChip) {
+                      setOverdueOnly(v => !v);
+                      return;
+                    }
+                    setOverdueOnly(false);
+                    // A second click on the chip you are already filtered by
+                    // clears the filter, rather than being a no-op.
+                    setSelectedStatusFilter(prev => (prev === key ? "all" : key));
+                  }}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl border shadow-sm transition-all cursor-pointer active:scale-[0.98] ${
+                    active ? tone.active : `bg-white/95 ${tone.idle}`
+                  }`}
+                >
+                  <span className={`font-heading font-bold text-base leading-none tabular-nums ${active ? "text-white" : tone.count}`}>
+                    {count}
+                  </span>
+                  <span className="text-[10px] font-black uppercase tracking-widest leading-none">
+                    {label}
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
-          {/* Filtering and Actions header */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-2">
-            <div className="flex flex-wrap items-center gap-3">
-              {/* Search */}
-              <div className="relative w-full sm:w-64">
-                <Search className="absolute left-3 top-3 h-4.5 w-4.5 text-slate-400" />
-                <input
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  placeholder={t("Search projects...", "Vyhľadať projekty...", "Projekt keresése...")}
-                  className="w-full pl-9.5 pr-4 py-2.5 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-xs font-semibold text-slate-800 bg-white"
-                />
-              </div>
+          {/* One filter bar, one row. The three dropdowns used to be full-width
+              blocks stacked under the search box — a "bar" three rows tall —
+              because CustomSelect's trigger is w-100%; each now sits in a fixed
+              track of its own. The view switcher is parked on the right, away
+              from the filters it is not one of. */}
+          <div className="glass-panel flex flex-wrap items-center gap-2.5 p-2.5 rounded-3xl border border-white/60 bg-white/95 shadow-glass">
+            {/* Search */}
+            <div className="relative flex-1 min-w-[11rem] sm:max-w-xs">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <input
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder={t("Search projects...", "Vyhľadať projekty...", "Projekt keresése...")}
+                className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-xs font-semibold text-slate-800 bg-white"
+              />
+            </div>
 
-              {/* Status Filter */}
+            {/* Status */}
+            <div className="w-full sm:w-40 shrink-0">
               <CustomSelect
+                className="h-10"
                 value={selectedStatusFilter}
                 onChange={(v) => setSelectedStatusFilter(v)}
                 options={[
@@ -382,9 +532,12 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                   ...projectStatusOptions(t),
                 ]}
               />
+            </div>
 
-              {/* Type Filter */}
+            {/* Type */}
+            <div className="w-full sm:w-40 shrink-0">
               <CustomSelect
+                className="h-10"
                 value={selectedTypeFilter}
                 onChange={(v) => setSelectedTypeFilter(v)}
                 options={[
@@ -392,79 +545,47 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                   ...projectTypes.map(pt => ({ value: pt.id, label: pt.name })),
                 ]}
               />
-
-              {/* Cards or table. */}
-              <div className="flex items-center gap-1 p-1 rounded-2xl bg-slate-100 border border-slate-200 select-none">
-                {([
-                  { mode: "grid" as const, Icon: LayoutGrid, label: t("Grid view", "Zobrazenie kariet", "Kártyás nézet") },
-                  { mode: "list" as const, Icon: Rows3, label: t("List view", "Zobrazenie zoznamu", "Lista nézet") },
-                ]).map(({ mode, Icon, label }) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    onClick={() => setViewMode(mode)}
-                    title={label}
-                    aria-label={label}
-                    aria-pressed={viewMode === mode}
-                    className={`p-2 rounded-xl transition-all cursor-pointer ${
-                      viewMode === mode
-                        ? "bg-white text-indigo-600 shadow-sm"
-                        : "text-slate-400 hover:text-slate-600"
-                    }`}
-                  >
-                    <Icon className="h-4.5 w-4.5" />
-                  </button>
-                ))}
-              </div>
             </div>
 
-            {/* Create Project Button with Type Dropdown */}
-            {canEdit && (
-              <div className="relative select-none" ref={createDropdownRef}>
+            {/* Manager. "Who is on this?" was the one question the bar could not
+                answer — the column was there to read but not to filter by. */}
+            <div className="w-full sm:w-44 shrink-0">
+              <CustomSelect
+                className="h-10"
+                icon={<Users className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
+                value={selectedManagerFilter}
+                onChange={(v) => setSelectedManagerFilter(v)}
+                options={[
+                  { value: "all", label: t("All managers", "Všetci manažéri", "Minden menedzser") },
+                  ...managerOptions.map(name => ({ value: name, label: name })),
+                  { value: UNASSIGNED_MANAGER, label: t("Unassigned", "Bez manažéra", "Nincs menedzser") },
+                ]}
+              />
+            </div>
+
+            {/* Cards or table. */}
+            <div className="sm:ml-auto flex items-center gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200 select-none shrink-0">
+              {([
+                { mode: "list" as const, Icon: Rows3, label: t("List view", "Zobrazenie zoznamu", "Lista nézet") },
+                { mode: "grid" as const, Icon: LayoutGrid, label: t("Grid view", "Zobrazenie kariet", "Kártyás nézet") },
+              ]).map(({ mode, Icon, label }) => (
                 <button
-                  onClick={() => setIsCreateDropdownOpen(!isCreateDropdownOpen)}
-                  className="flex items-center gap-1.5 px-5 py-2.5 rounded-2xl bg-indigo-600 text-white font-black text-xs uppercase tracking-wider hover:bg-indigo-700 shadow-md shadow-indigo-600/10 cursor-pointer"
+                  key={mode}
+                  type="button"
+                  onClick={() => setViewMode(mode)}
+                  title={label}
+                  aria-label={label}
+                  aria-pressed={viewMode === mode}
+                  className={`p-2 rounded-lg transition-all cursor-pointer ${
+                    viewMode === mode
+                      ? "bg-white text-indigo-600 shadow-sm"
+                      : "text-slate-400 hover:text-slate-600"
+                  }`}
                 >
-                  <Plus className="h-4.5 w-4.5" />
-                  <span>{t("New Project", "Nový projekt", "Új projekt")}</span>
-                  <ChevronDown className="h-4 w-4 shrink-0 ml-1" />
+                  <Icon className="h-4.5 w-4.5" />
                 </button>
-
-                {isCreateDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-white border border-slate-200 shadow-xl py-2 z-[950] animate-in slide-in-from-top-2 duration-250">
-                    <span className="block px-4 py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2 mb-1.5 text-left">
-                      {t("Select Project Type", "Vyberte typ projektu", "Válasszon projekt típust")}
-                    </span>
-                    {projectTypes.length === 0 ? (
-                      <span className="block px-4 py-2 text-xs text-slate-400 italic text-left">
-                        {t("No types configured yet.", "Zatiaľ nie sú nastavené typy.", "Még nincsenek típusok.")}
-                      </span>
-                    ) : (
-                      projectTypes.map(type => (
-                        <button
-                          key={type.id}
-                          onClick={() => handleStartCreateProject(type)}
-                          className="w-full text-left px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors flex items-center gap-2 cursor-pointer"
-                        >
-                          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: type.color }} />
-                          <span>{type.name}</span>
-                        </button>
-                      ))
-                    )}
-
-                    {/* The way out of an empty list — and the shortcut for adding
-                        another type without hunting through the settings tab. */}
-                    <button
-                      onClick={handleStartCreateProjectType}
-                      className="w-full text-left px-4 py-2 mt-1.5 border-t border-slate-100 pt-2.5 text-xs font-bold text-indigo-600 hover:bg-indigo-50 transition-colors flex items-center gap-2 cursor-pointer"
-                    >
-                      <Plus className="h-3.5 w-3.5 shrink-0" />
-                      <span>{t("New project type", "Nový typ projektu", "Új projekt típus")}</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
+              ))}
+            </div>
           </div>
 
           {/* Results — roomy cards or a dense table, per the view toggle above.

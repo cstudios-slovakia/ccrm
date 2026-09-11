@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from "react";
 import * as Icons from "lucide-react";
-import { Plus, Trash2, ArrowUp, ArrowDown, Save, X, Workflow } from "lucide-react";
+import { Plus, Trash2, ArrowUp, ArrowDown, Save, X, Workflow, LayoutGrid, Rows3 } from "lucide-react";
 import { CustomSelect } from "./ui/CustomSelect";
 import type { ProjectAutoCreateSettings, ProjectType, ProjectAttribute, ProjectAttributeType, TimelineEventType } from "../types";
 import { DEFAULT_PROJECT_AUTO_CREATE, isProjectAutoCreateActive } from "../utils/projectAutoCreate";
 import { DEFAULT_DEADLINE_WARNING_DAYS, normalizeDeadlineWarningDays } from "../utils/projects";
 import type { Language } from "../utils/translations";
+import { useUserPref } from "../utils/userPrefs";
 
 interface ProjectSettingsProps {
   projectTypes: ProjectType[];
@@ -59,6 +60,11 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
   autoStartCreate = false,
   onAutoStartCreateHandled
 }) => {
+  /* The view the projects screen opens on. The same preference the toggle in
+     the list writes, deliberately: a separate stored default would sooner or
+     later disagree with the toggle, and nobody could tell which one won. */
+  const [projectsViewMode, setProjectsViewMode] = useUserPref("projectsViewMode");
+
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
   const attributeTypeLabel = (id: ProjectAttributeType) => {
     const entry = ATTRIBUTE_TYPES.find((a) => a.id === id);
@@ -1025,6 +1031,44 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
             <span>{t("New Project Type", "Nový typ", "Új típus")}</span>
           </button>
         )}
+      </div>
+
+      {/* ── DISPLAY ─────────────────────────────────────────────────────── */}
+      <div className="glass-panel p-4 rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-wrap items-center justify-between gap-3 text-left">
+        <div className="flex flex-col">
+          <span className="font-heading font-black text-slate-800 text-xs uppercase tracking-widest">
+            {t("Default project view", "Predvolené zobrazenie projektov", "Alapértelmezett projekt nézet")}
+          </span>
+          <span className="text-[11px] font-semibold text-slate-400 mt-0.5">
+            {t(
+              "Which view the projects screen opens on. The switcher in the list changes it too.",
+              "Zobrazenie, ktorým sa otvorí zoznam projektov. Prepínač v zozname ho tiež mení.",
+              "Melyik nézettel nyílik meg a projektek képernyő. A listában lévő kapcsoló is módosítja.",
+            )}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200 select-none shrink-0">
+          {([
+            { mode: "list" as const, Icon: Rows3, label: t("List", "Zoznam", "Lista") },
+            { mode: "grid" as const, Icon: LayoutGrid, label: t("Cards", "Karty", "Kártyák") },
+          ]).map(({ mode, Icon, label }) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setProjectsViewMode(mode)}
+              aria-pressed={projectsViewMode === mode}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer ${
+                projectsViewMode === mode
+                  ? "bg-white text-indigo-600 shadow-sm"
+                  : "text-slate-400 hover:text-slate-600"
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5 shrink-0" />
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {projectTypes.length === 0 ? (

@@ -37,7 +37,12 @@ export interface UserPrefs {
   leadsViewMode: "list" | "kanban";
   /** Leads screen: dense rows. */
   leadsCompactMode: boolean;
-  /** Projects screen: roomy cards or a dense table. */
+  /**
+   * Projects screen: roomy cards or a dense table. Doubles as the "default
+   * view" setting — it is both what the toggle in the list writes and what the
+   * screen opens on, so there is one answer to "which view do I get?" rather
+   * than a stored default quietly disagreeing with the toggle.
+   */
   projectsViewMode: "grid" | "list";
   /** Leads screen: grouping / sorting. */
   leadsOrderingMode: "state" | "pm" | "created_newest" | "created_oldest" | "size" | "rating";
@@ -70,7 +75,7 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   themeMode: "system",
   errorSidebarEnabled: false,
   leadsViewMode: "list",
-  projectsViewMode: "grid",
+  projectsViewMode: "list",
   leadsCompactMode: false,
   leadsOrderingMode: "state",
   leadsVisibleStates: null,
