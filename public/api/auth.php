@@ -437,16 +437,17 @@ if (!function_exists('ccrm_send_cors')) {
     }
 
     /**
-     * The states a project may be in. Mirrors PROJECT_STATUSES in src/types —
-     * anything else reaching the `projects` table (from a workflow action, say)
-     * would render as a raw string on a card nothing can filter by.
+     * The states a project may be in, in the order the UI offers them. Mirrors
+     * PROJECT_STATUSES in src/types — anything else reaching the `projects`
+     * table (from a workflow action, say) would render as a raw string on a
+     * card nothing can filter by. The first entry is where a new project starts.
      *
      * A function rather than a `const`: this whole block is inside a
      * function_exists() guard, and PHP refuses to declare a top-level const in a
      * conditional block.
      */
     function ccrm_project_statuses(): array {
-        return ['active', 'completed', 'on_hold', 'cancelled'];
+        return ['new', 'active', 'completed', 'on_hold', 'cancelled'];
     }
 
     /**
@@ -650,9 +651,14 @@ if (!function_exists('ccrm_send_cors')) {
 
             $typeStmt = $pdo->prepare("SELECT `id` FROM `project_types` WHERE `id` = ?");
             $existing = $pdo->prepare("SELECT `id` FROM `projects` WHERE `lead_id` = ? AND `project_type_id` = ? LIMIT 1");
+            // 'new' is the first status in ccrm_project_statuses(), and where
+            // every project starts however it was created. Nothing promotes it:
+            // which lead status makes a project active differs per installation,
+            // so that belongs in a workflow ("Lead status changed" ->
+            // "Change project status"), not in this insert.
             $insProject = $pdo->prepare(
                 "INSERT INTO `projects` (`id`, `project_type_id`, `lead_id`, `client_id`, `status`)
-                 VALUES (?, ?, ?, ?, 'active')"
+                 VALUES (?, ?, ?, ?, 'new')"
             );
             $insManager = $pdo->prepare("INSERT IGNORE INTO `project_managers` (`project_id`, `user_id`) VALUES (?, ?)");
             $ownerName = trim($ownerName);
@@ -703,7 +709,7 @@ if (!function_exists('ccrm_send_cors')) {
                     'deadline' => null,
                     'leadId' => $leadId,
                     'clientId' => $leadId,
-                    'status' => 'active',
+                    'status' => 'new',
                     'managers' => $managers,
                     'data' => (object)[],
                     'timeline' => [],

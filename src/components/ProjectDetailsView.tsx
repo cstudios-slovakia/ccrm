@@ -12,7 +12,6 @@ import type {
 } from "../types";
 import type { Language } from "../utils/translations";
 import { nowLocalStamp, formatTimestampLocalized, formatDateLocalized, todayLocal } from "../utils/localTime";
-import { evaluateProjectDeadline, projectDisplayName } from "../utils/projects";
 import {
   CURRENCY_OPTIONS,
   currencyForRegion,
@@ -20,6 +19,7 @@ import {
   isMoneyValueEmpty,
   parseMoneyValue,
 } from "../utils/currency";
+import { evaluateProjectDeadline, projectDisplayName, projectStatusOptions } from "../utils/projects";
 import { CustomSelect } from "./ui/CustomSelect";
 
 const SearchableClientSelect: React.FC<{
@@ -813,12 +813,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               <CustomSelect
                 value={status}
                 onChange={v => setStatus(v)}
-                options={[
-                  { value: "active", label: t("Active", "Aktívny", "Aktív") },
-                  { value: "completed", label: t("Completed", "Dokončený", "Befejezett") },
-                  { value: "on_hold", label: t("On Hold", "Pozastavený", "Függőben") },
-                  { value: "cancelled", label: t("Cancelled", "Zrušený", "Törölt") },
-                ]}
+                options={projectStatusOptions(t)}
               />
             </div>
 

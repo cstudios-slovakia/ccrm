@@ -2,10 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   DEFAULT_DEADLINE_WARNING_DAYS,
+  DEFAULT_PROJECT_STATUS,
   evaluateProjectDeadline,
   normalizeDeadlineWarningDays,
   projectDisplayName,
+  projectStatusBadgeClass,
+  projectStatusLabel,
+  projectStatusOptions,
+  projectStatusOrder,
 } from "./projects.ts";
+import { PROJECT_STATUSES } from "../types/index.ts";
 import type { Lead, Project, ProjectType } from "../types/index.ts";
 
 const TODAY = "2026-09-03";
@@ -149,4 +155,47 @@ test("projectDisplayName falls back to the paired lead, then to the caller's lab
   assert.equal(projectDisplayName(project({ leadId: null }), LEADS, "New project"), "New project");
   assert.equal(projectDisplayName(project({ leadId: "gone" }), LEADS, "New project"), "New project");
   assert.equal(projectDisplayName(undefined, LEADS, "New project"), "New project");
+});
+
+/* ── project status ─────────────────────────────────────── */
+
+const en = (e: string, _s: string, _h: string) => e;
+const sk = (_e: string, s: string, _h: string) => s;
+
+test("the status labels cover PROJECT_STATUSES, in the same order", () => {
+  // utils/projects.ts cannot import PROJECT_STATUSES at runtime (node's test
+  // runner will not resolve the directory import), so its label table repeats
+  // the order by hand. This is what stops the two from drifting apart.
+  assert.deepEqual(projectStatusOrder(), [...PROJECT_STATUSES]);
+});
+
+test("a new project starts on the first status", () => {
+  assert.equal(DEFAULT_PROJECT_STATUS, PROJECT_STATUSES[0]);
+  assert.equal(DEFAULT_PROJECT_STATUS, "new");
+});
+
+test("every status is spoken and painted", () => {
+  PROJECT_STATUSES.forEach((s) => {
+    assert.notEqual(projectStatusLabel(s, en), s, `${s} still reads as its raw key`);
+    assert.notEqual(
+      projectStatusBadgeClass(s),
+      projectStatusBadgeClass("something-else"),
+      `${s} falls through to the unknown-status badge`,
+    );
+  });
+  assert.equal(projectStatusLabel("new", sk), "Nový");
+});
+
+test("an unrecognised status is shown as it is, not swallowed", () => {
+  // A row written by something outside the app must stay visible rather than
+  // quietly reading as "Active", which is what the old chained ternaries did.
+  assert.equal(projectStatusLabel("archived", en), "archived");
+  assert.equal(projectStatusLabel("", en), "");
+  assert.equal(projectStatusLabel(undefined, en), "");
+});
+
+test("the dropdown offers every status, new first", () => {
+  const options = projectStatusOptions(en);
+  assert.deepEqual(options.map((o) => o.value), [...PROJECT_STATUSES]);
+  assert.equal(options[0].label, "New");
 });

@@ -13,6 +13,7 @@ import {
 import type { Language } from "../utils/translations";
 import type { ProjectType } from "../types";
 import { PROJECT_STATUSES } from "../types";
+import { projectStatusLabel } from "../utils/projects";
 import { CustomSelect } from "./ui/CustomSelect";
 
 const SYSTEM_COLORS = [
@@ -3032,12 +3033,6 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
 
                           {node.data.type === "update_project_status" && (() => {
                             const target = node.data.target || "lead";
-                            const statusLabels: Record<string, string> = {
-                              active: t("Active", "Aktívny", "Aktív"),
-                              completed: t("Completed", "Dokončený", "Befejezett"),
-                              on_hold: t("On Hold", "Pozastavený", "Függőben"),
-                              cancelled: t("Cancelled", "Zrušený", "Törölt"),
-                            };
                             return (
                               <div className="space-y-2">
                                 {/* Which project. "Paired with the lead" needs no
@@ -3125,7 +3120,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                     <CustomSelect
                                       value={node.data.status || "active"}
                                       onChange={(v) => updateActionField("status", v)}
-                                      options={PROJECT_STATUSES.map((s) => ({ value: s, label: statusLabels[s] }))}
+                                      options={PROJECT_STATUSES.map((s) => ({ value: s, label: projectStatusLabel(s, t) }))}
                                     />
                                   </div>
                                 </div>

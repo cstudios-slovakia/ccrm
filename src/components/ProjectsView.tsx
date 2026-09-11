@@ -8,7 +8,14 @@ import { CustomSelect } from "./ui/CustomSelect";
 import type { Language } from "../utils/translations";
 import { readableOn } from "../utils/accentColor";
 import { parseAppHash } from "../utils/hash";
-import { evaluateProjectDeadline, projectDisplayName } from "../utils/projects";
+import {
+  DEFAULT_PROJECT_STATUS,
+  evaluateProjectDeadline,
+  projectDisplayName,
+  projectStatusBadgeClass,
+  projectStatusLabel,
+  projectStatusOptions,
+} from "../utils/projects";
 import type { ProjectDeadlineStatus } from "../utils/projects";
 import { todayLocal, formatDateLocalized } from "../utils/localTime";
 import { useUserPref } from "../utils/userPrefs";
@@ -168,7 +175,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       projectTypeId: type.id,
       leadId: null,
       clientId: null,
-      status: "active",
+      status: DEFAULT_PROJECT_STATUS,
       managers: [],
       data: {},
       timeline: [],
@@ -372,10 +379,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                 onChange={(v) => setSelectedStatusFilter(v)}
                 options={[
                   { value: "all", label: t("All Statuses", "Všetky stavy", "Minden állapot") },
-                  { value: "active", label: t("Active", "Aktívne", "Aktív") },
-                  { value: "completed", label: t("Completed", "Dokončené", "Befejezett") },
-                  { value: "on_hold", label: t("On Hold", "Pozastavené", "Függőben") },
-                  { value: "cancelled", label: t("Cancelled", "Zrušené", "Törölt") },
+                  ...projectStatusOptions(t),
                 ]}
               />
 
@@ -572,16 +576,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                             )}
                           </td>
                           <td className="px-4 py-3">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap ${
-                              p.status === "completed"
-                                ? "bg-emerald-50 text-emerald-600 border-emerald-100"
-                                : p.status === "on_hold"
-                                  ? "bg-amber-50 text-amber-600 border-amber-100"
-                                  : p.status === "cancelled"
-                                    ? "bg-rose-50 text-rose-600 border-rose-100"
-                                    : "bg-purple-50 text-purple-600 border-purple-100"
-                            }`}>
-                              {p.status}
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap ${projectStatusBadgeClass(p.status)}`}>
+                              {projectStatusLabel(p.status, t)}
                             </span>
                           </td>
                           <td className="px-4 py-3">
@@ -634,16 +630,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                       </div>
 
                       {/* Status badge */}
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                        p.status === "completed"
-                          ? "bg-emerald-50 text-emerald-600 border-emerald-100"
-                          : p.status === "on_hold"
-                            ? "bg-amber-50 text-amber-600 border-amber-100"
-                            : p.status === "cancelled"
-                              ? "bg-rose-50 text-rose-600 border-rose-100"
-                              : "bg-purple-50 text-purple-600 border-purple-100"
-                      }`}>
-                        {p.status}
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${projectStatusBadgeClass(p.status)}`}>
+                        {projectStatusLabel(p.status, t)}
                       </span>
                     </div>
 

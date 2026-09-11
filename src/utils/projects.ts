@@ -22,7 +22,7 @@
   contract as evaluateLeadSla in utils/leadSla.ts.
 */
 
-import type { Lead, Project, ProjectType } from "../types";
+import type { Lead, Project, ProjectStatus, ProjectType } from "../types";
 
 const DAY_MS = 86400000;
 
@@ -135,4 +135,80 @@ export const projectDisplayName = (
   const leadId = project?.leadId;
   const lead = leadId ? leads.find((l) => l.id === leadId) : undefined;
   return String(lead?.name ?? "").trim() || fallback;
+};
+
+/*
+  ── PROJECT STATUS ──────────────────────────────────────
+
+  The list itself is PROJECT_STATUSES in types/index.ts. What lives here is how
+  a status is spoken and how it is painted, because five places used to carry
+  their own copy of both — the projects filter, the projects table, the project
+  card, the project drawer and the lead's "Linked projects" card — and a new
+  status reached exactly none of them.
+*/
+
+/** Where every project starts. Nothing promotes it out of here on its own — see PROJECT_STATUSES. */
+export const DEFAULT_PROJECT_STATUS: ProjectStatus = "new";
+
+/**
+ * en / sk / hu, in the shape every view's local `t()` takes.
+ *
+ * Written out in PROJECT_STATUSES order, because the key order is what the
+ * dropdowns are built from below — a runtime `import { PROJECT_STATUSES }` here
+ * would be a directory import that node's test runner cannot resolve. The
+ * `Record<ProjectStatus, …>` keeps the two lists exhaustive against each other,
+ * and projects.test.ts asserts they agree on order too.
+ */
+const PROJECT_STATUS_LABELS: Record<ProjectStatus, [string, string, string]> = {
+  new: ["New", "Nový", "Új"],
+  active: ["Active", "Aktívny", "Aktív"],
+  completed: ["Completed", "Dokončený", "Befejezett"],
+  on_hold: ["On Hold", "Pozastavený", "Függőben"],
+  cancelled: ["Cancelled", "Zrušený", "Törölt"],
+};
+
+const isProjectStatus = (status: string): status is ProjectStatus =>
+  Object.prototype.hasOwnProperty.call(PROJECT_STATUS_LABELS, status);
+
+/**
+ * A status as a human reads it. An unknown one — a row written before a status
+ * was renamed, or by something outside the app — is shown raw rather than
+ * swallowed, so it stays visible instead of quietly reading as "Active".
+ */
+export const projectStatusLabel = (
+  status: string | undefined | null,
+  t: (en: string, sk: string, hu: string) => string,
+): string => {
+  const key = String(status ?? "").trim();
+  if (!isProjectStatus(key)) return key;
+  const [en, sk, hu] = PROJECT_STATUS_LABELS[key];
+  return t(en, sk, hu);
+};
+
+/** Every status, in the order they are offered. */
+export const projectStatusOrder = (): ProjectStatus[] =>
+  Object.keys(PROJECT_STATUS_LABELS) as ProjectStatus[];
+
+/** The whole list as dropdown options, in PROJECT_STATUSES order. */
+export const projectStatusOptions = (
+  t: (en: string, sk: string, hu: string) => string,
+): { value: ProjectStatus; label: string }[] =>
+  projectStatusOrder().map((value) => ({ value, label: projectStatusLabel(value, t) }));
+
+/** Badge colours. A status carries meaning, so it stays on the raw palette. */
+export const projectStatusBadgeClass = (status: string | undefined | null): string => {
+  switch (String(status ?? "").trim()) {
+    case "new":
+      return "bg-sky-50 text-sky-600 border-sky-100";
+    case "active":
+      return "bg-purple-50 text-purple-600 border-purple-100";
+    case "completed":
+      return "bg-emerald-50 text-emerald-600 border-emerald-100";
+    case "on_hold":
+      return "bg-amber-50 text-amber-600 border-amber-100";
+    case "cancelled":
+      return "bg-rose-50 text-rose-600 border-rose-100";
+    default:
+      return "bg-slate-50 text-slate-500 border-slate-200";
+  }
 };

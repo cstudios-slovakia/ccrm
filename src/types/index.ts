@@ -457,13 +457,20 @@ export interface ProjectGanttRow {
 }
 
 /**
- * The states a project can be in. One list, because three places used to spell
- * it out separately (the projects filter, the project card, and now the
- * workflow "change project status" action) and a fourth spelling would drift.
- * Mirrored by CCRM_PROJECT_STATUSES in api/auth.php, which validates what
- * automations and the sync endpoint are allowed to write.
+ * The states a project can be in, in the order they are offered. One list,
+ * because three places used to spell it out separately (the projects filter,
+ * the project card, and now the workflow "change project status" action) and a
+ * fourth spelling would drift. Mirrored by ccrm_project_statuses() in
+ * api/auth.php, which validates what automations and the sync endpoint are
+ * allowed to write.
+ *
+ * "new" is where every project starts (DEFAULT_PROJECT_STATUS in
+ * utils/projects.ts). Nothing moves it along on its own: which lead status
+ * promotes a project to "active" differs from one installation to the next, so
+ * that lives in a workflow — the "Lead status changed" trigger wired to the
+ * "Change project status" action — rather than being hard-coded here.
  */
-export const PROJECT_STATUSES = ["active", "completed", "on_hold", "cancelled"] as const;
+export const PROJECT_STATUSES = ["new", "active", "completed", "on_hold", "cancelled"] as const;
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 
 export interface Project {
