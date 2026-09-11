@@ -34,44 +34,45 @@ Your job is to analyze the complete transcript of the multi-agent simulation and
 MANDATORY REQUIREMENTS:
 1. Grounding: All analysis must quote actual agent posts and identify real failure points from the simulation data.
 2. Structure: You must provide 3 primary analytical chapters AND a mandatory 4th strategic playbook:
-   - Chapter 1: Executive Consensus & Market Polarization
-   - Chapter 2: Critical Vulnerabilities & Top Objections (quote exact skeptical agents)
-   - Chapter 3: Competitor Counter-Strategy Analysis
-   - Chapter 4: 🎯 WHAT STRATEGY TO USE TO ACHIEVE THE GOAL?
+   - Chapter 1: 1. Výkonný konsenzus a polarizácia trhu
+   - Chapter 2: 2. Kritické zraniteľnosti a hlavné námietky (quote exact skeptical agents)
+   - Chapter 3: 3. Analýza protistratégie konkurencie
+   - Chapter 4: 4. 🎯 AKÚ STRATÉGIU POUŽIŤ NA DOSIAHNUTIE CIEĽA?
 3. Strategic Playbook: Provide direct actionable counter-measures, specific sales objection rebuttals, and a clear sequence of moves to win the market.
+4. CRITICAL LANGUAGE REQUIREMENT: The entire report, including title, summary, section titles, markdown content, vulnerabilities, counter-measures, objection scripts, and GTM sequence MUST be written in natural, executive-level Slovak (Slovenčina). Do not write in English.
 
 Output JSON strictly matching this schema:
 {
-  "title": "Predictive Market Rehearsal Briefing: ...",
-  "summary": "High-level 2-sentence executive summary of the simulated outcome.",
+  "title": "Strategický briefing trhovej simulácie: ...",
+  "summary": "Zhrnutie výsledku simulácie v 2 výstižných vetách v slovenčine.",
   "sections": [
     {
-      "title": "1. Executive Consensus & Market Polarization",
-      "content": "Detailed markdown content with statistics and agent breakdown..."
+      "title": "1. Výkonný konsenzus a polarizácia trhu",
+      "content": "Podrobný markdown obsah so štatistikami a rozborom reakcií v slovenčine..."
     },
     {
-      "title": "2. Critical Vulnerabilities & Primary Objections",
-      "content": "Detailed markdown content quoting specific skeptical agents..."
+      "title": "2. Kritické zraniteľnosti a hlavné námietky",
+      "content": "Podrobný markdown obsah s presnými citáciami skeptických agentov..."
     },
     {
-      "title": "3. Competitor Counter-Strategy Analysis",
-      "content": "Detailed markdown content analyzing how competitors retaliated..."
+      "title": "3. Analýza protistratégie konkurencie",
+      "content": "Podrobný markdown obsah analyzujúci protiťahy konkurencie..."
     },
     {
-      "title": "4. 🎯 What Strategy to Use to Achieve the Goal?",
-      "content": "Detailed playbook explaining exact positioning, adjustments, and pricing tweaks..."
+      "title": "4. 🎯 AKÚ STRATÉGIU POUŽIŤ NA DOSIAHNUTIE CIEĽA?",
+      "content": "Podrobný akčný plán vysvetľujúci presné nastavenie pozicioningu a úprav..."
     }
   ],
   "strategicPlaybook": {
-    "keyVulnerabilities": ["Vulnerability 1", "Vulnerability 2"],
-    "actionableCounterMeasures": ["Counter-measure 1", "Counter-measure 2"],
+    "keyVulnerabilities": ["Zraniteľnosť 1", "Zraniteľnosť 2"],
+    "actionableCounterMeasures": ["Protiopatrenie 1", "Protiopatrenie 2"],
     "salesObjectionPlaybook": [
       {
-        "objection": "Common prospect objection discovered in sim",
-        "rebuttal": "Exact turn-key script for sales reps to overcome it"
+        "objection": "Častá námietka zákazníka odhalená v simulácii",
+        "rebuttal": "Konkrétna argumentačná odpoveď pre obchodníka na jej prekonanie"
       }
     ],
-    "recommendedGtmSequence": ["Step 1: ...", "Step 2: ...", "Step 3: ..."]
+    "recommendedGtmSequence": ["1. krok: ...", "2. krok: ...", "3. krok: ..."]
   }
 }`;
 
@@ -95,7 +96,7 @@ ${impactfulPosts.map(p => `- [Round ${p.roundNum}] ${p.agentName} (@${p.agentUse
 Original Product Brief Seed:
 ${seedDocument.slice(0, 4000)}${docsPrompt}
 
-Synthesize the final authoritative strategic report.`;
+Synthesize the final authoritative strategic report in professional Slovak (Slovenčina).`;
 
   const report = await callLlmJson<StrategicReport>([
     { role: 'system', content: systemPrompt },

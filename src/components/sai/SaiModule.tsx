@@ -341,16 +341,16 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
 
         // Step 1: Prep phase 1
         const activeSrcCount = config.crmDataSources ? config.crmDataSources.length : 8;
-        setPrepStepMessage(`[Demo Mode] Extracting CRM context (${config.lookbackMonths}-month horizon, ${activeSrcCount} sources active)...`);
+        setPrepStepMessage(`[Demo režim] Extrakcia CRM kontextu (${config.lookbackMonths}-mesačný horizont, ${activeSrcCount} aktívnych zdrojov)...`);
         await new Promise(r => setTimeout(r, 600));
 
         // Step 2: Prep phase 2
-        setPrepStepMessage('[Demo Mode] Synthesizing dynamic knowledge graph & stakeholder entities...');
+        setPrepStepMessage('[Demo režim] Syntéza dynamického grafu znalostí a entít stakeholderov...');
         await new Promise(r => setTimeout(r, 600));
         setGraph(DEMO_GRAPH);
 
         // Step 3: Prep phase 3
-        setPrepStepMessage(`[Demo Mode] Synthesizing ${config.swarmScale} autonomous buyer & competitor personas...`);
+        setPrepStepMessage(`[Demo režim] Syntéza ${config.swarmScale} autonómnych persón nákupcov a konkurentov...`);
         await new Promise(r => setTimeout(r, 600));
         setAgents(DEMO_AGENTS);
 
@@ -370,7 +370,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
         }
 
         setIsEngineRunning(false);
-        setPrepStepMessage('[Demo Mode] Chief Intelligence Analyst compiling Strategic Rehearsal Briefing...');
+        setPrepStepMessage('[Demo režim] Hlavný spravodajský analytik zostavuje strategický briefing simulácie...');
         setIsPreparing(true);
         await new Promise(r => setTimeout(r, 800));
 
@@ -388,7 +388,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
 
     try {
       // Step 1: Initialize record on server
-      setPrepStepMessage('Initializing dedicated database shard on server...');
+      setPrepStepMessage('Inicializácia dedikovaného databázového shardu na serveri...');
       const initRes = await initServerSimulation({
         id: existingDraftId,
         title: config.title,
@@ -418,15 +418,15 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
       const attachedDocsCount = config.contextDocuments ? config.contextDocuments.length : 0;
       setPrepStepMessage(
         attachedDocsCount > 0 
-          ? `Extracting CRM intelligence (${config.lookbackMonths}-mo horizon, ${activeSrcCount} sources) & processing ${attachedDocsCount} attached document(s)...`
+          ? `Extrakcia CRM dát (${config.lookbackMonths}-mes. horizont, ${activeSrcCount} zdrojov) a spracovanie ${attachedDocsCount} priložených dokumentov...`
           : activeSrcCount > 0
-            ? `Extracting selected CRM intelligence (${config.lookbackMonths}-month horizon, ${activeSrcCount} sources active)...`
-            : 'Grounded exclusively on Seed Scenario announcement memo (all CRM sources turned off)...'
+            ? `Extrakcia vybraných CRM dát (${config.lookbackMonths}-mesačný horizont, ${activeSrcCount} aktívnych zdrojov)...`
+            : 'Založené výhradne na oznámení scenára (všetky CRM zdroje vypnuté)...'
       );
       const crmContext = await fetchCrmContext(config.lookbackMonths, config.crmDataSources);
 
       // Step 3: Extract Ontology & Graph Nodes
-      setPrepStepMessage('Synthesizing dynamic knowledge graph & social stakeholder entities...');
+      setPrepStepMessage('Syntéza dynamického grafu znalostí a sociálnych entít stakeholderov...');
       const generatedGraph = await buildKnowledgeGraph(
         config.seedDocument,
         crmContext.formatted_context,
@@ -437,7 +437,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
       setGraph(generatedGraph);
 
       // Step 4: Synthesize Agent Personas
-      setPrepStepMessage(`Synthesizing ${config.swarmScale} autonomous buyer & competitor personas...`);
+      setPrepStepMessage(`Syntéza ${config.swarmScale} autonómnych persón nákupcov a konkurentov...`);
       const generatedAgents = await synthesizeAgentProfiles(
         generatedGraph.nodes,
         config.swarmScale,
@@ -471,7 +471,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
 
       // Simulation finished, generate final ReAct strategic briefing
       setIsEngineRunning(false);
-      setPrepStepMessage('Chief Intelligence Analyst compiling Strategic Rehearsal Briefing...');
+      setPrepStepMessage('Hlavný spravodajský analytik zostavuje strategický briefing simulácie...');
       setIsPreparing(true);
 
       const report = await generateStrategicReport({
@@ -785,13 +785,13 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
             </div>
             <div className="flex-1">
               <div className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-                Cognitive Swarm Orchestration
+                Orchestrácia kognitívneho roja
               </div>
               <div className="text-base font-bold text-white mt-0.5">
-                {prepStepMessage || 'Preparing simulation components...'}
+                {prepStepMessage || 'Pripravujú sa komponenty simulácie...'}
               </div>
               <div className="text-xs text-slate-300 mt-1">
-                Please remain on this screen. Client-side state is synchronizing round checkpoints to MySQL.
+                Prosím, zostaňte na tejto obrazovke. Klientsky stav synchronizuje kontrolné body jednotlivých kôl do databázy.
               </div>
             </div>
           </div>

@@ -20,6 +20,7 @@ Ensure cognitive, demographic, and stance diversity:
 - Some agents must be highly skeptical, conservative, budget-constrained, or compliance-obsessed.
 - Some agents must represent competitors actively spreading counter-narratives or FUD.
 - Include realistic professions, diverse MBTI types (INTJ, ESTP, INFJ, etc.), and distinct communication styles.
+- LANGUAGE REQUIREMENT: All professions, userChar (personality traits/biases), and publicBio MUST be written in natural, professional Slovak (Slovenčina).
 
 Output JSON strictly matching this schema:
 {
@@ -27,13 +28,13 @@ Output JSON strictly matching this schema:
     {
       "username": "sarah_operations_88",
       "displayName": "Sarah Jenkins",
-      "profession": "Head of SaaS Procurement",
+      "profession": "Riaditeľka nákupu SaaS nástrojov",
       "mbti": "ESTJ",
       "stance": "opposing",
-      "userChar": "Strict B2B buyer with 12 years of enterprise experience. Hyper-focused on GDPR, security liabilities, and contract renewals. Dismisses AI hype easily.",
-      "publicBio": "Enterprise Ops & Procurement Leader | Berlin | Passionate about data sovereignty",
+      "userChar": "Prísna B2B nákupkyňa s 12-ročnou praxou v korporáte. Extrémne zameraná na GDPR, zmluvné riziká a obnovu licencií. Ľahko prehliada marketingový AI hype.",
+      "publicBio": "Líderka podnikového nákupu & prevádzky | Berlín / Bratislava | Zameraná na dátovú suverenitu",
       "followerCount": 840,
-      "interestedTopics": ["GDPR", "pricing", "CRM", "compliance"],
+      "interestedTopics": ["GDPR", "ceny", "CRM", "compliance"],
       "sourceEntityId": "node_1"
     }
   ]
@@ -45,7 +46,7 @@ ${hypothesis}
 Entities in Knowledge Graph:
 ${JSON.stringify(nodes.map(n => ({ id: n.id, name: n.name, type: n.type, summary: n.summary })), null, 2)}
 
-Generate exactly ${targetCount} unique, richly described agent profiles representing these entities.`;
+Generate exactly ${targetCount} unique, richly described agent profiles representing these entities in natural Slovak (Slovenčina).`;
 
   const result = await callLlmJson<{
     agents: {

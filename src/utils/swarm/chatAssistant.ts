@@ -29,7 +29,10 @@ Strategic Playbook: ${report ? JSON.stringify(report.strategicPlaybook?.actionab
 Sample Posts from the simulation:
 ${posts.slice(0, 30).map(p => `- ${p.agentName} (@${p.agentUsername}, ${p.agentProfession}): "${p.content}"`).join('\n')}
 
-Always base your answers on actual simulation events, agent quotes, and strategic logic. Be concise, direct, and actionable.`;
+Always base your answers on actual simulation events, agent quotes, and strategic logic. Be concise, direct, and actionable.
+
+CRITICAL LANGUAGE REQUIREMENT:
+You MUST respond strictly in natural, professional Slovak (Slovenčina). Do NOT respond in English.`;
 
   const messages: LLMMessage[] = [
     { role: 'system', content: systemPrompt },
@@ -66,7 +69,10 @@ Here are the exact comments and tweets you posted during that discussion:
 ${agentPosts.map(p => `- Round ${p.roundNum}: "${p.content}"`).join('\n') || '- You observed quietly.'}
 
 The user (an executive) is now interviewing you directly. 
-Stay strictly in character! Express your authentic reservations, budgets, priorities, or enthusiasm. Speak naturally in first person.`;
+Stay strictly in character! Express your authentic reservations, budgets, priorities, or enthusiasm. Speak naturally in first person.
+
+CRITICAL LANGUAGE REQUIREMENT:
+You MUST answer strictly in natural Slovak (Slovenčina) in first person ("ja"). Do NOT answer in English.`;
 
   const messages: LLMMessage[] = [
     { role: 'system', content: systemPrompt },

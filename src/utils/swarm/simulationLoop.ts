@@ -82,7 +82,7 @@ export class SwarmSimulationEngine {
     const beforeUnloadHandler = (e: BeforeUnloadEvent) => {
       if (this.isRunning) {
         e.preventDefault();
-        e.returnValue = 'A simulation is currently in progress. Progress is saved, but the run will pause.';
+        e.returnValue = 'Prebieha simulácia. Pokrok je uložený, no beh bude pozastavený.';
       }
     };
     window.addEventListener('beforeunload', beforeUnloadHandler);
@@ -186,11 +186,14 @@ Decide on ONE action:
 - "LIKE": Endorse a post.
 - "DO_NOTHING": Stay silent this round.
 
+CRITICAL LANGUAGE REQUIREMENT:
+You MUST write the "content" text in natural, authentic Slovak (Slovenčina). Do NOT write in English.
+
 Output JSON strictly matching:
 {
   "action": "POST" | "QUOTE" | "COMMENT" | "LIKE" | "DO_NOTHING",
   "target_post_id": number | null,
-  "content": "Short chitchat message or forum thought (1-3 sentences) in character",
+  "content": "Krátky príspevok alebo reakcia v slovenčine (1-3 vety) v rámci vašej role",
   "updated_stance": "supportive" | "opposing" | "neutral",
   "sentiment_score": number between -1.0 and 1.0
 }`;
@@ -205,7 +208,7 @@ ${this.hypothesis}
 Recent Timeline Feed:
 ${feedText}
 
-What action do you take this round?`;
+What action do you take this round? (Write in Slovak / slovenčina)`;
 
     try {
       const decision = await callLlmJson<{
@@ -240,7 +243,7 @@ What action do you take this round?`;
         platform: Math.random() > 0.4 ? 'chitchat' : 'forum',
         actionType: decision.action || 'POST',
         targetPostId: decision.target_post_id || undefined,
-        content: decision.content || `Observing developments on ${this.title}.`,
+        content: decision.content || `Sledujem vývoj ohľadom: ${this.title}.`,
         likesCount: 0,
         quotesCount: 0,
         commentsCount: 0,

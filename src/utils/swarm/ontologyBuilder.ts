@@ -23,16 +23,17 @@ CRITICAL RULES:
    - Competitor companies (e.g. Traditional SaaS CRM, Legacy Vendor)
    - Regulatory or auditor bodies (e.g. European Data Protection Board, GDPR Auditor)
 2. DO NOT create abstract concepts as entities (e.g. NEVER make "Sentiment", "Pricing Model", or "Growth" an entity).
-3. Relationships must be active verbs (e.g. EVALUATES, CRITICIZES, REGULATES, BUYS_FROM, COMPETES_WITH).
+3. Relationships must be active verbs (e.g. HODNOTÍ, KRITIZUJE, REGULUJE, KUPUJE_OD, KONKURUJE).
+4. LANGUAGE REQUIREMENT: All entity names, summaries, and relationship facts MUST be written in natural, professional Slovak (Slovenčina).
 
 Output JSON strictly matching this schema:
 {
   "nodes": [
     {
       "id": "node_1",
-      "name": "Mid-Market Agency Owners",
+      "name": "Majitelia stredne veľkých digitálnych agentúr",
       "type": "Client",
-      "summary": "Digital agencies looking for affordable task tracking without per-seat SaaS tax."
+      "summary": "Digitálne agentúry hľadajúce cenovo dostupné sledovanie úloh bez poplatkov za každého používateľa."
     }
   ],
   "edges": [
@@ -40,8 +41,8 @@ Output JSON strictly matching this schema:
       "id": "edge_1",
       "source": "node_1",
       "target": "node_2",
-      "relation": "EVALUATES",
-      "fact": "Evaluating the €1,500 lifetime self-hosted license against monthly SaaS fees."
+      "relation": "HODNOTÍ",
+      "fact": "Zvažujú doživotnú licenciu za 1 500 € v porovnaní s mesačnými SaaS poplatkami."
     }
   ]
 }`;
@@ -61,7 +62,7 @@ ${seedDocument.slice(0, 10000)}${docsSnippet}
 Recent CRM Stakeholder Data:
 ${crmContextText.slice(0, 15000)}
 
-Extract between 8 and 18 key entities and their inter-relationships.`;
+Extract between 8 and 18 key entities and their inter-relationships in natural Slovak (Slovenčina).`;
 
   const result = await callLlmJson<{
     nodes: { id: string; name: string; type: string; summary: string }[];
