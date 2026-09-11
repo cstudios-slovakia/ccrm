@@ -172,6 +172,71 @@ function ccrm_pipeline_parse_money($raw) {
     return (float)$s;
 }
 
+/**
+ * The first non-empty string a submission sent under any of `$keys`, trimmed
+ * and cut to `$maxLength` characters. Null when none of them carried one.
+ */
+function ccrm_pipeline_text($payload, array $keys, $maxLength) {
+    foreach ($keys as $key) {
+        if (!isset($payload[$key]) || !is_scalar($payload[$key])) {
+            continue;
+        }
+        $value = trim((string)$payload[$key]);
+        if ($value !== '') {
+            return mb_substr($value, 0, $maxLength, 'UTF-8');
+        }
+    }
+    return null;
+}
+
+/**
+ * Read the list ids a submission names, from either the plural or the singular
+ * field, in the order the form sent them and without repeats.
+ *
+ * A form whose interest question is a set of checkboxes has more than one answer
+ * to send, so it posts `category_ids` — a JSON array, or the comma-separated
+ * string a form builder produces when it flattens one into a single field. A
+ * single-choice form posts `category_id`. Up to 1.9.25 only the singular was
+ * read, so a visitor who ticked three interests was filed under one of them and
+ * the other two were dropped on the floor — including the projects they would
+ * have opened (see ccrm_auto_create_project_for_lead).
+ *
+ * Both fields are accepted together: the plural is the answer set, the singular
+ * a form's primary choice, and a caller sending both means all of them.
+ */
+function ccrm_pipeline_list_ids($payload, $pluralKey, $singularKey) {
+    $raw = [];
+    foreach ([$pluralKey, $singularKey] as $key) {
+        if (!isset($payload[$key])) {
+            continue;
+        }
+        $value = $payload[$key];
+        if (is_array($value)) {
+            foreach ($value as $item) {
+                $raw[] = $item;
+            }
+        } elseif (is_string($value)) {
+            foreach (preg_split('/[\s,;|]+/', $value) as $item) {
+                $raw[] = $item;
+            }
+        } else {
+            $raw[] = $value;
+        }
+    }
+
+    $ids = [];
+    foreach ($raw as $item) {
+        if (is_array($item) || is_object($item) || is_bool($item) || $item === null) {
+            continue;
+        }
+        $id = intval(is_string($item) ? trim($item) : $item);
+        if ($id > 0 && !in_array($id, $ids, true)) {
+            $ids[] = $id;
+        }
+    }
+    return $ids;
+}
+
 // Labels the message fallback understands, in EN / SK / HU.
 const CCRM_PIPELINE_COMPANY_LABELS = ['company', 'company name', 'firma', 'nazov firmy', 'spolocnost', 'organizacia', 'organization', 'ceg', 'cegnev'];
 const CCRM_PIPELINE_BUDGET_LABELS = ['budget', 'rozpocet', 'koltsegvetes'];
@@ -287,26 +352,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $leadSourceIds = get_db_setting($pdo, 'LEAD_SOURCE_IDS', []);
     $leadCategoryIds = get_db_setting($pdo, 'LEAD_CATEGORY_IDS', []);
 
-    // Determine source
+    // Determine source. A lead has exactly one, so the first id that resolves
+    // wins even when a form sends several.
     $source = 'website';
-    $matchedSource = ccrm_resolve_list_id(
-        isset($payload['source_id']) ? intval($payload['source_id']) : 0,
-        $leadSources,
-        $leadSourceIds
-    );
-    if ($matchedSource !== null) {
-        $source = $matchedSource;
+    foreach (ccrm_pipeline_list_ids($payload, 'source_ids', 'source_id') as $sourceId) {
+        $matchedSource = ccrm_resolve_list_id($sourceId, $leadSources, $leadSourceIds);
+        if ($matchedSource !== null) {
+            $source = $matchedSource;
+            break;
+        }
     }
 
-    // Determine category
+    // Determine categories — a lead can hold as many interests as the visitor
+    // ticked, so every id that resolves is kept, in the order it was sent.
     $categories = [];
-    $matchedCategory = ccrm_resolve_list_id(
-        isset($payload['category_id']) ? intval($payload['category_id']) : 0,
-        $leadCategories,
-        $leadCategoryIds
-    );
-    if ($matchedCategory !== null) {
-        $categories[] = $matchedCategory;
+    foreach (ccrm_pipeline_list_ids($payload, 'category_ids', 'category_id') as $categoryId) {
+        $matchedCategory = ccrm_resolve_list_id($categoryId, $leadCategories, $leadCategoryIds);
+        if ($matchedCategory !== null && !in_array($matchedCategory, $categories, true)) {
+            $categories[] = $matchedCategory;
+        }
     }
 
     // Create the new lead ID
@@ -341,6 +405,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $phone = isset($payload['phone']) ? trim($payload['phone']) : "";
     $email = isset($payload['email']) ? trim($payload['email']) : "";
     $country = isset($payload['country']) ? trim($payload['country']) : "Slovakia";
+    // Where the visitor came from before the form: the channel the website
+    // remembered on their first page view (facebook, instagram, google,
+    // direct, ...) and a free-text detail (medium, campaign, referrer,
+    // landing page). Not the same thing as `source_id`, which says which
+    // form/site the lead came through. Free text on purpose: it is not a
+    // list the operator maintains, so nothing is resolved or validated
+    // beyond length and case. `origin` / `origin_detail` are accepted as
+    // shorter spellings.
+    $trafficOrigin = ccrm_pipeline_text($payload, ['traffic_origin', 'origin'], 50);
+    $trafficOrigin = $trafficOrigin !== null ? mb_strtolower($trafficOrigin, 'UTF-8') : null;
+    $trafficOriginDetail = $trafficOrigin !== null
+        ? ccrm_pipeline_text($payload, ['traffic_origin_detail', 'origin_detail'], 255)
+        : null;
     $created_at = date('Y-m-d H:i:s');
     
     // Check if there is an active lead (not closed) for this client
@@ -408,6 +485,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $updateFields[] = "`interest_note` = ?";
                 $updateParams[] = $interestNote;
             }
+            // First touch wins: the lead keeps the channel that brought the
+            // visitor the first time. A later inquiry's origin still goes to
+            // the timeline note below, so nothing is lost.
+            if (empty($existingLead['traffic_origin']) && $trafficOrigin !== null) {
+                $updateFields[] = "`traffic_origin` = ?";
+                $updateParams[] = $trafficOrigin;
+                $updateFields[] = "`traffic_origin_detail` = ?";
+                $updateParams[] = $trafficOriginDetail;
+            }
             if (!empty($updateFields)) {
                 $updateParams[] = $existingLeadId;
                 $updStmt = $pdo->prepare("UPDATE `leads` SET " . implode(', ', $updateFields) . " WHERE `id` = ?");
@@ -431,6 +517,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // 3. Insert timeline event note representing the new form submission
             $messageLines = [];
             $messageLines[] = "Form submission received from source: " . $source;
+            if ($trafficOrigin !== null) {
+                $messageLines[] = "Origin: " . $trafficOrigin . ($trafficOriginDetail !== null ? " (" . $trafficOriginDetail . ")" : "");
+            }
             $messageLines[] = "Name: " . $name;
             if ($contactPerson !== null) $messageLines[] = "Contact person: " . $contactPerson;
             if (!empty($email)) $messageLines[] = "Email: " . $email;
@@ -497,7 +586,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $leadOwner = ccrm_auto_assign_owner($pdo) ?: ccrm_default_owner($pdo);
 
         // 1. Insert into leads
-        $insLead = $pdo->prepare("INSERT INTO `leads` (`id`, `name`, `city`, `client_type`, `status`, `source`, `owner`, `value`, `rating`, `phone`, `email`, `contact_person`, `country`, `interest_note`, `created_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $insLead = $pdo->prepare("INSERT INTO `leads` (`id`, `name`, `city`, `client_type`, `status`, `source`, `traffic_origin`, `traffic_origin_detail`, `owner`, `value`, `rating`, `phone`, `email`, `contact_person`, `country`, `interest_note`, `created_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
         $insLead->execute([
             $newLeadId,
             $name,
@@ -505,6 +594,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $clientType,
             $status,
             $source,
+            $trafficOrigin,
+            $trafficOriginDetail,
             $leadOwner,
             $value,
             3,      // Default rating

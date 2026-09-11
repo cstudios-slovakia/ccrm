@@ -174,6 +174,13 @@ export interface Lead {
   // Lead Referral (links to another Lead/Client ID)
   referralLeadId?: string;
 
+  // Which channel first brought the visitor to the website (facebook,
+  // instagram, google, direct, ...) and a free-text detail (medium, campaign,
+  // referrer, landing page). Reported by the public web-form webhook and
+  // shown read-only; the sync never writes it back.
+  trafficOrigin?: string;
+  trafficOriginDetail?: string;
+
   // Follow-up tracking — a map of completed follow-ups keyed by the lowercased
   // lead-state name, value = YYYY-MM-DD it was ticked. One checkbox is shown per
   // state flagged for follow-up in Settings (leadStateFollowUp).

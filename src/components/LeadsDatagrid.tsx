@@ -5073,6 +5073,44 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             )}
                                         </div>
                                     </div>
+
+                                    {/* Traffic origin — where the visitor came from before
+                                        the form (facebook, instagram, google, direct...).
+                                        Reported by the web-form webhook, never edited here:
+                                        it is a fact about the visit, not a choice. */}
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">
+                                            {getTranslation(
+                                                systemLanguage,
+                                                "profile.traffic_origin",
+                                            )}
+                                        </label>
+                                        {activeLead.trafficOrigin ? (
+                                            <div
+                                                className="pt-2 px-3 cursor-default"
+                                                title={
+                                                    activeLead.trafficOriginDetail ||
+                                                    undefined
+                                                }
+                                            >
+                                                <div className="text-slate-900 text-sm font-black uppercase tracking-wider select-all">
+                                                    🧭 {activeLead.trafficOrigin}
+                                                </div>
+                                                {activeLead.trafficOriginDetail && (
+                                                    <div className="text-[10px] text-slate-400 font-medium truncate max-w-[260px]">
+                                                        {activeLead.trafficOriginDetail}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="pt-2 px-3 text-slate-400 text-xs font-bold uppercase tracking-wider cursor-default">
+                                                {getTranslation(
+                                                    systemLanguage,
+                                                    "profile.traffic_origin_unknown",
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
 
                                 {/* Categories Interest Selection or List display */}

@@ -636,6 +636,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'clientType' => $row['client_type'],
             'status' => $row['status'],
             'source' => $row['source'],
+            // Reported by the web form through api/pipeline.php and shown
+            // read-only in the app, so it is deliberately absent from the
+            // upsert below: a client's copy can never blank it out.
+            'trafficOrigin' => $row['traffic_origin'] ?? '',
+            'trafficOriginDetail' => $row['traffic_origin_detail'] ?? '',
             'owner' => $row['owner'],
             'value' => floatval($row['value']),
             'rating' => intval($row['rating']),

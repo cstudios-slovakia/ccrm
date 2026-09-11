@@ -56,6 +56,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `client_type` ENUM('person', 'business', 'partner') NOT NULL DEFAULT 'person',
               `status` VARCHAR(50) NOT NULL DEFAULT 'new' COMMENT 'Active Pipeline State',
               `source` VARCHAR(50) NOT NULL DEFAULT 'website' COMMENT 'Marketing Source',
+              `traffic_origin` VARCHAR(50) NULL COMMENT 'Channel that first brought the visitor to the site (facebook, instagram, google, direct, ...) - reported by the web form, not chosen in the CRM',
+              `traffic_origin_detail` VARCHAR(255) NULL COMMENT 'Free-text detail for traffic_origin: medium, campaign, referring host, landing page',
               `owner` VARCHAR(100) NOT NULL COMMENT 'Assigned Project Manager Name',
               `value` DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'Estimated Opportunity Worth',
               `rating` INT NOT NULL DEFAULT 3 COMMENT 'Star Rating 1-5',
@@ -853,6 +855,15 @@ if (!function_exists('ccrm_schema_statements')) {
         // every referral looked saved and then vanished on the next poll.
         if (!ccrm_column_exists($pdo, 'leads', 'referral_lead_id')) {
             $pdo->exec("ALTER TABLE `leads` ADD COLUMN `referral_lead_id` VARCHAR(50) NULL AFTER `interest_note`");
+        }
+        // 1.9.26: where the visitor came from before they filled in the form
+        // (facebook, instagram, google, direct...). Written by api/pipeline.php
+        // only; the app shows it and never edits it.
+        if (!ccrm_column_exists($pdo, 'leads', 'traffic_origin')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `traffic_origin` VARCHAR(50) NULL AFTER `source`");
+        }
+        if (!ccrm_column_exists($pdo, 'leads', 'traffic_origin_detail')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `traffic_origin_detail` VARCHAR(255) NULL AFTER `traffic_origin`");
         }
         // Business-document timeline events (order, proforma invoice, advance
         // receipt, invoice, delivery note). MySQL silently truncates an unknown
