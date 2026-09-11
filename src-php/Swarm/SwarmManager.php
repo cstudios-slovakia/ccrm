@@ -44,11 +44,11 @@ class SwarmManager {
     }
 
     /**
-     * Sanitize simulation ID to be strictly alphanumeric and safe for SQL table names.
+     * Sanitize simulation ID to be safe for SQL queries while supporting alphanumeric, underscores, and hyphens.
      */
     public static function sanitizeId(string $id): string {
-        $clean = preg_replace('/[^a-zA-Z0-9_]/', '', $id);
-        return substr($clean, 0, 32);
+        $clean = preg_replace('/[^a-zA-Z0-9_\-]/', '', $id);
+        return substr($clean, 0, 36);
     }
 
     /**
@@ -57,7 +57,7 @@ class SwarmManager {
     public function createSimulation(array $data): array {
         $rawId = $data['id'] ?? ('sim_' . substr(bin2hex(random_bytes(6)), 0, 10));
         $simId = self::sanitizeId($rawId);
-        $prefix = 'sim' . $simId . '_';
+        $prefix = 'sim' . preg_replace('/[^a-zA-Z0-9_]/', '', $simId) . '_';
 
         $title = trim($data['title'] ?? 'Untitled Rehearsal');
         $hypothesis = trim($data['hypothesis'] ?? '');
@@ -65,6 +65,18 @@ class SwarmManager {
         $lookbackMonths = (int)($data['lookback_months'] ?? 12);
         $swarmScale = (int)($data['swarm_scale'] ?? 30);
         $totalRounds = (int)($data['total_rounds'] ?? 15);
+        $status = in_array($data['status'] ?? '', ['draft', 'prepared', 'running', 'completed', 'failed']) 
+            ? $data['status'] 
+            : 'prepared';
+
+        $checkpointData = [];
+        if (!empty($data['crm_data_sources']) && is_array($data['crm_data_sources'])) {
+            $checkpointData['crm_data_sources'] = $data['crm_data_sources'];
+        }
+        if (!empty($data['context_documents']) && is_array($data['context_documents'])) {
+            $checkpointData['context_documents'] = $data['context_documents'];
+        }
+        $checkpointJson = !empty($checkpointData) ? json_encode($checkpointData) : null;
 
         // 1. Create Sharded Dynamic Tables for this specific simulation
         $this->createShardedTables($prefix);
@@ -72,8 +84,8 @@ class SwarmManager {
         // 2. Register into master table
         $stmt = $this->pdo->prepare("
             INSERT INTO `swarm_simulations` 
-            (`id`, `table_prefix`, `title`, `hypothesis`, `seed_document`, `lookback_months`, `swarm_scale`, `total_rounds`, `status`)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'prepared')
+            (`id`, `table_prefix`, `title`, `hypothesis`, `seed_document`, `lookback_months`, `swarm_scale`, `total_rounds`, `status`, `checkpoint_state`)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE 
                 `title` = VALUES(`title`),
                 `hypothesis` = VALUES(`hypothesis`),
@@ -81,16 +93,17 @@ class SwarmManager {
                 `lookback_months` = VALUES(`lookback_months`),
                 `swarm_scale` = VALUES(`swarm_scale`),
                 `total_rounds` = VALUES(`total_rounds`),
-                `status` = 'prepared'
+                `status` = VALUES(`status`),
+                `checkpoint_state` = COALESCE(VALUES(`checkpoint_state`), `checkpoint_state`)
         ");
-        $stmt->execute([$simId, $prefix, $title, $hypothesis, $seedDoc, $lookbackMonths, $swarmScale, $totalRounds]);
+        $stmt->execute([$simId, $prefix, $title, $hypothesis, $seedDoc, $lookbackMonths, $swarmScale, $totalRounds, $status, $checkpointJson]);
 
         return [
             'success' => true,
             'id' => $simId,
             'table_prefix' => $prefix,
             'title' => $title,
-            'status' => 'prepared'
+            'status' => $status
         ];
     }
 
@@ -163,7 +176,7 @@ class SwarmManager {
      */
     public function saveCheckpoint(string $simId, int $round, array $snapshot, ?array $newPosts = null): array {
         $simId = self::sanitizeId($simId);
-        $prefix = 'sim' . $simId . '_';
+        $prefix = 'sim' . preg_replace('/[^a-zA-Z0-9_]/', '', $simId) . '_';
 
         // 1. Insert new posts if provided
         if (!empty($newPosts)) {
@@ -218,16 +231,34 @@ class SwarmManager {
         if (!$row) return null;
 
         $state = !empty($row['checkpoint_state']) ? json_decode($row['checkpoint_state'], true) : [];
+        if (!is_array($state)) {
+            $state = [];
+        }
+
+        $finalReport = null;
+        if (!empty($row['final_report'])) {
+            $finalReport = is_string($row['final_report']) ? json_decode($row['final_report'], true) : $row['final_report'];
+        } elseif (!empty($state['final_report'])) {
+            $finalReport = $state['final_report'];
+        } elseif (!empty($state['finalReport'])) {
+            $finalReport = $state['finalReport'];
+        }
+
         return [
             'id' => $row['id'],
             'title' => $row['title'],
             'hypothesis' => $row['hypothesis'],
+            'seed_document' => $row['seed_document'] ?? ($state['seed_document'] ?? ''),
             'lookback_months' => (int)$row['lookback_months'],
+            'crm_data_sources' => $state['crm_data_sources'] ?? null,
+            'context_documents' => $state['context_documents'] ?? null,
             'swarm_scale' => (int)$row['swarm_scale'],
             'total_rounds' => (int)$row['total_rounds'],
             'current_round' => (int)$row['current_round'],
+            'model_name' => $state['model_name'] ?? 'gpt-5.6-luna',
+            'diurnal_cycle' => $state['diurnal_cycle'] ?? true,
             'status' => $row['status'],
-            'final_report' => $row['final_report'],
+            'final_report' => $finalReport,
             'checkpoint' => $state
         ];
     }
@@ -237,12 +268,18 @@ class SwarmManager {
      */
     public function listSimulations(): array {
         $stmt = $this->pdo->query("
-            SELECT `id`, `title`, `hypothesis`, `lookback_months`, `swarm_scale`, 
-                   `total_rounds`, `current_round`, `status`, `created_at`, `updated_at`
+            SELECT `id`, `title`, `hypothesis`, `seed_document`, `lookback_months`, `swarm_scale`, 
+                   `total_rounds`, `current_round`, `status`, `checkpoint_state`, `created_at`, `updated_at`
             FROM `swarm_simulations`
             ORDER BY `created_at` DESC
         ");
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rows as &$r) {
+            $parsedState = !empty($r['checkpoint_state']) ? json_decode($r['checkpoint_state'], true) : [];
+            $r['crm_data_sources'] = $parsedState['crm_data_sources'] ?? null;
+            $r['context_documents'] = $parsedState['context_documents'] ?? null;
+        }
+        return $rows;
     }
 
     /**

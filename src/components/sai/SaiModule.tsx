@@ -33,7 +33,7 @@ import { generateStrategicReport } from '../../utils/swarm/reportSynthesizer';
 import { 
   initServerSimulation, 
   listPastSimulations, 
-  fetchResumeCheckpoint, 
+  fetchSimulationDetails,
   deleteServerSimulation,
   saveRoundCheckpoint
 } from '../../utils/swarm/checkpointClient';
@@ -174,22 +174,34 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
       }
 
       if (subView === 'create' || subView === 'new') {
-        if (draftId) {
+        const targetDraftId = draftId || (id && id !== 'create' && id !== 'new' ? id : '');
+        if (targetDraftId) {
           try {
-            const cp = await fetchResumeCheckpoint(draftId);
-            if (cp) {
+            const simDetails = await fetchSimulationDetails(targetDraftId);
+            if (simDetails) {
+              const cp = (simDetails.checkpoint && typeof simDetails.checkpoint === 'object' && !Array.isArray(simDetails.checkpoint))
+                ? simDetails.checkpoint
+                : {};
               setEditingDraftData({
-                id: cp.simulationId || draftId,
-                title: cp.title,
-                hypothesis: cp.hypothesis,
-                seed_document: '',
-                lookback_months: 12,
-                total_rounds: cp.totalRounds || 8,
+                id: simDetails.id || targetDraftId,
+                title: simDetails.title || cp.title,
+                hypothesis: simDetails.hypothesis || cp.hypothesis,
+                seed_document: simDetails.seed_document || cp.seed_document || '',
+                lookback_months: simDetails.lookback_months ? Number(simDetails.lookback_months) : (cp.lookback_months ? Number(cp.lookback_months) : 12),
+                crm_data_sources: Array.isArray(simDetails.crm_data_sources) ? simDetails.crm_data_sources : (Array.isArray(cp.crm_data_sources) ? cp.crm_data_sources : undefined),
+                context_documents: Array.isArray(simDetails.context_documents) ? simDetails.context_documents : (Array.isArray(cp.context_documents) ? cp.context_documents : undefined),
+                swarm_scale: simDetails.swarm_scale ? Number(simDetails.swarm_scale) : (cp.swarm_scale ? Number(cp.swarm_scale) : 30),
+                total_rounds: simDetails.total_rounds ? Number(simDetails.total_rounds) : (cp.total_rounds ? Number(cp.total_rounds) : 8),
+                model_name: simDetails.model_name || cp.model_name || 'gpt-5.6-luna',
+                diurnal_cycle: simDetails.diurnal_cycle !== undefined ? simDetails.diurnal_cycle : (cp.diurnal_cycle ?? true),
                 status: 'draft'
               });
+            } else {
+              setEditingDraftData(null);
             }
           } catch (e) {
             console.error('Error loading draft from hash:', e);
+            setEditingDraftData(null);
           }
         } else {
           setEditingDraftData(null);
@@ -197,22 +209,36 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
         setActiveView('create');
       } else if (subView === 'war-room' || subView === 'running' || subView === 'live') {
         if (id && id !== activeSimulationId) {
-          if (id === DEMO_SIMULATION_CHECKPOINT.simulationId) {
+          if (id === DEMO_SIMULATION_CHECKPOINT.simulationId || id.startsWith('demo-')) {
             handleLoadDemoSimulation(false);
             setActiveView('running');
           } else {
             await handleOpenPastSimulation({ id, title: 'Simulation', status: 'running' }, false);
+          }
+        } else if (!id && !activeSimulationId) {
+          if (demoModeActive) {
+            handleLoadDemoSimulation(false);
             setActiveView('running');
+          } else {
+            navigateView('list');
           }
         } else {
           setActiveView('running');
         }
       } else if (subView === 'report' || subView === 'briefing' || subView === 'results') {
         if (id && id !== activeSimulationId) {
-          if (id === DEMO_SIMULATION_CHECKPOINT.simulationId) {
+          if (id === DEMO_SIMULATION_CHECKPOINT.simulationId || id.startsWith('demo-')) {
             handleLoadDemoSimulation(false);
+            setActiveView('report');
           } else {
             await handleOpenPastSimulation({ id, title: 'Simulation', status: 'completed' }, false);
+          }
+        } else if (!id && !activeSimulationId) {
+          if (demoModeActive) {
+            handleLoadDemoSimulation(false);
+            setActiveView('report');
+          } else {
+            navigateView('list');
           }
         } else {
           setActiveView('report');
@@ -270,16 +296,19 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
 
   // Open an existing draft in the create view
   const handleOpenDraft = (sim: any, shouldUpdateHash = true) => {
+    const cp = (sim.checkpoint && typeof sim.checkpoint === 'object' && !Array.isArray(sim.checkpoint)) ? sim.checkpoint : {};
     setEditingDraftData({
       id: sim.id,
-      title: sim.title,
-      hypothesis: sim.hypothesis,
-      seed_document: sim.seed_document || '',
-      lookback_months: sim.lookback_months ? Number(sim.lookback_months) : 12,
-      crm_data_sources: Array.isArray(sim.crm_data_sources) ? sim.crm_data_sources : (sim.checkpoint?.crm_data_sources || undefined),
-      context_documents: Array.isArray(sim.context_documents) ? sim.context_documents : (sim.checkpoint?.context_documents || undefined),
-      swarm_scale: sim.swarm_scale ? Number(sim.swarm_scale) : 30,
-      total_rounds: sim.total_rounds ? Number(sim.total_rounds) : 8,
+      title: sim.title || cp.title,
+      hypothesis: sim.hypothesis || cp.hypothesis,
+      seed_document: sim.seed_document || cp.seed_document || '',
+      lookback_months: sim.lookback_months ? Number(sim.lookback_months) : (cp.lookback_months ? Number(cp.lookback_months) : 12),
+      crm_data_sources: Array.isArray(sim.crm_data_sources) ? sim.crm_data_sources : (Array.isArray(cp.crm_data_sources) ? cp.crm_data_sources : undefined),
+      context_documents: Array.isArray(sim.context_documents) ? sim.context_documents : (Array.isArray(cp.context_documents) ? cp.context_documents : undefined),
+      swarm_scale: sim.swarm_scale ? Number(sim.swarm_scale) : (cp.swarm_scale ? Number(cp.swarm_scale) : 30),
+      total_rounds: sim.total_rounds ? Number(sim.total_rounds) : (cp.total_rounds ? Number(cp.total_rounds) : 8),
+      model_name: sim.model_name || cp.model_name || 'gpt-5.6-luna',
+      diurnal_cycle: sim.diurnal_cycle !== undefined ? sim.diurnal_cycle : (cp.diurnal_cycle ?? true),
       status: 'draft'
     });
     if (shouldUpdateHash) {
@@ -479,7 +508,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
 
     } catch (err: any) {
       console.error('Simulation execution failed:', err);
-      alert(`Simulation failed: ${err?.message || 'Network error'}`);
+      alert(`Spustenie simulácie zlyhalo: ${err?.message || 'Chyba siete'}`);
       setIsPreparing(false);
       setIsEngineRunning(false);
     }
@@ -487,50 +516,80 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
 
   // Open past simulation
   const handleOpenPastSimulation = async (sim: any, shouldUpdateHash = true) => {
+    if (!sim || !sim.id) return;
+
+    // If demo simulation or demo ID, load demo state
+    if (sim.id === DEMO_SIMULATION_CHECKPOINT.simulationId || (typeof sim.id === 'string' && sim.id.startsWith('demo-'))) {
+      handleLoadDemoSimulation(shouldUpdateHash);
+      return;
+    }
+
     if (sim.status === 'draft') {
       handleOpenDraft(sim, shouldUpdateHash);
       return;
     }
 
     try {
-      const checkpoint = await fetchResumeCheckpoint(sim.id);
-      if (!checkpoint) {
-        alert('Could not load simulation details from server.');
+      const details = await fetchSimulationDetails(sim.id);
+      if (!details) {
+        if (demoModeActive) {
+          handleLoadDemoSimulation(shouldUpdateHash);
+          return;
+        }
+        console.warn('Simulation details not found on server for ID:', sim.id);
+        alert('Podrobnosti o simulácii sa nepodarilo načítať zo servera.');
+        navigateView('list');
         return;
       }
 
-      setActiveSimulationId(checkpoint.simulationId || sim.id);
-      setActiveTitle(checkpoint.title || sim.title || 'Market Rehearsal');
-      setActiveHypothesis(checkpoint.hypothesis || sim.hypothesis || '');
-      setCurrentRound(checkpoint.currentRound || 0);
-      setTotalRounds(checkpoint.totalRounds || sim.total_rounds || 8);
-      setGraph(checkpoint.graph || { nodes: [], edges: [] });
-      setAgents(checkpoint.agents || []);
-      setPosts(checkpoint.posts || []);
-      setMetricsHistory(checkpoint.metricsHistory || []);
+      // If the simulation is actually a draft on server, open draft editor
+      if (details.status === 'draft') {
+        handleOpenDraft(details, shouldUpdateHash);
+        return;
+      }
+
+      const cp = (details.checkpoint && typeof details.checkpoint === 'object' && !Array.isArray(details.checkpoint))
+        ? details.checkpoint
+        : {};
+      const simId = details.id || sim.id;
+
+      setActiveSimulationId(simId);
+      setActiveTitle(details.title || cp.title || sim.title || 'Market Rehearsal');
+      setActiveHypothesis(details.hypothesis || cp.hypothesis || sim.hypothesis || '');
+      setActiveSeed(details.seed_document || cp.seed_document || '');
+      setCurrentRound(details.current_round !== undefined ? details.current_round : (cp.currentRound || 0));
+      setTotalRounds(details.total_rounds || cp.totalRounds || sim.total_rounds || 8);
+      setGraph(cp.graph || { nodes: [], edges: [] });
+      setAgents(cp.agents || []);
+      setPosts(cp.posts || []);
+      setMetricsHistory(cp.metricsHistory || []);
       setLatestMetrics(
-        checkpoint.metricsHistory && checkpoint.metricsHistory.length > 0
-          ? checkpoint.metricsHistory[checkpoint.metricsHistory.length - 1]
+        cp.metricsHistory && cp.metricsHistory.length > 0
+          ? cp.metricsHistory[cp.metricsHistory.length - 1]
           : null
       );
 
-      if (checkpoint.finalReport) {
-        setActiveReport(checkpoint.finalReport);
+      const finalReport = details.final_report || cp.finalReport || null;
+
+      if (finalReport) {
+        setActiveReport(finalReport);
         if (shouldUpdateHash) {
-          navigateView('report', { id: sim.id });
+          navigateView('report', { id: simId });
         } else {
           setActiveView('report');
         }
       } else {
         setActiveReport(null);
         if (shouldUpdateHash) {
-          navigateView('running', { id: sim.id });
+          navigateView('running', { id: simId });
         } else {
           setActiveView('running');
         }
       }
     } catch (err) {
       console.error('Error opening simulation:', err);
+      alert('Chyba pri načítavaní simulácie: ' + ((err as any)?.message || 'Neznáma chyba'));
+      navigateView('list');
     }
   };
 

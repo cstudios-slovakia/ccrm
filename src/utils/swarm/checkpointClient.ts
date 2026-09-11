@@ -63,21 +63,40 @@ export async function saveRoundCheckpoint(
 }
 
 export async function fetchResumeCheckpoint(simulationId: string): Promise<SimulationCheckpoint | null> {
-  const response = await fetch(`api/swarm.php?action=resume&simulation_id=${encodeURIComponent(simulationId)}`);
-  if (!response.ok) return null;
-  const data = await response.json();
-  if (!data.success || !data.simulation) return null;
+  const details = await fetchSimulationDetails(simulationId);
+  if (!details) return null;
 
-  return data.simulation.checkpoint as SimulationCheckpoint;
+  const cp = (details.checkpoint && typeof details.checkpoint === 'object' && !Array.isArray(details.checkpoint)) 
+    ? details.checkpoint 
+    : {};
+
+  return {
+    simulationId: details.id || simulationId,
+    title: details.title || cp.title || 'Market Rehearsal',
+    hypothesis: details.hypothesis || cp.hypothesis || '',
+    currentRound: details.current_round !== undefined ? details.current_round : (cp.currentRound || 0),
+    totalRounds: details.total_rounds || cp.totalRounds || 8,
+    status: details.status || cp.status || 'prepared',
+    graph: cp.graph || { nodes: [], edges: [] },
+    agents: cp.agents || [],
+    posts: cp.posts || [],
+    metricsHistory: cp.metricsHistory || [],
+    finalReport: details.final_report || cp.finalReport || null
+  };
 }
 
 export async function fetchSimulationDetails(simulationId: string): Promise<any | null> {
-  const response = await fetch(`api/swarm.php?action=resume&simulation_id=${encodeURIComponent(simulationId)}`);
-  if (!response.ok) return null;
-  const data = await response.json();
-  if (!data.success || !data.simulation) return null;
+  try {
+    const response = await fetch(`api/swarm.php?action=resume&simulation_id=${encodeURIComponent(simulationId)}`);
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (!data.success || !data.simulation) return null;
 
-  return data.simulation;
+    return data.simulation;
+  } catch (err) {
+    console.warn(`Failed to fetch simulation details for ${simulationId}:`, err);
+    return null;
+  }
 }
 
 export async function listPastSimulations(): Promise<any[]> {
