@@ -11,7 +11,15 @@ import {
   ChevronLeft, 
   AlertCircle,
   Zap,
-  Save
+  Save,
+  Database,
+  Building2,
+  AlertTriangle,
+  Swords,
+  MessageSquare,
+  Mail,
+  CheckSquare,
+  Square
 } from 'lucide-react';
 import type { SimulationParameters } from '../../utils/swarm/types';
 import { PreflightEstimatorModal } from './PreflightEstimatorModal';
@@ -27,8 +35,78 @@ export interface DraftData {
   total_rounds?: number;
   model_name?: string;
   diurnal_cycle?: boolean;
+  crm_data_sources?: string[];
   status?: string;
 }
+
+export interface CrmSourceOption {
+  id: string;
+  title: string;
+  category: string;
+  description: string;
+  icon: React.ElementType;
+  badge: string;
+  badgeColor: string;
+}
+
+export const CRM_SOURCE_OPTIONS: CrmSourceOption[] = [
+  {
+    id: 'active_leads',
+    title: 'Active Pipeline Leads',
+    category: 'Pipeline',
+    description: 'In-progress deals, qualified leads, and active discovery accounts.',
+    icon: Users,
+    badge: 'Leads',
+    badgeColor: 'bg-blue-50 text-blue-700 border-blue-200'
+  },
+  {
+    id: 'existing_clients',
+    title: 'Existing & Won Retainers',
+    category: 'Client Base',
+    description: 'Active client accounts, retained partners, and historical won contracts.',
+    icon: Building2,
+    badge: 'Clients',
+    badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200'
+  },
+  {
+    id: 'lost_deal_objections',
+    title: 'Lost Deals & Objections',
+    category: 'Sales Friction',
+    description: 'Recorded sales resistance, price sensitivity, rejection reasons, and pushbacks.',
+    icon: AlertTriangle,
+    badge: 'Objections',
+    badgeColor: 'bg-rose-50 text-rose-700 border-rose-200'
+  },
+  {
+    id: 'competitor_intel',
+    title: 'Competitor Mentions & Intel',
+    category: 'Market Intel',
+    description: 'CRM notes referencing rival platforms, alternative vendors, and pricing comparisons.',
+    icon: Swords,
+    badge: 'Competitors',
+    badgeColor: 'bg-amber-50 text-amber-700 border-amber-200'
+  },
+  {
+    id: 'meeting_notes',
+    title: 'Meeting Notes & Transcripts',
+    category: 'Discovery Calls',
+    description: 'Discovery call notes, meeting transcripts, and direct verbal client feedback.',
+    icon: MessageSquare,
+    badge: 'Meetings',
+    badgeColor: 'bg-indigo-50 text-indigo-700 border-indigo-200'
+  },
+  {
+    id: 'client_emails',
+    title: 'Client Inbound Emails',
+    category: 'Communications',
+    description: 'Inbound emails, client inquiries, scope requests, and email correspondence.',
+    icon: Mail,
+    badge: 'Emails',
+    badgeColor: 'bg-violet-50 text-violet-700 border-violet-200'
+  }
+];
+
+export const DEFAULT_CRM_SOURCES = CRM_SOURCE_OPTIONS.map(s => s.id);
 
 interface CreateRehearsalViewProps {
   initialData?: DraftData | null;
@@ -94,6 +172,11 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
   const [lookbackMonths, setLookbackMonths] = useState<6 | 12 | 24>(
     (initialData?.lookback_months as 6 | 12 | 24) || 12
   );
+  const [selectedSources, setSelectedSources] = useState<string[]>(
+    initialData?.crm_data_sources && Array.isArray(initialData.crm_data_sources)
+      ? initialData.crm_data_sources
+      : DEFAULT_CRM_SOURCES
+  );
   const [swarmScale, setSwarmScale] = useState<number>(initialData?.swarm_scale || 30);
   const [totalRounds, setTotalRounds] = useState<number>(initialData?.total_rounds || 8);
   const [llmModel, setLlmModel] = useState<string>(initialData?.model_name || 'gpt-5.6-luna');
@@ -116,6 +199,9 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
       if (initialData.hypothesis) setHypothesis(initialData.hypothesis);
       if (initialData.seed_document) setSeedDocument(initialData.seed_document);
       if (initialData.lookback_months) setLookbackMonths(initialData.lookback_months as 6 | 12 | 24);
+      if (initialData.crm_data_sources && Array.isArray(initialData.crm_data_sources)) {
+        setSelectedSources(initialData.crm_data_sources);
+      }
       if (initialData.swarm_scale) setSwarmScale(initialData.swarm_scale);
       if (initialData.total_rounds) setTotalRounds(initialData.total_rounds);
       if (initialData.model_name) setLlmModel(initialData.model_name);
@@ -132,6 +218,26 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
     setValidationError(null);
   };
 
+  const handleToggleSource = (sourceId: string) => {
+    setSelectedSources(prev => {
+      const next = prev.includes(sourceId)
+        ? prev.filter(id => id !== sourceId)
+        : [...prev, sourceId];
+      setIsDirty(true);
+      return next;
+    });
+  };
+
+  const handleSelectAllSources = () => {
+    setSelectedSources(DEFAULT_CRM_SOURCES);
+    setIsDirty(true);
+  };
+
+  const handleClearAllSources = () => {
+    setSelectedSources([]);
+    setIsDirty(true);
+  };
+
   // Save as Draft
   const handleSaveDraft = async () => {
     setIsSavingDraft(true);
@@ -143,6 +249,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
         hypothesis: hypothesis.trim() || 'Unspecified hypothesis',
         seed_document: seedDocument.trim(),
         lookback_months: lookbackMonths,
+        crm_data_sources: selectedSources,
         swarm_scale: swarmScale,
         total_rounds: totalRounds,
         status: 'draft' as const
@@ -197,6 +304,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
       hypothesis: hypothesis.trim(),
       seedDocument: seedDocument.trim(),
       lookbackMonths,
+      crmDataSources: selectedSources,
       swarmScale,
       totalRounds,
       platforms: 'dual',
@@ -386,6 +494,129 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               className="w-full px-4 py-3.5 rounded-2xl border border-slate-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none text-sm text-slate-800 font-normal resize-y leading-relaxed bg-white"
             />
           </div>
+        </div>
+
+        {/* CRM Grounding Data Sources */}
+        <div className="p-6 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <Database className="w-4 h-4 text-purple-600" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                  CRM Grounding Data Sources
+                </h3>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black tracking-wide border ${
+                  selectedSources.length === CRM_SOURCE_OPTIONS.length
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : selectedSources.length > 0
+                    ? 'bg-purple-50 text-purple-700 border-purple-200'
+                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                }`}>
+                  {selectedSources.length === CRM_SOURCE_OPTIONS.length 
+                    ? 'All 6 Sources Active' 
+                    : `${selectedSources.length} of ${CRM_SOURCE_OPTIONS.length} Active`}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 font-normal">
+                Choose which historical CRM repositories feed into the simulation's knowledge graph and agent memory. Turn irrelevant sources off to focus the simulation.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleSelectAllSources}
+                disabled={selectedSources.length === CRM_SOURCE_OPTIONS.length}
+                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-purple-50 hover:text-purple-700 text-slate-600 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
+              >
+                <CheckSquare className="w-3.5 h-3.5 text-purple-600" />
+                <span>Select All</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleClearAllSources}
+                disabled={selectedSources.length === 0}
+                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
+              >
+                <Square className="w-3.5 h-3.5 text-slate-400" />
+                <span>Clear All</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Sources Checkbox Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {CRM_SOURCE_OPTIONS.map((src) => {
+              const isChecked = selectedSources.includes(src.id);
+              const IconComp = src.icon;
+
+              return (
+                <div
+                  key={src.id}
+                  onClick={() => handleToggleSource(src.id)}
+                  className={`p-4 rounded-2xl border transition-all cursor-pointer select-none flex flex-col justify-between group ${
+                    isChecked
+                      ? 'bg-purple-50/30 border-purple-300 ring-1 ring-purple-400/40 shadow-xs hover:border-purple-400'
+                      : 'bg-slate-50/50 border-slate-200/80 text-slate-400 hover:border-slate-300 hover:bg-slate-50 opacity-75 hover:opacity-100'
+                  }`}
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-7 h-7 rounded-xl flex items-center justify-center transition ${
+                          isChecked ? 'bg-purple-100 text-purple-700' : 'bg-slate-200/60 text-slate-400'
+                        }`}>
+                          <IconComp className="w-3.5 h-3.5" />
+                        </div>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${src.badgeColor}`}>
+                          {src.badge}
+                        </span>
+                      </div>
+
+                      {/* Checkbox Icon */}
+                      <div className={`w-5 h-5 rounded-lg flex items-center justify-center border transition ${
+                        isChecked 
+                          ? 'bg-purple-600 border-purple-600 text-white' 
+                          : 'border-slate-300 bg-white group-hover:border-slate-400'
+                      }`}>
+                        {isChecked ? (
+                          <Check className="w-3.5 h-3.5 stroke-[3]" />
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 className={`text-xs font-bold transition ${
+                        isChecked ? 'text-slate-900 group-hover:text-purple-700' : 'text-slate-600'
+                      }`}>
+                        {src.title}
+                      </h4>
+                      <p className="text-[11px] text-slate-500 font-normal leading-relaxed mt-1">
+                        {src.description}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="pt-2.5 mt-2.5 border-t border-slate-100/80 flex items-center justify-between text-[10px]">
+                    <span className="text-slate-400 font-medium">{src.category}</span>
+                    <span className={`font-bold ${isChecked ? 'text-purple-600' : 'text-slate-400'}`}>
+                      {isChecked ? 'Included in Grounding' : 'Turned Off'}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Zero Selected Safeguard Warning */}
+          {selectedSources.length === 0 && (
+            <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium flex items-center gap-2.5 animate-in fade-in">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>
+                All CRM sources are currently turned off. The simulation will ground exclusively on your Seed Scenario text above without importing past client history or deal objections.
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Simulation Parameters Grid */}

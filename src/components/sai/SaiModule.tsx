@@ -13,7 +13,8 @@ import {
   MessageSquare,
   Zap,
   Bookmark,
-  Edit3
+  Edit3,
+  Database
 } from 'lucide-react';
 import FlockIcon from '../icons/FlockIcon';
 import type { 
@@ -144,6 +145,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
       hypothesis: sim.hypothesis,
       seed_document: sim.seed_document || '',
       lookback_months: sim.lookback_months ? Number(sim.lookback_months) : 12,
+      crm_data_sources: Array.isArray(sim.crm_data_sources) ? sim.crm_data_sources : undefined,
       swarm_scale: sim.swarm_scale ? Number(sim.swarm_scale) : 30,
       total_rounds: sim.total_rounds ? Number(sim.total_rounds) : 8,
       status: 'draft'
@@ -172,7 +174,8 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
         setActiveReport(null);
 
         // Step 1: Prep phase 1
-        setPrepStepMessage(`[Demo Mode] Extracting CRM context (${config.lookbackMonths}-month horizon)...`);
+        const activeSrcCount = config.crmDataSources ? config.crmDataSources.length : 6;
+        setPrepStepMessage(`[Demo Mode] Extracting CRM context (${config.lookbackMonths}-month horizon, ${activeSrcCount}/6 sources active)...`);
         await new Promise(r => setTimeout(r, 600));
 
         // Step 2: Prep phase 2
@@ -226,6 +229,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
         hypothesis: config.hypothesis,
         seed_document: config.seedDocument,
         lookback_months: config.lookbackMonths,
+        crm_data_sources: config.crmDataSources,
         swarm_scale: config.swarmScale,
         total_rounds: config.totalRounds,
         status: 'prepared'
@@ -241,9 +245,14 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
       setMetricsHistory([]);
       setActiveReport(null);
 
-      // Step 2: Extract CRM Context with Lookback Window
-      setPrepStepMessage(`Extracting leads & deal objections from CRM (${config.lookbackMonths}-month horizon)...`);
-      const crmContext = await fetchCrmContext(config.lookbackMonths);
+      // Step 2: Extract CRM Context with Lookback Window & Selected Sources
+      const activeSrcCount = config.crmDataSources ? config.crmDataSources.length : 6;
+      setPrepStepMessage(
+        activeSrcCount > 0 
+          ? `Extracting selected CRM intelligence (${config.lookbackMonths}-month horizon, ${activeSrcCount}/6 sources active)...`
+          : 'Grounded exclusively on Seed Scenario announcement memo (all CRM sources turned off)...'
+      );
+      const crmContext = await fetchCrmContext(config.lookbackMonths, config.crmDataSources);
 
       // Step 3: Extract Ontology & Graph Nodes
       setPrepStepMessage('Synthesizing dynamic knowledge graph & social stakeholder entities...');
@@ -702,6 +711,12 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
                               <Clock className="w-3.5 h-3.5" />
                               {sim.current_round} / {sim.total_rounds} rounds
                             </span>
+                            {sim.crm_data_sources && Array.isArray(sim.crm_data_sources) && (
+                              <span className="flex items-center gap-1 text-purple-600 font-semibold">
+                                <Database className="w-3.5 h-3.5 text-purple-500" />
+                                {sim.crm_data_sources.length}/6 sources
+                              </span>
+                            )}
                           </div>
                         </div>
 

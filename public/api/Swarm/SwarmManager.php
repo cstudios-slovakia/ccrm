@@ -69,14 +69,20 @@ class SwarmManager {
             ? $data['status'] 
             : 'prepared';
 
+        $checkpointData = [];
+        if (!empty($data['crm_data_sources']) && is_array($data['crm_data_sources'])) {
+            $checkpointData['crm_data_sources'] = $data['crm_data_sources'];
+        }
+        $checkpointJson = !empty($checkpointData) ? json_encode($checkpointData) : null;
+
         // 1. Create Sharded Dynamic Tables for this specific simulation
         $this->createShardedTables($prefix);
 
         // 2. Register into master table
         $stmt = $this->pdo->prepare("
             INSERT INTO `swarm_simulations` 
-            (`id`, `table_prefix`, `title`, `hypothesis`, `seed_document`, `lookback_months`, `swarm_scale`, `total_rounds`, `status`)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (`id`, `table_prefix`, `title`, `hypothesis`, `seed_document`, `lookback_months`, `swarm_scale`, `total_rounds`, `status`, `checkpoint_state`)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE 
                 `title` = VALUES(`title`),
                 `hypothesis` = VALUES(`hypothesis`),
@@ -84,9 +90,10 @@ class SwarmManager {
                 `lookback_months` = VALUES(`lookback_months`),
                 `swarm_scale` = VALUES(`swarm_scale`),
                 `total_rounds` = VALUES(`total_rounds`),
-                `status` = VALUES(`status`)
+                `status` = VALUES(`status`),
+                `checkpoint_state` = COALESCE(VALUES(`checkpoint_state`), `checkpoint_state`)
         ");
-        $stmt->execute([$simId, $prefix, $title, $hypothesis, $seedDoc, $lookbackMonths, $swarmScale, $totalRounds, $status]);
+        $stmt->execute([$simId, $prefix, $title, $hypothesis, $seedDoc, $lookbackMonths, $swarmScale, $totalRounds, $status, $checkpointJson]);
 
         return [
             'success' => true,
@@ -227,6 +234,7 @@ class SwarmManager {
             'hypothesis' => $row['hypothesis'],
             'seed_document' => $row['seed_document'] ?? '',
             'lookback_months' => (int)$row['lookback_months'],
+            'crm_data_sources' => $state['crm_data_sources'] ?? null,
             'swarm_scale' => (int)$row['swarm_scale'],
             'total_rounds' => (int)$row['total_rounds'],
             'current_round' => (int)$row['current_round'],
@@ -242,11 +250,16 @@ class SwarmManager {
     public function listSimulations(): array {
         $stmt = $this->pdo->query("
             SELECT `id`, `title`, `hypothesis`, `seed_document`, `lookback_months`, `swarm_scale`, 
-                   `total_rounds`, `current_round`, `status`, `created_at`, `updated_at`
+                   `total_rounds`, `current_round`, `status`, `checkpoint_state`, `created_at`, `updated_at`
             FROM `swarm_simulations`
             ORDER BY `created_at` DESC
         ");
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rows as &$r) {
+            $parsedState = !empty($r['checkpoint_state']) ? json_decode($r['checkpoint_state'], true) : [];
+            $r['crm_data_sources'] = $parsedState['crm_data_sources'] ?? null;
+        }
+        return $rows;
     }
 
     /**

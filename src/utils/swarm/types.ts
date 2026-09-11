@@ -76,6 +76,7 @@ export interface SimulationParameters {
   hypothesis: string;
   seedDocument: string;
   lookbackMonths: 6 | 12 | 24;
+  crmDataSources?: string[];
   swarmScale: number; // 15, 30, 60
   totalRounds: number; // 5 to 30
   platforms: 'dual' | 'twitter' | 'reddit';

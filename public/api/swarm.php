@@ -153,7 +153,9 @@ if ($action === 'llm_proxy') {
 // ─────────────────────────────────────────────────────────────
 if ($action === 'fetch_crm_context') {
     $lookbackMonths = isset($_GET['lookback_months']) ? (int)$_GET['lookback_months'] : 12;
-    $bundle = $contextExtractor->extractContext($lookbackMonths);
+    $sourcesRaw = $_GET['sources'] ?? '';
+    $sources = !empty($sourcesRaw) ? explode(',', $sourcesRaw) : [];
+    $bundle = $contextExtractor->extractContext($lookbackMonths, 60000, $sources);
     echo json_encode(['success' => true, 'context' => $bundle]);
     exit;
 }

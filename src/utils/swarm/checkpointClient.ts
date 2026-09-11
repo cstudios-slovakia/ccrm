@@ -11,6 +11,7 @@ export async function initServerSimulation(data: {
   hypothesis: string;
   seed_document: string;
   lookback_months: number;
+  crm_data_sources?: string[];
   swarm_scale: number;
   total_rounds: number;
   status?: 'draft' | 'prepared' | 'running';

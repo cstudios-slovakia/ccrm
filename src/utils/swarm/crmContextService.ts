@@ -12,8 +12,9 @@ export interface CrmContextBundle {
   formatted_context: string;
 }
 
-export async function fetchCrmContext(lookbackMonths: number = 12): Promise<CrmContextBundle> {
-  const response = await fetch(`api/swarm.php?action=fetch_crm_context&lookback_months=${lookbackMonths}`, {
+export async function fetchCrmContext(lookbackMonths: number = 12, sources?: string[]): Promise<CrmContextBundle> {
+  const sourcesQuery = sources && sources.length > 0 ? `&sources=${encodeURIComponent(sources.join(','))}` : '';
+  const response = await fetch(`api/swarm.php?action=fetch_crm_context&lookback_months=${lookbackMonths}${sourcesQuery}`, {
     method: 'GET',
     headers: {
       'Accept': 'application/json'
