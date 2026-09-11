@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Sparkles, 
   Plus, 
@@ -10,11 +10,10 @@ import {
   Clock, 
   ChevronRight, 
   BrainCircuit, 
-  MessageSquare,
-  Zap,
-  Bookmark,
-  Edit3,
-  Database
+  MessageSquare, 
+  Zap, 
+  Bookmark, 
+  Database 
 } from 'lucide-react';
 import FlockIcon from '../icons/FlockIcon';
 import type { 
@@ -51,6 +50,7 @@ import { LiveWarRoom } from './LiveWarRoom';
 import { StrategicReportView } from './StrategicReportView';
 import { QaAssistantDrawer } from './QaAssistantDrawer';
 import { GuidedDemoWalkthrough } from './GuidedDemoWalkthrough';
+import { SimulationStepsBar } from './SimulationStepsBar';
 
 interface SaiModuleProps {
   isDemoMode?: boolean;
@@ -76,7 +76,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
   const [activeSimulationId, setActiveSimulationId] = useState<string>('');
   const [activeTitle, setActiveTitle] = useState<string>('');
   const [activeHypothesis, setActiveHypothesis] = useState<string>('');
-  const [, setActiveSeed] = useState<string>('');
+  const [activeSeed, setActiveSeed] = useState<string>('');
   const [currentRound, setCurrentRound] = useState<number>(0);
   const [totalRounds, setTotalRounds] = useState<number>(8);
   const [graph, setGraph] = useState<SwarmKnowledgeGraph>({ nodes: [], edges: [] });
@@ -135,6 +135,16 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
   useEffect(() => {
     loadSimulations();
   }, []);
+
+  // Reset scroll to top when view changes
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    const scrollables = Array.from(document.querySelectorAll('*')).filter(el => {
+      const style = window.getComputedStyle(el);
+      return (style.overflowY === 'auto' || style.overflowY === 'scroll') && el.scrollHeight > el.clientHeight;
+    });
+    scrollables.forEach(el => el.scrollTo(0, 0));
+  }, [activeView]);
 
   // Listen to hash changes for deep linking and browser Back/Forward navigation
   useEffect(() => {
@@ -544,117 +554,123 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
     }
   };
 
+  // Derive current simulation step (1 to 6) for real simulation
+  const currentSimulationStep = useMemo(() => {
+    if (activeView === 'create') {
+      return 1; // 1. Scenario
+    }
+    if (isPreparing) {
+      if (currentRound === 0 && !activeReport) {
+        return 3; // 3. Swarm Ingestion
+      }
+      return 5; // 5. Strategy Synthesis
+    }
+    if (isEngineRunning || activeView === 'running') {
+      return 4; // 4. Live War Room
+    }
+    if (activeView === 'report' || activeReport) {
+      return 6; // 6. Results & Chatbot
+    }
+    return 1;
+  }, [activeView, isPreparing, isEngineRunning, currentRound, activeReport]);
+
   return (
     <div className="flex flex-col h-full bg-slate-50/50">
       
-      {/* Top Navigation Bar */}
-      <header className="px-6 py-4 bg-white border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-30">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-purple-600 via-indigo-600 to-emerald-400 flex items-center justify-center shadow-md text-white">
-            <FlockIcon size={22} className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-lg font-extrabold bg-gradient-to-r from-purple-700 via-indigo-700 to-emerald-600 bg-clip-text text-transparent">
-                SAI
-              </h1>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-purple-100 text-purple-700 border border-purple-200">
-                Swarm Artificial Intelligence
-              </span>
+      {/* Top Navigation Bar: List Overview uses standard header; Real Simulation views use SimulationStepsBar */}
+      {activeView === 'list' ? (
+        <header className="px-6 py-4 bg-white border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-30">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-purple-600 via-indigo-600 to-emerald-400 flex items-center justify-center shadow-md text-white">
+              <FlockIcon size={22} className="w-5 h-5 text-white" />
             </div>
-            <p className="text-xs text-slate-500 font-medium">
-              Multi-Agent Predictive Market Rehearsal Grounded in Real CRM History
-            </p>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-lg font-extrabold bg-gradient-to-r from-purple-700 via-indigo-700 to-emerald-600 bg-clip-text text-transparent">
+                  SAI
+                </h1>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-purple-100 text-purple-700 border border-purple-200">
+                  Swarm Artificial Intelligence
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 font-medium">
+                Multi-Agent Predictive Market Rehearsal Grounded in Real CRM History
+              </p>
+            </div>
           </div>
-        </div>
 
-        {/* View Switcher & Action Buttons */}
-        <div className="flex items-center gap-2.5">
-          <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200 text-xs font-bold">
-            <button
-              onClick={() => navigateView('list')}
-              className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
-                activeView === 'list' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              Rehearsals
-            </button>
-            {activeView === 'create' && (
+          {/* View Switcher & Action Buttons */}
+          <div className="flex items-center gap-2.5">
+            <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200 text-xs font-bold">
               <button
-                className="px-3 py-1.5 rounded-xl bg-white text-purple-700 shadow-sm transition flex items-center gap-1.5 cursor-pointer"
+                onClick={() => navigateView('list')}
+                className="px-3 py-1.5 rounded-xl bg-white text-slate-800 shadow-sm transition cursor-pointer"
               >
-                <Edit3 className="w-3.5 h-3.5 text-purple-600" />
-                <span>{editingDraftData?.id ? 'Edit Draft' : 'New Rehearsal'}</span>
+                Rehearsals
               </button>
-            )}
+              {activeSimulationId && (
+                <button
+                  onClick={() => navigateView('running')}
+                  className="px-3 py-1.5 rounded-xl text-slate-500 hover:text-slate-800 transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Activity className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>War Room</span>
+                </button>
+              )}
+              {activeSimulationId && activeReport && (
+                <button
+                  onClick={() => navigateView('report')}
+                  className="px-3 py-1.5 rounded-xl text-slate-500 hover:text-slate-800 transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <FileText className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Strategic Briefing</span>
+                </button>
+              )}
+            </div>
+
             {activeSimulationId && (
               <button
-                onClick={() => navigateView('running')}
-                className={`px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 cursor-pointer ${
-                  activeView === 'running' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                <Activity className="w-3.5 h-3.5 text-indigo-600" />
-                <span>War Room</span>
-              </button>
-            )}
-            {activeSimulationId && activeReport && (
-              <button
-                onClick={() => navigateView('report')}
-                className={`px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 cursor-pointer ${
-                  activeView === 'report' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                <FileText className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Strategic Briefing</span>
-              </button>
-            )}
-          </div>
-
-          {activeSimulationId && (
-            <button
-              onClick={() => {
-                setInterviewAgent(null);
-                setIsQaOpen(true);
-              }}
-              className="px-3 py-2 rounded-2xl bg-white border border-slate-200 hover:border-purple-300 hover:bg-purple-50/50 text-slate-700 font-bold text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer"
-            >
-              <MessageSquare className="w-4 h-4 text-purple-600" />
-              <span>Ask Analyst / Agents</span>
-            </button>
-          )}
-
-          {/* Demo Mode Toggle & Quick Loader */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setDemoModeActive(!demoModeActive)}
-              className={`px-3 py-2 rounded-2xl border text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
-                demoModeActive
-                  ? 'bg-emerald-50 border-emerald-300 text-emerald-800 shadow-sm'
-                  : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-800'
-              }`}
-              title="Toggle interactive demonstration mode (runs local simulation with no API costs)"
-            >
-              <Zap className={`w-3.5 h-3.5 ${demoModeActive ? 'text-emerald-600 fill-emerald-600' : 'text-slate-400'}`} />
-              <span>Demo Mode: {demoModeActive ? 'ON' : 'OFF'}</span>
-            </button>
-
-            {demoModeActive && (
-              <button
                 onClick={() => {
-                  setIsGuidedDemoOpen(true);
-                  navigateView(activeView, { isDemo: true });
+                  setInterviewAgent(null);
+                  setIsQaOpen(true);
                 }}
-                className="px-3 py-2 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition cursor-pointer"
-                title="Watch animated step-by-step demonstration of the full simulation workflow"
+                className="px-3 py-2 rounded-2xl bg-white border border-slate-200 hover:border-purple-300 hover:bg-purple-50/50 text-slate-700 font-bold text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer"
               >
-                <Sparkles className="w-3.5 h-3.5 fill-white" />
-                <span className="hidden sm:inline">Guided Process Demo</span>
+                <MessageSquare className="w-4 h-4 text-purple-600" />
+                <span>Ask Analyst / Agents</span>
               </button>
             )}
-          </div>
 
-          {activeView !== 'create' && (
+            {/* Demo Mode Toggle & Quick Loader */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setDemoModeActive(!demoModeActive)}
+                className={`px-3 py-2 rounded-2xl border text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                  demoModeActive
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-800 shadow-sm'
+                    : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+                }`}
+                title="Toggle interactive demonstration mode (runs local simulation with no API costs)"
+              >
+                <Zap className={`w-3.5 h-3.5 ${demoModeActive ? 'text-emerald-600 fill-emerald-600' : 'text-slate-400'}`} />
+                <span>Demo Mode: {demoModeActive ? 'ON' : 'OFF'}</span>
+              </button>
+
+              {demoModeActive && (
+                <button
+                  onClick={() => {
+                    setIsGuidedDemoOpen(true);
+                    navigateView(activeView, { isDemo: true });
+                  }}
+                  className="px-3 py-2 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition cursor-pointer"
+                  title="Watch animated step-by-step demonstration of the full simulation workflow"
+                >
+                  <Sparkles className="w-3.5 h-3.5 fill-white" />
+                  <span className="hidden sm:inline">Guided Process Demo</span>
+                </button>
+              )}
+            </div>
+
             <button
               onClick={handleStartNewRehearsal}
               className="px-4 py-2 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 hover:from-purple-700 hover:to-emerald-600 text-white font-bold text-xs shadow-md hover:shadow-lg transition flex items-center gap-1.5 cursor-pointer"
@@ -662,9 +678,35 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
               <Plus className="w-4 h-4" />
               <span>New Rehearsal</span>
             </button>
-          )}
-        </div>
-      </header>
+          </div>
+        </header>
+      ) : (
+        <SimulationStepsBar
+          currentStep={currentSimulationStep}
+          title={activeTitle || (activeView === 'create' ? (editingDraftData?.title || 'New Strategic Market Rehearsal') : 'Strategic Market Rehearsal')}
+          hypothesis={activeHypothesis}
+          seedDocument={activeSeed}
+          isEngineRunning={isEngineRunning}
+          isPreparing={isPreparing}
+          prepStepMessage={prepStepMessage}
+          currentRound={currentRound}
+          totalRounds={totalRounds}
+          simulatedHour={latestMetrics?.simulatedHour ?? (((currentRound - 1) * 3) % 24)}
+          isDemoMode={demoModeActive}
+          hasReport={Boolean(activeReport)}
+          hasWarRoom={Boolean((graph && graph.nodes && graph.nodes.length > 0) || posts.length > 0)}
+          activeView={activeView}
+          onNavigateView={(targetView) => {
+            navigateView(targetView, { id: activeSimulationId || undefined });
+          }}
+          onStopSimulation={handleStopSimulation}
+          onOpenQaDrawer={() => {
+            setInterviewAgent(null);
+            setIsQaOpen(true);
+          }}
+          onStartNewRehearsal={handleStartNewRehearsal}
+        />
+      )}
 
       {/* Main Content Area */}
       <div className={`flex-1 p-6 ${activeView === 'running' ? 'overflow-hidden flex flex-col min-h-0' : 'overflow-visible'}`}>
