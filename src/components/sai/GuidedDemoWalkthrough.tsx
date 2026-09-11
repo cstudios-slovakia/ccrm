@@ -47,56 +47,56 @@ interface DemoStepMeta {
 const DEMO_STEPS: DemoStepMeta[] = [
   {
     id: 1,
-    title: "1. Strategic Scenario & Hypothesis Definition",
-    shortLabel: "1. Scenario",
-    tagline: "Define your strategic proposal, pricing change, or market announcement.",
-    userAction: "You enter the business scenario, hypothesis, and proposal document. You select how many months of real CRM history to ground the swarm in.",
-    engineAction: "The engine parses the proposal, identifies core value propositions, and establishes initial stakeholder categories.",
+    title: "1. Strategický scenár & Definícia hypotézy",
+    shortLabel: "1. Scenár",
+    tagline: "Definujte strategický návrh, úpravu cien alebo trhové oznámenie.",
+    userAction: "Zadáte obchodný scenár, hypotézu a dokument ponuky. Zvolíte počet mesiacov skutočnej CRM histórie na ukotvenie roju.",
+    engineAction: "Systém analyzuje návrh, identifikuje kľúčové prínosy a zostaví počiatočné kategórie účastníkov trhu.",
     durationSec: 8
   },
   {
     id: 2,
-    title: "2. Pre-Flight Resource & Safety Estimator",
-    shortLabel: "2. Pre-Flight",
-    tagline: "Predict worst-case token spend and enforce budget guards before launching.",
-    userAction: "You inspect the calculated token volume, compare model costs, and verify budget caps before any API call is made.",
-    engineAction: "Formula calculates exact input/output tokens (ontology + profiles + multi-round dialogue + synthesis) and validates safety quotas.",
+    title: "2. Predbežný odhad nákladov a bezpečnosti",
+    shortLabel: "2. Predbežný odhad",
+    tagline: "Predikcia spotreby tokenov a overenie rozpočtových limitov pred spustením.",
+    userAction: "Skontrolujete odhadovaný objem tokenov, porovnáte náklady modelov a overíte rozpočtové stropy pred uskutočnením API volaní.",
+    engineAction: "Vzorec vypočíta presné vstupné/výstupné tokeny (ontológia + persóny + viac-kolový dialóg + syntéza) a overí limity.",
     durationSec: 7
   },
   {
     id: 3,
-    title: "3. Swarm Ingestion & Knowledge Graph Assembly",
-    shortLabel: "3. Swarm Ingestion",
-    tagline: "Synthesize realistic buyer committees, auditors, and competitors from CRM records.",
-    userAction: "You review the synthesized stakeholder personas (procurement gatekeepers, compliance auditors, legacy competitors, agency clients).",
-    engineAction: "The engine samples CRM deals, lost reasons, and client personas to assemble an interconnected dynamic Knowledge Graph.",
+    title: "3. Načítanie dát & Zostavenie grafu znalostí",
+    shortLabel: "3. Načítanie dát",
+    tagline: "Syntéza realistických nákupných výborov, audítorov a konkurencie z CRM záznamov.",
+    userAction: "Prezriete si syntetizované persóny účastníkov trhu (nákupcovia, compliance audítori, tradiční konkurenti, klienti).",
+    engineAction: "Systém čerpá z CRM obchodov, dôvodov straty a klientskych persón na zostavenie prepojeného znalostného grafu.",
     durationSec: 8
   },
   {
     id: 4,
-    title: "4. Autonomous Live War Room Simulation",
+    title: "4. Autonómna simulácia vo War Roome",
     shortLabel: "4. Live War Room",
-    tagline: "Watch autonomous agents debate, counter-attack, and vote across rounds.",
-    userAction: "You monitor the real-time social stream, sentiment trajectory, circadian simulated time, and viral heat index.",
-    engineAction: "Agents post asynchronously, reply to objections, wage competitor counter-campaigns, and reach consensus based on psychological personas.",
+    tagline: "Sledujte, ako autonómni agenti diskutujú, vznášajú námietky a hlasujú naprieč kolami.",
+    userAction: "Sledujete živý kanál príspevkov v reálnom čase, vývoj sentimentu, simulovaný čas a index virality.",
+    engineAction: "Agenti publikujú asynchrónne, reagujú na námietky, vedú protiútoky konkurencie a dosahujú konsenzus na základe svojich persón.",
     durationSec: 10
   },
   {
     id: 5,
-    title: "5. Chief Intelligence Analyst Synthesis",
-    shortLabel: "5. Strategy Synthesis",
-    tagline: "AI extracts critical failure points and formulates the strategic playbook.",
-    userAction: "You watch the synthesis engine process simulation dialogue, detect fatal flaws, and build sales objection scripts.",
-    engineAction: "Chief Analyst analyzes 30+ agent interactions, evaluates counter-measures, and generates the executive briefing.",
+    title: "5. Syntéza hlavného spravodajského analytika",
+    shortLabel: "5. Syntéza stratégie",
+    tagline: "AI odhalí kritické zraniteľné miesta a vypracuje strategický akčný plán.",
+    userAction: "Sledujete, ako analytický motor spracováva dialógy simulácie, odhaľuje riziká a formuluje odpovede na námietky.",
+    engineAction: "Hlavný analytik analyzuje interakcie 30+ agentov, vyhodnocuje protiopatrenia a generuje manažérsky briefing.",
     durationSec: 6
   },
   {
     id: 6,
-    title: "6. Executive Briefing & Live AI Interrogation Hub",
-    shortLabel: "6. Results & Chatbot",
-    tagline: "Read the strategic playbook and cross-examine findings via the right-side chatbot.",
-    userAction: "You review the executive briefing on the left and continuously interrogate the Chief Analyst or simulated buyers via the persistent right-side card.",
-    engineAction: "Answers questions with citations from simulation dialogue, explaining why specific agents objected and how to close deals.",
+    title: "6. Manažérsky briefing & Interrogačný hub",
+    shortLabel: "6. Výsledky & Chatbot",
+    tagline: "Preštudujte si strategický plán a krížovo vypočúvajte agentov cez pravý chatbot panel.",
+    userAction: "Naľavo si prečítate manažérsky briefing a napravo môžete kedykoľvek klásť doplňujúce otázky analytikovi alebo simulovaným zákazníkom.",
+    engineAction: "Odpovedá na otázky s citáciami zo simulovanej debaty, vysvetľuje dôvody námietok a radí, ako úspešne uzatvoriť obchody.",
     durationSec: 12
   }
 ];
@@ -154,7 +154,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
   // Step 1: Simulated typing effect for scenario
   useEffect(() => {
     if (currentStep === 1) {
-      const fullText = "Enterprise Tier Restructuring: +25% price increase, guaranteed 99.9% uptime SLA, dedicated engineer WhatsApp channels, Frankfurt/EU data residency, and a 6-month grandfathering grace period for existing accounts.";
+      const fullText = "Reštrukturalizácia balíka Enterprise: +25% zvýšenie cien, garantované 99.9% SLA dostupnosti, dedikovaný WhatsApp komunikačný kanál s inžiniermi, hosting v EÚ a 6-mesačná ochranná lehota na pôvodných cenách pre súčasných zákazníkov.";
       let idx = 0;
       setTypedProposal('');
       const interval = setInterval(() => {
@@ -243,12 +243,12 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-black tracking-tight text-white">SAI Interactive Process Walkthrough</h2>
+              <h2 className="text-sm font-black tracking-tight text-white">Interaktívna prehliadka procesu SAI</h2>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                Live Rehearsal Demo
+                Živá ukážka simulácie
               </span>
             </div>
-            <p className="text-[11px] text-slate-400">Step {currentStep} of {DEMO_STEPS.length}: {stepMeta.title}</p>
+            <p className="text-[11px] text-slate-400">Krok {currentStep} zo {DEMO_STEPS.length}: {stepMeta.title}</p>
           </div>
         </div>
 
@@ -283,17 +283,17 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
             className={`p-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
               isPlaying ? 'bg-amber-500/20 border border-amber-500/40 text-amber-300' : 'bg-emerald-600 text-white'
             }`}
-            title={isPlaying ? 'Pause auto-tour' : 'Resume auto-tour'}
+            title={isPlaying ? 'Pozastaviť prehliadku' : 'Spustiť prehliadku'}
           >
             {isPlaying ? <Pause className="w-4 h-4 fill-amber-300" /> : <Play className="w-4 h-4 fill-white" />}
-            <span className="text-[11px]">{isPlaying ? 'Pause' : 'Play'}</span>
+            <span className="text-[11px]">{isPlaying ? 'Pozastaviť' : 'Prehrať'}</span>
           </button>
 
           <button
             onClick={handlePrevStep}
             disabled={currentStep === 1}
             className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 transition cursor-pointer"
-            title="Previous step"
+            title="Predchádzajúci krok"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
@@ -302,7 +302,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
             onClick={handleNextStep}
             disabled={currentStep === DEMO_STEPS.length}
             className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 transition cursor-pointer"
-            title="Next step"
+            title="Nasledujúci krok"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
@@ -310,7 +310,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
           <button
             onClick={handleRestart}
             className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer"
-            title="Restart demo from Step 1"
+            title="Reštartovať od 1. kroku"
           >
             <RotateCcw className="w-4 h-4" />
           </button>
@@ -321,13 +321,13 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
             onClick={onStartRealRehearsal}
             className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs shadow-md transition cursor-pointer"
           >
-            Launch Real Rehearsal
+            Spustiť reálnu simuláciu
           </button>
 
           <button
             onClick={onClose}
             className="p-2 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-slate-100 transition cursor-pointer ml-1"
-            title="Exit demo walkthrough"
+            title="Ukončiť ukážku"
           >
             <X className="w-5 h-5" />
           </button>
@@ -356,11 +356,11 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
 
           <div className="flex items-center gap-6 text-xs text-slate-300 bg-slate-950/60 px-4 py-2 rounded-2xl border border-slate-800/80">
             <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 block">👤 User Action</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 block">👤 Akcia používateľa</span>
               <span className="text-[11.5px] text-slate-200">{stepMeta.userAction}</span>
             </div>
             <div className="border-l border-slate-800 pl-4">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block">⚡ Engine Action</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block">⚡ Činnosť systému</span>
               <span className="text-[11.5px] text-slate-200">{stepMeta.engineAction}</span>
             </div>
           </div>
@@ -381,31 +381,31 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                       1
                     </div>
                     <div>
-                      <h3 className="text-base font-black text-slate-900">Define Strategic Scenario & Hypothesis</h3>
-                      <p className="text-xs text-slate-500">What business decision do you want to rehearse before going live?</p>
+                      <h3 className="text-base font-black text-slate-900">Definujte strategický scenár & hypotézu</h3>
+                      <p className="text-xs text-slate-500">Aké obchodné rozhodnutie si chcete otestovať pred jeho zverejnením?</p>
                     </div>
                   </div>
                   <span className="px-3 py-1 rounded-full text-xs font-bold bg-purple-50 text-purple-700 border border-purple-200">
-                    Step 1 of 6
+                    Krok 1 zo 6
                   </span>
                 </div>
 
                 <div className="space-y-4 text-xs">
                   <div>
                     <label className="font-bold text-slate-700 block mb-1.5 uppercase tracking-wider text-[11px]">
-                      Strategic Proposal Title
+                      Názov strategického návrhu
                     </label>
                     <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 font-semibold text-slate-800">
-                      Enterprise Tier Restructuring (+25% Price Adjustment Rehearsal)
+                      Reštrukturalizácia balíka Enterprise (Simulácia 25% úpravy cien)
                     </div>
                   </div>
 
                   <div>
                     <label className="font-bold text-slate-700 block mb-1.5 uppercase tracking-wider text-[11px]">
-                      Strategic Hypothesis & Decision
+                      Strategická hypotéza & Rozhodnutie
                     </label>
                     <div className="p-3.5 rounded-2xl bg-indigo-50/50 border border-indigo-200/80 font-medium text-indigo-900 leading-relaxed min-h-[70px]">
-                      {typedProposal || "Typing proposal..."}
+                      {typedProposal || "Písanie zadania..."}
                       <span className="inline-block w-1.5 h-4 bg-indigo-600 ml-1 animate-pulse align-middle" />
                     </div>
                   </div>
@@ -414,28 +414,28 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                     <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
                       <div className="flex items-center gap-1.5 text-slate-500 font-bold text-[11px] mb-1">
                         <Calendar className="w-3.5 h-3.5" />
-                        <span>CRM Lookback Horizon</span>
+                        <span>Časový horizont CRM</span>
                       </div>
-                      <span className="text-sm font-black text-slate-900">12 Months</span>
-                      <span className="text-[10px] text-slate-400 block">Samples past won/lost deals</span>
+                      <span className="text-sm font-black text-slate-900">12 mesiacov</span>
+                      <span className="text-[10px] text-slate-400 block">Čerpá z minulých vyhratých/prehratých obchodov</span>
                     </div>
 
                     <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
                       <div className="flex items-center gap-1.5 text-slate-500 font-bold text-[11px] mb-1">
                         <Users className="w-3.5 h-3.5" />
-                        <span>Swarm Scale</span>
+                        <span>Veľkosť roju</span>
                       </div>
-                      <span className="text-sm font-black text-slate-900">20 Autonomous Personas</span>
-                      <span className="text-[10px] text-slate-400 block">Buyers, competitors & regulators</span>
+                      <span className="text-sm font-black text-slate-900">20 autonómnych persón</span>
+                      <span className="text-[10px] text-slate-400 block">Nákupcovia, konkurencia & regulátori</span>
                     </div>
 
                     <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
                       <div className="flex items-center gap-1.5 text-slate-500 font-bold text-[11px] mb-1">
                         <Clock className="w-3.5 h-3.5" />
-                        <span>Simulation Rounds</span>
+                        <span>Simulačné kolá</span>
                       </div>
-                      <span className="text-sm font-black text-slate-900">3 Rounds (24h Diurnal)</span>
-                      <span className="text-[10px] text-slate-400 block">Models day-to-night cycles</span>
+                      <span className="text-sm font-black text-slate-900">3 kolá (24h cyklus)</span>
+                      <span className="text-[10px] text-slate-400 block">Modeluje denný a nočný režim</span>
                     </div>
                   </div>
                 </div>
@@ -445,7 +445,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                     onClick={handleNextStep}
                     className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold text-xs shadow-md transition flex items-center gap-2 cursor-pointer"
                   >
-                    <span>Proceed to Pre-Flight Estimator</span>
+                    <span>Prejsť na predbežný odhad</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
                 </div>
@@ -463,55 +463,55 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                       2
                     </div>
                     <div>
-                      <h3 className="text-base font-black text-slate-900">Pre-Flight Resource & Safety Estimator</h3>
-                      <p className="text-xs text-slate-500">Calculate token volume & verify safety caps before any LLM execution</p>
+                      <h3 className="text-base font-black text-slate-900">Predbežný odhad nákladov a bezpečnosti</h3>
+                      <p className="text-xs text-slate-500">Výpočet objemu tokenov & overenie bezpečnostných limitov pred spustením LLM</p>
                     </div>
                   </div>
                   <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    Step 2 of 6
+                    Krok 2 zo 6
                   </span>
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                   <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
-                    <span className="text-[11px] text-slate-500 font-bold block">Input Volume</span>
+                    <span className="text-[11px] text-slate-500 font-bold block">Objem vstupu</span>
                     <span className="text-lg font-black text-slate-900 mt-1 block">~42,500</span>
-                    <span className="text-[10px] text-slate-400">Ontology + Personas</span>
+                    <span className="text-[10px] text-slate-400">Ontológia + Persóny</span>
                   </div>
                   <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
-                    <span className="text-[11px] text-slate-500 font-bold block">Turns Generated</span>
-                    <span className="text-lg font-black text-indigo-600 mt-1 block">~48 Calls</span>
-                    <span className="text-[10px] text-slate-400">Filtered by diurnal sleep</span>
+                    <span className="text-[11px] text-slate-500 font-bold block">Generované ťahy</span>
+                    <span className="text-lg font-black text-indigo-600 mt-1 block">~48 volaní</span>
+                    <span className="text-[10px] text-slate-400">Filtrované nočným spánkom</span>
                   </div>
                   <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
-                    <span className="text-[11px] text-slate-500 font-bold block">DeepSeek Cost</span>
-                    <span className="text-lg font-black text-emerald-600 mt-1 block">€0.012</span>
-                    <span className="text-[10px] text-slate-400">€0.28 / 1M tokens</span>
+                    <span className="text-[11px] text-slate-500 font-bold block">Cena GPT-5.6 Terra</span>
+                    <span className="text-lg font-black text-indigo-600 mt-1 block">0.064 €</span>
+                    <span className="text-[10px] text-slate-400">1.50 € / 1M tokenov (Hĺbková analýza)</span>
                   </div>
                   <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
-                    <span className="text-[11px] text-slate-500 font-bold block">GPT-5.6 Luna Cost</span>
-                    <span className="text-lg font-black text-purple-600 mt-1 block">€0.011</span>
-                    <span className="text-[10px] text-slate-400">Cost-optimized speed</span>
+                    <span className="text-[11px] text-slate-500 font-bold block">Cena GPT-5.6 Luna</span>
+                    <span className="text-lg font-black text-purple-600 mt-1 block">0.011 €</span>
+                    <span className="text-[10px] text-slate-400">0.25 € / 1M tokenov (Cenovo optimalizovaný)</span>
                   </div>
                 </div>
 
                 <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 space-y-3">
                   <div className="flex items-center gap-2 text-emerald-800 font-bold text-xs">
                     <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                    <span>Pre-Flight Safety Checks Verified</span>
+                    <span>Bezpečnostné overenia v poriadku</span>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-[11px] text-emerald-900">
                     <div className="flex items-center gap-1.5">
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                      <span>Budget Quota Capped at €5.00</span>
+                      <span>Rozpočtový strop obmedzený na 5.00 €</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                      <span>PII Stripped & Anonymized</span>
+                      <span>Osobné údaje anonymizované</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                      <span>Diurnal Sleep Filter Active</span>
+                      <span>Cirkadiánny cyklus aktívny</span>
                     </div>
                   </div>
                 </div>
@@ -521,13 +521,13 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                     onClick={handlePrevStep}
                     className="px-4 py-2 rounded-xl text-xs font-bold text-slate-500 hover:text-slate-800 transition cursor-pointer"
                   >
-                    ← Back to Scenario
+                    ← Späť na scenár
                   </button>
                   <button
                     onClick={handleNextStep}
                     className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs shadow-md transition flex items-center gap-2 cursor-pointer"
                   >
-                    <span>Authorize & Synthesize Swarm Personas</span>
+                    <span>Autorizovať & Syntetizovať persóny roju</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
                 </div>
@@ -546,11 +546,11 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                     <div className="flex items-center gap-2">
                       <Users className="w-4 h-4 text-indigo-600" />
                       <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                        CRM Persona Ingestion Stream ({DEMO_AGENTS.length} Agents)
+                        Prúd načítaných persón z CRM ({DEMO_AGENTS.length} agentov)
                       </h4>
                     </div>
                     <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                      Grounded in Deals
+                      Ukotvené v obchodoch CRM
                     </span>
                   </div>
 
@@ -580,7 +580,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                                 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                 : 'bg-slate-100 text-slate-600 border border-slate-200'
                           }`}>
-                            {agent.stance}
+                            {agent.stance === 'opposing' ? 'Nesúhlasný' : agent.stance === 'supportive' ? 'Podporujúci' : 'Neutrálny'}
                           </span>
                         </div>
                         <p className="text-[11px] text-slate-600 pl-10 leading-relaxed italic">
@@ -597,11 +597,11 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                     <div className="flex items-center gap-2">
                       <Layers className="w-4 h-4 text-purple-600" />
                       <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                        Dynamic Knowledge Graph & Relationship Edges
+                        Dynamický graf znalostí & Vzájomné vzťahy
                       </h4>
                     </div>
                     <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">
-                      5 Nodes / 4 Dynamic Edges
+                      5 uzlov / 4 dynamické väzby
                     </span>
                   </div>
 
@@ -624,18 +624,18 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                     <Play className="w-5 h-5 fill-white animate-pulse" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-slate-900">Stage 4: Autonomous Market Rehearsal Running</h3>
-                    <p className="text-xs text-slate-500">Personas interact, debate, and react to proposed changes in real-time</p>
+                    <h3 className="text-sm font-bold text-slate-900">Krok 4: Prebieha autonómna trhová simulácia</h3>
+                    <p className="text-xs text-slate-500">Persóny diskutujú, vznášajú námietky a reagujú na navrhované zmeny v reálnom čase</p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-4 text-xs">
                   <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200">
-                    <span className="text-[10px] text-slate-400 block font-bold uppercase">Simulation Time</span>
+                    <span className="text-[10px] text-slate-400 block font-bold uppercase">Simulovaný čas</span>
                     <span className="font-bold text-slate-700">14:00 CET</span>
                   </div>
                   <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200">
-                    <span className="text-[10px] text-slate-400 block font-bold uppercase">Viral Index</span>
+                    <span className="text-[10px] text-slate-400 block font-bold uppercase">Virálna odozva</span>
                     <span className="font-bold text-purple-600">{currentMetric.viralIndex}%</span>
                   </div>
                 </div>
@@ -648,9 +648,9 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                   <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
                     <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                       <MessageSquare className="w-4 h-4 text-indigo-600" />
-                      Autonomous Social Stream ({warRoomPosts.length} Posts)
+                      Autonómny sociálny kanál ({warRoomPosts.length} príspevkov)
                     </span>
-                    <span className="text-[10px] font-bold text-slate-400">Auto-streaming</span>
+                    <span className="text-[10px] font-bold text-slate-400">Priebežné streamovanie</span>
                   </div>
 
                   <div className="flex-1 min-h-0 overflow-y-auto space-y-3 pt-3 pr-1 scrollbar-thin scrollbar-thumb-slate-200">
@@ -672,7 +672,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                           <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase shrink-0 ${
                             post.sentimentScore > 0.2 ? 'bg-emerald-50 text-emerald-700' : post.sentimentScore < -0.2 ? 'bg-rose-50 text-rose-700' : 'bg-slate-100 text-slate-600'
                           }`}>
-                            {post.sentimentScore > 0.2 ? 'Supportive' : post.sentimentScore < -0.2 ? 'Opposing' : 'Neutral'}
+                            {post.sentimentScore > 0.2 ? 'Podporujúci' : post.sentimentScore < -0.2 ? 'Nesúhlasný' : 'Neutrálny'}
                           </span>
                         </div>
                         <div className="text-xs text-slate-700 mt-1 leading-relaxed">
@@ -700,8 +700,8 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                 </div>
 
                 <div className="space-y-1">
-                  <h3 className="text-lg font-black text-slate-900">Chief Intelligence Analyst Synthesis</h3>
-                  <p className="text-xs text-slate-500">Synthesizing dialogue across 3 rounds into strategic insights & rebuttals</p>
+                  <h3 className="text-lg font-black text-slate-900">Syntéza hlavného spravodajského analytika</h3>
+                  <p className="text-xs text-slate-500">Spracovanie dialógu z 3 kôl do strategických zistení a odpovedí na námietky</p>
                 </div>
 
                 {/* Progress bar */}
@@ -716,25 +716,25 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                   <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
                     <div className="font-bold text-slate-800 flex items-center gap-1.5">
                       <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                      <span>Failure Points</span>
+                      <span>Kritické riziká</span>
                     </div>
-                    <p className="text-[11px] text-slate-500 mt-1">Downtime penalties & Frankfurt data sovereignty identified.</p>
+                    <p className="text-[11px] text-slate-500 mt-1">Identifikované sankcie za výpadky a požiadavka na suverenitu dát v EÚ.</p>
                   </div>
 
                   <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
                     <div className="font-bold text-slate-800 flex items-center gap-1.5">
                       <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                      <span>Competitor Moves</span>
+                      <span>Ťahy konkurencie</span>
                     </div>
-                    <p className="text-[11px] text-slate-500 mt-1">David Chen FUD migration discount retaliations mapped.</p>
+                    <p className="text-[11px] text-slate-500 mt-1">Zmapované protiútoky konkurencie ponúkajúcej migračné zľavy.</p>
                   </div>
 
                   <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
                     <div className="font-bold text-slate-800 flex items-center gap-1.5">
                       <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                      <span>Sales Scripts</span>
+                      <span>Obchodné argumenty</span>
                     </div>
-                    <p className="text-[11px] text-slate-500 mt-1">Turn-key sales rebuttals synthesized for account reps.</p>
+                    <p className="text-[11px] text-slate-500 mt-1">Pripravené odpovede na námietky pre obchodný tím.</p>
                   </div>
                 </div>
 
@@ -742,7 +742,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                   onClick={handleNextStep}
                   className="px-6 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs shadow-md transition inline-flex items-center gap-2 cursor-pointer"
                 >
-                  <span>View Executive Results & Chatbot</span>
+                  <span>Zobraziť manažérsky briefing & Chatbota</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
@@ -756,7 +756,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                 report={DEMO_STRATEGIC_REPORT}
                 agents={DEMO_AGENTS}
                 posts={DEMO_POSTS}
-                hypothesis="Enterprise tier restructuring with +25% price increase, 99.9% SLA, and dedicated WhatsApp support."
+                hypothesis="Reštrukturalizácia balíka Enterprise: +25% zvýšenie cien, 99.9% SLA a dedikovaná podpora cez WhatsApp."
                 isDemoMode={true}
                 onOpenAgentDirectory={() => handleSelectStep(4)}
               />

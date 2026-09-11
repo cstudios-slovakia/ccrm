@@ -69,6 +69,14 @@ const DEFAULT_SCHEME: ColorScheme = {
   badgeText: '#4338ca'
 };
 
+const TYPE_LABELS: Record<string, string> = {
+  Client: 'Klient',
+  Competitor: 'Konkurent',
+  Regulator: 'Regulátor',
+  Agency: 'Agentúra',
+  Stakeholder: 'Účastník',
+};
+
 const renderNodeIcon = (type: string) => {
   switch (type) {
     case 'Client':
@@ -181,7 +189,7 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
       <div className="absolute top-3.5 left-3.5 z-10 flex items-center gap-2">
         <div className="px-3 py-1.5 rounded-full bg-white/95 backdrop-blur-md border border-slate-200/90 text-[11px] font-bold text-slate-700 flex items-center gap-2 shadow-xs">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span>Knowledge Graph ({graph.nodes.length} Nodes, {graph.edges.length} Edges)</span>
+          <span>Graf znalostí ({graph.nodes.length} uzlov, {graph.edges.length} väzieb)</span>
         </div>
       </div>
 
@@ -191,7 +199,7 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
           type="button"
           onClick={() => setZoomLevel(prev => Math.min(prev + 0.2, 2.0))}
           className="p-1.5 rounded-xl bg-white/95 hover:bg-white text-slate-600 hover:text-slate-900 border border-slate-200/90 shadow-xs transition cursor-pointer"
-          title="Zoom In"
+          title="Priblížiť"
         >
           <ZoomIn className="w-4 h-4" />
         </button>
@@ -199,7 +207,7 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
           type="button"
           onClick={() => setZoomLevel(prev => Math.max(prev - 0.2, 0.6))}
           className="p-1.5 rounded-xl bg-white/95 hover:bg-white text-slate-600 hover:text-slate-900 border border-slate-200/90 shadow-xs transition cursor-pointer"
-          title="Zoom Out"
+          title="Oddialiť"
         >
           <ZoomOut className="w-4 h-4" />
         </button>
@@ -210,7 +218,7 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
             setSelectedNode(null);
           }}
           className="p-1.5 rounded-xl bg-white/95 hover:bg-white text-slate-600 hover:text-slate-900 border border-slate-200/90 shadow-xs transition cursor-pointer"
-          title="Reset View"
+          title="Resetovať zobrazenie"
         >
           <RotateCcw className="w-4 h-4" />
         </button>
@@ -218,12 +226,12 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
 
       {/* Bottom Category Legend */}
       <div className="absolute bottom-3 left-3 z-10 hidden sm:flex items-center gap-2.5 px-3 py-1.5 rounded-2xl bg-white/90 backdrop-blur-md border border-slate-200/80 shadow-xs text-[10px] font-medium text-slate-600">
-        <span className="font-bold text-slate-400 uppercase text-[9px] mr-0.5">Entities:</span>
-        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-600"></span>Client</span>
-        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-rose-600"></span>Competitor</span>
-        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-600"></span>Regulator</span>
-        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-purple-600"></span>Agency</span>
-        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-600"></span>Stakeholder</span>
+        <span className="font-bold text-slate-400 uppercase text-[9px] mr-0.5">Subjekty:</span>
+        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-600"></span>Klient</span>
+        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-rose-600"></span>Konkurent</span>
+        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-600"></span>Regulátor</span>
+        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-purple-600"></span>Agentúra</span>
+        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-600"></span>Účastník trhu</span>
       </div>
 
       {/* SVG Canvas Area */}
@@ -555,7 +563,7 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
                           borderColor: `${selectedPos.scheme.primary}35`
                         }}
                       >
-                        {selectedNode.type}
+                        {TYPE_LABELS[selectedNode.type] || selectedNode.type}
                       </span>
                     </div>
 
@@ -566,7 +574,7 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
                         setSelectedNode(null);
                       }}
                       className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer shrink-0 -mt-0.5 -mr-0.5"
-                      title="Close explanation"
+                      title="Zavrieť vysvetlenie"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -575,19 +583,19 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
                   {/* Popover Explanation */}
                   <div className="flex-1 py-1.5 overflow-hidden">
                     <p className="text-[10.5px] text-slate-600 leading-snug line-clamp-3 font-normal">
-                      {selectedNode.summary || 'Simulated entity participating in social market interactions and feedback.'}
+                      {selectedNode.summary || 'Simulovaný subjekt zúčastňujúci sa trhových interakcií a diskusie.'}
                     </p>
                   </div>
 
                   {/* Popover Footer Relations */}
                   {connectedEdges.length > 0 && (
                     <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[9.5px]">
-                      <span className="font-semibold text-slate-400 uppercase text-[9px]">Relation:</span>
+                      <span className="font-semibold text-slate-400 uppercase text-[9px]">Väzba:</span>
                       <span className="font-mono text-indigo-600 font-bold truncate max-w-[160px] bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
                         {connectedEdges[0].relation} → {
                           connectedEdges[0].source === selectedNode.id 
-                            ? (graph.nodes.find(n => n.id === connectedEdges[0].target)?.name || 'Entity')
-                            : (graph.nodes.find(n => n.id === connectedEdges[0].source)?.name || 'Entity')
+                            ? (graph.nodes.find(n => n.id === connectedEdges[0].target)?.name || 'Subjekt')
+                            : (graph.nodes.find(n => n.id === connectedEdges[0].source)?.name || 'Subjekt')
                         }
                       </span>
                     </div>

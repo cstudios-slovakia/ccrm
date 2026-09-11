@@ -20,39 +20,39 @@ export interface SimulationStepInfo {
 export const REAL_SIMULATION_STEPS: SimulationStepInfo[] = [
   {
     id: 1,
-    shortLabel: '1. Scenario',
-    title: '1. Strategic Scenario & Hypothesis Definition',
-    tagline: 'Define proposal, what-if question, and CRM grounding sources.'
+    shortLabel: '1. Scenár',
+    title: '1. Strategický scenár & Definícia hypotézy',
+    tagline: 'Definujte návrh, what-if otázku a podkladové zdroje z CRM.'
   },
   {
     id: 2,
-    shortLabel: '2. Pre-Flight',
-    title: '2. Pre-Flight Resource & Safety Estimator',
-    tagline: 'Predict worst-case token spend and enforce safety guards.'
+    shortLabel: '2. Predbežný odhad',
+    title: '2. Predbežný odhad nákladov a bezpečnosti',
+    tagline: 'Predikcia spotreby tokenov a overenie bezpečnostných limitov.'
   },
   {
     id: 3,
-    shortLabel: '3. Swarm Ingestion',
-    title: '3. Swarm Ingestion & Knowledge Graph Assembly',
-    tagline: 'Extract CRM context, build ontology graph, and synthesize personas.'
+    shortLabel: '3. Načítanie dát',
+    title: '3. Načítanie CRM dát & Tvorba grafu znalostí',
+    tagline: 'Extrakcia CRM kontextu, tvorba ontologického grafu a syntéza persón.'
   },
   {
     id: 4,
     shortLabel: '4. Live War Room',
-    title: '4. Autonomous Live War Room Simulation',
-    tagline: 'Autonomous agents debate, post counter-arguments, and vote.'
+    title: '4. Autonómna simulácia vo War Roome',
+    tagline: 'Autonómni agenti diskutujú, formulujú protiargumenty a hlasujú.'
   },
   {
     id: 5,
-    shortLabel: '5. Strategy Synthesis',
-    title: '5. Chief Intelligence Analyst Synthesis',
-    tagline: 'AI processes multi-agent debate and compiles executive briefing.'
+    shortLabel: '5. Syntéza stratégie',
+    title: '5. Syntéza hlavného analytika',
+    tagline: 'AI spracováva debatu viacerých agentov a pripravuje manažérsky briefing.'
   },
   {
     id: 6,
-    shortLabel: '6. Results & Chatbot',
-    title: '6. Executive Briefing & Live AI Interrogation Hub',
-    tagline: 'Executive strategic playbook and live multi-agent interrogation.'
+    shortLabel: '6. Výsledky & Chatbot',
+    title: '6. Výkonný briefing & Interrogačný hub',
+    tagline: 'Strategický plán a priame dopytovanie agentov v reálnom čase.'
   }
 ];
 
@@ -104,23 +104,23 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
   const stepMeta = REAL_SIMULATION_STEPS.find(s => s.id === currentStep) || REAL_SIMULATION_STEPS[0];
 
   // Derive status badge
-  let badgeText = 'ACTIVE SIMULATION';
+  let badgeText = 'AKTÍVNA SIMULÁCIA';
   let badgeStyle = 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30';
 
   if (isDemoMode) {
-    badgeText = 'DEMO REHEARSAL';
+    badgeText = 'DEMO SIMULÁCIA';
     badgeStyle = 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
   } else if (isEngineRunning) {
-    badgeText = `LIVE SIMULATING • R${currentRound}/${totalRounds}`;
+    badgeText = `SIMULÁCIA PREBIEHA • K${currentRound}/${totalRounds}`;
     badgeStyle = 'bg-emerald-500/25 text-emerald-300 border-emerald-500/40 animate-pulse';
   } else if (isPreparing) {
-    badgeText = currentStep === 5 ? 'COMPILING BRIEFING' : 'ORCHESTRATING SWARM';
+    badgeText = currentStep === 5 ? 'GENEROVANIE BRIEFINGU' : 'PRÍPRAVA ROJU';
     badgeStyle = 'bg-purple-500/20 text-purple-300 border-purple-500/30 animate-pulse';
   } else if (hasReport || activeView === 'report') {
-    badgeText = 'REHEARSAL COMPLETED';
+    badgeText = 'SIMULÁCIA DOKONČENÁ';
     badgeStyle = 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
   } else if (activeView === 'create') {
-    badgeText = 'NEW REHEARSAL';
+    badgeText = 'NOVÁ SIMULÁCIA';
     badgeStyle = 'bg-purple-500/20 text-purple-300 border-purple-500/30';
   }
 
@@ -183,7 +183,7 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
               </span>
             </div>
             <p className="text-[11px] text-slate-400 line-clamp-1 flex items-center gap-1.5">
-              <span>Step {currentStep} of 6: {isPreparing && prepStepMessage ? prepStepMessage : stepMeta.title}</span>
+              <span>Krok {currentStep} zo 6: {isPreparing && prepStepMessage ? prepStepMessage : stepMeta.title}</span>
               {simulatedHour !== undefined && isEngineRunning && (
                 <span className="text-amber-400/90 font-mono text-[10px] inline-flex items-center gap-1 ml-1 bg-slate-800/80 px-1.5 py-0.2 rounded border border-slate-700">
                   <Clock className="w-3 h-3 text-amber-400 inline" />
@@ -211,7 +211,7 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
                 type="button"
                 onClick={() => handleStepClick(s.id)}
                 disabled={!isClickable && !isActive}
-                title={`${s.title} — ${s.tagline}${isClickable ? ' (Click to inspect)' : ''}`}
+                title={`${s.title} — ${s.tagline}${isClickable ? ' (Kliknutím skontrolujete)' : ''}`}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 ${
                   isActive 
                     ? 'bg-gradient-to-r from-purple-600 to-emerald-500 text-white shadow-md' 
@@ -238,10 +238,10 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
               type="button"
               onClick={onStopSimulation}
               className="px-3 py-1.5 rounded-xl text-xs font-bold text-rose-300 bg-rose-500/20 border border-rose-500/30 hover:bg-rose-500/30 transition flex items-center gap-1.5 cursor-pointer shadow-sm"
-              title="Stop multi-agent debate and finalize synthesis"
+              title="Zastaviť debatu agentov a vygenerovať záverečnú syntézu"
             >
               <Pause className="w-3.5 h-3.5" />
-              <span>Conclude Early</span>
+              <span>Ukončiť skôr</span>
             </button>
           )}
 
@@ -251,10 +251,10 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
               type="button"
               onClick={onOpenQaDrawer}
               className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition flex items-center gap-1.5 cursor-pointer shadow-sm"
-              title="Open AI Interrogation Drawer to cross-examine agents and report"
+              title="Otvoriť interrogačný panel na krížový výsluch agentov a reportu"
             >
               <MessageSquare className="w-3.5 h-3.5 text-purple-400" />
-              <span className="hidden sm:inline">Ask Analyst</span>
+              <span className="hidden sm:inline">Spýtať sa analytika</span>
             </button>
           )}
 
@@ -266,7 +266,7 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
               className="px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-purple-600 to-emerald-600 hover:from-purple-700 hover:to-emerald-700 transition flex items-center gap-1.5 cursor-pointer shadow-sm"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">New Rehearsal</span>
+              <span className="hidden md:inline">Nová simulácia</span>
             </button>
           )}
 
@@ -277,7 +277,7 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
             type="button"
             onClick={() => onNavigateView('list')}
             className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition cursor-pointer flex items-center gap-1"
-            title="Return to Rehearsals Overview"
+            title="Návrat na prehľad simulácií"
           >
             <X className="w-4 h-4" />
           </button>
@@ -296,7 +296,7 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
                   <FileText className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-white">Step 1: Strategic Scenario Definition</h3>
+                  <h3 className="text-base font-bold text-white">Krok 1: Definícia strategického scenára</h3>
                   <p className="text-xs text-slate-300">{title}</p>
                 </div>
               </div>
@@ -311,19 +311,19 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
             <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto text-slate-800 text-xs">
               <div>
                 <span className="text-[10px] uppercase font-black tracking-wider text-purple-700 block mb-1">
-                  Strategic Hypothesis / What-If Question
+                  Strategická hypotéza / What-If otázka
                 </span>
                 <p className="p-3 rounded-2xl bg-purple-50/70 border border-purple-200/80 font-semibold text-purple-950 leading-relaxed">
-                  {hypothesis || 'No explicit hypothesis recorded.'}
+                  {hypothesis || 'Nie je zaznamenaná žiadna explicitná hypotéza.'}
                 </p>
               </div>
 
               <div>
                 <span className="text-[10px] uppercase font-black tracking-wider text-slate-500 block mb-1">
-                  Seed Scenario & Announcement Document
+                  Vstupné zadanie & Text oznámenia
                 </span>
                 <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 font-mono text-[11px] text-slate-700 whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto">
-                  {seedDocument || 'No announcement memo text provided.'}
+                  {seedDocument || 'Nebol zadaný text oznámenia ani memoranda.'}
                 </div>
               </div>
             </div>
@@ -334,7 +334,7 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
                 onClick={() => setShowScenarioModal(false)}
                 className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition cursor-pointer"
               >
-                Close
+                Zavrieť
               </button>
             </div>
           </div>

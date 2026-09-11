@@ -26,11 +26,11 @@ export const SocialFeedStream: React.FC<SocialFeedStreamProps> = ({
 
   const getStanceBadge = (score: number) => {
     if (score > 0.25) {
-      return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">Supportive</span>;
+      return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">Podporujúci</span>;
     } else if (score < -0.25) {
-      return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">Opposing</span>;
+      return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">Nesúhlasný</span>;
     }
-    return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">Neutral</span>;
+    return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">Neutrálny</span>;
   };
 
   return (
@@ -41,7 +41,7 @@ export const SocialFeedStream: React.FC<SocialFeedStreamProps> = ({
         <div className="flex items-center gap-2">
           <div className="w-2.5 h-2.5 rounded-full bg-indigo-600 animate-pulse"></div>
           <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-            Live Feed Stream ({posts.length} Posts)
+            Živý kanál príspevkov ({posts.length} príspevkov)
           </span>
         </div>
         <button
@@ -52,7 +52,7 @@ export const SocialFeedStream: React.FC<SocialFeedStreamProps> = ({
               : 'bg-slate-200 text-slate-600'
           }`}
         >
-          {autoScroll ? 'Auto-scroll On' : 'Auto-scroll Paused'}
+          {autoScroll ? 'Automatické posúvanie zap.' : 'Automatické posúvanie pozastavené'}
         </button>
       </div>
 
@@ -64,7 +64,7 @@ export const SocialFeedStream: React.FC<SocialFeedStreamProps> = ({
         {sortedPosts.length === 0 ? (
           <div className="h-48 flex flex-col items-center justify-center text-slate-400 text-xs space-y-2">
             <Sparkles className="w-6 h-6 text-slate-300" />
-            <span>Waiting for round 1 to begin...</span>
+            <span>Čaká sa na začiatok 1. kola...</span>
           </div>
         ) : (
           sortedPosts.map((post) => (

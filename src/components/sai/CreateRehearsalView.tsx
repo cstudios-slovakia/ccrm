@@ -55,65 +55,65 @@ export interface CrmSourceOption {
 export const CRM_SOURCE_OPTIONS: CrmSourceOption[] = [
   {
     id: 'active_leads',
-    title: 'Active Pipeline Leads',
-    category: 'Pipeline',
-    description: 'In-progress deals, qualified leads, and active discovery accounts.',
+    title: 'Aktívne leady v pipeline',
+    category: 'Obchodný lievik',
+    description: 'Rozpracované obchody, kvalifikované leady a aktívne účty vo fáze zisťovania potrieb.',
     icon: Users,
-    badge: 'Leads',
+    badge: 'Leady',
     badgeColor: 'bg-blue-50 text-blue-700 border-blue-200'
   },
   {
     id: 'existing_clients',
-    title: 'Existing & Won Retainers',
-    category: 'Client Base',
-    description: 'Active client accounts, retained partners, and historical won contracts.',
+    title: 'Existujúci klienti & Zmluvy',
+    category: 'Klientska báza',
+    description: 'Aktívne klientske účty, dlhodobí partneri a historicky uzatvorené zmluvy.',
     icon: Building2,
-    badge: 'Clients',
+    badge: 'Klienti',
     badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200'
   },
   {
     id: 'lost_deal_objections',
-    title: 'Lost Deals & Objections',
-    category: 'Sales Friction',
-    description: 'Recorded sales resistance, price sensitivity, rejection reasons, and pushbacks.',
+    title: 'Stratené obchody & Námietky',
+    category: 'Obchodné námietky',
+    description: 'Zaznamenaný odpor pri predaji, cenová senzitivita, dôvody odmietnutia a námietky.',
     icon: AlertTriangle,
-    badge: 'Objections',
+    badge: 'Námietky',
     badgeColor: 'bg-rose-50 text-rose-700 border-rose-200'
   },
   {
     id: 'competitor_intel',
-    title: 'Competitor Mentions & Intel',
-    category: 'Market Intel',
-    description: 'CRM notes referencing rival platforms, alternative vendors, and pricing comparisons.',
+    title: 'Zmienky o konkurencii',
+    category: 'Prieskum trhu',
+    description: 'Poznámky v CRM odkazujúce na konkurenčné platformy, alternatívnych dodávateľov a porovnanie cien.',
     icon: Swords,
-    badge: 'Competitors',
+    badge: 'Konkurencia',
     badgeColor: 'bg-amber-50 text-amber-700 border-amber-200'
   },
   {
     id: 'meeting_notes',
-    title: 'Meeting Notes & Transcripts',
-    category: 'Discovery Calls',
-    description: 'Discovery call notes, meeting transcripts, and direct verbal client feedback.',
+    title: 'Zápisy zo stretnutí & Prepisy',
+    category: 'Stretnutia & Hovory',
+    description: 'Zápisy zo stretnutí, prepisy rozhovorov a priama verbálna spätná väzba od klientov.',
     icon: MessageSquare,
-    badge: 'Meetings',
+    badge: 'Stretnutia',
     badgeColor: 'bg-indigo-50 text-indigo-700 border-indigo-200'
   },
   {
     id: 'client_emails',
-    title: 'Client Inbound Emails',
-    category: 'Communications',
-    description: 'Inbound emails, client inquiries, scope requests, and email correspondence.',
+    title: 'Prichádzajúce emaily klientov',
+    category: 'Komunikácia',
+    description: 'Prichádzajúce emaily, dopyty klientov, požiadavky na rozsah a emailová korešpondencia.',
     icon: Mail,
-    badge: 'Emails',
+    badge: 'Emaily',
     badgeColor: 'bg-violet-50 text-violet-700 border-violet-200'
   },
   {
     id: 'files',
-    title: 'Uploaded Files & Documents',
-    category: 'Documents',
-    description: 'Commercial contracts, proposals, invoices, quotes, and extracted text attachments from CRM leads.',
+    title: 'Nahrané súbory & Dokumenty',
+    category: 'Dokumenty',
+    description: 'Obchodné zmluvy, ponuky, faktúry, cenové kalkulácie a textové prílohy z CRM leadov.',
     icon: FolderOpen,
-    badge: 'Files',
+    badge: 'Súbory',
     badgeColor: 'bg-teal-50 text-teal-700 border-teal-200'
   }
 ];
@@ -123,8 +123,6 @@ export const DEFAULT_CRM_SOURCES = CRM_SOURCE_OPTIONS.map(s => s.id);
 export const MODEL_PRICING: Record<string, { ratePerM: number; label: string }> = {
   'gpt-5.6-luna': { ratePerM: 0.25, label: 'GPT-5.6 Luna' },
   'gpt-5.6-terra': { ratePerM: 1.50, label: 'GPT-5.6 Terra' },
-  'deepseek-chat': { ratePerM: 0.28, label: 'DeepSeek Chat' },
-  'gpt-4o-mini': { ratePerM: 0.20, label: 'GPT-4o Mini' },
 };
 
 interface CreateRehearsalViewProps {
@@ -139,36 +137,36 @@ interface CreateRehearsalViewProps {
 
 const PRESET_TEMPLATES = [
   {
-    name: 'Enterprise Pricing Increase',
-    title: 'Q4 25% Price Adjustment Rehearsal',
-    hypothesis: 'What if we raise Enterprise CRM tier prices by 25% while adding 99.9% uptime SLA and dedicated Slack channel support?',
-    seed: `We are preparing to announce a 25% price increase across all Enterprise plans starting next month.
-Current Enterprise rate: €199/month. Proposed rate: €249/month.
-In exchange, clients will receive:
-- Guaranteed 1-hour SLA response time for critical issues
-- Direct dedicated Slack/WhatsApp support channel with our engineering team
-- Free migration assistance for legacy databases
-Existing customers will receive a grandfathered 6-month grace period before the rate applies.
-Target audience: 20-200 employee digital agencies and manufacturing SMBs.`
+    name: 'Zvýšenie cien Enterprise',
+    title: 'Simulácia 25% úpravy cien v Q4',
+    hypothesis: 'Čo ak zvýšime ceny balíka Enterprise CRM o 25%, no zároveň pridáme 99.9% SLA garanciu dostupnosti a dedikovaný Slack kanál podpory?',
+    seed: `Pripravujeme oznámenie 25% zvýšenia cien pre všetky balíky Enterprise od budúceho mesiaca.
+Aktuálna sadzba Enterprise: 199 €/mesiac. Navrhovaná sadzba: 249 €/mesiac.
+Výmenou za to klienti získajú:
+- Garantovaný reakčný čas SLA do 1 hodiny pri kritických incidentoch
+- Priamy dedikovaný komunikačný kanál cez Slack/WhatsApp s naším tímom inžinierov
+- Bezplatnú asistenciu pri migrácii starších databáz
+Existujúci zákazníci získajú ochrannú lehotu 6 mesiacov na pôvodných cenách pred uplatnením novej sadzby.
+Cieľová skupina: digitálne agentúry a výrobné SMB podniky s 20–200 zamestnancami.`
   },
   {
-    name: 'Competitor Response Defense',
-    title: 'Counter-Offensive vs Legacy CRM Vendor',
-    hypothesis: 'What if our primary legacy competitor launches an aggressive ad campaign attacking our missing phone dialer feature?',
-    seed: `Competitor X is rumored to launch a targeted campaign highlighting our current lack of built-in VoIP telephony.
-Our strategic counter-positioning:
-- We focus on deep workflow automation, instant multi-channel WhatsApp integration, and modern UI speed rather than legacy call centers.
-- Most modern sales teams communicate via async messaging, video calls, and email rather than cold calling.
-- We integrate seamlessly with third-party PBX/Twilio via Webhooks.`
+    name: 'Obrana voči reakcii konkurencie',
+    title: 'Protiútok voči tradičnému poskytovateľovi CRM',
+    hypothesis: 'Čo ak náš hlavný etablovaný konkurent spustí agresívnu kampaň útočiacu na chýbajúcu funkciu integrovaného telefónneho dialera?',
+    seed: `Podľa indícií konkurent X pripravuje cielenú kampaň poukazujúcu na absenciu vstavanej VoIP telefónie v našom riešení.
+Naša strategická proti-pozícia:
+- Zameriavame sa na hĺbkovú automatizáciu pracovných postupov, okamžitú viackanálovú integráciu s WhatsAppom a modernú rýchlosť UI namiesto starých call-centier.
+- Väčšina moderných obchodných tímov komunikuje asynchrónne cez správy, videohovory a email namiesto studených hovorov.
+- Ponúkame bezproblémovú integráciu s PBX ústredňami a Twilio cez Webhooky.`
   },
   {
-    name: 'New Feature Rollout (Self-Service SAI)',
-    title: 'Swarm AI Public Beta Launch Rehearsal',
-    hypothesis: 'What if we launch autonomous predictive simulation (SAI) as a premium add-on at €49/month?',
-    seed: `We are rolling out Swarm Artificial Intelligence (SAI), allowing businesses to simulate market reactions to new products, PR announcements, and sales strategies before going live.
-The feature runs multi-agent social swarms grounded in the company's real CRM lead and objection history.
-Pricing: €49/month for 10 rehearsals per month, or pay-as-you-go proxy usage.
-We want to gauge whether sales executives find this compelling or if they are skeptical of AI simulation validity.`
+    name: 'Uvedenie novej funkcie (Samoobslužné SAI)',
+    title: 'Simulácia spustenia verejnej bety Swarm AI',
+    hypothesis: 'Čo ak uvedieme autonómnu prediktívnu simuláciu (SAI) ako prémiový doplnok za 49 €/mesiac?',
+    seed: `Spúšťame funkciu Swarm Artificial Intelligence (SAI), ktorá firmám umožňuje simulovať trhové reakcie na nové produkty, PR oznámenia a obchodné stratégie ešte pred ich zverejnením.
+Funkcia využíva sociálne roje autonómnych agentov podložené skutočnou históriou leadov a obchodných námietok z firemného CRM.
+Cena: 49 €/mesiac za 10 simulácií mesačne, alebo priebežné platby za spotrebované proxy volania.
+Chceme zistiť, či obchodní riaditelia považujú tento nástroj za presvedčivý, alebo či sú skeptickí voči validite AI simulácie.`
   }
 ];
 
@@ -210,11 +208,11 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
       activeUnifiedRegistries.forEach((ue: any) => {
         base.push({
           id: `ue_${ue.id}`,
-          title: `Unified: ${ue.name}`,
-          category: 'Unified Registry',
-          description: `Custom records and folder files from the ${ue.name} registry (${ue.entryName || 'Records'}).`,
+          title: `Zjednotený register: ${ue.name}`,
+          category: 'Zjednotený register',
+          description: `Zákaznícke záznamy a súbory zo zložky z registra ${ue.name} (${ue.entryName || 'Záznamy'}).`,
           icon: Database,
-          badge: ue.entryName || 'Unified',
+          badge: ue.entryName || 'Register',
           badgeColor: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200'
         });
       });
@@ -225,12 +223,12 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
 
   // Form State
   const [draftId, setDraftId] = useState<string | undefined>(initialData?.id);
-  const [title, setTitle] = useState<string>(initialData?.title || 'Q4 Strategy Market Rehearsal');
+  const [title, setTitle] = useState<string>(initialData?.title || 'Strategická trhová simulácia Q4');
   const [hypothesis, setHypothesis] = useState<string>(
-    initialData?.hypothesis || 'What if we introduce annual billing with a 20% discount and eliminate monthly plans for new accounts?'
+    initialData?.hypothesis || 'Čo ak zavedieme ročnú fakturáciu s 20% zľavou a zrušíme mesačné plány pre nové účty?'
   );
   const [seedDocument, setSeedDocument] = useState<string>(
-    initialData?.seed_document || `We are considering restructuring our billing model. For all new accounts, we will require an annual commitment, offering a 20% total discount compared to our old monthly rates. Current clients may remain on monthly billing. Our target clients are B2B service agencies and consultancies.`
+    initialData?.seed_document || `Zvažujeme reštrukturalizáciu nášho fakturačného modelu. Pre všetky nové účty budeme vyžadovať ročný záväzok, pričom ponúkneme 20% celkovú zľavu oproti pôvodným mesačným sadzbám. Súčasní klienti môžu zostať na mesačnej fakturácii. Našimi cieľovými klientmi sú B2B agentúry a poradenské firmy.`
   );
   const [lookbackMonths, setLookbackMonths] = useState<6 | 12 | 24>(
     (initialData?.lookback_months as 6 | 12 | 24) || 12
@@ -348,8 +346,8 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
     try {
       const draftPayload = {
         id: draftId,
-        title: title.trim() || 'Untitled Rehearsal Draft',
-        hypothesis: hypothesis.trim() || 'Unspecified hypothesis',
+        title: title.trim() || 'Koncept simulácie bez názvu',
+        hypothesis: hypothesis.trim() || 'Nešpecifikovaná hypotéza',
         seed_document: seedDocument.trim(),
         lookback_months: lookbackMonths,
         crm_data_sources: selectedSources,
@@ -375,7 +373,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
       }
     } catch (err: any) {
       console.error('Failed to save draft:', err);
-      setValidationError('Failed to save draft: ' + (err?.message || 'Network error'));
+      setValidationError('Nepodarilo sa uložiť koncept: ' + (err?.message || 'Sieťová chyba'));
     } finally {
       setIsSavingDraft(false);
     }
@@ -385,15 +383,15 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
   const handleOpenEstimator = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
-      setValidationError('Please enter a rehearsal title before launching.');
+      setValidationError('Pred spustením zadajte názov simulácie.');
       return;
     }
     if (!hypothesis.trim()) {
-      setValidationError('Please specify the core hypothesis or what-if question.');
+      setValidationError('Zadajte hlavnú hypotézu alebo what-if otázku.');
       return;
     }
     if (!seedDocument.trim()) {
-      setValidationError('Please provide the seed announcement scenario or memo text.');
+      setValidationError('Zadajte vstupné zadanie, scenár alebo text memoranda.');
       return;
     }
     setValidationError(null);
@@ -428,7 +426,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             className="p-2 rounded-2xl bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 transition shadow-sm flex items-center gap-1 text-xs font-bold cursor-pointer"
           >
             <ChevronLeft className="w-4 h-4" />
-            <span>Rehearsals Overview</span>
+            <span>Prehľad simulácií</span>
           </button>
           
           <div className="h-4 w-px bg-slate-200 hidden sm:block" />
@@ -437,20 +435,20 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             <span className="text-xs font-bold text-slate-400">SAI</span>
             <span className="text-xs text-slate-300">/</span>
             <span className="text-xs font-bold text-slate-800">
-              {draftId ? 'Editing Rehearsal Draft' : 'Configure New Rehearsal'}
+              {draftId ? 'Úprava konceptu simulácie' : 'Konfigurácia novej simulácie'}
             </span>
 
             {draftId && (
               <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
                 <Bookmark className="w-3 h-3 text-amber-600" />
-                Draft
+                Koncept
               </span>
             )}
 
             {isDemoMode && (
               <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
                 <Zap className="w-3 h-3 text-emerald-600" />
-                Demo Mode
+                Demo režim
               </span>
             )}
           </div>
@@ -462,13 +460,13 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
           {lastSavedTimestamp && !isDirty && (
             <div className="text-xs text-emerald-600 font-bold flex items-center gap-1">
               <Check className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Draft saved at {lastSavedTimestamp}</span>
+              <span>Koncept uložený o {lastSavedTimestamp}</span>
             </div>
           )}
           {isDirty && (
             <div className="text-xs text-amber-600 font-medium flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-              <span>Unsaved changes</span>
+              <span>Neuložené zmeny</span>
             </div>
           )}
 
@@ -484,7 +482,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             ) : (
               <Save className="w-4 h-4 text-purple-600" />
             )}
-            <span>{isSavingDraft ? 'Saving Draft...' : 'Save Draft'}</span>
+            <span>{isSavingDraft ? 'Ukladám koncept...' : 'Uložiť koncept'}</span>
           </button>
 
           {/* Primary Estimate & Launch Button */}
@@ -494,7 +492,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             disabled={isSubmitting}
             className="px-5 py-2 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 hover:from-purple-700 hover:to-emerald-600 text-white font-bold text-xs shadow-md hover:shadow-lg transition flex items-center gap-2 cursor-pointer disabled:opacity-60"
           >
-            <span>Review & Estimate Tokens</span>
+            <span>Skontrolovať & Odhadnúť tokeny</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>
@@ -516,9 +514,9 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
           <div className="flex items-center justify-between">
             <label className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
               <FileText className="w-3.5 h-3.5 text-purple-600" />
-              Quick Templates & Strategic Scenarios
+              Rýchle šablóny & Strategické scenáre
             </label>
-            <span className="text-[11px] text-slate-400 font-medium">Click a preset to populate fields</span>
+            <span className="text-[11px] text-slate-400 font-medium">Kliknutím na šablónu vyplníte polia</span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -544,8 +542,8 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
         <div className="p-6 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-5">
           <div className="space-y-1.5">
             <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center justify-between">
-              <span>Rehearsal Title <span className="text-rose-500">*</span></span>
-              <span className="text-[11px] text-slate-400 font-normal">Executive identifier for reports & checkpoints</span>
+              <span>Názov simulácie <span className="text-rose-500">*</span></span>
+              <span className="text-[11px] text-slate-400 font-normal">Manažérsky identifikátor pre reporty & kontrolné body</span>
             </label>
             <input 
               type="text"
@@ -554,15 +552,15 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 setTitle(e.target.value);
                 setIsDirty(true);
               }}
-              placeholder="e.g. Q4 Enterprise Pricing Restructuring"
+              placeholder="napr. Reštrukturalizácia cien balíka Enterprise v Q4"
               required
               className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none text-sm text-slate-900 font-semibold bg-white"
             />
             <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
               <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
               <span>
-                <strong className="text-slate-700 font-semibold">What it is for:</strong> The primary executive name and identifier for this market simulation.{' '}
-                <strong className="text-slate-700 font-semibold">How it is used:</strong> Displayed across rehearsal dashboards, checkpoint saves, war room live telemetry, and exported executive reports.
+                <strong className="text-slate-700 font-semibold">Na čo slúži:</strong> Hlavný manažérsky názov a identifikátor pre túto trhovú simuláciu.{' '}
+                <strong className="text-slate-700 font-semibold">Ako sa používa:</strong> Zobrazuje sa na prehľadoch simulácií, pri ukladaní kontrolných bodov, v reálnom čase vo War Roome a v exportovaných manažérskych reportoch.
               </span>
             </div>
           </div>
@@ -570,8 +568,8 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
           {/* Hypothesis */}
           <div className="space-y-1.5">
             <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center justify-between">
-              <span>What-If Variable / Strategic Hypothesis <span className="text-rose-500">*</span></span>
-              <span className="text-[11px] text-slate-400 font-normal">Core predictive question the swarm will debate</span>
+              <span>Strategická hypotéza / What-If premenná <span className="text-rose-500">*</span></span>
+              <span className="text-[11px] text-slate-400 font-normal">Kľúčová prediktívna otázka, o ktorej bude roj diskutovať</span>
             </label>
             <input 
               type="text"
@@ -580,15 +578,15 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 setHypothesis(e.target.value);
                 setIsDirty(true);
               }}
-              placeholder="e.g. What if we raise rates by 25% while offering a 99.9% uptime SLA?"
+              placeholder="napr. Čo ak zvýšime ceny o 25% a zároveň ponúkneme 99.9% SLA dostupnosť?"
               required
               className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none text-sm text-slate-900 font-medium bg-white"
             />
             <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
               <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
               <span>
-                <strong className="text-slate-700 font-semibold">What it is for:</strong> The core strategic change, policy pivot, or pricing question being stress-tested.{' '}
-                <strong className="text-slate-700 font-semibold">How it is used:</strong> Acts as the central debate prompt injected into persona agents, driving autonomous opinion formation, sentiment shifts, and pushback metrics.
+                <strong className="text-slate-700 font-semibold">Na čo slúži:</strong> Kľúčová strategická zmena, zmena cenotvorby alebo smerovania, ktorá sa má otestovať.{' '}
+                <strong className="text-slate-700 font-semibold">Ako sa používa:</strong> Slúži ako ústredné zadanie pre agentov, riadi autonómnu tvorbu názorov, zmeny nálad a sledovanie námietok.
               </span>
             </div>
           </div>
@@ -596,8 +594,8 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
           {/* Seed Scenario Document */}
           <div className="space-y-1.5">
             <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center justify-between">
-              <span>Seed Scenario & Announcement Text <span className="text-rose-500">*</span></span>
-              <span className="text-[11px] text-slate-400 font-normal">Press release, internal memo, or pricing document</span>
+              <span>Vstupné zadanie & Text oznámenia <span className="text-rose-500">*</span></span>
+              <span className="text-[11px] text-slate-400 font-normal">Tlačová správa, interné memorandum alebo cenový dokument</span>
             </label>
             <textarea 
               rows={6}
@@ -606,15 +604,15 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 setSeedDocument(e.target.value);
                 setIsDirty(true);
               }}
-              placeholder="Paste the announcement text, draft release, or proposed pricing memo that agents will read and debate..."
+              placeholder="Vložte text oznámenia, návrh tlačovej správy alebo cenové memorandum, ktoré budú agenti čítať a analyzovať..."
               required
               className="w-full px-4 py-3.5 rounded-2xl border border-slate-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none text-sm text-slate-800 font-normal resize-y leading-relaxed bg-white"
             />
             <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
               <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
               <span>
-                <strong className="text-slate-700 font-semibold">What it is for:</strong> The full briefing text, draft press release, internal memo, or proposed contractual changes.{' '}
-                <strong className="text-slate-700 font-semibold">How it is used:</strong> Agents read this text word-for-word in Round 1, quoting specific terms, evaluating clauses against their persona goals, and crafting initial counter-arguments.
+                <strong className="text-slate-700 font-semibold">Na čo slúži:</strong> Kompletný text zadania, návrh oznámenia, interné memorandum alebo navrhované zmluvné podmienky.{' '}
+                <strong className="text-slate-700 font-semibold">Ako sa používa:</strong> Agenti čítajú tento text doslovne v 1. kole, citujú konkrétne podmienky, vyhodnocujú doložky podľa svojich záujmov a formulujú protiargumenty.
               </span>
             </div>
           </div>
@@ -627,7 +625,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               <div className="flex items-center gap-2">
                 <Database className="w-4 h-4 text-purple-600" />
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                  CRM Grounding Data Sources
+                  CRM podkladové zdroje dát
                 </h3>
                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-black tracking-wide border ${
                   selectedSources.length === allSourceOptions.length
@@ -637,12 +635,12 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                     : 'bg-amber-50 text-amber-700 border-amber-200'
                 }`}>
                   {selectedSources.length === allSourceOptions.length 
-                    ? `All ${allSourceOptions.length} Sources Active` 
-                    : `${selectedSources.length} of ${allSourceOptions.length} Active`}
+                    ? `Všetkých ${allSourceOptions.length} zdrojov aktívnych` 
+                    : `${selectedSources.length} z ${allSourceOptions.length} aktívnych`}
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 font-normal">
-                Choose which historical CRM repositories feed into the simulation's knowledge graph and agent memory. Turn irrelevant sources off to focus the simulation.
+                Vyberte, ktoré historické CRM dáta naplnia graf znalostí a pamäť agentov. Vypnite nepodstatné zdroje pre užšie zameranie simulácie.
               </p>
             </div>
 
@@ -654,7 +652,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-purple-50 hover:text-purple-700 text-slate-600 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
               >
                 <CheckSquare className="w-3.5 h-3.5 text-purple-600" />
-                <span>Select All</span>
+                <span>Vybrať všetko</span>
               </button>
               <button
                 type="button"
@@ -663,7 +661,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
               >
                 <Square className="w-3.5 h-3.5 text-slate-400" />
-                <span>Clear All</span>
+                <span>Zrušiť výber</span>
               </button>
             </div>
           </div>
@@ -724,7 +722,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                   <div className="pt-2.5 mt-2.5 border-t border-slate-100/80 flex items-center justify-between text-[10px]">
                     <span className="text-slate-400 font-medium">{src.category}</span>
                     <span className={`font-bold ${isChecked ? 'text-purple-600' : 'text-slate-400'}`}>
-                      {isChecked ? 'Included in Grounding' : 'Turned Off'}
+                      {isChecked ? 'Zahrnuté v simulácii' : 'Vypnuté'}
                     </span>
                   </div>
                 </div>
@@ -737,7 +735,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium flex items-center gap-2.5 animate-in fade-in">
               <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
               <span>
-                All CRM sources are currently turned off. The simulation will ground exclusively on your Seed Scenario text above without importing past client history or deal objections.
+                Všetky CRM zdroje sú momentálne vypnuté. Simulácia bude vychádzať výhradne z vyššie zadaného textu bez importu histórie klientov alebo obchodných námietok.
               </span>
             </div>
           )}
@@ -745,8 +743,8 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
           <div className="flex items-start gap-2 p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-[11px] text-slate-500 leading-relaxed">
             <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
             <span>
-              <strong className="text-slate-700 font-semibold">What it is for:</strong> Real-world CRM datasets selected to ground the simulated market in your company's actual commercial history.{' '}
-              <strong className="text-slate-700 font-semibold">How it is used:</strong> The context engine mines past deal objections, customer feedback, and rival platform mentions to dynamically calibrate agent persona biases and generate the stakeholder knowledge graph.
+              <strong className="text-slate-700 font-semibold">Na čo slúži:</strong> Reálne dáta z CRM vybrané na ukotvenie simulovaného trhu v skutočnej obchodnej histórii vašej spoločnosti.{' '}
+              <strong className="text-slate-700 font-semibold">Ako sa používa:</strong> Kontextový modul vyťaží minulé námietky z obchodov, spätnú väzbu zákazníkov a zmienky o konkurencii na dynamickú kalibráciu postojov agentov a zostavenie znalostného grafu.
             </span>
           </div>
         </div>
@@ -759,12 +757,12 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                 <Calendar className="w-4 h-4 text-indigo-600" />
-                CRM Lookback Horizon
+                Časový horizont CRM dát
               </label>
-              <span className="text-[11px] text-slate-400">Grounding window</span>
+              <span className="text-[11px] text-slate-400">Obdobie dát</span>
             </div>
             <p className="text-xs text-slate-500 font-normal">
-              Extracts leads, active accounts, and lost deal sales objections from past CRM history:
+              Extrahuje leady, aktívne účty a obchodné námietky z minulej histórie CRM:
             </p>
             <div className="grid grid-cols-3 gap-2.5 pt-1">
               {[6, 12, 24].map((months) => (
@@ -781,15 +779,15 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                       : 'bg-slate-50 text-slate-700 border border-slate-200 hover:bg-slate-100'
                   }`}
                 >
-                  {months} Mo {months === 12 && '⭐'}
+                  {months} mes. {months === 12 && '⭐'}
                 </button>
               ))}
             </div>
             <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
               <Info className="w-3.5 h-3.5 text-indigo-500/80 shrink-0 mt-0.5" />
               <span>
-                <strong className="text-slate-700 font-semibold">What it is for:</strong> Historical search timeframe for mining your CRM leads and client interactions.{' '}
-                <strong className="text-slate-700 font-semibold">How it is used:</strong> Shorter horizons (6 mo) reflect current competitive conditions; longer horizons (12–24 mo) extract deep patterns of customer objections and retainer loyalty.
+                <strong className="text-slate-700 font-semibold">Na čo slúži:</strong> Časové obdobie pre vyhľadávanie a analýzu vašich CRM leadov a interakcií s klientmi.{' '}
+                <strong className="text-slate-700 font-semibold">Ako sa používa:</strong> Kratšie horizonty (6 mes.) odrážajú aktuálne trhové podmienky; dlhšie horizonty (12–24 mes.) zachytávajú hlbšie vzorce zákazníckych námietok a lojalitu.
               </span>
             </div>
           </div>
@@ -799,18 +797,18 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                 <Users className="w-4 h-4 text-purple-600" />
-                Swarm Scale (Agents)
+                Veľkosť roju (Agenti)
               </label>
-              <span className="text-[11px] text-slate-400">Persona count</span>
+              <span className="text-[11px] text-slate-400">Počet persón</span>
             </div>
             <p className="text-xs text-slate-500 font-normal">
-              Number of autonomous buyer, client, and competitor personas synthesized:
+              Počet syntetizovaných autonómnych nákupcov, klientov a profilov konkurencie:
             </p>
             <div className="grid grid-cols-3 gap-2.5 pt-1">
               {[
-                { count: 15, label: '15 (Fast)' },
-                { count: 30, label: '30 (Std) ⭐' },
-                { count: 60, label: '60 (Deep)' }
+                { count: 15, label: '15 (Rýchly)' },
+                { count: 30, label: '30 (Štandard) ⭐' },
+                { count: 60, label: '60 (Hĺbkový)' }
               ].map(opt => (
                 <button
                   key={opt.count}
@@ -832,8 +830,8 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
               <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
               <span>
-                <strong className="text-slate-700 font-semibold">What it is for:</strong> The total population size of autonomous personas (buyers, champions, competitors, regulators).{' '}
-                <strong className="text-slate-700 font-semibold">How it is used:</strong> Determines network density and statistical breadth; higher scales reveal niche stakeholder pushbacks and emergent herd reactions across sub-communities.
+                <strong className="text-slate-700 font-semibold">Na čo slúži:</strong> Celkový počet autonómnych persón (nákupcovia, interní ambasádori, konkurenti, regulátori).{' '}
+                <strong className="text-slate-700 font-semibold">Ako sa používa:</strong> Určuje hustotu komunikačnej siete a štatistickú šírku; vyššie hodnoty odhaľujú špecifické námietky a reťazové reakcie v subkomunitách.
               </span>
             </div>
           </div>
@@ -843,12 +841,12 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                 <Clock className="w-4 h-4 text-emerald-600" />
-                Simulation Rounds ({totalRounds} rounds)
+                Simulačné kolá ({totalRounds} kôl)
               </label>
-              <span className="text-[11px] text-emerald-600 font-bold">~{Math.round(totalRounds * 3)}h debate time</span>
+              <span className="text-[11px] text-emerald-600 font-bold">~{Math.round(totalRounds * 3)} hod. diskusie</span>
             </div>
             <p className="text-xs text-slate-500 font-normal">
-              Controls temporal evolution depth and narrative convergence:
+              Riadi hĺbku časového vývoja a konvergenciu diskusie:
             </p>
             <div className="pt-2">
               <input 
@@ -864,16 +862,16 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 className="w-full accent-emerald-600 cursor-pointer h-2 bg-slate-100 rounded-lg"
               />
               <div className="flex justify-between text-[10px] text-slate-400 font-bold mt-2">
-                <span>5 (Quick Probe)</span>
-                <span>8 (Balanced) ⭐</span>
-                <span>20 (Full Narrative)</span>
+                <span>5 (Rýchla sonda)</span>
+                <span>8 (Vyvážené) ⭐</span>
+                <span>20 (Kompletný naratív)</span>
               </div>
             </div>
             <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
               <Info className="w-3.5 h-3.5 text-emerald-500/80 shrink-0 mt-0.5" />
               <span>
-                <strong className="text-slate-700 font-semibold">What it is for:</strong> The number of iterative debate cycles and narrative waves executed.{' '}
-                <strong className="text-slate-700 font-semibold">How it is used:</strong> Each round simulates a wave of social dialogue where agents respond to peer posts, form consensus alliances, and show whether initial outrage normalizes or leads to permanent churn.
+                <strong className="text-slate-700 font-semibold">Na čo slúži:</strong> Počet iteračných kôl debaty a komunikačných vĺn, ktoré sa vykonajú.{' '}
+                <strong className="text-slate-700 font-semibold">Ako sa používa:</strong> Každé kolo simuluje vlnu príspevkov a reakcií, kde agenti reagujú na ostatných, vytvárajú spojenectvá a ukazujú, či počiatočná nevôľa ustúpi alebo prerastie do odchodu zákazníkov.
               </span>
             </div>
           </div>
@@ -883,9 +881,9 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                 <Bot className="w-4 h-4 text-slate-700" />
-                Intelligence Model
+                Kognitívny model
               </label>
-              <span className="text-[11px] text-purple-600 font-bold">Cognitive Engine</span>
+              <span className="text-[11px] text-purple-600 font-bold">Neurónový motor</span>
             </div>
             
             <select 
@@ -896,23 +894,21 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               }}
               className="w-full px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-900 outline-none focus:border-purple-500 focus:bg-white"
             >
-              <option value="gpt-5.6-luna">GPT-5.6 Luna (Cost-Optimized & High Speed) ⭐</option>
-              <option value="gpt-5.6-terra">GPT-5.6 Terra (Heavy Cognitive Reasoning & Deep Swarm)</option>
-              <option value="deepseek-chat">DeepSeek Chat (V3 Reasoning)</option>
-              <option value="gpt-4o-mini">GPT-4o Mini (Legacy Cost-Optimized)</option>
+              <option value="gpt-5.6-luna">GPT-5.6 Luna (Cenovo optimalizovaný & Vysoká rýchlosť) ⭐</option>
+              <option value="gpt-5.6-terra">GPT-5.6 Terra (Hĺbková kognitívna analýza & Komplexný roj)</option>
             </select>
             <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
               <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
               <span>
-                <strong className="text-slate-700 font-semibold">What it is for:</strong> Selects the LLM cognitive reasoning engine powering each autonomous persona.{' '}
-                <strong className="text-slate-700 font-semibold">How it is used:</strong> GPT-5.6 Luna provides high-velocity, cost-optimized debates; GPT-5.6 Terra generates deep strategic nuance, counter-moves, and complex stakeholder reasoning.
+                <strong className="text-slate-700 font-semibold">Na čo slúži:</strong> Výber OpenAI neurónového modelu, ktorý poháňa každú autonómnu persónu.{' '}
+                <strong className="text-slate-700 font-semibold">Ako sa používa:</strong> Využívame výhradne podporované OpenAI modely. GPT-5.6 Luna nahradil starší 4o a poskytuje bleskovú, cenovo optimalizovanú debatu; GPT-5.6 Terra generuje hlboké strategické nuansy, protiťahy a komplexné uvažovanie účastníkov trhu.
               </span>
             </div>
 
             <div className="flex items-center justify-between pt-3 border-t border-slate-100">
               <div>
-                <span className="text-xs text-slate-700 font-bold block">Diurnal Sleep Cycle</span>
-                <span className="text-[11px] text-slate-400 font-normal">Agents rest across simulated nights</span>
+                <span className="text-xs text-slate-700 font-bold block">Cirkadiánny cyklus spánku</span>
+                <span className="text-[11px] text-slate-400 font-normal">Agenti oddychujú počas simulovanej noci</span>
               </div>
               <input 
                 type="checkbox"
@@ -927,8 +923,8 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
               <Info className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
               <span>
-                <strong className="text-slate-700 font-semibold">What it is for:</strong> Simulates natural circadian night-and-day pauses between active rounds.{' '}
-                <strong className="text-slate-700 font-semibold">How it is used:</strong> Cools off reactionary anger overnight and decays transient emotional spikes, allowing more reasoned long-term perspectives to emerge the next day.
+                <strong className="text-slate-700 font-semibold">Na čo slúži:</strong> Simuluje prirodzenú nočnú a dennú pauzu medzi aktívnymi kolami.{' '}
+                <strong className="text-slate-700 font-semibold">Ako sa používa:</strong> Cez noc dochádza k upokojeniu unáhlených emócií a reakcií, vďaka čomu sa na druhý deň prejavia uváženejšie dlhodobé postoje.
               </span>
             </div>
           </div>
@@ -943,7 +939,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               onClick={onBack}
               className="px-5 py-2.5 rounded-2xl border border-slate-200 hover:bg-slate-50 text-slate-600 font-bold text-xs transition cursor-pointer"
             >
-              Cancel
+              Zrušiť
             </button>
             <button
               type="button"
@@ -952,7 +948,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               className="px-5 py-2.5 rounded-2xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold text-xs transition flex items-center gap-1.5 cursor-pointer"
             >
               <Bookmark className="w-3.5 h-3.5 text-purple-600" />
-              <span>{isSavingDraft ? 'Saving Draft...' : 'Save as Draft'}</span>
+              <span>{isSavingDraft ? 'Ukladám koncept...' : 'Uložiť ako koncept'}</span>
             </button>
           </div>
 
@@ -961,7 +957,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             <div
               onClick={() => setShowEstimatorModal(true)}
               className="group flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-slate-50/95 hover:bg-purple-50/60 border border-slate-200/90 hover:border-purple-300 transition-all duration-200 shadow-xs cursor-pointer select-none"
-              title={`Click to preview full token breakdown (~${estimatedTokens.toLocaleString()} tokens, ~${estimatedCalls} API calls across ${swarmScale} agents and ${totalRounds} rounds with ${MODEL_PRICING[llmModel]?.label || llmModel})`}
+              title={`Kliknite pre zobrazenie rozpisu tokenov (~${estimatedTokens.toLocaleString()} tokenov, ~${estimatedCalls} API volaní cez ${swarmScale} agentov a ${totalRounds} kôl s modelom ${MODEL_PRICING[llmModel]?.label || llmModel})`}
               role="button"
               tabIndex={0}
             >
@@ -971,11 +967,11 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               <div className="flex flex-col text-left">
                 <div className="flex items-center gap-1.5 leading-none">
                   <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">
-                    Est. Cost
+                    Odhad ceny
                   </span>
                   {isDemoMode ? (
                     <span className="px-1.5 py-0.5 text-[9px] font-black bg-emerald-100 text-emerald-800 rounded uppercase tracking-wider">
-                      Demo Free
+                      Demo zdarma
                     </span>
                   ) : (
                     <span className="text-[10px] font-bold text-purple-600">
@@ -985,10 +981,10 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 </div>
                 <div className="flex items-baseline gap-1.5 mt-1">
                   <span className="text-sm sm:text-base font-black text-slate-900 tracking-tight leading-none group-hover:text-purple-700 transition-colors">
-                    {isDemoMode ? '€0.000' : `~€${estimatedCost.toFixed(3)}`}
+                    {isDemoMode ? '0.000 €' : `~${estimatedCost.toFixed(3)} €`}
                   </span>
                   <span className="text-[11px] text-slate-400 font-semibold leading-none">
-                    ~{(estimatedTokens / 1000).toFixed(0)}k tkns
+                    ~{(estimatedTokens / 1000).toFixed(0)}k tkn
                   </span>
                 </div>
               </div>
@@ -999,7 +995,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               disabled={isSubmitting}
               className="px-7 py-3 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 hover:from-purple-700 hover:to-emerald-600 text-white font-extrabold text-xs shadow-md hover:shadow-lg transition flex items-center gap-2 cursor-pointer disabled:opacity-60 shrink-0"
             >
-              <span>Proceed to Token Estimation & Launch</span>
+              <span>Prejsť na odhad tokenov & Spustiť</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>

@@ -40,7 +40,7 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
   const [analystMessages, setAnalystMessages] = useState<{ sender: 'user' | 'assistant'; text: string }[]>([
     {
       sender: 'assistant',
-      text: "Hello! I am your Chief Intelligence Analyst. I observed the entire market simulation and can answer any questions regarding agent reactions, primary objections, and competitive strategies."
+      text: "Dobrý deň! Som váš hlavný spravodajský analytik. Sledoval som celý priebeh trhovej simulácie a rád vám zodpoviem akékoľvek otázky týkajúce sa reakcií agentov, hlavných námietok a odporúčaných stratégií."
     }
   ]);
   const [agentMessages, setAgentMessages] = useState<{ sender: 'user' | 'assistant'; text: string }[]>([]);
@@ -80,7 +80,7 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
           setAnalystMessages([...newHistory, { sender: 'assistant', text: response }]);
         }
       } catch (err) {
-        setAnalystMessages([...newHistory, { sender: 'assistant', text: `Error: ${(err as Error).message}` }]);
+        setAnalystMessages([...newHistory, { sender: 'assistant', text: `Chyba: ${(err as Error).message}` }]);
       } finally {
         setIsLoading(false);
       }
@@ -106,7 +106,7 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
           setAgentMessages([...newHistory, { sender: 'assistant', text: response }]);
         }
       } catch (err) {
-        setAgentMessages([...newHistory, { sender: 'assistant', text: `Error: ${(err as Error).message}` }]);
+        setAgentMessages([...newHistory, { sender: 'assistant', text: `Chyba: ${(err as Error).message}` }]);
       } finally {
         setIsLoading(false);
       }
@@ -122,7 +122,7 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
       setAnalystMessages([
         {
           sender: 'assistant',
-          text: "Hello! I am your Chief Intelligence Analyst. I observed the entire market simulation and can answer any questions regarding agent reactions, primary objections, and competitive strategies."
+          text: "Dobrý deň! Som váš hlavný spravodajský analytik. Sledoval som celý priebeh trhovej simulácie a rád vám zodpoviem akékoľvek otázky týkajúce sa reakcií agentov, hlavných námietok a odporúčaných stratégií."
         }
       ]);
     } else {
@@ -144,15 +144,15 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
             <Bot className="w-4 h-4" />
           </div>
           <div className="min-w-0">
-            <h3 className="text-sm font-bold text-slate-900 truncate">Simulation Interrogation Hub</h3>
-            <p className="text-[11px] text-slate-500 truncate">Cross-examine analyst findings & agent motives</p>
+            <h3 className="text-sm font-bold text-slate-900 truncate">Interrogačný hub simulácie</h3>
+            <p className="text-[11px] text-slate-500 truncate">Krížový výsluch zistení analytika & motívov agentov</p>
           </div>
         </div>
         <div className="flex items-center gap-1 shrink-0 ml-2">
           <button
             type="button"
             onClick={handleResetChat}
-            title="Reset conversation"
+            title="Resetovať konverzáciu"
             className="p-1.5 rounded-xl hover:bg-slate-200/60 text-slate-400 hover:text-slate-700 transition cursor-pointer"
           >
             <RotateCcw className="w-4 h-4" />
@@ -179,7 +179,7 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
               : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
-          Ask Chief Analyst
+          Spýtať sa hlavného analytika
         </button>
         <button
           onClick={() => setActiveTab('agent')}
@@ -189,7 +189,7 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
               : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
-          Interview Agent (1-on-1)
+          Výsluch agenta (1 na 1)
         </button>
       </div>
 
@@ -243,13 +243,13 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
         {activeTab === 'analyst' && analystMessages.length <= 1 && (
           <div className="pt-2 space-y-2">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-              Suggested Questions:
+              Odporúčané otázky:
             </span>
             <div className="space-y-1.5">
               {[
-                "What were the primary objections raised by agents?",
-                "How did competitors retaliate in the simulation?",
-                "What strategy should we prioritize to achieve the goal?"
+                "Aké boli hlavné námietky vznesené agentmi?",
+                "Ako v simulácii reagovala konkurencia?",
+                "Akú stratégiu by sme mali prioritizovať na dosiahnutie cieľa?"
               ].map((prompt, pIdx) => (
                 <button
                   key={pIdx}
@@ -269,16 +269,16 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
         {activeTab === 'agent' && agentMessages.length === 0 && selectedAgent && (
           <div className="p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-200/70 text-xs space-y-2">
             <div className="font-bold text-emerald-800 flex items-center gap-1.5">
-              <span>Interviewing {selectedAgent.displayName} (@{selectedAgent.username})</span>
+              <span>Výsluch agenta: {selectedAgent.displayName} (@{selectedAgent.username})</span>
             </div>
             <p className="text-emerald-700 text-[11px] leading-relaxed">
-              Ask this {selectedAgent.profession} directly why they took an <strong>{selectedAgent.stance}</strong> stance, or what would convince them.
+              Opýtajte sa priamo tohto špecialistu ({selectedAgent.profession}), prečo zaujal postoj <strong>{selectedAgent.stance}</strong>, alebo čo by ho presvedčilo zmeniť názor.
             </p>
             <div className="flex flex-wrap gap-1.5 pt-1">
               {[
-                "Why did you object to this offer?",
-                "What concession would make you convert?",
-                "How does this compare to current tools?"
+                "Prečo ste mali námietky voči tejto ponuke?",
+                "Aký ústupok by vás presvedčil k nákupu?",
+                "Ako to porovnávate so súčasnými nástrojmi?"
               ].map((q, qIdx) => (
                 <button
                   key={qIdx}
@@ -296,7 +296,7 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
         {isLoading && (
           <div className="flex items-center gap-2 text-slate-400 text-xs italic pl-9">
             <Sparkles className="w-3.5 h-3.5 animate-spin text-indigo-500" />
-            <span>Thinking...</span>
+            <span>Premýšľam...</span>
           </div>
         )}
 
@@ -313,8 +313,8 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
           onKeyDown={e => e.key === 'Enter' && handleSend()}
           placeholder={
             activeTab === 'analyst' 
-              ? 'Ask why an objection arose, next steps...' 
-              : `Ask ${selectedAgent?.displayName || 'agent'} why they took that stance...`
+              ? 'Opýtajte sa, prečo vznikla námietka, aké sú ďalšie kroky...' 
+              : `Opýtajte sa agenta ${selectedAgent?.displayName || ''}, prečo zaujal daný postoj...`
           }
           className="flex-1 px-3 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white font-sans"
         />
