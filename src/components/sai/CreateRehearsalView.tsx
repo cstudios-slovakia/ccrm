@@ -19,7 +19,8 @@ import {
   MessageSquare,
   Mail,
   CheckSquare,
-  Square
+  Square,
+  Info
 } from 'lucide-react';
 import type { SimulationParameters } from '../../utils/swarm/types';
 import { PreflightEstimatorModal } from './PreflightEstimatorModal';
@@ -455,6 +456,13 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               required
               className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none text-sm text-slate-900 font-semibold bg-white"
             />
+            <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
+              <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
+              <span>
+                <strong className="text-slate-700 font-semibold">What it is for:</strong> The primary executive name and identifier for this market simulation.{' '}
+                <strong className="text-slate-700 font-semibold">How it is used:</strong> Displayed across rehearsal dashboards, checkpoint saves, war room live telemetry, and exported executive reports.
+              </span>
+            </div>
           </div>
 
           {/* Hypothesis */}
@@ -474,6 +482,13 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               required
               className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none text-sm text-slate-900 font-medium bg-white"
             />
+            <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
+              <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
+              <span>
+                <strong className="text-slate-700 font-semibold">What it is for:</strong> The core strategic change, policy pivot, or pricing question being stress-tested.{' '}
+                <strong className="text-slate-700 font-semibold">How it is used:</strong> Acts as the central debate prompt injected into persona agents, driving autonomous opinion formation, sentiment shifts, and pushback metrics.
+              </span>
+            </div>
           </div>
 
           {/* Seed Scenario Document */}
@@ -493,6 +508,13 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               required
               className="w-full px-4 py-3.5 rounded-2xl border border-slate-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none text-sm text-slate-800 font-normal resize-y leading-relaxed bg-white"
             />
+            <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
+              <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
+              <span>
+                <strong className="text-slate-700 font-semibold">What it is for:</strong> The full briefing text, draft press release, internal memo, or proposed contractual changes.{' '}
+                <strong className="text-slate-700 font-semibold">How it is used:</strong> Agents read this text word-for-word in Round 1, quoting specific terms, evaluating clauses against their persona goals, and crafting initial counter-arguments.
+              </span>
+            </div>
           </div>
         </div>
 
@@ -617,6 +639,14 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               </span>
             </div>
           )}
+
+          <div className="flex items-start gap-2 p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-[11px] text-slate-500 leading-relaxed">
+            <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
+            <span>
+              <strong className="text-slate-700 font-semibold">What it is for:</strong> Real-world CRM datasets selected to ground the simulated market in your company's actual commercial history.{' '}
+              <strong className="text-slate-700 font-semibold">How it is used:</strong> The context engine mines past deal objections, customer feedback, and rival platform mentions to dynamically calibrate agent persona biases and generate the stakeholder knowledge graph.
+            </span>
+          </div>
         </div>
 
         {/* Simulation Parameters Grid */}
@@ -652,6 +682,13 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                   {months} Mo {months === 12 && '⭐'}
                 </button>
               ))}
+            </div>
+            <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
+              <Info className="w-3.5 h-3.5 text-indigo-500/80 shrink-0 mt-0.5" />
+              <span>
+                <strong className="text-slate-700 font-semibold">What it is for:</strong> Historical search timeframe for mining your CRM leads and client interactions.{' '}
+                <strong className="text-slate-700 font-semibold">How it is used:</strong> Shorter horizons (6 mo) reflect current competitive conditions; longer horizons (12–24 mo) extract deep patterns of customer objections and retainer loyalty.
+              </span>
             </div>
           </div>
 
@@ -690,6 +727,13 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 </button>
               ))}
             </div>
+            <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
+              <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
+              <span>
+                <strong className="text-slate-700 font-semibold">What it is for:</strong> The total population size of autonomous personas (buyers, champions, competitors, regulators).{' '}
+                <strong className="text-slate-700 font-semibold">How it is used:</strong> Determines network density and statistical breadth; higher scales reveal niche stakeholder pushbacks and emergent herd reactions across sub-communities.
+              </span>
+            </div>
           </div>
 
           {/* Simulation Rounds */}
@@ -723,6 +767,13 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 <span>20 (Full Narrative)</span>
               </div>
             </div>
+            <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
+              <Info className="w-3.5 h-3.5 text-emerald-500/80 shrink-0 mt-0.5" />
+              <span>
+                <strong className="text-slate-700 font-semibold">What it is for:</strong> The number of iterative debate cycles and narrative waves executed.{' '}
+                <strong className="text-slate-700 font-semibold">How it is used:</strong> Each round simulates a wave of social dialogue where agents respond to peer posts, form consensus alliances, and show whether initial outrage normalizes or leads to permanent churn.
+              </span>
+            </div>
           </div>
 
           {/* Intelligence Model & Diurnal Cycle */}
@@ -748,8 +799,15 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               <option value="deepseek-chat">DeepSeek Chat (V3 Reasoning)</option>
               <option value="gpt-4o-mini">GPT-4o Mini (Legacy Cost-Optimized)</option>
             </select>
+            <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
+              <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
+              <span>
+                <strong className="text-slate-700 font-semibold">What it is for:</strong> Selects the LLM cognitive reasoning engine powering each autonomous persona.{' '}
+                <strong className="text-slate-700 font-semibold">How it is used:</strong> GPT-5.6 Luna provides high-velocity, cost-optimized debates; GPT-5.6 Terra generates deep strategic nuance, counter-moves, and complex stakeholder reasoning.
+              </span>
+            </div>
 
-            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+            <div className="flex items-center justify-between pt-3 border-t border-slate-100">
               <div>
                 <span className="text-xs text-slate-700 font-bold block">Diurnal Sleep Cycle</span>
                 <span className="text-[11px] text-slate-400 font-normal">Agents rest across simulated nights</span>
@@ -763,6 +821,13 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 }}
                 className="w-4 h-4 rounded text-purple-600 accent-purple-600 cursor-pointer"
               />
+            </div>
+            <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
+              <Info className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+              <span>
+                <strong className="text-slate-700 font-semibold">What it is for:</strong> Simulates natural circadian night-and-day pauses between active rounds.{' '}
+                <strong className="text-slate-700 font-semibold">How it is used:</strong> Cools off reactionary anger overnight and decays transient emotional spikes, allowing more reasoned long-term perspectives to emerge the next day.
+              </span>
             </div>
           </div>
 
