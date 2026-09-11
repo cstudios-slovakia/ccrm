@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   ArrowRight, 
   Calendar, 
@@ -22,11 +22,19 @@ import {
   Square,
   Info,
   FolderOpen,
-  Coins
+  Coins,
+  UploadCloud,
+  FileCode,
+  Trash2,
+  Paperclip,
+  Eye,
+  Loader2,
+  X
 } from 'lucide-react';
-import type { SimulationParameters } from '../../utils/swarm/types';
+import type { SimulationParameters, SwarmContextDocument } from '../../utils/swarm/types';
 import { PreflightEstimatorModal } from './PreflightEstimatorModal';
 import { initServerSimulation } from '../../utils/swarm/checkpointClient';
+import { formatBytes } from '../../utils/formatBytes';
 
 export interface DraftData {
   id?: string;
@@ -39,6 +47,7 @@ export interface DraftData {
   model_name?: string;
   diurnal_cycle?: boolean;
   crm_data_sources?: string[];
+  context_documents?: SwarmContextDocument[];
   status?: string;
 }
 
@@ -264,6 +273,15 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
   const [llmModel, setLlmModel] = useState<string>(initialData?.model_name || 'gpt-5.6-luna');
   const [diurnalCycle, setDiurnalCycle] = useState<boolean>(initialData?.diurnal_cycle ?? true);
 
+  // Context Documents (PDF / Markdown / Text)
+  const [contextDocuments, setContextDocuments] = useState<SwarmContextDocument[]>(initialData?.context_documents || []);
+  const [isUploadingDoc, setIsUploadingDoc] = useState<boolean>(false);
+  const [uploadDocProgress, setUploadDocProgress] = useState<string | null>(null);
+  const [isDraggingDoc, setIsDraggingDoc] = useState<boolean>(false);
+  const [previewDoc, setPreviewDoc] = useState<SwarmContextDocument | null>(null);
+  const [docUploadError, setDocUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // Draft saving indicator & feedback
   const [isSavingDraft, setIsSavingDraft] = useState<boolean>(false);
   const [lastSavedTimestamp, setLastSavedTimestamp] = useState<string | null>(null);
@@ -280,7 +298,12 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
     const turnsPerSim = Math.round(swarmScale * totalRounds * (diurnalCycle ? 0.7 : 1.0));
     const simulationTokens = turnsPerSim * 450;
     const reportTokens = 8000;
-    const totalTokens = ontologyTokens + profileTokens + simulationTokens + reportTokens;
+    // Attached document tokens: approx 1 token per 4 characters
+    const attachedDocTokens = contextDocuments.reduce((acc, doc) => {
+      const textLen = (doc.content || '').length;
+      return acc + Math.ceil(textLen / 4);
+    }, 0);
+    const totalTokens = ontologyTokens + profileTokens + simulationTokens + reportTokens + attachedDocTokens;
     const totalCalls = turnsPerSim + swarmScale + 6;
     const rate = MODEL_PRICING[llmModel]?.ratePerM ?? 0.25;
     const cost = (totalTokens / 1_000_000) * rate;
@@ -290,7 +313,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
       estimatedCalls: totalCalls,
       estimatedCost: cost,
     };
-  }, [swarmScale, totalRounds, diurnalCycle, llmModel]);
+  }, [swarmScale, totalRounds, diurnalCycle, llmModel, contextDocuments]);
 
   // Re-sync if initialData changes
   useEffect(() => {
@@ -307,9 +330,95 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
       if (initialData.total_rounds) setTotalRounds(initialData.total_rounds);
       if (initialData.model_name) setLlmModel(initialData.model_name);
       if (initialData.diurnal_cycle !== undefined) setDiurnalCycle(initialData.diurnal_cycle);
+      if (initialData.context_documents && Array.isArray(initialData.context_documents)) {
+        setContextDocuments(initialData.context_documents);
+      }
       setIsDirty(false);
     }
   }, [initialData]);
+
+  // Document Upload Handlers
+  const processUploadedFiles = async (files: FileList | File[]) => {
+    if (!files || files.length === 0) return;
+    setIsUploadingDoc(true);
+    setDocUploadError(null);
+
+    const validExtensions = ['pdf', 'md', 'markdown', 'txt'];
+    const addedDocs: SwarmContextDocument[] = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const ext = file.name.split('.').pop()?.toLowerCase() || '';
+
+      if (!validExtensions.includes(ext)) {
+        setDocUploadError(`Nepodporovaný formát súboru "${file.name}". Podporované sú len .pdf, .md, .markdown a .txt.`);
+        continue;
+      }
+
+      setUploadDocProgress(`Spracovávam ${file.name} (${i + 1}/${files.length})...`);
+
+      try {
+        let clientExtractedText = '';
+        // If markdown or text, read client-side immediately as UTF-8
+        if (ext === 'md' || ext === 'markdown' || ext === 'txt') {
+          clientExtractedText = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve((e.target?.result as string) || '');
+            reader.onerror = () => resolve('');
+            reader.readAsText(file);
+          });
+        }
+
+        // Upload to /upload.php to persist and extract server-side text
+        const formData = new FormData();
+        const eventId = 'swarm_doc_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+        formData.append('file', file);
+        formData.append('eventId', eventId);
+
+        const res = await fetch('/upload.php', {
+          method: 'POST',
+          body: formData
+        });
+
+        const data = await res.json();
+        if (data.success) {
+          const finalExtractedText = clientExtractedText || data.extractedText || '';
+          const docType: 'pdf' | 'markdown' | 'text' = 
+            ext === 'pdf' ? 'pdf' : (ext === 'md' || ext === 'markdown') ? 'markdown' : 'text';
+
+          const newDoc: SwarmContextDocument = {
+            id: 'doc_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+            name: data.fileName || file.name,
+            size: file.size,
+            type: docType,
+            filePath: data.filePath || '',
+            content: finalExtractedText,
+            extractedChars: finalExtractedText.length,
+            uploadedAt: new Date().toISOString()
+          };
+
+          addedDocs.push(newDoc);
+        } else {
+          setDocUploadError(`Chyba pri nahrávaní súboru ${file.name}: ${data.error || 'Neznáma chyba'}`);
+        }
+      } catch (err: any) {
+        console.error('Error uploading swarm doc:', err);
+        setDocUploadError(`Nepodarilo sa nahrať súbor ${file.name}: ${err?.message || 'Sieťová chyba'}`);
+      }
+    }
+
+    if (addedDocs.length > 0) {
+      setContextDocuments(prev => [...prev, ...addedDocs]);
+      setIsDirty(true);
+    }
+    setIsUploadingDoc(false);
+    setUploadDocProgress(null);
+  };
+
+  const handleRemoveDoc = (docId: string) => {
+    setContextDocuments(prev => prev.filter(d => d.id !== docId));
+    setIsDirty(true);
+  };
 
   const handleApplyPreset = (preset: typeof PRESET_TEMPLATES[0]) => {
     setTitle(preset.title);
@@ -353,6 +462,9 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
         crm_data_sources: selectedSources,
         swarm_scale: swarmScale,
         total_rounds: totalRounds,
+        model_name: llmModel,
+        diurnal_cycle: diurnalCycle,
+        context_documents: contextDocuments,
         status: 'draft' as const
       };
 
@@ -410,7 +522,8 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
       totalRounds,
       platforms: 'dual',
       diurnalCycle,
-      llmModel
+      llmModel,
+      contextDocuments
     }, draftId);
   };
 
@@ -613,6 +726,205 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               <span>
                 <strong className="text-slate-700 font-semibold">Na čo slúži:</strong> Kompletný text zadania, návrh oznámenia, interné memorandum alebo navrhované zmluvné podmienky.{' '}
                 <strong className="text-slate-700 font-semibold">Ako sa používa:</strong> Agenti čítajú tento text doslovne v 1. kole, citujú konkrétne podmienky, vyhodnocujú doložky podľa svojich záujmov a formulujú protiargumenty.
+              </span>
+            </div>
+          </div>
+
+          {/* Context Documents Upload (PDF & Markdown) */}
+          <div className="space-y-3 pt-2 border-t border-slate-100">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
+                <Paperclip className="w-3.5 h-3.5 text-purple-600" />
+                <span>Doplnková dokumentácia pre roj (PDF & Markdown)</span>
+                {contextDocuments.length > 0 && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-50 text-purple-700 border border-purple-200">
+                    {contextDocuments.length} {contextDocuments.length === 1 ? 'súbor' : contextDocuments.length < 5 ? 'súbory' : 'súborov'}
+                  </span>
+                )}
+              </label>
+              <span className="text-[11px] text-slate-400 font-normal">
+                Podporované formáty: <strong className="text-slate-600 font-semibold">.pdf</strong>, <strong className="text-slate-600 font-semibold">.md</strong>, <strong className="text-slate-600 font-semibold">.txt</strong>
+              </span>
+            </div>
+
+            {/* Drag & Drop Upload Zone */}
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsDraggingDoc(true);
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+                setIsDraggingDoc(false);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                setIsDraggingDoc(false);
+                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                  processUploadedFiles(e.dataTransfer.files);
+                }
+              }}
+              onClick={() => fileInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-2xl p-4 sm:p-5 transition-all text-center cursor-pointer flex flex-col items-center justify-center gap-2 ${
+                isDraggingDoc
+                  ? 'border-purple-500 bg-purple-50/80 ring-4 ring-purple-100'
+                  : 'border-slate-200 hover:border-purple-300 hover:bg-slate-50/60 bg-slate-50/30'
+              }`}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept=".pdf,.md,.markdown,.txt,application/pdf,text/markdown,text/plain"
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files.length > 0) {
+                    processUploadedFiles(e.target.files);
+                    e.target.value = '';
+                  }
+                }}
+              />
+
+              <div className="w-10 h-10 rounded-2xl bg-purple-100/80 text-purple-600 flex items-center justify-center shadow-xs">
+                {isUploadingDoc ? (
+                  <Loader2 className="w-5 h-5 animate-spin text-purple-600" />
+                ) : (
+                  <UploadCloud className="w-5 h-5" />
+                )}
+              </div>
+
+              <div>
+                <p className="text-xs font-bold text-slate-800">
+                  {isUploadingDoc
+                    ? uploadDocProgress || 'Nahrávam a analyzujem súbory...'
+                    : 'Kliknite pre nahratie dokumentov alebo ich presuňte sem'}
+                </p>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Zmluvy, cenové smernice, technické špecifikácie, odpovede na námietky alebo poznámky k produktu
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-center gap-1.5 pt-1">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                  <FileText className="w-3 h-3" /> PDF (extrakcia textu)
+                </span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                  <FileCode className="w-3 h-3" /> MARKDOWN (.md)
+                </span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                  TEXT (.txt)
+                </span>
+              </div>
+            </div>
+
+            {/* Error banner if upload failed */}
+            {docUploadError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                  <span>{docUploadError}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDocUploadError(null)}
+                  className="p-1 hover:bg-rose-100 rounded-lg text-rose-500 transition"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            {/* Uploaded Documents List */}
+            {contextDocuments.length > 0 && (
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-between text-[11px] text-slate-500 font-semibold px-1">
+                  <span>Priložené dokumenty pripravené na simuláciu ({contextDocuments.length}):</span>
+                  <span>
+                    Spolu ~{contextDocuments.reduce((acc, d) => acc + Math.ceil((d.content?.length || 0) / 4), 0).toLocaleString()} tokenov kontextu
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {contextDocuments.map((doc) => {
+                    const isPdf = doc.type === 'pdf';
+                    const isMd = doc.type === 'markdown';
+                    const approxTokens = Math.ceil((doc.content?.length || 0) / 4);
+
+                    return (
+                      <div
+                        key={doc.id}
+                        className="p-3 rounded-2xl bg-white border border-slate-200/90 hover:border-purple-200 transition shadow-xs flex items-start justify-between gap-3 group"
+                      >
+                        <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                          <div
+                            className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
+                              isPdf
+                                ? 'bg-rose-50 text-rose-600 border border-rose-200'
+                                : isMd
+                                ? 'bg-purple-50 text-purple-600 border border-purple-200'
+                                : 'bg-slate-100 text-slate-600 border border-slate-200'
+                            }`}
+                          >
+                            {isPdf ? (
+                              <FileText className="w-4 h-4" />
+                            ) : isMd ? (
+                              <FileCode className="w-4 h-4" />
+                            ) : (
+                              <Paperclip className="w-4 h-4" />
+                            )}
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-bold text-slate-800 truncate" title={doc.name}>
+                              {doc.name}
+                            </p>
+                            <div className="flex flex-wrap items-center gap-2 mt-0.5 text-[10px] text-slate-500">
+                              <span>{formatBytes(doc.size)}</span>
+                              <span>•</span>
+                              {doc.extractedChars && doc.extractedChars > 0 ? (
+                                <span className="text-emerald-700 font-medium">
+                                  {doc.extractedChars.toLocaleString()} znakov (~{approxTokens} tkn)
+                                </span>
+                              ) : (
+                                <span className="text-amber-600 font-medium">
+                                  Nenašiel sa text
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          {doc.content && doc.content.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setPreviewDoc(doc)}
+                              title="Zobraziť extrahovaný text"
+                              className="p-1.5 rounded-lg hover:bg-purple-50 text-slate-400 hover:text-purple-600 transition cursor-pointer"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveDoc(doc.id)}
+                            title="Odstrániť dokument"
+                            className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
+              <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
+              <span>
+                <strong className="text-slate-700 font-semibold">Ako to funguje:</strong> Z priložených PDF a Markdown súborov sa automaticky vyextrahuje čistý text. Tento text je zahrnutý do tvorby ontologického grafu simulačného sveta a agenti v roji môžu citovať presné klauzuly, porovnávať parametre a formulovať cielené reakcie.
               </span>
             </div>
           </div>
@@ -1013,7 +1325,68 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
         totalRounds={totalRounds}
         modelName={llmModel}
         isDemoMode={isDemoMode}
+        contextDocuments={contextDocuments}
       />
+
+      {/* Extracted Document Text Preview Modal */}
+      {previewDoc && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-3">
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+                  previewDoc.type === 'pdf'
+                    ? 'bg-rose-50 text-rose-600 border border-rose-200'
+                    : previewDoc.type === 'markdown'
+                    ? 'bg-purple-50 text-purple-600 border border-purple-200'
+                    : 'bg-slate-100 text-slate-600 border border-slate-200'
+                }`}>
+                  {previewDoc.type === 'pdf' ? (
+                    <FileText className="w-4 h-4" />
+                  ) : previewDoc.type === 'markdown' ? (
+                    <FileCode className="w-4 h-4" />
+                  ) : (
+                    <Paperclip className="w-4 h-4" />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-sm font-bold text-slate-900 truncate max-w-md">
+                    {previewDoc.name}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Extrahovaný text • {previewDoc.extractedChars?.toLocaleString() || 0} znakov (~{Math.ceil((previewDoc.content?.length || 0) / 4)} tokenov)
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewDoc(null)}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 overflow-y-auto flex-1 font-mono text-xs text-slate-700 whitespace-pre-wrap leading-relaxed bg-slate-50/40 select-text">
+              {previewDoc.content || 'Žiadny text sa z tohto súboru nepodarilo vyextrahovať.'}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-3 border-t border-slate-100 bg-white flex items-center justify-between text-xs text-slate-500">
+              <span>Tento text bude vložený do zadania pre agentov a ontologického grafu.</span>
+              <button
+                type="button"
+                onClick={() => setPreviewDoc(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition text-xs cursor-pointer"
+              >
+                Zavrieť
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

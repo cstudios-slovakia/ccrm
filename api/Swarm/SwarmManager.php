@@ -73,6 +73,9 @@ class SwarmManager {
         if (!empty($data['crm_data_sources']) && is_array($data['crm_data_sources'])) {
             $checkpointData['crm_data_sources'] = $data['crm_data_sources'];
         }
+        if (!empty($data['context_documents']) && is_array($data['context_documents'])) {
+            $checkpointData['context_documents'] = $data['context_documents'];
+        }
         $checkpointJson = !empty($checkpointData) ? json_encode($checkpointData) : null;
 
         // 1. Create Sharded Dynamic Tables for this specific simulation
@@ -235,6 +238,7 @@ class SwarmManager {
             'seed_document' => $row['seed_document'] ?? '',
             'lookback_months' => (int)$row['lookback_months'],
             'crm_data_sources' => $state['crm_data_sources'] ?? null,
+            'context_documents' => $state['context_documents'] ?? null,
             'swarm_scale' => (int)$row['swarm_scale'],
             'total_rounds' => (int)$row['total_rounds'],
             'current_round' => (int)$row['current_round'],

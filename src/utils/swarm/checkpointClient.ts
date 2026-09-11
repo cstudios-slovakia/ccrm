@@ -3,7 +3,7 @@
  * Synchronizes round snapshots to PHP MySQL persistence for crash-proof resume.
  */
 
-import type { SimulationCheckpoint, SwarmPost } from './types';
+import type { SimulationCheckpoint, SwarmPost, SwarmContextDocument } from './types';
 
 export async function initServerSimulation(data: {
   id?: string;
@@ -14,6 +14,9 @@ export async function initServerSimulation(data: {
   crm_data_sources?: string[];
   swarm_scale: number;
   total_rounds: number;
+  model_name?: string;
+  diurnal_cycle?: boolean;
+  context_documents?: SwarmContextDocument[];
   status?: 'draft' | 'prepared' | 'running';
 }): Promise<{ success: boolean; id: string; table_prefix: string; status: string; title: string }> {
   const response = await fetch('api/swarm.php?action=create_simulation', {

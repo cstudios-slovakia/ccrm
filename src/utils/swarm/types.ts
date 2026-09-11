@@ -70,6 +70,17 @@ export interface SwarmRoundMetrics {
   viralIndex: number;
 }
 
+export interface SwarmContextDocument {
+  id: string;
+  name: string;
+  size: number;
+  type: 'pdf' | 'markdown' | 'text';
+  filePath?: string;
+  content: string;
+  extractedChars: number;
+  uploadedAt: string;
+}
+
 export interface SimulationParameters {
   id?: string;
   title: string;
@@ -77,6 +88,7 @@ export interface SimulationParameters {
   seedDocument: string;
   lookbackMonths: 6 | 12 | 24;
   crmDataSources?: string[];
+  contextDocuments?: SwarmContextDocument[];
   swarmScale: number; // 15, 30, 60
   totalRounds: number; // 5 to 30
   platforms: 'dual' | 'twitter' | 'reddit';

@@ -276,7 +276,8 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
       hypothesis: sim.hypothesis,
       seed_document: sim.seed_document || '',
       lookback_months: sim.lookback_months ? Number(sim.lookback_months) : 12,
-      crm_data_sources: Array.isArray(sim.crm_data_sources) ? sim.crm_data_sources : undefined,
+      crm_data_sources: Array.isArray(sim.crm_data_sources) ? sim.crm_data_sources : (sim.checkpoint?.crm_data_sources || undefined),
+      context_documents: Array.isArray(sim.context_documents) ? sim.context_documents : (sim.checkpoint?.context_documents || undefined),
       swarm_scale: sim.swarm_scale ? Number(sim.swarm_scale) : 30,
       total_rounds: sim.total_rounds ? Number(sim.total_rounds) : 8,
       status: 'draft'
@@ -366,6 +367,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
         seed_document: config.seedDocument,
         lookback_months: config.lookbackMonths,
         crm_data_sources: config.crmDataSources,
+        context_documents: config.contextDocuments,
         swarm_scale: config.swarmScale,
         total_rounds: config.totalRounds,
         status: 'prepared'
@@ -384,10 +386,13 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
 
       // Step 2: Extract CRM Context with Lookback Window & Selected Sources
       const activeSrcCount = config.crmDataSources ? config.crmDataSources.length : 6;
+      const attachedDocsCount = config.contextDocuments ? config.contextDocuments.length : 0;
       setPrepStepMessage(
-        activeSrcCount > 0 
-          ? `Extracting selected CRM intelligence (${config.lookbackMonths}-month horizon, ${activeSrcCount}/6 sources active)...`
-          : 'Grounded exclusively on Seed Scenario announcement memo (all CRM sources turned off)...'
+        attachedDocsCount > 0 
+          ? `Extracting CRM intelligence (${config.lookbackMonths}-mo horizon, ${activeSrcCount} sources) & processing ${attachedDocsCount} attached document(s)...`
+          : activeSrcCount > 0
+            ? `Extracting selected CRM intelligence (${config.lookbackMonths}-month horizon, ${activeSrcCount}/6 sources active)...`
+            : 'Grounded exclusively on Seed Scenario announcement memo (all CRM sources turned off)...'
       );
       const crmContext = await fetchCrmContext(config.lookbackMonths, config.crmDataSources);
 
@@ -397,7 +402,8 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
         config.seedDocument,
         crmContext.formatted_context,
         config.hypothesis,
-        config.llmModel
+        config.llmModel,
+        config.contextDocuments
       );
       setGraph(generatedGraph);
 
@@ -446,7 +452,8 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
         graph: generatedGraph,
         agents: generatedAgents,
         posts: engineRef.current ? (engineRef.current as any).posts : [],
-        modelName: config.llmModel
+        modelName: config.llmModel,
+        contextDocuments: config.contextDocuments
       });
 
       setActiveReport(report);

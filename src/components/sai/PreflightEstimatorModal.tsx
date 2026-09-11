@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { ShieldAlert, Zap, X, ArrowRight, Coins } from 'lucide-react';
+import { ShieldAlert, Zap, X, ArrowRight, Coins, FileText } from 'lucide-react';
+import type { SwarmContextDocument } from '../../utils/swarm/types';
 
 interface PreflightEstimatorModalProps {
   isOpen: boolean;
@@ -10,6 +11,7 @@ interface PreflightEstimatorModalProps {
   totalRounds: number;
   modelName: string;
   isDemoMode?: boolean;
+  contextDocuments?: SwarmContextDocument[];
 }
 
 export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = ({
@@ -20,7 +22,8 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
   swarmScale,
   totalRounds,
   modelName: _modelName,
-  isDemoMode = false
+  isDemoMode = false,
+  contextDocuments = []
 }) => {
   const [acknowledged, setAcknowledged] = useState(isDemoMode);
 
@@ -32,8 +35,9 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
   const turnsPerSim = Math.round(swarmScale * totalRounds * 0.7); // 70% average activity due to diurnal cycle
   const simulationTokens = turnsPerSim * 450;
   const reportTokens = 8000;
+  const attachedDocTokens = contextDocuments.reduce((acc, d) => acc + Math.round((d.content?.length || 0) / 4), 0);
 
-  const totalTokens = ontologyTokens + profileTokens + simulationTokens + reportTokens;
+  const totalTokens = ontologyTokens + profileTokens + simulationTokens + reportTokens + attachedDocTokens;
   const totalCalls = turnsPerSim + swarmScale + 6; // sim turns + profiles + ontology & report
 
   // Pricing estimators per 1M tokens
@@ -77,6 +81,17 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
               <span className="text-[11px] text-slate-400 block mt-0.5">~{totalTokens.toLocaleString()} tokenov</span>
             </div>
           </div>
+
+          {/* Attached Context Documents Pill if any */}
+          {contextDocuments.length > 0 && (
+            <div className="flex items-center justify-between px-4 py-2.5 rounded-2xl bg-purple-50/70 border border-purple-200 text-xs">
+              <span className="flex items-center gap-2 text-purple-900 font-semibold">
+                <FileText className="w-4 h-4 text-purple-600" />
+                <span>Priložené dokumenty ({contextDocuments.length} súb.)</span>
+              </span>
+              <span className="font-bold text-purple-700">~{attachedDocTokens.toLocaleString()} tokenov</span>
+            </div>
+          )}
 
           {/* Pricing Comparison Cards */}
           <div className={`p-4 rounded-2xl border ${isDemoMode ? 'bg-emerald-50/70 border-emerald-200' : 'bg-purple-50/50 border-purple-100'}`}>

@@ -4,16 +4,17 @@
  */
 
 import { callLlmJson } from './llmProxyClient';
-import type { SwarmKnowledgeGraph } from './types';
+import type { SwarmKnowledgeGraph, SwarmContextDocument } from './types';
 
 export async function buildKnowledgeGraph(
   seedDocument: string,
   crmContextText: string,
   hypothesis: string,
-  modelName: string = 'gpt-5.6-luna'
+  modelName: string = 'gpt-5.6-luna',
+  contextDocuments?: SwarmContextDocument[]
 ): Promise<SwarmKnowledgeGraph> {
   const systemPrompt = `You are an expert Swarm Intelligence Knowledge Architect.
-Your task is to analyze a seed business scenario and recent CRM context to extract key stakeholder ENTITIES and RELATIONSHIP EDGES for an upcoming social media market rehearsal.
+Your task is to analyze a seed business scenario, attached specification/contract documents, and recent CRM context to extract key stakeholder ENTITIES and RELATIONSHIP EDGES for an upcoming social media market rehearsal.
 
 CRITICAL RULES:
 1. Every entity MUST be an active social participant capable of posting, reacting, or making buying decisions:
@@ -45,11 +46,17 @@ Output JSON strictly matching this schema:
   ]
 }`;
 
+  let docsSnippet = '';
+  if (contextDocuments && contextDocuments.length > 0) {
+    docsSnippet = '\n\nAttached Context Documents & Specifications (PDF / Markdown):\n' +
+      contextDocuments.map(d => `--- File: ${d.name} (${d.type.toUpperCase()}) ---\n${d.content.slice(0, 8000)}`).join('\n\n');
+  }
+
   const userPrompt = `Hypothesis / Prediction Goal:
 ${hypothesis}
 
 Seed Document / Product Context:
-${seedDocument.slice(0, 10000)}
+${seedDocument.slice(0, 10000)}${docsSnippet}
 
 Recent CRM Stakeholder Data:
 ${crmContextText.slice(0, 15000)}

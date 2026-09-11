@@ -178,7 +178,7 @@ function ccrm_text_is_readable($str) {
 function ccrm_extract_text_from_file($filePath, $fileName) {
     $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
     
-    if ($ext === 'txt') {
+    if ($ext === 'txt' || $ext === 'md' || $ext === 'markdown') {
         return @file_get_contents($filePath) ?: '';
     }
     

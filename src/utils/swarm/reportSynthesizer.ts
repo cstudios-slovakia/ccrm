@@ -5,7 +5,7 @@
  */
 
 import { callLlmJson } from './llmProxyClient';
-import type { SwarmPost, SwarmAgentProfile, SwarmKnowledgeGraph, StrategicReport } from './types';
+import type { SwarmPost, SwarmAgentProfile, SwarmKnowledgeGraph, StrategicReport, SwarmContextDocument } from './types';
 
 export async function generateStrategicReport(params: {
   title: string;
@@ -15,8 +15,9 @@ export async function generateStrategicReport(params: {
   agents: SwarmAgentProfile[];
   posts: SwarmPost[];
   modelName?: string;
+  contextDocuments?: SwarmContextDocument[];
 }): Promise<StrategicReport> {
-  const { title, hypothesis, seedDocument, graph: _graph, agents, posts, modelName } = params;
+  const { title, hypothesis, seedDocument, graph: _graph, agents, posts, modelName, contextDocuments } = params;
 
   // Filter top quoted or impactful posts
   const impactfulPosts = [...posts]
@@ -74,6 +75,12 @@ Output JSON strictly matching this schema:
   }
 }`;
 
+  let docsPrompt = '';
+  if (contextDocuments && contextDocuments.length > 0) {
+    docsPrompt = '\n\nAttached Context Documents & Specifications:\n' +
+      contextDocuments.map(d => `- [${d.name}]: ${d.content.slice(0, 2000)}`).join('\n');
+  }
+
   const userPrompt = `Rehearsal Title: ${title}
 Target Hypothesis / What-If Variable:
 ${hypothesis}
@@ -86,7 +93,7 @@ Most Impactful Posts & Debates from the Simulation:
 ${impactfulPosts.map(p => `- [Round ${p.roundNum}] ${p.agentName} (@${p.agentUsername}, ${p.agentProfession}): "${p.content}" (Likes: ${p.likesCount}, Quotes: ${p.quotesCount})`).join('\n')}
 
 Original Product Brief Seed:
-${seedDocument.slice(0, 4000)}
+${seedDocument.slice(0, 4000)}${docsPrompt}
 
 Synthesize the final authoritative strategic report.`;
 
