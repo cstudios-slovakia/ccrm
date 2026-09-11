@@ -21,7 +21,7 @@ export async function callLlmProxy(
 ): Promise<string> {
   const payload = {
     messages,
-    model: options.model || 'gpt-4o-mini',
+    model: options.model || 'gpt-5.6-luna',
     temperature: options.temperature !== undefined ? options.temperature : 0.7,
     response_format: options.responseFormat || null,
     max_tokens: options.maxTokens || 1500

@@ -13,7 +13,8 @@ export async function initServerSimulation(data: {
   lookback_months: number;
   swarm_scale: number;
   total_rounds: number;
-}): Promise<{ success: boolean; id: string; table_prefix: string }> {
+  status?: 'draft' | 'prepared' | 'running';
+}): Promise<{ success: boolean; id: string; table_prefix: string; status: string; title: string }> {
   const response = await fetch('api/swarm.php?action=create_simulation', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -64,6 +65,15 @@ export async function fetchResumeCheckpoint(simulationId: string): Promise<Simul
   if (!data.success || !data.simulation) return null;
 
   return data.simulation.checkpoint as SimulationCheckpoint;
+}
+
+export async function fetchSimulationDetails(simulationId: string): Promise<any | null> {
+  const response = await fetch(`api/swarm.php?action=resume&simulation_id=${encodeURIComponent(simulationId)}`);
+  if (!response.ok) return null;
+  const data = await response.json();
+  if (!data.success || !data.simulation) return null;
+
+  return data.simulation;
 }
 
 export async function listPastSimulations(): Promise<any[]> {

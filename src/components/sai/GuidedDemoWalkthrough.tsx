@@ -490,9 +490,9 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                     <span className="text-[10px] text-slate-400">€0.28 / 1M tokens</span>
                   </div>
                   <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
-                    <span className="text-[11px] text-slate-500 font-bold block">GPT-4o-mini Cost</span>
-                    <span className="text-lg font-black text-purple-600 mt-1 block">€0.026</span>
-                    <span className="text-[10px] text-slate-400">Blended in/out rate</span>
+                    <span className="text-[11px] text-slate-500 font-bold block">GPT-5.6 Luna Cost</span>
+                    <span className="text-lg font-black text-purple-600 mt-1 block">€0.011</span>
+                    <span className="text-[10px] text-slate-400">Cost-optimized speed</span>
                   </div>
                 </div>
 

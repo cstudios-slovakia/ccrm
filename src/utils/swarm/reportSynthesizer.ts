@@ -94,7 +94,7 @@ Synthesize the final authoritative strategic report.`;
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt }
   ], {
-    model: modelName || 'gpt-4o-mini',
+    model: modelName || 'gpt-5.6-luna',
     temperature: 0.4,
     maxTokens: 3000
   });

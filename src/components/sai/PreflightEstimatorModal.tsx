@@ -37,9 +37,9 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
   const totalCalls = turnsPerSim + swarmScale + 6; // sim turns + profiles + ontology & report
 
   // Pricing estimators per 1M tokens
-  const costGpt4oMini = (totalTokens / 1_000_000) * 0.60; // ~$0.15 in, $0.60 out blended
+  const costGpt56Luna = (totalTokens / 1_000_000) * 0.25; // Cost-optimized
+  const costGpt56Terra = (totalTokens / 1_000_000) * 1.50; // Heavy reasoning
   const costDeepSeek = (totalTokens / 1_000_000) * 0.28;
-  const costQwenPlus = (totalTokens / 1_000_000) * 0.40;
 
   return (
     <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
@@ -85,17 +85,23 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
               {isDemoMode ? 'Demo Mode Active (No API Tokens Consumed)' : 'Projected Quota Cost'}
             </span>
             <div className="space-y-2 text-xs">
-              <div className="flex justify-between items-center py-1 border-b border-slate-200/50">
-                <span className="font-medium text-slate-700">DeepSeek V3</span>
-                <span className="font-bold text-emerald-600">{isDemoMode ? '€0.000 (Demo)' : `€${costDeepSeek.toFixed(3)}`}</span>
+              <div className={`flex justify-between items-center py-1 border-b border-slate-200/50 ${_modelName === 'gpt-5.6-luna' ? 'font-bold text-purple-700' : ''}`}>
+                <span className="font-medium text-slate-700 flex items-center gap-1.5">
+                  <span>GPT-5.6 Luna (Cost-Optimized)</span>
+                  {_modelName === 'gpt-5.6-luna' && <span className="px-1.5 py-0.2 text-[9px] bg-purple-100 text-purple-700 rounded-md font-extrabold">SELECTED</span>}
+                </span>
+                <span className="font-bold text-emerald-600">{isDemoMode ? '€0.000 (Demo)' : `€${costGpt56Luna.toFixed(3)}`}</span>
               </div>
-              <div className="flex justify-between items-center py-1 border-b border-slate-200/50">
-                <span className="font-medium text-slate-700">Qwen Plus (DashScope)</span>
-                <span className="font-bold text-indigo-600">{isDemoMode ? '€0.000 (Demo)' : `€${costQwenPlus.toFixed(3)}`}</span>
+              <div className={`flex justify-between items-center py-1 border-b border-slate-200/50 ${_modelName === 'gpt-5.6-terra' ? 'font-bold text-purple-700' : ''}`}>
+                <span className="font-medium text-slate-700 flex items-center gap-1.5">
+                  <span>GPT-5.6 Terra (Heavy Reasoning)</span>
+                  {_modelName === 'gpt-5.6-terra' && <span className="px-1.5 py-0.2 text-[9px] bg-purple-100 text-purple-700 rounded-md font-extrabold">SELECTED</span>}
+                </span>
+                <span className="font-bold text-indigo-600">{isDemoMode ? '€0.000 (Demo)' : `€${costGpt56Terra.toFixed(3)}`}</span>
               </div>
               <div className="flex justify-between items-center py-1">
-                <span className="font-medium text-slate-700">GPT-4o-mini (OpenAI)</span>
-                <span className="font-bold text-slate-800">{isDemoMode ? '€0.000 (Demo)' : `€${costGpt4oMini.toFixed(3)}`}</span>
+                <span className="font-medium text-slate-700">DeepSeek V3 (Reasoning)</span>
+                <span className="font-bold text-slate-800">{isDemoMode ? '€0.000 (Demo)' : `€${costDeepSeek.toFixed(3)}`}</span>
               </div>
             </div>
           </div>

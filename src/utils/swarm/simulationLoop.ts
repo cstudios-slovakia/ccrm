@@ -62,7 +62,7 @@ export class SwarmSimulationEngine {
     this.hypothesis = params.hypothesis;
     this.totalRounds = params.totalRounds;
     this.diurnalCycle = params.diurnalCycle ?? true;
-    this.modelName = params.modelName || 'gpt-4o-mini';
+    this.modelName = params.modelName || 'gpt-5.6-luna';
     this.graph = params.initialGraph;
     this.agents = params.agents;
     this.posts = params.initialPosts || [];

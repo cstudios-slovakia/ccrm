@@ -10,7 +10,7 @@ export async function synthesizeAgentProfiles(
   nodes: SwarmEntityNode[],
   targetCount: number = 30,
   hypothesis: string,
-  modelName: string = 'gpt-4o-mini'
+  modelName: string = 'gpt-5.6-luna'
 ): Promise<SwarmAgentProfile[]> {
   const systemPrompt = `You are an expert Social Agent Profile Architect for market simulations.
 Given a list of stakeholder entities extracted from a business scenario, generate a diverse swarm of autonomous social media profiles (Twitter/Reddit accounts).

@@ -24,6 +24,13 @@ require_once __DIR__ . '/Swarm/CrmContextExtractor.php';
 use CCRM\Swarm\SwarmManager;
 use CCRM\Swarm\CrmContextExtractor;
 
+if (!function_exists('get_db_connection')) {
+    $configFile = dirname(__DIR__) . '/config.php';
+    if (file_exists($configFile)) {
+        require_once $configFile;
+    }
+}
+
 try {
     $pdo = get_db_connection();
 } catch (\Exception $e) {
@@ -39,7 +46,7 @@ $contextExtractor = new CrmContextExtractor($pdo);
 function get_server_llm_credentials(PDO $pdo): array {
     $apiKey = '';
     $baseUrl = 'https://api.openai.com/v1';
-    $model = 'gpt-4o-mini';
+    $model = 'gpt-5.6-luna';
 
     try {
         $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'INTEGRATIONS_CONFIG'");

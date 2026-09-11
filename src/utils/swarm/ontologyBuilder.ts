@@ -10,7 +10,7 @@ export async function buildKnowledgeGraph(
   seedDocument: string,
   crmContextText: string,
   hypothesis: string,
-  modelName: string = 'gpt-4o-mini'
+  modelName: string = 'gpt-5.6-luna'
 ): Promise<SwarmKnowledgeGraph> {
   const systemPrompt = `You are an expert Swarm Intelligence Knowledge Architect.
 Your task is to analyze a seed business scenario and recent CRM context to extract key stakeholder ENTITIES and RELATIONSHIP EDGES for an upcoming social media market rehearsal.

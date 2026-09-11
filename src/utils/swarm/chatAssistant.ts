@@ -41,7 +41,7 @@ Always base your answers on actual simulation events, agent quotes, and strategi
   ];
 
   return callLlmProxy(messages, {
-    model: modelName || 'gpt-4o-mini',
+    model: modelName || 'gpt-5.6-luna',
     temperature: 0.5
   });
 }
@@ -78,7 +78,7 @@ Stay strictly in character! Express your authentic reservations, budgets, priori
   ];
 
   return callLlmProxy(messages, {
-    model: modelName || 'gpt-4o-mini',
+    model: modelName || 'gpt-5.6-luna',
     temperature: 0.7
   });
 }

@@ -18,11 +18,18 @@ ccrm_send_cors('GET, POST, OPTIONS');
 ccrm_require_auth();
 
 // Include autoloader / classes
-require_once dirname(__DIR__) . '/src-php/Swarm/SwarmManager.php';
-require_once dirname(__DIR__) . '/src-php/Swarm/CrmContextExtractor.php';
+require_once __DIR__ . '/Swarm/SwarmManager.php';
+require_once __DIR__ . '/Swarm/CrmContextExtractor.php';
 
 use CCRM\Swarm\SwarmManager;
 use CCRM\Swarm\CrmContextExtractor;
+
+if (!function_exists('get_db_connection')) {
+    $configFile = dirname(__DIR__) . '/config.php';
+    if (file_exists($configFile)) {
+        require_once $configFile;
+    }
+}
 
 try {
     $pdo = get_db_connection();
@@ -39,7 +46,7 @@ $contextExtractor = new CrmContextExtractor($pdo);
 function get_server_llm_credentials(PDO $pdo): array {
     $apiKey = '';
     $baseUrl = 'https://api.openai.com/v1';
-    $model = 'gpt-4o-mini';
+    $model = 'gpt-5.6-luna';
 
     try {
         $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'INTEGRATIONS_CONFIG'");
