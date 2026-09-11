@@ -32,7 +32,7 @@ backend and is safe to run at any time.
 | Pure logic in `src/utils` | `npm run test:unit` |
 | One module's UI | `npm run test:qa:crawler` |
 | Sidebar, header or routing | `npm run test:qa:nav` |
-| The QA suite itself | `npm run test:qa:canary` |
+| The QA suite itself | `npm run test:qa:full` |
 
 ## 3. It also runs without you
 
@@ -58,9 +58,10 @@ npm run test:qa:report -- --list    # what runs are saved and what they found
 ## 5. Do not game the suite
 
 - Never make a finding disappear by loosening the check.
-- `npm run test:qa:canary` **passes when it still detects** two known product
-  bugs (`Čas termínu` occlusion, client timeline `?tab=` parser). If either is
-  genuinely fixed, delete that canary rather than weakening it.
+- A canary **passes when it still detects** its known product bug. If that bug
+  is genuinely fixed, delete the canary rather than weakening it. There are
+  none at present — the two that pinned `Čas termínu` occlusion and the client
+  timeline `?tab=` parser went when those bugs were fixed.
 - `INTERACTION_FAILED` at LOW, `VIEW_RENDERED_EMPTY` on a register, and
   `node_modules` throws (`shadergradient`) are usually suite gaps or third-party
   noise, not product defects.

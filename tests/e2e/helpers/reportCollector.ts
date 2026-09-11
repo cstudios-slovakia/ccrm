@@ -124,9 +124,10 @@ export function inferSuiteKind(): SuiteKind {
 
 
 /**
- * Canary scopes are named "Canary: ..." by canary.spec.ts. Their findings are
- * expected -- the canary PASSES when the known product bug is still detected --
- * so they must not be counted as a failing verdict in the run summary.
+ * A canary names its scope "Canary: ...". Their findings are expected -- the
+ * canary PASSES when the known product bug is still detected -- so they must
+ * not be counted as a failing verdict in the run summary. No canary is active
+ * right now; this stays as the contract for the next one.
  */
 export const CANARY_MODULE_PREFIX = 'Canary:';
 

@@ -20,7 +20,6 @@
     "test:qa:crawler": "node scripts/qa/run-qa.mjs --full -- crawler.spec.ts",
     "test:qa:nav": "node scripts/qa/run-qa.mjs --full -- navigation.spec.ts",
     "test:qa:recorder": "node scripts/qa/run-qa.mjs --full -- recorder.spec.ts",
-    "test:qa:canary": "node scripts/qa/run-qa.mjs --full -- canary.spec.ts",
     "test:qa:dark": "node scripts/qa/run-qa.mjs --full -- darkmode.spec.ts",
     "test:qa:license": "node scripts/qa/run-qa.mjs --full -- license.spec.ts",
     "test:qa:report": "node scripts/qa/open-report.mjs",

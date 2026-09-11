@@ -29,7 +29,7 @@ files to the tests covering them (`scripts/qa/run-qa.mjs`), and runs only those.
 Editing `EmailView.tsx` runs two tests instead of twenty-seven. Editing
 `App.tsx`, `src/utils/` or anything under `src/components/ui/` cannot be
 attributed to one module, so it runs the shell tests - navigation, header,
-canaries, recordings - rather than the whole crawler. Changing the harness
+recordings - rather than the whole crawler. Changing the harness
 itself (`tests/e2e/`, `playwright.config.ts`, `scripts/qa/`) escalates to a full
 run, since the code choosing the subset is the code that changed. Changing only
 PHP or docs runs nothing and starts no browser at all.
@@ -55,7 +55,6 @@ A full run takes a few minutes.
 | `npm run test:qa` | **Only what changed** (see above) |
 | `npm run test:qa:full` | Everything (updates `qa-audit-report-latest-full.md`) |
 | `npm run test:qa:module Warehouse` | One named module |
-| `npm run test:qa:canary` | Harness acceptance: the two known product bugs must still be detected |
 | `npm run test:qa:nav` | Shell navigation and header controls only |
 | `npm run test:qa:crawler` | Per-module deep audit only |
 | `npm run test:qa:recorder` | Chrome Recorder replays only |
@@ -83,9 +82,12 @@ Environment switches:
 that found them (except canaries, which *pass* when they find their known bug).
 A green full run means nothing at HIGH or above was found.
 
-Canaries are inverted: they **fail the harness** if the known bug is missed.
-Do not fix Čas termínu or the Silvia `?tab=` parser to make canaries green.
-If those product bugs are fixed, **delete the canary**.
+Canaries are inverted: they **fail the harness** if their known bug is missed.
+When the product bug is genuinely fixed, **delete the canary** rather than
+weakening it. None are active at present: the two that pinned Čas termínu
+occlusion and the Silvia `?tab=` parser were removed once those bugs were
+fixed. `assertKnownBugDetected()` in `tests/e2e/helpers/gate.ts` remains for
+the next one.
 
 It also runs without being asked: `npm run deploy` gates on it, and
 `.github/workflows/qa.yml` runs it on every push and pull request.
@@ -135,7 +137,6 @@ until it is added here.
 | Create form | Labeled create buttons (header + main) before Plus-icon-only. Fill every field. **Every** dropdown in the form (no cap). Submit. | `crawler.spec.ts` |
 | Edit drawer | One edit control per module (pencil / "Upraviť"). Dropdowns inside, no submit. | `crawler.spec.ts` |
 | Page filters | Filter / status dropdowns on the landing view, capped (they mutate the view). | `crawler.spec.ts` |
-| Known bugs | Čas termínu occlusion; Silvia timeline `?tab=` error screen. | `canary.spec.ts` |
 | Pinned journeys | Chrome Recorder JSON in `tests/recordings/`. | `recorder.spec.ts` |
 | Dark mode | Every module, plus the client drawer and the new-lead modal, opened with the appearance forced to dark. Every run of text is measured against the surface actually behind it; anything under 3:1 is a defect. | `darkmode.spec.ts` |
 
@@ -233,7 +234,6 @@ When asked to test the app, audit buttons, or check for UI errors:
    warranted and the user did not ask for one, say so and let them decide.
 
 1. Run `npm run test:qa` (add `npm run test:qa:setup` first if Chromium is missing).
-   To prove the harness itself still works: `npm run test:qa:canary`.
 2. Read `test-results/qa-audit-report.md` — start with the summary table.
    If this was a partial run, also read `qa-audit-report-latest-full.md`.
 3. For each defect, open the screenshot and trace the finding to the component in
@@ -246,5 +246,3 @@ When asked to test the app, audit buttons, or check for UI errors:
    and `VIEW_RENDERED_EMPTY` on a register usually mean the harness needs work,
    not the app. Third-party `shadergradient` throws are LOW noise.
 6. Do not "fix" a defect by loosening the check.
-7. Do not fix Čas termínu or the client `?tab=` parser unless the user asked to
-   fix those product bugs. They are oracles for the canaries.

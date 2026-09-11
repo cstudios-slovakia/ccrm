@@ -58,7 +58,6 @@ found — not that nothing was checked.
 | Command | Scope | Roughly |
 |---|---|---|
 | `npm run test:qa` | Everything | minutes |
-| `npm run test:qa:canary` | Harness self-check (see below) | ~30s |
 | `npm run test:qa:nav` | Shell navigation and header controls | ~1 min |
 | `npm run test:qa:crawler` | Per-module deep audit | minutes |
 | `npm run test:qa:recorder` | Chrome Recorder replays | ~1 min |
@@ -112,9 +111,9 @@ download it from CI and every screenshot still resolves.
 Folders older than `QA_KEEP_RUNS` are deleted at the start of the next run.
 The whole `test-results/` and `playwright-report/` trees are git-ignored.
 
-**The "latest full" copy.** A filtered run (`npm run test:qa:canary`, or any
+**The "latest full" copy.** A filtered run (`npm run test:qa:nav`, or any
 `--grep`) overwrites `qa-audit-report.md` but **not**
-`qa-audit-report-latest-full.md`. So a quick canary check can never erase your
+`qa-audit-report-latest-full.md`. So a quick scoped check can never erase your
 last complete audit.
 
 ### Reading the result
@@ -139,18 +138,21 @@ makes "is this the same bug or a new one?" answerable.
 
 ## 4. Canaries: why a "failing" bug can be a passing test
 
-`npm run test:qa:canary` is a self-check on the harness, not on the app. Its two
-tests **pass only when they still detect two known product bugs** (the
-`Čas termínu` dropdown occlusion, and the client timeline `?tab=` parser).
+A canary is a self-check on the harness, not on the app: it **passes only while
+it still detects a known product bug**. That inverts the usual reading — you see
+a finding reported while the run says PASSED, and the summary labels it
+"canary detection(s) - expected".
 
-So in a canary run you will see findings reported while the run says PASSED —
-that is correct, and the summary labels them "canary detection(s) - expected".
+**There are no canaries right now.** The two that existed pinned the
+`Čas termínu` dropdown occlusion and the client timeline `?tab=` parser; both
+product bugs were fixed, so both canaries were deleted, which is the rule: when
+the bug is gone, delete its canary rather than weakening the assertion to make
+it green.
 
-If you ever fix one of those product bugs, **delete its canary** — do not weaken
-the assertion to make it green.
-
-Run the canaries when you have changed the QA suite itself and want to prove it
-still catches what it used to.
+The mechanism is still in place for the next one — `assertKnownBugDetected()`
+in `tests/e2e/helpers/gate.ts`, and any finding whose module is prefixed
+`Canary:` is scored as expected rather than as a defect. Add a canary when you
+want proof the suite still catches a class of bug it used to.
 
 ---
 
@@ -230,7 +232,7 @@ dismissal is keyed, the seat arithmetic — is in `src/utils/license.test.ts` an
 | Touched navigation, the sidebar or the header | `npm run test:qa:nav` |
 | Touched licensing (`api/license*.php`, the token format) | `php scripts/test/license-verification.php` |
 | **Finished a feature or a fix** | **`npm run test:qa`** |
-| Changed the QA suite itself | `npm run test:qa:canary` |
+| Changed the QA suite itself | `npm run test:qa:full` |
 | About to deploy | automatic — `npm run deploy` gates on it |
 | Opened a PR / pushed a branch | automatic — GitHub Actions runs it |
 

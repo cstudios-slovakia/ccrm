@@ -37,12 +37,12 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 /* ------------------------------------------------------------------ scope */
 
 /**
- * "The frame every view is drawn in": navigation, header, and the known-bug
- * canaries. A change there cannot be attributed to one module, but it still
- * does not justify re-crawling all twelve — these are a handful of cheap tests
- * that catch a broken frame. Ask for `--full` when you want more than that.
+ * "The frame every view is drawn in": navigation and header. A change there
+ * cannot be attributed to one module, but it still does not justify
+ * re-crawling all twelve — these are a handful of cheap tests that catch a
+ * broken frame. Ask for `--full` when you want more than that.
  */
-const SHELL = ['Shell navigation', 'Known-bug canaries', 'recorded flow:'];
+const SHELL = ['Shell navigation', 'recorded flow:'];
 
 /**
  * Source file -> the test titles that cover it.
