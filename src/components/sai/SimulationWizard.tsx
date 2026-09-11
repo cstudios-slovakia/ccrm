@@ -3,18 +3,13 @@ import {
   Sparkles, 
   X, 
   ArrowRight, 
-  Settings2, 
   Calendar, 
   Users, 
   Clock, 
-  HelpCircle, 
-  Sliders, 
   Bot,
-  Zap,
-  CheckCircle2,
   FileText
 } from 'lucide-react';
-import { SimulationParameters } from '../../utils/swarm/types';
+import type { SimulationParameters } from '../../utils/swarm/types';
 import { PreflightEstimatorModal } from './PreflightEstimatorModal';
 
 interface SimulationWizardProps {
@@ -77,7 +72,7 @@ export const SimulationWizard: React.FC<SimulationWizardProps> = ({
   const [lookbackMonths, setLookbackMonths] = useState<6 | 12 | 24>(12);
   const [swarmScale, setSwarmScale] = useState<number>(30);
   const [totalRounds, setTotalRounds] = useState<number>(8);
-  const [platforms, setPlatforms] = useState<'dual' | 'twitter' | 'reddit'>('dual');
+  const platforms: 'dual' | 'twitter' | 'reddit' = 'dual';
   const [diurnalCycle, setDiurnalCycle] = useState<boolean>(true);
   const [llmModel, setLlmModel] = useState<string>('gpt-4o-mini');
 

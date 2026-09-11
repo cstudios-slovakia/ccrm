@@ -4,7 +4,7 @@
  */
 
 import { callLlmJson } from './llmProxyClient';
-import { SwarmKnowledgeGraph } from './types';
+import type { SwarmKnowledgeGraph } from './types';
 
 export async function buildKnowledgeGraph(
   seedDocument: string,

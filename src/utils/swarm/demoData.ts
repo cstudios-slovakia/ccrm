@@ -1,11 +1,10 @@
-import { 
+import type { 
   SimulationCheckpoint, 
   SwarmKnowledgeGraph, 
   SwarmAgentProfile, 
   SwarmPost, 
   SwarmRoundMetrics, 
-  StrategicReport,
-  SimulationParameters
+  StrategicReport
 } from './types';
 
 export const DEMO_GRAPH: SwarmKnowledgeGraph = {
@@ -445,7 +444,7 @@ export function getDemoAnalystAnswer(question: string): string {
   return `In this simulation, the market reached a 72% positive consensus by Round 3. The biggest leverage point was the direct engineer WhatsApp communication channel, which customers valued far above traditional email support tickets. Would you like to inspect specific agent reactions or drill down into competitor counter-moves?`;
 }
 
-export function getDemoAgentAnswer(agentName: string, question: string): string {
+export function getDemoAgentAnswer(agentName: string, _question?: string): string {
   const name = agentName.toLowerCase();
   
   if (name.includes('sarah') || name.includes('jenkins') || name.includes('procure')) {

@@ -4,7 +4,7 @@
  * Score(p, i) = 0.4 * Recency + 0.3 * Popularity + 0.3 * Relevance
  */
 
-import { SwarmPost, SwarmAgentProfile } from './types';
+import type { SwarmPost, SwarmAgentProfile } from './types';
 
 export function rankFeedForAgent(
   agent: SwarmAgentProfile,

@@ -3,24 +3,18 @@ import {
   Sparkles, 
   Plus, 
   Play, 
-  RotateCcw, 
   Trash2, 
   FileText, 
   Activity, 
   Users, 
-  Calendar, 
   Clock, 
-  ShieldAlert, 
-  BarChart3, 
-  HelpCircle,
-  ExternalLink,
-  ChevronRight,
-  TrendingUp,
-  BrainCircuit,
-  MessageSquare
+  ChevronRight, 
+  BrainCircuit, 
+  MessageSquare,
+  Zap
 } from 'lucide-react';
 import FlockIcon from '../icons/FlockIcon';
-import { 
+import type { 
   SimulationParameters, 
   SwarmKnowledgeGraph, 
   SwarmAgentProfile, 
@@ -29,7 +23,7 @@ import {
   StrategicReport, 
   SimulationCheckpoint 
 } from '../../utils/swarm/types';
-import { extractCrmContext } from '../../utils/swarm/crmContextService';
+import { fetchCrmContext } from '../../utils/swarm/crmContextService';
 import { buildKnowledgeGraph } from '../../utils/swarm/ontologyBuilder';
 import { synthesizeAgentProfiles } from '../../utils/swarm/personaSynthesizer';
 import { SwarmSimulationEngine } from '../../utils/swarm/simulationLoop';
@@ -76,14 +70,14 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
   const [activeSimulationId, setActiveSimulationId] = useState<string>('');
   const [activeTitle, setActiveTitle] = useState<string>('');
   const [activeHypothesis, setActiveHypothesis] = useState<string>('');
-  const [activeSeed, setActiveSeed] = useState<string>('');
+  const [, setActiveSeed] = useState<string>('');
   const [currentRound, setCurrentRound] = useState<number>(0);
   const [totalRounds, setTotalRounds] = useState<number>(8);
   const [graph, setGraph] = useState<SwarmKnowledgeGraph>({ nodes: [], edges: [] });
   const [agents, setAgents] = useState<SwarmAgentProfile[]>([]);
   const [posts, setPosts] = useState<SwarmPost[]>([]);
   const [latestMetrics, setLatestMetrics] = useState<SwarmRoundMetrics | null>(null);
-  const [metricsHistory, setMetricsHistory] = useState<SwarmRoundMetrics[]>([]);
+  const [, setMetricsHistory] = useState<SwarmRoundMetrics[]>([]);
   const [activeReport, setActiveReport] = useState<StrategicReport | null>(null);
 
   // Runtime Controls & Progress
@@ -222,13 +216,13 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
 
       // Step 2: Extract CRM Context with Lookback Window
       setPrepStepMessage(`Extracting leads & deal objections from CRM (${config.lookbackMonths}-month horizon)...`);
-      const crmContext = await extractCrmContext({ lookbackMonths: config.lookbackMonths });
+      const crmContext = await fetchCrmContext(config.lookbackMonths);
 
       // Step 3: Extract Ontology & Graph Nodes
       setPrepStepMessage('Synthesizing dynamic knowledge graph & social stakeholder entities...');
       const generatedGraph = await buildKnowledgeGraph(
         config.seedDocument,
-        crmContext.crmContextText,
+        crmContext.formatted_context,
         config.hypothesis,
         config.llmModel
       );
@@ -372,11 +366,6 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
       engineRef.current.stop();
       setIsEngineRunning(false);
     }
-  };
-
-  const handleOpenAgentInterview = (agent: SwarmAgentProfile) => {
-    setInterviewAgent(agent);
-    setIsQaOpen(true);
   };
 
   return (

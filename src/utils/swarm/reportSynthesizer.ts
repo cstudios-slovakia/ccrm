@@ -5,7 +5,7 @@
  */
 
 import { callLlmJson } from './llmProxyClient';
-import { SwarmPost, SwarmAgentProfile, SwarmKnowledgeGraph, StrategicReport } from './types';
+import type { SwarmPost, SwarmAgentProfile, SwarmKnowledgeGraph, StrategicReport } from './types';
 
 export async function generateStrategicReport(params: {
   title: string;
@@ -16,7 +16,7 @@ export async function generateStrategicReport(params: {
   posts: SwarmPost[];
   modelName?: string;
 }): Promise<StrategicReport> {
-  const { title, hypothesis, seedDocument, graph, agents, posts, modelName } = params;
+  const { title, hypothesis, seedDocument, graph: _graph, agents, posts, modelName } = params;
 
   // Filter top quoted or impactful posts
   const impactfulPosts = [...posts]

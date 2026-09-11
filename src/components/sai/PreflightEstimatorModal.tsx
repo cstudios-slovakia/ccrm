@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldAlert, Zap, Check, X, ArrowRight, Coins } from 'lucide-react';
+import { ShieldAlert, Zap, X, ArrowRight, Coins } from 'lucide-react';
 
 interface PreflightEstimatorModalProps {
   isOpen: boolean;
@@ -19,7 +19,7 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
   title,
   swarmScale,
   totalRounds,
-  modelName,
+  modelName: _modelName,
   isDemoMode = false
 }) => {
   const [acknowledged, setAcknowledged] = useState(isDemoMode);

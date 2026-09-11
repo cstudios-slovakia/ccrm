@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { SwarmKnowledgeGraph, SwarmEntityNode } from '../../utils/swarm/types';
-import { ZoomIn, ZoomOut, RotateCcw, Info } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import type { SwarmKnowledgeGraph, SwarmEntityNode } from '../../utils/swarm/types';
+import { ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 
 interface SwarmGraphCanvasProps {
   graph: SwarmKnowledgeGraph;

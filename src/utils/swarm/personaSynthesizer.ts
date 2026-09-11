@@ -4,7 +4,7 @@
  */
 
 import { callLlmJson } from './llmProxyClient';
-import { SwarmEntityNode, SwarmAgentProfile } from './types';
+import type { SwarmEntityNode, SwarmAgentProfile } from './types';
 
 export async function synthesizeAgentProfiles(
   nodes: SwarmEntityNode[],

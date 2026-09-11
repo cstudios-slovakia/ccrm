@@ -1,12 +1,10 @@
 import React, { useState } from 'react';
-import { StrategicReport } from '../../utils/swarm/types';
+import type { StrategicReport } from '../../utils/swarm/types';
 import { 
-  FileText, 
   Target, 
   ShieldCheck, 
   ChevronDown, 
   ChevronRight, 
-  Download, 
   Copy, 
   Check, 
   MessageSquare, 

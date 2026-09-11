@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { 
+import type { 
   SwarmAgentProfile, 
   SwarmPost, 
   StrategicReport 
 } from '../../utils/swarm/types';
 import { askChiefAnalyst, interviewAgent } from '../../utils/swarm/chatAssistant';
 import { getDemoAnalystAnswer, getDemoAgentAnswer } from '../../utils/swarm/demoData';
-import { X, Send, Bot, User, Sparkles, MessageCircle } from 'lucide-react';
+import { X, Send, Bot, User, Sparkles } from 'lucide-react';
 
 interface QaAssistantDrawerProps {
   isOpen: boolean;

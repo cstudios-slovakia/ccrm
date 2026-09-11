@@ -7,7 +7,7 @@
 import { callLlmJson } from './llmProxyClient';
 import { rankFeedForAgent } from './recsysEngine';
 import { saveRoundCheckpoint } from './checkpointClient';
-import { 
+import type { 
   SwarmAgentProfile, 
   SwarmPost, 
   SwarmKnowledgeGraph, 

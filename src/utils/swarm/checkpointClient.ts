@@ -3,7 +3,7 @@
  * Synchronizes round snapshots to PHP MySQL persistence for crash-proof resume.
  */
 
-import { SimulationCheckpoint, SwarmPost } from './types';
+import type { SimulationCheckpoint, SwarmPost } from './types';
 
 export async function initServerSimulation(data: {
   id?: string;

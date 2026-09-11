@@ -5,8 +5,9 @@
  * 2. Direct 1-on-1 cross-examination of any simulated agent in-character.
  */
 
-import { callLlmProxy, LLMMessage } from './llmProxyClient';
-import { SwarmAgentProfile, SwarmPost, StrategicReport } from './types';
+import { callLlmProxy } from './llmProxyClient';
+import type { LLMMessage } from './llmProxyClient';
+import type { SwarmAgentProfile, SwarmPost, StrategicReport } from './types';
 
 export async function askChiefAnalyst(params: {
   userQuestion: string;

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { 
+import React from 'react';
+import type { 
   SwarmKnowledgeGraph, 
   SwarmAgentProfile, 
   SwarmPost, 
@@ -7,7 +7,7 @@ import {
 } from '../../utils/swarm/types';
 import { SwarmGraphCanvas } from './SwarmGraphCanvas';
 import { SocialFeedStream } from './SocialFeedStream';
-import { Sun, Moon, Pause, Play, Activity, TrendingUp, Users, ShieldAlert } from 'lucide-react';
+import { Sun, Moon, Pause, Activity, TrendingUp, Users } from 'lucide-react';
 
 interface LiveWarRoomProps {
   title: string;
