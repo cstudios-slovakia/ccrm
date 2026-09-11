@@ -22,6 +22,7 @@ interface SimulationWizardProps {
   onClose: () => void;
   onLaunch: (params: SimulationParameters) => void;
   isSubmitting?: boolean;
+  isDemoMode?: boolean;
 }
 
 const PRESET_TEMPLATES = [
@@ -63,7 +64,8 @@ export const SimulationWizard: React.FC<SimulationWizardProps> = ({
   isOpen,
   onClose,
   onLaunch,
-  isSubmitting = false
+  isSubmitting = false,
+  isDemoMode = false
 }) => {
   const [title, setTitle] = useState('Q4 Strategy Market Rehearsal');
   const [hypothesis, setHypothesis] = useState(
@@ -125,9 +127,18 @@ export const SimulationWizard: React.FC<SimulationWizardProps> = ({
                 <Sparkles className="w-6 h-6" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-slate-900">Configure Swarm Rehearsal (SAI)</h2>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl font-bold text-slate-900">Configure Swarm Rehearsal (SAI)</h2>
+                  {isDemoMode && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300">
+                      Demo Mode
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-slate-500 font-medium">
-                  Initialize multi-agent simulation grounded in real CRM interactions
+                  {isDemoMode 
+                    ? 'Interactive test rehearsal using simulated fast local generation'
+                    : 'Initialize multi-agent simulation grounded in real CRM interactions'}
                 </p>
               </div>
             </div>
@@ -363,6 +374,7 @@ export const SimulationWizard: React.FC<SimulationWizardProps> = ({
         swarmScale={swarmScale}
         totalRounds={totalRounds}
         modelName={llmModel}
+        isDemoMode={isDemoMode}
       />
     </>
   );

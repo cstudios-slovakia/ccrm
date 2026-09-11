@@ -5,6 +5,7 @@ import {
   StrategicReport 
 } from '../../utils/swarm/types';
 import { askChiefAnalyst, interviewAgent } from '../../utils/swarm/chatAssistant';
+import { getDemoAnalystAnswer, getDemoAgentAnswer } from '../../utils/swarm/demoData';
 import { X, Send, Bot, User, Sparkles, MessageCircle } from 'lucide-react';
 
 interface QaAssistantDrawerProps {
@@ -15,6 +16,7 @@ interface QaAssistantDrawerProps {
   posts: SwarmPost[];
   hypothesis: string;
   initialAgent?: SwarmAgentProfile | null;
+  isDemoMode?: boolean;
 }
 
 export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
@@ -24,7 +26,8 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
   agents,
   posts,
   hypothesis,
-  initialAgent = null
+  initialAgent = null,
+  isDemoMode = false
 }) => {
   const [activeTab, setActiveTab] = useState<'analyst' | 'agent'>(initialAgent ? 'agent' : 'analyst');
   const [selectedAgent, setSelectedAgent] = useState<SwarmAgentProfile | null>(initialAgent || agents[0] || null);
@@ -53,13 +56,19 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
       setIsLoading(true);
 
       try {
-        const response = await askChiefAnalyst({
-          userQuestion: userText,
-          chatHistory: analystMessages,
-          report,
-          posts
-        });
-        setAnalystMessages([...newHistory, { sender: 'assistant', text: response }]);
+        if (isDemoMode) {
+          await new Promise(r => setTimeout(r, 600));
+          const response = getDemoAnalystAnswer(userText);
+          setAnalystMessages([...newHistory, { sender: 'assistant', text: response }]);
+        } else {
+          const response = await askChiefAnalyst({
+            userQuestion: userText,
+            chatHistory: analystMessages,
+            report,
+            posts
+          });
+          setAnalystMessages([...newHistory, { sender: 'assistant', text: response }]);
+        }
       } catch (err) {
         setAnalystMessages([...newHistory, { sender: 'assistant', text: `Error: ${(err as Error).message}` }]);
       } finally {
@@ -71,15 +80,21 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
       setIsLoading(true);
 
       try {
-        const agentPosts = posts.filter(p => p.agentId === selectedAgent.id);
-        const response = await interviewAgent({
-          agent: selectedAgent,
-          userQuestion: userText,
-          chatHistory: agentMessages,
-          agentPosts,
-          hypothesis
-        });
-        setAgentMessages([...newHistory, { sender: 'assistant', text: response }]);
+        if (isDemoMode) {
+          await new Promise(r => setTimeout(r, 600));
+          const response = getDemoAgentAnswer(selectedAgent.displayName, userText);
+          setAgentMessages([...newHistory, { sender: 'assistant', text: response }]);
+        } else {
+          const agentPosts = posts.filter(p => p.agentId === selectedAgent.id);
+          const response = await interviewAgent({
+            agent: selectedAgent,
+            userQuestion: userText,
+            chatHistory: agentMessages,
+            agentPosts,
+            hypothesis
+          });
+          setAgentMessages([...newHistory, { sender: 'assistant', text: response }]);
+        }
       } catch (err) {
         setAgentMessages([...newHistory, { sender: 'assistant', text: `Error: ${(err as Error).message}` }]);
       } finally {

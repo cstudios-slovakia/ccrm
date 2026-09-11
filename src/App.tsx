@@ -2187,7 +2187,7 @@ ${log.payload || ''}
         );
       case "sai":
         return (
-          <SaiModule />
+          <SaiModule isDemoMode={isDemoMode} />
         );
       case "meetings":
         return (

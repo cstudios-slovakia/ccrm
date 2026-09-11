@@ -9,6 +9,7 @@ interface PreflightEstimatorModalProps {
   swarmScale: number;
   totalRounds: number;
   modelName: string;
+  isDemoMode?: boolean;
 }
 
 export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = ({
@@ -18,9 +19,10 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
   title,
   swarmScale,
   totalRounds,
-  modelName
+  modelName,
+  isDemoMode = false
 }) => {
-  const [acknowledged, setAcknowledged] = useState(false);
+  const [acknowledged, setAcknowledged] = useState(isDemoMode);
 
   if (!isOpen) return null;
 
@@ -78,33 +80,42 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
           </div>
 
           {/* Pricing Comparison Cards */}
-          <div className="p-4 rounded-2xl bg-purple-50/50 border border-purple-100">
-            <span className="text-xs font-semibold text-purple-900 uppercase tracking-wider block mb-2">
-              Projected Quota Cost
+          <div className={`p-4 rounded-2xl border ${isDemoMode ? 'bg-emerald-50/70 border-emerald-200' : 'bg-purple-50/50 border-purple-100'}`}>
+            <span className={`text-xs font-semibold uppercase tracking-wider block mb-2 ${isDemoMode ? 'text-emerald-900' : 'text-purple-900'}`}>
+              {isDemoMode ? 'Demo Mode Active (No API Tokens Consumed)' : 'Projected Quota Cost'}
             </span>
             <div className="space-y-2 text-xs">
-              <div className="flex justify-between items-center py-1 border-b border-purple-100/80">
+              <div className="flex justify-between items-center py-1 border-b border-slate-200/50">
                 <span className="font-medium text-slate-700">DeepSeek V3</span>
-                <span className="font-bold text-emerald-600">€{costDeepSeek.toFixed(3)}</span>
+                <span className="font-bold text-emerald-600">{isDemoMode ? '€0.000 (Demo)' : `€${costDeepSeek.toFixed(3)}`}</span>
               </div>
-              <div className="flex justify-between items-center py-1 border-b border-purple-100/80">
+              <div className="flex justify-between items-center py-1 border-b border-slate-200/50">
                 <span className="font-medium text-slate-700">Qwen Plus (DashScope)</span>
-                <span className="font-bold text-indigo-600">€{costQwenPlus.toFixed(3)}</span>
+                <span className="font-bold text-indigo-600">{isDemoMode ? '€0.000 (Demo)' : `€${costQwenPlus.toFixed(3)}`}</span>
               </div>
               <div className="flex justify-between items-center py-1">
                 <span className="font-medium text-slate-700">GPT-4o-mini (OpenAI)</span>
-                <span className="font-bold text-slate-800">€{costGpt4oMini.toFixed(3)}</span>
+                <span className="font-bold text-slate-800">{isDemoMode ? '€0.000 (Demo)' : `€${costGpt4oMini.toFixed(3)}`}</span>
               </div>
             </div>
           </div>
 
           {/* Safety Notice */}
-          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50 border border-amber-200/80 text-amber-900 text-xs">
-            <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-            <p>
-              This simulation will make parallel LLM calls in your browser. Ensure your OpenAI or proxy balance has adequate quota.
-            </p>
-          </div>
+          {isDemoMode ? (
+            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs">
+              <Zap className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <p>
+                <strong>Interactive Demonstration Mode:</strong> Runs locally with instant round streaming, animated graph nodes, and pre-computed ReAct briefings for UX evaluation.
+              </p>
+            </div>
+          ) : (
+            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50 border border-amber-200/80 text-amber-900 text-xs">
+              <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <p>
+                This simulation will make parallel LLM calls in your browser. Ensure your OpenAI or proxy balance has adequate quota.
+              </p>
+            </div>
+          )}
 
           {/* Confirmation Checkbox */}
           <label className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-50 cursor-pointer select-none">
@@ -115,7 +126,9 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
               className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
             />
             <span className="text-xs font-semibold text-slate-700">
-              I understand this simulation will consume API quota and take ~2–4 minutes.
+              {isDemoMode 
+                ? 'I understand this simulation will run in Demo Mode with simulated responses.'
+                : 'I understand this simulation will consume API quota and take ~2–4 minutes.'}
             </span>
           </label>
         </div>
