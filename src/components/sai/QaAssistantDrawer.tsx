@@ -133,7 +133,7 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
   return (
     <div className={
       embedded 
-        ? `rounded-3xl bg-white border border-slate-200/80 shadow-md flex flex-col h-[calc(100vh-140px)] sticky top-4 overflow-hidden ${className}`
+        ? `rounded-3xl bg-white border border-slate-200/80 shadow-md flex flex-col h-[calc(100vh-210px)] min-h-[500px] max-h-[820px] overflow-hidden ${className}`
         : `fixed inset-y-0 right-0 z-[1300] w-full max-w-lg bg-white shadow-2xl border-l border-slate-200/90 flex flex-col animate-in slide-in-from-right duration-300 ${className}`
     }>
       

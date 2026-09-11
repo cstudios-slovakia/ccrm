@@ -217,8 +217,8 @@ export const StrategicReportView: React.FC<StrategicReportViewProps> = ({
 
         </div>
 
-        {/* Right Column: Always Visible Chatbot Card */}
-        <div className="w-full lg:w-[420px] xl:w-[460px] 2xl:w-[500px] shrink-0 sticky top-4">
+        {/* Right Column: Always Visible Sticky Chatbot Card */}
+        <div className="w-full lg:w-[420px] xl:w-[460px] 2xl:w-[500px] shrink-0 lg:sticky lg:top-[88px] self-start z-20">
           <QaAssistantDrawer
             isOpen={true}
             embedded={true}

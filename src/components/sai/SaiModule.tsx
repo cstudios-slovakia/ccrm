@@ -529,7 +529,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
       </header>
 
       {/* Main Content Area */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className={`flex-1 p-6 ${activeView === 'running' ? 'overflow-hidden' : 'overflow-visible'}`}>
         
         {/* Preparation Banner */}
         {isPreparing && (
