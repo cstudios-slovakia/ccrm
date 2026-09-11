@@ -54,9 +54,10 @@ import { GuidedDemoWalkthrough } from './GuidedDemoWalkthrough';
 
 interface SaiModuleProps {
   isDemoMode?: boolean;
+  unifiedEntries?: any[];
 }
 
-export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
+export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifiedEntries = [] }) => {
   // Navigation & View State
   const [demoModeActive, setDemoModeActive] = useState<boolean>(isDemoMode);
   const [activeView, setActiveView] = useState<'list' | 'create' | 'running' | 'report'>('list');
@@ -890,6 +891,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
             }}
             isSubmitting={isPreparing}
             isDemoMode={demoModeActive}
+            unifiedEntries={unifiedEntries}
           />
         )}
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   ArrowRight, 
   Calendar, 
@@ -20,7 +20,8 @@ import {
   Mail,
   CheckSquare,
   Square,
-  Info
+  Info,
+  FolderOpen
 } from 'lucide-react';
 import type { SimulationParameters } from '../../utils/swarm/types';
 import { PreflightEstimatorModal } from './PreflightEstimatorModal';
@@ -104,6 +105,15 @@ export const CRM_SOURCE_OPTIONS: CrmSourceOption[] = [
     icon: Mail,
     badge: 'Emails',
     badgeColor: 'bg-violet-50 text-violet-700 border-violet-200'
+  },
+  {
+    id: 'files',
+    title: 'Uploaded Files & Documents',
+    category: 'Documents',
+    description: 'Commercial contracts, proposals, invoices, quotes, and extracted text attachments from CRM leads.',
+    icon: FolderOpen,
+    badge: 'Files',
+    badgeColor: 'bg-teal-50 text-teal-700 border-teal-200'
   }
 ];
 
@@ -116,6 +126,7 @@ interface CreateRehearsalViewProps {
   onDraftSaved?: (savedDraft: any) => void;
   isSubmitting?: boolean;
   isDemoMode?: boolean;
+  unifiedEntries?: any[];
 }
 
 const PRESET_TEMPLATES = [
@@ -159,8 +170,51 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
   onLaunch,
   onDraftSaved,
   isSubmitting = false,
-  isDemoMode = false
+  isDemoMode = false,
+  unifiedEntries = []
 }) => {
+  const [localUnifiedEntries, setLocalUnifiedEntries] = useState<any[]>([]);
+
+  useEffect(() => {
+    // If unifiedEntries not supplied via props, fetch from /sync.php as fallback
+    if (!unifiedEntries || unifiedEntries.length === 0) {
+      fetch('/sync.php')
+        .then(res => res.json())
+        .then(data => {
+          if (data?.unifiedEntries && Array.isArray(data.unifiedEntries)) {
+            setLocalUnifiedEntries(data.unifiedEntries);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [unifiedEntries]);
+
+  const activeUnifiedRegistries = useMemo(() => {
+    const list = (unifiedEntries && unifiedEntries.length > 0) ? unifiedEntries : localUnifiedEntries;
+    return list.filter((ue: any) => !ue.archived);
+  }, [unifiedEntries, localUnifiedEntries]);
+
+  // Dynamically compute full list of CRM sources: static sources + unified entries (if made)
+  const allSourceOptions: CrmSourceOption[] = useMemo(() => {
+    const base: CrmSourceOption[] = [...CRM_SOURCE_OPTIONS];
+
+    if (activeUnifiedRegistries.length > 0) {
+      activeUnifiedRegistries.forEach((ue: any) => {
+        base.push({
+          id: `ue_${ue.id}`,
+          title: `Unified: ${ue.name}`,
+          category: 'Unified Registry',
+          description: `Custom records and folder files from the ${ue.name} registry (${ue.entryName || 'Records'}).`,
+          icon: Database,
+          badge: ue.entryName || 'Unified',
+          badgeColor: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200'
+        });
+      });
+    }
+
+    return base;
+  }, [activeUnifiedRegistries]);
+
   // Form State
   const [draftId, setDraftId] = useState<string | undefined>(initialData?.id);
   const [title, setTitle] = useState<string>(initialData?.title || 'Q4 Strategy Market Rehearsal');
@@ -173,11 +227,32 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
   const [lookbackMonths, setLookbackMonths] = useState<6 | 12 | 24>(
     (initialData?.lookback_months as 6 | 12 | 24) || 12
   );
-  const [selectedSources, setSelectedSources] = useState<string[]>(
-    initialData?.crm_data_sources && Array.isArray(initialData.crm_data_sources)
-      ? initialData.crm_data_sources
-      : DEFAULT_CRM_SOURCES
-  );
+  const [selectedSources, setSelectedSources] = useState<string[]>(() => {
+    if (initialData?.crm_data_sources && Array.isArray(initialData.crm_data_sources)) {
+      return initialData.crm_data_sources;
+    }
+    const defaultIds = CRM_SOURCE_OPTIONS.map(s => s.id);
+    activeUnifiedRegistries.forEach((ue: any) => {
+      defaultIds.push(`ue_${ue.id}`);
+    });
+    return defaultIds;
+  });
+
+  // When activeUnifiedRegistries load after initial render and there was no saved draft:
+  useEffect(() => {
+    if (activeUnifiedRegistries.length > 0 && !initialData?.crm_data_sources) {
+      setSelectedSources(prev => {
+        const next = [...prev];
+        activeUnifiedRegistries.forEach((ue: any) => {
+          const ueId = `ue_${ue.id}`;
+          if (!next.includes(ueId)) {
+            next.push(ueId);
+          }
+        });
+        return next;
+      });
+    }
+  }, [activeUnifiedRegistries, initialData]);
   const [swarmScale, setSwarmScale] = useState<number>(initialData?.swarm_scale || 30);
   const [totalRounds, setTotalRounds] = useState<number>(initialData?.total_rounds || 8);
   const [llmModel, setLlmModel] = useState<string>(initialData?.model_name || 'gpt-5.6-luna');
@@ -230,7 +305,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
   };
 
   const handleSelectAllSources = () => {
-    setSelectedSources(DEFAULT_CRM_SOURCES);
+    setSelectedSources(allSourceOptions.map(s => s.id));
     setIsDirty(true);
   };
 
@@ -528,15 +603,15 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                   CRM Grounding Data Sources
                 </h3>
                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-black tracking-wide border ${
-                  selectedSources.length === CRM_SOURCE_OPTIONS.length
+                  selectedSources.length === allSourceOptions.length
                     ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                     : selectedSources.length > 0
                     ? 'bg-purple-50 text-purple-700 border-purple-200'
                     : 'bg-amber-50 text-amber-700 border-amber-200'
                 }`}>
-                  {selectedSources.length === CRM_SOURCE_OPTIONS.length 
-                    ? 'All 6 Sources Active' 
-                    : `${selectedSources.length} of ${CRM_SOURCE_OPTIONS.length} Active`}
+                  {selectedSources.length === allSourceOptions.length 
+                    ? `All ${allSourceOptions.length} Sources Active` 
+                    : `${selectedSources.length} of ${allSourceOptions.length} Active`}
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 font-normal">
@@ -548,7 +623,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               <button
                 type="button"
                 onClick={handleSelectAllSources}
-                disabled={selectedSources.length === CRM_SOURCE_OPTIONS.length}
+                disabled={selectedSources.length === allSourceOptions.length}
                 className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-purple-50 hover:text-purple-700 text-slate-600 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
               >
                 <CheckSquare className="w-3.5 h-3.5 text-purple-600" />
@@ -568,7 +643,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
 
           {/* Sources Checkbox Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {CRM_SOURCE_OPTIONS.map((src) => {
+            {allSourceOptions.map((src) => {
               const isChecked = selectedSources.includes(src.id);
               const IconComp = src.icon;
 
