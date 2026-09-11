@@ -47,6 +47,7 @@ import { SimulationWizard } from './SimulationWizard';
 import { LiveWarRoom } from './LiveWarRoom';
 import { StrategicReportView } from './StrategicReportView';
 import { QaAssistantDrawer } from './QaAssistantDrawer';
+import { GuidedDemoWalkthrough } from './GuidedDemoWalkthrough';
 
 interface SaiModuleProps {
   isDemoMode?: boolean;
@@ -59,6 +60,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
   const [pastSimulations, setPastSimulations] = useState<any[]>([]);
   const [loadingList, setLoadingList] = useState<boolean>(true);
   const [isWizardOpen, setIsWizardOpen] = useState<boolean>(false);
+  const [isGuidedDemoOpen, setIsGuidedDemoOpen] = useState<boolean>(false);
 
   useEffect(() => {
     if (isDemoMode) {
@@ -457,12 +459,12 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
 
             {demoModeActive && (
               <button
-                onClick={handleLoadDemoSimulation}
-                className="px-3 py-2 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition"
-                title="Immediately loads the complete enterprise pricing rehearsal demonstration"
+                onClick={() => setIsGuidedDemoOpen(true)}
+                className="px-3 py-2 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition cursor-pointer"
+                title="Watch animated step-by-step demonstration of the full simulation workflow"
               >
-                <Play className="w-3.5 h-3.5 fill-white" />
-                <span className="hidden sm:inline">Explore Demo</span>
+                <Sparkles className="w-3.5 h-3.5 fill-white" />
+                <span className="hidden sm:inline">Guided Process Demo</span>
               </button>
             )}
           </div>
@@ -554,13 +556,19 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2.5 self-end md:self-center shrink-0">
+                <div className="flex flex-wrap items-center gap-2.5 self-end md:self-center shrink-0">
                   <button
-                    onClick={handleLoadDemoSimulation}
+                    onClick={() => setIsGuidedDemoOpen(true)}
                     className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 text-slate-950 font-black text-xs shadow-lg transition flex items-center gap-2 cursor-pointer"
                   >
                     <Play className="w-4 h-4 fill-slate-950" />
-                    <span>Explore Demo Rehearsal</span>
+                    <span>Watch Full Process Walkthrough (6 Steps)</span>
+                  </button>
+                  <button
+                    onClick={handleLoadDemoSimulation}
+                    className="px-4 py-2.5 rounded-2xl bg-slate-800/80 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-700 transition flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <span>Jump to Final Results</span>
                   </button>
                 </div>
               </div>
@@ -721,6 +729,16 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false }) => {
           isDemoMode={demoModeActive}
         />
       )}
+
+      {/* Interactive Guided Process Demo Walkthrough Modal */}
+      <GuidedDemoWalkthrough
+        isOpen={isGuidedDemoOpen}
+        onClose={() => setIsGuidedDemoOpen(false)}
+        onStartRealRehearsal={() => {
+          setIsGuidedDemoOpen(false);
+          setIsWizardOpen(true);
+        }}
+      />
 
     </div>
   );
