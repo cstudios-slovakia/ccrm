@@ -6,12 +6,15 @@ import { MessageSquare, Heart, Repeat2, Sparkles, MessageCircle, MessagesSquare 
 interface SocialFeedStreamProps {
   posts: SwarmPost[];
   className?: string;
+  systemLanguage?: string;
 }
 
 export const SocialFeedStream: React.FC<SocialFeedStreamProps> = ({
   posts,
-  className = "w-full h-full"
+  className = "w-full h-full",
+  systemLanguage = 'sk'
 }) => {
+  const isSk = systemLanguage === 'sk';
   const scrollRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
 
@@ -26,11 +29,23 @@ export const SocialFeedStream: React.FC<SocialFeedStreamProps> = ({
 
   const getStanceBadge = (score: number) => {
     if (score > 0.25) {
-      return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">Podporujúci</span>;
+      return (
+        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+          {isSk ? 'Podporujúci' : 'Supporting'}
+        </span>
+      );
     } else if (score < -0.25) {
-      return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">Nesúhlasný</span>;
+      return (
+        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+          {isSk ? 'Nesúhlasný' : 'Opposing'}
+        </span>
+      );
     }
-    return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">Neutrálny</span>;
+    return (
+      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+        {isSk ? 'Neutrálny' : 'Neutral'}
+      </span>
+    );
   };
 
   return (
@@ -41,18 +56,20 @@ export const SocialFeedStream: React.FC<SocialFeedStreamProps> = ({
         <div className="flex items-center gap-2">
           <div className="w-2.5 h-2.5 rounded-full bg-indigo-600 animate-pulse"></div>
           <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-            Živý kanál príspevkov ({posts.length} príspevkov)
+            {isSk ? `Živý kanál príspevkov (${posts.length} príspevkov)` : `Live Feed Stream (${posts.length} posts)`}
           </span>
         </div>
         <button
           onClick={() => setAutoScroll(!autoScroll)}
-          className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold transition ${
+          className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold transition cursor-pointer ${
             autoScroll 
               ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' 
               : 'bg-slate-200 text-slate-600'
           }`}
         >
-          {autoScroll ? 'Automatické posúvanie zap.' : 'Automatické posúvanie pozastavené'}
+          {autoScroll 
+            ? (isSk ? 'Automatické posúvanie zap.' : 'Auto-scroll ON') 
+            : (isSk ? 'Automatické posúvanie pozastavené' : 'Auto-scroll paused')}
         </button>
       </div>
 
@@ -64,7 +81,7 @@ export const SocialFeedStream: React.FC<SocialFeedStreamProps> = ({
         {sortedPosts.length === 0 ? (
           <div className="h-48 flex flex-col items-center justify-center text-slate-400 text-xs space-y-2">
             <Sparkles className="w-6 h-6 text-slate-300" />
-            <span>Čaká sa na začiatok 1. kola...</span>
+            <span>{isSk ? 'Čaká sa na začiatok 1. kola...' : 'Waiting for Round 1 deliberation to begin...'}</span>
           </div>
         ) : (
           sortedPosts.map((post) => (

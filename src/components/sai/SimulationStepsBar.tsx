@@ -17,44 +17,86 @@ export interface SimulationStepInfo {
   tagline: string;
 }
 
-export const REAL_SIMULATION_STEPS: SimulationStepInfo[] = [
-  {
-    id: 1,
-    shortLabel: '1. Scenár',
-    title: '1. Strategický scenár & Definícia hypotézy',
-    tagline: 'Definujte návrh, what-if otázku a podkladové zdroje z CRM.'
-  },
-  {
-    id: 2,
-    shortLabel: '2. Predbežný odhad',
-    title: '2. Predbežný odhad nákladov a bezpečnosti',
-    tagline: 'Predikcia spotreby tokenov a overenie bezpečnostných limitov.'
-  },
-  {
-    id: 3,
-    shortLabel: '3. Načítanie dát',
-    title: '3. Načítanie CRM dát & Tvorba grafu znalostí',
-    tagline: 'Extrakcia CRM kontextu, tvorba ontologického grafu a syntéza persón.'
-  },
-  {
-    id: 4,
-    shortLabel: '4. Live War Room',
-    title: '4. Autonómna simulácia vo War Roome',
-    tagline: 'Autonómni agenti diskutujú, formulujú protiargumenty a hlasujú.'
-  },
-  {
-    id: 5,
-    shortLabel: '5. Syntéza stratégie',
-    title: '5. Syntéza hlavného analytika',
-    tagline: 'AI spracováva debatu viacerých agentov a pripravuje manažérsky briefing.'
-  },
-  {
-    id: 6,
-    shortLabel: '6. Výsledky & Chatbot',
-    title: '6. Výkonný briefing & Interrogačný hub',
-    tagline: 'Strategický plán a priame dopytovanie agentov v reálnom čase.'
+export const getSimulationSteps = (lang?: string): SimulationStepInfo[] => {
+  if (lang === 'sk') {
+    return [
+      {
+        id: 1,
+        shortLabel: '1. Scenár',
+        title: '1. Strategický scenár & Definícia hypotézy',
+        tagline: 'Definujte návrh, what-if otázku a podkladové zdroje z CRM.'
+      },
+      {
+        id: 2,
+        shortLabel: '2. Predbežný odhad',
+        title: '2. Predbežný odhad nákladov a bezpečnosti',
+        tagline: 'Predikcia spotreby tokenov a overenie bezpečnostných limitov.'
+      },
+      {
+        id: 3,
+        shortLabel: '3. Načítanie dát',
+        title: '3. Načítanie CRM dát & Tvorba grafu znalostí',
+        tagline: 'Extrakcia CRM kontextu, tvorba ontologického grafu a syntéza persón.'
+      },
+      {
+        id: 4,
+        shortLabel: '4. Live War Room',
+        title: '4. Autonómna simulácia vo War Roome',
+        tagline: 'Autonómni agenti diskutujú, formulujú protiargumenty a hlasujú.'
+      },
+      {
+        id: 5,
+        shortLabel: '5. Syntéza stratégie',
+        title: '5. Syntéza hlavného analytika',
+        tagline: 'AI spracováva debatu viacerých agentov a pripravuje manažérsky briefing.'
+      },
+      {
+        id: 6,
+        shortLabel: '6. Výsledky & Chatbot',
+        title: '6. Výkonný briefing & Interrogačný hub',
+        tagline: 'Strategický plán a priame dopytovanie agentov v reálnom čase.'
+      }
+    ];
   }
-];
+  return [
+    {
+      id: 1,
+      shortLabel: '1. Scenario',
+      title: '1. Strategic Scenario & Hypothesis Definition',
+      tagline: 'Define your strategic proposal, what-if question, and CRM context sources.'
+    },
+    {
+      id: 2,
+      shortLabel: '2. Preflight Estimate',
+      title: '2. Preflight Cost & Safety Estimate',
+      tagline: 'Token expenditure prediction and safety guardrail verification.'
+    },
+    {
+      id: 3,
+      shortLabel: '3. Data Ingestion',
+      title: '3. CRM Data Ingestion & Knowledge Graph',
+      tagline: 'Context extraction, ontology graph construction, and agent persona synthesis.'
+    },
+    {
+      id: 4,
+      shortLabel: '4. Live War Room',
+      title: '4. Autonomous War Room Simulation',
+      tagline: 'Autonomous AI agents deliberate, debate counter-arguments, and vote.'
+    },
+    {
+      id: 5,
+      shortLabel: '5. Synthesis',
+      title: '5. Lead Analyst Strategy Synthesis',
+      tagline: 'AI synthesizes multi-agent deliberation into an actionable executive briefing.'
+    },
+    {
+      id: 6,
+      shortLabel: '6. Results & Q&A',
+      title: '6. Executive Briefing & Interrogation Hub',
+      tagline: 'Comprehensive strategic roadmap and direct real-time agent questioning.'
+    }
+  ];
+};
 
 interface SimulationStepsBarProps {
   currentStep: number; // 1 to 6
@@ -76,6 +118,7 @@ interface SimulationStepsBarProps {
   onOpenQaDrawer?: () => void;
   onOpenPreflightModal?: () => void;
   onStartNewRehearsal?: () => void;
+  systemLanguage?: string;
 }
 
 export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
@@ -97,39 +140,41 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
   onStopSimulation,
   onOpenQaDrawer,
   onOpenPreflightModal,
-  onStartNewRehearsal
+  onStartNewRehearsal,
+  systemLanguage = 'sk'
 }) => {
   const [showScenarioModal, setShowScenarioModal] = useState(false);
-
-  const stepMeta = REAL_SIMULATION_STEPS.find(s => s.id === currentStep) || REAL_SIMULATION_STEPS[0];
+  const isSk = systemLanguage === 'sk';
+  const steps = getSimulationSteps(systemLanguage);
+  const stepMeta = steps.find(s => s.id === currentStep) || steps[0];
 
   // Derive status badge
-  let badgeText = 'AKTÍVNA SIMULÁCIA';
+  let badgeText = isSk ? 'AKTÍVNA SIMULÁCIA' : 'ACTIVE REHEARSAL';
   let badgeStyle = 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30';
 
   if (isDemoMode) {
-    badgeText = 'DEMO TEST (0 €)';
+    badgeText = isSk ? 'DEMO TEST (0 €)' : 'DEMO TEST ($0.00)';
     badgeStyle = 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
   } else if (isEngineRunning) {
-    badgeText = `ŽIVÁ SIMULÁCIA • K${currentRound}/${totalRounds}`;
+    badgeText = isSk ? `ŽIVÁ SIMULÁCIA • K${currentRound}/${totalRounds}` : `LIVE SIMULATION • R${currentRound}/${totalRounds}`;
     badgeStyle = 'bg-purple-500/30 text-purple-200 border-purple-500/40 animate-pulse';
   } else if (isPreparing) {
-    badgeText = currentStep === 5 ? 'GENEROVANIE BRIEFINGU' : 'ŽIVÁ PRÍPRAVA ROJU';
+    badgeText = currentStep === 5 
+      ? (isSk ? 'GENEROVANIE BRIEFINGU' : 'GENERATING BRIEFING')
+      : (isSk ? 'ŽIVÁ PRÍPRAVA ROJU' : 'LIVE SWARM INGESTION');
     badgeStyle = 'bg-purple-500/20 text-purple-300 border-purple-500/30 animate-pulse';
   } else if (hasReport || activeView === 'report') {
-    badgeText = 'ŽIVÁ SIMULÁCIA • DOKONČENÁ';
+    badgeText = isSk ? 'ŽIVÁ SIMULÁCIA • DOKONČENÁ' : 'LIVE SIMULATION • COMPLETED';
     badgeStyle = 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
   } else if (activeView === 'create') {
-    badgeText = 'NOVÁ SIMULÁCIA';
+    badgeText = isSk ? 'NOVÁ SIMULÁCIA' : 'NEW REHEARSAL';
     badgeStyle = 'bg-purple-500/20 text-purple-300 border-purple-500/30';
   }
 
   // Handle clicking step pills
   const handleStepClick = (stepId: number) => {
     if (stepId === 1) {
-      if (activeView === 'create') {
-        // already on create
-      } else {
+      if (activeView !== 'create') {
         setShowScenarioModal(true);
       }
       return;
@@ -143,7 +188,6 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
     }
 
     if (stepId === 3) {
-      // Swarm ingestion details or info
       if (activeView === 'create') return;
       onNavigateView('running');
       return;
@@ -176,14 +220,16 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-black tracking-tight text-white line-clamp-1 max-w-xs sm:max-w-sm md:max-w-md">
-                {title || 'SAI Autonomous Rehearsal'}
+                {title || (isSk ? 'SAI Autonómna simulácia' : 'SAI Autonomous Rehearsal')}
               </h2>
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border shrink-0 ${badgeStyle}`}>
                 {badgeText}
               </span>
             </div>
             <p className="text-[11px] text-slate-400 line-clamp-1 flex items-center gap-1.5">
-              <span>Krok {currentStep} zo 6: {isPreparing && prepStepMessage ? prepStepMessage : stepMeta.title}</span>
+              <span>
+                {isSk ? `Krok ${currentStep} zo 6:` : `Step ${currentStep} of 6:`} {isPreparing && prepStepMessage ? prepStepMessage : stepMeta.title}
+              </span>
               {simulatedHour !== undefined && isEngineRunning && (
                 <span className="text-amber-400/90 font-mono text-[10px] inline-flex items-center gap-1 ml-1 bg-slate-800/80 px-1.5 py-0.2 rounded border border-slate-700">
                   <Clock className="w-3 h-3 text-amber-400 inline" />
@@ -196,7 +242,7 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
 
         {/* Stepper Navigation Pills */}
         <div className="flex items-center gap-1.5 bg-slate-950/70 p-1.5 rounded-2xl border border-slate-800 overflow-x-auto max-w-full">
-          {REAL_SIMULATION_STEPS.map(s => {
+          {steps.map(s => {
             const isActive = s.id === currentStep;
             const isPassed = s.id < currentStep || (hasReport && s.id <= 5);
             const isClickable = 
@@ -211,7 +257,7 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
                 type="button"
                 onClick={() => handleStepClick(s.id)}
                 disabled={!isClickable && !isActive}
-                title={`${s.title} — ${s.tagline}${isClickable ? ' (Kliknutím skontrolujete)' : ''}`}
+                title={`${s.title} — ${s.tagline}${isClickable ? (isSk ? ' (Kliknutím skontrolujete)' : ' (Click to review)') : ''}`}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 ${
                   isActive 
                     ? 'bg-gradient-to-r from-purple-600 to-emerald-500 text-white shadow-md' 
@@ -238,10 +284,10 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
               type="button"
               onClick={onStopSimulation}
               className="px-3 py-1.5 rounded-xl text-xs font-bold text-rose-300 bg-rose-500/20 border border-rose-500/30 hover:bg-rose-500/30 transition flex items-center gap-1.5 cursor-pointer shadow-sm"
-              title="Zastaviť debatu agentov a vygenerovať záverečnú syntézu"
+              title={isSk ? "Zastaviť debatu agentov a vygenerovať záverečnú syntézu" : "Stop agent deliberation and synthesize early"}
             >
               <Pause className="w-3.5 h-3.5" />
-              <span>Ukončiť skôr</span>
+              <span>{isSk ? "Ukončiť skôr" : "End Early"}</span>
             </button>
           )}
 
@@ -250,91 +296,95 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
             <button
               type="button"
               onClick={onOpenQaDrawer}
-              className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition flex items-center gap-1.5 cursor-pointer shadow-sm"
-              title="Otvoriť interrogačný panel na krížový výsluch agentov a reportu"
+              className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition flex items-center gap-1.5 cursor-pointer shadow-sm"
             >
               <MessageSquare className="w-3.5 h-3.5 text-purple-400" />
-              <span className="hidden sm:inline">Spýtať sa analytika</span>
+              <span className="hidden sm:inline">{isSk ? "Spýtať sa analytika" : "Ask Analyst"}</span>
             </button>
           )}
 
-          {/* New Rehearsal Shortcut */}
-          {activeView === 'report' && onStartNewRehearsal && (
+          {/* Quick New Rehearsal Shortcut */}
+          {onStartNewRehearsal && activeView !== 'create' && (
             <button
               type="button"
               onClick={onStartNewRehearsal}
-              className="px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-purple-600 to-emerald-600 hover:from-purple-700 hover:to-emerald-700 transition flex items-center gap-1.5 cursor-pointer shadow-sm"
+              className="px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 transition flex items-center gap-1.5 cursor-pointer shadow-sm"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Nová simulácia</span>
+              <span className="hidden md:inline">{isSk ? "Nová simulácia" : "New Simulation"}</span>
             </button>
           )}
 
-          <div className="h-5 w-px bg-slate-800 mx-1 hidden sm:block" />
-
-          {/* Back to Rehearsals Overview / Exit */}
+          {/* Exit / Return to List */}
           <button
             type="button"
             onClick={() => onNavigateView('list')}
-            className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition cursor-pointer flex items-center gap-1"
-            title="Návrat na prehľad simulácií"
+            className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+            title={isSk ? "Prehľad simulácií" : "Simulation List"}
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
-
         </div>
-
       </div>
 
-      {/* Scenario Details Popover Modal */}
+      {/* Step 1 Quick Scenario Review Modal */}
       {showScenarioModal && (
-        <div className="fixed inset-0 z-[2100] flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-2xl w-full overflow-hidden">
-            <div className="p-6 bg-gradient-to-r from-purple-900 via-indigo-900 to-slate-900 text-white flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-2xl bg-white/10 flex items-center justify-center text-emerald-400">
-                  <FileText className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white">Krok 1: Definícia strategického scenára</h3>
-                  <p className="text-xs text-slate-300">{title}</p>
-                </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+          <div className="bg-white text-slate-900 rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-purple-600" />
+                <h3 className="text-sm font-bold text-slate-900">
+                  {isSk ? "Vstupné zadanie a hypotéza simulácie" : "Simulation Hypothesis & Input Scenario"}
+                </h3>
               </div>
-              <button
+              <button 
+                type="button" 
                 onClick={() => setShowScenarioModal(false)}
-                className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition"
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto text-slate-800 text-xs">
+            <div className="space-y-3 text-xs">
               <div>
-                <span className="text-[10px] uppercase font-black tracking-wider text-purple-700 block mb-1">
-                  Strategická hypotéza / What-If otázka
+                <span className="font-bold uppercase tracking-wider text-slate-400 text-[10px] block mb-1">
+                  {isSk ? "Názov simulácie" : "Simulation Title"}
                 </span>
-                <p className="p-3 rounded-2xl bg-purple-50/70 border border-purple-200/80 font-semibold text-purple-950 leading-relaxed">
-                  {hypothesis || 'Nie je zaznamenaná žiadna explicitná hypotéza.'}
-                </p>
+                <p className="font-bold text-slate-800 text-sm">{title}</p>
               </div>
 
-              <div>
-                <span className="text-[10px] uppercase font-black tracking-wider text-slate-500 block mb-1">
-                  Vstupné zadanie & Text oznámenia
-                </span>
-                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 font-mono text-[11px] text-slate-700 whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto">
-                  {seedDocument || 'Nebol zadaný text oznámenia ani memoranda.'}
+              {hypothesis && (
+                <div>
+                  <span className="font-bold uppercase tracking-wider text-slate-400 text-[10px] block mb-1">
+                    {isSk ? "Strategická hypotéza" : "Strategic Hypothesis"}
+                  </span>
+                  <div className="p-3 bg-purple-50 text-purple-950 font-medium rounded-2xl border border-purple-100">
+                    &ldquo;{hypothesis}&rdquo;
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {seedDocument && (
+                <div>
+                  <span className="font-bold uppercase tracking-wider text-slate-400 text-[10px] block mb-1">
+                    {isSk ? "Text zadania / oznámenia" : "Briefing Document / Announcement"}
+                  </span>
+                  <div className="p-3 bg-slate-50 text-slate-700 font-mono text-[11px] rounded-2xl border border-slate-200 max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+                    {seedDocument}
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end">
+            <div className="pt-2 flex justify-end">
               <button
                 type="button"
                 onClick={() => setShowScenarioModal(false)}
-                className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition"
               >
-                Zavrieť
+                {isSk ? "Zavrieť" : "Close"}
               </button>
             </div>
           </div>

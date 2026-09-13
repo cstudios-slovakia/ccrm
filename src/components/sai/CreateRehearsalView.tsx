@@ -31,10 +31,13 @@ import {
   Eye,
   Loader2,
   X,
-  Sparkles
+  Sparkles,
+  Compass
 } from 'lucide-react';
 import type { SimulationParameters, SwarmContextDocument } from '../../utils/swarm/types';
 import { PreflightEstimatorModal } from './PreflightEstimatorModal';
+import { TemplateCatalogueModal } from './TemplateCatalogueModal';
+import type { UseCaseTemplate } from './useCasesCatalogue';
 import { initServerSimulation } from '../../utils/swarm/checkpointClient';
 import { formatBytes } from '../../utils/formatBytes';
 
@@ -56,10 +59,14 @@ export interface DraftData {
 export interface CrmSourceOption {
   id: string;
   title: string;
+  titleEn?: string;
   category: string;
+  categoryEn?: string;
   description: string;
+  descriptionEn?: string;
   icon: React.ElementType;
   badge: string;
+  badgeEn?: string;
   badgeColor: string;
 }
 
@@ -67,73 +74,105 @@ export const CRM_SOURCE_OPTIONS: CrmSourceOption[] = [
   {
     id: 'active_leads',
     title: 'Aktívne leady v pipeline',
+    titleEn: 'Active Pipeline Leads',
     category: 'Obchodný lievik',
+    categoryEn: 'Sales Pipeline',
     description: 'Rozpracované obchody, kvalifikované leady a aktívne účty vo fáze zisťovania potrieb.',
+    descriptionEn: 'Deals in progress, qualified leads, and accounts in the discovery phase.',
     icon: Users,
     badge: 'Leady',
+    badgeEn: 'Leads',
     badgeColor: 'bg-blue-50 text-blue-700 border-blue-200'
   },
   {
     id: 'existing_clients',
     title: 'Existujúci klienti & Zmluvy',
+    titleEn: 'Existing Clients & Accounts',
     category: 'Klientska báza',
+    categoryEn: 'Client Base',
     description: 'Aktívne klientske účty, dlhodobí partneri a historicky uzatvorené zmluvy.',
+    descriptionEn: 'Active customer accounts, long-term partners, and executed agreements.',
     icon: Building2,
     badge: 'Klienti',
+    badgeEn: 'Clients',
     badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200'
   },
   {
     id: 'projects',
     title: 'Klientske projekty & Zákazky',
+    titleEn: 'Client Projects & Deliverables',
     category: 'Realizácia & Zákazky',
+    categoryEn: 'Delivery & Projects',
     description: 'Aktívne a dokončené klientske projekty, rozsah zákaziek, harmonogramy a termíny dodania.',
+    descriptionEn: 'Active and completed client projects, scope of work, timelines, and milestones.',
     icon: Briefcase,
     badge: 'Projekty',
+    badgeEn: 'Projects',
     badgeColor: 'bg-orange-50 text-orange-700 border-orange-200'
   },
   {
     id: 'lost_deal_objections',
     title: 'Stratené obchody & Námietky',
+    titleEn: 'Lost Deals & Objections',
     category: 'Obchodné námietky',
+    categoryEn: 'Sales Objections',
     description: 'Zaznamenaný odpor pri predaji, cenová senzitivita, dôvody odmietnutia a námietky.',
+    descriptionEn: 'Recorded sales resistance, price sensitivity, rejection reasons, and pushback.',
     icon: AlertTriangle,
     badge: 'Námietky',
+    badgeEn: 'Objections',
     badgeColor: 'bg-rose-50 text-rose-700 border-rose-200'
   },
   {
     id: 'competitor_intel',
     title: 'Zmienky o konkurencii',
+    titleEn: 'Competitor Intelligence',
     category: 'Prieskum trhu',
+    categoryEn: 'Market Research',
     description: 'Poznámky v CRM odkazujúce na konkurenčné platformy, alternatívnych dodávateľov a porovnanie cien.',
+    descriptionEn: 'CRM notes referencing competing platforms, alternative vendors, and pricing comparisons.',
     icon: Swords,
     badge: 'Konkurencia',
+    badgeEn: 'Competitors',
     badgeColor: 'bg-amber-50 text-amber-700 border-amber-200'
   },
   {
     id: 'meeting_notes',
     title: 'Zápisy zo stretnutí & Prepisy',
+    titleEn: 'Meeting Notes & Transcripts',
     category: 'Stretnutia & Hovory',
+    categoryEn: 'Meetings & Calls',
     description: 'Zápisy zo stretnutí, prepisy rozhovorov a priama verbálna spätná väzba od klientov.',
+    descriptionEn: 'Meeting logs, call summaries, transcripts, and direct verbal client feedback.',
     icon: MessageSquare,
     badge: 'Stretnutia',
+    badgeEn: 'Meetings',
     badgeColor: 'bg-indigo-50 text-indigo-700 border-indigo-200'
   },
   {
     id: 'client_emails',
     title: 'Prichádzajúce emaily klientov',
+    titleEn: 'Client Email Correspondence',
     category: 'Komunikácia',
+    categoryEn: 'Communications',
     description: 'Prichádzajúce emaily, dopyty klientov, požiadavky na rozsah a emailová korešpondencia.',
+    descriptionEn: 'Inbound email inquiries, scope requests, clarifications, and message threads.',
     icon: Mail,
     badge: 'Emaily',
+    badgeEn: 'Emails',
     badgeColor: 'bg-violet-50 text-violet-700 border-violet-200'
   },
   {
     id: 'files',
     title: 'Nahrané súbory & Dokumenty',
+    titleEn: 'CRM Attachments & Files',
     category: 'Dokumenty',
+    categoryEn: 'Documents',
     description: 'Obchodné zmluvy, ponuky, faktúry, cenové kalkulácie a textové prílohy z CRM leadov.',
+    descriptionEn: 'Contracts, proposals, invoices, rate calculations, and uploaded text attachments.',
     icon: FolderOpen,
     badge: 'Súbory',
+    badgeEn: 'Files',
     badgeColor: 'bg-teal-50 text-teal-700 border-teal-200'
   }
 ];
@@ -153,13 +192,17 @@ interface CreateRehearsalViewProps {
   isSubmitting?: boolean;
   isDemoMode?: boolean;
   unifiedEntries?: any[];
+  systemLanguage?: string;
 }
 
 const PRESET_TEMPLATES = [
   {
     name: 'Zvýšenie cien Enterprise',
+    nameEn: 'Enterprise Price Increase',
     title: 'Simulácia 25% úpravy cien v Q4',
+    titleEn: 'Q4 Enterprise 25% Price Increase Simulation',
     hypothesis: 'Čo ak zvýšime ceny balíka Enterprise CRM o 25%, no zároveň pridáme 99.9% SLA garanciu dostupnosti a dedikovaný Slack kanál podpory?',
+    hypothesisEn: 'What if we raise Enterprise CRM prices by 25% while adding guaranteed 99.9% SLA availability and a dedicated Slack support channel?',
     seed: `Pripravujeme oznámenie 25% zvýšenia cien pre všetky balíky Enterprise od budúceho mesiaca.
 Aktuálna sadzba Enterprise: 199 €/mesiac. Navrhovaná sadzba: 249 €/mesiac.
 Výmenou za to klienti získajú:
@@ -167,26 +210,49 @@ Výmenou za to klienti získajú:
 - Priamy dedikovaný komunikačný kanál cez Slack/WhatsApp s naším tímom inžinierov
 - Bezplatnú asistenciu pri migrácii starších databáz
 Existujúci zákazníci získajú ochrannú lehotu 6 mesiacov na pôvodných cenách pred uplatnením novej sadzby.
-Cieľová skupina: digitálne agentúry a výrobné SMB podniky s 20–200 zamestnancami.`
+Cieľová skupina: digitálne agentúry a výrobné SMB podniky s 20–200 zamestnancami.`,
+    seedEn: `We are announcing a 25% price increase across all Enterprise plans starting next month.
+Current Enterprise rate: €199/month. Proposed rate: €249/month.
+In exchange, clients receive:
+- Guaranteed 1-hour SLA response time for critical incidents
+- Direct dedicated Slack/WhatsApp bridge with our senior engineers
+- Complimentary migration assistance for legacy databases
+Existing clients receive a 6-month grandfathering price lock before the new rate applies.
+Target segment: digital agencies and manufacturing SMBs with 20–200 employees.`
   },
   {
     name: 'Obrana voči reakcii konkurencie',
+    nameEn: 'Competitor Counter-Positioning',
     title: 'Protiútok voči tradičnému poskytovateľovi CRM',
+    titleEn: 'Counter-Positioning Against Legacy CRM Competitor',
     hypothesis: 'Čo ak náš hlavný etablovaný konkurent spustí agresívnu kampaň útočiacu na chýbajúcu funkciu integrovaného telefónneho dialera?',
+    hypothesisEn: 'What if our main established competitor launches an aggressive campaign attacking our lack of an integrated phone dialer?',
     seed: `Podľa indícií konkurent X pripravuje cielenú kampaň poukazujúcu na absenciu vstavanej VoIP telefónie v našom riešení.
 Naša strategická proti-pozícia:
 - Zameriavame sa na hĺbkovú automatizáciu pracovných postupov, okamžitú viackanálovú integráciu s WhatsAppom a modernú rýchlosť UI namiesto starých call-centier.
 - Väčšina moderných obchodných tímov komunikuje asynchrónne cez správy, videohovory a email namiesto studených hovorov.
-- Ponúkame bezproblémovú integráciu s PBX ústredňami a Twilio cez Webhooky.`
+- Ponúkame bezproblémovú integráciu s PBX ústredňami a Twilio cez Webhooky.`,
+    seedEn: `Intelligence indicates Competitor X is launching a targeted campaign focusing on the lack of built-in VoIP telephony in our platform.
+Our strategic counter-position:
+- We double down on deep workflow automation, instant multi-channel WhatsApp messaging, and modern sub-100ms UI speed over antiquated call center stacks.
+- Modern enterprise sales forces communicate asynchronously via messaging, video calls, and email rather than blind cold calling.
+- We offer seamless webhooks and PBX integrations with Twilio and modern VoIP gateways.`
   },
   {
     name: 'Uvedenie novej funkcie (Samoobslužné SAI)',
+    nameEn: 'Feature Launch (Self-Service SAI)',
     title: 'Simulácia spustenia verejnej bety Swarm AI',
+    titleEn: 'Swarm AI Public Beta Launch Simulation',
     hypothesis: 'Čo ak uvedieme autonómnu prediktívnu simuláciu (SAI) ako prémiový doplnok za 49 €/mesiac?',
+    hypothesisEn: 'What if we introduce autonomous predictive simulation (SAI) as a premium add-on at €49/month?',
     seed: `Spúšťame funkciu Swarm Artificial Intelligence (SAI), ktorá firmám umožňuje simulovať trhové reakcie na nové produkty, PR oznámenia a obchodné stratégie ešte pred ich zverejnením.
 Funkcia využíva sociálne roje autonómnych agentov podložené skutočnou históriou leadov a obchodných námietok z firemného CRM.
 Cena: 49 €/mesiac za 10 simulácií mesačne, alebo priebežné platby za spotrebované proxy volania.
-Chceme zistiť, či obchodní riaditelia považujú tento nástroj za presvedčivý, alebo či sú skeptickí voči validite AI simulácie.`
+Chceme zistiť, či obchodní riaditelia považujú tento nástroj za presvedčivý, alebo či sú skeptickí voči validite AI simulácie.`,
+    seedEn: `We are launching Swarm Artificial Intelligence (SAI), enabling businesses to simulate market reactions to new product lines, PR announcements, and commercial packaging prior to launch.
+The capability leverages autonomous multi-agent social swarms grounded in live CRM lead history and objections.
+Pricing: €49/month for 10 rehearsals per month, or pay-as-you-go proxy tokens.
+Goal: determine if commercial directors perceive high ROI and trust agent validity, or remain skeptical of synthetic simulation.`
   }
 ];
 
@@ -197,9 +263,13 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
   onDraftSaved,
   isSubmitting = false,
   isDemoMode = false,
-  unifiedEntries = []
+  unifiedEntries = [],
+  systemLanguage = 'sk'
 }) => {
+  const isSk = systemLanguage === 'sk';
   const [localUnifiedEntries, setLocalUnifiedEntries] = useState<any[]>([]);
+  const [isCatalogueOpen, setIsCatalogueOpen] = useState<boolean>(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   useEffect(() => {
     // If unifiedEntries not supplied via props, fetch from /sync.php as fallback
@@ -228,27 +298,39 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
       activeUnifiedRegistries.forEach((ue: any) => {
         base.push({
           id: `ue_${ue.id}`,
-          title: `Zjednotený register: ${ue.name}`,
-          category: 'Zjednotený register',
-          description: `Zákaznícke záznamy a súbory zo zložky z registra ${ue.name} (${ue.entryName || 'Záznamy'}).`,
+          title: isSk ? `Zjednotený register: ${ue.name}` : `Unified Registry: ${ue.name}`,
+          titleEn: `Unified Registry: ${ue.name}`,
+          category: isSk ? 'Zjednotený register' : 'Unified Registry',
+          categoryEn: 'Unified Registry',
+          description: isSk 
+            ? `Zákaznícke záznamy a súbory zo zložky z registra ${ue.name} (${ue.entryName || 'Záznamy'}).`
+            : `Customer records and attachments from registry ${ue.name} (${ue.entryName || 'Records'}).`,
+          descriptionEn: `Customer records and attachments from registry ${ue.name} (${ue.entryName || 'Records'}).`,
           icon: Database,
-          badge: ue.entryName || 'Register',
+          badge: ue.entryName || (isSk ? 'Register' : 'Registry'),
+          badgeEn: ue.entryName || 'Registry',
           badgeColor: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200'
         });
       });
     }
 
     return base;
-  }, [activeUnifiedRegistries]);
+  }, [activeUnifiedRegistries, isSk]);
 
   // Form State
   const [draftId, setDraftId] = useState<string | undefined>(initialData?.id);
-  const [title, setTitle] = useState<string>(initialData?.title || 'Strategická trhová simulácia Q4');
+  const [title, setTitle] = useState<string>(
+    initialData?.title || (isSk ? 'Strategická trhová simulácia Q4' : 'Q4 Strategic Market Simulation')
+  );
   const [hypothesis, setHypothesis] = useState<string>(
-    initialData?.hypothesis || 'Čo ak zavedieme ročnú fakturáciu s 20% zľavou a zrušíme mesačné plány pre nové účty?'
+    initialData?.hypothesis || (isSk 
+      ? 'Čo ak zavedieme ročnú fakturáciu s 20% zľavou a zrušíme mesačné plány pre nové účty?' 
+      : 'What if we introduce annual billing with a 20% discount and eliminate monthly plans for new accounts?')
   );
   const [seedDocument, setSeedDocument] = useState<string>(
-    initialData?.seed_document || `Zvažujeme reštrukturalizáciu nášho fakturačného modelu. Pre všetky nové účty budeme vyžadovať ročný záväzok, pričom ponúkneme 20% celkovú zľavu oproti pôvodným mesačným sadzbám. Súčasní klienti môžu zostať na mesačnej fakturácii. Našimi cieľovými klientmi sú B2B agentúry a poradenské firmy.`
+    initialData?.seed_document || (isSk 
+      ? `Zvažujeme reštrukturalizáciu nášho fakturačného modelu. Pre všetky nové účty budeme vyžadovať ročný záväzok, pričom ponúkneme 20% celkovú zľavu oproti pôvodným mesačným sadzbám. Súčasní klienti môžu zostať na mesačnej fakturácii. Našimi cieľovými klientmi sú B2B agentúry a poradenské firmy.`
+      : `We are considering restructuring our billing model. For all new accounts, we will require an annual commitment, offering a 20% overall discount compared to standard monthly rates. Existing clients may remain on monthly billing. Our target customers are B2B agencies and consulting firms.`)
   );
   const [lookbackMonths, setLookbackMonths] = useState<6 | 12 | 24>(
     (initialData?.lookback_months as 6 | 12 | 24) || 12
@@ -371,11 +453,19 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
       const ext = file.name.split('.').pop()?.toLowerCase() || '';
 
       if (!validExtensions.includes(ext)) {
-        setDocUploadError(`Nepodporovaný formát súboru "${file.name}". Podporované sú len .pdf, .md, .markdown a .txt.`);
+        setDocUploadError(
+          isSk 
+            ? `Nepodporovaný formát súboru "${file.name}". Podporované sú len .pdf, .md, .markdown a .txt.`
+            : `Unsupported file format "${file.name}". Supported: .pdf, .md, .markdown, .txt`
+        );
         continue;
       }
 
-      setUploadDocProgress(`Spracovávam ${file.name} (${i + 1}/${files.length})...`);
+      setUploadDocProgress(
+        isSk 
+          ? `Spracovávam ${file.name} (${i + 1}/${files.length})...`
+          : `Processing ${file.name} (${i + 1}/${files.length})...`
+      );
 
       try {
         let clientExtractedText = '';
@@ -419,11 +509,19 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
 
           addedDocs.push(newDoc);
         } else {
-          setDocUploadError(`Chyba pri nahrávaní súboru ${file.name}: ${data.error || 'Neznáma chyba'}`);
+          setDocUploadError(
+            isSk 
+              ? `Chyba pri nahrávaní súboru ${file.name}: ${data.error || 'Neznáma chyba'}`
+              : `Error uploading ${file.name}: ${data.error || 'Unknown error'}`
+          );
         }
       } catch (err: any) {
         console.error('Error uploading swarm doc:', err);
-        setDocUploadError(`Nepodarilo sa nahrať súbor ${file.name}: ${err?.message || 'Sieťová chyba'}`);
+        setDocUploadError(
+          isSk 
+            ? `Nepodarilo sa nahrať súbor ${file.name}: ${err?.message || 'Sieťová chyba'}`
+            : `Failed to upload ${file.name}: ${err?.message || 'Network error'}`
+        );
       }
     }
 
@@ -441,11 +539,34 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
   };
 
   const handleApplyPreset = (preset: typeof PRESET_TEMPLATES[0]) => {
-    setTitle(preset.title);
-    setHypothesis(preset.hypothesis);
-    setSeedDocument(preset.seed);
+    setTitle(isSk ? preset.title : preset.titleEn);
+    setHypothesis(isSk ? preset.hypothesis : preset.hypothesisEn);
+    setSeedDocument(isSk ? preset.seed : preset.seedEn);
     setIsDirty(true);
     setValidationError(null);
+  };
+
+  const handleApplyCatalogueTemplate = (template: UseCaseTemplate) => {
+    const chosenTitle = isSk ? (template.nameSk || template.name) : template.name;
+    const chosenHypothesis = isSk ? (template.hypothesisSk || template.hypothesis) : template.hypothesis;
+    const chosenSeed = isSk ? (template.seedDocumentSk || template.seedDocument) : template.seedDocument;
+
+    setTitle(chosenTitle);
+    setHypothesis(chosenHypothesis);
+    setSeedDocument(chosenSeed);
+
+    if (template.recommendedSources && template.recommendedSources.length > 0) {
+      setSelectedSources(template.recommendedSources);
+    }
+    setIsDirty(true);
+    setValidationError(null);
+    setIsCatalogueOpen(false);
+
+    const msg = isSk 
+      ? `Šablóna „${chosenTitle}“ bola načítaná do polí.` 
+      : `Template "${chosenTitle}" applied to simulation!`;
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 4000);
   };
 
   const handleToggleSource = (sourceId: string) => {
@@ -475,8 +596,8 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
     try {
       const draftPayload = {
         id: draftId,
-        title: title.trim() || 'Koncept simulácie bez názvu',
-        hypothesis: hypothesis.trim() || 'Nešpecifikovaná hypotéza',
+        title: title.trim() || (isSk ? 'Koncept simulácie bez názvu' : 'Untitled Simulation Draft'),
+        hypothesis: hypothesis.trim() || (isSk ? 'Nešpecifikovaná hypotéza' : 'Unspecified hypothesis'),
         seed_document: seedDocument.trim(),
         lookback_months: lookbackMonths,
         crm_data_sources: selectedSources,
@@ -505,7 +626,10 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
       }
     } catch (err: any) {
       console.error('Failed to save draft:', err);
-      setValidationError('Nepodarilo sa uložiť koncept: ' + (err?.message || 'Sieťová chyba'));
+      setValidationError(isSk 
+        ? ('Nepodarilo sa uložiť koncept: ' + (err?.message || 'Sieťová chyba'))
+        : ('Failed to save draft: ' + (err?.message || 'Network error'))
+      );
     } finally {
       setIsSavingDraft(false);
     }
@@ -515,15 +639,15 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
   const handleOpenEstimator = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
-      setValidationError('Pred spustením zadajte názov simulácie.');
+      setValidationError(isSk ? 'Zadajte názov strategickej simulácie.' : 'Please enter a simulation title.');
       return;
     }
     if (!hypothesis.trim()) {
-      setValidationError('Zadajte hlavnú hypotézu alebo what-if otázku.');
+      setValidationError(isSk ? 'Zadajte hlavnú hypotézu alebo what-if otázku.' : 'Please enter a strategic hypothesis or what-if question.');
       return;
     }
     if (!seedDocument.trim()) {
-      setValidationError('Zadajte vstupné zadanie, scenár alebo text memoranda.');
+      setValidationError(isSk ? 'Zadajte vstupné zadanie, scenár alebo text memoranda.' : 'Please enter the input briefing, scenario, or announcement text.');
       return;
     }
     setValidationError(null);
@@ -561,7 +685,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             className="p-2 rounded-2xl bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 transition shadow-sm flex items-center gap-1 text-xs font-bold cursor-pointer"
           >
             <ChevronLeft className="w-4 h-4" />
-            <span>Prehľad simulácií</span>
+            <span>{isSk ? 'Prehľad simulácií' : 'Simulations List'}</span>
           </button>
           
           <div className="h-4 w-px bg-slate-200 hidden sm:block" />
@@ -570,13 +694,15 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             <span className="text-xs font-bold text-slate-400">SAI</span>
             <span className="text-xs text-slate-300">/</span>
             <span className="text-xs font-bold text-slate-800">
-              {draftId ? 'Úprava konceptu simulácie' : 'Konfigurácia novej simulácie'}
+              {draftId 
+                ? (isSk ? 'Úprava konceptu simulácie' : 'Edit Simulation Draft') 
+                : (isSk ? 'Konfigurácia novej simulácie' : 'New Simulation Setup')}
             </span>
 
             {draftId && (
               <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
                 <Bookmark className="w-3 h-3 text-amber-600" />
-                Koncept
+                {isSk ? 'Koncept' : 'Draft'}
               </span>
             )}
 
@@ -590,10 +716,10 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                     ? 'bg-emerald-500 text-white shadow-xs'
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
-                title="Kliknutím zvolíte syntetický Demo test"
+                title={isSk ? 'Kliknutím zvolíte syntetický Demo test' : 'Click to select synthetic Demo test'}
               >
                 <Zap className="w-3 h-3" />
-                Demo test (0 €)
+                {isSk ? 'Demo test (0 €)' : 'Demo test ($0.00)'}
               </button>
               <button
                 type="button"
@@ -603,10 +729,10 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                     ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-xs'
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
-                title="Kliknutím zvolíte skutočnú živú simuláciu"
+                title={isSk ? 'Kliknutím zvolíte skutočnú živú simuláciu' : 'Click to select real live simulation'}
               >
                 <Sparkles className="w-3 h-3" />
-                Živý test (Live)
+                {isSk ? 'Živý test (Live)' : 'Live test (Live API)'}
               </button>
             </div>
           </div>
@@ -618,13 +744,13 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
           {lastSavedTimestamp && !isDirty && (
             <div className="text-xs text-emerald-600 font-bold flex items-center gap-1">
               <Check className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Koncept uložený o {lastSavedTimestamp}</span>
+              <span>{isSk ? `Koncept uložený o ${lastSavedTimestamp}` : `Draft saved at ${lastSavedTimestamp}`}</span>
             </div>
           )}
           {isDirty && (
             <div className="text-xs text-amber-600 font-medium flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-              <span>Neuložené zmeny</span>
+              <span>{isSk ? 'Neuložené zmeny' : 'Unsaved changes'}</span>
             </div>
           )}
 
@@ -640,7 +766,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             ) : (
               <Save className="w-4 h-4 text-purple-600" />
             )}
-            <span>{isSavingDraft ? 'Ukladám koncept...' : 'Uložiť koncept'}</span>
+            <span>{isSavingDraft ? (isSk ? 'Ukladám koncept...' : 'Saving draft...') : (isSk ? 'Uložiť koncept' : 'Save Draft')}</span>
           </button>
 
           {/* Primary Estimate & Launch Button */}
@@ -650,7 +776,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             disabled={isSubmitting}
             className="px-5 py-2 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 hover:from-purple-700 hover:to-emerald-600 text-white font-bold text-xs shadow-md hover:shadow-lg transition flex items-center gap-2 cursor-pointer disabled:opacity-60"
           >
-            <span>Skontrolovať & Odhadnúť tokeny</span>
+            <span>{isSk ? 'Skontrolovať & Odhadnúť tokeny' : 'Review & Estimate Tokens'}</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>
@@ -673,10 +799,12 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             <div>
               <label className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-2">
                 <Zap className="w-4 h-4 text-purple-600" />
-                Režim vykonania simulácie
+                {isSk ? 'Režim vykonania simulácie' : 'Simulation Execution Mode'}
               </label>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                Vyberte si medzi okamžitou bezplatnou ukážkou a ostrou simuláciou cez OpenAI.
+                {isSk 
+                  ? 'Vyberte si medzi okamžitou bezplatnou ukážkou a ostrou simuláciou cez OpenAI.'
+                  : 'Choose between an instant free demonstration or a live production simulation via OpenAI.'}
               </p>
             </div>
             <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border flex items-center gap-1.5 ${
@@ -685,7 +813,9 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 : 'bg-emerald-50 text-emerald-700 border-emerald-200'
             }`}>
               <span className={`w-2 h-2 rounded-full ${executionMode === 'live' ? 'bg-purple-500 animate-pulse' : 'bg-emerald-500'}`} />
-              {executionMode === 'live' ? 'Zvolený: Živý test (Live API)' : 'Zvolený: Demo test (0 €)'}
+              {executionMode === 'live' 
+                ? (isSk ? 'Zvolený: Živý test (Live API)' : 'Selected: Live Test (Live API)') 
+                : (isSk ? 'Zvolený: Demo test (0 €)' : 'Selected: Demo Test ($0.00)')}
             </span>
           </div>
 
@@ -711,18 +841,20 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                   <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                     ⚡ Demo test
                     <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200">
-                      0.00 €
+                      {isSk ? '0.00 €' : '$0.00'}
                     </span>
                   </h4>
                   {executionMode === 'demo' && (
                     <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
                       <Check className="w-4 h-4 text-emerald-600" />
-                      Zvolené
+                      {isSk ? 'Zvolené' : 'Selected'}
                     </span>
                   )}
                 </div>
                 <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                  Blesková syntetická simulácia na demonštračných dátach. Nulové náklady na OpenAI API, trvá iba pár sekúnd.
+                  {isSk 
+                    ? 'Blesková syntetická simulácia na demonštračných dátach. Nulové náklady na OpenAI API, trvá iba pár sekúnd.'
+                    : 'Instant synthetic simulation on demonstration data. Zero OpenAI API costs, completes in seconds.'}
                 </p>
               </div>
             </div>
@@ -746,7 +878,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
                   <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                    🚀 Živý test (Live API)
+                    🚀 {isSk ? 'Živý test (Live API)' : 'Live Test (Live API)'}
                     <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 border border-purple-200">
                       ~{estimatedCost.toFixed(3)} €
                     </span>
@@ -754,26 +886,40 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                   {executionMode === 'live' && (
                     <span className="text-xs font-bold text-purple-600 flex items-center gap-1">
                       <Check className="w-4 h-4 text-purple-600" />
-                      Zvolené
+                      {isSk ? 'Zvolené' : 'Selected'}
                     </span>
                   )}
                 </div>
                 <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                  Skutočná AI simulácia s reálnymi OpenAI volaniami, extrakciou kontextu z CRM a plnohodnotným ReAct cyklom agentov.
+                  {isSk 
+                    ? 'Skutočná AI simulácia s reálnymi OpenAI volaniami, extrakciou kontextu z CRM a plnohodnotným ReAct cyklom agentov.'
+                    : 'Real AI simulation with live OpenAI calls, CRM context extraction, and complete agent ReAct cycles.'}
                 </p>
               </div>
             </div>
           </div>
         </div>
         
-        {/* Quick Presets Banner */}
+        {/* Quick Presets & Full Catalogue Banner */}
         <div className="p-5 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-3">
-          <div className="flex items-center justify-between">
-            <label className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
               <FileText className="w-3.5 h-3.5 text-purple-600" />
-              Rýchle šablóny & Strategické scenáre
+              <span>{isSk ? 'Rýchle šablóny & Strategické scenáre' : 'Quick Templates & Strategic Scenarios'}</span>
             </label>
-            <span className="text-[11px] text-slate-400 font-medium">Kliknutím na šablónu vyplníte polia</span>
+            <div className="flex items-center gap-3">
+              <span className="text-[11px] text-slate-400 font-medium hidden sm:inline">
+                {isSk ? 'Kliknutím na šablónu vyplníte polia' : 'Click a template to auto-fill fields'}
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsCatalogueOpen(true)}
+                className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 hover:from-purple-700 hover:to-emerald-600 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <Compass className="w-3.5 h-3.5" />
+                <span>{isSk ? 'Otvoriť katalóg šablón (105)' : 'Browse Template Catalogue (105)'}</span>
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -785,10 +931,10 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 className="p-3.5 rounded-2xl border border-slate-200 hover:border-purple-400 hover:bg-purple-50/40 text-left transition group shadow-sm bg-slate-50/50 cursor-pointer"
               >
                 <div className="text-xs font-bold text-slate-900 group-hover:text-purple-700 truncate">
-                  {tmpl.name}
+                  {isSk ? tmpl.name : tmpl.nameEn}
                 </div>
                 <div className="text-[11px] text-slate-500 line-clamp-2 mt-1 font-normal">
-                  {tmpl.hypothesis}
+                  {isSk ? tmpl.hypothesis : tmpl.hypothesisEn}
                 </div>
               </button>
             ))}
@@ -799,8 +945,10 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
         <div className="p-6 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-5">
           <div className="space-y-1.5">
             <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center justify-between">
-              <span>Názov simulácie <span className="text-rose-500">*</span></span>
-              <span className="text-[11px] text-slate-400 font-normal">Manažérsky identifikátor pre reporty & kontrolné body</span>
+              <span>{isSk ? 'Názov simulácie' : 'Simulation Title'} <span className="text-rose-500">*</span></span>
+              <span className="text-[11px] text-slate-400 font-normal">
+                {isSk ? 'Manažérsky identifikátor pre reporty & kontrolné body' : 'Executive identifier for reports & checkpoints'}
+              </span>
             </label>
             <input 
               type="text"
@@ -809,15 +957,21 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 setTitle(e.target.value);
                 setIsDirty(true);
               }}
-              placeholder="napr. Reštrukturalizácia cien balíka Enterprise v Q4"
+              placeholder={isSk ? 'napr. Reštrukturalizácia cien balíka Enterprise v Q4' : 'e.g. Q4 Enterprise Pricing Restructuring'}
               required
               className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none text-sm text-slate-900 font-semibold bg-white"
             />
             <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
               <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
               <span>
-                <strong className="text-slate-700 font-semibold">Na čo slúži:</strong> Hlavný manažérsky názov a identifikátor pre túto trhovú simuláciu.{' '}
-                <strong className="text-slate-700 font-semibold">Ako sa používa:</strong> Zobrazuje sa na prehľadoch simulácií, pri ukladaní kontrolných bodov, v reálnom čase vo War Roome a v exportovaných manažérskych reportoch.
+                <strong className="text-slate-700 font-semibold">{isSk ? 'Na čo slúži:' : 'Purpose:'}</strong>{' '}
+                {isSk 
+                  ? 'Hlavný manažérsky názov a identifikátor pre túto trhovú simuláciu.' 
+                  : 'Primary executive title and identifier for this market simulation.'}{' '}
+                <strong className="text-slate-700 font-semibold">{isSk ? 'Ako sa používa:' : 'How it\'s used:'}</strong>{' '}
+                {isSk 
+                  ? 'Zobrazuje sa na prehľadoch simulácií, pri ukladaní kontrolných bodov, v reálnom čase vo War Roome a v exportovaných manažérskych reportoch.'
+                  : 'Displayed across simulation lists, checkpoints, live War Room, and exported executive reports.'}
               </span>
             </div>
           </div>
@@ -825,8 +979,10 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
           {/* Hypothesis */}
           <div className="space-y-1.5">
             <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center justify-between">
-              <span>Strategická hypotéza / What-If premenná <span className="text-rose-500">*</span></span>
-              <span className="text-[11px] text-slate-400 font-normal">Kľúčová prediktívna otázka, o ktorej bude roj diskutovať</span>
+              <span>{isSk ? 'Strategická hypotéza / What-If premenná' : 'Strategic Hypothesis / What-If Variable'} <span className="text-rose-500">*</span></span>
+              <span className="text-[11px] text-slate-400 font-normal">
+                {isSk ? 'Kľúčová prediktívna otázka, o ktorej bude roj diskutovať' : 'Core predictive question deliberated by the swarm'}
+              </span>
             </label>
             <input 
               type="text"
@@ -835,15 +991,21 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 setHypothesis(e.target.value);
                 setIsDirty(true);
               }}
-              placeholder="napr. Čo ak zvýšime ceny o 25% a zároveň ponúkneme 99.9% SLA dostupnosť?"
+              placeholder={isSk ? 'napr. Čo ak zvýšime ceny o 25% a zároveň ponúkneme 99.9% SLA dostupnosť?' : 'e.g. What if we raise prices by 25% while offering 99.9% SLA availability?'}
               required
               className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none text-sm text-slate-900 font-medium bg-white"
             />
             <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
               <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
               <span>
-                <strong className="text-slate-700 font-semibold">Na čo slúži:</strong> Kľúčová strategická zmena, zmena cenotvorby alebo smerovania, ktorá sa má otestovať.{' '}
-                <strong className="text-slate-700 font-semibold">Ako sa používa:</strong> Slúži ako ústredné zadanie pre agentov, riadi autonómnu tvorbu názorov, zmeny nálad a sledovanie námietok.
+                <strong className="text-slate-700 font-semibold">{isSk ? 'Na čo slúži:' : 'Purpose:'}</strong>{' '}
+                {isSk 
+                  ? 'Kľúčová strategická zmena, zmena cenotvorby alebo smerovania, ktorá sa má otestovať.'
+                  : 'Key strategic change, pricing shift, or directional move being stress-tested.'}{' '}
+                <strong className="text-slate-700 font-semibold">{isSk ? 'Ako sa používa:' : 'How it\'s used:'}</strong>{' '}
+                {isSk 
+                  ? 'Slúži ako ústredné zadanie pre agentov, riadi autonómnu tvorbu názorov, zmeny nálad a sledovanie námietok.'
+                  : 'Serves as the central mission prompt for agents, guiding autonomous opinion formulation, sentiment shifts, and objection tracking.'}
               </span>
             </div>
           </div>
@@ -851,8 +1013,10 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
           {/* Seed Scenario Document */}
           <div className="space-y-1.5">
             <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center justify-between">
-              <span>Vstupné zadanie & Text oznámenia <span className="text-rose-500">*</span></span>
-              <span className="text-[11px] text-slate-400 font-normal">Tlačová správa, interné memorandum alebo cenový dokument</span>
+              <span>{isSk ? 'Vstupné zadanie & Text oznámenia' : 'Input Briefing & Announcement Text'} <span className="text-rose-500">*</span></span>
+              <span className="text-[11px] text-slate-400 font-normal">
+                {isSk ? 'Tlačová správa, interné memorandum alebo cenový dokument' : 'Press release, internal memo, or pricing document'}
+              </span>
             </label>
             <textarea 
               rows={6}
@@ -861,15 +1025,23 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 setSeedDocument(e.target.value);
                 setIsDirty(true);
               }}
-              placeholder="Vložte text oznámenia, návrh tlačovej správy alebo cenové memorandum, ktoré budú agenti čítať a analyzovať..."
+              placeholder={isSk 
+                ? 'Vložte text oznámenia, návrh tlačovej správy alebo cenové memorandum, ktoré budú agenti čítať a analyzovať...'
+                : 'Enter the proposed announcement text, changes, new terms, or market move that agents will read and analyze...'}
               required
               className="w-full px-4 py-3.5 rounded-2xl border border-slate-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none text-sm text-slate-800 font-normal resize-y leading-relaxed bg-white"
             />
             <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
               <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
               <span>
-                <strong className="text-slate-700 font-semibold">Na čo slúži:</strong> Kompletný text zadania, návrh oznámenia, interné memorandum alebo navrhované zmluvné podmienky.{' '}
-                <strong className="text-slate-700 font-semibold">Ako sa používa:</strong> Agenti čítajú tento text doslovne v 1. kole, citujú konkrétne podmienky, vyhodnocujú doložky podľa svojich záujmov a formulujú protiargumenty.
+                <strong className="text-slate-700 font-semibold">{isSk ? 'Na čo slúži:' : 'Purpose:'}</strong>{' '}
+                {isSk 
+                  ? 'Kompletný text zadania, návrh oznámenia, interné memorandum alebo navrhované zmluvné podmienky.'
+                  : 'Full briefing text, draft announcement, internal memo, or proposed contractual terms.'}{' '}
+                <strong className="text-slate-700 font-semibold">{isSk ? 'Ako sa používa:' : 'How it\'s used:'}</strong>{' '}
+                {isSk 
+                  ? 'Agenti čítajú tento text doslovne v 1. kole, citujú konkrétne podmienky, vyhodnocujú doložky podľa svojich záujmov a formulujú protiargumenty.'
+                  : 'Agents inspect this briefing verbatim in Round 1, quote exact clauses, assess terms against their persona interests, and formulate counterarguments.'}
               </span>
             </div>
           </div>
@@ -879,15 +1051,16 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
                 <Paperclip className="w-3.5 h-3.5 text-purple-600" />
-                <span>Doplnková dokumentácia pre roj (PDF & Markdown)</span>
+                <span>{isSk ? 'Doplnková dokumentácia pre roj (PDF & Markdown)' : 'Supplementary Knowledge Base (PDF & Markdown)'}</span>
                 {contextDocuments.length > 0 && (
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-50 text-purple-700 border border-purple-200">
-                    {contextDocuments.length} {contextDocuments.length === 1 ? 'súbor' : contextDocuments.length < 5 ? 'súbory' : 'súborov'}
+                    {contextDocuments.length} {isSk ? (contextDocuments.length === 1 ? 'súbor' : contextDocuments.length < 5 ? 'súbory' : 'súborov') : (contextDocuments.length === 1 ? 'file' : 'files')}
                   </span>
                 )}
               </label>
               <span className="text-[11px] text-slate-400 font-normal">
-                Podporované formáty: <strong className="text-slate-600 font-semibold">.pdf</strong>, <strong className="text-slate-600 font-semibold">.md</strong>, <strong className="text-slate-600 font-semibold">.txt</strong>
+                {isSk ? 'Podporované formáty: ' : 'Supported formats: '}
+                <strong className="text-slate-600 font-semibold">.pdf</strong>, <strong className="text-slate-600 font-semibold">.md</strong>, <strong className="text-slate-600 font-semibold">.txt</strong>
               </span>
             </div>
 
@@ -940,17 +1113,19 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               <div>
                 <p className="text-xs font-bold text-slate-800">
                   {isUploadingDoc
-                    ? uploadDocProgress || 'Nahrávam a analyzujem súbory...'
-                    : 'Kliknite pre nahratie dokumentov alebo ich presuňte sem'}
+                    ? uploadDocProgress || (isSk ? 'Nahrávam a analyzujem súbory...' : 'Uploading and parsing files...')
+                    : (isSk ? 'Kliknite pre nahratie dokumentov alebo ich presuňte sem' : 'Click to upload documents or drag & drop files here')}
                 </p>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  Zmluvy, cenové smernice, technické špecifikácie, odpovede na námietky alebo poznámky k produktu
+                  {isSk 
+                    ? 'Zmluvy, cenové smernice, technické špecifikácie, odpovede na námietky alebo poznámky k produktu'
+                    : 'Contracts, pricing policies, specs, objection battlecards, or product notes'}
                 </p>
               </div>
 
               <div className="flex flex-wrap items-center justify-center gap-1.5 pt-1">
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
-                  <FileText className="w-3 h-3" /> PDF (extrakcia textu)
+                  <FileText className="w-3 h-3" /> PDF ({isSk ? 'extrakcia textu' : 'text extraction'})
                 </span>
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
                   <FileCode className="w-3 h-3" /> MARKDOWN (.md)
@@ -971,7 +1146,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setDocUploadError(null)}
-                  className="p-1 hover:bg-rose-100 rounded-lg text-rose-500 transition"
+                  className="p-1 hover:bg-rose-100 rounded-lg text-rose-500 transition cursor-pointer"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -982,9 +1157,11 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             {contextDocuments.length > 0 && (
               <div className="space-y-2 pt-1">
                 <div className="flex items-center justify-between text-[11px] text-slate-500 font-semibold px-1">
-                  <span>Priložené dokumenty pripravené na simuláciu ({contextDocuments.length}):</span>
+                  <span>{isSk ? `Priložené dokumenty pripravené na simuláciu (${contextDocuments.length}):` : `Attached context documents ready for simulation (${contextDocuments.length}):`}</span>
                   <span>
-                    Spolu ~{contextDocuments.reduce((acc, d) => acc + Math.ceil((d.content?.length || 0) / 4), 0).toLocaleString()} tokenov kontextu
+                    {isSk 
+                      ? `Spolu ~${contextDocuments.reduce((acc, d) => acc + Math.ceil((d.content?.length || 0) / 4), 0).toLocaleString()} tokenov kontextu`
+                      : `Total ~${contextDocuments.reduce((acc, d) => acc + Math.ceil((d.content?.length || 0) / 4), 0).toLocaleString()} context tokens`}
                   </span>
                 </div>
 
@@ -1027,11 +1204,11 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                               <span>•</span>
                               {doc.extractedChars && doc.extractedChars > 0 ? (
                                 <span className="text-emerald-700 font-medium">
-                                  {doc.extractedChars.toLocaleString()} znakov (~{approxTokens} tkn)
+                                  {doc.extractedChars.toLocaleString()} {isSk ? 'znakov' : 'chars'} (~{approxTokens} tkn)
                                 </span>
                               ) : (
                                 <span className="text-amber-600 font-medium">
-                                  Nenašiel sa text
+                                  {isSk ? 'Nenašiel sa text' : 'No text extracted'}
                                 </span>
                               )}
                             </div>
@@ -1043,7 +1220,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                             <button
                               type="button"
                               onClick={() => setPreviewDoc(doc)}
-                              title="Zobraziť extrahovaný text"
+                              title={isSk ? 'Zobraziť extrahovaný text' : 'View extracted text'}
                               className="p-1.5 rounded-lg hover:bg-purple-50 text-slate-400 hover:text-purple-600 transition cursor-pointer"
                             >
                               <Eye className="w-3.5 h-3.5" />
@@ -1052,7 +1229,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                           <button
                             type="button"
                             onClick={() => handleRemoveDoc(doc.id)}
-                            title="Odstrániť dokument"
+                            title={isSk ? 'Odstrániť dokument' : 'Remove document'}
                             className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition cursor-pointer"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -1068,7 +1245,10 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
               <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
               <span>
-                <strong className="text-slate-700 font-semibold">Ako to funguje:</strong> Z priložených PDF a Markdown súborov sa automaticky vyextrahuje čistý text. Tento text je zahrnutý do tvorby ontologického grafu simulačného sveta a agenti v roji môžu citovať presné klauzuly, porovnávať parametre a formulovať cielené reakcie.
+                <strong className="text-slate-700 font-semibold">{isSk ? 'Ako to funguje:' : 'How it works:'}</strong>{' '}
+                {isSk 
+                  ? 'Z priložených PDF a Markdown súborov sa automaticky vyextrahuje čistý text. Tento text je zahrnutý do tvorby ontologického grafu simulačného sveta a agenti v roji môžu citovať presné klauzuly, porovnávať parametre a formulovať cielené reakcie.'
+                  : 'Clean text is automatically extracted from attached PDF and Markdown files. This content is integrated into the world ontology graph so swarm agents can reference specific clauses, compare terms, and formulate tailored reactions.'}
               </span>
             </div>
           </div>
@@ -1081,7 +1261,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               <div className="flex items-center gap-2">
                 <Database className="w-4 h-4 text-purple-600" />
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                  CRM podkladové zdroje dát
+                  {isSk ? 'CRM podkladové zdroje dát' : 'CRM Grounding Data Sources'}
                 </h3>
                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-black tracking-wide border ${
                   selectedSources.length === allSourceOptions.length
@@ -1091,12 +1271,14 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                     : 'bg-amber-50 text-amber-700 border-amber-200'
                 }`}>
                   {selectedSources.length === allSourceOptions.length 
-                    ? `Všetkých ${allSourceOptions.length} zdrojov aktívnych` 
-                    : `${selectedSources.length} z ${allSourceOptions.length} aktívnych`}
+                    ? (isSk ? `Všetkých ${allSourceOptions.length} zdrojov aktívnych` : `All ${allSourceOptions.length} sources active`) 
+                    : (isSk ? `${selectedSources.length} z ${allSourceOptions.length} aktívnych` : `${selectedSources.length} of ${allSourceOptions.length} active`)}
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 font-normal">
-                Vyberte, ktoré historické CRM dáta naplnia graf znalostí a pamäť agentov. Vypnite nepodstatné zdroje pre užšie zameranie simulácie.
+                {isSk 
+                  ? 'Vyberte, ktoré historické CRM dáta naplnia graf znalostí a pamäť agentov. Vypnite nepodstatné zdroje pre užšie zameranie simulácie.'
+                  : 'Select which historical CRM intelligence populates the knowledge graph and agent memory. Disable non-essential sources to focus the rehearsal.'}
               </p>
             </div>
 
@@ -1108,7 +1290,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-purple-50 hover:text-purple-700 text-slate-600 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
               >
                 <CheckSquare className="w-3.5 h-3.5 text-purple-600" />
-                <span>Vybrať všetko</span>
+                <span>{isSk ? 'Vybrať všetko' : 'Select All'}</span>
               </button>
               <button
                 type="button"
@@ -1117,7 +1299,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
               >
                 <Square className="w-3.5 h-3.5 text-slate-400" />
-                <span>Zrušiť výber</span>
+                <span>{isSk ? 'Zrušiť výber' : 'Deselect All'}</span>
               </button>
             </div>
           </div>
@@ -1147,7 +1329,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                           <IconComp className="w-3.5 h-3.5" />
                         </div>
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${src.badgeColor}`}>
-                          {src.badge}
+                          {isSk ? src.badge : (src.badgeEn || src.badge)}
                         </span>
                       </div>
 
@@ -1167,18 +1349,18 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                       <h4 className={`text-xs font-bold transition ${
                         isChecked ? 'text-slate-900 group-hover:text-purple-700' : 'text-slate-600'
                       }`}>
-                        {src.title}
+                        {isSk ? src.title : (src.titleEn || src.title)}
                       </h4>
                       <p className="text-[11px] text-slate-500 font-normal leading-relaxed mt-1">
-                        {src.description}
+                        {isSk ? src.description : (src.descriptionEn || src.description)}
                       </p>
                     </div>
                   </div>
 
                   <div className="pt-2.5 mt-2.5 border-t border-slate-100/80 flex items-center justify-between text-[10px]">
-                    <span className="text-slate-400 font-medium">{src.category}</span>
+                    <span className="text-slate-400 font-medium">{isSk ? src.category : (src.categoryEn || src.category)}</span>
                     <span className={`font-bold ${isChecked ? 'text-purple-600' : 'text-slate-400'}`}>
-                      {isChecked ? 'Zahrnuté v simulácii' : 'Vypnuté'}
+                      {isChecked ? (isSk ? 'Zahrnuté v simulácii' : 'Included in simulation') : (isSk ? 'Vypnuté' : 'Disabled')}
                     </span>
                   </div>
                 </div>
@@ -1191,7 +1373,9 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium flex items-center gap-2.5 animate-in fade-in">
               <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
               <span>
-                Všetky CRM zdroje sú momentálne vypnuté. Simulácia bude vychádzať výhradne z vyššie zadaného textu bez importu histórie klientov alebo obchodných námietok.
+                {isSk 
+                  ? 'Všetky CRM zdroje sú momentálne vypnuté. Simulácia bude vychádzať výhradne z vyššie zadaného textu bez importu histórie klientov alebo obchodných námietok.'
+                  : 'All CRM sources are currently disabled. The simulation will rely strictly on the text provided above without importing past client history or deal objections.'}
               </span>
             </div>
           )}
@@ -1199,8 +1383,14 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
           <div className="flex items-start gap-2 p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-[11px] text-slate-500 leading-relaxed">
             <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
             <span>
-              <strong className="text-slate-700 font-semibold">Na čo slúži:</strong> Reálne dáta z CRM vybrané na ukotvenie simulovaného trhu v skutočnej obchodnej histórii vašej spoločnosti.{' '}
-              <strong className="text-slate-700 font-semibold">Ako sa používa:</strong> Kontextový modul vyťaží minulé námietky z obchodov, spätnú väzbu zákazníkov a zmienky o konkurencii na dynamickú kalibráciu postojov agentov a zostavenie znalostného grafu.
+              <strong className="text-slate-700 font-semibold">{isSk ? 'Na čo slúži:' : 'Purpose:'}</strong>{' '}
+              {isSk 
+                ? 'Reálne dáta z CRM vybrané na ukotvenie simulovaného trhu v skutočnej obchodnej histórii vašej spoločnosti.'
+                : 'Real CRM records selected to ground the simulated market in your company\'s actual commercial history.'}{' '}
+              <strong className="text-slate-700 font-semibold">{isSk ? 'Ako sa používa:' : 'How it\'s used:'}</strong>{' '}
+              {isSk 
+                ? 'Kontextový modul vyťaží minulé námietky z obchodov, spätnú väzbu zákazníkov a zmienky o konkurencii na dynamickú kalibráciu postojov agentov a zostavenie znalostného grafu.'
+                : 'The context engine extracts past deal objections, customer feedback, and competitor mentions to calibrate agent biases and build the knowledge ontology.'}
             </span>
           </div>
         </div>
@@ -1213,12 +1403,14 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                 <Calendar className="w-4 h-4 text-indigo-600" />
-                Časový horizont CRM dát
+                {isSk ? 'Časový horizont CRM dát' : 'CRM Data Lookback Horizon'}
               </label>
-              <span className="text-[11px] text-slate-400">Obdobie dát</span>
+              <span className="text-[11px] text-slate-400">{isSk ? 'Obdobie dát' : 'Data Period'}</span>
             </div>
             <p className="text-xs text-slate-500 font-normal">
-              Extrahuje leady, aktívne účty a obchodné námietky z minulej histórie CRM:
+              {isSk 
+                ? 'Extrahuje leady, aktívne účty a obchodné námietky z minulej histórie CRM:'
+                : 'Extracts leads, active accounts, and sales objections from historical CRM data:'}
             </p>
             <div className="grid grid-cols-3 gap-2.5 pt-1">
               {[6, 12, 24].map((months) => (
@@ -1235,15 +1427,21 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                       : 'bg-slate-50 text-slate-700 border border-slate-200 hover:bg-slate-100'
                   }`}
                 >
-                  {months} mes. {months === 12 && '⭐'}
+                  {months} {isSk ? 'mes.' : 'mo.'} {months === 12 && '⭐'}
                 </button>
               ))}
             </div>
             <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
               <Info className="w-3.5 h-3.5 text-indigo-500/80 shrink-0 mt-0.5" />
               <span>
-                <strong className="text-slate-700 font-semibold">Na čo slúži:</strong> Časové obdobie pre vyhľadávanie a analýzu vašich CRM leadov a interakcií s klientmi.{' '}
-                <strong className="text-slate-700 font-semibold">Ako sa používa:</strong> Kratšie horizonty (6 mes.) odrážajú aktuálne trhové podmienky; dlhšie horizonty (12–24 mes.) zachytávajú hlbšie vzorce zákazníckych námietok a lojalitu.
+                <strong className="text-slate-700 font-semibold">{isSk ? 'Na čo slúži:' : 'Purpose:'}</strong>{' '}
+                {isSk 
+                  ? 'Časové obdobie pre vyhľadávanie a analýzu vašich CRM leadov a interakcií s klientmi.'
+                  : 'Time window for scanning and analyzing CRM leads and customer interactions.'}{' '}
+                <strong className="text-slate-700 font-semibold">{isSk ? 'Ako sa používa:' : 'How it\'s used:'}</strong>{' '}
+                {isSk 
+                  ? 'Kratšie horizonty (6 mes.) odrážajú aktuálne trhové podmienky; dlhšie horizonty (12–24 mes.) zachytávajú hlbšie vzorce zákazníckych námietok a lojalitu.'
+                  : 'Shorter horizons (6 mo.) reflect immediate market conditions; longer horizons (12–24 mo.) capture deeper objection patterns and customer loyalty.'}
               </span>
             </div>
           </div>
@@ -1253,18 +1451,20 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                 <Users className="w-4 h-4 text-purple-600" />
-                Veľkosť roju (Agenti)
+                {isSk ? 'Veľkosť roju (Agenti)' : 'Swarm Scale (Agents)'}
               </label>
-              <span className="text-[11px] text-slate-400">Počet persón</span>
+              <span className="text-[11px] text-slate-400">{isSk ? 'Počet persón' : 'Persona Count'}</span>
             </div>
             <p className="text-xs text-slate-500 font-normal">
-              Počet syntetizovaných autonómnych nákupcov, klientov a profilov konkurencie:
+              {isSk 
+                ? 'Počet syntetizovaných autonómnych nákupcov, klientov a profilov konkurencie:'
+                : 'Number of synthesized autonomous buyers, client accounts, and competitor profiles:'}
             </p>
             <div className="grid grid-cols-3 gap-2.5 pt-1">
               {[
-                { count: 15, label: '15 (Rýchly)' },
-                { count: 30, label: '30 (Štandard) ⭐' },
-                { count: 60, label: '60 (Hĺbkový)' }
+                { count: 15, label: isSk ? '15 (Rýchly)' : '15 (Fast)' },
+                { count: 30, label: isSk ? '30 (Štandard) ⭐' : '30 (Standard) ⭐' },
+                { count: 60, label: isSk ? '60 (Hĺbkový)' : '60 (Deep)' }
               ].map(opt => (
                 <button
                   key={opt.count}
@@ -1286,8 +1486,14 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
               <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
               <span>
-                <strong className="text-slate-700 font-semibold">Na čo slúži:</strong> Celkový počet autonómnych persón (nákupcovia, interní ambasádori, konkurenti, regulátori).{' '}
-                <strong className="text-slate-700 font-semibold">Ako sa používa:</strong> Určuje hustotu komunikačnej siete a štatistickú šírku; vyššie hodnoty odhaľujú špecifické námietky a reťazové reakcie v subkomunitách.
+                <strong className="text-slate-700 font-semibold">{isSk ? 'Na čo slúži:' : 'Purpose:'}</strong>{' '}
+                {isSk 
+                  ? 'Celkový počet autonómnych persón (nákupcovia, interní ambasádori, konkurenti, regulátori).'
+                  : 'Total count of autonomous personas (buyers, internal champions, competitors, regulators).'}{' '}
+                <strong className="text-slate-700 font-semibold">{isSk ? 'Ako sa používa:' : 'How it\'s used:'}</strong>{' '}
+                {isSk 
+                  ? 'Určuje hustotu komunikačnej siete a štatistickú šírku; vyššie hodnoty odhaľujú špecifické námietky a reťazové reakcie v subkomunitách.'
+                  : 'Determines communication network density and statistical breadth; higher counts reveal niche objections and multi-hop community cascades.'}
               </span>
             </div>
           </div>
@@ -1297,12 +1503,14 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                 <Clock className="w-4 h-4 text-emerald-600" />
-                Simulačné kolá ({totalRounds} kôl)
+                {isSk ? `Simulačné kolá (${totalRounds} kôl)` : `Simulation Rounds (${totalRounds} rounds)`}
               </label>
-              <span className="text-[11px] text-emerald-600 font-bold">~{Math.round(totalRounds * 3)} hod. diskusie</span>
+              <span className="text-[11px] text-emerald-600 font-bold">
+                {isSk ? `~${Math.round(totalRounds * 3)} hod. diskusie` : `~${Math.round(totalRounds * 3)} hrs deliberation`}
+              </span>
             </div>
             <p className="text-xs text-slate-500 font-normal">
-              Riadi hĺbku časového vývoja a konvergenciu diskusie:
+              {isSk ? 'Riadi hĺbku časového vývoja a konvergenciu diskusie:' : 'Controls temporal depth and consensus convergence:'}
             </p>
             <div className="pt-2">
               <input 
@@ -1318,16 +1526,22 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 className="w-full accent-emerald-600 cursor-pointer h-2 bg-slate-100 rounded-lg"
               />
               <div className="flex justify-between text-[10px] text-slate-400 font-bold mt-2">
-                <span>5 (Rýchla sonda)</span>
-                <span>8 (Vyvážené) ⭐</span>
-                <span>20 (Kompletný naratív)</span>
+                <span>{isSk ? '5 (Rýchla sonda)' : '5 (Rapid probe)'}</span>
+                <span>{isSk ? '8 (Vyvážené) ⭐' : '8 (Balanced) ⭐'}</span>
+                <span>{isSk ? '20 (Kompletný naratív)' : '20 (Full narrative)'}</span>
               </div>
             </div>
             <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
               <Info className="w-3.5 h-3.5 text-emerald-500/80 shrink-0 mt-0.5" />
               <span>
-                <strong className="text-slate-700 font-semibold">Na čo slúži:</strong> Počet iteračných kôl debaty a komunikačných vĺn, ktoré sa vykonajú.{' '}
-                <strong className="text-slate-700 font-semibold">Ako sa používa:</strong> Každé kolo simuluje vlnu príspevkov a reakcií, kde agenti reagujú na ostatných, vytvárajú spojenectvá a ukazujú, či počiatočná nevôľa ustúpi alebo prerastie do odchodu zákazníkov.
+                <strong className="text-slate-700 font-semibold">{isSk ? 'Na čo slúži:' : 'Purpose:'}</strong>{' '}
+                {isSk 
+                  ? 'Počet iteračných kôl debaty a komunikačných vĺn, ktoré sa vykonajú.'
+                  : 'Number of iterative deliberation rounds and discussion waves executed.'}{' '}
+                <strong className="text-slate-700 font-semibold">{isSk ? 'Ako sa používa:' : 'How it\'s used:'}</strong>{' '}
+                {isSk 
+                  ? 'Každé kolo simuluje vlnu príspevkov a reakcií, kde agenti reagujú na ostatných, vytvárajú spojenectvá a ukazujú, či počiatočná nevôľa ustúpi alebo prerastie do odchodu zákazníkov.'
+                  : 'Each round simulates a wave of posts and reactions where agents debate, forge coalitions, and determine whether initial resistance dissolves or solidifies into churn.'}
               </span>
             </div>
           </div>
@@ -1337,9 +1551,9 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                 <Bot className="w-4 h-4 text-slate-700" />
-                Kognitívny model
+                {isSk ? 'Kognitívny model' : 'Reasoning Model'}
               </label>
-              <span className="text-[11px] text-purple-600 font-bold">Neurónový motor</span>
+              <span className="text-[11px] text-purple-600 font-bold">{isSk ? 'Neurónový motor' : 'Neural Engine'}</span>
             </div>
             
             <select 
@@ -1350,21 +1564,31 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               }}
               className="w-full px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-900 outline-none focus:border-purple-500 focus:bg-white"
             >
-              <option value="gpt-5.6-luna">GPT-5.6 Luna (Cenovo optimalizovaný & Vysoká rýchlosť) ⭐</option>
-              <option value="gpt-5.6-terra">GPT-5.6 Terra (Hĺbková kognitívna analýza & Komplexný roj)</option>
+              <option value="gpt-5.6-luna">
+                {isSk ? 'GPT-5.6 Luna (Cenovo optimalizovaný & Vysoká rýchlosť) ⭐' : 'GPT-5.6 Luna (Cost-optimized & High Speed) ⭐'}
+              </option>
+              <option value="gpt-5.6-terra">
+                {isSk ? 'GPT-5.6 Terra (Hĺbková kognitívna analýza & Komplexný roj)' : 'GPT-5.6 Terra (Deep Cognitive Analysis & Complex Swarm)'}
+              </option>
             </select>
             <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
               <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
               <span>
-                <strong className="text-slate-700 font-semibold">Na čo slúži:</strong> Výber OpenAI neurónového modelu, ktorý poháňa každú autonómnu persónu.{' '}
-                <strong className="text-slate-700 font-semibold">Ako sa používa:</strong> Využívame výhradne podporované OpenAI modely. GPT-5.6 Luna nahradil starší 4o a poskytuje bleskovú, cenovo optimalizovanú debatu; GPT-5.6 Terra generuje hlboké strategické nuansy, protiťahy a komplexné uvažovanie účastníkov trhu.
+                <strong className="text-slate-700 font-semibold">{isSk ? 'Na čo slúži:' : 'Purpose:'}</strong>{' '}
+                {isSk 
+                  ? 'Výber OpenAI neurónového modelu, ktorý poháňa každú autonómnu persónu.'
+                  : 'Selection of neural model powering each autonomous persona.'}{' '}
+                <strong className="text-slate-700 font-semibold">{isSk ? 'Ako sa používa:' : 'How it\'s used:'}</strong>{' '}
+                {isSk 
+                  ? 'Využívame výhradne podporované OpenAI modely. GPT-5.6 Luna nahradil starší 4o a poskytuje bleskovú, cenovo optimalizovanú debatu; GPT-5.6 Terra generuje hlboké strategické nuansy, protiťahy a komplexné uvažovanie účastníkov trhu.'
+                  : 'We exclusively use supported OpenAI models. GPT-5.6 Luna delivers fast, budget-conscious deliberation; GPT-5.6 Terra generates deep strategic nuances, countermoves, and complex market behavior.'}
               </span>
             </div>
 
             <div className="flex items-center justify-between pt-3 border-t border-slate-100">
               <div>
-                <span className="text-xs text-slate-700 font-bold block">Cirkadiánny cyklus spánku</span>
-                <span className="text-[11px] text-slate-400 font-normal">Agenti oddychujú počas simulovanej noci</span>
+                <span className="text-xs text-slate-700 font-bold block">{isSk ? 'Cirkadiánny cyklus spánku' : 'Circadian Sleep Cycle'}</span>
+                <span className="text-[11px] text-slate-400 font-normal">{isSk ? 'Agenti oddychujú počas simulovanej noci' : 'Agents pause during simulated night hours'}</span>
               </div>
               <input 
                 type="checkbox"
@@ -1379,8 +1603,14 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
               <Info className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
               <span>
-                <strong className="text-slate-700 font-semibold">Na čo slúži:</strong> Simuluje prirodzenú nočnú a dennú pauzu medzi aktívnymi kolami.{' '}
-                <strong className="text-slate-700 font-semibold">Ako sa používa:</strong> Cez noc dochádza k upokojeniu unáhlených emócií a reakcií, vďaka čomu sa na druhý deň prejavia uváženejšie dlhodobé postoje.
+                <strong className="text-slate-700 font-semibold">{isSk ? 'Na čo slúži:' : 'Purpose:'}</strong>{' '}
+                {isSk 
+                  ? 'Simuluje prirodzenú nočnú a dennú pauzu medzi aktívnymi kolami.'
+                  : 'Simulates natural day/night resting intervals between active rounds.'}{' '}
+                <strong className="text-slate-700 font-semibold">{isSk ? 'Ako sa používa:' : 'How it\'s used:'}</strong>{' '}
+                {isSk 
+                  ? 'Cez noc dochádza k upokojeniu unáhlených emócií a reakcií, vďaka čomu sa na druhý deň prejavia uváženejšie dlhodobé postoje.'
+                  : 'Overnight breaks dissipate impulsive emotional reactions, revealing consolidated, durable long-term sentiment on the following day.'}
               </span>
             </div>
           </div>
@@ -1395,7 +1625,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               onClick={onBack}
               className="px-5 py-2.5 rounded-2xl border border-slate-200 hover:bg-slate-50 text-slate-600 font-bold text-xs transition cursor-pointer"
             >
-              Zrušiť
+              {isSk ? 'Zrušiť' : 'Cancel'}
             </button>
             <button
               type="button"
@@ -1404,7 +1634,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               className="px-5 py-2.5 rounded-2xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold text-xs transition flex items-center gap-1.5 cursor-pointer"
             >
               <Bookmark className="w-3.5 h-3.5 text-purple-600" />
-              <span>{isSavingDraft ? 'Ukladám koncept...' : 'Uložiť ako koncept'}</span>
+              <span>{isSavingDraft ? (isSk ? 'Ukladám koncept...' : 'Saving draft...') : (isSk ? 'Uložiť ako koncept' : 'Save as Draft')}</span>
             </button>
           </div>
 
@@ -1413,7 +1643,9 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             <div
               onClick={() => setShowEstimatorModal(true)}
               className="group flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-slate-50/95 hover:bg-purple-50/60 border border-slate-200/90 hover:border-purple-300 transition-all duration-200 shadow-xs cursor-pointer select-none"
-              title={`Kliknite pre zobrazenie rozpisu tokenov (~${estimatedTokens.toLocaleString()} tokenov, ~${estimatedCalls} API volaní cez ${swarmScale} agentov a ${totalRounds} kôl s modelom ${MODEL_PRICING[llmModel]?.label || llmModel})`}
+              title={isSk 
+                ? `Kliknite pre zobrazenie rozpisu tokenov (~${estimatedTokens.toLocaleString()} tokenov, ~${estimatedCalls} API volaní cez ${swarmScale} agentov a ${totalRounds} kôl s modelom ${MODEL_PRICING[llmModel]?.label || llmModel})`
+                : `Click to view token breakdown (~${estimatedTokens.toLocaleString()} tokens, ~${estimatedCalls} API calls across ${swarmScale} agents and ${totalRounds} rounds with ${MODEL_PRICING[llmModel]?.label || llmModel})`}
               role="button"
               tabIndex={0}
             >
@@ -1423,11 +1655,11 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               <div className="flex flex-col text-left">
                 <div className="flex items-center gap-1.5 leading-none">
                   <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">
-                    Odhad ceny
+                    {isSk ? 'Odhad ceny' : 'Cost Estimate'}
                   </span>
                   {executionMode === 'demo' ? (
                     <span className="px-1.5 py-0.5 text-[9px] font-black bg-emerald-100 text-emerald-800 rounded uppercase tracking-wider">
-                      Demo test (0 €)
+                      {isSk ? 'Demo test (0 €)' : 'Demo test ($0.00)'}
                     </span>
                   ) : (
                     <span className="text-[10px] font-bold text-purple-600">
@@ -1437,10 +1669,10 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 </div>
                 <div className="flex items-baseline gap-1.5 mt-1">
                   <span className="text-sm sm:text-base font-black text-slate-900 tracking-tight leading-none group-hover:text-purple-700 transition-colors">
-                    {executionMode === 'demo' ? '0.000 €' : `~${estimatedCost.toFixed(3)} €`}
+                    {executionMode === 'demo' ? (isSk ? '0.000 €' : '$0.000') : `~${estimatedCost.toFixed(3)} €`}
                   </span>
                   <span className="text-[11px] text-slate-400 font-semibold leading-none">
-                    {executionMode === 'demo' ? 'Bez spotreby tokenov' : `~${(estimatedTokens / 1000).toFixed(0)}k tkn`}
+                    {executionMode === 'demo' ? (isSk ? 'Bez spotreby tokenov' : 'Zero token usage') : `~${(estimatedTokens / 1000).toFixed(0)}k tkn`}
                   </span>
                 </div>
               </div>
@@ -1457,8 +1689,8 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             >
               <span>
                 {executionMode === 'demo'
-                  ? 'Spustiť Demo test (0 €)'
-                  : 'Prejsť na odhad tokenov & Spustiť naživo (Live)'}
+                  ? (isSk ? 'Spustiť Demo test (0 €)' : 'Launch Demo Test ($0.00)')
+                  : (isSk ? 'Prejsť na odhad tokenov & Spustiť naživo (Live)' : 'Review Token Estimate & Launch Live')}
               </span>
               <ArrowRight className="w-4 h-4" />
             </button>
@@ -1480,7 +1712,31 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
         initialMode={executionMode}
         onModeChange={setExecutionMode}
         contextDocuments={contextDocuments}
+        systemLanguage={systemLanguage}
       />
+
+      {/* Interactive Template Catalogue Modal (105 Use Cases from Mirofish) */}
+      <TemplateCatalogueModal
+        isOpen={isCatalogueOpen}
+        onClose={() => setIsCatalogueOpen(false)}
+        onSelectTemplate={handleApplyCatalogueTemplate}
+        systemLanguage={systemLanguage}
+      />
+
+      {/* Floating Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 p-4 rounded-2xl bg-slate-900 text-white shadow-2xl border border-purple-500/30 flex items-center gap-3 animate-in slide-in-from-bottom-5 duration-200">
+          <Sparkles className="w-5 h-5 text-emerald-400 shrink-0" />
+          <span className="text-xs font-bold">{toastMessage}</span>
+          <button 
+            type="button"
+            onClick={() => setToastMessage(null)} 
+            className="text-slate-400 hover:text-white ml-2 cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Extracted Document Text Preview Modal */}
       {previewDoc && (
@@ -1509,7 +1765,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                     {previewDoc.name}
                   </h3>
                   <p className="text-[11px] text-slate-500">
-                    Extrahovaný text • {previewDoc.extractedChars?.toLocaleString() || 0} znakov (~{Math.ceil((previewDoc.content?.length || 0) / 4)} tokenov)
+                    {isSk ? 'Extrahovaný text' : 'Extracted text'} • {previewDoc.extractedChars?.toLocaleString() || 0} {isSk ? 'znakov' : 'chars'} (~{Math.ceil((previewDoc.content?.length || 0) / 4)} tokenov)
                   </p>
                 </div>
               </div>
@@ -1524,18 +1780,18 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
 
             {/* Modal Content */}
             <div className="p-6 overflow-y-auto flex-1 font-mono text-xs text-slate-700 whitespace-pre-wrap leading-relaxed bg-slate-50/40 select-text">
-              {previewDoc.content || 'Žiadny text sa z tohto súboru nepodarilo vyextrahovať.'}
+              {previewDoc.content || (isSk ? 'Žiadny text sa z tohto súboru nepodarilo vyextrahovať.' : 'No text could be extracted from this file.')}
             </div>
 
             {/* Modal Footer */}
             <div className="px-6 py-3 border-t border-slate-100 bg-white flex items-center justify-between text-xs text-slate-500">
-              <span>Tento text bude vložený do zadania pre agentov a ontologického grafu.</span>
+              <span>{isSk ? 'Tento text bude vložený do zadania pre agentov a ontologického grafu.' : 'This text will be embedded into the agent briefing and knowledge graph.'}</span>
               <button
                 type="button"
                 onClick={() => setPreviewDoc(null)}
                 className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition text-xs cursor-pointer"
               >
-                Zavrieť
+                {isSk ? 'Zavrieť' : 'Close'}
               </button>
             </div>
           </div>

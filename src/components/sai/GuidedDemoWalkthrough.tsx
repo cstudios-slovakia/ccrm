@@ -32,6 +32,7 @@ interface GuidedDemoWalkthroughProps {
   isOpen: boolean;
   onClose: () => void;
   onStartRealRehearsal: () => void;
+  systemLanguage?: string;
 }
 
 interface DemoStepMeta {

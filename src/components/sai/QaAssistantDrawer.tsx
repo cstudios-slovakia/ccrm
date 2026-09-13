@@ -19,6 +19,7 @@ interface QaAssistantDrawerProps {
   initialAgent?: SwarmAgentProfile | null;
   isDemoMode?: boolean;
   embedded?: boolean;
+  systemLanguage?: string;
   className?: string;
 }
 

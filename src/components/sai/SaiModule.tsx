@@ -55,9 +55,15 @@ import { SimulationStepsBar } from './SimulationStepsBar';
 interface SaiModuleProps {
   isDemoMode?: boolean;
   unifiedEntries?: any[];
+  systemLanguage?: string;
 }
 
-export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifiedEntries = [] }) => {
+export const SaiModule: React.FC<SaiModuleProps> = ({ 
+  isDemoMode = false, 
+  unifiedEntries = [],
+  systemLanguage = 'sk'
+}) => {
+  const isSk = systemLanguage === 'sk';
   // Navigation & View State
   const [demoModeActive, setDemoModeActive] = useState<boolean>(isDemoMode);
   const [activeIsDemo, setActiveIsDemo] = useState<boolean>(isDemoMode);
@@ -667,7 +673,9 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
                 </span>
               </div>
               <p className="text-xs text-slate-500 font-medium">
-                Prediktívna simulácia trhu s autonómnymi agentmi založená na reálnej histórii CRM
+                {isSk 
+                  ? 'Prediktívna simulácia trhu s autonómnymi agentmi založená na reálnej histórii CRM' 
+                  : 'Predictive market simulation with autonomous agents grounded in live CRM history'}
               </p>
             </div>
           </div>
@@ -679,7 +687,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
                 onClick={() => navigateView('list')}
                 className="px-3 py-1.5 rounded-xl bg-white text-slate-800 shadow-sm transition cursor-pointer"
               >
-                Simulácie
+                {isSk ? 'Simulácie' : 'Simulations'}
               </button>
               {activeSimulationId && (
                 <button
@@ -696,7 +704,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
                   className="px-3 py-1.5 rounded-xl text-slate-500 hover:text-slate-800 transition flex items-center gap-1.5 cursor-pointer"
                 >
                   <FileText className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Strategický briefing</span>
+                  <span>{isSk ? 'Strategický briefing' : 'Strategic Briefing'}</span>
                 </button>
               )}
             </div>
@@ -710,7 +718,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
                 className="px-3 py-2 rounded-2xl bg-white border border-slate-200 hover:border-purple-300 hover:bg-purple-50/50 text-slate-700 font-bold text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer"
               >
                 <MessageSquare className="w-4 h-4 text-purple-600" />
-                <span>Spýtať sa analytika / agentov</span>
+                <span>{isSk ? 'Spýtať sa analytika / agentov' : 'Ask Analyst / Agents'}</span>
               </button>
             )}
 
@@ -723,10 +731,10 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
                     ? 'bg-emerald-50 border-emerald-300 text-emerald-800 shadow-sm'
                     : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-800'
                 }`}
-                title="Prepnúť interaktívny demo režim (lokálna simulácia bez nákladov na API)"
+                title={isSk ? 'Prepnúť interaktívny demo režim (lokálna simulácia bez nákladov na API)' : 'Toggle interactive demo mode (local simulation with zero API costs)'}
               >
                 <Zap className={`w-3.5 h-3.5 ${demoModeActive ? 'text-emerald-600 fill-emerald-600' : 'text-slate-400'}`} />
-                <span>Demo režim: {demoModeActive ? 'ZAP' : 'VYP'}</span>
+                <span>{isSk ? `Demo režim: ${demoModeActive ? 'ZAP' : 'VYP'}` : `Demo mode: ${demoModeActive ? 'ON' : 'OFF'}`}</span>
               </button>
 
               {demoModeActive && (
@@ -736,10 +744,10 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
                     navigateView(activeView, { isDemo: true });
                   }}
                   className="px-3 py-2 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition cursor-pointer"
-                  title="Pozrieť si animovanú ukážku celého procesu simulácie krok za krokom"
+                  title={isSk ? 'Pozrieť si animovanú ukážku celého procesu simulácie krok za krokom' : 'View step-by-step animated walkthrough of the simulation process'}
                 >
                   <Sparkles className="w-3.5 h-3.5 fill-white" />
-                  <span className="hidden sm:inline">Ukážka procesu</span>
+                  <span className="hidden sm:inline">{isSk ? 'Ukážka procesu' : 'Process Walkthrough'}</span>
                 </button>
               )}
             </div>
@@ -749,14 +757,14 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
               className="px-4 py-2 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 hover:from-purple-700 hover:to-emerald-600 text-white font-bold text-xs shadow-md hover:shadow-lg transition flex items-center gap-1.5 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>Nová simulácia</span>
+              <span>{isSk ? 'Nová simulácia' : 'New Simulation'}</span>
             </button>
           </div>
         </header>
       ) : (
         <SimulationStepsBar
           currentStep={currentSimulationStep}
-          title={activeTitle || (activeView === 'create' ? (editingDraftData?.title || 'Nová strategická simulácia') : 'Strategická simulácia')}
+          title={activeTitle || (activeView === 'create' ? (editingDraftData?.title || (isSk ? 'Nová strategická simulácia' : 'New Strategic Simulation')) : (isSk ? 'Strategická simulácia' : 'Strategic Simulation'))}
           hypothesis={activeHypothesis}
           seedDocument={activeSeed}
           isEngineRunning={isEngineRunning}
@@ -778,6 +786,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
             setIsQaOpen(true);
           }}
           onStartNewRehearsal={handleStartNewRehearsal}
+          systemLanguage={systemLanguage}
         />
       )}
 
@@ -792,13 +801,15 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
             </div>
             <div className="flex-1">
               <div className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-                Orchestrácia kognitívneho roja
+                {isSk ? 'Orchestrácia kognitívneho roja' : 'Cognitive Swarm Orchestration'}
               </div>
               <div className="text-base font-bold text-white mt-0.5">
-                {prepStepMessage || 'Pripravujú sa komponenty simulácie...'}
+                {prepStepMessage || (isSk ? 'Pripravujú sa komponenty simulácie...' : 'Preparing simulation components...')}
               </div>
               <div className="text-xs text-slate-300 mt-1">
-                Prosím, zostaňte na tejto obrazovke. Klientsky stav synchronizuje kontrolné body jednotlivých kôl do databázy.
+                {isSk 
+                  ? 'Prosím, zostaňte na tejto obrazovke. Klientsky stav synchronizuje kontrolné body jednotlivých kôl do databázy.'
+                  : 'Please remain on this screen. Client state synchronizes round checkpoints to the database.'}
               </div>
             </div>
           </div>
@@ -813,14 +824,15 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
               <div className="relative z-10 max-w-2xl space-y-3">
                 <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-xs font-semibold text-emerald-300">
                   <Sparkles className="w-3.5 h-3.5" />
-                  Podložené živou históriou leadov z CRM
+                  {isSk ? 'Podložené živou históriou leadov z CRM' : 'Grounded in live CRM lead history'}
                 </div>
                 <h2 className="text-2xl font-black tracking-tight text-white sm:text-3xl">
-                  Otestujte strategické kroky na trhu ešte pred ich zverejnením
+                  {isSk ? 'Otestujte strategické kroky na trhu ešte pred ich zverejnením' : 'Stress-test strategic market moves before publishing'}
                 </h2>
                 <p className="text-sm text-slate-300 leading-relaxed font-normal">
-                  SAI vygeneruje desiatky autonómnych persón nákupcov a konkurentov v reálnej sociálnej simulácii. 
-                  Odhaľte polarizáciu trhu, námietky pri predaji a získajte konkrétny akčný plán na dosiahnutie cieľa.
+                  {isSk 
+                    ? 'SAI vygeneruje desiatky autonómnych persón nákupcov a konkurentov v reálnej sociálnej simulácii. Odhaľte polarizáciu trhu, námietky pri predaji a získajte konkrétny akčný plán na dosiahnutie cieľa.'
+                    : 'SAI generates dozens of autonomous buyer and competitor personas in a live social simulation. Uncover market polarization, sales objections, and get a concrete action plan.'}
                 </p>
                 <div className="pt-2 flex items-center gap-3">
                   <button
@@ -828,7 +840,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
                     className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-600 hover:to-teal-500 text-slate-950 font-extrabold text-xs shadow-lg transition flex items-center gap-2 cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />
-                    <span>Spustiť novú simuláciu trhu</span>
+                    <span>{isSk ? 'Spustiť novú simuláciu trhu' : 'Launch New Market Simulation'}</span>
                   </button>
                 </div>
               </div>
@@ -847,14 +859,16 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
                   <div>
                     <div className="flex items-center gap-2">
                       <h3 className="text-base font-bold text-white">
-                        Interaktívne demo: Reštrukturalizácia cien balíka Enterprise v Q4
+                        {isSk ? 'Interaktívne demo: Reštrukturalizácia cien balíka Enterprise v Q4' : 'Interactive Demo: Q4 Enterprise Pricing Restructuring'}
                       </h3>
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-400/20 text-emerald-300 border border-emerald-400/30">
-                        Nulové náklady na tokeny
+                        {isSk ? 'Nulové náklady na tokeny' : 'Zero Token Costs'}
                       </span>
                     </div>
                     <p className="text-xs text-slate-300 mt-1 max-w-xl">
-                      Pozrite si predpripravenú simuláciu (+25% zvýšenie cien, 99.9% SLA garancia, priama podpora cez WhatsApp). Vyskúšajte War Room, Strategický briefing a interrogačný hub.
+                      {isSk 
+                        ? 'Pozrite si predpripravenú simuláciu (+25% zvýšenie cien, 99.9% SLA garancia, priama podpora cez WhatsApp). Vyskúšajte War Room, Strategický briefing a interrogačný hub.'
+                        : 'Explore the pre-configured simulation (+25% price increase, 99.9% SLA guarantee, direct WhatsApp support). Try the War Room, Strategic Briefing, and Q&A hub.'}
                     </p>
                   </div>
                 </div>
@@ -867,13 +881,13 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
                     className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 text-slate-950 font-black text-xs shadow-lg transition flex items-center gap-2 cursor-pointer"
                   >
                     <Play className="w-4 h-4 fill-slate-950" />
-                    <span>Ukážka celého procesu (6 krokov)</span>
+                    <span>{isSk ? 'Ukážka celého procesu (6 krokov)' : 'Full Process Walkthrough (6 steps)'}</span>
                   </button>
                   <button
                     onClick={() => handleLoadDemoSimulation()}
                     className="px-4 py-2.5 rounded-2xl bg-slate-800/80 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-700 transition flex items-center gap-1.5 cursor-pointer"
                   >
-                    <span>Prejsť na konečné výsledky</span>
+                    <span>{isSk ? 'Prejsť na konečné výsledky' : 'Jump to Final Results'}</span>
                   </button>
                 </div>
               </div>
@@ -884,39 +898,45 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
               <div className="flex items-center justify-between">
                 <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
                   <Clock className="w-4 h-4 text-purple-600" />
-                  Predchádzajúce strategické simulácie
+                  {isSk ? 'Predchádzajúce strategické simulácie' : 'Previous Strategic Simulations'}
                 </h3>
                 <span className="text-xs text-slate-500 font-medium">
-                  {pastSimulations.length} celkovo
+                  {isSk ? `${pastSimulations.length} celkovo` : `${pastSimulations.length} total`}
                 </span>
               </div>
 
               {loadingList ? (
                 <div className="p-12 text-center text-slate-400">
                   <Activity className="w-6 h-6 animate-spin mx-auto mb-2 text-purple-600" />
-                  <p className="text-xs font-medium">Načítavanie simulácií z databázy...</p>
+                  <p className="text-xs font-medium">{isSk ? 'Načítavanie simulácií z databázy...' : 'Loading simulations from database...'}</p>
                 </div>
               ) : pastSimulations.length === 0 ? (
                 <div className="p-12 rounded-3xl bg-white border border-dashed border-slate-300 text-center space-y-3">
                   <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mx-auto">
                     <FlockIcon size={24} className="w-6 h-6" />
                   </div>
-                  <h4 className="text-sm font-bold text-slate-700">Zatiaľ žiadne simulácie</h4>
+                  <h4 className="text-sm font-bold text-slate-700">{isSk ? 'Zatiaľ žiadne simulácie' : 'No simulations yet'}</h4>
                   <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                    Vytvorte svoju prvú simuláciu na otestovanie reakcie trhu na zmeny cien, nové balíky alebo pozíciu voči konkurencii.
+                    {isSk 
+                      ? 'Vytvorte svoju prvú simuláciu na otestovanie reakcie trhu na zmeny cien, nové balíky alebo pozíciu voči konkurencii.'
+                      : 'Create your first simulation to test market reactions to pricing changes, new tiers, or competitor positioning.'}
                   </p>
                   <button
                     onClick={handleStartNewRehearsal}
                     className="px-4 py-2 rounded-xl bg-purple-600 text-white text-xs font-bold shadow hover:bg-purple-700 transition cursor-pointer"
                   >
-                    Vytvoriť simuláciu
+                    {isSk ? 'Vytvoriť simuláciu' : 'Create Simulation'}
                   </button>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {pastSimulations.map((sim) => {
                     const isDraft = sim.status === 'draft';
-                    const statusLabel = sim.status === 'completed' ? 'Dokončená' : isDraft ? 'Koncept' : 'Prebieha';
+                    const statusLabel = sim.status === 'completed' 
+                      ? (isSk ? 'Dokončená' : 'Completed') 
+                      : isDraft 
+                      ? (isSk ? 'Koncept' : 'Draft') 
+                      : (isSk ? 'Prebieha' : 'In Progress');
                     return (
                       <div
                         key={sim.id}
@@ -942,7 +962,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
                             <button
                               onClick={(e) => handleDeleteSimulation(e, sim.id)}
                               className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-                              title={isDraft ? "Zmazať koncept" : "Zmazať simuláciu"}
+                              title={isDraft ? (isSk ? "Zmazať koncept" : "Delete draft") : (isSk ? "Zmazať simuláciu" : "Delete simulation")}
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -962,16 +982,16 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
                           <div className="flex flex-wrap items-center gap-3 pt-2 text-[11px] text-slate-400 font-medium">
                             <span className="flex items-center gap-1">
                               <Users className="w-3.5 h-3.5" />
-                              {sim.swarm_scale} agentov
+                              {sim.swarm_scale} {isSk ? 'agentov' : 'agents'}
                             </span>
                             <span className="flex items-center gap-1">
                               <Clock className="w-3.5 h-3.5" />
-                              {sim.current_round} / {sim.total_rounds} kôl
+                              {sim.current_round} / {sim.total_rounds} {isSk ? 'kôl' : 'rounds'}
                             </span>
                             {sim.crm_data_sources && Array.isArray(sim.crm_data_sources) && (
                               <span className="flex items-center gap-1 text-purple-600 font-semibold">
                                 <Database className="w-3.5 h-3.5 text-purple-500" />
-                                {sim.crm_data_sources.length} zdrojov
+                                {sim.crm_data_sources.length} {isSk ? 'zdrojov' : 'sources'}
                               </span>
                             )}
                           </div>
@@ -980,7 +1000,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
                         <div className={`pt-4 mt-4 border-t border-slate-100 flex items-center justify-between text-xs font-bold ${
                           isDraft ? 'text-amber-700 group-hover:text-amber-800' : 'text-purple-600 group-hover:text-purple-700'
                         }`}>
-                          <span>{isDraft ? 'Pokračovať v úprave konceptu' : sim.status === 'completed' ? 'Zobraziť manažérsky briefing' : 'Vstúpiť do War Roomu'}</span>
+                          <span>{isDraft ? (isSk ? 'Pokračovať v úprave konceptu' : 'Continue Editing Draft') : sim.status === 'completed' ? (isSk ? 'Zobraziť manažérsky briefing' : 'View Strategic Briefing') : (isSk ? 'Vstúpiť do War Roomu' : 'Enter War Room')}</span>
                           <ChevronRight className="w-4 h-4 transition group-hover:translate-x-1" />
                         </div>
                       </div>
@@ -1008,6 +1028,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
             isSubmitting={isPreparing}
             isDemoMode={demoModeActive}
             unifiedEntries={unifiedEntries}
+            systemLanguage={systemLanguage}
           />
         )}
 
@@ -1024,6 +1045,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
               latestMetrics={latestMetrics}
               isRunning={isEngineRunning}
               onStop={handleStopSimulation}
+              systemLanguage={systemLanguage}
             />
           </div>
         )}
@@ -1036,6 +1058,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
             posts={posts}
             hypothesis={activeHypothesis}
             isDemoMode={activeIsDemo}
+            systemLanguage={systemLanguage}
             onOpenQaDrawer={() => {
               const el = document.getElementById('sai-interrogation-input');
               if (el) {
@@ -1062,6 +1085,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
           hypothesis={activeHypothesis}
           initialAgent={interviewAgent}
           isDemoMode={activeIsDemo}
+          systemLanguage={systemLanguage}
         />
       )}
 
@@ -1076,6 +1100,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
           setIsGuidedDemoOpen(false);
           handleStartNewRehearsal();
         }}
+        systemLanguage={systemLanguage}
       />
 
     </div>

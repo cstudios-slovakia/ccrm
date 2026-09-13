@@ -369,8 +369,14 @@ function App() {
     };
   }, []);
   const [systemName, setSystemName] = useState("CCRM");
-  const [systemLanguage, setSystemLanguage] = useState<"en" | "sk" | "hu">("sk");
-  const [userLanguage, setUserLanguage] = useState<"en" | "sk" | "hu">("sk");
+  const [systemLanguage, setSystemLanguage] = useState<"en" | "sk" | "hu">(() => {
+    const stored = typeof window !== 'undefined' ? localStorage.getItem("crm_language") : null;
+    return (stored === "en" || stored === "sk" || stored === "hu") ? stored : "sk";
+  });
+  const [userLanguage, setUserLanguage] = useState<"en" | "sk" | "hu">(() => {
+    const stored = typeof window !== 'undefined' ? localStorage.getItem("crm_language") : null;
+    return (stored === "en" || stored === "sk" || stored === "hu") ? stored : "sk";
+  });
   const [userTheme, setUserTheme] = useState<string>(getStoredTheme);
 
   useEffect(() => {
@@ -620,7 +626,8 @@ ${log.payload || ''}
   };
 
   useEffect(() => {
-    setUserLanguage(getUserLanguage(currentUser) || systemLanguage);
+    const stored = typeof window !== 'undefined' ? (localStorage.getItem("crm_language") as "en" | "sk" | "hu") : null;
+    setUserLanguage(getUserLanguage(currentUser) || (stored === "en" || stored === "sk" || stored === "hu" ? stored : systemLanguage));
   }, [currentUser, systemLanguage]);
 
   // Mirror the active language into localStorage. Components that render OUTSIDE
@@ -2187,7 +2194,7 @@ ${log.payload || ''}
         );
       case "sai":
         return (
-          <SaiModule isDemoMode={isDemoMode} unifiedEntries={unifiedEntries} />
+          <SaiModule isDemoMode={isDemoMode} unifiedEntries={unifiedEntries} systemLanguage={userLanguage} />
         );
       case "meetings":
         return (
