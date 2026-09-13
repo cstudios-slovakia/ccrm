@@ -148,6 +148,42 @@ if ($action === 'llm_proxy') {
     $curlErr = curl_error($ch);
     curl_close($ch);
 
+    // Automatic retry & recovery for model-specific parameter quirks (e.g., temperature != 1 on reasoning models)
+    if ($httpCode === 400) {
+        $errObj = json_decode($response, true);
+        $errMsg = $errObj['error']['message'] ?? '';
+        $retryNeeded = false;
+
+        if (stripos($errMsg, 'temperature') !== false && isset($payload['temperature'])) {
+            unset($payload['temperature']);
+            $retryNeeded = true;
+        }
+
+        if (stripos($errMsg, 'response_format') !== false && isset($payload['response_format'])) {
+            unset($payload['response_format']);
+            $retryNeeded = true;
+        }
+
+        if ($retryNeeded) {
+            $ch = curl_init($creds['baseUrl'] . '/chat/completions');
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => json_encode($payload),
+                CURLOPT_HTTPHEADER => [
+                    'Content-Type: application/json',
+                    'Authorization: Bearer ' . $creds['apiKey']
+                ],
+                CURLOPT_TIMEOUT => 90,
+                CURLOPT_SSL_VERIFYPEER => true
+            ]);
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlErr = curl_error($ch);
+            curl_close($ch);
+        }
+    }
+
     if ($curlErr) {
         http_response_code(502);
         echo json_encode(['success' => false, 'message' => 'LLM gateway communication error: ' . $curlErr]);

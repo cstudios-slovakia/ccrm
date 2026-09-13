@@ -7,12 +7,16 @@ interface SocialFeedStreamProps {
   posts: SwarmPost[];
   className?: string;
   systemLanguage?: string;
+  onRestart?: () => void;
+  onEditDraft?: () => void;
 }
 
 export const SocialFeedStream: React.FC<SocialFeedStreamProps> = ({
   posts,
   className = "w-full h-full",
-  systemLanguage = 'sk'
+  systemLanguage = 'sk',
+  onRestart,
+  onEditDraft
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     systemLanguage === 'sk' ? sk : systemLanguage === 'hu' ? hu : en;
@@ -80,9 +84,31 @@ export const SocialFeedStream: React.FC<SocialFeedStreamProps> = ({
         className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 scrollbar-thin scrollbar-thumb-slate-200"
       >
         {sortedPosts.length === 0 ? (
-          <div className="h-48 flex flex-col items-center justify-center text-slate-400 text-xs space-y-2">
-            <Sparkles className="w-6 h-6 text-slate-300" />
-            <span>{t('Waiting for Round 1 deliberation to begin...', 'Čaká sa na začiatok 1. kola...', 'Várakozás az 1. forduló megkezdésére...')}</span>
+          <div className="h-64 flex flex-col items-center justify-center text-slate-400 text-xs space-y-3 text-center px-4">
+            <Sparkles className="w-8 h-8 text-purple-400 animate-pulse" />
+            <span className="font-medium text-slate-600">
+              {t('Waiting for Round 1 deliberation to begin...', 'Čaká sa na začiatok 1. kola...', 'Várakozás az 1. forduló megkezdésére...')}
+            </span>
+            {(onRestart || onEditDraft) && (
+              <div className="flex items-center gap-2 pt-2">
+                {onEditDraft && (
+                  <button
+                    onClick={onEditDraft}
+                    className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 font-bold text-xs transition cursor-pointer"
+                  >
+                    {t('Edit Config', 'Upraviť konfiguráciu', 'Konfiguráció szerkesztése')}
+                  </button>
+                )}
+                {onRestart && (
+                  <button
+                    onClick={onRestart}
+                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 hover:from-purple-700 text-white font-bold text-xs transition cursor-pointer shadow-md"
+                  >
+                    {t('Start / Re-run Simulation', 'Spustiť / Reštartovať simuláciu', 'Szimuláció indítása / Újrafuttatás')}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           sortedPosts.map((post) => (

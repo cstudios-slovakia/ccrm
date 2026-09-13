@@ -582,6 +582,48 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
     }
   };
 
+  // Restart or re-launch the active simulation
+  const handleRestartCurrentSimulation = async () => {
+    if (!activeSimulationId) {
+      handleStartNewRehearsal();
+      return;
+    }
+    try {
+      const simDetails = await fetchSimulationDetails(activeSimulationId);
+      if (simDetails) {
+        const cp = (simDetails.checkpoint && typeof simDetails.checkpoint === 'object' && !Array.isArray(simDetails.checkpoint)) ? simDetails.checkpoint : {};
+        const config: SimulationParameters = {
+          title: simDetails.title || activeTitle || cp.title || 'Simulation',
+          hypothesis: simDetails.hypothesis || activeHypothesis || cp.hypothesis || '',
+          seedDocument: simDetails.seed_document || activeSeed || cp.seed_document || '',
+          lookbackMonths: (simDetails.lookback_months ? Number(simDetails.lookback_months) : (cp.lookback_months ? Number(cp.lookback_months) : 12)) as (6 | 12 | 24),
+          crmDataSources: Array.isArray(simDetails.crm_data_sources) ? simDetails.crm_data_sources : (Array.isArray(cp.crm_data_sources) ? cp.crm_data_sources : undefined),
+          contextDocuments: Array.isArray(simDetails.context_documents) ? simDetails.context_documents : (Array.isArray(cp.context_documents) ? cp.context_documents : undefined),
+          swarmScale: simDetails.swarm_scale ? Number(simDetails.swarm_scale) : (cp.swarm_scale ? Number(cp.swarm_scale) : 30),
+          totalRounds: simDetails.total_rounds ? Number(simDetails.total_rounds) : (cp.total_rounds ? Number(cp.total_rounds) : 8),
+          platforms: (simDetails.platforms || cp.platforms || 'dual') as ('dual' | 'chitchat' | 'forum' | 'twitter' | 'reddit'),
+          diurnalCycle: simDetails.diurnal_cycle !== undefined ? simDetails.diurnal_cycle : (cp.diurnal_cycle ?? true),
+          llmModel: simDetails.model_name || cp.model_name || 'gpt-5.6-luna',
+          executionMode: activeIsDemo ? 'demo' : 'live'
+        };
+        await handleLaunchSimulation(config, activeSimulationId);
+      } else {
+        navigateView('create', { draftId: activeSimulationId });
+      }
+    } catch (e) {
+      console.error('Error restarting simulation:', e);
+      navigateView('create', { draftId: activeSimulationId });
+    }
+  };
+
+  const handleEditActiveDraft = () => {
+    if (activeSimulationId) {
+      navigateView('create', { draftId: activeSimulationId });
+    } else {
+      navigateView('create');
+    }
+  };
+
   // Open past simulation
   const handleOpenPastSimulation = async (sim: any, shouldUpdateHash = true) => {
     if (!sim || !sim.id) return;
@@ -1111,6 +1153,8 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
               latestMetrics={latestMetrics}
               isRunning={isEngineRunning}
               onStop={handleStopSimulation}
+              onRestart={handleRestartCurrentSimulation}
+              onEditDraft={handleEditActiveDraft}
               systemLanguage={systemLanguage}
             />
           </div>

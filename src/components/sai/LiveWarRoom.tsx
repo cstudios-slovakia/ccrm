@@ -7,7 +7,7 @@ import type {
 } from '../../utils/swarm/types';
 import { SwarmGraphCanvas } from './SwarmGraphCanvas';
 import { SocialFeedStream } from './SocialFeedStream';
-import { Sun, Moon, Pause, Activity, TrendingUp, Users } from 'lucide-react';
+import { Sun, Moon, Pause, Play, Edit3, Activity, TrendingUp, Users } from 'lucide-react';
 
 interface LiveWarRoomProps {
   title: string;
@@ -19,6 +19,8 @@ interface LiveWarRoomProps {
   latestMetrics?: SwarmRoundMetrics | null;
   isRunning: boolean;
   onStop: () => void;
+  onRestart?: () => void;
+  onEditDraft?: () => void;
   systemLanguage?: string;
 }
 
@@ -32,6 +34,8 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
   latestMetrics,
   isRunning,
   onStop,
+  onRestart,
+  onEditDraft,
   systemLanguage = 'sk'
 }) => {
   const t = (en: string, sk: string, hu: string) =>
@@ -111,8 +115,8 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
             </div>
           </div>
 
-          {/* Stop Button */}
-          {isRunning && (
+          {/* Action Buttons */}
+          {isRunning ? (
             <button
               onClick={onStop}
               className="px-4 py-2 rounded-2xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
@@ -120,6 +124,27 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
               <Pause className="w-3.5 h-3.5" />
               <span>{t('Pause', 'Pozastaviť', 'Szüneteltetés')}</span>
             </button>
+          ) : (
+            <div className="flex items-center gap-2">
+              {onEditDraft && (
+                <button
+                  onClick={onEditDraft}
+                  className="px-3 py-1.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <Edit3 className="w-3.5 h-3.5 text-purple-600" />
+                  <span>{t('Edit Config', 'Upraviť konfiguráciu', 'Konfiguráció szerkesztése')}</span>
+                </button>
+              )}
+              {onRestart && (
+                <button
+                  onClick={onRestart}
+                  className="px-3.5 py-1.5 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 hover:from-purple-700 hover:to-emerald-600 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-md"
+                >
+                  <Play className="w-3.5 h-3.5 fill-white" />
+                  <span>{t('Launch / Re-run', 'Spustiť / Znovu spustiť', 'Indítás / Újrafuttatás')}</span>
+                </button>
+              )}
+            </div>
           )}
 
         </div>
@@ -150,6 +175,8 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
           <SocialFeedStream 
             posts={posts} 
             systemLanguage={systemLanguage}
+            onRestart={onRestart}
+            onEditDraft={onEditDraft}
           />
         </div>
 
