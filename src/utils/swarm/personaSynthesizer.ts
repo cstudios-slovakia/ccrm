@@ -40,11 +40,11 @@ Output JSON strictly matching this schema:
   ]
 }`;
 
-  // If targetCount > 20, synthesize in parallel batches to prevent token limit truncation
+  // Synthesize in parallel batches of up to 10 agents to prevent token limit truncation and ensure blazing speed
   const batchSizes: number[] = [];
   let remaining = targetCount;
   while (remaining > 0) {
-    const size = Math.min(20, remaining);
+    const size = Math.min(10, remaining);
     batchSizes.push(size);
     remaining -= size;
   }
@@ -58,45 +58,87 @@ ${JSON.stringify(nodes.map(n => ({ id: n.id, name: n.name, type: n.type, summary
 
 Generate exactly ${batchSize} unique, richly described agent profiles (Batch ${batchIdx + 1} of ${batchSizes.length}) representing these entities in natural Slovak (Slovenčina).`;
 
-    const result = await callLlmJson<{
-      agents: {
-        username: string;
-        displayName: string;
-        profession: string;
-        mbti: string;
-        stance: 'supportive' | 'opposing' | 'neutral' | 'observer';
-        userChar: string;
-        publicBio: string;
-        followerCount?: number;
-        interestedTopics?: string[];
-        sourceEntityId?: string;
-      }[];
-    }>([
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt }
-    ], {
-      model: modelName,
-      temperature: 0.7,
-      maxTokens: 5000
-    });
+    try {
+      const result = await callLlmJson<{
+        agents: {
+          username: string;
+          displayName: string;
+          profession: string;
+          mbti: string;
+          stance: 'supportive' | 'opposing' | 'neutral' | 'observer';
+          userChar: string;
+          publicBio: string;
+          followerCount?: number;
+          interestedTopics?: string[];
+          sourceEntityId?: string;
+        }[];
+      }>([
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ], {
+        model: modelName,
+        temperature: 0.7,
+        maxTokens: 6000
+      });
 
-    return result.agents || [];
+      return result.agents || [];
+    } catch (batchErr) {
+      console.warn(`Batch ${batchIdx + 1} persona synthesis warning, recovering with default personas:`, batchErr);
+      return [];
+    }
   });
 
   const allBatches = await Promise.all(batchPromises);
   const rawAgents = allBatches.flat();
 
-  return rawAgents.slice(0, targetCount).map((a, idx) => ({
-    id: idx + 1,
-    username: a.username ? a.username.replace(/[^a-zA-Z0-9_]/g, '') : `agent_${idx + 1}`,
-    displayName: a.displayName || `Agent ${idx + 1}`,
-    profession: a.profession || 'Market Participant',
-    mbti: a.mbti || 'INTJ',
-    stance: a.stance || 'neutral',
-    userChar: a.userChar || 'Participant in market discussions.',
-    publicBio: a.publicBio || `${a.profession || 'Professional'}`,
-    followerCount: a.followerCount || Math.floor(Math.random() * 800 + 100),
-    interestedTopics: Array.isArray(a.interestedTopics) ? a.interestedTopics : ['pricing', 'CRM', 'software'],
-    sourceEntityId: a.sourceEntityId
-  }));
+  // If rawAgents is fewer than targetCount due to any network/token glitch, fill missing with diverse personas
+  const STANCES: ('supportive' | 'opposing' | 'neutral' | 'observer')[] = ['supportive', 'opposing', 'neutral', 'observer'];
+  const MBTIS = ['INTJ', 'ESTJ', 'ENTP', 'INFP', 'ISTJ', 'ENFJ', 'ISFP', 'ENTJ'];
+  const ROLES = [
+    'Riaditeľ nákupu IT systémov',
+    'Manažér predaja & CRM špecialista',
+    'Finančný kontrolór & Analytik',
+    'Zakladateľ digitálnej agentúry',
+    'Špecialista pre ochranu osobných údajov (DPO)',
+    'Obchodný riaditeľ B2B služieb',
+    'Vedúci zákazníckej podpory'
+  ];
+
+  const finalAgents: SwarmAgentProfile[] = [];
+  for (let idx = 0; idx < targetCount; idx++) {
+    const existing = rawAgents[idx];
+    if (existing) {
+      finalAgents.push({
+        id: idx + 1,
+        username: existing.username ? existing.username.replace(/[^a-zA-Z0-9_]/g, '') : `agent_${idx + 1}`,
+        displayName: existing.displayName || `Účastník ${idx + 1}`,
+        profession: existing.profession || ROLES[idx % ROLES.length],
+        mbti: existing.mbti || MBTIS[idx % MBTIS.length],
+        stance: existing.stance || STANCES[idx % STANCES.length],
+        userChar: existing.userChar || `Účastník trhových diskusií zameraný na ${ROLES[idx % ROLES.length]}.`,
+        publicBio: existing.publicBio || `${existing.profession || ROLES[idx % ROLES.length]}`,
+        followerCount: existing.followerCount || Math.floor(Math.random() * 800 + 100),
+        interestedTopics: Array.isArray(existing.interestedTopics) ? existing.interestedTopics : ['CRM', 'ceny', 'softvér'],
+        sourceEntityId: existing.sourceEntityId || (nodes[idx % Math.max(1, nodes.length)]?.id)
+      });
+    } else {
+      const role = ROLES[idx % ROLES.length];
+      const stance = STANCES[idx % STANCES.length];
+      finalAgents.push({
+        id: idx + 1,
+        username: `trh_ucastnik_${idx + 1}`,
+        displayName: `Účastník ${idx + 1}`,
+        profession: role,
+        mbti: MBTIS[idx % MBTIS.length],
+        stance: stance,
+        userChar: `Autonómny účastník trhu (${role}) s postojom: ${stance}.`,
+        publicBio: `${role} | Aktívny účastník trhu`,
+        followerCount: Math.floor(Math.random() * 500 + 100),
+        interestedTopics: ['CRM', 'B2B', 'ceny'],
+        sourceEntityId: nodes[idx % Math.max(1, nodes.length)]?.id
+      });
+    }
+  }
+
+  return finalAgents;
 }

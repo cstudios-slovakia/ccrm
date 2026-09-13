@@ -52,7 +52,9 @@ export async function callLlmProxy(
 
   const data = await response.json();
   const choice = data.choices?.[0];
-  const content = choice?.message?.content ?? choice?.text;
+  let content = choice?.message?.content ?? choice?.text;
+  
+  // If content is null but reasoning_content exists or choice had finish_reason length, check if we can retry
   if (!content) {
     if (choice?.message?.refusal) {
       throw new Error(`LLM Model Refusal: ${choice.message.refusal}`);
@@ -60,6 +62,16 @@ export async function callLlmProxy(
     if (data.error?.message) {
       throw new Error(`LLM Error: ${data.error.message}`);
     }
+
+    // Auto-retry once with doubled token headroom if finish_reason was length
+    if (choice?.finish_reason === 'length' && (options.maxTokens || 4000) < 12000) {
+      console.warn('LLM finish_reason was length, auto-retrying with expanded token headroom...');
+      return callLlmProxy(messages, {
+        ...options,
+        maxTokens: Math.min(16000, (options.maxTokens || 4000) * 2)
+      });
+    }
+
     throw new Error(`LLM response contained no message content (finish_reason: ${choice?.finish_reason || 'unknown'}).`);
   }
 

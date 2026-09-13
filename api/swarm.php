@@ -109,7 +109,7 @@ if ($action === 'llm_proxy') {
     $responseFormat = $body['response_format'] ?? null;
     $maxTokens = isset($body['max_completion_tokens']) 
         ? (int)$body['max_completion_tokens'] 
-        : (isset($body['max_tokens']) ? (int)$body['max_tokens'] : 4000);
+        : (isset($body['max_tokens']) ? (int)$body['max_tokens'] : 8000);
 
     if (empty($messages)) {
         http_response_code(400);

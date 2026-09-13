@@ -99,11 +99,17 @@ if ($action === 'llm_proxy') {
 
     $messages = $body['messages'] ?? [];
     $model = $body['model'] ?? $creds['defaultModel'];
+    // Map internal branding names to live OpenAI model identifiers
+    if ($model === 'gpt-5.6-luna') {
+        $model = 'gpt-4o-mini';
+    } elseif ($model === 'gpt-5.6-terra') {
+        $model = 'gpt-4o';
+    }
     $temperature = isset($body['temperature']) ? (float)$body['temperature'] : 0.7;
     $responseFormat = $body['response_format'] ?? null;
     $maxTokens = isset($body['max_completion_tokens']) 
         ? (int)$body['max_completion_tokens'] 
-        : (isset($body['max_tokens']) ? (int)$body['max_tokens'] : 4000);
+        : (isset($body['max_tokens']) ? (int)$body['max_tokens'] : 8000);
 
     if (empty($messages)) {
         http_response_code(400);
