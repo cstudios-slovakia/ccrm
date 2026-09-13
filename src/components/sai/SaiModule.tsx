@@ -301,15 +301,26 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
 
   // Open an existing draft in the create view
   const handleOpenDraft = (sim: any, shouldUpdateHash = true) => {
-    const cp = (sim.checkpoint && typeof sim.checkpoint === 'object' && !Array.isArray(sim.checkpoint)) ? sim.checkpoint : {};
+    const cp = (sim.checkpoint && typeof sim.checkpoint === 'object' && !Array.isArray(sim.checkpoint))
+      ? sim.checkpoint
+      : (typeof sim.checkpoint_state === 'string' && sim.checkpoint_state ? (JSON.parse(sim.checkpoint_state || '{}') || {}) : (sim.checkpoint_state || {}));
+    
+    const crmSources = Array.isArray(sim.crm_data_sources) 
+      ? sim.crm_data_sources 
+      : (Array.isArray(cp.crm_data_sources) ? cp.crm_data_sources : undefined);
+
+    const contextDocs = Array.isArray(sim.context_documents) 
+      ? sim.context_documents 
+      : (Array.isArray(cp.context_documents) ? cp.context_documents : undefined);
+
     setEditingDraftData({
       id: sim.id,
       title: sim.title || cp.title,
       hypothesis: sim.hypothesis || cp.hypothesis,
       seed_document: sim.seed_document || cp.seed_document || '',
       lookback_months: sim.lookback_months ? Number(sim.lookback_months) : (cp.lookback_months ? Number(cp.lookback_months) : 12),
-      crm_data_sources: Array.isArray(sim.crm_data_sources) ? sim.crm_data_sources : (Array.isArray(cp.crm_data_sources) ? cp.crm_data_sources : undefined),
-      context_documents: Array.isArray(sim.context_documents) ? sim.context_documents : (Array.isArray(cp.context_documents) ? cp.context_documents : undefined),
+      crm_data_sources: crmSources,
+      context_documents: contextDocs,
       swarm_scale: sim.swarm_scale ? Number(sim.swarm_scale) : (cp.swarm_scale ? Number(cp.swarm_scale) : 30),
       total_rounds: sim.total_rounds ? Number(sim.total_rounds) : (cp.total_rounds ? Number(cp.total_rounds) : 8),
       model_name: sim.model_name || cp.model_name || 'gpt-5.6-luna',
@@ -634,7 +645,8 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
       return;
     }
 
-    if (sim.status === 'draft') {
+    const isUnstarted = sim.status === 'draft' || (sim.status === 'prepared' && (!sim.current_round || Number(sim.current_round) === 0));
+    if (isUnstarted) {
       handleOpenDraft(sim, shouldUpdateHash);
       return;
     }
@@ -652,8 +664,8 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
         return;
       }
 
-      // If the simulation is actually a draft on server, open draft editor
-      if (details.status === 'draft') {
+      // If the simulation is actually unstarted or a draft on server, open draft editor
+      if (details.status === 'draft' || (details.status === 'prepared' && (!details.current_round || Number(details.current_round) === 0) && !details.final_report)) {
         handleOpenDraft(details, shouldUpdateHash);
         return;
       }
@@ -1039,38 +1051,55 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {pastSimulations.map((sim) => {
-                    const isDraft = sim.status === 'draft';
-                    const statusLabel = sim.status === 'completed' 
+                    const isUnstarted = sim.status === 'draft' || (sim.status === 'prepared' && (!sim.current_round || Number(sim.current_round) === 0));
+                    const isCompleted = sim.status === 'completed';
+                    const statusLabel = isCompleted 
                       ? t('Completed', 'Dokončená', 'Befejezve')
-                      : isDraft 
-                      ? t('Draft', 'Koncept', 'Piszkozat')
+                      : isUnstarted 
+                      ? (sim.status === 'prepared' ? t('Prepared', 'Pripravená', 'Előkészítve') : t('Draft', 'Koncept', 'Piszkozat'))
                       : t('In Progress', 'Prebieha', 'Folyamatban');
+
+                    const statusBadgeClass = isCompleted
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : isUnstarted
+                      ? 'bg-amber-100 text-amber-800 border-amber-300'
+                      : 'bg-indigo-50 text-indigo-700 border-indigo-200';
+
+                    const actionLabel = isUnstarted
+                      ? t('Edit Config & Launch', 'Upraviť konfiguráciu & Spustiť', 'Konfiguráció szerkesztése & Indítás')
+                      : isCompleted
+                      ? t('View Strategic Briefing', 'Zobraziť manažérsky briefing', 'Stratégiai eligazítás megtekintése')
+                      : t('Enter War Room', 'Vstúpiť do War Roomu', 'Belépés a War Roomba');
+
                     return (
                       <div
                         key={sim.id}
-                        onClick={() => isDraft ? handleOpenDraft(sim) : handleOpenPastSimulation(sim)}
-                        className={`p-5 rounded-3xl bg-white border transition cursor-pointer flex flex-col justify-between group ${
-                          isDraft 
-                            ? 'border-amber-300 hover:border-amber-400 hover:shadow-lg bg-gradient-to-br from-white to-amber-50/20' 
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            isUnstarted ? handleOpenDraft(sim) : handleOpenPastSimulation(sim);
+                          }
+                        }}
+                        onClick={() => isUnstarted ? handleOpenDraft(sim) : handleOpenPastSimulation(sim)}
+                        className={`p-5 rounded-3xl bg-white border transition cursor-pointer flex flex-col justify-between group select-none ${
+                          isUnstarted 
+                            ? 'border-amber-300/90 hover:border-amber-500 hover:shadow-lg bg-gradient-to-br from-white to-amber-50/20' 
                             : 'border-slate-200/90 hover:border-purple-400 hover:shadow-lg'
                         }`}
                       >
                         <div className="space-y-3">
                           <div className="flex items-start justify-between gap-2">
-                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider flex items-center gap-1 ${
-                              sim.status === 'completed'
-                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                : isDraft
-                                ? 'bg-amber-100 text-amber-800 border border-amber-300'
-                                : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-                            }`}>
-                              {isDraft && <Bookmark className="w-3 h-3 text-amber-700" />}
+                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider flex items-center gap-1 ${statusBadgeClass}`}>
+                              {isUnstarted && <Bookmark className="w-3 h-3 text-amber-700" />}
                               {statusLabel}
                             </span>
                             <button
+                              type="button"
                               onClick={(e) => handleDeleteSimulation(e, sim.id)}
                               className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-                              title={isDraft ? t('Delete draft', 'Zmazať koncept', 'Piszkozat törlése') : t('Delete simulation', 'Zmazať simuláciu', 'Szimuláció törlése')}
+                              title={isUnstarted ? t('Delete draft', 'Zmazať koncept', 'Piszkozat törlése') : t('Delete simulation', 'Zmazať simuláciu', 'Szimuláció törlése')}
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -1078,7 +1107,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
 
                           <div>
                             <h4 className={`text-sm font-bold transition line-clamp-1 ${
-                              isDraft ? 'text-slate-900 group-hover:text-amber-700' : 'text-slate-900 group-hover:text-purple-600'
+                              isUnstarted ? 'text-slate-900 group-hover:text-amber-700' : 'text-slate-900 group-hover:text-purple-600'
                             }`}>
                               {sim.title}
                             </h4>
@@ -1094,7 +1123,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
                             </span>
                             <span className="flex items-center gap-1">
                               <Clock className="w-3.5 h-3.5" />
-                              {sim.current_round} / {sim.total_rounds} {t('rounds', 'kôl', 'kör')}
+                              {sim.current_round || 0} / {sim.total_rounds} {t('rounds', 'kôl', 'kör')}
                             </span>
                             {sim.crm_data_sources && Array.isArray(sim.crm_data_sources) && (
                               <span className="flex items-center gap-1 text-purple-600 font-semibold">
@@ -1106,9 +1135,9 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
                         </div>
 
                         <div className={`pt-4 mt-4 border-t border-slate-100 flex items-center justify-between text-xs font-bold ${
-                          isDraft ? 'text-amber-700 group-hover:text-amber-800' : 'text-purple-600 group-hover:text-purple-700'
+                          isUnstarted ? 'text-amber-700 group-hover:text-amber-800' : 'text-purple-600 group-hover:text-purple-700'
                         }`}>
-                          <span>{isDraft ? t('Continue Editing Draft', 'Pokračovať v úprave konceptu', 'Piszkozat szerkesztésének folytatása') : sim.status === 'completed' ? t('View Strategic Briefing', 'Zobraziť manažérsky briefing', 'Stratégiai eligazítás megtekintése') : t('Enter War Room', 'Vstúpiť do War Roomu', 'Belépés a War Roomba')}</span>
+                          <span>{actionLabel}</span>
                           <ChevronRight className="w-4 h-4 transition group-hover:translate-x-1" />
                         </div>
                       </div>
