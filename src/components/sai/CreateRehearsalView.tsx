@@ -32,7 +32,10 @@ import {
   Loader2,
   X,
   Sparkles,
-  Compass
+  Compass,
+  Package,
+  DollarSign,
+  Share2
 } from 'lucide-react';
 import type { SimulationParameters, SwarmContextDocument } from '../../utils/swarm/types';
 import { PreflightEstimatorModal } from './PreflightEstimatorModal';
@@ -174,6 +177,45 @@ export const CRM_SOURCE_OPTIONS: CrmSourceOption[] = [
     badge: 'Súbory',
     badgeEn: 'Files',
     badgeColor: 'bg-teal-50 text-teal-700 border-teal-200'
+  },
+  {
+    id: 'products',
+    title: 'Katalóg produktov & Sklad',
+    titleEn: 'Products & Inventory',
+    category: 'Sklad & Produkty',
+    categoryEn: 'Products & Inventory',
+    description: 'Katalóg tovarov a služieb, cenníky, skladové zásoby, predajné marže a jednotkové nákupné ceny.',
+    descriptionEn: 'Product and service catalogue, price lists, stock quantities, sales margins, and unit purchase costs.',
+    icon: Package,
+    badge: 'Produkty',
+    badgeEn: 'Products',
+    badgeColor: 'bg-cyan-50 text-cyan-700 border-cyan-200'
+  },
+  {
+    id: 'financials',
+    title: 'Faktúry & Finančné záznamy',
+    titleEn: 'Invoices & Financial Records',
+    category: 'Financie & Cashflow',
+    categoryEn: 'Finance & Cashflow',
+    description: 'Vystavené a prijaté faktúry, hotovostné toky (cashflow), výnosy, náklady a ziskovosť zákaziek.',
+    descriptionEn: 'Issued and received invoices, cashflow trends, revenue streams, expenses, and project margins.',
+    icon: DollarSign,
+    badge: 'Financie',
+    badgeEn: 'Financials',
+    badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200'
+  },
+  {
+    id: 'social_media_posts',
+    title: 'Príspevky na sociálnych sieťach',
+    titleEn: 'Social Media Posts & Campaigns',
+    category: 'Marketing & Sociálne siete',
+    categoryEn: 'Marketing & Social Media',
+    description: 'Publikované a plánované príspevky na Facebooku, LinkedIn, Instagrame, reakcie publika a metriky dosahu.',
+    descriptionEn: 'Published and scheduled posts across LinkedIn, Facebook, Instagram, audience reactions, and reach engagement metrics.',
+    icon: Share2,
+    badge: 'Sociálne siete',
+    badgeEn: 'Social Media',
+    badgeColor: 'bg-rose-50 text-rose-700 border-rose-200'
   }
 ];
 
