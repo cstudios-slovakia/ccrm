@@ -795,7 +795,12 @@ if (!function_exists('ccrm_execute_workflow')) {
                         // gets the same paired projects as one typed in by hand or
                         // captured by the web form (Projects → Settings). It carries
                         // no interest categories, so it lands on the fallback type.
-                        $autoProjects = ccrm_auto_create_project_for_lead($pdo, $leadId, $owner);
+                        //
+                        // PROJECT-AUTO-CREATE-DISABLED (v1.9.29): switched off
+                        // app-wide. To bring it back, restore the call below and
+                        // drop the empty list.
+                        // $autoProjects = ccrm_auto_create_project_for_lead($pdo, $leadId, $owner);
+                        $autoProjects = [];
 
                         $outputPayload = [
                           'id' => $leadId,

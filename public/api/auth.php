@@ -634,6 +634,10 @@ if (!function_exists('ccrm_send_cors')) {
      * Creation skips any type this lead already has a project of. That makes
      * the call idempotent, so a retried sync — or a lead re-pushed by an older
      * client that thinks it is new — cannot pile up duplicates.
+     *
+     * PROJECT-AUTO-CREATE-DISABLED (v1.9.29): nothing calls this any more —
+     * the calls in sync.php, api/pipeline.php and api/workflows_engine.php are
+     * commented out, and the settings card is hidden. Kept intact for rollback.
      */
     function ccrm_auto_create_project_for_lead(\PDO $pdo, string $leadId, string $ownerName = '', ?array $categories = null): array {
         $cfg = ccrm_project_auto_create_config($pdo);

@@ -630,7 +630,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         //    (Projects → Settings → automatic project creation). A web-form
         //    lead is exactly the case the setting exists for, and the interests
         //    it ticked are what decide which types it gets.
-        $autoProjects = ccrm_auto_create_project_for_lead($pdo, $newLeadId, $leadOwner, $categories);
+        //
+        // PROJECT-AUTO-CREATE-DISABLED (v1.9.29): automatic project creation is
+        // switched off app-wide. To bring it back, restore the call below and
+        // drop the empty list. The response keeps `project_id` / `project_ids`
+        // (null / []) so integrations reading them do not break.
+        // $autoProjects = ccrm_auto_create_project_for_lead($pdo, $newLeadId, $leadOwner, $categories);
+        $autoProjects = [];
 
         $pdo->commit();
 

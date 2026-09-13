@@ -8,6 +8,13 @@ import { DEFAULT_DEADLINE_WARNING_DAYS, normalizeDeadlineWarningDays } from "../
 import type { Language } from "../utils/translations";
 import { useUserPref } from "../utils/userPrefs";
 
+/**
+ * PROJECT-AUTO-CREATE-DISABLED (v1.9.29): automatic project creation from leads
+ * is switched off, so its settings card is hidden. Setting this back to true
+ * also needs the server calls restored — grep for the same marker.
+ */
+const PROJECT_AUTO_CREATE_ENABLED = false;
+
 interface ProjectSettingsProps {
   projectTypes: ProjectType[];
   setProjectTypes: React.Dispatch<React.SetStateAction<ProjectType[]>>;
@@ -1141,8 +1148,12 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
           fallback type. The creation happens server-side, so it covers leads
           that never pass through this app — the public web-form webhook and
           workflow actions — and two devices syncing the same new lead cannot
-          each produce their own project for it. */}
-      {setProjectAutoCreate && (() => {
+          each produce their own project for it.
+
+          PROJECT-AUTO-CREATE-DISABLED (v1.9.29): hidden, because the server no
+          longer creates projects from leads. Flip the constant at the top of
+          this file (and restore the server calls) to bring it back. */}
+      {PROJECT_AUTO_CREATE_ENABLED && setProjectAutoCreate && (() => {
         const active = isProjectAutoCreateActive(projectAutoCreate, projectTypes);
         const chosenType = projectTypes.find(pt => pt.id === projectAutoCreate.projectTypeId);
         const canToggle = canEdit && projectTypes.length > 0;

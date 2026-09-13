@@ -2548,20 +2548,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // The lead's categories are handed over rather than read back:
                 // `lead_categories` is only written further down, so the table
                 // still holds nothing for a lead that arrived in this payload.
-                if ($isNew) {
-                    $leadCategoryNames = [];
-                    if (isset($l['categories']) && is_array($l['categories'])) {
-                        foreach ($l['categories'] as $catName) {
-                            $catName = trim((string)$catName);
-                            if ($catName !== '') {
-                                $leadCategoryNames[] = $catName;
-                            }
-                        }
-                    }
-                    foreach (ccrm_auto_create_project_for_lead($pdo, $leadId, (string)($l['owner'] ?? ''), $leadCategoryNames) as $autoProject) {
-                        $createdProjects[] = $autoProject;
-                    }
-                }
+                //
+                // PROJECT-AUTO-CREATE-DISABLED (v1.9.29): switched off app-wide.
+                // To bring it back, uncomment the block below. Manual pairing of
+                // lead <-> project <-> client is unaffected.
+                // if ($isNew) {
+                //     $leadCategoryNames = [];
+                //     if (isset($l['categories']) && is_array($l['categories'])) {
+                //         foreach ($l['categories'] as $catName) {
+                //             $catName = trim((string)$catName);
+                //             if ($catName !== '') {
+                //                 $leadCategoryNames[] = $catName;
+                //             }
+                //         }
+                //     }
+                //     foreach (ccrm_auto_create_project_for_lead($pdo, $leadId, (string)($l['owner'] ?? ''), $leadCategoryNames) as $autoProject) {
+                //         $createdProjects[] = $autoProject;
+                //     }
+                // }
 
                 // Workflow Triggers
                 require_once __DIR__ . '/api/workflows_engine.php';
