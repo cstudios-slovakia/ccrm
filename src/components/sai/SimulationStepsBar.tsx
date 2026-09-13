@@ -18,6 +18,46 @@ export interface SimulationStepInfo {
 }
 
 export const getSimulationSteps = (lang?: string): SimulationStepInfo[] => {
+  if (lang === 'hu') {
+    return [
+      {
+        id: 1,
+        shortLabel: '1. Forgatókönyv',
+        title: '1. Stratégiai forgatókönyv & Hipotézis',
+        tagline: 'Határozza meg a stratégiai javaslatot, a what-if kérdést és a CRM forrásokat.'
+      },
+      {
+        id: 2,
+        shortLabel: '2. Előzetes becslés',
+        title: '2. Költség- és biztonsági előzetes becslés',
+        tagline: 'Token-fogyasztás előrejelzése és biztonsági korlátok ellenőrzése.'
+      },
+      {
+        id: 3,
+        shortLabel: '3. Adatok betöltése',
+        title: '3. CRM adatok betöltése & Tudásgráf',
+        tagline: 'CRM kontextus kinyerése, ontológia építése és ágens perszónák szintézise.'
+      },
+      {
+        id: 4,
+        shortLabel: '4. Élő War Room',
+        title: '4. Autonóm szimuláció a War Roomban',
+        tagline: 'Autonóm AI ágensek vitatkoznak, ellenérveket fogalmaznak meg és szavaznak.'
+      },
+      {
+        id: 5,
+        shortLabel: '5. Szintézis',
+        title: '5. Vezető elemző stratégiai szintézise',
+        tagline: 'Az AI összesíti az ágensek vitáját egy cselekvési vezetői összefoglalóba.'
+      },
+      {
+        id: 6,
+        shortLabel: '6. Eredmények & Chat',
+        title: '6. Vezetői jelentés & Ágens interjú',
+        tagline: 'Átfogó stratégiai terv és ágensek közvetlen kérdezése valós időben.'
+      }
+    ];
+  }
   if (lang === 'sk') {
     return [
       {
@@ -144,30 +184,31 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
   systemLanguage = 'sk'
 }) => {
   const [showScenarioModal, setShowScenarioModal] = useState(false);
-  const isSk = systemLanguage === 'sk';
+  const t = (en: string, sk: string, hu: string) =>
+    systemLanguage === 'sk' ? sk : systemLanguage === 'hu' ? hu : en;
   const steps = getSimulationSteps(systemLanguage);
   const stepMeta = steps.find(s => s.id === currentStep) || steps[0];
 
   // Derive status badge
-  let badgeText = isSk ? 'AKTÍVNA SIMULÁCIA' : 'ACTIVE REHEARSAL';
+  let badgeText = t('ACTIVE REHEARSAL', 'AKTÍVNA SIMULÁCIA', 'AKTÍV SZIMULÁCIÓ');
   let badgeStyle = 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30';
 
   if (isDemoMode) {
-    badgeText = isSk ? 'DEMO TEST (0 €)' : 'DEMO TEST ($0.00)';
+    badgeText = t('DEMO TEST ($0.00)', 'DEMO TEST (0 €)', 'DEMO TESZT (0 €)');
     badgeStyle = 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
   } else if (isEngineRunning) {
-    badgeText = isSk ? `ŽIVÁ SIMULÁCIA • K${currentRound}/${totalRounds}` : `LIVE SIMULATION • R${currentRound}/${totalRounds}`;
+    badgeText = t(`LIVE SIMULATION • R${currentRound}/${totalRounds}`, `ŽIVÁ SIMULÁCIA • K${currentRound}/${totalRounds}`, `ÉLES SZIMULÁCIÓ • ${currentRound}/${totalRounds}. KÖR`);
     badgeStyle = 'bg-purple-500/30 text-purple-200 border-purple-500/40 animate-pulse';
   } else if (isPreparing) {
     badgeText = currentStep === 5 
-      ? (isSk ? 'GENEROVANIE BRIEFINGU' : 'GENERATING BRIEFING')
-      : (isSk ? 'ŽIVÁ PRÍPRAVA ROJU' : 'LIVE SWARM INGESTION');
+      ? t('GENERATING BRIEFING', 'GENEROVANIE BRIEFINGU', 'JELENTÉS KÉSZÍTÉSE')
+      : t('LIVE SWARM INGESTION', 'ŽIVÁ PRÍPRAVA ROJU', 'RAJ ELŐKÉSZÍTÉSE');
     badgeStyle = 'bg-purple-500/20 text-purple-300 border-purple-500/30 animate-pulse';
   } else if (hasReport || activeView === 'report') {
-    badgeText = isSk ? 'ŽIVÁ SIMULÁCIA • DOKONČENÁ' : 'LIVE SIMULATION • COMPLETED';
+    badgeText = t('LIVE SIMULATION • COMPLETED', 'ŽIVÁ SIMULÁCIA • DOKONČENÁ', 'ÉLES SZIMULÁCIÓ • BEFEJEZŐDÖTT');
     badgeStyle = 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
   } else if (activeView === 'create') {
-    badgeText = isSk ? 'NOVÁ SIMULÁCIA' : 'NEW REHEARSAL';
+    badgeText = t('NEW REHEARSAL', 'NOVÁ SIMULÁCIA', 'ÚJ SZIMULÁCIÓ');
     badgeStyle = 'bg-purple-500/20 text-purple-300 border-purple-500/30';
   }
 
@@ -220,7 +261,7 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-black tracking-tight text-white line-clamp-1 max-w-xs sm:max-w-sm md:max-w-md">
-                {title || (isSk ? 'SAI Autonómna simulácia' : 'SAI Autonomous Rehearsal')}
+                {title || t('SAI Autonomous Rehearsal', 'SAI Autonómna simulácia', 'SAI Autonóm szimuláció')}
               </h2>
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border shrink-0 ${badgeStyle}`}>
                 {badgeText}
@@ -228,7 +269,7 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
             </div>
             <p className="text-[11px] text-slate-400 line-clamp-1 flex items-center gap-1.5">
               <span>
-                {isSk ? `Krok ${currentStep} zo 6:` : `Step ${currentStep} of 6:`} {isPreparing && prepStepMessage ? prepStepMessage : stepMeta.title}
+                {t(`Step ${currentStep} of 6:`, `Krok ${currentStep} zo 6:`, `${currentStep}. lépés a 6-ból:`)} {isPreparing && prepStepMessage ? prepStepMessage : stepMeta.title}
               </span>
               {simulatedHour !== undefined && isEngineRunning && (
                 <span className="text-amber-400/90 font-mono text-[10px] inline-flex items-center gap-1 ml-1 bg-slate-800/80 px-1.5 py-0.2 rounded border border-slate-700">
@@ -257,7 +298,7 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
                 type="button"
                 onClick={() => handleStepClick(s.id)}
                 disabled={!isClickable && !isActive}
-                title={`${s.title} — ${s.tagline}${isClickable ? (isSk ? ' (Kliknutím skontrolujete)' : ' (Click to review)') : ''}`}
+                title={`${s.title} — ${s.tagline}${isClickable ? t(' (Click to review)', ' (Kliknutím skontrolujete)', ' (Kattintson az ellenőrzéshez)') : ''}`}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 ${
                   isActive 
                     ? 'bg-gradient-to-r from-purple-600 to-emerald-500 text-white shadow-md' 
@@ -284,10 +325,10 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
               type="button"
               onClick={onStopSimulation}
               className="px-3 py-1.5 rounded-xl text-xs font-bold text-rose-300 bg-rose-500/20 border border-rose-500/30 hover:bg-rose-500/30 transition flex items-center gap-1.5 cursor-pointer shadow-sm"
-              title={isSk ? "Zastaviť debatu agentov a vygenerovať záverečnú syntézu" : "Stop agent deliberation and synthesize early"}
+              title={t("Stop agent deliberation and synthesize early", "Zastaviť debatu agentov a vygenerovať záverečnú syntézu", "Ágensek vitájának leállítása és korai szintézis")}
             >
               <Pause className="w-3.5 h-3.5" />
-              <span>{isSk ? "Ukončiť skôr" : "End Early"}</span>
+              <span>{t("End Early", "Ukončiť skôr", "Befejezés most")}</span>
             </button>
           )}
 
@@ -299,7 +340,7 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
               className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition flex items-center gap-1.5 cursor-pointer shadow-sm"
             >
               <MessageSquare className="w-3.5 h-3.5 text-purple-400" />
-              <span className="hidden sm:inline">{isSk ? "Spýtať sa analytika" : "Ask Analyst"}</span>
+              <span className="hidden sm:inline">{t("Ask Analyst", "Spýtať sa analytika", "Kérdezze az elemzőt")}</span>
             </button>
           )}
 
@@ -311,7 +352,7 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
               className="px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 transition flex items-center gap-1.5 cursor-pointer shadow-sm"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">{isSk ? "Nová simulácia" : "New Simulation"}</span>
+              <span className="hidden md:inline">{t("New Simulation", "Nová simulácia", "Új szimuláció")}</span>
             </button>
           )}
 
@@ -320,7 +361,7 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
             type="button"
             onClick={() => onNavigateView('list')}
             className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
-            title={isSk ? "Prehľad simulácií" : "Simulation List"}
+            title={t("Simulation List", "Prehľad simulácií", "Szimulációk listája")}
           >
             <X className="w-5 h-5" />
           </button>
@@ -335,7 +376,7 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
               <div className="flex items-center gap-2">
                 <FileText className="w-5 h-5 text-purple-600" />
                 <h3 className="text-sm font-bold text-slate-900">
-                  {isSk ? "Vstupné zadanie a hypotéza simulácie" : "Simulation Hypothesis & Input Scenario"}
+                  {t("Simulation Hypothesis & Input Scenario", "Vstupné zadanie a hypotéza simulácie", "Bemeneti feladat és hipotézis")}
                 </h3>
               </div>
               <button 
@@ -350,7 +391,7 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
             <div className="space-y-3 text-xs">
               <div>
                 <span className="font-bold uppercase tracking-wider text-slate-400 text-[10px] block mb-1">
-                  {isSk ? "Názov simulácie" : "Simulation Title"}
+                  {t("Simulation Title", "Názov simulácie", "Szimuláció címe")}
                 </span>
                 <p className="font-bold text-slate-800 text-sm">{title}</p>
               </div>
@@ -358,7 +399,7 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
               {hypothesis && (
                 <div>
                   <span className="font-bold uppercase tracking-wider text-slate-400 text-[10px] block mb-1">
-                    {isSk ? "Strategická hypotéza" : "Strategic Hypothesis"}
+                    {t("Strategic Hypothesis", "Strategická hypotéza", "Stratégiai hipotézis")}
                   </span>
                   <div className="p-3 bg-purple-50 text-purple-950 font-medium rounded-2xl border border-purple-100">
                     &ldquo;{hypothesis}&rdquo;
@@ -369,7 +410,7 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
               {seedDocument && (
                 <div>
                   <span className="font-bold uppercase tracking-wider text-slate-400 text-[10px] block mb-1">
-                    {isSk ? "Text zadania / oznámenia" : "Briefing Document / Announcement"}
+                    {t("Briefing Document / Announcement", "Text zadania / oznámenia", "Zadási dokumentum / Bejelentés")}
                   </span>
                   <div className="p-3 bg-slate-50 text-slate-700 font-mono text-[11px] rounded-2xl border border-slate-200 max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed">
                     {seedDocument}
@@ -384,7 +425,7 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
                 onClick={() => setShowScenarioModal(false)}
                 className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition"
               >
-                {isSk ? "Zavrieť" : "Close"}
+                {t("Close", "Zavrieť", "Bezárás")}
               </button>
             </div>
           </div>

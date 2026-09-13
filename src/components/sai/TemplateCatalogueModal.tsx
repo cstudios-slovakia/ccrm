@@ -30,6 +30,8 @@ export const TemplateCatalogueModal: React.FC<TemplateCatalogueModalProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
 
+  const t = (en: string, sk: string, hu: string) =>
+    systemLanguage === 'sk' ? sk : systemLanguage === 'hu' ? hu : en;
   const isSk = systemLanguage === 'sk';
 
   const filteredTemplates = useMemo(() => {
@@ -90,16 +92,18 @@ export const TemplateCatalogueModal: React.FC<TemplateCatalogueModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-bold text-slate-900">
-                  {isSk ? 'Katalóg strategických šablón & scenárov' : 'Strategic Template & Scenario Catalogue'}
+                  {t('Strategic Template & Scenario Catalogue', 'Katalóg strategických šablón & scenárov', 'Stratégiai sablon- és forgatókönyv-katalógus')}
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-purple-100 text-purple-800 border border-purple-200">
                   MiroFish (105)
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                {isSk 
-                  ? 'Vyberte si zo 105 overených prediktívnych šablón trhu, cenotvorby, konkurentov a zákazníkov. Kliknutím sa okamžite vyplnia polia simulácie.'
-                  : 'Choose from 105 verified predictive simulation templates for market entry, pricing, competitors, and customers. Selecting one will auto-fill the rehearsal setup.'}
+                {t(
+                  'Choose from 105 verified predictive simulation templates for market entry, pricing, competitors, and customers. Selecting one will auto-fill the rehearsal setup.',
+                  'Vyberte si zo 105 overených prediktívnych šablón trhu, cenotvorby, konkurentov a zákazníkov. Kliknutím sa okamžite vyplnia polia simulácie.',
+                  'Válasszon 105 ellenőrzött prediktív piaci szimulációs sablon közül. Kiválasztásával azonnal kitölti a szimuláció konfigurációját.'
+                )}
               </p>
             </div>
           </div>
@@ -124,7 +128,11 @@ export const TemplateCatalogueModal: React.FC<TemplateCatalogueModalProps> = ({
                 type="text"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                placeholder={isSk ? 'Hľadať šablónu podľa názvu, hypotézy, námietok...' : 'Search templates by title, hypothesis, objections...'}
+                placeholder={t(
+                  'Search templates by title, hypothesis, objections...',
+                  'Hľadať šablónu podľa názvu, hypotézy, námietok...',
+                  'Keresés 105 sablon, hipotézis vagy címke között...'
+                )}
                 className="w-full pl-9 pr-8 py-2.5 rounded-xl border border-slate-200 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100 bg-slate-50/50"
               />
               {searchQuery && (
@@ -140,11 +148,9 @@ export const TemplateCatalogueModal: React.FC<TemplateCatalogueModalProps> = ({
 
             {/* Quick Result Counter */}
             <div className="text-xs text-slate-500 font-medium">
-              {isSk ? (
-                <span>Nájdených <strong>{filteredTemplates.length}</strong> z 105 šablón</span>
-              ) : (
-                <span>Showing <strong>{filteredTemplates.length}</strong> of 105 templates</span>
-              )}
+              <span>
+                {t('Showing', 'Nájdených', 'Találat:')} <strong>{filteredTemplates.length}</strong> {t('of 105 templates', 'z 105 šablón', '/ 105 sablon')}
+              </span>
             </div>
           </div>
 
@@ -152,6 +158,7 @@ export const TemplateCatalogueModal: React.FC<TemplateCatalogueModalProps> = ({
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
             {TEMPLATE_CATEGORIES.map(cat => {
               const active = selectedCategory === cat.id;
+              const label = systemLanguage === 'sk' ? cat.labelSk : systemLanguage === 'hu' ? cat.labelHu : cat.labelEn;
               return (
                 <button
                   key={cat.id}
@@ -166,7 +173,7 @@ export const TemplateCatalogueModal: React.FC<TemplateCatalogueModalProps> = ({
                       : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200'
                   }`}
                 >
-                  {isSk ? cat.labelSk : cat.labelEn}
+                  {label}
                 </button>
               );
             })}
@@ -176,7 +183,7 @@ export const TemplateCatalogueModal: React.FC<TemplateCatalogueModalProps> = ({
           <div className="flex items-center gap-1.5 overflow-x-auto pt-1 pb-1">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mr-1 flex items-center gap-1">
               <Tag className="w-3 h-3" />
-              {isSk ? 'Filtre:' : 'Tags:'}
+              {t('Tags:', 'Filtre:', 'Címkék:')}
             </span>
             {allTags.map(tag => {
               const active = selectedTag === tag;
@@ -201,7 +208,7 @@ export const TemplateCatalogueModal: React.FC<TemplateCatalogueModalProps> = ({
                 onClick={() => setSelectedTag(null)}
                 className="text-[11px] text-purple-600 hover:underline font-semibold ml-2"
               >
-                {isSk ? 'Zrušiť filter' : 'Clear tag'}
+                {t('Clear tag', 'Zrušiť filter', 'Címke törlése')}
               </button>
             )}
           </div>
@@ -215,7 +222,7 @@ export const TemplateCatalogueModal: React.FC<TemplateCatalogueModalProps> = ({
                 <Search className="w-6 h-6" />
               </div>
               <p className="text-sm font-semibold text-slate-700">
-                {isSk ? 'Žiadna šablóna nezodpovedá hľadaniu' : 'No templates match your search criteria'}
+                {t('No templates match your search criteria', 'Žiadna šablóna nezodpovedá hľadaniu', 'Nincs a keresési feltételeknek megfelelő sablon')}
               </p>
               <button
                 type="button"
@@ -226,15 +233,15 @@ export const TemplateCatalogueModal: React.FC<TemplateCatalogueModalProps> = ({
                 }}
                 className="px-4 py-2 rounded-xl bg-purple-50 text-purple-700 text-xs font-bold hover:bg-purple-100 transition"
               >
-                {isSk ? 'Resetovať filtre' : 'Reset filters'}
+                {t('Reset filters', 'Resetovať filtre', 'Szűrők visszaállítása')}
               </button>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredTemplates.map(tmpl => {
-                const title = isSk ? tmpl.nameSk : tmpl.name;
-                const desc = isSk ? tmpl.description : tmpl.description;
-                const hyp = isSk ? tmpl.hypothesisSk : tmpl.hypothesis;
+                const title = systemLanguage === 'hu' ? (tmpl.nameHu || tmpl.name) : isSk ? tmpl.nameSk : tmpl.name;
+                const desc = systemLanguage === 'hu' ? (tmpl.descriptionHu || tmpl.description) : isSk ? (tmpl.descriptionSk || tmpl.description) : tmpl.description;
+                const hyp = systemLanguage === 'hu' ? (tmpl.hypothesisHu || tmpl.hypothesis) : isSk ? tmpl.hypothesisSk : tmpl.hypothesis;
 
                 return (
                   <div
@@ -275,11 +282,11 @@ export const TemplateCatalogueModal: React.FC<TemplateCatalogueModalProps> = ({
                     <div className="pt-3.5 mt-3 border-t border-slate-100 flex items-center justify-between">
                       <div className="flex items-center gap-1 text-[10px] font-medium text-slate-400">
                         <Database className="w-3 h-3 text-slate-400" />
-                        <span>{tmpl.recommendedSources.length} {isSk ? 'CRM zdrojov' : 'CRM sources'}</span>
+                        <span>{tmpl.recommendedSources.length} {t('CRM sources', 'CRM zdrojov', 'CRM adatforrás')}</span>
                       </div>
 
                       <div className="flex items-center gap-1 text-xs font-bold text-purple-600 group-hover:text-purple-700 transition">
-                        <span>{isSk ? 'Použiť šablónu' : 'Use Template'}</span>
+                        <span>{t('Use Template', 'Použiť šablónu', 'Sablon használata')}</span>
                         <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition" />
                       </div>
                     </div>
@@ -293,10 +300,10 @@ export const TemplateCatalogueModal: React.FC<TemplateCatalogueModalProps> = ({
         {/* Modal Footer */}
         <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/70 flex items-center justify-between text-xs text-slate-500">
           <span>
-            {isSk ? (
-              <>Šablóny z <strong>MiroFish</strong> Use Cases s prepojením na reálne CRM leady & klientov.</>
-            ) : (
-              <>Curated from <strong>MiroFish</strong> Use Cases connected with real CRM leads & client context.</>
+            {t(
+              'Curated from MiroFish Use Cases connected with real CRM leads & client context.',
+              'Šablóny z MiroFish Use Cases s prepojením na reálne CRM leady & klientov.',
+              'A MiroFish esettanulmányaiból származó sablonok valós CRM leadekkel és ügyfélkontextussal összekötve.'
             )}
           </span>
           <button
@@ -304,7 +311,7 @@ export const TemplateCatalogueModal: React.FC<TemplateCatalogueModalProps> = ({
             onClick={onClose}
             className="px-4 py-2 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-700 font-semibold transition cursor-pointer"
           >
-            {isSk ? 'Zavrieť' : 'Close'}
+            {t('Close', 'Zavrieť', 'Bezárás')}
           </button>
         </div>
       </div>

@@ -149,3 +149,17 @@ export function createSaiTranslator(lang: string = 'sk') {
     return getSaiTranslation(lang, category, key, fallback);
   };
 }
+
+export function tr(lang: string = 'sk', en: string, sk: string, hu: string): string {
+  if (lang === 'sk') return sk;
+  if (lang === 'hu') return hu;
+  return en;
+}
+
+export function createTr(lang: string = 'sk') {
+  return (en: string, sk: string, hu: string) => {
+    if (lang === 'sk') return sk;
+    if (lang === 'hu') return hu;
+    return en;
+  };
+}

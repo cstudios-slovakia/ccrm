@@ -30,15 +30,16 @@ interface StrategicReportViewProps {
 
 export const StrategicReportView: React.FC<StrategicReportViewProps> = ({
   report,
-  onOpenQaDrawer,
   onOpenAgentDirectory,
+  onOpenQaDrawer,
   agents = [],
   posts = [],
   hypothesis = '',
   isDemoMode = false,
   systemLanguage = 'sk'
 }) => {
-  const isSk = systemLanguage === 'sk';
+  const t = (en: string, sk: string, hu: string) =>
+    systemLanguage === 'sk' ? sk : systemLanguage === 'hu' ? hu : en;
   const [copied, setCopied] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Record<number, boolean>>({});
 
@@ -79,7 +80,7 @@ export const StrategicReportView: React.FC<StrategicReportViewProps> = ({
             <div className="relative z-10 space-y-3">
               <div className="flex items-center gap-2">
                 <span className="px-3 py-1 rounded-full text-[11px] font-bold tracking-wider uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  {isSk ? 'Validovaný manažérsky briefing' : 'Validated Executive Briefing'}
+                  {t('Validated Executive Briefing', 'Validovaný manažérsky briefing', 'Hitelesített vezetői összefoglaló')}
                 </span>
                 <span className="text-xs text-slate-400 font-mono">
                   {new Date(report.generatedAt).toLocaleDateString()}
@@ -96,14 +97,14 @@ export const StrategicReportView: React.FC<StrategicReportViewProps> = ({
                   className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-emerald-500 hover:opacity-95 text-xs font-bold text-white shadow-md transition cursor-pointer"
                 >
                   <MessageSquare className="w-4 h-4" />
-                  <span>{isSk ? 'Spýtať sa AI chatbota' : 'Ask AI Chatbot'}</span>
+                  <span>{t('Ask AI Chatbot', 'Spýtať sa AI chatbota', 'Kérdezze az MI chatbotot')}</span>
                 </button>
                 <button
                   type="button"
                   onClick={onOpenAgentDirectory}
                   className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-xs font-bold text-slate-200 border border-slate-700 transition cursor-pointer"
                 >
-                  <span>{isSk ? 'Výsluch simulovaných agentov' : 'Interrogate Agents'}</span>
+                  <span>{t('Interrogate Agents', 'Výsluch simulovaných agentov', 'Ágensek kikérdezése')}</span>
                 </button>
                 <button
                   type="button"
@@ -111,7 +112,7 @@ export const StrategicReportView: React.FC<StrategicReportViewProps> = ({
                   className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800/60 hover:bg-slate-700 text-xs font-medium text-slate-300 transition ml-auto cursor-pointer"
                 >
                   {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copied ? (isSk ? 'Skopírované' : 'Copied!') : (isSk ? 'Kopírovať Markdown' : 'Copy Markdown')}</span>
+                  <span>{copied ? t('Copied!', 'Skopírované', 'Másolva!') : t('Copy Markdown', 'Kopírovať Markdown', 'Markdown másolása')}</span>
                 </button>
               </div>
             </div>
@@ -125,7 +126,7 @@ export const StrategicReportView: React.FC<StrategicReportViewProps> = ({
                   <Target className="w-4 h-4" />
                 </div>
                 <span>
-                  {isSk ? '🎯 Strategický akčný plán: Ako dosiahnuť cieľ' : '🎯 Strategic Action Plan: Roadmap to Objective'}
+                  {t('🎯 Strategic Action Plan: Roadmap to Objective', '🎯 Strategický akčný plán: Ako dosiahnuť cieľ', '🎯 Stratégiai akcióterv: Útiterv a célhoz')}
                 </span>
               </div>
 
@@ -134,7 +135,7 @@ export const StrategicReportView: React.FC<StrategicReportViewProps> = ({
                 <div className="p-4 rounded-2xl bg-white border border-rose-100 shadow-sm space-y-2">
                   <div className="flex items-center gap-2 text-rose-700 font-bold text-xs">
                     <AlertTriangle className="w-4 h-4 text-rose-500" />
-                    <span>{isSk ? 'Odhalené kritické zraniteľnosti' : 'Identified Critical Vulnerabilities'}</span>
+                    <span>{t('Identified Critical Vulnerabilities', 'Odhalené kritické zraniteľnosti', 'Feltárt kritikus sebezhetőségek')}</span>
                   </div>
                   <ul className="space-y-1.5 text-xs text-slate-600">
                     {playbook.keyVulnerabilities?.map((v, i) => (
@@ -150,7 +151,7 @@ export const StrategicReportView: React.FC<StrategicReportViewProps> = ({
                 <div className="p-4 rounded-2xl bg-white border border-emerald-100 shadow-sm space-y-2">
                   <div className="flex items-center gap-2 text-emerald-700 font-bold text-xs">
                     <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                    <span>{isSk ? 'Realizovateľné protiopatrenia' : 'Actionable Counter-Measures'}</span>
+                    <span>{t('Actionable Counter-Measures', 'Realizovateľné protiopatrenia', 'Végrehajtható ellenintézkedések')}</span>
                   </div>
                   <ul className="space-y-1.5 text-xs text-slate-600">
                     {playbook.actionableCounterMeasures?.map((cm, i) => (
@@ -167,16 +168,16 @@ export const StrategicReportView: React.FC<StrategicReportViewProps> = ({
               {playbook.salesObjectionPlaybook && playbook.salesObjectionPlaybook.length > 0 && (
                 <div className="p-4 rounded-2xl bg-white border border-slate-200/80 space-y-3">
                   <span className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
-                    {isSk ? 'Pripravené odpovede na obchodné námietky (pre obchodníkov)' : 'Sales Objection Rebuttal Playbook (for Commercial Team)'}
+                    {t('Sales Objection Rebuttal Playbook (for Commercial Team)', 'Pripravené odpovede na obchodné námietky (pre obchodníkov)', 'Értékesítési kifogáskezelési útmutató (az értékesítőknek)')}
                   </span>
                   <div className="space-y-3">
                     {playbook.salesObjectionPlaybook.map((obj, i) => (
                       <div key={i} className="p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs space-y-1.5">
                         <div className="font-semibold text-rose-700">
-                          {isSk ? '🚨 Námietka zákazníka:' : '🚨 Buyer Objection:'} &ldquo;{obj.objection}&rdquo;
+                          {t('🚨 Buyer Objection:', '🚨 Námietka zákazníka:', '🚨 Vevői kifogás:')} &ldquo;{obj.objection}&rdquo;
                         </div>
                         <div className="text-slate-700 font-medium pl-2 border-l-2 border-emerald-500">
-                          {isSk ? '💡 Odporúčaná odpoveď:' : '💡 Recommended Rebuttal:'} {obj.rebuttal}
+                          {t('💡 Recommended Rebuttal:', '💡 Odporúčaná odpoveď:', '💡 Javasolt válasz:')} {obj.rebuttal}
                         </div>
                       </div>
                     ))}
@@ -232,6 +233,7 @@ export const StrategicReportView: React.FC<StrategicReportViewProps> = ({
             posts={posts}
             hypothesis={hypothesis}
             isDemoMode={isDemoMode}
+            systemLanguage={systemLanguage}
           />
         </div>
 

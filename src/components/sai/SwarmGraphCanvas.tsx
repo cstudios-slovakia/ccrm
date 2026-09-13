@@ -6,6 +6,7 @@ interface SwarmGraphCanvasProps {
   graph: SwarmKnowledgeGraph;
   activeEntityId?: string | null;
   className?: string;
+  systemLanguage?: string;
 }
 
 interface ColorScheme {
@@ -69,14 +70,6 @@ const DEFAULT_SCHEME: ColorScheme = {
   badgeText: '#4338ca'
 };
 
-const TYPE_LABELS: Record<string, string> = {
-  Client: 'Klient',
-  Competitor: 'Konkurent',
-  Regulator: 'Regulátor',
-  Agency: 'Agentúra',
-  Stakeholder: 'Účastník',
-};
-
 const renderNodeIcon = (type: string) => {
   switch (type) {
     case 'Client':
@@ -138,8 +131,20 @@ const renderNodeIcon = (type: string) => {
 export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
   graph,
   activeEntityId,
-  className = "w-full h-full min-h-[380px]"
+  className = "w-full h-full min-h-[380px]",
+  systemLanguage = 'sk'
 }) => {
+  const t = (en: string, sk: string, hu: string) =>
+    systemLanguage === 'sk' ? sk : systemLanguage === 'hu' ? hu : en;
+
+  const typeLabels: Record<string, string> = {
+    Client: t('Client', 'Klient', 'Ügyfél'),
+    Competitor: t('Competitor', 'Konkurent', 'Versenytárs'),
+    Regulator: t('Regulator', 'Regulátor', 'Szabályozó'),
+    Agency: t('Agency', 'Agentúra', 'Ügynökség'),
+    Stakeholder: t('Stakeholder', 'Účastník', 'Érintett'),
+  };
+
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedNode, setSelectedNode] = useState<SwarmEntityNode | null>(null);
   const [zoomLevel, setZoomLevel] = useState(1);
@@ -189,7 +194,7 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
       <div className="absolute top-3.5 left-3.5 z-10 flex items-center gap-2">
         <div className="px-3 py-1.5 rounded-full bg-white/95 backdrop-blur-md border border-slate-200/90 text-[11px] font-bold text-slate-700 flex items-center gap-2 shadow-xs">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span>Graf znalostí ({graph.nodes.length} uzlov, {graph.edges.length} väzieb)</span>
+          <span>{t('Knowledge Graph', 'Graf znalostí', 'Tudásgráf')} ({graph.nodes.length} {t('nodes', 'uzlov', 'csomópont')}, {graph.edges.length} {t('relations', 'väzieb', 'kapcsolat')})</span>
         </div>
       </div>
 
@@ -199,7 +204,7 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
           type="button"
           onClick={() => setZoomLevel(prev => Math.min(prev + 0.2, 2.0))}
           className="p-1.5 rounded-xl bg-white/95 hover:bg-white text-slate-600 hover:text-slate-900 border border-slate-200/90 shadow-xs transition cursor-pointer"
-          title="Priblížiť"
+          title={t('Zoom in', 'Priblížiť', 'Nagyítás')}
         >
           <ZoomIn className="w-4 h-4" />
         </button>
@@ -207,7 +212,7 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
           type="button"
           onClick={() => setZoomLevel(prev => Math.max(prev - 0.2, 0.6))}
           className="p-1.5 rounded-xl bg-white/95 hover:bg-white text-slate-600 hover:text-slate-900 border border-slate-200/90 shadow-xs transition cursor-pointer"
-          title="Oddialiť"
+          title={t('Zoom out', 'Oddialiť', 'Kicsinyítés')}
         >
           <ZoomOut className="w-4 h-4" />
         </button>
@@ -218,7 +223,7 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
             setSelectedNode(null);
           }}
           className="p-1.5 rounded-xl bg-white/95 hover:bg-white text-slate-600 hover:text-slate-900 border border-slate-200/90 shadow-xs transition cursor-pointer"
-          title="Resetovať zobrazenie"
+          title={t('Reset view', 'Resetovať zobrazenie', 'Nézet visszaállítása')}
         >
           <RotateCcw className="w-4 h-4" />
         </button>
@@ -226,12 +231,12 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
 
       {/* Bottom Category Legend */}
       <div className="absolute bottom-3 left-3 z-10 hidden sm:flex items-center gap-2.5 px-3 py-1.5 rounded-2xl bg-white/90 backdrop-blur-md border border-slate-200/80 shadow-xs text-[10px] font-medium text-slate-600">
-        <span className="font-bold text-slate-400 uppercase text-[9px] mr-0.5">Subjekty:</span>
-        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-600"></span>Klient</span>
-        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-rose-600"></span>Konkurent</span>
-        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-600"></span>Regulátor</span>
-        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-purple-600"></span>Agentúra</span>
-        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-600"></span>Účastník trhu</span>
+        <span className="font-bold text-slate-400 uppercase text-[9px] mr-0.5">{t('Entities:', 'Subjekty:', 'Entitások:')}</span>
+        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-600"></span>{t('Client', 'Klient', 'Ügyfél')}</span>
+        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-rose-600"></span>{t('Competitor', 'Konkurent', 'Versenytárs')}</span>
+        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-600"></span>{t('Regulator', 'Regulátor', 'Szabályozó')}</span>
+        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-purple-600"></span>{t('Agency', 'Agentúra', 'Ügynökség')}</span>
+        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-600"></span>{t('Market Participant', 'Účastník trhu', 'Piaci résztvevő')}</span>
       </div>
 
       {/* SVG Canvas Area */}
@@ -563,7 +568,7 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
                           borderColor: `${selectedPos.scheme.primary}35`
                         }}
                       >
-                        {TYPE_LABELS[selectedNode.type] || selectedNode.type}
+                        {typeLabels[selectedNode.type] || selectedNode.type}
                       </span>
                     </div>
 
@@ -574,7 +579,7 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
                         setSelectedNode(null);
                       }}
                       className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer shrink-0 -mt-0.5 -mr-0.5"
-                      title="Zavrieť vysvetlenie"
+                      title={t('Close explanation', 'Zavrieť vysvetlenie', 'Magyarázat bezárása')}
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -583,19 +588,19 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
                   {/* Popover Explanation */}
                   <div className="flex-1 py-1.5 overflow-hidden">
                     <p className="text-[10.5px] text-slate-600 leading-snug line-clamp-3 font-normal">
-                      {selectedNode.summary || 'Simulovaný subjekt zúčastňujúci sa trhových interakcií a diskusie.'}
+                      {selectedNode.summary || t('Simulated entity participating in market interactions and discussions.', 'Simulovaný subjekt zúčastňujúci sa trhových interakcií a diskusie.', 'A piaci interakciókban és vitákban részt vevő szimulált entitás.')}
                     </p>
                   </div>
 
                   {/* Popover Footer Relations */}
                   {connectedEdges.length > 0 && (
                     <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[9.5px]">
-                      <span className="font-semibold text-slate-400 uppercase text-[9px]">Väzba:</span>
+                      <span className="font-semibold text-slate-400 uppercase text-[9px]">{t('Relation:', 'Väzba:', 'Kapcsolat:')}</span>
                       <span className="font-mono text-indigo-600 font-bold truncate max-w-[160px] bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
                         {connectedEdges[0].relation} → {
                           connectedEdges[0].source === selectedNode.id 
-                            ? (graph.nodes.find(n => n.id === connectedEdges[0].target)?.name || 'Subjekt')
-                            : (graph.nodes.find(n => n.id === connectedEdges[0].source)?.name || 'Subjekt')
+                            ? (graph.nodes.find(n => n.id === connectedEdges[0].target)?.name || t('Entity', 'Subjekt', 'Entitás'))
+                            : (graph.nodes.find(n => n.id === connectedEdges[0].source)?.name || t('Entity', 'Subjekt', 'Entitás'))
                         }
                       </span>
                     </div>

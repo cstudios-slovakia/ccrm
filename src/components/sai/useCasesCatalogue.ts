@@ -3,23 +3,28 @@ export interface UseCaseTemplate {
   id: string;
   name: string;
   nameSk: string;
+  nameHu?: string;
   category: 'strategy' | 'gtm_pricing' | 'customers_competitors' | 'crisis_policy' | 'forecasting';
   description: string;
+  descriptionSk?: string;
+  descriptionHu?: string;
   hypothesis: string;
   hypothesisSk: string;
+  hypothesisHu?: string;
   seedDocument: string;
   seedDocumentSk: string;
+  seedDocumentHu?: string;
   recommendedSources: string[];
   tags: string[];
 }
 
-export const TEMPLATE_CATEGORIES: { id: UseCaseTemplate['category'] | 'all'; labelEn: string; labelSk: string }[] = [
-  { id: 'all', labelEn: 'All Templates (105)', labelSk: 'Všetky šablóny (105)' },
-  { id: 'strategy', labelEn: 'Strategy & Org (17)', labelSk: 'Stratégia & Organizácia (17)' },
-  { id: 'gtm_pricing', labelEn: 'GTM & Pricing (35)', labelSk: 'GTM & Cenotvorba (35)' },
-  { id: 'customers_competitors', labelEn: 'Customers & Rivals (30)', labelSk: 'Zákazníci & Konkurencia (30)' },
-  { id: 'crisis_policy', labelEn: 'Crisis & PR (10)', labelSk: 'Krízy & PR (10)' },
-  { id: 'forecasting', labelEn: 'Forecasting & Prediction (13)', labelSk: 'Prognózy & Predikcie (13)' },
+export const TEMPLATE_CATEGORIES: { id: UseCaseTemplate['category'] | 'all'; labelEn: string; labelSk: string; labelHu: string }[] = [
+  { id: 'all', labelEn: 'All Templates (105)', labelSk: 'Všetky šablóny (105)', labelHu: 'Összes sablon (105)' },
+  { id: 'strategy', labelEn: 'Strategy & Org (17)', labelSk: 'Stratégia & Organizácia (17)', labelHu: 'Stratégia & Szervezet (17)' },
+  { id: 'gtm_pricing', labelEn: 'GTM & Pricing (35)', labelSk: 'GTM & Cenotvorba (35)', labelHu: 'GTM & Árazás (35)' },
+  { id: 'customers_competitors', labelEn: 'Customers & Rivals (30)', labelSk: 'Zákazníci & Konkurencia (30)', labelHu: 'Ügyfelek & Versenytársak (30)' },
+  { id: 'crisis_policy', labelEn: 'Crisis & PR (10)', labelSk: 'Krízy & PR (10)', labelHu: 'Válságkezelés & PR (10)' },
+  { id: 'forecasting', labelEn: 'Forecasting & Prediction (13)', labelSk: 'Prognózy & Predikcie (13)', labelHu: 'Prognózisok & Előrejelzés (13)' },
 ];
 
 export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [

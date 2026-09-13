@@ -34,7 +34,8 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
   onStop,
   systemLanguage = 'sk'
 }) => {
-  const isSk = systemLanguage === 'sk';
+  const t = (en: string, sk: string, hu: string) =>
+    systemLanguage === 'sk' ? sk : systemLanguage === 'hu' ? hu : en;
   const latestPost = posts.length > 0 ? posts[posts.length - 1] : null;
   const activeAgent = latestPost ? agents.find(a => a.id === latestPost.agentId) : null;
   const activeEntityId = activeAgent?.sourceEntityId || null;
@@ -60,12 +61,12 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
               <h2 className="text-base font-bold text-slate-900">{title}</h2>
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
                 {isRunning 
-                  ? (isSk ? 'Simulácia prebieha' : 'Simulation Active') 
-                  : (isSk ? 'Pozastavené / Ukončené' : 'Paused / Complete')}
+                  ? t('Simulation Active', 'Simulácia prebieha', 'Szimuláció folyamatban') 
+                  : t('Paused / Complete', 'Pozastavené / Ukončené', 'Szünetel / Befejezve')}
               </span>
             </div>
             <p className="text-xs text-slate-500">
-              {isSk ? 'Prebieha autonómna simulácia trhu s viacerými agentmi' : 'Autonomous multi-agent market simulation in progress'}
+              {t('Autonomous multi-agent market simulation in progress', 'Prebieha autonómna simulácia trhu s viacerými agentmi', 'Autonóm többágenses piaci szimuláció folyamatban')}
             </p>
           </div>
         </div>
@@ -78,7 +79,7 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
             {isNight ? <Moon className="w-4 h-4 text-indigo-500" /> : <Sun className="w-4 h-4 text-amber-500" />}
             <div>
               <span className="text-[10px] text-slate-400 block font-semibold uppercase">
-                {isSk ? 'Simulovaný čas' : 'Simulated Time'}
+                {t('Simulated Time', 'Simulovaný čas', 'Szimulált idő')}
               </span>
               <span className="font-bold text-slate-800">{String(simulatedHour).padStart(2, '0')}:00 CET</span>
             </div>
@@ -89,7 +90,7 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
             <Users className="w-4 h-4 text-slate-500" />
             <div>
               <span className="text-[10px] text-slate-400 block font-semibold uppercase">
-                {isSk ? 'Rozdelenie postojov' : 'Stance Distribution'}
+                {t('Stance Distribution', 'Rozdelenie postojov', 'Álláspontok megoszlása')}
               </span>
               <div className="flex items-center gap-2 font-bold text-[11px]">
                 <span className="text-emerald-600">+{latestMetrics?.supportiveCount || 0}</span>
@@ -104,7 +105,7 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
             <TrendingUp className="w-4 h-4 text-purple-600" />
             <div>
               <span className="text-[10px] text-slate-400 block font-semibold uppercase">
-                {isSk ? 'Virálna odozva' : 'Viral Index'}
+                {t('Viral Index', 'Virálna odozva', 'Virális index')}
               </span>
               <span className="font-bold text-purple-700">{latestMetrics?.viralIndex ?? 0}%</span>
             </div>
@@ -117,7 +118,7 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
               className="px-4 py-2 rounded-2xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
             >
               <Pause className="w-3.5 h-3.5" />
-              <span>{isSk ? 'Pozastaviť' : 'Pause'}</span>
+              <span>{t('Pause', 'Pozastaviť', 'Szüneteltetés')}</span>
             </button>
           )}
 
@@ -140,6 +141,7 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
           <SwarmGraphCanvas 
             graph={graph} 
             activeEntityId={activeEntityId} 
+            systemLanguage={systemLanguage}
           />
         </div>
 

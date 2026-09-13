@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Play, 
   Pause, 
@@ -45,68 +45,73 @@ interface DemoStepMeta {
   durationSec: number;
 }
 
-const DEMO_STEPS: DemoStepMeta[] = [
-  {
-    id: 1,
-    title: "1. Strategický scenár & Definícia hypotézy",
-    shortLabel: "1. Scenár",
-    tagline: "Definujte strategický návrh, úpravu cien alebo trhové oznámenie.",
-    userAction: "Zadáte obchodný scenár, hypotézu a dokument ponuky. Zvolíte počet mesiacov skutočnej CRM histórie na ukotvenie roju.",
-    engineAction: "Systém analyzuje návrh, identifikuje kľúčové prínosy a zostaví počiatočné kategórie účastníkov trhu.",
-    durationSec: 8
-  },
-  {
-    id: 2,
-    title: "2. Predbežný odhad nákladov a bezpečnosti",
-    shortLabel: "2. Predbežný odhad",
-    tagline: "Predikcia spotreby tokenov a overenie rozpočtových limitov pred spustením.",
-    userAction: "Skontrolujete odhadovaný objem tokenov, porovnáte náklady modelov a overíte rozpočtové stropy pred uskutočnením API volaní.",
-    engineAction: "Vzorec vypočíta presné vstupné/výstupné tokeny (ontológia + persóny + viac-kolový dialóg + syntéza) a overí limity.",
-    durationSec: 7
-  },
-  {
-    id: 3,
-    title: "3. Načítanie dát & Zostavenie grafu znalostí",
-    shortLabel: "3. Načítanie dát",
-    tagline: "Syntéza realistických nákupných výborov, audítorov a konkurencie z CRM záznamov.",
-    userAction: "Prezriete si syntetizované persóny účastníkov trhu (nákupcovia, compliance audítori, tradiční konkurenti, klienti).",
-    engineAction: "Systém čerpá z CRM obchodov, dôvodov straty a klientskych persón na zostavenie prepojeného znalostného grafu.",
-    durationSec: 8
-  },
-  {
-    id: 4,
-    title: "4. Autonómna simulácia vo War Roome",
-    shortLabel: "4. Live War Room",
-    tagline: "Sledujte, ako autonómni agenti diskutujú, vznášajú námietky a hlasujú naprieč kolami.",
-    userAction: "Sledujete živý kanál príspevkov v reálnom čase, vývoj sentimentu, simulovaný čas a index virality.",
-    engineAction: "Agenti publikujú asynchrónne, reagujú na námietky, vedú protiútoky konkurencie a dosahujú konsenzus na základe svojich persón.",
-    durationSec: 10
-  },
-  {
-    id: 5,
-    title: "5. Syntéza hlavného spravodajského analytika",
-    shortLabel: "5. Syntéza stratégie",
-    tagline: "AI odhalí kritické zraniteľné miesta a vypracuje strategický akčný plán.",
-    userAction: "Sledujete, ako analytický motor spracováva dialógy simulácie, odhaľuje riziká a formuluje odpovede na námietky.",
-    engineAction: "Hlavný analytik analyzuje interakcie 30+ agentov, vyhodnocuje protiopatrenia a generuje manažérsky briefing.",
-    durationSec: 6
-  },
-  {
-    id: 6,
-    title: "6. Manažérsky briefing & Interrogačný hub",
-    shortLabel: "6. Výsledky & Chatbot",
-    tagline: "Preštudujte si strategický plán a krížovo vypočúvajte agentov cez pravý chatbot panel.",
-    userAction: "Naľavo si prečítate manažérsky briefing a napravo môžete kedykoľvek klásť doplňujúce otázky analytikovi alebo simulovaným zákazníkom.",
-    engineAction: "Odpovedá na otázky s citáciami zo simulovanej debaty, vysvetľuje dôvody námietok a radí, ako úspešne uzatvoriť obchody.",
-    durationSec: 12
-  }
-];
 
 export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
   isOpen,
   onClose,
-  onStartRealRehearsal
+  onStartRealRehearsal,
+  systemLanguage = 'sk'
 }) => {
+  const t = (en: string, sk: string, hu: string) =>
+    systemLanguage === 'sk' ? sk : systemLanguage === 'hu' ? hu : en;
+
+  const demoSteps: DemoStepMeta[] = useMemo(() => [
+    {
+      id: 1,
+      title: t("1. Strategic Scenario & Hypothesis Definition", "1. Strategický scenár & Definícia hypotézy", "1. Stratégiai forgatókönyv és hipotézismeghatározás"),
+      shortLabel: t("1. Scenario", "1. Scenár", "1. Forgatókönyv"),
+      tagline: t("Define strategic proposal, pricing adjustments, or market announcement.", "Definujte strategický návrh, úpravu cien alebo trhové oznámenie.", "Határozza meg a stratégiai javaslatot, árváltoztatást vagy piaci bejelentést."),
+      userAction: t("Input business scenario, hypothesis, and proposal document. Select CRM history lookback window to ground the swarm.", "Zadáte obchodný scenár, hypotézu a dokument ponuky. Zvolíte počet mesiacov skutočnej CRM histórie na ukotvenie roju.", "Megadja az üzleti forgatókönyvet, hipotézist és ajánlati dokumentumot. Kiválasztja a raj lehorgonyzásához szükséges CRM előzmények időtávját."),
+      engineAction: t("System analyzes proposal, identifies key value drivers, and compiles initial market participant categories.", "Systém analyzuje návrh, identifikuje kľúčové prínosy a zostaví počiatočné kategórie účastníkov trhu.", "A rendszer elemzi a javaslatot, azonosítja a kulcsfontosságú előnyöket és összeállítja a piaci résztvevők kezdőkategóriáit."),
+      durationSec: 8
+    },
+    {
+      id: 2,
+      title: t("2. Preflight Cost & Safety Estimation", "2. Predbežný odhad nákladov a bezpečnosti", "2. Előzetes költség- és biztonságbecslés"),
+      shortLabel: t("2. Estimation", "2. Predbežný odhad", "2. Előzetes becslés"),
+      tagline: t("Predict token consumption and verify budget limits prior to launch.", "Predikcia spotreby tokenov a overenie rozpočtových limitov pred spustením.", "Tokenfogyasztás előrejelzése és költségvetési limitek ellenőrzése az indítás előtt."),
+      userAction: t("Review estimated token volume, compare model costs, and verify budget caps before making API calls.", "Skontrolujete odhadovaný objem tokenov, porovnáte náklady modelov a overíte rozpočtové stropy pred uskutočnením API volaní.", "Áttekinti a becsült tokenmennyiséget, összehasonlítja a modellköltségeket, és ellenőrzi a költségkereteket az API-hívások előtt."),
+      engineAction: t("Calculates exact input/output tokens (ontology + personas + multi-turn debate + synthesis) and checks limits.", "Vzorec vypočíta presné vstupné/výstupné tokeny (ontológia + persóny + viac-kolový dialóg + syntéza) a overí limity.", "Kiszámítja a pontos bemeneti/kimeneti tokeneket (ontológia + perszónák + többkörös vita + szintézis), és ellenőrzi a limiteket."),
+      durationSec: 7
+    },
+    {
+      id: 3,
+      title: t("3. Data Ingestion & Knowledge Graph Assembly", "3. Načítanie dát & Zostavenie grafu znalostí", "3. Adatbetöltés és tudásgráf felépítése"),
+      shortLabel: t("3. Data Ingestion", "3. Načítanie dát", "3. Adatbetöltés"),
+      tagline: t("Synthesize realistic buying committees, auditors, and competitors from CRM records.", "Syntéza realistických nákupných výborov, audítorov a konkurencie z CRM záznamov.", "Valósághű beszerzési bizottságok, auditorok és versenytársak szintetizálása CRM rekordokból."),
+      userAction: t("Inspect synthesized stakeholder personas (buyers, compliance auditors, legacy competitors, clients).", "Prezriete si syntetizované persóny účastníkov trhu (nákupcovia, compliance audítori, tradiční konkurenti, klienti).", "Megtekinti a szintetizált érintetti perszónákat (vásárlók, megfelelőségi auditorok, hagyományos versenytársak, ügyfelek)."),
+      engineAction: t("Extracts closed deals, loss reasons, and customer profiles from CRM into an interconnected knowledge graph.", "Systém čerpá z CRM obchodov, dôvodov straty a klientskych persón na zostavenie prepojeného znalostného grafu.", "A rendszer a CRM üzletekből, elvesztési indokokból és ügyfélelőzményekből épít össze egy összefüggő tudásgráfot."),
+      durationSec: 8
+    },
+    {
+      id: 4,
+      title: t("4. Autonomous Live War Room Simulation", "4. Autonómna simulácia vo War Roome", "4. Autonóm szimuláció a War Roomban"),
+      shortLabel: t("4. Live War Room", "4. Live War Room", "4. Élő War Room"),
+      tagline: t("Watch autonomous agents debate, raise objections, and cast votes across rounds.", "Sledujte, ako autonómni agenti diskutujú, vznášajú námietky a hlasujú naprieč kolami.", "Figyelje, ahogy az autonóm ágensek vitáznak, kifogásokat emelnek és szavaznak a körök során."),
+      userAction: t("Observe real-time social feed, sentiment evolution, simulated time, and viral response index.", "Sledujete živý kanál príspevkov v reálnom čase, vývoj sentimentu, simulovaný čas a index virality.", "Kövesse a valós idejű bejegyzésfolyamot, a hangulat alakulását, a szimulált időt és a viralitási indexet."),
+      engineAction: t("Agents publish asynchronously, respond to objections, launch counter-attacks, and converge toward consensus.", "Agenti publikujú asynchrónne, reagujú na námietky, vedú protiútoky konkurencie a dosahujú konsenzus na základe svojich persón.", "Az ágensek aszinkron módon publikálnak, reagálnak a kifogásokra, versenytársi ellentámadásokat indítanak, és konszenzusra törekednek."),
+      durationSec: 10
+    },
+    {
+      id: 5,
+      title: t("5. Lead Intelligence Analyst Synthesis", "5. Syntéza hlavného spravodajského analytika", "5. Vezető hírszerzési elemző szintézise"),
+      shortLabel: t("5. Strategy Synthesis", "5. Syntéza stratégie", "5. Stratégiai szintézis"),
+      tagline: t("AI reveals critical vulnerabilities and formulates a strategic action plan.", "AI odhalí kritické zraniteľné miesta a vypracuje strategický akčný plán.", "Az AI feltárja a kritikus sebezhetőségeket, és kidolgoz egy stratégiai cselekvési tervet."),
+      userAction: t("Watch the analytical engine parse simulation debates, uncover risks, and formulate objection scripts.", "Sledujete, ako analytický motor spracováva dialógy simulácie, odhaľuje riziká a formuluje odpovede na námietky.", "Figyelje, ahogy az elemzőmotor feldolgozza a szimulációs vitákat, feltárja a kockázatokat, és kifogáskezelő forgatókönyveket fogalmaz meg."),
+      engineAction: t("Lead analyst parses 30+ agent interactions, calculates counter-measures, and generates executive briefing.", "Hlavný analytik analyzuje interakcie 30+ agentov, vyhodnocuje protiopatrenia a generuje manažérsky briefing.", "A vezető elemző több mint 30 ágens interakcióit elemzi, ellenlépéseket dolgoz ki, és vezetői eligazítást állít össze."),
+      durationSec: 6
+    },
+    {
+      id: 6,
+      title: t("6. Strategic Briefing & Interrogation Hub", "6. Manažérsky briefing & Interrogačný hub", "6. Stratégiai eligazítás és kérdezőközpont"),
+      shortLabel: t("6. Results & Chatbot", "6. Výsledky & Chatbot", "6. Eredmények és chatbot"),
+      tagline: t("Study the action plan and cross-examine agents via the right-hand chatbot panel.", "Preštudujte si strategický plán a krížovo vypočúvajte agentov cez pravý chatbot panel.", "Tanulmányozza a cselekvési tervet, és kérdezze ki az ágenseket a jobb oldali chatbot panelen."),
+      userAction: t("Read the executive briefing on the left and ask follow-up questions to the analyst or simulated clients on the right.", "Naľavo si prečítate manažérsky briefing a napravo môžete kedykoľvek klásť doplňujúce otázky analytikovi alebo simulovaným zákazníkom.", "Bal oldalon elolvassa a vezetői eligazítást, jobb oldalon pedig bármikor feltehet további kérdéseket az elemzőnek vagy a szimulált ügyfeleknek."),
+      engineAction: t("Answers questions citing simulated debate evidence, explains objection roots, and advises how to close deals.", "Odpovedá na otázky s citáciami zo simulovanej debaty, vysvetľuje dôvody námietok a radí, ako úspešne uzatvoriť obchody.", "Válaszol a kérdésekre a szimulált vita idézeteivel, elmagyarázza a kifogások okait, és tanácsot ad az üzlet sikeres lezárásához."),
+      durationSec: 12
+    }
+  ], [systemLanguage]);
+
   const [currentStep, setCurrentStep] = useState(1);
   const [isPlaying, setIsPlaying] = useState(true);
   const [progress, setProgress] = useState(0);
@@ -118,7 +123,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const stepMeta = DEMO_STEPS[currentStep - 1];
+  const stepMeta = demoSteps[currentStep - 1];
 
   // Auto-progression timer
   useEffect(() => {
@@ -136,7 +141,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
     timerRef.current = setInterval(() => {
       setProgress(prev => {
         if (prev >= 100) {
-          if (currentStep < DEMO_STEPS.length) {
+          if (currentStep < demoSteps.length) {
             setCurrentStep(s => s + 1);
           } else {
             setIsPlaying(false);
@@ -150,12 +155,16 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [isOpen, isPlaying, currentStep, stepMeta.durationSec]);
+  }, [isOpen, isPlaying, currentStep, stepMeta.durationSec, demoSteps.length]);
 
   // Step 1: Simulated typing effect for scenario
   useEffect(() => {
     if (currentStep === 1) {
-      const fullText = "Reštrukturalizácia balíka Enterprise: +25% zvýšenie cien, garantované 99.9% SLA dostupnosti, dedikovaný WhatsApp komunikačný kanál s inžiniermi, hosting v EÚ a 6-mesačná ochranná lehota na pôvodných cenách pre súčasných zákazníkov.";
+      const fullText = systemLanguage === 'hu'
+        ? "Enterprise csomag átszervezése: +25% áremelés, garantált 99.9% SLA rendelkezésre állás, dedikált WhatsApp mérnöki csatorna, EU hosting és 6 hónapos türelmi idő a korábbi árakon a meglévő ügyfeleknek."
+        : systemLanguage === 'sk'
+        ? "Reštrukturalizácia balíka Enterprise: +25% zvýšenie cien, garantované 99.9% SLA dostupnosti, dedikovaný WhatsApp komunikačný kanál s inžiniermi, hosting v EÚ a 6-mesačná ochranná lehota na pôvodných cenách pre súčasných zákazníkov."
+        : "Enterprise tier restructuring: +25% price increase, 99.9% uptime SLA, dedicated WhatsApp engineer channel, EU hosting, and a 6-month grandfathering grace period on original rates.";
       let idx = 0;
       setTypedProposal('');
       const interval = setInterval(() => {
@@ -168,7 +177,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
       }, 30);
       return () => clearInterval(interval);
     }
-  }, [currentStep]);
+  }, [currentStep, systemLanguage]);
 
   // Step 4: War room round progression
   useEffect(() => {
@@ -203,7 +212,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
   if (!isOpen) return null;
 
   const handleNextStep = () => {
-    if (currentStep < DEMO_STEPS.length) {
+    if (currentStep < demoSteps.length) {
       setCurrentStep(prev => prev + 1);
       setProgress(0);
     }
@@ -244,18 +253,18 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-black tracking-tight text-white">Interaktívna prehliadka procesu SAI</h2>
+              <h2 className="text-sm font-black tracking-tight text-white">{t("Interactive SAI Process Walkthrough", "Interaktívna prehliadka procesu SAI", "Interaktívna SAI folyamatbemutató")}</h2>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                Živá ukážka simulácie
+                {t("Live Simulation Showcase", "Živá ukážka simulácie", "Élő szimulációs bemutató")}
               </span>
             </div>
-            <p className="text-[11px] text-slate-400">Krok {currentStep} zo {DEMO_STEPS.length}: {stepMeta.title}</p>
+            <p className="text-[11px] text-slate-400">{t("Step", "Krok", "Lépés")} {currentStep} {t("of", "zo", "/")}{demoSteps.length}: {stepMeta.title}</p>
           </div>
         </div>
 
         {/* Stepper Navigation Pills */}
         <div className="flex items-center gap-1.5 bg-slate-950/70 p-1.5 rounded-2xl border border-slate-800">
-          {DEMO_STEPS.map(s => {
+          {demoSteps.map(s => {
             const isActive = s.id === currentStep;
             const isPassed = s.id < currentStep;
             return (
@@ -284,26 +293,26 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
             className={`p-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
               isPlaying ? 'bg-amber-500/20 border border-amber-500/40 text-amber-300' : 'bg-emerald-600 text-white'
             }`}
-            title={isPlaying ? 'Pozastaviť prehliadku' : 'Spustiť prehliadku'}
+            title={isPlaying ? t("Pause Walkthrough", "Pozastaviť prehliadku", "Bemutató szüneteltetése") : t("Resume Walkthrough", "Spustiť prehliadku", "Bemutató folytatása")}
           >
             {isPlaying ? <Pause className="w-4 h-4 fill-amber-300" /> : <Play className="w-4 h-4 fill-white" />}
-            <span className="text-[11px]">{isPlaying ? 'Pozastaviť' : 'Prehrať'}</span>
+            <span className="text-[11px]">{isPlaying ? t("Pause", "Pozastaviť", "Szünet") : t("Play", "Prehrať", "Lejátszás")}</span>
           </button>
 
           <button
             onClick={handlePrevStep}
             disabled={currentStep === 1}
             className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 transition cursor-pointer"
-            title="Predchádzajúci krok"
+            title={t("Previous Step", "Predchádzajúci krok", "Előző lépés")}
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
 
           <button
             onClick={handleNextStep}
-            disabled={currentStep === DEMO_STEPS.length}
+            disabled={currentStep === demoSteps.length}
             className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 transition cursor-pointer"
-            title="Nasledujúci krok"
+            title={t("Next Step", "Nasledujúci krok", "Következő lépés")}
           >
             <ChevronRight className="w-4 h-4" />
           </button>
@@ -311,7 +320,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
           <button
             onClick={handleRestart}
             className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer"
-            title="Reštartovať od 1. kroku"
+            title={t("Restart from Step 1", "Reštartovať od 1. kroku", "Újraindítás az 1. lépéstől")}
           >
             <RotateCcw className="w-4 h-4" />
           </button>
@@ -322,13 +331,13 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
             onClick={onStartRealRehearsal}
             className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs shadow-md transition cursor-pointer"
           >
-            Spustiť reálnu simuláciu
+            {t("Launch Real Simulation", "Spustiť reálnu simuláciu", "Valós szimuláció indítása")}
           </button>
 
           <button
             onClick={onClose}
             className="p-2 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-slate-100 transition cursor-pointer ml-1"
-            title="Ukončiť ukážku"
+            title={t("Exit Walkthrough", "Ukončiť ukážku", "Kilépés a bemutatóból")}
           >
             <X className="w-5 h-5" />
           </button>
@@ -357,11 +366,11 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
 
           <div className="flex items-center gap-6 text-xs text-slate-300 bg-slate-950/60 px-4 py-2 rounded-2xl border border-slate-800/80">
             <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 block">👤 Akcia používateľa</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 block">👤 {t("User Action", "Akcia používateľa", "Felhasználói művelet")}</span>
               <span className="text-[11.5px] text-slate-200">{stepMeta.userAction}</span>
             </div>
             <div className="border-l border-slate-800 pl-4">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block">⚡ Činnosť systému</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block">⚡ {t("System Engine", "Činnosť systému", "Rendszerművelet")}</span>
               <span className="text-[11.5px] text-slate-200">{stepMeta.engineAction}</span>
             </div>
           </div>

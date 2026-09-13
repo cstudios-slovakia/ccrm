@@ -31,6 +31,8 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
   contextDocuments = [],
   systemLanguage = 'sk'
 }) => {
+  const t = (en: string, sk: string, hu: string) =>
+    systemLanguage === 'sk' ? sk : systemLanguage === 'hu' ? hu : en;
   const isSk = systemLanguage === 'sk';
 
   const [currentMode, setCurrentMode] = useState<'demo' | 'live'>(
@@ -87,10 +89,10 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
             </div>
             <div>
               <h3 className="text-lg font-bold text-slate-900">
-                {isSk ? 'Predbežný odhad nákladov a zdrojov' : 'Preflight Cost & Resource Estimate'}
+                {t('Preflight Cost & Resource Estimate', 'Predbežný odhad nákladov a zdrojov', 'Előzetes költség- és erőforrás-becslés')}
               </h3>
               <p className="text-xs text-slate-500 font-medium">
-                {isSk ? 'Simulácia:' : 'Rehearsal:'} {title || (isSk ? 'Bez názvu' : 'Untitled')}
+                {t('Rehearsal:', 'Simulácia:', 'Szimuláció:')} {title || t('Untitled', 'Bez názvu', 'Névtelen')}
               </p>
             </div>
           </div>
@@ -110,12 +112,12 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
             <div>
               <span className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
                 <Coins className="w-3.5 h-3.5 text-purple-600" />
-                {isSk ? 'Zvoľte režim vykonania:' : 'Select Execution Mode:'}
+                {t('Select Execution Mode:', 'Zvoľte režim vykonania:', 'Válasszon szimulációs módot:')}
               </span>
               <span className="text-[11px] text-slate-500 font-medium block mt-0.5">
                 {isDemo 
-                  ? (isSk ? '⚡ Rýchly demo test (syntetický beh, 0 € náklad)' : '⚡ Fast demo test (synthetic run, $0 cost)') 
-                  : (isSk ? '🚀 Ostrá živá simulácia (reálne LLM volania OpenAI)' : '🚀 Live production simulation (real OpenAI LLM calls)')}
+                  ? t('⚡ Fast demo test (synthetic run, $0 cost)', '⚡ Rýchly demo test (syntetický beh, 0 € náklad)', '⚡ Gyors demo teszt (szintetikus futás, 0 € költség)') 
+                  : t('🚀 Live production simulation (real OpenAI LLM calls)', '🚀 Ostrá živá simulácia (reálne LLM volania OpenAI)', '🚀 Éles szimuláció (valódi OpenAI API hívások)')}
               </span>
             </div>
 
@@ -130,7 +132,7 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
                 }`}
               >
                 <Zap className="w-3 h-3" />
-                <span>{isSk ? 'Demo test' : 'Demo test'}</span>
+                <span>{t('Demo test', 'Demo test', 'Demo teszt')}</span>
               </button>
 
               <button
@@ -143,32 +145,33 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
                 }`}
               >
                 <Sparkles className="w-3 h-3" />
-                <span>{isSk ? 'Živý test' : 'Live test'}</span>
+                <span>{t('Live test', 'Živý test', 'Éles teszt')}</span>
               </button>
             </div>
           </div>
 
+          {/* Stats Grid */}
           <div className="grid grid-cols-2 gap-3">
             <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/70">
               <span className="text-xs text-slate-500 font-medium block">
-                {isSk ? 'Veľkosť roju' : 'Swarm Scale'}
+                {t('Swarm Scale', 'Veľkosť roju', 'Raj mérete')}
               </span>
               <span className="text-lg font-bold text-slate-800">
-                {swarmScale} {isSk ? 'Agentov' : 'Agents'}
+                {swarmScale} {t('Agents', 'Agentov', 'Ágens')}
               </span>
               <span className="text-[11px] text-slate-400 block mt-0.5">
-                {totalRounds} {isSk ? 'simulovaných kôl' : 'simulated rounds'}
+                {totalRounds} {t('simulated rounds', 'simulovaných kôl', 'szimulált kör')}
               </span>
             </div>
             <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/70">
               <span className="text-xs text-slate-500 font-medium block">
-                {isSk ? 'Odhadované volania' : 'Estimated Calls'}
+                {t('Estimated Calls', 'Odhadované volania', 'Becsült hívások')}
               </span>
               <span className="text-lg font-bold text-indigo-600">
-                ~{totalCalls} {isSk ? 'API volaní' : 'API calls'}
+                ~{totalCalls} {t('API calls', 'API volaní', 'API hívás')}
               </span>
               <span className="text-[11px] text-slate-400 block mt-0.5">
-                ~{totalTokens.toLocaleString()} {isSk ? 'tokenov' : 'tokens'}
+                ~{totalTokens.toLocaleString()} {t('tokens', 'tokenov', 'token')}
               </span>
             </div>
           </div>
@@ -179,10 +182,10 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
               <span className="flex items-center gap-2 text-purple-900 font-semibold">
                 <FileText className="w-4 h-4 text-purple-600" />
                 <span>
-                  {isSk ? `Priložené dokumenty (${contextDocuments.length} súb.)` : `Attached documents (${contextDocuments.length} files)`}
+                  {t(`Attached documents (${contextDocuments.length} files)`, `Priložené dokumenty (${contextDocuments.length} súb.)`, `Csatolt dokumentumok (${contextDocuments.length} db)`)}
                 </span>
               </span>
-              <span className="font-bold text-purple-700">~{attachedDocTokens.toLocaleString()} {isSk ? 'tokenov' : 'tokens'}</span>
+              <span className="font-bold text-purple-700">~{attachedDocTokens.toLocaleString()} {t('tokens', 'tokenov', 'token')}</span>
             </div>
           )}
 
@@ -190,21 +193,21 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
           <div className={`p-4 rounded-2xl border ${isDemo ? 'bg-emerald-50/70 border-emerald-200' : 'bg-purple-50/50 border-purple-100'}`}>
             <span className={`text-xs font-semibold uppercase tracking-wider block mb-2 ${isDemo ? 'text-emerald-900' : 'text-purple-900'}`}>
               {isDemo 
-                ? (isSk ? 'Aktívny demo režim (Žiadna spotreba tokenov)' : 'Active Demo Mode (Zero token consumption)')
-                : (isSk ? 'Odhadované náklady na kvótu (OpenAI)' : 'Estimated API Quota Costs (OpenAI)')}
+                ? t('Active Demo Mode (Zero token consumption)', 'Aktívny demo režim (Žiadna spotreba tokenov)', 'Aktív demo mód (Nulla token fogyasztás)')
+                : t('Estimated API Quota Costs (OpenAI)', 'Odhadované náklady na kvótu (OpenAI)', 'Becsült OpenAI API költség')}
             </span>
             <div className="space-y-2 text-xs">
               <div className={`flex justify-between items-center py-1 border-b border-slate-200/50 ${_modelName === 'gpt-5.6-luna' ? 'font-bold text-purple-700' : ''}`}>
                 <span className="font-medium text-slate-700 flex items-center gap-1.5">
-                  <span>{isSk ? 'GPT-5.6 Luna (Cenovo optimalizovaný)' : 'GPT-5.6 Luna (Cost-optimized)'}</span>
-                  {_modelName === 'gpt-5.6-luna' && <span className="px-1.5 py-0.2 text-[9px] bg-purple-100 text-purple-700 rounded-md font-extrabold">{isSk ? 'ZVOLENÉ' : 'ACTIVE'}</span>}
+                  <span>{t('GPT-5.6 Luna (Cost-optimized)', 'GPT-5.6 Luna (Cenovo optimalizovaný)', 'GPT-5.6 Luna (Költségoptimalizált)')}</span>
+                  {_modelName === 'gpt-5.6-luna' && <span className="px-1.5 py-0.2 text-[9px] bg-purple-100 text-purple-700 rounded-md font-extrabold">{t('ACTIVE', 'ZVOLENÉ', 'KIVÁLASZTVA')}</span>}
                 </span>
                 <span className="font-bold text-emerald-600">{isDemo ? (isSk ? '0.000 € (Demo)' : '$0.00 (Demo)') : `€${costGpt56Luna.toFixed(3)}`}</span>
               </div>
               <div className={`flex justify-between items-center py-1 ${_modelName === 'gpt-5.6-terra' ? 'font-bold text-purple-700' : ''}`}>
                 <span className="font-medium text-slate-700 flex items-center gap-1.5">
-                  <span>{isSk ? 'GPT-5.6 Terra (Hĺbkové uvažovanie)' : 'GPT-5.6 Terra (Deep reasoning)'}</span>
-                  {_modelName === 'gpt-5.6-terra' && <span className="px-1.5 py-0.2 text-[9px] bg-purple-100 text-purple-700 rounded-md font-extrabold">{isSk ? 'ZVOLENÉ' : 'ACTIVE'}</span>}
+                  <span>{t('GPT-5.6 Terra (Deep reasoning)', 'GPT-5.6 Terra (Hĺbkové uvažovanie)', 'GPT-5.6 Terra (Mély következtetés)')}</span>
+                  {_modelName === 'gpt-5.6-terra' && <span className="px-1.5 py-0.2 text-[9px] bg-purple-100 text-purple-700 rounded-md font-extrabold">{t('ACTIVE', 'ZVOLENÉ', 'KIVÁLASZTVA')}</span>}
                 </span>
                 <span className="font-bold text-indigo-600">{isDemo ? (isSk ? '0.000 € (Demo)' : '$0.00 (Demo)') : `€${costGpt56Terra.toFixed(3)}`}</span>
               </div>
@@ -216,20 +219,24 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
             <div className="flex items-start gap-2.5 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs">
               <Zap className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
               <p>
-                <strong>{isSk ? 'Interaktívny demo režim:' : 'Interactive Demo Mode:'}</strong>{' '}
-                {isSk 
-                  ? 'Beží lokálne s okamžitým streamovaním kôl, animovanými uzlami grafu a predpripravenými briefingami na vyhodnotenie používateľského zážitku.'
-                  : 'Runs locally with instant round streaming, animated graph nodes, and pre-computed briefings for UX evaluation.'}
+                <strong>{t('Interactive Demo Mode:', 'Interaktívny demo režim:', 'Interaktív demo mód:')}</strong>{' '}
+                {t(
+                  'Runs locally with instant round streaming, animated graph nodes, and pre-computed briefings for UX evaluation.',
+                  'Beží lokálne s okamžitým streamovaním kôl, animovanými uzlami grafu a predpripravenými briefingami na vyhodnotenie používateľského zážitku.',
+                  'Helyben fut azonnali körökkel, animált tudásgráf csomópontokkal és előre kalkulált jelentésekkel a felhasználói élmény teszteléséhez.'
+                )}
               </p>
             </div>
           ) : (
             <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50 border border-amber-200/80 text-amber-900 text-xs">
               <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <p>
-                <strong>{isSk ? 'Živá simulácia v reálnom čase:' : 'Live Real-Time Simulation:'}</strong>{' '}
-                {isSk
-                  ? 'Vykonáva skutočné paralelné volania OpenAI modelov vo vašom prehliadači s extrakciou kontextu z CRM. Uistite sa, že máte aktívne internetové pripojenie.'
-                  : 'Executes live parallel OpenAI model calls with real-time CRM context extraction. Ensure you have an active internet connection.'}
+                <strong>{t('Live Real-Time Simulation:', 'Živá simulácia v reálnom čase:', 'Valós idejű éles szimuláció:')}</strong>{' '}
+                {t(
+                  'Executes live parallel OpenAI model calls with real-time CRM context extraction. Ensure you have an active internet connection.',
+                  'Vykonáva skutočné paralelné volania OpenAI modelov vo vašom prehliadači s extrakciou kontextu z CRM. Uistite sa, že máte aktívne internetové pripojenie.',
+                  'Valódi párhuzamos OpenAI hívásokat hajt végre a böngészőben valós idejű CRM kontextus kinyeréssel. Győződjön meg az aktív internetkapcsolatról.'
+                )}
               </p>
             </div>
           )}
@@ -244,8 +251,16 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
             />
             <span className="text-xs font-semibold text-slate-700">
               {isDemo 
-                ? (isSk ? 'Rozumiem, že táto simulácia beží v demo režime so simulovanými odpoveďami.' : 'I understand that this simulation runs in demo mode with synthetic responses.')
-                : (isSk ? 'Rozumiem, že táto simulácia bude čerpať API kvótu OpenAI a potrvá približne 2–4 minúty.' : 'I acknowledge that this simulation consumes OpenAI API quota and takes approx. 2–4 minutes.')}
+                ? t(
+                    'I understand that this simulation runs in demo mode with synthetic responses.',
+                    'Rozumiem, že táto simulácia beží v demo režime so simulovanými odpoveďami.',
+                    'Tudomásul veszem, hogy ez a szimuláció demo módban fut szintetikus válaszokkal.'
+                  )
+                : t(
+                    'I acknowledge that this simulation consumes OpenAI API quota and takes approx. 2–4 minutes.',
+                    'Rozumiem, že táto simulácia bude čerpať API kvótu OpenAI a potrvá približne 2–4 minúty.',
+                    'Tudomásul veszem, hogy a szimuláció OpenAI API kvótát fogyaszt és kb. 2-4 percig tart.'
+                  )}
             </span>
           </label>
         </div>
@@ -257,7 +272,7 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
             onClick={onClose}
             className="px-4 py-2.5 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-200/70 transition cursor-pointer"
           >
-            {isSk ? 'Zrušiť / Upraviť nastavenia' : 'Cancel & Edit'}
+            {t('Cancel & Edit', 'Zrušiť / Upraviť nastavenia', 'Mégse / Beállítások módosítása')}
           </button>
           <button
             type="button"
@@ -276,8 +291,8 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
           >
             <span>
               {isDemo 
-                ? (isSk ? 'Potvrdiť & Spustiť Demo' : 'Confirm & Launch Demo') 
-                : (isSk ? 'Potvrdiť & Spustiť naživo (Live)' : 'Confirm & Launch Live API')}
+                ? t('Confirm & Launch Demo', 'Potvrdiť & Spustiť Demo', 'Megerősítés & Demo indítása') 
+                : t('Confirm & Launch Live API', 'Potvrdiť & Spustiť naživo (Live)', 'Megerősítés & Éles indítás (Live)')}
             </span>
             <ArrowRight className="w-4 h-4" />
           </button>

@@ -33,15 +33,25 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
   initialAgent = null,
   isDemoMode = false,
   embedded = false,
+  systemLanguage = 'sk',
   className = ""
 }) => {
+  const t = (en: string, sk: string, hu: string) =>
+    systemLanguage === 'sk' ? sk : systemLanguage === 'hu' ? hu : en;
+
   const [activeTab, setActiveTab] = useState<'analyst' | 'agent'>(initialAgent ? 'agent' : 'analyst');
   const [selectedAgent, setSelectedAgent] = useState<SwarmAgentProfile | null>(initialAgent || agents[0] || null);
+
+  const getInitialAnalystGreeting = () => t(
+    "Hello! I am your Chief Intelligence Analyst. I tracked the entire market simulation and I'm ready to answer any questions regarding agent reactions, primary objections, and recommended strategies.",
+    "Dobrý deň! Som váš hlavný spravodajský analytik. Sledoval som celý priebeh trhovej simulácie a rád vám zodpoviem akékoľvek otázky týkajúce sa reakcií agentov, hlavných námietok a odporúčaných stratégií.",
+    "Üdvözlöm! Én vagyok a vezető hírszerzési elemzője. Figyelemmel kísértem a piaci szimuláció teljes menetét, és szívesen válaszolok az ágensek reakcióival, a főbb kifogásokkal és a javasolt stratégiákkal kapcsolatos kérdéseire."
+  );
 
   const [analystMessages, setAnalystMessages] = useState<{ sender: 'user' | 'assistant'; text: string }[]>([
     {
       sender: 'assistant',
-      text: "Dobrý deň! Som váš hlavný spravodajský analytik. Sledoval som celý priebeh trhovej simulácie a rád vám zodpoviem akékoľvek otázky týkajúce sa reakcií agentov, hlavných námietok a odporúčaných stratégií."
+      text: getInitialAnalystGreeting()
     }
   ]);
   const [agentMessages, setAgentMessages] = useState<{ sender: 'user' | 'assistant'; text: string }[]>([]);
@@ -81,7 +91,7 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
           setAnalystMessages([...newHistory, { sender: 'assistant', text: response }]);
         }
       } catch (err) {
-        setAnalystMessages([...newHistory, { sender: 'assistant', text: `Chyba: ${(err as Error).message}` }]);
+        setAnalystMessages([...newHistory, { sender: 'assistant', text: `${t('Error: ', 'Chyba: ', 'Hiba: ')}${(err as Error).message}` }]);
       } finally {
         setIsLoading(false);
       }
@@ -107,7 +117,7 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
           setAgentMessages([...newHistory, { sender: 'assistant', text: response }]);
         }
       } catch (err) {
-        setAgentMessages([...newHistory, { sender: 'assistant', text: `Chyba: ${(err as Error).message}` }]);
+        setAgentMessages([...newHistory, { sender: 'assistant', text: `${t('Error: ', 'Chyba: ', 'Hiba: ')}${(err as Error).message}` }]);
       } finally {
         setIsLoading(false);
       }
@@ -123,7 +133,7 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
       setAnalystMessages([
         {
           sender: 'assistant',
-          text: "Dobrý deň! Som váš hlavný spravodajský analytik. Sledoval som celý priebeh trhovej simulácie a rád vám zodpoviem akékoľvek otázky týkajúce sa reakcií agentov, hlavných námietok a odporúčaných stratégií."
+          text: getInitialAnalystGreeting()
         }
       ]);
     } else {
@@ -145,15 +155,19 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
             <Bot className="w-4 h-4" />
           </div>
           <div className="min-w-0">
-            <h3 className="text-sm font-bold text-slate-900 truncate">Interrogačný hub simulácie</h3>
-            <p className="text-[11px] text-slate-500 truncate">Krížový výsluch zistení analytika & motívov agentov</p>
+            <h3 className="text-sm font-bold text-slate-900 truncate">
+              {t('Simulation Interrogation Hub', 'Interrogačný hub simulácie', 'Szimulációs kikérdező központ')}
+            </h3>
+            <p className="text-[11px] text-slate-500 truncate">
+              {t('Cross-examination of analyst findings & agent motives', 'Krížový výsluch zistení analytika & motívov agentov', 'Az elemzői megállapítások és ágens-indítékok keresztkikérdezése')}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-1 shrink-0 ml-2">
           <button
             type="button"
             onClick={handleResetChat}
-            title="Resetovať konverzáciu"
+            title={t('Reset conversation', 'Resetovať konverzáciu', 'Beszélgetés visszaállítása')}
             className="p-1.5 rounded-xl hover:bg-slate-200/60 text-slate-400 hover:text-slate-700 transition cursor-pointer"
           >
             <RotateCcw className="w-4 h-4" />
@@ -180,7 +194,7 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
               : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
-          Spýtať sa hlavného analytika
+          {t('Ask Chief Analyst', 'Spýtať sa hlavného analytika', 'Kérdezze a vezető elemzőt')}
         </button>
         <button
           onClick={() => setActiveTab('agent')}
@@ -190,14 +204,16 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
               : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
-          Výsluch agenta (1 na 1)
+          {t('Interview Agent (1 on 1)', 'Výsluch agenta (1 na 1)', 'Ágens interjú (1 az 1-ben)')}
         </button>
       </div>
 
       {/* Agent Selector (If on Agent tab) */}
       {activeTab === 'agent' && (
         <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200/70 flex items-center gap-2">
-          <span className="text-[11px] font-bold text-slate-600 uppercase shrink-0">Agent:</span>
+          <span className="text-[11px] font-bold text-slate-600 uppercase shrink-0">
+            {t('Agent:', 'Agent:', 'Ágens:')}
+          </span>
           <select
             value={selectedAgent?.id || ''}
             onChange={e => {
@@ -244,13 +260,13 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
         {activeTab === 'analyst' && analystMessages.length <= 1 && (
           <div className="pt-2 space-y-2">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-              Odporúčané otázky:
+              {t('Recommended Questions:', 'Odporúčané otázky:', 'Ajánlott kérdések:')}
             </span>
             <div className="space-y-1.5">
               {[
-                "Aké boli hlavné námietky vznesené agentmi?",
-                "Ako v simulácii reagovala konkurencia?",
-                "Akú stratégiu by sme mali prioritizovať na dosiahnutie cieľa?"
+                t("What were the main objections raised by agents?", "Aké boli hlavné námietky vznesené agentmi?", "Mik voltak az ágensek által felvetett főbb kifogások?"),
+                t("How did competitors respond in the simulation?", "Ako v simulácii reagovala konkurencia?", "Hogyan reagált a konkurencia a szimulációban?"),
+                t("Which strategy should we prioritize to achieve our goal?", "Akú stratégiu by sme mali prioritizovať na dosiahnutie cieľa?", "Melyik stratégiát kell prioritásként kezelnünk a cél eléréséhez?")
               ].map((prompt, pIdx) => (
                 <button
                   key={pIdx}
@@ -270,16 +286,20 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
         {activeTab === 'agent' && agentMessages.length === 0 && selectedAgent && (
           <div className="p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-200/70 text-xs space-y-2">
             <div className="font-bold text-emerald-800 flex items-center gap-1.5">
-              <span>Výsluch agenta: {selectedAgent.displayName} (@{selectedAgent.username})</span>
+              <span>{t('Interview Agent:', 'Výsluch agenta:', 'Ágens interjú:')} {selectedAgent.displayName} (@{selectedAgent.username})</span>
             </div>
             <p className="text-emerald-700 text-[11px] leading-relaxed">
-              Opýtajte sa priamo tohto špecialistu ({selectedAgent.profession}), prečo zaujal postoj <strong>{selectedAgent.stance}</strong>, alebo čo by ho presvedčilo zmeniť názor.
+              {t(
+                `Ask this specialist (${selectedAgent.profession}) directly why they adopted a ${selectedAgent.stance} stance, or what would persuade them to change their mind.`,
+                `Opýtajte sa priamo tohto špecialistu (${selectedAgent.profession}), prečo zaujal postoj ${selectedAgent.stance}, alebo čo by ho presvedčilo zmeniť názor.`,
+                `Kérdezze meg közvetlenül ezt a szakértőt (${selectedAgent.profession}), miért foglalta el a(z) ${selectedAgent.stance} álláspontot, vagy mi győzné meg a véleménye megváltoztatásáról.`
+              )}
             </p>
             <div className="flex flex-wrap gap-1.5 pt-1">
               {[
-                "Prečo ste mali námietky voči tejto ponuke?",
-                "Aký ústupok by vás presvedčil k nákupu?",
-                "Ako to porovnávate so súčasnými nástrojmi?"
+                t("Why did you object to this offer?", "Prečo ste mali námietky voči tejto ponuke?", "Miért emelt kifogást ezzel az ajánlattal szemben?"),
+                t("What concession would convince you to buy?", "Aký ústupok by vás presvedčil k nákupu?", "Milyen engedmény győzné meg a vásárlásról?"),
+                t("How does this compare to your current tools?", "Ako to porovnávate so súčasnými nástrojmi?", "Hogyan viszonyul ez a jelenlegi eszközeihez?")
               ].map((q, qIdx) => (
                 <button
                   key={qIdx}
@@ -297,7 +317,7 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
         {isLoading && (
           <div className="flex items-center gap-2 text-slate-400 text-xs italic pl-9">
             <Sparkles className="w-3.5 h-3.5 animate-spin text-indigo-500" />
-            <span>Premýšľam...</span>
+            <span>{t('Thinking...', 'Premýšľam...', 'Gondolkodom...')}</span>
           </div>
         )}
 
@@ -314,8 +334,8 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
           onKeyDown={e => e.key === 'Enter' && handleSend()}
           placeholder={
             activeTab === 'analyst' 
-              ? 'Opýtajte sa, prečo vznikla námietka, aké sú ďalšie kroky...' 
-              : `Opýtajte sa agenta ${selectedAgent?.displayName || ''}, prečo zaujal daný postoj...`
+              ? t('Ask why objections arose, what the next steps are...', 'Opýtajte sa, prečo vznikla námietka, aké sú ďalšie kroky...', 'Kérdezze meg, miért merült fel a kifogás, mik a következő lépések...') 
+              : t(`Ask agent ${selectedAgent?.displayName || ''} why they took that stance...`, `Opýtajte sa agenta ${selectedAgent?.displayName || ''}, prečo zaujal daný postoj...`, `Kérdezze meg a(z) ${selectedAgent?.displayName || ''} ágenst, miért ezt az álláspontot képviselte...`)
           }
           className="flex-1 px-3 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white font-sans"
         />
