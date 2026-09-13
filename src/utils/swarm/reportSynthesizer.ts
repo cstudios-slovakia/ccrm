@@ -104,7 +104,7 @@ Synthesize the final authoritative strategic report in professional Slovak (Slov
   ], {
     model: modelName || 'gpt-5.6-luna',
     temperature: 0.4,
-    maxTokens: 3000
+    maxTokens: 6000
   });
 
   report.generatedAt = new Date().toISOString();

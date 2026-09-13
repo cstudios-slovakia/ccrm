@@ -223,7 +223,7 @@ What action do you take this round? (Write in Slovak / slovenčina)`;
       ], {
         model: this.modelName,
         temperature: 0.7,
-        maxTokens: 300
+        maxTokens: 1500
       });
 
       if (decision.action === 'DO_NOTHING') return null;

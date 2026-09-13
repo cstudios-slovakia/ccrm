@@ -40,11 +40,11 @@ Output JSON strictly matching this schema:
   ]
 }`;
 
-  // If targetCount > 30, synthesize in parallel batches to prevent token limit truncation
+  // If targetCount > 20, synthesize in parallel batches to prevent token limit truncation
   const batchSizes: number[] = [];
   let remaining = targetCount;
   while (remaining > 0) {
-    const size = Math.min(30, remaining);
+    const size = Math.min(20, remaining);
     batchSizes.push(size);
     remaining -= size;
   }
@@ -77,7 +77,7 @@ Generate exactly ${batchSize} unique, richly described agent profiles (Batch ${b
     ], {
       model: modelName,
       temperature: 0.7,
-      maxTokens: 4000
+      maxTokens: 5000
     });
 
     return result.agents || [];

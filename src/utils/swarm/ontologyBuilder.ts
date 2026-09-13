@@ -72,7 +72,8 @@ Extract between 8 and 18 key entities and their inter-relationships in natural S
     { role: 'user', content: userPrompt }
   ], {
     model: modelName,
-    temperature: 0.3
+    temperature: 0.3,
+    maxTokens: 5000
   });
 
   return {
