@@ -19,13 +19,14 @@ export async function callLlmProxy(
   messages: LLMMessage[],
   options: LLMOptions = {}
 ): Promise<string> {
+  const tokenLimit = options.maxTokens || 4000;
   const payload = {
     messages,
     model: options.model || 'gpt-5.6-luna',
     temperature: options.temperature !== undefined ? options.temperature : 0.7,
     response_format: options.responseFormat || null,
-    max_tokens: options.maxTokens || 1500,
-    max_completion_tokens: options.maxTokens || 1500
+    max_tokens: tokenLimit,
+    max_completion_tokens: tokenLimit
   };
 
   const response = await fetch('api/swarm.php?action=llm_proxy', {
@@ -50,9 +51,16 @@ export async function callLlmProxy(
   }
 
   const data = await response.json();
-  const content = data.choices?.[0]?.message?.content;
+  const choice = data.choices?.[0];
+  const content = choice?.message?.content ?? choice?.text;
   if (!content) {
-    throw new Error('LLM response contained no message content.');
+    if (choice?.message?.refusal) {
+      throw new Error(`LLM Model Refusal: ${choice.message.refusal}`);
+    }
+    if (data.error?.message) {
+      throw new Error(`LLM Error: ${data.error.message}`);
+    }
+    throw new Error(`LLM response contained no message content (finish_reason: ${choice?.finish_reason || 'unknown'}).`);
   }
 
   return content;

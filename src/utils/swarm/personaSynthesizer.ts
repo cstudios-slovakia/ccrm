@@ -40,36 +40,53 @@ Output JSON strictly matching this schema:
   ]
 }`;
 
-  const userPrompt = `Simulation Goal:
+  // If targetCount > 30, synthesize in parallel batches to prevent token limit truncation
+  const batchSizes: number[] = [];
+  let remaining = targetCount;
+  while (remaining > 0) {
+    const size = Math.min(30, remaining);
+    batchSizes.push(size);
+    remaining -= size;
+  }
+
+  const batchPromises = batchSizes.map(async (batchSize, batchIdx) => {
+    const userPrompt = `Simulation Goal:
 ${hypothesis}
 
 Entities in Knowledge Graph:
 ${JSON.stringify(nodes.map(n => ({ id: n.id, name: n.name, type: n.type, summary: n.summary })), null, 2)}
 
-Generate exactly ${targetCount} unique, richly described agent profiles representing these entities in natural Slovak (Slovenčina).`;
+Generate exactly ${batchSize} unique, richly described agent profiles (Batch ${batchIdx + 1} of ${batchSizes.length}) representing these entities in natural Slovak (Slovenčina).`;
 
-  const result = await callLlmJson<{
-    agents: {
-      username: string;
-      displayName: string;
-      profession: string;
-      mbti: string;
-      stance: 'supportive' | 'opposing' | 'neutral' | 'observer';
-      userChar: string;
-      publicBio: string;
-      followerCount?: number;
-      interestedTopics?: string[];
-      sourceEntityId?: string;
-    }[];
-  }>([
-    { role: 'system', content: systemPrompt },
-    { role: 'user', content: userPrompt }
-  ], {
-    model: modelName,
-    temperature: 0.7
+    const result = await callLlmJson<{
+      agents: {
+        username: string;
+        displayName: string;
+        profession: string;
+        mbti: string;
+        stance: 'supportive' | 'opposing' | 'neutral' | 'observer';
+        userChar: string;
+        publicBio: string;
+        followerCount?: number;
+        interestedTopics?: string[];
+        sourceEntityId?: string;
+      }[];
+    }>([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ], {
+      model: modelName,
+      temperature: 0.7,
+      maxTokens: 4000
+    });
+
+    return result.agents || [];
   });
 
-  return result.agents.map((a, idx) => ({
+  const allBatches = await Promise.all(batchPromises);
+  const rawAgents = allBatches.flat();
+
+  return rawAgents.slice(0, targetCount).map((a, idx) => ({
     id: idx + 1,
     username: a.username ? a.username.replace(/[^a-zA-Z0-9_]/g, '') : `agent_${idx + 1}`,
     displayName: a.displayName || `Agent ${idx + 1}`,
