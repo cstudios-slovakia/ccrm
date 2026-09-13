@@ -107,7 +107,9 @@ if ($action === 'llm_proxy') {
     }
     $temperature = isset($body['temperature']) ? (float)$body['temperature'] : 0.7;
     $responseFormat = $body['response_format'] ?? null;
-    $maxTokens = isset($body['max_tokens']) ? (int)$body['max_tokens'] : 1500;
+    $maxTokens = isset($body['max_completion_tokens']) 
+        ? (int)$body['max_completion_tokens'] 
+        : (isset($body['max_tokens']) ? (int)$body['max_tokens'] : 1500);
 
     if (empty($messages)) {
         http_response_code(400);
@@ -115,12 +117,15 @@ if ($action === 'llm_proxy') {
         exit;
     }
 
+    $isReasoningModel = preg_match('/^(o1|o3|o-)/i', $model);
     $payload = [
         'model' => $model,
         'messages' => $messages,
-        'temperature' => $temperature,
-        'max_tokens' => $maxTokens
+        'max_completion_tokens' => $maxTokens
     ];
+    if (!$isReasoningModel && isset($temperature)) {
+        $payload['temperature'] = $temperature;
+    }
     if ($responseFormat) {
         $payload['response_format'] = $responseFormat;
     }

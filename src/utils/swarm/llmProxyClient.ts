@@ -24,7 +24,8 @@ export async function callLlmProxy(
     model: options.model || 'gpt-5.6-luna',
     temperature: options.temperature !== undefined ? options.temperature : 0.7,
     response_format: options.responseFormat || null,
-    max_tokens: options.maxTokens || 1500
+    max_tokens: options.maxTokens || 1500,
+    max_completion_tokens: options.maxTokens || 1500
   };
 
   const response = await fetch('api/swarm.php?action=llm_proxy', {
