@@ -94,6 +94,7 @@ export interface SimulationParameters {
   platforms: 'dual' | 'chitchat' | 'forum' | 'twitter' | 'reddit';
   diurnalCycle: boolean;
   llmModel: string;
+  executionMode?: 'demo' | 'live';
 }
 
 export interface StrategicReport {

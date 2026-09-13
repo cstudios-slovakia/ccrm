@@ -60,6 +60,7 @@ interface SaiModuleProps {
 export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifiedEntries = [] }) => {
   // Navigation & View State
   const [demoModeActive, setDemoModeActive] = useState<boolean>(isDemoMode);
+  const [activeIsDemo, setActiveIsDemo] = useState<boolean>(isDemoMode);
   const [activeView, setActiveView] = useState<'list' | 'create' | 'running' | 'report'>('list');
   const [pastSimulations, setPastSimulations] = useState<any[]>([]);
   const [loadingList, setLoadingList] = useState<boolean>(true);
@@ -69,6 +70,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
   useEffect(() => {
     if (isDemoMode) {
       setDemoModeActive(true);
+      setActiveIsDemo(true);
     }
   }, [isDemoMode]);
 
@@ -267,6 +269,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
 
   // Load Pre-computed Demo Simulation
   const handleLoadDemoSimulation = (shouldUpdateHash = true) => {
+    setActiveIsDemo(true);
     setActiveSimulationId(DEMO_SIMULATION_CHECKPOINT.simulationId);
     setActiveTitle(DEMO_SIMULATION_CHECKPOINT.title);
     setActiveHypothesis(DEMO_SIMULATION_CHECKPOINT.hypothesis);
@@ -323,8 +326,11 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
     setEditingDraftData(null);
     setIsPreparing(true);
 
-    // Demo Mode Fast Execution Path
-    if (demoModeActive) {
+    const isLive = config.executionMode === 'live' || (!demoModeActive && config.executionMode !== 'demo');
+    setActiveIsDemo(!isLive);
+
+    // Demo Mode Fast Execution Path (Syntetický test)
+    if (!isLive) {
       try {
         const demoSimId = existingDraftId || `demo-sim-${Date.now()}`;
         setActiveSimulationId(demoSimId);
@@ -552,6 +558,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
         ? details.checkpoint
         : {};
       const simId = details.id || sim.id;
+      setActiveIsDemo(false);
 
       setActiveSimulationId(simId);
       setActiveTitle(details.title || cp.title || sim.title || 'Market Rehearsal');
@@ -758,7 +765,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
           currentRound={currentRound}
           totalRounds={totalRounds}
           simulatedHour={latestMetrics?.simulatedHour ?? (((currentRound - 1) * 3) % 24)}
-          isDemoMode={demoModeActive}
+          isDemoMode={activeView === 'create' ? demoModeActive : activeIsDemo}
           hasReport={Boolean(activeReport)}
           hasWarRoom={Boolean((graph && graph.nodes && graph.nodes.length > 0) || posts.length > 0)}
           activeView={activeView}
@@ -1028,7 +1035,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
             agents={agents}
             posts={posts}
             hypothesis={activeHypothesis}
-            isDemoMode={demoModeActive}
+            isDemoMode={activeIsDemo}
             onOpenQaDrawer={() => {
               const el = document.getElementById('sai-interrogation-input');
               if (el) {
@@ -1054,7 +1061,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({ isDemoMode = false, unifie
           posts={posts}
           hypothesis={activeHypothesis}
           initialAgent={interviewAgent}
-          isDemoMode={demoModeActive}
+          isDemoMode={activeIsDemo}
         />
       )}
 

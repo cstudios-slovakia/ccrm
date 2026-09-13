@@ -1,16 +1,18 @@
-import React, { useState } from 'react';
-import { ShieldAlert, Zap, X, ArrowRight, Coins, FileText } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ShieldAlert, Zap, X, ArrowRight, Coins, FileText, Sparkles } from 'lucide-react';
 import type { SwarmContextDocument } from '../../utils/swarm/types';
 
 interface PreflightEstimatorModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: (mode?: 'demo' | 'live') => void;
   title: string;
   swarmScale: number;
   totalRounds: number;
   modelName: string;
   isDemoMode?: boolean;
+  initialMode?: 'demo' | 'live';
+  onModeChange?: (mode: 'demo' | 'live') => void;
   contextDocuments?: SwarmContextDocument[];
 }
 
@@ -23,9 +25,24 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
   totalRounds,
   modelName: _modelName,
   isDemoMode = false,
+  initialMode,
+  onModeChange,
   contextDocuments = []
 }) => {
-  const [acknowledged, setAcknowledged] = useState(isDemoMode);
+  const [currentMode, setCurrentMode] = useState<'demo' | 'live'>(
+    initialMode || (isDemoMode ? 'demo' : 'live')
+  );
+  const [acknowledged, setAcknowledged] = useState(
+    (initialMode || (isDemoMode ? 'demo' : 'live')) === 'demo'
+  );
+
+  useEffect(() => {
+    if (isOpen) {
+      const mode = initialMode || (isDemoMode ? 'demo' : 'live');
+      setCurrentMode(mode);
+      setAcknowledged(mode === 'demo');
+    }
+  }, [isOpen, initialMode, isDemoMode]);
 
   if (!isOpen) return null;
 
@@ -43,6 +60,16 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
   // Pricing estimators per 1M tokens
   const costGpt56Luna = (totalTokens / 1_000_000) * 0.25; // Cost-optimized
   const costGpt56Terra = (totalTokens / 1_000_000) * 1.50; // Heavy reasoning
+
+  const isDemo = currentMode === 'demo';
+
+  const handleModeSwitch = (newMode: 'demo' | 'live') => {
+    setCurrentMode(newMode);
+    setAcknowledged(newMode === 'demo');
+    if (onModeChange) {
+      onModeChange(newMode);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
@@ -69,6 +96,50 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
 
         {/* Modal Content */}
         <div className="p-6 space-y-5">
+
+          {/* Interactive Mode Toggle in Modal */}
+          <div className="p-3.5 rounded-2xl bg-gradient-to-r from-purple-50/80 via-slate-50 to-emerald-50/80 border border-slate-200/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <span className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                <Coins className="w-3.5 h-3.5 text-purple-600" />
+                Zvoľte režim vykonania:
+              </span>
+              <span className="text-[11px] text-slate-500 font-medium block mt-0.5">
+                {isDemo 
+                  ? '⚡ Rýchly demo test (syntetický beh, 0 € náklad)' 
+                  : '🚀 Ostrá živá simulácia (reálne LLM volania OpenAI)'}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1 p-1 bg-white rounded-xl border border-slate-200 shadow-xs shrink-0 self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={() => handleModeSwitch('demo')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  isDemo
+                    ? 'bg-emerald-600 text-white shadow-xs font-black'
+                    : 'text-slate-600 hover:text-slate-900 bg-transparent'
+                }`}
+              >
+                <Zap className="w-3 h-3" />
+                <span>Demo test</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleModeSwitch('live')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  !isDemo
+                    ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-xs font-black'
+                    : 'text-slate-600 hover:text-slate-900 bg-transparent'
+                }`}
+              >
+                <Sparkles className="w-3 h-3" />
+                <span>Živý test</span>
+              </button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/70">
               <span className="text-xs text-slate-500 font-medium block">Veľkosť roju</span>
@@ -94,9 +165,9 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
           )}
 
           {/* Pricing Comparison Cards */}
-          <div className={`p-4 rounded-2xl border ${isDemoMode ? 'bg-emerald-50/70 border-emerald-200' : 'bg-purple-50/50 border-purple-100'}`}>
-            <span className={`text-xs font-semibold uppercase tracking-wider block mb-2 ${isDemoMode ? 'text-emerald-900' : 'text-purple-900'}`}>
-              {isDemoMode ? 'Aktívny demo režim (Žiadna spotreba tokenov)' : 'Odhadované náklady na kvótu (OpenAI)'}
+          <div className={`p-4 rounded-2xl border ${isDemo ? 'bg-emerald-50/70 border-emerald-200' : 'bg-purple-50/50 border-purple-100'}`}>
+            <span className={`text-xs font-semibold uppercase tracking-wider block mb-2 ${isDemo ? 'text-emerald-900' : 'text-purple-900'}`}>
+              {isDemo ? 'Aktívny demo režim (Žiadna spotreba tokenov)' : 'Odhadované náklady na kvótu (OpenAI)'}
             </span>
             <div className="space-y-2 text-xs">
               <div className={`flex justify-between items-center py-1 border-b border-slate-200/50 ${_modelName === 'gpt-5.6-luna' ? 'font-bold text-purple-700' : ''}`}>
@@ -104,20 +175,20 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
                   <span>GPT-5.6 Luna (Cenovo optimalizovaný)</span>
                   {_modelName === 'gpt-5.6-luna' && <span className="px-1.5 py-0.2 text-[9px] bg-purple-100 text-purple-700 rounded-md font-extrabold">ZVOLENÉ</span>}
                 </span>
-                <span className="font-bold text-emerald-600">{isDemoMode ? '0.000 € (Demo)' : `€${costGpt56Luna.toFixed(3)}`}</span>
+                <span className="font-bold text-emerald-600">{isDemo ? '0.000 € (Demo)' : `€${costGpt56Luna.toFixed(3)}`}</span>
               </div>
               <div className={`flex justify-between items-center py-1 ${_modelName === 'gpt-5.6-terra' ? 'font-bold text-purple-700' : ''}`}>
                 <span className="font-medium text-slate-700 flex items-center gap-1.5">
                   <span>GPT-5.6 Terra (Hĺbkové uvažovanie)</span>
                   {_modelName === 'gpt-5.6-terra' && <span className="px-1.5 py-0.2 text-[9px] bg-purple-100 text-purple-700 rounded-md font-extrabold">ZVOLENÉ</span>}
                 </span>
-                <span className="font-bold text-indigo-600">{isDemoMode ? '0.000 € (Demo)' : `€${costGpt56Terra.toFixed(3)}`}</span>
+                <span className="font-bold text-indigo-600">{isDemo ? '0.000 € (Demo)' : `€${costGpt56Terra.toFixed(3)}`}</span>
               </div>
             </div>
           </div>
 
           {/* Safety Notice */}
-          {isDemoMode ? (
+          {isDemo ? (
             <div className="flex items-start gap-2.5 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs">
               <Zap className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
               <p>
@@ -128,7 +199,7 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
             <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50 border border-amber-200/80 text-amber-900 text-xs">
               <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <p>
-                Táto simulácia vykonáva paralelné volania LLM vo vašom prehliadači. Uistite sa, že váš účet OpenAI alebo proxy má dostatočnú kvótu.
+                <strong>Živá simulácia v reálnom čase:</strong> Vykonáva skutočné paralelné volania OpenAI modelov vo vašom prehliadači s extrakciou kontextu z CRM. Uistite sa, že máte aktívne internetové pripojenie.
               </p>
             </div>
           )}
@@ -142,9 +213,9 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
               className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
             />
             <span className="text-xs font-semibold text-slate-700">
-              {isDemoMode 
+              {isDemo 
                 ? 'Rozumiem, že táto simulácia beží v demo režime so simulovanými odpoveďami.'
-                : 'Rozumiem, že táto simulácia bude čerpať API kvótu a potrvá približne 2–4 minúty.'}
+                : 'Rozumiem, že táto simulácia bude čerpať API kvótu OpenAI a potrvá približne 2–4 minúty.'}
             </span>
           </label>
         </div>
@@ -163,15 +234,17 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
             disabled={!acknowledged}
             onClick={() => {
               onClose();
-              onConfirm();
+              onConfirm(currentMode);
             }}
             className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold text-white shadow-md transition ${
               acknowledged 
-                ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-600 hover:opacity-95 cursor-pointer active:scale-95' 
+                ? (isDemo 
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:opacity-95 cursor-pointer active:scale-95' 
+                    : 'bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-600 hover:opacity-95 cursor-pointer active:scale-95')
                 : 'bg-slate-300 cursor-not-allowed opacity-60'
             }`}
           >
-            <span>Potvrdiť & Spustiť</span>
+            <span>{isDemo ? 'Potvrdiť & Spustiť Demo' : 'Potvrdiť & Spustiť naživo (Live)'}</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>
@@ -180,3 +253,4 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
     </div>
   );
 };
+

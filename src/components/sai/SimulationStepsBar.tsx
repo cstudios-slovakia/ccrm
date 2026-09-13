@@ -108,16 +108,16 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
   let badgeStyle = 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30';
 
   if (isDemoMode) {
-    badgeText = 'DEMO SIMULÁCIA';
+    badgeText = 'DEMO TEST (0 €)';
     badgeStyle = 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
   } else if (isEngineRunning) {
-    badgeText = `SIMULÁCIA PREBIEHA • K${currentRound}/${totalRounds}`;
-    badgeStyle = 'bg-emerald-500/25 text-emerald-300 border-emerald-500/40 animate-pulse';
+    badgeText = `ŽIVÁ SIMULÁCIA • K${currentRound}/${totalRounds}`;
+    badgeStyle = 'bg-purple-500/30 text-purple-200 border-purple-500/40 animate-pulse';
   } else if (isPreparing) {
-    badgeText = currentStep === 5 ? 'GENEROVANIE BRIEFINGU' : 'PRÍPRAVA ROJU';
+    badgeText = currentStep === 5 ? 'GENEROVANIE BRIEFINGU' : 'ŽIVÁ PRÍPRAVA ROJU';
     badgeStyle = 'bg-purple-500/20 text-purple-300 border-purple-500/30 animate-pulse';
   } else if (hasReport || activeView === 'report') {
-    badgeText = 'SIMULÁCIA DOKONČENÁ';
+    badgeText = 'ŽIVÁ SIMULÁCIA • DOKONČENÁ';
     badgeStyle = 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
   } else if (activeView === 'create') {
     badgeText = 'NOVÁ SIMULÁCIA';

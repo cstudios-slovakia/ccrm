@@ -30,7 +30,8 @@ import {
   Paperclip,
   Eye,
   Loader2,
-  X
+  X,
+  Sparkles
 } from 'lucide-react';
 import type { SimulationParameters, SwarmContextDocument } from '../../utils/swarm/types';
 import { PreflightEstimatorModal } from './PreflightEstimatorModal';
@@ -283,6 +284,15 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
   const [llmModel, setLlmModel] = useState<string>(initialData?.model_name || 'gpt-5.6-luna');
   const [diurnalCycle, setDiurnalCycle] = useState<boolean>(initialData?.diurnal_cycle ?? true);
 
+  // Execution Mode: 'demo' (fast synthetic, 0 €) vs 'live' (real LLM calls)
+  const [executionMode, setExecutionMode] = useState<'demo' | 'live'>(isDemoMode ? 'demo' : 'live');
+
+  useEffect(() => {
+    if (isDemoMode) {
+      setExecutionMode('demo');
+    }
+  }, [isDemoMode]);
+
   // Context Documents (PDF / Markdown / Text)
   const [contextDocuments, setContextDocuments] = useState<SwarmContextDocument[]>(initialData?.context_documents || []);
   const [isUploadingDoc, setIsUploadingDoc] = useState<boolean>(false);
@@ -520,7 +530,8 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
     setShowEstimatorModal(true);
   };
 
-  const handleConfirmedLaunch = () => {
+  const handleConfirmedLaunch = (selectedMode?: 'demo' | 'live') => {
+    const finalMode = selectedMode || executionMode;
     setShowEstimatorModal(false);
     onLaunch({
       title: title.trim(),
@@ -533,7 +544,8 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
       platforms: 'dual',
       diurnalCycle,
       llmModel,
-      contextDocuments
+      contextDocuments,
+      executionMode: finalMode
     }, draftId);
   };
 
@@ -568,12 +580,35 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               </span>
             )}
 
-            {isDemoMode && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-                <Zap className="w-3 h-3 text-emerald-600" />
-                Demo režim
-              </span>
-            )}
+            {/* Execution Mode Interactive Breadcrumb Badge */}
+            <div className="flex items-center gap-1 p-0.5 bg-slate-100/90 rounded-full border border-slate-200">
+              <button
+                type="button"
+                onClick={() => setExecutionMode('demo')}
+                className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider transition flex items-center gap-1 cursor-pointer ${
+                  executionMode === 'demo'
+                    ? 'bg-emerald-500 text-white shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+                title="Kliknutím zvolíte syntetický Demo test"
+              >
+                <Zap className="w-3 h-3" />
+                Demo test (0 €)
+              </button>
+              <button
+                type="button"
+                onClick={() => setExecutionMode('live')}
+                className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider transition flex items-center gap-1 cursor-pointer ${
+                  executionMode === 'live'
+                    ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+                title="Kliknutím zvolíte skutočnú živú simuláciu"
+              >
+                <Sparkles className="w-3 h-3" />
+                Živý test (Live)
+              </button>
+            </div>
           </div>
         </div>
 
@@ -631,6 +666,105 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
 
       {/* Main Form Container */}
       <form onSubmit={handleOpenEstimator} className="space-y-6">
+
+        {/* Prominent Execution Mode Selector Card (Demo vs Live) */}
+        <div className="p-5 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <label className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                <Zap className="w-4 h-4 text-purple-600" />
+                Režim vykonania simulácie
+              </label>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Vyberte si medzi okamžitou bezplatnou ukážkou a ostrou simuláciou cez OpenAI.
+              </p>
+            </div>
+            <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border flex items-center gap-1.5 ${
+              executionMode === 'live' 
+                ? 'bg-purple-50 text-purple-700 border-purple-200' 
+                : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+            }`}>
+              <span className={`w-2 h-2 rounded-full ${executionMode === 'live' ? 'bg-purple-500 animate-pulse' : 'bg-emerald-500'}`} />
+              {executionMode === 'live' ? 'Zvolený: Živý test (Live API)' : 'Zvolený: Demo test (0 €)'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+            {/* Demo Option Card */}
+            <div
+              onClick={() => setExecutionMode('demo')}
+              className={`p-4 rounded-2xl border-2 transition cursor-pointer flex items-start gap-3.5 ${
+                executionMode === 'demo'
+                  ? 'bg-emerald-50/60 border-emerald-500 shadow-sm ring-2 ring-emerald-500/20'
+                  : 'bg-slate-50/50 border-slate-200 hover:border-slate-300 hover:bg-slate-50 opacity-75'
+              }`}
+            >
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                executionMode === 'demo'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'bg-slate-200 text-slate-600'
+              }`}>
+                <Zap className="w-5 h-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    ⚡ Demo test
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200">
+                      0.00 €
+                    </span>
+                  </h4>
+                  {executionMode === 'demo' && (
+                    <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
+                      <Check className="w-4 h-4 text-emerald-600" />
+                      Zvolené
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                  Blesková syntetická simulácia na demonštračných dátach. Nulové náklady na OpenAI API, trvá iba pár sekúnd.
+                </p>
+              </div>
+            </div>
+
+            {/* Live Option Card */}
+            <div
+              onClick={() => setExecutionMode('live')}
+              className={`p-4 rounded-2xl border-2 transition cursor-pointer flex items-start gap-3.5 ${
+                executionMode === 'live'
+                  ? 'bg-purple-50/60 border-purple-600 shadow-sm ring-2 ring-purple-600/20'
+                  : 'bg-slate-50/50 border-slate-200 hover:border-slate-300 hover:bg-slate-50 opacity-75'
+              }`}
+            >
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                executionMode === 'live'
+                  ? 'bg-gradient-to-br from-purple-600 to-indigo-600 text-white shadow-xs'
+                  : 'bg-slate-200 text-slate-600'
+              }`}>
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    🚀 Živý test (Live API)
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 border border-purple-200">
+                      ~{estimatedCost.toFixed(3)} €
+                    </span>
+                  </h4>
+                  {executionMode === 'live' && (
+                    <span className="text-xs font-bold text-purple-600 flex items-center gap-1">
+                      <Check className="w-4 h-4 text-purple-600" />
+                      Zvolené
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                  Skutočná AI simulácia s reálnymi OpenAI volaniami, extrakciou kontextu z CRM a plnohodnotným ReAct cyklom agentov.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
         
         {/* Quick Presets Banner */}
         <div className="p-5 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-3">
@@ -1291,9 +1425,9 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                   <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">
                     Odhad ceny
                   </span>
-                  {isDemoMode ? (
+                  {executionMode === 'demo' ? (
                     <span className="px-1.5 py-0.5 text-[9px] font-black bg-emerald-100 text-emerald-800 rounded uppercase tracking-wider">
-                      Demo zdarma
+                      Demo test (0 €)
                     </span>
                   ) : (
                     <span className="text-[10px] font-bold text-purple-600">
@@ -1303,10 +1437,10 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 </div>
                 <div className="flex items-baseline gap-1.5 mt-1">
                   <span className="text-sm sm:text-base font-black text-slate-900 tracking-tight leading-none group-hover:text-purple-700 transition-colors">
-                    {isDemoMode ? '0.000 €' : `~${estimatedCost.toFixed(3)} €`}
+                    {executionMode === 'demo' ? '0.000 €' : `~${estimatedCost.toFixed(3)} €`}
                   </span>
                   <span className="text-[11px] text-slate-400 font-semibold leading-none">
-                    ~{(estimatedTokens / 1000).toFixed(0)}k tkn
+                    {executionMode === 'demo' ? 'Bez spotreby tokenov' : `~${(estimatedTokens / 1000).toFixed(0)}k tkn`}
                   </span>
                 </div>
               </div>
@@ -1315,9 +1449,17 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-7 py-3 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 hover:from-purple-700 hover:to-emerald-600 text-white font-extrabold text-xs shadow-md hover:shadow-lg transition flex items-center gap-2 cursor-pointer disabled:opacity-60 shrink-0"
+              className={`px-7 py-3 rounded-2xl text-white font-extrabold text-xs shadow-md hover:shadow-lg transition flex items-center gap-2 cursor-pointer disabled:opacity-60 shrink-0 ${
+                executionMode === 'demo'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700'
+                  : 'bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 hover:from-purple-700 hover:to-emerald-600'
+              }`}
             >
-              <span>Prejsť na odhad tokenov & Spustiť</span>
+              <span>
+                {executionMode === 'demo'
+                  ? 'Spustiť Demo test (0 €)'
+                  : 'Prejsť na odhad tokenov & Spustiť naživo (Live)'}
+              </span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
@@ -1335,6 +1477,8 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
         totalRounds={totalRounds}
         modelName={llmModel}
         isDemoMode={isDemoMode}
+        initialMode={executionMode}
+        onModeChange={setExecutionMode}
         contextDocuments={contextDocuments}
       />
 
