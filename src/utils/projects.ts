@@ -162,6 +162,24 @@ export const projectStartDate = (
   project: Pick<Project, "startDate" | "createdAt"> | undefined | null,
 ): string => toDateOnly(project?.startDate) || toDateOnly(project?.createdAt);
 
+/**
+ * The real finish date after a status change. Completing a project without a
+ * finish date stamps `today`; an existing date (set by hand) is kept. Moving it
+ * back to an open status clears the date, because a finish date on a project
+ * still in progress would keep showing it as finished in every list.
+ * Cancelled leaves the date as it was.
+ */
+export const finishedAtForStatus = (
+  nextStatus: string,
+  finishedAt: string | null | undefined,
+  today: string,
+): string => {
+  const current = toDateOnly(finishedAt);
+  if (nextStatus === "completed") return current || toDateOnly(today);
+  if (nextStatus === "cancelled") return current;
+  return "";
+};
+
 /*
   ── THE RED FLAG ────────────────────────────────────────
 

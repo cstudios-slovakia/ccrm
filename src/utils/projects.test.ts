@@ -4,6 +4,7 @@ import {
   DEFAULT_DEADLINE_WARNING_DAYS,
   DEFAULT_PROJECT_STATUS,
   evaluateProjectDeadline,
+  finishedAtForStatus,
   normalizeDeadlineWarningDays,
   projectDelayReason,
   projectDisplayName,
@@ -254,6 +255,18 @@ test("a real finish date outranks the deadline and ends the countdown", () => {
 
   // Still gated by the type.
   assert.equal(evaluateProjectDeadline(project({ finishedAt: "2026-09-01" }), type({ hasDeadline: false }), TODAY), null);
+});
+
+test("completing a project stamps today as its finish date, reopening clears it", () => {
+  assert.equal(finishedAtForStatus("completed", "", TODAY), TODAY);
+  assert.equal(finishedAtForStatus("completed", null, TODAY), TODAY);
+  // A date set by hand is never overwritten.
+  assert.equal(finishedAtForStatus("completed", "2026-08-30", TODAY), "2026-08-30");
+  assert.equal(finishedAtForStatus("cancelled", "2026-08-30", TODAY), "2026-08-30");
+  assert.equal(finishedAtForStatus("cancelled", "", TODAY), "");
+  for (const open of ["new", "active", "on_hold"]) {
+    assert.equal(finishedAtForStatus(open, "2026-08-30", TODAY), "", open);
+  }
 });
 
 test("the start date falls back to the creation day", () => {

@@ -19,7 +19,7 @@ import {
   isMoneyValueEmpty,
   parseMoneyValue,
 } from "../utils/currency";
-import { evaluateProjectDeadline, projectDisplayName, projectPipelineSegments, projectStartDate, projectStatusBadgeClass, projectStatusDotClass, projectStatusOptions } from "../utils/projects";
+import { evaluateProjectDeadline, finishedAtForStatus, projectDisplayName, projectPipelineSegments, projectStartDate, projectStatusBadgeClass, projectStatusDotClass, projectStatusOptions } from "../utils/projects";
 import { CustomSelect } from "./ui/CustomSelect";
 import { PipelineStrip } from "./ui/PipelineStrip";
 
@@ -1257,7 +1257,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 value={status}
                 onChange={v => {
                   setStatus(v);
-                  if (!isEditing) handleSave({ status: v }, false);
+                  // Completing stamps today as the real finish, reopening clears
+                  // it — see finishedAtForStatus. Only where the field is shown.
+                  const nextFinished = projectType.hasDeadline ? finishedAtForStatus(v, finishedAt, todayLocal()) : finishedAt;
+                  setFinishedAt(nextFinished);
+                  if (!isEditing) handleSave({ status: v, finishedAt: nextFinished || null }, false);
                 }}
                 className={`!font-black ${projectStatusBadgeClass(status)}`}
                 icon={<span className={`h-2 w-2 rounded-full shrink-0 inline-block ${projectStatusDotClass(status)}`} />}
