@@ -25,6 +25,7 @@ import type {
 } from "../types";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ColorPicker } from "./ui/ColorPicker";
+import { inheritedColor, nextCategoryColor } from "../utils/color";
 import type { Language } from "../utils/translations";
 import { formatMoney } from "../utils/currency";
 import { todayLocal, formatDateLocalized } from "../utils/localTime";
@@ -122,7 +123,7 @@ const SearchableCategorySelect: React.FC<SearchableCategorySelectProps> = ({
             <>
               <span
                 className="w-2.5 h-2.5 rounded-full shrink-0"
-                style={{ backgroundColor: selectedCategory.color || (selectedCategory.type === "income" ? "#10b981" : "#f43f5e") }}
+                style={{ backgroundColor: inheritedColor(categories, selectedCategory.id) || (selectedCategory.type === "income" ? "#10b981" : "#f43f5e") }}
               />
               <span className="font-semibold text-slate-800  truncate">
                 {getCategoryPath(selectedCategory)}
@@ -235,7 +236,7 @@ const SearchableCategorySelect: React.FC<SearchableCategorySelectProps> = ({
                       <div className="flex items-center gap-2 truncate">
                         <span
                           className="w-2 h-2 rounded-full shrink-0"
-                          style={{ backgroundColor: c.color || "#f43f5e" }}
+                          style={{ backgroundColor: inheritedColor(categories, c.id) || "#f43f5e" }}
                         />
                         <span className={c.level === 1 ? "font-bold text-slate-900 " : "font-normal"}>
                           {c.level === 1 ? c.name : c.level === 2 ? `↳ ${c.name}` : `↳↳ ${c.name}`}
@@ -275,7 +276,7 @@ const SearchableCategorySelect: React.FC<SearchableCategorySelectProps> = ({
                       <div className="flex items-center gap-2 truncate">
                         <span
                           className="w-2 h-2 rounded-full shrink-0"
-                          style={{ backgroundColor: c.color || "#10b981" }}
+                          style={{ backgroundColor: inheritedColor(categories, c.id) || "#10b981" }}
                         />
                         <span className={c.level === 1 ? "font-bold text-slate-900 " : "font-normal"}>
                           {c.level === 1 ? c.name : c.level === 2 ? `↳ ${c.name}` : `↳↳ ${c.name}`}
@@ -787,7 +788,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   const [catTreeType, setCatTreeType] = useState<FinancialType>("expense");
   const [newCatName, setNewCatName] = useState("");
   const [newCatParentId, setNewCatParentId] = useState<string>("");
-  const [newCatColor, setNewCatColor] = useState("#3b82f6");
+  const [newCatColor, setNewCatColor] = useState("");
+  // Until a colour is picked on purpose, a subcategory inherits its parent's and
+  // a main category gets the next colour no other main category of its type has.
+  const [newCatColorTouched, setNewCatColorTouched] = useState(false);
 
   // Transaction Form fields
   const [formType, setFormType] = useState<FinancialType>("expense");
@@ -2540,6 +2544,16 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     }
   };
 
+  const suggestedRootCatColor = useMemo(
+    () => nextCategoryColor(financialCategories.filter((c) => c.type === catTreeType && !c.parentId).map((c) => c.color)),
+    [financialCategories, catTreeType]
+  );
+  const newCatFormColor = newCatColorTouched
+    ? newCatColor
+    : newCatParentId
+      ? inheritedColor(financialCategories, newCatParentId) || suggestedRootCatColor
+      : suggestedRootCatColor;
+
   // Create Category
   const handleCreateCategory = (e: React.FormEvent) => {
     e.preventDefault();
@@ -2565,7 +2579,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       parentId: newCatParentId || null,
       level: parentLevel as 1 | 2 | 3,
       sortOrder: nextCategorySortOrder(financialCategories, catTreeType, newCatParentId || null),
-      color: newCatColor,
+      color: newCatColorTouched ? newCatColor : newCatParentId ? null : suggestedRootCatColor,
       icon: parentLevel === 1 ? "Layers" : parentLevel === 2 ? "Folder" : "Tag",
       createdAt: new Date().toISOString()
     };
@@ -2573,6 +2587,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     setFinancialCategories((prev) => [...prev, newCat]);
     setNewCatName("");
     setNewCatParentId("");
+    setNewCatColorTouched(false);
     (window as any).showToast?.(t("Category added!", "Kategória bola pridaná!", "Kategória hozzáadva!"));
   };
 
@@ -5479,8 +5494,17 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             </div>
 
             <div>
-              <label className="text-[11px] font-bold text-slate-500 block mb-1">{t("Color", "Farba", "Szín")}</label>
-              <ColorPicker variant="field" value={newCatColor} onChange={setNewCatColor} />
+              <label className="text-[11px] font-bold text-slate-500 block mb-1">
+                {newCatParentId && !newCatColorTouched ? t("Color (inherited)", "Farba (zdedená)", "Szín (örökölt)") : t("Color", "Farba", "Szín")}
+              </label>
+              <ColorPicker
+                variant="field"
+                value={newCatFormColor}
+                onChange={(color) => {
+                  setNewCatColor(color);
+                  setNewCatColorTouched(true);
+                }}
+              />
             </div>
 
             <button

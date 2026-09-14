@@ -5,6 +5,7 @@ import { CustomSelect } from "./ui/CustomSelect";
 import type { DropdownOption } from "./ui/CustomSelect";
 import { ColorPicker } from "./ui/ColorPicker";
 import { cn } from "../utils/cn";
+import { nextCategoryColor } from "../utils/color";
 import {
   MAX_CLIENT_CATEGORY_DEPTH,
   clientCategoryChildren,
@@ -128,8 +129,6 @@ const ROW_STYLES = {
   },
 } as const;
 
-const DEFAULT_NEW_COLOR = "#10b981";
-
 export const ClientCategoryManager: React.FC<{
   categories: ClientCategory[];
   setCategories: (updater: (prev: ClientCategory[]) => ClientCategory[]) => void;
@@ -144,9 +143,19 @@ export const ClientCategoryManager: React.FC<{
   // --- quick add ---
   const [newName, setNewName] = useState("");
   const [newParentId, setNewParentId] = useState("");
-  const [newColor, setNewColor] = useState(DEFAULT_NEW_COLOR);
-  // A subcategory inherits its parent's colour unless one is picked on purpose.
+  const [newColor, setNewColor] = useState("");
+  // Until a colour is picked on purpose, a subcategory inherits its parent's and
+  // a main category gets the next colour no other main category has.
   const [colorTouched, setColorTouched] = useState(false);
+  const suggestedRootColor = useMemo(
+    () => nextCategoryColor(clientCategoryChildren(categories, null).map((c) => c.color)),
+    [categories]
+  );
+  const formColor = colorTouched
+    ? newColor
+    : newParentId
+      ? clientCategoryColor(categories, newParentId) || suggestedRootColor
+      : suggestedRootColor;
 
   const parentOptions = useMemo(
     () => [
@@ -181,7 +190,7 @@ export const ClientCategoryManager: React.FC<{
       parentId,
       level: level as ClientCategory["level"],
       sortOrder: nextClientCategorySortOrder(categories, parentId),
-      color: parent && !colorTouched ? null : newColor,
+      color: colorTouched ? newColor : parent ? null : suggestedRootColor,
       icon: iconForClientCategoryLevel(level),
     };
     setCategories((prev) => [...prev, category]);
@@ -459,7 +468,7 @@ export const ClientCategoryManager: React.FC<{
           </label>
           <ColorPicker
             variant="field"
-            value={newParentId && !colorTouched ? clientCategoryColor(categories, newParentId) || newColor : newColor}
+            value={formColor}
             onChange={(color) => {
               setNewColor(color);
               setColorTouched(true);
