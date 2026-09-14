@@ -1,5 +1,13 @@
 <?php
-$configFile = file_exists(__DIR__ . '/config.php') ? __DIR__ . '/config.php' : (file_exists(__DIR__ . '/../config.php') ? __DIR__ . '/../config.php' : '/var/www/html/config.php');
+// CLI only. The repo root is the docroot on git-clone deploys, so without this
+// an anonymous GET to /scripts/seed_demo_warehouse.php seeded demo warehouses
+// into the live database.
+if (PHP_SAPI !== 'cli') {
+    http_response_code(403);
+    exit("This script is CLI only.\n");
+}
+
+$configFile =file_exists(__DIR__ . '/config.php') ? __DIR__ . '/config.php' : (file_exists(__DIR__ . '/../config.php') ? __DIR__ . '/../config.php' : '/var/www/html/config.php');
 require_once $configFile;
 $schemaFile = file_exists(__DIR__ . '/api/schema.php') ? __DIR__ . '/api/schema.php' : (file_exists(__DIR__ . '/../api/schema.php') ? __DIR__ . '/../api/schema.php' : '/var/www/html/api/schema.php');
 require_once $schemaFile;
