@@ -15,6 +15,7 @@ import type { Language } from "../utils/translations";
 import { ProjectSettings } from "./ProjectSettings";
 import { PasswordInput } from "./PasswordInput";
 import { CustomSelect } from "./ui/CustomSelect";
+import { ColorPicker } from "./ui/ColorPicker";
 import { CompanyLookupSpinner, CompanySuggestions } from "./ui/CompanySuggestions";
 import { useCompanyLookup } from "../utils/useCompanyLookup";
 import { EUROPEAN_COUNTRIES, registryCountryOf } from "../utils/companyRegistry";
@@ -2444,6 +2445,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               </button>
                             );
                           })}
+                          <ColorPicker variant="palette" value={ueColor} onChange={setUeColor} className="w-8 h-8 p-1" />
                         </div>
                       </div>
 
@@ -3836,21 +3838,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               );
                             })}
 
-                            {/* Custom Hex Selector */}
+                            {/* More colours: full palette + the browser's custom picker */}
                             {getPermission("pm_managers") === "edit" && (
-                              <div className="relative h-5.5 w-5.5 rounded-full overflow-hidden border border-slate-300 shadow-sm shrink-0 flex items-center justify-center cursor-pointer bg-slate-50 hover:scale-115 transition-transform">
-                                <input
-                                  type="color"
-                                  value={selectedUser.color}
-                                  onChange={(e) => {
-                                    const updated = { ...selectedUser, color: e.target.value };
-                                    handleUpdateUser(updated);
-                                  }}
-                                  className="absolute inset-0 opacity-0 cursor-pointer h-full w-full"
-                                  title={getTranslation(userLanguage, "settings.managers.tooltip_custom_color")}
-                                />
-                                <span className="text-[10px] font-black text-slate-500 select-none leading-none">&#9638;</span>
-                              </div>
+                              <ColorPicker
+                                variant="palette"
+                                value={selectedUser.color}
+                                onChange={(color) => handleUpdateUser({ ...selectedUser, color })}
+                                title={getTranslation(userLanguage, "settings.managers.tooltip_custom_color")}
+                                className="h-5.5 w-5.5"
+                              />
                             )}
                           </div>
                         </div>
@@ -4504,20 +4500,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             <td className={`py-3 px-4 align-middle transition-all duration-200 ${isSub ? "pl-14" : ""}`}>
                               <div className="flex items-center gap-2">
                                 {getPermission("pipeline_stages") === "edit" ? (
-                                  <label className="cursor-pointer relative flex items-center justify-center h-5 w-5 rounded-full border border-slate-200 hover:scale-115 transition-transform bg-slate-50 shadow-inner" title={userLanguage === "sk" ? "Kliknutím upravíte farbu" : userLanguage === "hu" ? "Kattintson a szín szerkesztéséhez" : "Click to edit color"}>
-                                    <span className="h-3 w-3 rounded-full border border-white" style={{ backgroundColor: color }} />
-                                    <input 
-                                      type="color" 
-                                      value={color} 
-                                      onChange={(e) => {
-                                        setLeadStateColors(prev => ({
-                                          ...prev,
-                                          [state.toLowerCase()]: e.target.value
-                                        }));
-                                      }}
-                                      className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
-                                    />
-                                  </label>
+                                  <ColorPicker
+                                    variant="ring"
+                                    value={color}
+                                    onChange={(next) => setLeadStateColors(prev => ({ ...prev, [state.toLowerCase()]: next }))}
+                                    title={t("Click to edit color", "Kliknutím upravíte farbu", "Kattintson a szín szerkesztéséhez")}
+                                  />
                                 ) : (
                                   <span className="h-3 w-3 rounded-full border border-slate-200 inline-block" style={{ backgroundColor: color }} />
                                 )}
@@ -5031,20 +5019,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           <td className="py-3 px-4 align-middle">
                             <div className="flex items-center gap-2">
                               {getPermission("traffic_sources") === "edit" ? (
-                                <label className="cursor-pointer relative flex items-center justify-center h-5 w-5 rounded-full border border-slate-200 hover:scale-115 transition-transform bg-slate-50 shadow-inner" title={userLanguage === "sk" ? "Kliknutím upravíte farbu" : userLanguage === "hu" ? "Kattintson a szín szerkesztéséhez" : "Click to edit color"}>
-                                  <span className="h-3 w-3 rounded-full border border-white" style={{ backgroundColor: color }} />
-                                  <input 
-                                    type="color" 
-                                    value={color} 
-                                    onChange={(e) => {
-                                      setLeadSourceColors(prev => ({
-                                        ...prev,
-                                        [source.toLowerCase()]: e.target.value
-                                      }));
-                                    }}
-                                    className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
-                                  />
-                                </label>
+                                <ColorPicker
+                                  variant="ring"
+                                  value={color}
+                                  onChange={(next) => setLeadSourceColors(prev => ({ ...prev, [source.toLowerCase()]: next }))}
+                                  title={t("Click to edit color", "Kliknutím upravíte farbu", "Kattintson a szín szerkesztéséhez")}
+                                />
                               ) : (
                                 <span className="h-3 w-3 rounded-full border border-slate-200 inline-block" style={{ backgroundColor: color }} />
                               )}
@@ -5196,20 +5176,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           <td className="py-3 px-4 align-middle">
                             <div className="flex items-center gap-2">
                               {getPermission("traffic_sources") === "edit" ? (
-                                <label className="cursor-pointer relative flex items-center justify-center h-5 w-5 rounded-full border border-slate-200 hover:scale-115 transition-transform bg-slate-50 shadow-inner" title={userLanguage === "sk" ? "Kliknutím upravíte farbu" : userLanguage === "hu" ? "Kattintson a szín szerkesztéséhez" : "Click to edit color"}>
-                                  <span className="h-3 w-3 rounded-full border border-white" style={{ backgroundColor: color }} />
-                                  <input 
-                                    type="color" 
-                                    value={color} 
-                                    onChange={(e) => {
-                                      setLeadCategoryColors(prev => ({
-                                        ...prev,
-                                        [cat]: e.target.value
-                                      }));
-                                    }}
-                                    className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
-                                  />
-                                </label>
+                                <ColorPicker
+                                  variant="ring"
+                                  value={color}
+                                  onChange={(next) => setLeadCategoryColors(prev => ({ ...prev, [cat]: next }))}
+                                  title={t("Click to edit color", "Kliknutím upravíte farbu", "Kattintson a szín szerkesztéséhez")}
+                                />
                               ) : (
                                 <span className="h-3 w-3 rounded-full border border-slate-200 inline-block" style={{ backgroundColor: color }} />
                               )}
@@ -5319,20 +5291,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           <td className="py-3 px-4 align-middle">
                             <div className="flex items-center gap-2">
                               {getPermission("traffic_sources") === "edit" ? (
-                                <label className="cursor-pointer relative flex items-center justify-center h-5 w-5 rounded-full border border-slate-200 hover:scale-115 transition-transform bg-slate-50 shadow-inner">
-                                  <span className="h-3 w-3 rounded-full border border-white" style={{ backgroundColor: color }} />
-                                  <input 
-                                    type="color" 
-                                    value={color} 
-                                    onChange={(e) => {
-                                      setTaskStateColors(prev => ({
-                                        ...prev,
-                                        [state]: e.target.value
-                                      }));
-                                    }}
-                                    className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
-                                  />
-                                </label>
+                                <ColorPicker
+                                  variant="ring"
+                                  value={color}
+                                  onChange={(next) => setTaskStateColors(prev => ({ ...prev, [state]: next }))}
+                                  title={t("Click to edit color", "Kliknutím upravíte farbu", "Kattintson a szín szerkesztéséhez")}
+                                />
                               ) : (
                                 <span className="h-3 w-3 rounded-full border border-slate-200 inline-block" style={{ backgroundColor: color }} />
                               )}

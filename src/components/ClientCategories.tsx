@@ -3,6 +3,7 @@ import { GripVertical, Layers, PencilLine, Trash2 } from "lucide-react";
 import type { ClientCategory } from "../types";
 import { CustomSelect } from "./ui/CustomSelect";
 import type { DropdownOption } from "./ui/CustomSelect";
+import { ColorPicker } from "./ui/ColorPicker";
 import { cn } from "../utils/cn";
 import {
   MAX_CLIENT_CATEGORY_DEPTH,
@@ -337,22 +338,13 @@ export const ClientCategoryManager: React.FC<{
 
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <GripVertical className="h-3.5 w-3.5 shrink-0 text-slate-300 group-hover:text-emerald-500 transition-colors duration-150" />
-          <label
+          <ColorPicker
+            value={shownColor}
+            fallback={FALLBACK_COLOR}
+            onChange={(color) => handleColorChange(cat.id, color)}
             title={t("Change color", "Zmeniť farbu", "Szín módosítása")}
-            className={cn(
-              "relative rounded-full shrink-0 shadow-sm cursor-pointer transition-transform duration-150 hover:scale-125 active:scale-95 focus-within:ring-2 focus-within:ring-emerald-400 focus-within:ring-offset-1",
-              styles.swatch
-            )}
-            style={{ backgroundColor: shownColor }}
-            onDragStart={(e) => e.preventDefault()}
-          >
-            <input
-              type="color"
-              value={/^#[0-9a-f]{6}$/i.test(shownColor) ? shownColor : FALLBACK_COLOR}
-              onChange={(e) => handleColorChange(cat.id, e.target.value)}
-              className="absolute inset-0 h-full w-full opacity-0 cursor-pointer"
-            />
-          </label>
+            className={styles.swatch}
+          />
           {isRenaming ? (
             <input
               autoFocus
@@ -465,14 +457,13 @@ export const ClientCategoryManager: React.FC<{
           <label className="text-[11px] font-bold text-slate-500 block mb-1">
             {newParentId && !colorTouched ? t("Color (inherited)", "Farba (zdedená)", "Szín (örökölt)") : t("Color", "Farba", "Szín")}
           </label>
-          <input
-            type="color"
+          <ColorPicker
+            variant="field"
             value={newParentId && !colorTouched ? clientCategoryColor(categories, newParentId) || newColor : newColor}
-            onChange={(e) => {
-              setNewColor(e.target.value);
+            onChange={(color) => {
+              setNewColor(color);
               setColorTouched(true);
             }}
-            className="h-9 w-12 rounded-xl bg-white border border-slate-200 cursor-pointer p-0.5"
           />
         </div>
 

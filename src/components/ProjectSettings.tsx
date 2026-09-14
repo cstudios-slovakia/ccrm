@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import * as Icons from "lucide-react";
 import { Plus, Trash2, ArrowUp, ArrowDown, Save, X, Workflow, LayoutGrid, Rows3 } from "lucide-react";
 import { CustomSelect } from "./ui/CustomSelect";
+import { ColorPicker } from "./ui/ColorPicker";
 import type { ProjectAutoCreateSettings, ProjectType, ProjectAttribute, ProjectAttributeType, TimelineEventType } from "../types";
 import { DEFAULT_PROJECT_AUTO_CREATE, isProjectAutoCreateActive } from "../utils/projectAutoCreate";
 import { DEFAULT_DEADLINE_WARNING_DAYS, normalizeDeadlineWarningDays } from "../utils/projects";
@@ -448,6 +449,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                       )}
                     </button>
                   ))}
+                  <ColorPicker variant="palette" value={typeColor} onChange={setTypeColor} disabled={!canEdit} className="h-8 w-8 p-1" />
                 </div>
               </div>
             </div>
@@ -625,6 +627,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                             )}
                           </button>
                         ))}
+                        <ColorPicker variant="palette" value={newTeTypeColor} onChange={setNewTeTypeColor} />
                       </div>
                       <button
                         type="button"

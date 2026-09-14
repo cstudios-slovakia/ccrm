@@ -24,6 +24,7 @@ import type {
   UserProfile
 } from "../types";
 import { CustomSelect } from "./ui/CustomSelect";
+import { ColorPicker } from "./ui/ColorPicker";
 import type { Language } from "../utils/translations";
 import { formatMoney } from "../utils/currency";
 import { todayLocal, formatDateLocalized } from "../utils/localTime";
@@ -2731,19 +2732,12 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
         <div className="flex items-center gap-2 min-w-0">
           <GripVertical className="h-3.5 w-3.5 shrink-0 text-slate-300 group-hover:text-indigo-500 transition-colors duration-150" />
-          <label
+          <ColorPicker
+            value={shownColor}
+            onChange={(color) => handleCategoryColorChange(cat.id, color)}
             title={t("Change color", "Zmeniť farbu", "Szín módosítása")}
-            className={`relative ${styles.swatch} rounded-full shrink-0 shadow-sm cursor-pointer transition-transform duration-150 hover:scale-125 active:scale-95 focus-within:ring-2 focus-within:ring-indigo-400 focus-within:ring-offset-1`}
-            style={{ backgroundColor: shownColor }}
-            onDragStart={(e) => e.preventDefault()}
-          >
-            <input
-              type="color"
-              value={/^#[0-9a-f]{6}$/i.test(shownColor) ? shownColor : "#6366f1"}
-              onChange={(e) => handleCategoryColorChange(cat.id, e.target.value)}
-              className="absolute inset-0 h-full w-full opacity-0 cursor-pointer"
-            />
-          </label>
+            className={styles.swatch}
+          />
           <span className={`truncate ${styles.name}`}>{cat.name}</span>
           <span className={`shrink-0 ${styles.badge}`}>{styles.badgeText}</span>
         </div>
@@ -5486,12 +5480,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
             <div>
               <label className="text-[11px] font-bold text-slate-500 block mb-1">{t("Color", "Farba", "Szín")}</label>
-              <input
-                type="color"
-                value={newCatColor}
-                onChange={(e) => setNewCatColor(e.target.value)}
-                className="h-9 w-12 rounded-xl bg-white  border border-slate-200  cursor-pointer p-0.5"
-              />
+              <ColorPicker variant="field" value={newCatColor} onChange={setNewCatColor} />
             </div>
 
             <button
