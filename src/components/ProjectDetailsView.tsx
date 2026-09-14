@@ -113,6 +113,8 @@ interface ProjectDetailsViewProps {
   currencyCode?: string | null;
   onClose: () => void;
   onSave: (updatedProject: Project) => void;
+  /** A project that has never been saved: opens straight in edit mode, so it can be named. */
+  isNew?: boolean;
 }
 
 export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
@@ -126,7 +128,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   financialCategories = [],
   currencyCode,
   onClose,
-  onSave
+  onSave,
+  isNew = false
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
   const money = (v: number) => formatMoney(v, currencyCode, userLanguage);
@@ -358,7 +361,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       setAssociatedClientId(project.clientId || "");
       setSelectedManagers(project.managers || []);
       setPickingClient(false);
-      setIsEditing(false);
+      // A blank project has nothing to read yet — the name field and the rest
+      // of the card only exist in edit mode, so that is where it starts.
+      setIsEditing(isNew);
       setDynamicData(project.data || {});
       setTimeline(project.timeline || []);
       setGantt(project.gantt || []);
@@ -1166,6 +1171,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               <input
                 value={projectName}
                 onChange={e => setProjectName(e.target.value)}
+                autoFocus={isNew}
                 maxLength={200}
                 placeholder={t("e.g. Roof replacement, Kosice", "napr. Výmena strechy, Košice", "pl. Tetőcsere, Kassa")}
                 className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"

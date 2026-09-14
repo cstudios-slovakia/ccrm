@@ -503,6 +503,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           window.location.hash = "projects";
         }}
         onSave={handleSaveProject}
+        isNew={!projects.some(p => p.id === editingProject.id)}
       />
     );
   }
