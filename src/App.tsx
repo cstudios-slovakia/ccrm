@@ -3015,7 +3015,7 @@ ${log.payload || ''}
           column so they can never land on top of each other — they used to be two
           independently positioned "fixed" banners 4px apart, which read as a single
           garbled banner whenever both were up. */}
-      <div className="fixed bottom-6 right-6 z-[9999] flex flex-col items-end gap-2 pointer-events-none">
+      <div className="fixed bottom-20 right-6 z-[20001] flex flex-col items-end gap-2 pointer-events-none lg:bottom-6">
         {/* Global save indicator — reassures the user their change is being saved
             and, together with the beforeunload guard, that they should not leave or
             reload the page until it disappears. */}
