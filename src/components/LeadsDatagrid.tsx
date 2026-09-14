@@ -7991,9 +7991,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
             {/* 2. Control search, filter, and sort bar (Blue accents) */}
             <div className="glass-panel p-6 rounded-[28px] border border-blue-100 bg-white/90 shadow-glass space-y-4 relative z-30">
-                <div className="flex flex-col sm:flex-row items-center gap-4 justify-between border-b border-slate-100/80 pb-4">
+                <div className="flex flex-wrap items-center gap-4 justify-between border-b border-slate-100/80 pb-4">
                     <div className="flex items-center gap-2.5 w-full sm:max-w-md">
-                        <div className="relative flex-1">
+                        <div className="relative flex-1 min-w-[11rem]">
                             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-blue-500" />
                             <input
                                 type="text"
@@ -8052,7 +8052,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         )}
                     </div>
 
-                    <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+                    <div className="flex flex-wrap items-center justify-center gap-3 w-full sm:w-auto">
                         {/* View Mode Toggle: List vs Kanban */}
                         <div className="flex bg-slate-100 p-0.5 rounded-2xl border border-slate-200 gap-0.5 select-none shrink-0 w-full sm:w-auto justify-center">
                             <button
