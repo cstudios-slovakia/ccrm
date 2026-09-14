@@ -25,6 +25,7 @@ import type { Language } from "../utils/translations";
 import { CalendarPane } from "./Dashboard";
 import { CustomSelect } from "./ui/CustomSelect";
 import {
+    canArchiveTask as userCanArchiveTask,
     canDeleteTask as userCanDeleteTask,
     canEditTask as userCanEditTask,
     isActiveTask,
@@ -404,6 +405,14 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         userCanEditTask(task, currentUser, taskAccess);
     const mayDeleteTask = (task: Task) =>
         userCanDeleteTask(task, currentUser, taskAccess);
+    // Archiving is the creator's call alone — see canArchiveTask.
+    const mayArchiveTask = (task: Task) =>
+        userCanArchiveTask(task, currentUser);
+    const archiveDeniedHint = () => t(
+        "Only the person who created this task can archive it.",
+        "Úlohu môže archivovať iba ten, kto ju vytvoril.",
+        "Csak a feladat létrehozója archiválhatja.",
+    );
     const myTasks = tasks.filter(isMyTask).filter((task) => !task.archived);
 
     // Inclusive date-range check against a YYYY-MM-DD string (item 9 calendar filters)
@@ -924,7 +933,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     };
 
     const handleArchiveTask = (task: Task) => {
-        if (!mayEditTask(task)) return;
+        if (!mayArchiveTask(task)) return;
         setTasks((prev) =>
             prev.map((t) =>
                 t.id === task.id ? { ...t, archived: true } : t,
@@ -944,7 +953,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     };
 
     const handleUnarchiveTask = (task: Task) => {
-        if (!mayEditTask(task)) return;
+        if (!mayArchiveTask(task)) return;
         setTasks((prev) =>
             prev.map((t) =>
                 t.id === task.id ? { ...t, archived: false } : t,
@@ -1544,12 +1553,16 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 handleArchiveTask(task);
                             }}
                             className="p-1 hover:bg-slate-100 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 rounded-lg text-slate-400 hover:text-slate-600 transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-35"
-                            disabled={!mayEditTask(task)}
-                            title={t(
-                                "Archive Task",
-                                "Archivovať úlohu",
-                                "Feladat archiválása",
-                            )}
+                            disabled={!mayArchiveTask(task)}
+                            title={
+                                mayArchiveTask(task)
+                                    ? t(
+                                          "Archive Task",
+                                          "Archivovať úlohu",
+                                          "Feladat archiválása",
+                                      )
+                                    : archiveDeniedHint()
+                            }
                         >
                             <ArchiveIcon className="h-3.5 w-3.5" />
                         </button>
@@ -2791,7 +2804,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                             task,
                                                         )
                                                     }
-                                                    className="px-2.5 py-1.5 border border-indigo-200 hover:bg-indigo-50 text-indigo-600 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
+                                                    disabled={!mayArchiveTask(task)}
+                                                    title={
+                                                        mayArchiveTask(task)
+                                                            ? undefined
+                                                            : archiveDeniedHint()
+                                                    }
+                                                    className="px-2.5 py-1.5 border border-indigo-200 hover:bg-indigo-50 text-indigo-600 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:active:scale-100"
                                                 >
                                                     <RotateCcw className="h-3 w-3 stroke-[2.5]" />
                                                     {t(
@@ -3534,7 +3553,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             )}
                         </button>
 
-                        {currentTask.id && mayEditTask(currentTask) && (
+                        {currentTask.id && mayArchiveTask(currentTask) && (
                             <button
                                 type="button"
                                 onClick={() => {

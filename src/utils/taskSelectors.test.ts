@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Task, UserProfile } from "../types";
 import {
+  canArchiveTask,
   canDeleteTask,
   canEditTask,
   canViewTask,
@@ -77,6 +78,16 @@ test("delete access allows admins, explicit permission, or the creator", () => {
 
 test("legacy tasks without createdBy remain deletable by their assignee", () => {
   assert.equal(canDeleteTask({ ...task, createdBy: undefined }, sam, normalAccess), true);
+});
+
+test("only the creator may archive a task — not an assignee, not an admin", () => {
+  assert.equal(canArchiveTask(task, alex), true);
+  assert.equal(canArchiveTask(task, sam), false);
+  assert.equal(canArchiveTask(task, admin), false);
+  assert.equal(canArchiveTask(task, undefined), false);
+  // A legacy task has no creator to ask, so its assignees stand in.
+  assert.equal(canArchiveTask({ ...task, createdBy: undefined }, sam), true);
+  assert.equal(canArchiveTask({ ...task, createdBy: undefined }, alex), false);
 });
 
 test("the team-wide task board is on for every role until it is revoked", () => {

@@ -48,6 +48,9 @@ try {
     // Wipe customizable lists if "Keep Configs" was false
     if (!$keepConfigs) {
         $pdo->exec("DELETE FROM `financial_categories`;");
+        if ($pdo->query("SHOW TABLES LIKE 'client_categories'")->rowCount() > 0) {
+            $pdo->exec("DELETE FROM `client_categories`;");
+        }
         // Preserve the language the CRM was installed in BEFORE dropping the
         // settings, so the reset re-seeds the pipeline labels in that language
         // (mirrors setup.php) instead of forcing English/Slovak defaults.

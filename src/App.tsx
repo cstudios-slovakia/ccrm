@@ -3,7 +3,7 @@ import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { LoginView } from "./components/LoginView";
 import { TaskDashboardView } from "./components/TaskDashboardView";
-import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, FinancialRecord, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings } from "./types";
+import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, FinancialRecord, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings } from "./types";
 import { DEFAULT_LEAD_ASSIGNMENT, normalizeLeadAssignment } from "./utils/leadAssignment";
 import { DEFAULT_PROJECT_AUTO_CREATE, normalizeProjectAutoCreate } from "./utils/projectAutoCreate";
 import { normalizeLeadStateSla, type LeadStateSla } from "./utils/leadSla";
@@ -160,14 +160,14 @@ const computePushSig = (p: {
   warehouses?: unknown; suppliers?: unknown; warehouseItems?: unknown;
   warehouseStock?: unknown; warehouseBatches?: unknown; warehouseMovements?: unknown;
   financialCategories?: unknown; financialRecords?: unknown;
-  invoicesOffers?: unknown; aiCustomTemplates?: unknown;
+  invoicesOffers?: unknown; aiCustomTemplates?: unknown; clientCategories?: unknown;
   settings?: any;
 }): string => JSON.stringify([
   p.leads, p.tasks, p.users, p.roles, p.meetingNotes, p.unifiedEntries,
   p.unifiedEntriesData, p.customDashboards, p.projectTypes, p.projects,
   p.warehouses, p.suppliers, p.warehouseItems, p.warehouseStock, p.warehouseBatches, p.warehouseMovements,
   p.financialCategories, p.financialRecords,
-  p.invoicesOffers, p.aiCustomTemplates,
+  p.invoicesOffers, p.aiCustomTemplates, p.clientCategories,
   computeSettingsSig(p.settings),
 ]);
 
@@ -272,6 +272,7 @@ function App() {
   const financialRecordsRef = useRef<FinancialRecord[]>([]);
   const invoicesOffersRef = useRef<InvoiceOffer[]>([]);
   const aiCustomTemplatesRef = useRef<AiCustomTemplate[]>([]);
+  const clientCategoriesRef = useRef<ClientCategory[]>([]);
   const companyBillingSettingsRef = useRef<CompanyBillingSettings | null>(null);
   const invoicingIntegrationsRef = useRef<ExternalInvoicingConfig | null>(null);
   // DB clock from the last GET/POST. Sent back as baseSyncedAt so the server can
@@ -471,6 +472,7 @@ function App() {
   const [financialRecords, setFinancialRecords] = useState<FinancialRecord[]>([]);
   const [invoicesOffers, setInvoicesOffers] = useState<InvoiceOffer[]>([]);
   const [aiCustomTemplates, setAiCustomTemplates] = useState<AiCustomTemplate[]>([]);
+  const [clientCategories, setClientCategories] = useState<ClientCategory[]>([]);
   const [companyBillingSettings, setCompanyBillingSettings] = useState<CompanyBillingSettings | null>(null);
   const [invoicingIntegrations, setInvoicingIntegrations] = useState<ExternalInvoicingConfig | null>(null);
 
@@ -948,6 +950,7 @@ ${log.payload || ''}
   financialRecordsRef.current = financialRecords;
   invoicesOffersRef.current = invoicesOffers;
   aiCustomTemplatesRef.current = aiCustomTemplates;
+  clientCategoriesRef.current = clientCategories;
   companyBillingSettingsRef.current = companyBillingSettings;
   invoicingIntegrationsRef.current = invoicingIntegrations;
 
@@ -974,6 +977,7 @@ ${log.payload || ''}
     nextFinancialRecords?: FinancialRecord[],
     nextInvoicesOffers?: InvoiceOffer[],
     nextAiCustomTemplates?: AiCustomTemplate[],
+    nextClientCategories?: ClientCategory[],
     options?: { showIndicator?: boolean }
   ): Promise<void> => {
     if (!isInstalled || !currentUser || !isInitialSyncResolved) return pushChainRef.current;
@@ -1013,6 +1017,7 @@ ${log.payload || ''}
     const liveFinancialRecords = nextFinancialRecords ?? financialRecordsRef.current;
     const liveInvoicesOffers = nextInvoicesOffers ?? invoicesOffersRef.current;
     const liveAiCustomTemplates = nextAiCustomTemplates ?? aiCustomTemplatesRef.current;
+    const liveClientCategories = nextClientCategories ?? clientCategoriesRef.current;
 
     const payload: any = {
       baseSyncedAt: baseSyncedAtRef.current,
@@ -1036,6 +1041,7 @@ ${log.payload || ''}
       financialRecords: liveFinancialRecords,
       invoicesOffers: liveInvoicesOffers,
       aiCustomTemplates: liveAiCustomTemplates,
+      clientCategories: liveClientCategories,
       settings: {
         systemName,
         systemLanguage,
@@ -1093,6 +1099,7 @@ ${log.payload || ''}
       narrow("financialRecords", liveFinancialRecords);
       narrow("invoicesOffers", liveInvoicesOffers);
       narrow("aiCustomTemplates", liveAiCustomTemplates);
+      narrow("clientCategories", liveClientCategories);
 
       // The registry list stays whole on purpose: sync.php walks unifiedEntries to
       // reach each entry's dynamic table, so an entry omitted here would silently
@@ -1431,6 +1438,15 @@ ${log.payload || ''}
       const next = typeof newOffers === "function" ? newOffers(prev) : newOffers;
       invoicesOffersRef.current = next;
       pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
+      return next;
+    });
+  };
+
+  const updateClientCategoriesAndSync = (newCats: ClientCategory[] | ((prev: ClientCategory[]) => ClientCategory[])) => {
+    setClientCategories(prev => {
+      const next = typeof newCats === "function" ? newCats(prev) : newCats;
+      clientCategoriesRef.current = next;
+      pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
       return next;
     });
   };
@@ -1914,6 +1930,9 @@ ${log.payload || ''}
       if (data.aiCustomTemplates && Array.isArray(data.aiCustomTemplates)) {
         setAiCustomTemplates(data.aiCustomTemplates);
       }
+      if (data.clientCategories && Array.isArray(data.clientCategories)) {
+        setClientCategories(data.clientCategories);
+      }
       if (data.settings) {
         const s = data.settings;
         if (s.systemName && s.systemName !== systemName) setSystemName(s.systemName);
@@ -1989,6 +2008,7 @@ ${log.payload || ''}
         financialRecords: baselineOf(data.financialRecords ?? financialRecordsRef.current),
         invoicesOffers: baselineOf(data.invoicesOffers ?? invoicesOffersRef.current),
         aiCustomTemplates: baselineOf(data.aiCustomTemplates ?? aiCustomTemplatesRef.current),
+        clientCategories: baselineOf(data.clientCategories ?? clientCategoriesRef.current),
       };
       const ueData = data.unifiedEntriesData ?? unifiedEntriesDataRef.current ?? {};
       const nextUeBaselines: Record<string, RecordBaseline> = {};
@@ -2019,6 +2039,7 @@ ${log.payload || ''}
         financialRecords: data.financialRecords ?? financialRecordsRef.current,
         invoicesOffers: data.invoicesOffers ?? invoicesOffersRef.current,
         aiCustomTemplates: data.aiCustomTemplates ?? aiCustomTemplatesRef.current,
+        clientCategories: data.clientCategories ?? clientCategoriesRef.current,
         settings: data.settings ?? {},
       });
     };
@@ -2285,6 +2306,8 @@ ${log.payload || ''}
           projectManagers={projectManagers}
           leadSources={leadSources}
           initialSelectedClient={clientName}
+          clientCategories={clientCategories}
+          setClientCategories={updateClientCategoriesAndSync}
           systemLanguage={userLanguage}
           tasks={tasks}
           setTasks={updateTasksAndSync}
@@ -2487,6 +2510,8 @@ ${log.payload || ''}
             setFinancialRecords={updateFinancialRecordsAndSync}
             financialCategories={financialCategories}
             setFinancialCategories={updateFinancialCategoriesAndSync}
+            clientCategories={clientCategories}
+            setClientCategories={updateClientCategoriesAndSync}
           />
         );
       case "financial":
@@ -2857,14 +2882,14 @@ ${log.payload || ''}
             pendingPushRef.current = false;
             setTimeout(() => {
               pushStateToServer(
-                // 21 positional "next…" slots precede the options object. Keep this
+                // 22 positional "next…" slots precede the options object. Keep this
                 // padding in step with the pushStateToServer signature: when the
                 // invoices/AI-template slots were added the options object silently
                 // slid into `nextInvoicesOffers`, corrupting the replayed payload.
                 undefined, undefined, undefined, undefined, undefined, undefined,
                 undefined, undefined, undefined, undefined, undefined,
                 undefined, undefined, undefined, undefined, undefined, undefined,
-                undefined, undefined, undefined, undefined,
+                undefined, undefined, undefined, undefined, undefined,
                 { showIndicator: false }
               );
             }, 0);

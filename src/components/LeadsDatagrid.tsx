@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { useUserPref } from "../utils/userPrefs";
-import { resolveAssigneeName } from "../utils/taskSelectors";
+import { canArchiveTask, resolveAssigneeName } from "../utils/taskSelectors";
 import { liftAccent } from "../utils/accentColor";
 import { createPortal } from "react-dom";
 import {
@@ -5804,7 +5804,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                 "Obnoviť úlohu",
                                                                 "Feladat visszaállítása",
                                                             )}
-                                                            className="text-slate-400 hover:text-emerald-600 transition-colors p-1"
+                                                            // Restoring is the creator's call, like archiving — see canArchiveTask.
+                                                            disabled={!canArchiveTask(task, currentUser ?? undefined)}
+                                                            className="text-slate-400 hover:text-emerald-600 transition-colors p-1 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:text-slate-400"
                                                         >
                                                             <ArchiveRestore className="h-3.5 w-3.5" />
                                                         </button>

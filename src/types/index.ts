@@ -190,6 +190,33 @@ export interface Lead {
   aiSummary?: string;
   aiSummaryFingerprint?: string;
   financialSummary?: string;
+
+  // Customer category (Clients → Categories): one node of the client category
+  // tree, or null. A client profile spans every lead sharing its name, so the
+  // client register writes it to all of them together.
+  clientCategoryId?: string | null;
+
+  // Archived from the client register: hidden from the client list until
+  // restored. Like clientCategoryId, set on every lead of the profile.
+  archived?: boolean;
+}
+
+/**
+ * A customer category — the finance category tree's shape (up to three levels,
+ * a colour, a hand-set position among siblings) without the income/expense
+ * split. Clients carry one through Lead.clientCategoryId.
+ */
+export interface ClientCategory {
+  id: string;
+  name: string;
+  parentId?: string | null;
+  level: 1 | 2 | 3;
+  /** Position among the siblings under the same parent, lowest first. */
+  sortOrder?: number;
+  color?: string | null;
+  icon?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Appointment {

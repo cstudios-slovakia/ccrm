@@ -137,6 +137,7 @@ const LEADS = [
     website: 'https://novakstavby.sk',
     legalForm: 's.r.o.',
     categories: ['Products', 'Services'],
+    clientCategoryId: 'cc-construction-roofing',
     timeline: [
       {
         id: 'ev-novak-1',
@@ -527,6 +528,12 @@ const FINANCIAL_CATEGORIES = [
   { id: 'fc-expense-wages', type: 'expense', name: 'Mzdy', level: 1, color: '#f97316', icon: 'Users', createdAt: isoStamp(-100) },
 ];
 
+const CLIENT_CATEGORIES = [
+  { id: 'cc-construction', name: 'Stavebníctvo', level: 1, sortOrder: 0, color: '#0ea5e9', icon: 'Layers', createdAt: isoStamp(-90) },
+  { id: 'cc-construction-roofing', name: 'Strechári', parentId: 'cc-construction', level: 2, sortOrder: 0, color: null, icon: 'Folder', createdAt: isoStamp(-90) },
+  { id: 'cc-retail', name: 'Maloobchod', level: 1, sortOrder: 1, color: '#a855f7', icon: 'Layers', createdAt: isoStamp(-90) },
+];
+
 const FINANCIAL_RECORDS = [
   {
     id: 'fr-1',
@@ -775,6 +782,7 @@ export function buildSyncPayload() {
     warehouseBatches: WAREHOUSE_BATCHES,
     warehouseMovements: WAREHOUSE_MOVEMENTS,
     financialCategories: FINANCIAL_CATEGORIES,
+    clientCategories: CLIENT_CATEGORIES,
     financialRecords: FINANCIAL_RECORDS,
     settings: SETTINGS,
   };

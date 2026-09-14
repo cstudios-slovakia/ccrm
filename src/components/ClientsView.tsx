@@ -7,9 +7,11 @@ import {
   Calendar, ArrowLeft, Plus, TrendingUp, PencilLine, FileText,
   X, FolderOpen, Download, Trash2, SlidersHorizontal,
   CornerDownLeft, CornerLeftDown, Loader2, Brain,
-  ChevronLeft, ChevronRight, Milestone, Coins
+  ChevronLeft, ChevronRight, Milestone, Coins, Archive, ArchiveRestore
 } from "lucide-react";
-import type { Lead, TimelineEvent, Task, FinancialRecord, FinancialCategory, FinancialStatus } from "../types";
+import type { Lead, TimelineEvent, Task, FinancialRecord, FinancialCategory, FinancialStatus, ClientCategory } from "../types";
+import { ClientCategoryBadge, ClientCategoryManager, ClientCategorySelect } from "./ClientCategories";
+import { clientCategoryFilterIds, clientCategoryPath } from "../utils/clientCategoryTree";
 import { cn } from "../utils/cn";
 import { BlockEditor } from "./BlockEditor";
 import { VoiceRecorderCard } from "./VoiceRecorderCard";
@@ -56,7 +58,13 @@ interface ClientsViewProps {
   setFinancialRecords?: React.Dispatch<React.SetStateAction<FinancialRecord[]>>;
   financialCategories?: FinancialCategory[];
   setFinancialCategories?: React.Dispatch<React.SetStateAction<FinancialCategory[]>>;
+  /** Customer categories (the Categories panel of the client register). */
+  clientCategories?: ClientCategory[];
+  setClientCategories?: (updater: ClientCategory[] | ((prev: ClientCategory[]) => ClientCategory[])) => void;
 }
+
+/** The "without a category" row of the category filter. Not a real category id. */
+const NO_CLIENT_CATEGORY = "__none__";
 
 
 interface FinancialReportViewProps {
@@ -367,7 +375,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   currencyCode,
   financialRecords = [],
   setFinancialRecords,
-  financialCategories = []
+  financialCategories = [],
+  clientCategories = [],
+  setClientCategories
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
   const currencySymbol = resolveCurrencySymbol(currencyCode, systemLanguage);
@@ -378,11 +388,18 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [filterCity, setFilterCity] = useState("");
   const [filterPM, setFilterPM] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  // Active clients or the archive — the two never share the list, so a
+  // restore is always one tab away, the way archived tasks work.
+  const [clientArchiveScope, setClientArchiveScope] = useState<"active" | "archived">("active");
+  // "" = every category, NO_CLIENT_CATEGORY = clients filed under none.
+  const [filterClientCategory, setFilterClientCategory] = useState("");
+  // The categories manager takes the list's place while it is open.
+  const [clientsSubView, setClientsSubView] = useState<"list" | "categories">("list");
 
   // Reset pagination to page 1 on filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedType, filterCity, filterPM]);
+  }, [searchQuery, selectedType, filterCity, filterPM, clientArchiveScope, filterClientCategory]);
   
   // State hook to toggle detail card edit mode
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -416,6 +433,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [newClientOwner, setNewClientOwner] = useState(projectManagers[0] || "");
   const [newClientValue, setNewClientValue] = useState("");
   const [newClientCategories, setNewClientCategories] = useState<string[]>([]);
+  const [newClientCategoryId, setNewClientCategoryId] = useState("");
 
   // Company registry type-ahead for the register drawer. The client profile
   // panel keeps its own instance, declared next to the profile form state.
@@ -740,6 +758,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       region: newClientType !== "person" ? newClientRegion.trim() : undefined,
       district: newClientType !== "person" ? newClientDistrict.trim() : undefined,
       categories: newClientCategories,
+      clientCategoryId: newClientCategoryId || null,
       timeline: [
         {
           id: `ev-${Date.now()}`,
@@ -783,6 +802,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     setNewClientOwner(projectManagers[0] || "");
     setNewClientValue("");
     setNewClientCategories([]);
+    setNewClientCategoryId("");
     setNewClientVatStatus("idle");
     setNewClientVatResult(null);
     
@@ -830,6 +850,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       district: string;
       timeline: TimelineEvent[];
       categories: string[];
+      clientCategoryId: string | null;
+      archived: boolean;
       aiSummary?: string;
       aiSummaryFingerprint?: string;
       financialSummary?: string;
@@ -877,6 +899,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           district: lead.district || "",
           timeline: lead.timeline || [],
           categories: [],
+          clientCategoryId: lead.clientCategoryId || null,
+          archived: !!lead.archived,
           aiSummary: lead.aiSummary || "",
           aiSummaryFingerprint: lead.aiSummaryFingerprint || "",
           financialSummary: lead.financialSummary || "",
@@ -887,6 +911,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           profilesMap[clientKey].aiSummary = lead.aiSummary;
           profilesMap[clientKey].aiSummaryFingerprint = lead.aiSummaryFingerprint;
         }
+        if (!profilesMap[clientKey].clientCategoryId && lead.clientCategoryId) {
+          profilesMap[clientKey].clientCategoryId = lead.clientCategoryId;
+        }
+        // Archived only while every lead of the profile is: a new deal under the
+        // same name brings the client back into the register on its own.
+        profilesMap[clientKey].archived = profilesMap[clientKey].archived && !!lead.archived;
         if (lead.financialSummary && !profilesMap[clientKey].financialSummary) {
           profilesMap[clientKey].financialSummary = lead.financialSummary;
         }
@@ -1130,6 +1160,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [profileRegion, setProfileRegion] = useState("");
   const [profileDistrict, setProfileDistrict] = useState("");
   const [profileCategories, setProfileCategories] = useState<string[]>([]);
+  const [profileClientCategoryId, setProfileClientCategoryId] = useState("");
 
   // The same registry autofill as the register drawer, on the client profile.
   const profileLookup = useCompanyLookup<CompanyLookupField>({
@@ -2024,6 +2055,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         setProfileRegion(activeClient.region || "");
         setProfileDistrict(activeClient.district || "");
         setProfileCategories(activeClient.categories || []);
+        setProfileClientCategoryId(activeClient.clientCategoryId || "");
         
         if (clientNameChanged) {
           setIsEditingProfile(false); // Reset to read-only by default on transition to a new client
@@ -2076,7 +2108,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           dissolutionDate: profileType !== "person" ? profileDissolutionDate.trim() : undefined,
           region: profileType !== "person" ? profileRegion.trim() : undefined,
           district: profileType !== "person" ? profileDistrict.trim() : undefined,
-          categories: profileCategories
+          categories: profileCategories,
+          clientCategoryId: profileClientCategoryId || null
         };
       }
       return lead;
@@ -2341,6 +2374,26 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     return Array.from(cities).sort();
   }, [clientProfiles]);
 
+  // Picking a main category also finds the clients filed under its subcategories.
+  const categoryFilterIds = useMemo(
+    () =>
+      filterClientCategory && filterClientCategory !== NO_CLIENT_CATEGORY
+        ? clientCategoryFilterIds(clientCategories, filterClientCategory)
+        : null,
+    [clientCategories, filterClientCategory]
+  );
+
+  const archivedClientsCount = useMemo(() => clientProfiles.filter(c => c.archived).length, [clientProfiles]);
+
+  // Clients filed directly under each category, for the counts in the manager.
+  const clientCountsByCategory = useMemo(() => {
+    const counts: Record<string, number> = {};
+    clientProfiles.forEach(c => {
+      if (c.clientCategoryId) counts[c.clientCategoryId] = (counts[c.clientCategoryId] || 0) + 1;
+    });
+    return counts;
+  }, [clientProfiles]);
+
   // Filter clients list
   const processedClients = useMemo(() => {
     return clientProfiles
@@ -2357,9 +2410,20 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         
         const matchesPM = filterPM === "" || client.owner.toLowerCase() === filterPM.toLowerCase();
 
-        return matchesSearch && matchesType && matchesCity && matchesPM;
+        const matchesArchive = clientArchiveScope === "archived" ? client.archived : !client.archived;
+
+        // A category id that no longer exists counts as no category.
+        const hasKnownCategory = !!client.clientCategoryId && clientCategories.some(c => c.id === client.clientCategoryId);
+        const matchesCategory =
+          filterClientCategory === ""
+            ? true
+            : filterClientCategory === NO_CLIENT_CATEGORY
+              ? !hasKnownCategory
+              : !!client.clientCategoryId && !!categoryFilterIds?.has(client.clientCategoryId);
+
+        return matchesSearch && matchesType && matchesCity && matchesPM && matchesArchive && matchesCategory;
       });
-  }, [clientProfiles, searchQuery, selectedType, filterCity, filterPM]);
+  }, [clientProfiles, searchQuery, selectedType, filterCity, filterPM, clientArchiveScope, filterClientCategory, categoryFilterIds, clientCategories]);
 
   // Paginated subset of clients
   const paginatedClients = useMemo(() => {
@@ -2368,6 +2432,35 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   }, [processedClients, currentPage]);
 
 
+
+  // Archive or restore a client profile. A profile is every lead sharing the
+  // name, so all of them change together — the same rule the profile editor uses.
+  const setClientArchived = (clientName: string, archived: boolean) => {
+    const key = clientName.trim().toLowerCase();
+    setLeads(prev => prev.map(lead =>
+      lead.name.trim().toLowerCase() === key && !!lead.archived !== archived ? { ...lead, archived } : lead
+    ));
+    (window as any).showToast?.(
+      archived
+        ? t(
+            "Client archived — hidden from the client list. Find it under Archived.",
+            "Klient archivovaný — zmizne zo zoznamu klientov. Nájdete ho v Archíve.",
+            "Ügyfél archiválva — eltűnik az ügyféllistáról. Az Archívumban találja."
+          )
+        : t("Client restored — back in the client list.", "Klient obnovený — je späť v zozname klientov.", "Ügyfél visszaállítva — újra az ügyféllistán.")
+    );
+  };
+
+  // Deleted categories take their clients with them only as far as the filing:
+  // the clients stay, uncategorised.
+  const handleClientCategoriesDeleted = (ids: Set<string>) => {
+    if (filterClientCategory && ids.has(filterClientCategory)) setFilterClientCategory("");
+    setLeads(prev =>
+      prev.some(l => l.clientCategoryId && ids.has(l.clientCategoryId))
+        ? prev.map(l => (l.clientCategoryId && ids.has(l.clientCategoryId) ? { ...l, clientCategoryId: null } : l))
+        : prev
+    );
+  };
 
   const getInitials = (name: string) => {
     return name
@@ -2470,12 +2563,28 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
         {/* Back header */}
         <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => { window.location.hash = "clients"; }}
             className="px-4.5 py-3 rounded-2xl bg-white border-2 border-slate-300 text-slate-700 hover:text-slate-950 hover:border-slate-800 transition-all text-xs font-extrabold uppercase tracking-wider flex items-center gap-2 shadow-sm"
           >
             <ArrowLeft className="h-4.5 w-4.5 stroke-[2.5]" /> {getTranslation(systemLanguage, "common.back_to_clients")}
           </button>
+          <button
+            type="button"
+            onClick={() => setClientArchived(activeClient.name, !activeClient.archived)}
+            className={`px-4 py-3 rounded-2xl border-2 transition-all text-xs font-extrabold uppercase tracking-wider flex items-center gap-2 shadow-sm active:scale-95 cursor-pointer ${
+              activeClient.archived
+                ? "bg-emerald-600 border-emerald-700 text-white hover:bg-emerald-700"
+                : "bg-white border-slate-200 text-slate-500 hover:text-slate-900 hover:border-slate-400"
+            }`}
+          >
+            {activeClient.archived ? <ArchiveRestore className="h-4 w-4 stroke-[2.5]" /> : <Archive className="h-4 w-4 stroke-[2.5]" />}
+            {activeClient.archived
+              ? t("Restore client", "Obnoviť klienta", "Ügyfél visszaállítása")
+              : t("Archive client", "Archivovať klienta", "Ügyfél archiválása")}
+          </button>
+          </div>
 
           <div className="flex items-center gap-3">
             {/* AI Summary Purple Card */}
@@ -2514,6 +2623,17 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             </span>
           </div>
         </div>
+
+        {activeClient.archived && (
+          <div className="flex items-center gap-2.5 px-5 py-3 rounded-2xl border-2 border-amber-300 bg-amber-50 text-amber-800 text-xs font-bold animate-in fade-in slide-in-from-top-2 duration-200">
+            <Archive className="h-4 w-4 shrink-0 stroke-[2.5]" />
+            {t(
+              "This client is archived — it is hidden from the client list until you restore it.",
+              "Tento klient je archivovaný — v zozname klientov sa nezobrazuje, kým ho neobnovíte.",
+              "Ez az ügyfél archiválva van — visszaállításig nem jelenik meg az ügyféllistán."
+            )}
+          </div>
+        )}
 
         {/* Master Dual-Panel Dashboard Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -3014,10 +3134,31 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 )}
               </div>
 
-              {/* Client Categories */}
+              {/* Customer category (Clients → Categories) */}
+              <div className="border-t-2 border-slate-100 pt-4 space-y-1 text-left">
+                <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                  <Layers className="h-3 w-3" /> {t("Client Category", "Kategória klienta", "Ügyfélkategória")}
+                </label>
+                {isEditingProfile ? (
+                  <ClientCategorySelect
+                    value={profileClientCategoryId}
+                    onChange={setProfileClientCategoryId}
+                    categories={clientCategories}
+                    t={t}
+                  />
+                ) : clientCategoryPath(clientCategories, profileClientCategoryId).length > 0 ? (
+                  <div className="pt-1">
+                    <ClientCategoryBadge categories={clientCategories} categoryId={profileClientCategoryId} className="text-[10px]" />
+                  </div>
+                ) : (
+                  <span className="block pt-1 text-[10px] text-slate-400 italic">{t("None", "Žiadne", "Nincs")}</span>
+                )}
+              </div>
+
+              {/* Interested categories (lead interest, set in Settings) */}
               <div className="border-t-2 border-slate-100 pt-4 space-y-2 text-left">
                 <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                  📁 {systemLanguage === "sk" ? "Kategórie Klienta" : systemLanguage === "hu" ? "Ügyfél kategóriák" : "Client Categories"}
+                  📁 {systemLanguage === "sk" ? "Zaujímavé kategórie" : systemLanguage === "hu" ? "Érdeklődési kategóriák" : "Interested Categories"}
                 </label>
                 {isEditingProfile ? (
                   <div className="grid grid-cols-2 gap-2 bg-emerald-50/5 border border-slate-200/60 p-3 rounded-2xl">
@@ -4507,12 +4648,28 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             <SlidersHorizontal className="h-4.5 w-4.5 stroke-[2.5]" />
           </button>
 
+          {/* Customer categories — the manager takes the list's place while open. */}
+          <button
+            type="button"
+            onClick={() => setClientsSubView(v => (v === "categories" ? "list" : "categories"))}
+            aria-pressed={clientsSubView === "categories"}
+            className={`w-full sm:w-auto px-4 py-3 rounded-2xl border-2 transition-all flex items-center justify-center gap-2 shadow-sm shrink-0 active:scale-95 text-[11px] font-black uppercase tracking-wider cursor-pointer ${
+              clientsSubView === "categories"
+                ? "bg-emerald-700 text-white border-emerald-800 shadow-md shadow-emerald-700/25"
+                : "bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+            }`}
+            title={t("Manage client categories", "Spravovať kategórie klientov", "Ügyfélkategóriák kezelése")}
+          >
+            <Layers className="h-4.5 w-4.5 stroke-[2.5]" />
+            {t("Categories", "Kategórie", "Kategóriák")}
+          </button>
+
         </div>
 
         {/* Collapsible Filter Panel (Collapses smoothly using modern CSS grid/height transitions) */}
         <div className={`grid transition-all duration-350 ease-in-out ${showFilterDrawer ? "grid-rows-[1fr] opacity-100 border-t border-slate-100 pt-4" : "grid-rows-[0fr] opacity-0 invisible overflow-hidden pointer-events-none"}`} aria-hidden={!showFilterDrawer}>
           <div className="overflow-hidden">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pb-1">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pb-1">
               
               {/* City Location Filter */}
               <div className="space-y-1.5">
@@ -4542,14 +4699,63 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 />
               </div>
 
+              {/* Customer category — a main category also matches its subcategories */}
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider pl-0.5">{t("Filter by Client Category", "Filtrovať podľa kategórie klienta", "Szűrés ügyfélkategória szerint")}</label>
+                <ClientCategorySelect
+                  value={filterClientCategory}
+                  onChange={setFilterClientCategory}
+                  categories={clientCategories}
+                  t={t}
+                  leadingOptions={[
+                    { value: "", label: t("All categories", "Všetky kategórie", "Minden kategória") },
+                    { value: NO_CLIENT_CATEGORY, label: t("Without a category", "Bez kategórie", "Kategória nélkül") },
+                  ]}
+                />
+              </div>
+
             </div>
           </div>
         </div>
 
       </div>
 
+      {clientsSubView === "categories" ? (
+        <ClientCategoryManager
+          categories={clientCategories}
+          setCategories={(updater) => setClientCategories?.(updater)}
+          onCategoriesDeleted={handleClientCategoriesDeleted}
+          clientCounts={clientCountsByCategory}
+          t={t}
+        />
+      ) : (
+        /* Active clients or the archive */
+        <div className="flex items-center gap-1 p-1 w-fit rounded-2xl bg-slate-100 border border-slate-200 select-none">
+          {([
+            { scope: "active" as const, Icon: Users, label: t("Active clients", "Aktívni klienti", "Aktív ügyfelek"), count: clientProfiles.length - archivedClientsCount },
+            { scope: "archived" as const, Icon: Archive, label: t("Archived", "Archivovaní", "Archivált"), count: archivedClientsCount },
+          ]).map(({ scope, Icon, label, count }) => (
+            <button
+              key={scope}
+              type="button"
+              aria-pressed={clientArchiveScope === scope}
+              onClick={() => setClientArchiveScope(scope)}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-200 active:scale-95 cursor-pointer ${
+                clientArchiveScope === scope ? "bg-white text-emerald-700 shadow-sm" : "text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5 stroke-[2.5]" />
+              {label}
+              <span className={`px-1.5 py-0.5 rounded-full text-[9px] tabular-nums ${clientArchiveScope === scope ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-500"}`}>
+                {count}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* 3. Clients Data Grid Table */}
-      <div className="glass-panel rounded-[28px] border-2 border-emerald-400 bg-white shadow-xl overflow-hidden">
+      <div className={`glass-panel rounded-[28px] border-2 border-emerald-400 bg-white shadow-xl overflow-hidden ${clientsSubView === "categories" ? "hidden" : ""}`}>
         <div className="overflow-x-auto lg:overflow-x-auto scrollbar-thin">
           <table className="w-full border-collapse text-left block lg:table">
             <thead className="hidden lg:table-header-group">
@@ -4561,16 +4767,23 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "leads.table.type")}</th>
                 <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "leads.table.pm")}</th>
                 <th className="sticky top-0 bg-white z-10 py-4 px-4 text-center border-b-2 border-slate-100">{getTranslation(systemLanguage, "clients.card.leads_count")}</th>
-                <th className="sticky top-0 bg-white z-10 py-4 px-6 rounded-tr-[24px] text-right border-b-2 border-slate-100">{getTranslation(systemLanguage, "clients.card.total_value")}</th>
+                <th className="sticky top-0 bg-white z-10 py-4 px-6 text-right border-b-2 border-slate-100">{getTranslation(systemLanguage, "clients.card.total_value")}</th>
+                <th className="sticky top-0 bg-white z-10 py-4 px-4 rounded-tr-[24px] border-b-2 border-slate-100 w-12">
+                  <span className="sr-only">{t("Actions", "Akcie", "Műveletek")}</span>
+                </th>
               </tr>
             </thead>
 
             <tbody className="divide-y-0 lg:divide-y lg:divide-emerald-100 text-xs block lg:table-row-group">
               {processedClients.length === 0 ? (
                 <tr className="block lg:table-row">
-                  <td colSpan={8} className="py-16 px-6 text-center text-slate-400 block lg:table-cell w-full lg:w-auto">
+                  <td colSpan={9} className="py-16 px-6 text-center text-slate-400 block lg:table-cell w-full lg:w-auto">
                     <div className="text-2xl mb-2 animate-bounce">👥</div>
-                    <div className="font-black text-slate-700 uppercase tracking-wider">{t("No registered clients found", "Nenašli sa žiadni registrovaní klienti", "Nem található regisztrált ügyfél")}</div>
+                    <div className="font-black text-slate-700 uppercase tracking-wider">
+                      {clientArchiveScope === "archived"
+                        ? t("No archived clients found", "Nenašli sa žiadni archivovaní klienti", "Nem található archivált ügyfél")
+                        : t("No registered clients found", "Nenašli sa žiadni registrovaní klienti", "Nem található regisztrált ügyfél")}
+                    </div>
                     <div className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider mt-0.5">{t("We aggregate clients automatically from your leads database.", "Klientov automaticky agregujeme z vašej databázy leadov.", "Az ügyfeleket automatikusan összesítjük a lead-adatbázisából.")}</div>
                   </td>
                 </tr>
@@ -4594,6 +4807,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                             <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider line-clamp-1 mt-0.5">
                               {client.categories.join(", ")}
                             </span>
+                          )}
+                          {clientCategoryPath(clientCategories, client.clientCategoryId).length > 0 && (
+                            <ClientCategoryBadge categories={clientCategories} categoryId={client.clientCategoryId} className="mt-1 w-fit" />
                           )}
                         </div>
                       </div>
@@ -4677,6 +4893,22 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           {money(client.totalValue, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                       </div>
+                    </td>
+
+                    {/* Archive / restore */}
+                    <td className="inline-flex items-center lg:table-cell py-1.5 lg:py-3.5 px-0 lg:px-4 lg:text-right">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setClientArchived(client.name, !client.archived);
+                        }}
+                        title={client.archived ? t("Restore client", "Obnoviť klienta", "Ügyfél visszaállítása") : t("Archive client", "Archivovať klienta", "Ügyfél archiválása")}
+                        aria-label={client.archived ? t("Restore client", "Obnoviť klienta", "Ügyfél visszaállítása") : t("Archive client", "Archivovať klienta", "Ügyfél archiválása")}
+                        className="p-2 rounded-xl text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 active:scale-90 transition-all duration-150 cursor-pointer"
+                      >
+                        {client.archived ? <ArchiveRestore className="h-4 w-4 stroke-[2.5]" /> : <Archive className="h-4 w-4 stroke-[2.5]" />}
+                      </button>
                     </td>
 
                   </tr>
@@ -5072,6 +5304,19 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold"
                     />
                   </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
+                    {t("Client Category", "Kategória klienta", "Ügyfélkategória")}
+                  </label>
+                  <ClientCategorySelect
+                    value={newClientCategoryId}
+                    onChange={setNewClientCategoryId}
+                    categories={clientCategories}
+                    t={t}
+                    size="sm"
+                  />
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

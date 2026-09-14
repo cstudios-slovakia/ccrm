@@ -78,6 +78,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `metadata_json` TEXT NULL COMMENT 'Plugin support',
               `vat_validation_result` TEXT NULL,
               `follow_ups` TEXT NULL COMMENT 'JSON map: {stateKey: YYYY-MM-DD} of completed follow-ups',
+              `client_category_id` VARCHAR(50) NULL COMMENT 'client_categories.id - not a foreign key, the app clears it when a category is deleted',
+              `archived` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Archived from the client register',
               `created_at` DATE NOT NULL,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               PRIMARY KEY (`id`),
@@ -583,6 +585,21 @@ if (!function_exists('ccrm_schema_statements')) {
               INDEX idx_fc_level (`level`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
+            // Client Categories (3-level customer category tree, the finance tree's shape without a type)
+            "CREATE TABLE IF NOT EXISTS `client_categories` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `name` VARCHAR(150) NOT NULL,
+              `parent_id` VARCHAR(50) NULL,
+              `level` INT NOT NULL DEFAULT 1,
+              `sort_order` INT NOT NULL DEFAULT 0,
+              `color` VARCHAR(30) NULL,
+              `icon` VARCHAR(50) NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX idx_cc_parent (`parent_id`),
+              INDEX idx_cc_level (`level`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
             // Financial Records (Incomes, Invoices, Expenses, Recurring and Single movements)
             "CREATE TABLE IF NOT EXISTS `financial_records` (
               `id` VARCHAR(50) NOT NULL PRIMARY KEY,
@@ -876,6 +893,13 @@ if (!function_exists('ccrm_schema_statements')) {
         }
         if (!ccrm_column_exists($pdo, 'leads', 'traffic_origin_detail')) {
             $pdo->exec("ALTER TABLE `leads` ADD COLUMN `traffic_origin_detail` VARCHAR(255) NULL AFTER `traffic_origin`");
+        }
+        // 1.9.32: customer categories and archiving in the client register.
+        if (!ccrm_column_exists($pdo, 'leads', 'client_category_id')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `client_category_id` VARCHAR(50) NULL");
+        }
+        if (!ccrm_column_exists($pdo, 'leads', 'archived')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `archived` TINYINT(1) NOT NULL DEFAULT 0");
         }
         // Business-document timeline events (order, proforma invoice, advance
         // receipt, invoice, delivery note). MySQL silently truncates an unknown

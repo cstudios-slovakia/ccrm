@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import * as Icons from "lucide-react";
-import { Plus, Trash2, Settings, Search, Users, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, CalendarClock, Flag } from "lucide-react";
+import { Plus, Trash2, Settings, Search, Users, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, CalendarClock, Flag, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import type { Project, ProjectAutoCreateSettings, ProjectStatus, ProjectType, Lead, UserProfile, FinancialRecord, FinancialCategory } from "../types";
 import { ProjectDetailsView } from "./ProjectDetailsView";
 import { ProjectSettings } from "./ProjectSettings";
@@ -22,6 +22,8 @@ import {
 import type { ProjectDeadlineStatus } from "../utils/projects";
 import { todayLocal, formatDateLocalized } from "../utils/localTime";
 import { useUserPref } from "../utils/userPrefs";
+import { nextProjectSort, normalizeProjectSort, sortProjects } from "../utils/projectSort";
+import type { ProjectSort, ProjectSortKey } from "../utils/projectSort";
 
 /*
   The summary strip's chips. Each tone is written out in full because Tailwind
@@ -143,6 +145,13 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   /* Roomy cards or a dense table. Kept in the user's DB-backed preferences, so
      the choice follows them to their next device like the leads list's does. */
   const [viewMode, setViewMode] = useUserPref("projectsViewMode");
+
+  /* How the list is ordered. The table's column headers and the sort menu in the
+     filter bar write the same DB-backed preference, so cards and table agree and
+     the choice follows the user to their next device. */
+  const [storedSort, setStoredSort] = useUserPref("projectsSort");
+  const sort = normalizeProjectSort(storedSort);
+  const setSort = (next: ProjectSort) => setStoredSort(next.key === "default" ? null : next);
 
   /* Set when someone picks "New project type" from the create dropdown; handed
      to ProjectSettings, which opens its create form and hands it straight back. */
@@ -327,6 +336,37 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     const sum = project.gantt.reduce((acc, row) => acc + (row.progress || 0), 0);
     return Math.round(sum / project.gantt.length);
   };
+
+  /* The filtered list in the chosen order. A project with no value for the
+     sorted column (no deadline, no roadmap) always goes last. */
+  const sortedProjects = useMemo(() => {
+    const statusOrder = projectStatusOrder() as string[];
+    return sortProjects(filteredProjects, sort, p => {
+      const pType = projectTypes.find(pt => pt.id === p.projectTypeId);
+      const rank = statusOrder.indexOf(p.status);
+      return {
+        name: projectDisplayName(p, leads, ""),
+        client: leads.find(l => l.id === p.leadId)?.name || "",
+        type: pType?.name || "",
+        managers: (p.managers || []).join(", "),
+        deadline: evaluateProjectDeadline(p, pType, today)?.deadline ?? null,
+        progress: pType?.hasGantt && p.gantt && p.gantt.length > 0 ? calculateProgress(p) : null,
+        statusRank: rank === -1 ? statusOrder.length : rank,
+      };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredProjects, sort.key, sort.direction, projectTypes, leads, today]);
+
+  const sortOptions: { value: ProjectSortKey; label: string }[] = [
+    { value: "default", label: t("Default order", "Predvolené poradie", "Alapértelmezett sorrend") },
+    { value: "name", label: t("Project name", "Názov projektu", "Projekt neve") },
+    { value: "client", label: t("Client", "Klient", "Ügyfél") },
+    { value: "type", label: t("Type", "Typ", "Típus") },
+    { value: "managers", label: t("Managers", "Manažéri", "Menedzserek") },
+    { value: "deadline", label: t("Deadline", "Termín", "Határidő") },
+    { value: "progress", label: t("Progress", "Postup", "Haladás") },
+    { value: "status", label: t("Status", "Stav", "Állapot") },
+  ];
 
   const renderIcon = (iconName: string, className?: string) => {
     const IconComponent = (Icons as any)[iconName];
@@ -677,6 +717,31 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               />
             </div>
 
+            {/* Order — the only way to sort the cards; the table headers write
+                the same preference. */}
+            <div className="flex items-center gap-1.5 w-full sm:w-auto shrink-0">
+              <div className="flex-1 sm:w-44">
+                <CustomSelect
+                  className="h-10"
+                  icon={<ArrowUpDown className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
+                  value={sort.key}
+                  onChange={(v) => setSort({ key: v as ProjectSortKey, direction: v === sort.key ? sort.direction : "asc" })}
+                  options={sortOptions}
+                />
+              </div>
+              {sort.key !== "default" && (
+                <button
+                  type="button"
+                  onClick={() => setSort({ ...sort, direction: sort.direction === "asc" ? "desc" : "asc" })}
+                  title={sort.direction === "asc" ? t("Ascending", "Vzostupne", "Növekvő") : t("Descending", "Zostupne", "Csökkenő")}
+                  aria-label={sort.direction === "asc" ? t("Ascending", "Vzostupne", "Növekvő") : t("Descending", "Zostupne", "Csökkenő")}
+                  className="h-10 w-10 shrink-0 flex items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-indigo-600 hover:border-indigo-200 active:scale-95 transition-all cursor-pointer animate-in fade-in zoom-in-95 duration-150"
+                >
+                  {sort.direction === "asc" ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
+                </button>
+              )}
+            </div>
+
             {/* Cards or table. */}
             <div className="sm:ml-auto flex items-center gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200 select-none shrink-0">
               {([
@@ -738,24 +803,46 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="border-b border-slate-200 bg-slate-50/70">
-                      {[
-                        t("Project", "Projekt", "Projekt"),
-                        t("Type", "Typ", "Típus"),
-                        t("Client", "Klient", "Ügyfél"),
-                        t("Managers", "Manažéri", "Menedzserek"),
-                        t("Deadline", "Termín", "Határidő"),
-                        t("Progress", "Postup", "Haladás"),
-                        t("Status", "Stav", "Állapot"),
-                      ].map(label => (
-                        <th key={label} className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">
-                          {label}
-                        </th>
-                      ))}
+                      {([
+                        { key: "name", label: t("Project", "Projekt", "Projekt") },
+                        { key: "type", label: t("Type", "Typ", "Típus") },
+                        { key: "client", label: t("Client", "Klient", "Ügyfél") },
+                        { key: "managers", label: t("Managers", "Manažéri", "Menedzserek") },
+                        { key: "deadline", label: t("Deadline", "Termín", "Határidő") },
+                        { key: "progress", label: t("Progress", "Postup", "Haladás") },
+                        { key: "status", label: t("Status", "Stav", "Állapot") },
+                      ] as { key: ProjectSortKey; label: string }[]).map(({ key, label }) => {
+                        // Click to sort; again to flip; a third time returns to the default order.
+                        const active = sort.key === key;
+                        const SortIcon = !active ? ArrowUpDown : sort.direction === "asc" ? ArrowUp : ArrowDown;
+                        return (
+                          <th
+                            key={key}
+                            aria-sort={active ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}
+                            className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => setSort(nextProjectSort(sort, key))}
+                              className={`group/sort inline-flex items-center gap-1 uppercase tracking-widest font-black cursor-pointer transition-colors duration-150 ${
+                                active ? "text-indigo-600" : "hover:text-slate-700"
+                              }`}
+                            >
+                              {label}
+                              <SortIcon
+                                className={`h-3 w-3 shrink-0 transition-opacity duration-150 ${
+                                  active ? "opacity-100" : "opacity-30 group-hover/sort:opacity-80"
+                                }`}
+                              />
+                            </button>
+                          </th>
+                        );
+                      })}
                       <th className="px-4 py-3 w-10" />
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredProjects.map(p => {
+                    {sortedProjects.map(p => {
                       const pType = projectTypes.find(t => t.id === p.projectTypeId);
                       if (!pType) return null;
 
@@ -841,7 +928,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
-              {filteredProjects.map(p => {
+              {sortedProjects.map(p => {
                 const pType = projectTypes.find(t => t.id === p.projectTypeId);
                 if (!pType) return null;
 

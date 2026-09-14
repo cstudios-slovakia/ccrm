@@ -44,6 +44,12 @@ export interface UserPrefs {
    * than a stored default quietly disagreeing with the toggle.
    */
   projectsViewMode: "grid" | "list";
+  /**
+   * Projects screen: which column the list is ordered by, or null for the
+   * stored order. Loosely typed like themeMode; ProjectsView validates it with
+   * normalizeProjectSort() from utils/projectSort.ts.
+   */
+  projectsSort: { key: string; direction: string } | null;
   /** Leads screen: grouping / sorting. */
   leadsOrderingMode: "state" | "pm" | "created_newest" | "created_oldest" | "size" | "rating";
   /**
@@ -76,6 +82,7 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   errorSidebarEnabled: false,
   leadsViewMode: "list",
   projectsViewMode: "list",
+  projectsSort: null,
   leadsCompactMode: false,
   leadsOrderingMode: "state",
   leadsVisibleStates: null,

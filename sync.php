@@ -74,7 +74,7 @@ function fetch_system_settings($pdo) {
 // the multi-MB snapshot, and it is immune to no-op re-saves (a sync POST that
 // writes identical rows leaves the checksum untouched).
 function ccrm_compute_data_version($pdo) {
-    $candidates = ['leads', 'timeline_events', 'lead_categories', 'tasks', 'task_assignees', 'users', 'roles', 'meeting_notes', 'meeting_tasks', 'unified_entries', 'system_settings', 'project_types', 'projects', 'project_managers', 'warehouses', 'suppliers', 'warehouse_items', 'warehouse_stock', 'warehouse_batches', 'warehouse_movements', 'warehouse_movement_items', 'financial_categories', 'financial_records', 'invoices_offers', 'invoice_offer_items', 'ai_custom_templates'];
+    $candidates = ['leads', 'timeline_events', 'lead_categories', 'tasks', 'task_assignees', 'users', 'roles', 'meeting_notes', 'meeting_tasks', 'unified_entries', 'system_settings', 'project_types', 'projects', 'project_managers', 'warehouses', 'suppliers', 'warehouse_items', 'warehouse_stock', 'warehouse_batches', 'warehouse_movements', 'warehouse_movement_items', 'financial_categories', 'client_categories', 'financial_records', 'invoices_offers', 'invoice_offer_items', 'ai_custom_templates'];
     try {
         $existing = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
         $existingSet = array_flip($existing);
@@ -191,6 +191,8 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
         'dissolution_date' => $inc['dissolutionDate'] ?? null,
         'region' => $inc['region'] ?? null,
         'district' => $inc['district'] ?? null,
+        'client_category_id' => $inc['clientCategoryId'] ?? null,
+        'archived' => !empty($inc['archived']) ? 1 : 0,
         'follow_ups' => (isset($inc['followUps']) && !empty($inc['followUps'])) ? $inc['followUps'] : null,
         // 'financial_summary' is deliberately excluded: it is server-owned, so a
         // lead whose only difference is the server-generated report still counts
@@ -203,6 +205,8 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
         if ($col === 'value') {
             if (abs(floatval($val) - floatval($dbVal)) > 0.001) return false;
         } elseif ($col === 'rating') {
+            if (intval($val) !== intval($dbVal)) return false;
+        } elseif ($col === 'archived') {
             if (intval($val) !== intval($dbVal)) return false;
         } elseif ($col === 'follow_ups') {
             // Compare the per-state follow-up map order-independently. $val is the
@@ -675,6 +679,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'region' => $row['region'] ?? '',
             'district' => $row['district'] ?? '',
             'financialSummary' => $row['financial_summary'] ?? '',
+            'clientCategoryId' => $row['client_category_id'] ?? null,
+            'archived' => intval($row['archived'] ?? 0) === 1,
             'followUps' => (isset($row['follow_ups']) && $row['follow_ups'] !== '' && $row['follow_ups'] !== null) ? json_decode($row['follow_ups'], true) : (object)[]
         ];
     }
@@ -1281,6 +1287,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
     // 3.8. Fetch Financial Categories and Records, Invoices & Price Offers
     $financialCategories = [];
+    $clientCategories = [];
     $financialRecords = [];
     $invoicesOffers = [];
     $aiCustomTemplates = [];
@@ -1291,6 +1298,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 $financialCategories[] = [
                     'id' => $row['id'],
                     'type' => $row['type'],
+                    'name' => $row['name'],
+                    'parentId' => $row['parent_id'],
+                    'level' => (int)($row['level'] ?? 1),
+                    'sortOrder' => (int)($row['sort_order'] ?? 0),
+                    'color' => $row['color'],
+                    'icon' => $row['icon'],
+                    'createdAt' => $row['created_at'],
+                    'updatedAt' => $row['updated_at'],
+                ];
+            }
+        }
+
+        // Customer categories (Clients → Categories): the finance tree's shape
+        // without the income/expense type.
+        if ($pdo->query("SHOW TABLES LIKE 'client_categories'")->rowCount() > 0) {
+            $ccStmt = $pdo->query("SELECT * FROM `client_categories` ORDER BY `level` ASC, `sort_order` ASC, `name` ASC");
+            while ($row = $ccStmt->fetch()) {
+                $clientCategories[] = [
+                    'id' => $row['id'],
                     'name' => $row['name'],
                     'parentId' => $row['parent_id'],
                     'level' => (int)($row['level'] ?? 1),
@@ -1497,6 +1523,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'warehouseBatches' => $warehouseBatches,
         'warehouseMovements' => $warehouseMovements,
         'financialCategories' => $financialCategories,
+        'clientCategories' => $clientCategories,
         'financialRecords' => $financialRecords,
         'invoicesOffers' => $invoicesOffers,
         'aiCustomTemplates' => $aiCustomTemplates,
@@ -2437,13 +2464,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               `establishment_date`, `legal_form`, `sk_nace`, `organization_size`, `ownership_type`, `data_source`, `dissolution_date`, `region`, `district`, `financial_summary`,
               `vat_validation_result`,
               `created_at`,
-              `follow_ups`
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              `follow_ups`,
+              `client_category_id`, `archived`
+            ) VALUES (?, ?, ?, ?,?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
               `name` = VALUES(`name`), `city` = VALUES(`city`), `client_type` = VALUES(`client_type`), `status` = VALUES(`status`), `source` = VALUES(`source`), `owner` = VALUES(`owner`), `value` = VALUES(`value`), `rating` = VALUES(`rating`), `phone` = VALUES(`phone`), `email` = VALUES(`email`), `company_id` = VALUES(`company_id`), `tax_id` = VALUES(`tax_id`), `vat_id` = VALUES(`vat_id`), `contact_person` = VALUES(`contact_person`), `website` = VALUES(`website`), `street` = VALUES(`street`), `postal_code` = VALUES(`postal_code`), `country` = VALUES(`country`), `ai_summary` = VALUES(`ai_summary`), `ai_summary_fingerprint` = VALUES(`ai_summary_fingerprint`), `interest_note` = VALUES(`interest_note`), `referral_lead_id` = VALUES(`referral_lead_id`),
               `establishment_date` = VALUES(`establishment_date`), `legal_form` = VALUES(`legal_form`), `sk_nace` = VALUES(`sk_nace`), `organization_size` = VALUES(`organization_size`), `ownership_type` = VALUES(`ownership_type`), `data_source` = VALUES(`data_source`), `dissolution_date` = VALUES(`dissolution_date`), `region` = VALUES(`region`), `district` = VALUES(`district`),
               `vat_validation_result` = VALUES(`vat_validation_result`),
-              `follow_ups` = VALUES(`follow_ups`)");
+              `follow_ups` = VALUES(`follow_ups`),
+              `client_category_id` = VALUES(`client_category_id`), `archived` = VALUES(`archived`)");
               // NOTE: `financial_summary` is intentionally NOT updated here. It is
               // server-owned — generated by api/generate_report.php in the
               // background and written directly to the row. Letting the client's
@@ -2536,7 +2565,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $l['financialSummary'] ?? null,
                     isset($l['vatValidationResult']) ? json_encode($l['vatValidationResult']) : null,
                     ccrm_date_only($l['createdAt'] ?? null) ?? date('Y-m-d'),
-                    (isset($l['followUps']) && !empty($l['followUps'])) ? json_encode($l['followUps']) : null
+                    (isset($l['followUps']) && !empty($l['followUps'])) ? json_encode($l['followUps']) : null,
+                    !empty($l['clientCategoryId']) ? (string)$l['clientCategoryId'] : null,
+                    !empty($l['archived']) ? 1 : 0
                 ]);
 
                 // Automatic project creation (Projects → Settings). Runs before
@@ -3399,6 +3430,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $fcToDelete = $isDeltaSync ? $deletionsFor('financialCategories', $existingFcIds) : array_diff($existingFcIds, $processedFcIds);
             if (!empty($fcToDelete)) {
                 ccrm_delete_omitted($pdo, 'financial_categories', $fcToDelete, null);
+            }
+        }
+
+        // 4.13b. Synchronize Client Categories — same rules as the finance tree
+        // above, minus the income/expense type. Deleting a category does not
+        // touch the clients filed under it here: the app clears their
+        // clientCategoryId itself and pushes those leads alongside.
+        if (isset($payload['clientCategories']) && is_array($payload['clientCategories'])) {
+            $stmt = $pdo->query("SELECT `id` FROM `client_categories`");
+            $existingCcIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $processedCcIds = [];
+
+            $insCc = $pdo->prepare("INSERT INTO `client_categories` (`id`, `name`, `parent_id`, `level`, `sort_order`, `color`, `icon`) VALUES (?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `parent_id` = VALUES(`parent_id`), `level` = VALUES(`level`), `sort_order` = VALUES(`sort_order`), `color` = VALUES(`color`), `icon` = VALUES(`icon`)");
+
+            foreach ($payload['clientCategories'] as $cc) {
+                if (!is_array($cc) || empty($cc['id'])) {
+                    continue;
+                }
+                $insCc->execute([
+                    (string)$cc['id'],
+                    $cc['name'] ?? '',
+                    !empty($cc['parentId']) ? $cc['parentId'] : null,
+                    max(1, min(3, (int)($cc['level'] ?? 1))),
+                    (int)($cc['sortOrder'] ?? 0),
+                    $cc['color'] ?? null,
+                    $cc['icon'] ?? null
+                ]);
+                $processedCcIds[] = (string)$cc['id'];
+            }
+
+            $ccToDelete = $isDeltaSync ? $deletionsFor('clientCategories', $existingCcIds) : array_diff($existingCcIds, $processedCcIds);
+            if (!empty($ccToDelete)) {
+                ccrm_delete_omitted($pdo, 'client_categories', $ccToDelete, null);
             }
         }
 
