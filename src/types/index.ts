@@ -555,6 +555,11 @@ export interface Project {
   createdAt?: string | null;
   timeline?: ProjectTimelineEvent[];
   gantt?: ProjectGanttRow[];
+  /**
+   * What the project may spend, in the default currency — the ceiling its
+   * direct costs are measured against on the finance tab. Null while unset.
+   */
+  budget?: number | null;
 }
 
 // Warehouse & Inventory Management Types

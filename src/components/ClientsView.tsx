@@ -4306,7 +4306,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md shadow-emerald-500/20 active:scale-95 cursor-pointer shrink-0"
                     >
                       <Plus className="h-4 w-4" />
-                      <span>{t("+ New Invoice", "+ Nová faktúra", "+ Új számla")}</span>
+                      <span>{t("New Invoice", "Nová faktúra", "Új számla")}</span>
                     </button>
                   </div>
 
@@ -4346,9 +4346,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       <button
                         type="button"
                         onClick={() => handleOpenClientInvoiceModal()}
-                        className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold shadow-sm"
+                        className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
                       >
-                        {t("+ Issue First Invoice", "+ Vystaviť prvú faktúru", "+ Első számla kiállítása")}
+                        <Plus className="h-3.5 w-3.5" />
+                        {t("Issue First Invoice", "Vystaviť prvú faktúru", "Első számla kiállítása")}
                       </button>
                     </div>
                   ) : (

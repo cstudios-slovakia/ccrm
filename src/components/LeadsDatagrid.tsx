@@ -5996,13 +5996,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                                 <button
                                     type="submit"
-                                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-black text-[10px] uppercase tracking-wider shadow hover:shadow-violet-600/10 hover:scale-[1.01] transition-all cursor-pointer border border-violet-500/20"
+                                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-black text-[10px] uppercase tracking-wider shadow hover:shadow-violet-600/10 hover:scale-[1.01] transition-all cursor-pointer border border-violet-500/20 flex items-center justify-center gap-1.5"
                                 >
+                                    <Plus className="h-3.5 w-3.5" />
                                     {systemLanguage === "sk"
-                                        ? "+ Pridať úlohu fázovej brány"
+                                        ? "Pridať úlohu fázovej brány"
                                         : systemLanguage === "hu"
-                                          ? "+ Kapu feladat hozzáadása"
-                                          : "+ Add Pipeline Gate Task"}
+                                          ? "Kapu feladat hozzáadása"
+                                          : "Add Pipeline Gate Task"}
                                 </button>
                             </form>
                         </div>

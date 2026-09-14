@@ -1060,6 +1060,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'managers' => $managersByProject[$projId] ?? [],
                 'data' => [],
                 'timeline' => [],
+                'budget' => isset($pRow['budget']) ? (float)$pRow['budget'] : null,
                 'gantt' => []
             ];
 
@@ -2264,7 +2265,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingProjIds = $pdo->query("SELECT `id` FROM `projects`")->fetchAll(PDO::FETCH_COLUMN);
             $processedProjIds = [];
 
-            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `deadline`, `delay_reason`, `start_date`, `finished_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `deadline`=VALUES(`deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`)");
+            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `deadline`, `delay_reason`, `start_date`, `finished_at`, `budget`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `deadline`=VALUES(`deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`), `budget`=VALUES(`budget`)");
 
             // Manager assignments are replaced per project, never globally. The old
             // unconditional `DELETE FROM project_managers` assumed every push carried
@@ -2311,8 +2312,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $projDeadline,
                     $projDelayReason,
                     $projStart,
-                    $projFinished
+                    $projFinished,
+                    $projBudget
                 ]);
+
+                // What the project may spend. Anything that is not a positive
+                // amount — "", null, 0, garbage — means "no budget set".
+                $projBudget = (isset($p['budget']) && is_numeric($p['budget']) && (float)$p['budget'] > 0)
+                    ? round(min((float)$p['budget'], 999999999999.99), 2)
+                    : null;
 
                 // Only rewrite this project's managers when the payload actually carries
                 // the list. An omitted `managers` key means "unchanged", not "none".

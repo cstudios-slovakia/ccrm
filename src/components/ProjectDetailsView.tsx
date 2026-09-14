@@ -3,7 +3,7 @@ import * as Icons from "lucide-react";
 import {
   Plus, Trash2, Upload, FileText, ArrowLeft, Mail, Phone,
   Coins, TrendingUp, TrendingDown, DollarSign,
-  PieChart, X, Edit3
+  PieChart, X, Edit3, Wallet, Check
 } from "lucide-react";
 import type {
   Project, ProjectType, Lead, UserProfile,
@@ -450,6 +450,40 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       expensesByCategory: Object.values(catMap).sort((a, b) => b.planned - a.planned)
     };
   }, [projectFinancials, projectInvoices, projectExpenses, financialCategories, userLanguage]);
+
+  /* The budget is a cost ceiling — what the project may spend. The money
+     already paid out and the costs planned so far are both measured against
+     it; null while no budget is set. */
+  const budgetAnalysis = useMemo(() => {
+    const budget = Number(project?.budget);
+    if (!Number.isFinite(budget) || budget <= 0) return null;
+    const spent = revenueAnalysis.totalRealExpenses;
+    const planned = revenueAnalysis.totalPlannedExpenses;
+    return {
+      budget,
+      spent,
+      planned,
+      remaining: budget - spent,
+      spentPct: (spent / budget) * 100,
+      plannedPct: (planned / budget) * 100,
+      tone: spent > budget ? "over" : planned > budget ? "atRisk" : "ok",
+    } as const;
+  }, [project?.budget, revenueAnalysis]);
+
+  /* The budget editor on the finance tab: null while closed, the typed amount while open. */
+  const [budgetDraft, setBudgetDraft] = useState<string | null>(null);
+  useEffect(() => setBudgetDraft(null), [project?.id]);
+
+  const handleSaveBudget = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (budgetDraft === null) return;
+    const raw = budgetDraft.replace(/\s/g, "").replace(",", ".");
+    const value = raw === "" ? 0 : Number(raw);
+    if (!Number.isFinite(value) || value < 0) return;
+    // Saved straight away, like the status strip — no trip through edit mode.
+    handleSave({ budget: value > 0 ? Math.round(value * 100) / 100 : null }, false);
+    setBudgetDraft(null);
+  };
 
   const handleOpenProjectFinModal = (type: FinancialType, record?: FinancialRecord) => {
     if (record) {
@@ -2633,6 +2667,101 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 </div>
 
                 {/* Profit Margin Card */}
+              {/* 0. Project Budget — the ceiling the direct costs are measured against */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Wallet className="h-4 w-4 text-indigo-600 shrink-0" />
+                    <span className="text-xs font-bold text-slate-900 uppercase">
+                      {t("Project Budget", "Rozpočet projektu", "Projekt költségvetése")}
+                    </span>
+                    {budgetAnalysis && budgetDraft === null && (
+                      <span className="text-sm font-black text-slate-900">{money(budgetAnalysis.budget)}</span>
+                    )}
+                  </div>
+
+                  {budgetDraft === null ? (
+                    <button
+                      type="button"
+                      onClick={() => setBudgetDraft(budgetAnalysis ? String(budgetAnalysis.budget) : "")}
+                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95"
+                    >
+                      {budgetAnalysis ? <Edit3 className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                      {budgetAnalysis
+                        ? t("Edit Budget", "Upraviť rozpočet", "Költségvetés módosítása")
+                        : t("Set Budget", "Nastaviť rozpočet", "Költségvetés megadása")}
+                    </button>
+                  ) : (
+                    <form onSubmit={handleSaveBudget} className="flex items-center gap-1.5">
+                      <input
+                        autoFocus
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={budgetDraft}
+                        onChange={(e) => setBudgetDraft(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Escape") setBudgetDraft(null); }}
+                        placeholder="0.00"
+                        aria-label={t("Project Budget", "Rozpočet projektu", "Projekt költségvetése")}
+                        className="w-32 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-bold focus:outline-none focus:border-indigo-500 transition-colors"
+                      />
+                      <span className="text-[11px] font-bold text-slate-500">{currencyCode}</span>
+                      <button
+                        type="submit"
+                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95"
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                        {t("Save", "Uložiť", "Mentés")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBudgetDraft(null)}
+                        className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer transition-colors"
+                        aria-label={t("Cancel", "Zrušiť", "Mégse")}
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </form>
+                  )}
+                </div>
+
+                {!budgetAnalysis ? (
+                  <p className="text-[11px] text-slate-500">
+                    {t(
+                      "No budget set yet. Set one to see how the project's costs compare with it. (The \"Planned\" figures below are the sums of the planned amounts on invoices and expenses.)",
+                      "Rozpočet zatiaľ nie je nastavený. Po nastavení uvidíte, ako sa k nemu majú náklady projektu. (Hodnoty „Plán“ nižšie sú súčty plánovaných súm na faktúrach a výdavkoch.)",
+                      "Még nincs költségvetés megadva. Megadása után látható, hogyan viszonyulnak hozzá a projekt költségei. (Az alábbi „Terv” értékek a számlák és kiadások tervezett összegeinek összegei.)",
+                    )}
+                  </p>
+                ) : (
+                  <div className="space-y-1.5">
+                    <div className="relative w-full h-2 bg-slate-200/70 rounded-full overflow-hidden">
+                      <div
+                        className={`absolute inset-y-0 left-0 rounded-full transition-all duration-500 ${budgetAnalysis.tone === "ok" ? "bg-emerald-200" : "bg-amber-200"}`}
+                        style={{ width: `${Math.min(budgetAnalysis.plannedPct, 100)}%` }}
+                      />
+                      <div
+                        className={`absolute inset-y-0 left-0 rounded-full transition-all duration-500 ${budgetAnalysis.tone === "over" ? "bg-rose-500" : budgetAnalysis.tone === "atRisk" ? "bg-amber-500" : "bg-emerald-500"}`}
+                        style={{ width: `${Math.min(budgetAnalysis.spentPct, 100)}%` }}
+                      />
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[11px] text-slate-500">
+                      <span>
+                        {t("Spent:", "Minuté:", "Elköltve:")} <strong className="text-slate-700">{money(budgetAnalysis.spent)}</strong> ({budgetAnalysis.spentPct.toFixed(0)}%)
+                        {" · "}
+                        {t("Planned costs:", "Plánované náklady:", "Tervezett költségek:")} <strong className="text-slate-700">{money(budgetAnalysis.planned)}</strong> ({budgetAnalysis.plannedPct.toFixed(0)}%)
+                      </span>
+                      <span className={`font-bold ${budgetAnalysis.tone === "over" ? "text-rose-600" : budgetAnalysis.tone === "atRisk" ? "text-amber-600" : "text-emerald-600"}`}>
+                        {budgetAnalysis.remaining >= 0
+                          ? `${t("Remaining:", "Zostáva:", "Hátralévő:")} ${money(budgetAnalysis.remaining)}`
+                          : `${t("Over budget by", "Prekročené o", "Túllépés:")} ${money(-budgetAnalysis.remaining)}`}
+                        {budgetAnalysis.tone === "atRisk" && ` · ${t("planned costs exceed the budget", "plánované náklady prekračujú rozpočet", "a tervezett költségek meghaladják a keretet")}`}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
                 <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
                   <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase">
                     <span>{t("Profit Margin", "Zisková marža", "Haszonkulcs")}</span>
@@ -2662,7 +2791,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm"
                   >
                     <Plus className="h-3.5 w-3.5" />
-                    {t("+ Issue / Plan Invoice", "+ Vystaviť / naplánovať faktúru", "+ Új számla kiállítása")}
+                    {t("Issue / Plan Invoice", "Vystaviť / naplánovať faktúru", "Új számla kiállítása")}
                   </button>
                 </div>
 
@@ -2742,7 +2871,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm"
                   >
                     <Plus className="h-3.5 w-3.5" />
-                    {t("+ Add Project Expense", "+ Pridať výdavok k projektu", "+ Új kiadás rögzítése")}
+                    {t("Add Project Expense", "Pridať výdavok k projektu", "Új kiadás rögzítése")}
                   </button>
                 </div>
 

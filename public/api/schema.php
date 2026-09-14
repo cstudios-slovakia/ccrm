@@ -322,6 +322,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               FOREIGN KEY (`project_type_id`) REFERENCES `project_types` (`id`) ON DELETE CASCADE
+              `budget` DECIMAL(14,2) NULL,
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
             // Project Managers (Junction table)
@@ -894,6 +895,11 @@ if (!function_exists('ccrm_schema_statements')) {
         // since the interest note shipped, but there was no column behind it, so
         // every referral looked saved and then vanished on the next poll.
         if (!ccrm_column_exists($pdo, 'leads', 'referral_lead_id')) {
+        // What the project may spend. NULL is "no budget set", which the finance
+        // tab shows as a prompt to set one rather than as a zero ceiling.
+        if (!ccrm_column_exists($pdo, 'projects', 'budget')) {
+            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `budget` DECIMAL(14,2) NULL AFTER `delay_reason`");
+        }
             $pdo->exec("ALTER TABLE `leads` ADD COLUMN `referral_lead_id` VARCHAR(50) NULL AFTER `interest_note`");
         }
         // 1.9.26: where the visitor came from before they filled in the form

@@ -4014,7 +4014,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
                     >
                       <ArrowDownLeft className="w-4 h-4" />
-                      <span>{t("Log Purchase (PRI)", "+ Zaznamenať nákup (PRI)", "+ Bevételezés (PRI)")}</span>
+                      <span>{t("Log Purchase (PRI)", "Zaznamenať nákup (PRI)", "Bevételezés (PRI)")}</span>
                     </button>
 
                     <button
