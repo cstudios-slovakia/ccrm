@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
 import * as Icons from "lucide-react";
-import { Plus, Trash2, ArrowUp, ArrowDown, Save, X, Workflow, LayoutGrid, Rows3 } from "lucide-react";
+import { Plus, Trash2, ArrowUp, ArrowDown, Save, X, Workflow, LayoutGrid, Rows3, CalendarClock, Paperclip, FileText } from "lucide-react";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ColorPicker } from "./ui/ColorPicker";
-import type { ProjectAutoCreateSettings, ProjectType, ProjectAttribute, ProjectAttributeType, TimelineEventType } from "../types";
+import type { ProjectAutoCreateSettings, ProjectType, ProjectAttribute, ProjectAttributeType, ProjectFileField, TimelineEventType } from "../types";
 import { DEFAULT_PROJECT_AUTO_CREATE, isProjectAutoCreateActive } from "../utils/projectAutoCreate";
 import { DEFAULT_DEADLINE_WARNING_DAYS, normalizeDeadlineWarningDays } from "../utils/projects";
 import type { Language } from "../utils/translations";
@@ -57,6 +57,32 @@ const ATTRIBUTE_TYPES: { id: ProjectAttributeType; label: [string, string, strin
   { id: "contact", label: ["Contact Picker", "Výber kontaktu", "Kapcsolatválasztó"] }
 ];
 
+/** The light switch that turns a built-in attribute on or off. */
+const Switch: React.FC<{ checked: boolean; onChange: (next: boolean) => void; disabled?: boolean; label: string }> = ({
+  checked,
+  onChange,
+  disabled,
+  label,
+}) => (
+  <button
+    type="button"
+    role="switch"
+    aria-checked={checked}
+    aria-label={label}
+    disabled={disabled}
+    onClick={() => onChange(!checked)}
+    className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-all duration-150 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 focus-visible:ring-offset-2 ${
+      checked ? "bg-indigo-600" : "bg-slate-300"
+    } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:opacity-90"}`}
+  >
+    <span
+      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
+        checked ? "translate-x-4" : "translate-x-0.5"
+      }`}
+    />
+  </button>
+);
+
 export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
   projectTypes,
   setProjectTypes,
@@ -91,6 +117,11 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
   const [hasGantt, setHasGantt] = useState(false);
   const [hasDeadline, setHasDeadline] = useState(false);
   const [deadlineWarningDays, setDeadlineWarningDays] = useState(DEFAULT_DEADLINE_WARNING_DAYS);
+  const [deadlineRequired, setDeadlineRequired] = useState(false);
+  const [hasFiles, setHasFiles] = useState(false);
+  const [fileFields, setFileFields] = useState<ProjectFileField[]>([]);
+  const [newFileFieldName, setNewFileFieldName] = useState("");
+  const [newFileFieldRequired, setNewFileFieldRequired] = useState(false);
   const [attributes, setAttributes] = useState<ProjectAttribute[]>([]);
 
   // Timeline Custom Events states
@@ -138,6 +169,11 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     setHasGantt(false);
     setHasDeadline(false);
     setDeadlineWarningDays(DEFAULT_DEADLINE_WARNING_DAYS);
+    setDeadlineRequired(false);
+    setHasFiles(false);
+    setFileFields([]);
+    setNewFileFieldName("");
+    setNewFileFieldRequired(false);
     setAttributes([]);
     setTimelineEventTypes([]);
     setSelectedTeTypeId(null);
@@ -169,6 +205,11 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     setDeadlineWarningDays(
       type.hasDeadline ? normalizeDeadlineWarningDays(type.deadlineWarningDays) : DEFAULT_DEADLINE_WARNING_DAYS
     );
+    setDeadlineRequired(!!type.deadlineRequired);
+    setHasFiles(!!type.hasFiles);
+    setFileFields(type.fileFields || []);
+    setNewFileFieldName("");
+    setNewFileFieldRequired(false);
     setAttributes(type.attributes || []);
     setTimelineEventTypes(type.timelineEventTypes || []);
     setSelectedTeTypeId(type.timelineEventTypes && type.timelineEventTypes.length > 0 ? type.timelineEventTypes[0].id : null);
@@ -205,6 +246,31 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
       if (!window.confirm(confirmMsg)) return;
     }
     setAttributes(prev => prev.filter(a => a.id !== attrId));
+  };
+
+  const handleAddFileField = () => {
+    const name = newFileFieldName.trim();
+    if (!name) return;
+    if (fileFields.some(f => f.name.toLowerCase() === name.toLowerCase())) return;
+    // The prefix keeps a slot's data column from ever colliding with an attribute's.
+    const id = "file_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
+    setFileFields(prev => [...prev, { id, name, required: newFileFieldRequired }]);
+    setNewFileFieldName("");
+    setNewFileFieldRequired(false);
+  };
+
+  const handleRemoveFileField = (fieldId: string) => {
+    // A slot that was already saved has uploads behind it; one added in this
+    // session has nothing to lose.
+    if (editingType?.fileFields?.some(f => f.id === fieldId)) {
+      const confirmMsg = t(
+        "WARNING: Removing this file field will permanently delete the files attached to it in existing projects. Do you want to proceed?",
+        "VAROVANIE: Odstránenie tohto poľa trvalo vymaže súbory, ktoré sú k nemu priložené v existujúcich projektoch. Chcete pokračovať?",
+        "FIGYELMEZTETÉS: Ezen fájlmező törlése véglegesen törli a meglévő projektekben hozzá csatolt fájlokat. Folytatja?"
+      );
+      if (!window.confirm(confirmMsg)) return;
+    }
+    setFileFields(prev => prev.filter(f => f.id !== fieldId));
   };
 
   const handleMoveAttribute = (index: number, direction: "up" | "down") => {
@@ -314,6 +380,11 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
       // Only meaningful while deadlines are on. Storing 0 for a type with them
       // off keeps the saved shape identical whichever way the switch was flipped.
       deadlineWarningDays: hasDeadline ? normalizeDeadlineWarningDays(deadlineWarningDays) : 0,
+      deadlineRequired: hasDeadline && deadlineRequired,
+      // The slots are kept while the switch is off: turning it off hides the
+      // uploads, it does not delete them.
+      hasFiles,
+      fileFields,
       attributes,
       timelineEventTypes
     };
@@ -482,52 +553,6 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                 </span>
               </label>
 
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  disabled={!canEdit}
-                  checked={hasDeadline}
-                  onChange={e => setHasDeadline(e.target.checked)}
-                  className="h-4.5 w-4.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                />
-                <span className="text-sm font-semibold text-slate-700">
-                  {t("Enable Deadline (due date and countdown)", "Povoliť termín (dátum dokončenia a odpočet)", "Határidő engedélyezése (esedékesség és visszaszámlálás)")}
-                </span>
-              </label>
-
-              {/* How early the countdown starts warning. Off by default is not an
-                  option here — a deadline nobody is reminded of is just a date. */}
-              {hasDeadline && (
-                <div className="ml-7.5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 space-y-1.5">
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                    {t("Warn this many days ahead", "Upozorniť toľkoto dní vopred", "Ennyi nappal előbb figyelmeztessen")}
-                  </label>
-                  <div className="flex items-center gap-2.5">
-                    <input
-                      type="number"
-                      min={0}
-                      max={365}
-                      disabled={!canEdit}
-                      value={deadlineWarningDays}
-                      onChange={e => setDeadlineWarningDays(normalizeDeadlineWarningDays(e.target.value))}
-                      className="w-24 px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                    />
-                    <span className="text-[11px] font-semibold text-slate-500">
-                      {deadlineWarningDays > 0
-                        ? t(
-                            `Projects turn amber ${deadlineWarningDays} days before they are due, and red once late.`,
-                            `Projekty zožltnú ${deadlineWarningDays} dní pred termínom a sčervenajú po ňom.`,
-                            `A projektek ${deadlineWarningDays} nappal a határidő előtt sárgák, utána pirosak lesznek.`,
-                          )
-                        : t(
-                            "No early warning — projects are only flagged once they are late.",
-                            "Bez včasného upozornenia — projekty sa označia až po termíne.",
-                            "Nincs korai figyelmeztetés — a projektek csak lejárat után lesznek megjelölve.",
-                          )}
-                    </span>
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* Custom Event Types for Timeline */}
@@ -834,6 +859,190 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
               {t("Project Attributes", "Atribúty projektu", "Projekt attribútumok")}
             </h4>
 
+            {/* Built-in attributes. Every type has them; each is switched on or
+                off rather than added, and brings its own settings when on. */}
+            <div className="space-y-2">
+              {/* Deadline */}
+              <div className={`bg-white border rounded-2xl shadow-sm transition-colors duration-150 ${hasDeadline ? "border-indigo-200" : "border-slate-200"}`}>
+                <div className="flex items-center justify-between gap-3 p-3 text-xs font-semibold">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className={`flex items-center justify-center h-8 w-8 rounded-xl shrink-0 transition-colors duration-150 ${hasDeadline ? "bg-indigo-50 text-indigo-600" : "bg-slate-100 text-slate-400"}`}>
+                      <CalendarClock className="h-4 w-4" />
+                    </span>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-slate-800 text-[13px]">{t("Deadline", "Termín dokončenia", "Határidő")}</span>
+                      <span className="text-slate-400 font-medium truncate">
+                        {t("Due date and countdown", "Dátum dokončenia a odpočet", "Esedékesség és visszaszámlálás")}
+                        {hasDeadline && deadlineRequired && t(" • Required", " • Povinné", " • Kötelező")}
+                      </span>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={hasDeadline}
+                    onChange={setHasDeadline}
+                    disabled={!canEdit}
+                    label={t("Deadline", "Termín dokončenia", "Határidő")}
+                  />
+                </div>
+
+                {hasDeadline && (
+                  <div className="border-t border-slate-100 p-3 space-y-3 animate-fade-in">
+                    <label className="flex items-center gap-2 cursor-pointer select-none w-fit">
+                      <input
+                        type="checkbox"
+                        disabled={!canEdit}
+                        checked={deadlineRequired}
+                        onChange={e => setDeadlineRequired(e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600"
+                      />
+                      <span className="text-xs font-semibold text-slate-600">{t("Required field", "Povinné pole", "Kötelező mező")}</span>
+                    </label>
+
+                    {/* How early the countdown starts warning. Off by default is not an
+                        option here — a deadline nobody is reminded of is just a date. */}
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
+                        {t("Warn this many days ahead", "Upozorniť toľkoto dní vopred", "Ennyi nappal előbb figyelmeztessen")}
+                      </label>
+                      <div className="flex items-center gap-2.5">
+                        <input
+                          type="number"
+                          min={0}
+                          max={365}
+                          disabled={!canEdit}
+                          value={deadlineWarningDays}
+                          onChange={e => setDeadlineWarningDays(normalizeDeadlineWarningDays(e.target.value))}
+                          className="w-20 shrink-0 px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 bg-white transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                        />
+                        <span className="text-[11px] font-medium text-slate-400 leading-snug">
+                          {deadlineWarningDays > 0
+                            ? t(
+                                `Projects turn amber ${deadlineWarningDays} days before they are due, and red once late.`,
+                                `Projekty zožltnú ${deadlineWarningDays} dní pred termínom a sčervenajú po ňom.`,
+                                `A projektek ${deadlineWarningDays} nappal a határidő előtt sárgák, utána pirosak lesznek.`,
+                              )
+                            : t(
+                                "No early warning — projects are only flagged once they are late.",
+                                "Bez včasného upozornenia — projekty sa označia až po termíne.",
+                                "Nincs korai figyelmeztetés — a projektek csak lejárat után lesznek megjelölve.",
+                              )}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Files — named document slots every project of this type carries */}
+              <div className={`bg-white border rounded-2xl shadow-sm transition-colors duration-150 ${hasFiles ? "border-indigo-200" : "border-slate-200"}`}>
+                <div className="flex items-center justify-between gap-3 p-3 text-xs font-semibold">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className={`flex items-center justify-center h-8 w-8 rounded-xl shrink-0 transition-colors duration-150 ${hasFiles ? "bg-indigo-50 text-indigo-600" : "bg-slate-100 text-slate-400"}`}>
+                      <Paperclip className="h-4 w-4" />
+                    </span>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-slate-800 text-[13px]">{t("Files", "Súbory", "Fájlok")}</span>
+                      <span className="text-slate-400 font-medium truncate">
+                        {hasFiles && fileFields.length > 0
+                          ? `${fileFields.length} ${t("fields", "polí", "mező")}` +
+                            (fileFields.some(f => f.required)
+                              ? ` • ${fileFields.filter(f => f.required).length} ${t("required", "povinných", "kötelező")}`
+                              : "")
+                          : t("Documents such as a contract or GDPR consent", "Dokumenty ako zmluva alebo súhlas GDPR", "Dokumentumok, pl. szerződés vagy GDPR hozzájárulás")}
+                      </span>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={hasFiles}
+                    onChange={setHasFiles}
+                    disabled={!canEdit}
+                    label={t("Files", "Súbory", "Fájlok")}
+                  />
+                </div>
+
+                {hasFiles && (
+                  <div className="border-t border-slate-100 p-3 space-y-2 animate-fade-in">
+                    {fileFields.length === 0 ? (
+                      <div className="p-3 border-2 border-dashed border-slate-200 rounded-xl text-center text-slate-400 text-xs">
+                        {t("No file fields yet — add one below.", "Zatiaľ žiadne polia pre súbory — pridajte ich nižšie.", "Még nincsenek fájlmezők — adjon hozzá lent.")}
+                      </div>
+                    ) : (
+                      fileFields.map(field => (
+                        <div key={field.id} className="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold animate-fade-in">
+                          <FileText className="h-4 w-4 shrink-0 text-slate-400" />
+                          <span className="flex-1 min-w-0 truncate text-slate-800">{field.name}</span>
+                          <label className="flex items-center gap-1.5 cursor-pointer select-none shrink-0">
+                            <input
+                              type="checkbox"
+                              disabled={!canEdit}
+                              checked={field.required}
+                              onChange={e => {
+                                const required = e.target.checked;
+                                setFileFields(prev => prev.map(f => f.id === field.id ? { ...f, required } : f));
+                              }}
+                              className="h-4 w-4 rounded border-slate-300 text-indigo-600"
+                            />
+                            <span className="text-[11px] font-semibold text-slate-500">{t("Required", "Povinné", "Kötelező")}</span>
+                          </label>
+                          <button
+                            type="button"
+                            disabled={!canEdit}
+                            onClick={() => handleRemoveFileField(field.id)}
+                            className="p-1 hover:bg-rose-50 rounded text-rose-600 shrink-0 transition-colors duration-150 active:scale-95 cursor-pointer disabled:opacity-30"
+                            title={t("Remove", "Odobrať", "Eltávolítás")}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))
+                    )}
+
+                    {canEdit && (
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        <input
+                          value={newFileFieldName}
+                          onChange={e => setNewFileFieldName(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleAddFileField();
+                            }
+                          }}
+                          placeholder={t("e.g. Contract, GDPR consent", "napr. Zmluva, Súhlas GDPR", "pl. Szerződés, GDPR hozzájárulás")}
+                          className="flex-1 min-w-[8rem] px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                        />
+                        <label className="flex items-center gap-1.5 cursor-pointer select-none shrink-0">
+                          <input
+                            type="checkbox"
+                            checked={newFileFieldRequired}
+                            onChange={e => setNewFileFieldRequired(e.target.checked)}
+                            className="h-4 w-4 rounded border-slate-300 text-indigo-600"
+                          />
+                          <span className="text-[11px] font-semibold text-slate-500">{t("Required", "Povinné", "Kötelező")}</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={handleAddFileField}
+                          disabled={!newFileFieldName.trim()}
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 transition-all duration-150 active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                        >
+                          <Plus className="h-4 w-4" />
+                          <span>{t("Add", "Pridať", "Hozzáadás")}</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <span className="text-[10px] font-heading font-black text-slate-400 uppercase tracking-widest shrink-0">
+                {t("Custom attributes", "Vlastné atribúty", "Egyedi attribútumok")}
+              </span>
+              <div className="h-px flex-1 bg-slate-200" />
+            </div>
+
             {/* Existing attributes list */}
             <div className="space-y-2 max-h-60 overflow-y-auto pr-2 scrollbar-thin">
               {attributes.length === 0 ? (
@@ -1124,6 +1333,11 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                     {type.hasDeadline && (
                       <span className="px-2 py-0.5 rounded-full bg-amber-50 text-[10px] font-bold text-amber-600 border border-amber-100">
                         {t("Deadline", "Termín", "Határidő")}
+                      </span>
+                    )}
+                    {type.hasFiles && (type.fileFields?.length || 0) > 0 && (
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-[10px] font-bold text-emerald-600 border border-emerald-100">
+                        {t("Files", "Súbory", "Fájlok")}
                       </span>
                     )}
                   </div>

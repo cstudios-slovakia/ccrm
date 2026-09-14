@@ -468,7 +468,26 @@ export interface ProjectType {
    * See normalizeDeadlineWarningDays in utils/projects.ts.
    */
   deadlineWarningDays?: number;
+  /** A project of this type cannot be saved without a deadline. Only read while hasDeadline is on. */
+  deadlineRequired?: boolean;
+  /**
+   * The built-in "Files" attribute: named document slots every project of this
+   * type carries (contract, GDPR consent, ...). Turning it off hides the slots
+   * and their uploads without deleting them.
+   */
+  hasFiles?: boolean;
+  fileFields?: ProjectFileField[];
   timelineEventTypes?: TimelineEventType[];
+}
+
+/**
+ * One document slot of the built-in "Files" attribute. Its uploads live in
+ * `Project.data[id]`, in the same shape a "files" attribute stores.
+ */
+export interface ProjectFileField {
+  id: string;
+  name: string;
+  required: boolean;
 }
 
 export interface ProjectTimelineEvent {

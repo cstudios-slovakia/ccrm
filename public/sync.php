@@ -1027,6 +1027,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'hasGantt' => (int)$row['has_gantt'] === 1,
                 'hasDeadline' => (int)($row['has_deadline'] ?? 0) === 1,
                 'deadlineWarningDays' => (int)($row['deadline_warning_days'] ?? 0),
+                'deadlineRequired' => (int)($row['deadline_required'] ?? 0) === 1,
+                'hasFiles' => (int)($row['has_files'] ?? 0) === 1,
+                'fileFields' => json_decode($row['file_fields_json'] ?? '[]', true) ?: [],
                 'timelineEventTypes' => json_decode($row['timeline_event_types_json'] ?? '[]', true),
                 'timelineAttributes' => json_decode($row['timeline_attributes_json'] ?? '[]', true)
             ];
@@ -1057,10 +1060,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'startDate' => $pRow['start_date'] ?? null,
                 'finishedAt' => $pRow['finished_at'] ?? null,
                 'createdAt' => $pRow['created_at'] ?? null,
+                'budget' => isset($pRow['budget']) ? (float)$pRow['budget'] : null,
                 'managers' => $managersByProject[$projId] ?? [],
                 'data' => [],
                 'timeline' => [],
-                'budget' => isset($pRow['budget']) ? (float)$pRow['budget'] : null,
                 'gantt' => []
             ];
 
@@ -1791,7 +1794,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($ragPdo) $ragPdo->exec(str_replace("FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE", "", $createData));
 
                 // Add or Remove Columns for Data Table
-                $attributes = $pt['attributes'] ?? [];
+                // The built-in "Files" attribute keeps each document slot's uploads
+                // in a column of its own, exactly like a "files" attribute. The
+                // columns stay while the switch is off, so turning it off hides the
+                // files instead of deleting them; only removing a slot drops one.
+                $attributes = array_merge(
+                    is_array($pt['attributes'] ?? null) ? $pt['attributes'] : [],
+                    is_array($pt['fileFields'] ?? null) ? $pt['fileFields'] : []
+                );
                 $currentColsStmt = $pdo->query("SHOW COLUMNS FROM `{$dataTable}`");
                 $existingCols = [];
                 while($col = $currentColsStmt->fetch(PDO::FETCH_ASSOC)) {
@@ -1809,7 +1819,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 }
 
+                // A client older than the Files attribute sends no fileFields at all.
+                // Its silence must not read as "every slot was removed", which would
+                // drop the columns and every file uploaded into them.
+                $keepFileCols = !array_key_exists('fileFields', $pt);
                 foreach ($existingCols as $col) {
+                    if ($keepFileCols && str_starts_with($col, 'attr_file_')) continue;
                     if (str_starts_with($col, 'attr_') && !in_array($col, $expectedCols)) {
                         $dropCol = "ALTER TABLE `{$dataTable}` DROP COLUMN `{$col}`";
                         $pdo->exec($dropCol);
@@ -2206,10 +2221,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (isset($payload['projectTypes']) && is_array($payload['projectTypes'])) {
             $existingPtIds = $pdo->query("SELECT `id` FROM `project_types`")->fetchAll(PDO::FETCH_COLUMN);
             $processedPtIds = [];
-            $insPt = $pdo->prepare("INSERT INTO `project_types` (`id`, `name`, `description`, `icon`, `color`, `attributes_json`, `has_timeline`, `has_gantt`, `has_deadline`, `deadline_warning_days`, `timeline_event_types_json`, `timeline_attributes_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `icon`=VALUES(`icon`), `color`=VALUES(`color`), `attributes_json`=VALUES(`attributes_json`), `has_timeline`=VALUES(`has_timeline`), `has_gantt`=VALUES(`has_gantt`), `has_deadline`=VALUES(`has_deadline`), `deadline_warning_days`=VALUES(`deadline_warning_days`), `timeline_event_types_json`=VALUES(`timeline_event_types_json`), `timeline_attributes_json`=VALUES(`timeline_attributes_json`)");
+            $insPt = $pdo->prepare("INSERT INTO `project_types` (`id`, `name`, `description`, `icon`, `color`, `attributes_json`, `has_timeline`, `has_gantt`, `has_deadline`, `deadline_warning_days`, `deadline_required`, `has_files`, `file_fields_json`, `timeline_event_types_json`, `timeline_attributes_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `icon`=VALUES(`icon`), `color`=VALUES(`color`), `attributes_json`=VALUES(`attributes_json`), `has_timeline`=VALUES(`has_timeline`), `has_gantt`=VALUES(`has_gantt`), `has_deadline`=VALUES(`has_deadline`), `deadline_warning_days`=VALUES(`deadline_warning_days`), `deadline_required`=VALUES(`deadline_required`), `has_files`=VALUES(`has_files`), `file_fields_json`=VALUES(`file_fields_json`), `timeline_event_types_json`=VALUES(`timeline_event_types_json`), `timeline_attributes_json`=VALUES(`timeline_attributes_json`)");
             
             foreach ($payload['projectTypes'] as $pt) {
                 if (!isset($pt['id'])) continue;
+                $ptDeadlineRequired = !empty($pt['deadlineRequired']) ? 1 : 0;
+                $ptHasFiles = !empty($pt['hasFiles']) ? 1 : 0;
+                $ptFileFields = json_encode(is_array($pt['fileFields'] ?? null) ? array_values($pt['fileFields']) : []);
+                // A client older than these settings sends none of them; keep what
+                // is stored instead of switching them off behind the user's back.
+                if (!array_key_exists('fileFields', $pt)) {
+                    $prevPt = $pdo->prepare("SELECT `deadline_required`, `has_files`, `file_fields_json` FROM `project_types` WHERE `id` = ?");
+                    $prevPt->execute([$pt['id']]);
+                    if ($prevRow = $prevPt->fetch(PDO::FETCH_ASSOC)) {
+                        $ptDeadlineRequired = (int)$prevRow['deadline_required'];
+                        $ptHasFiles = (int)$prevRow['has_files'];
+                        $ptFileFields = $prevRow['file_fields_json'] ?? '[]';
+                    }
+                }
                 $insPt->execute([
                     $pt['id'],
                     $pt['name'],
@@ -2223,6 +2252,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // Same clamp as normalizeDeadlineWarningDays on the client:
                     // a positive whole number of days, or 0 for "only once late".
                     max(0, min(365, (int)($pt['deadlineWarningDays'] ?? 0))),
+                    $ptDeadlineRequired,
+                    $ptHasFiles,
+                    $ptFileFields,
                     json_encode($pt['timelineEventTypes'] ?? []),
                     json_encode($pt['timelineAttributes'] ?? [])
                 ]);
@@ -2302,6 +2334,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $projDelayReason = trim((string)($p['delayReason'] ?? ''));
                 $projDelayReason = $projDelayReason === '' ? null : mb_substr($projDelayReason, 0, 500);
 
+                // What the project may spend. Anything that is not a positive
+                // amount — "", null, 0, garbage — means "no budget set".
+                $projBudget = (isset($p['budget']) && is_numeric($p['budget']) && (float)$p['budget'] > 0)
+                    ? round(min((float)$p['budget'], 999999999999.99), 2)
+                    : null;
+
                 $insProj->execute([
                     $projId,
                     $p['projectTypeId'],
@@ -2315,12 +2353,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $projFinished,
                     $projBudget
                 ]);
-
-                // What the project may spend. Anything that is not a positive
-                // amount — "", null, 0, garbage — means "no budget set".
-                $projBudget = (isset($p['budget']) && is_numeric($p['budget']) && (float)$p['budget'] > 0)
-                    ? round(min((float)$p['budget'], 999999999999.99), 2)
-                    : null;
 
                 // Only rewrite this project's managers when the payload actually carries
                 // the list. An omitted `managers` key means "unchanged", not "none".

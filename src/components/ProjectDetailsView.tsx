@@ -628,6 +628,56 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     }));
   };
 
+  /** The upload list and button for a files attribute or a document slot, in edit mode. */
+  const renderFilesInput = (attrId: string, val: unknown) => (
+    <div className="space-y-2">
+      <div className="flex flex-col gap-1.5">
+        {asList(val).map((f, fIdx) => (
+          <div key={fIdx} className="flex items-center justify-between p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold">
+            <a
+              href={f.path}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 text-indigo-600 hover:text-indigo-800 truncate animate-fade-in"
+            >
+              <FileText className="h-4 w-4 shrink-0 text-slate-400" />
+              <span className="truncate">{f.name}</span>
+              <span className="text-[10px] text-slate-400 font-medium shrink-0">({f.size})</span>
+            </a>
+            <button
+              type="button"
+              onClick={() => handleRemoveFile(attrId, fIdx)}
+              className="p-1 hover:bg-rose-50 rounded text-rose-600 shrink-0 cursor-pointer"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div className="relative">
+        <button
+          type="button"
+          disabled={isUploading === attrId}
+          onClick={() => {
+            const input = document.getElementById(`file-input-${attrId}`);
+            input?.click();
+          }}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-dashed border-slate-300 text-xs font-semibold text-slate-500 hover:bg-slate-50 hover:border-slate-400 transition-all cursor-pointer disabled:opacity-50"
+        >
+          <Upload className="h-4 w-4 text-slate-400" />
+          <span>{isUploading === attrId ? t("Uploading...", "Nahráva sa...", "Feltöltés...") : t("Upload File", "Nahrať súbor", "Fájl feltöltése")}</span>
+        </button>
+        <input
+          type="file"
+          id={`file-input-${attrId}`}
+          onChange={e => handleFileUpload(attrId, e)}
+          className="hidden"
+        />
+      </div>
+    </div>
+  );
+
   /**
    * Writes the project back. `overrides` lets a single control save straight
    * away without waiting for its own state to settle — the status dropdown
@@ -652,6 +702,15 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
         setIsEditing(true);
         return false;
       }
+      if (projectType.hasDeadline && projectType.deadlineRequired && !nextDeadline) {
+        alert(t(
+          "A deadline is required for this project type.",
+          "Termín dokončenia je pre tento typ projektu povinný.",
+          "Ennél a projekt típusnál a határidő megadása kötelező.",
+        ));
+        setIsEditing(true);
+        return false;
+      }
       const dl = evaluateProjectDeadline({ deadline: nextDeadline, status: nextStatus, finishedAt: nextFinished }, projectType, todayLocal());
       const nextReason = String(overrides.delayReason ?? delayReason).trim();
       if (dl?.isOverdue && !nextReason) {
@@ -665,13 +724,21 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       }
     }
 
-    // Basic validations for required dynamic attributes
-    for (const attr of (validate ? projectType.attributes || [] : [])) {
+    // Basic validations for required dynamic attributes, and for the document
+    // slots of the built-in Files attribute, which are stored like a files attribute.
+    const requiredChecks = [
+      ...(projectType.attributes || []),
+      ...(projectType.hasFiles ? (projectType.fileFields || []).map(f => ({ ...f, type: "files" as const })) : []),
+    ];
+    for (const attr of (validate ? requiredChecks : [])) {
       if (attr.required) {
         const val = dynamicData[attr.id];
+        // A file list comes back from the server as a JSON string, so "[]" is empty too.
         const missing = attr.type === "money"
           ? isMoneyValueEmpty(val, defaultCurrency)
-          : (val === undefined || val === null || val === "" || (Array.isArray(val) && val.length === 0));
+          : attr.type === "files"
+            ? asList(val).length === 0
+            : (val === undefined || val === null || val === "" || (Array.isArray(val) && val.length === 0));
         if (missing) {
           alert(`"${attr.name}" ${t("is required.", "je povinné.", "megadása kötelező.")}`);
           return false;
@@ -1284,7 +1351,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                       to it. The real finish, once set, is what the list shows. */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Deadline", "Termín dokončenia", "Határidő")}</label>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
+                    {t("Deadline", "Termín dokončenia", "Határidő")} {isEditing && projectType.deadlineRequired && <span className="text-red-500">*</span>}
+                  </label>
                   {!isEditing ? (
                     <p className="text-xs font-bold text-slate-800">
                       {deadline
@@ -1522,6 +1591,29 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
             <div className="border-t border-slate-200 my-4 shrink-0" />
 
+            {/* BUILT-IN FILES: the document slots the project type asks for
+                (contract, GDPR consent, ...). Hidden while the type's switch is off. */}
+            {projectType.hasFiles && (projectType.fileFields || []).length > 0 && (
+              <div className="mb-4 p-3 rounded-2xl bg-slate-50/60 border border-slate-200 space-y-3">
+                <div className="flex items-center gap-1.5 text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                  <Icons.Paperclip className="h-3.5 w-3.5 text-slate-400" />
+                  {t("Files", "Súbory", "Fájlok")}
+                </div>
+                {(projectType.fileFields || []).map(field => (
+                  <div key={field.id}>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
+                      {field.name} {isEditing && field.required && <span className="text-red-500">*</span>}
+                    </label>
+                    {!isEditing ? (
+                      <div className="text-xs font-bold text-slate-800">{renderAttrValue({ type: "files" }, dynamicData[field.id])}</div>
+                    ) : (
+                      renderFilesInput(field.id, dynamicData[field.id])
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* DYNAMIC CUSTOM ATTRIBUTES FIELDS */}
             <div className="space-y-4">
               {(projectType.attributes || []).map(attr => {
@@ -1671,54 +1763,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     )}
 
                     {/* Multiple Files Upload */}
-                    {attr.type === "files" && (
-                      <div className="space-y-2">
-                        <div className="flex flex-col gap-1.5">
-                          {asList(val).map((f, fIdx) => (
-                            <div key={fIdx} className="flex items-center justify-between p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold">
-                              <a 
-                                href={f.path} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="flex items-center gap-2 text-indigo-600 hover:text-indigo-800 truncate animate-fade-in"
-                              >
-                                <FileText className="h-4 w-4 shrink-0 text-slate-400" />
-                                <span className="truncate">{f.name}</span>
-                                <span className="text-[10px] text-slate-400 font-medium shrink-0">({f.size})</span>
-                              </a>
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveFile(attr.id, fIdx)}
-                                className="p-1 hover:bg-rose-50 rounded text-rose-600 shrink-0 cursor-pointer"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-
-                        <div className="relative">
-                          <button
-                            type="button"
-                            disabled={isUploading === attr.id}
-                            onClick={() => {
-                              const input = document.getElementById(`file-input-${attr.id}`);
-                              input?.click();
-                            }}
-                            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-dashed border-slate-300 text-xs font-semibold text-slate-500 hover:bg-slate-50 hover:border-slate-400 transition-all cursor-pointer disabled:opacity-50"
-                          >
-                            <Upload className="h-4 w-4 text-slate-400" />
-                            <span>{isUploading === attr.id ? t("Uploading...", "Nahráva sa...", "Feltöltés...") : t("Upload File", "Nahrať súbor", "Fájl feltöltése")}</span>
-                          </button>
-                          <input
-                            type="file"
-                            id={`file-input-${attr.id}`}
-                            onChange={e => handleFileUpload(attr.id, e)}
-                            className="hidden"
-                          />
-                        </div>
-                      </div>
-                    )}
+                    {attr.type === "files" && renderFilesInput(attr.id, val)}
 
                     {/* Contact Picker attribute type */}
                     {attr.type === "contact" && (
@@ -2626,51 +2671,6 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           {/* TAB CONTENT: Finances & Revenue Analysis (CRITICAL REQUIREMENT #5, #6, #7) */}
           {activeRightTab === "finances" && (
             <div className="flex-1 overflow-y-auto space-y-6 scrollbar-thin pr-1 animate-in fade-in duration-150 text-left">
-              {/* 1. Project Revenue & Profitability Scorecard */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                {/* Revenue Card */}
-                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
-                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase">
-                    <span>{t("Project Revenue", "Príjmy z projektu", "Projekt bevételek")}</span>
-                    <TrendingUp className="h-4 w-4 text-emerald-500" />
-                  </div>
-                  <div className="text-xl font-black text-slate-900 mt-1">
-                    {money(revenueAnalysis.totalRealIncome)}
-                  </div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">
-                    {t("Planned:", "Plán:", "Terv:")} <strong>{money(revenueAnalysis.totalPlannedIncome)}</strong>
-                  </div>
-                </div>
-
-                {/* Costs Card */}
-                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
-                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase">
-                    <span>{t("Project Costs", "Priame náklady", "Közvetlen költségek")}</span>
-                    <TrendingDown className="h-4 w-4 text-rose-500" />
-                  </div>
-                  <div className="text-xl font-black text-slate-900 mt-1">
-                    {money(revenueAnalysis.totalRealExpenses)}
-                  </div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">
-                    {t("Planned:", "Plán:", "Terv:")} <strong>{money(revenueAnalysis.totalPlannedExpenses)}</strong>
-                  </div>
-                </div>
-
-                {/* Net Profit Card */}
-                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
-                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase">
-                    <span>{t("Net Profit", "Čistý zisk", "Nettó nyereség")}</span>
-                    <DollarSign className="h-4 w-4 text-indigo-500" />
-                  </div>
-                  <div className={`text-xl font-black mt-1 ${revenueAnalysis.realProfit >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
-                    {money(revenueAnalysis.realProfit)}
-                  </div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">
-                    {t("Planned:", "Plán:", "Terv:")} <strong>{money(revenueAnalysis.plannedProfit)}</strong>
-                  </div>
-                </div>
-
-                {/* Profit Margin Card */}
               {/* 0. Project Budget — the ceiling the direct costs are measured against */}
               <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2766,6 +2766,51 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 )}
               </div>
 
+              {/* 1. Project Revenue & Profitability Scorecard */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {/* Revenue Card */}
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase">
+                    <span>{t("Project Revenue", "Príjmy z projektu", "Projekt bevételek")}</span>
+                    <TrendingUp className="h-4 w-4 text-emerald-500" />
+                  </div>
+                  <div className="text-xl font-black text-slate-900 mt-1">
+                    {money(revenueAnalysis.totalRealIncome)}
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">
+                    {t("Planned:", "Plán:", "Terv:")} <strong>{money(revenueAnalysis.totalPlannedIncome)}</strong>
+                  </div>
+                </div>
+
+                {/* Costs Card */}
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase">
+                    <span>{t("Project Costs", "Priame náklady", "Közvetlen költségek")}</span>
+                    <TrendingDown className="h-4 w-4 text-rose-500" />
+                  </div>
+                  <div className="text-xl font-black text-slate-900 mt-1">
+                    {money(revenueAnalysis.totalRealExpenses)}
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">
+                    {t("Planned:", "Plán:", "Terv:")} <strong>{money(revenueAnalysis.totalPlannedExpenses)}</strong>
+                  </div>
+                </div>
+
+                {/* Net Profit Card */}
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase">
+                    <span>{t("Net Profit", "Čistý zisk", "Nettó nyereség")}</span>
+                    <DollarSign className="h-4 w-4 text-indigo-500" />
+                  </div>
+                  <div className={`text-xl font-black mt-1 ${revenueAnalysis.realProfit >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                    {money(revenueAnalysis.realProfit)}
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">
+                    {t("Planned:", "Plán:", "Terv:")} <strong>{money(revenueAnalysis.plannedProfit)}</strong>
+                  </div>
+                </div>
+
+                {/* Profit Margin Card */}
                 <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
                   <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase">
                     <span>{t("Profit Margin", "Zisková marža", "Haszonkulcs")}</span>

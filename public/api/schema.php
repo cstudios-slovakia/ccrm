@@ -301,6 +301,9 @@ if (!function_exists('ccrm_schema_statements')) {
               `has_gantt` TINYINT(1) NOT NULL DEFAULT 0,
               `has_deadline` TINYINT(1) NOT NULL DEFAULT 0,
               `deadline_warning_days` INT NOT NULL DEFAULT 0,
+              `deadline_required` TINYINT(1) NOT NULL DEFAULT 0,
+              `has_files` TINYINT(1) NOT NULL DEFAULT 0,
+              `file_fields_json` LONGTEXT NULL,
               `timeline_event_types_json` LONGTEXT NULL,
               `timeline_attributes_json` LONGTEXT NULL,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -319,10 +322,10 @@ if (!function_exists('ccrm_schema_statements')) {
               `delay_reason` VARCHAR(500) NULL,
               `start_date` DATE NULL,
               `finished_at` DATE NULL,
+              `budget` DECIMAL(14,2) NULL,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               FOREIGN KEY (`project_type_id`) REFERENCES `project_types` (`id`) ON DELETE CASCADE
-              `budget` DECIMAL(14,2) NULL,
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
             // Project Managers (Junction table)
@@ -857,6 +860,18 @@ if (!function_exists('ccrm_schema_statements')) {
         if (!ccrm_column_exists($pdo, 'project_types', 'deadline_warning_days')) {
             $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `deadline_warning_days` INT NOT NULL DEFAULT 0 AFTER `has_deadline`");
         }
+        // Built-in attribute settings: whether the deadline must be filled in, and
+        // the "Files" attribute — named document slots (contract, GDPR, ...) whose
+        // uploads live in the type's proj_data_ table like any files attribute.
+        if (!ccrm_column_exists($pdo, 'project_types', 'deadline_required')) {
+            $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `deadline_required` TINYINT(1) NOT NULL DEFAULT 0 AFTER `deadline_warning_days`");
+        }
+        if (!ccrm_column_exists($pdo, 'project_types', 'has_files')) {
+            $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `has_files` TINYINT(1) NOT NULL DEFAULT 0 AFTER `deadline_required`");
+        }
+        if (!ccrm_column_exists($pdo, 'project_types', 'file_fields_json')) {
+            $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `file_fields_json` LONGTEXT NULL AFTER `has_files`");
+        }
         // Projects had no name of their own — they borrowed the paired lead's,
         // which left an unpaired project unnameable. NULL on every existing row,
         // and projectDisplayName() keeps showing the lead's name for those.
@@ -880,6 +895,11 @@ if (!function_exists('ccrm_schema_statements')) {
         if (!ccrm_column_exists($pdo, 'projects', 'finished_at')) {
             $pdo->exec("ALTER TABLE `projects` ADD COLUMN `finished_at` DATE NULL AFTER `start_date`");
         }
+        // What the project may spend. NULL is "no budget set", which the finance
+        // tab shows as a prompt to set one rather than as a zero ceiling.
+        if (!ccrm_column_exists($pdo, 'projects', 'budget')) {
+            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `budget` DECIMAL(14,2) NULL AFTER `delay_reason`");
+        }
         if (!ccrm_column_exists($pdo, 'tasks', 'deadline_time')) {
             $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `deadline_time` VARCHAR(5) NULL AFTER `deadline`");
         }
@@ -895,11 +915,6 @@ if (!function_exists('ccrm_schema_statements')) {
         // since the interest note shipped, but there was no column behind it, so
         // every referral looked saved and then vanished on the next poll.
         if (!ccrm_column_exists($pdo, 'leads', 'referral_lead_id')) {
-        // What the project may spend. NULL is "no budget set", which the finance
-        // tab shows as a prompt to set one rather than as a zero ceiling.
-        if (!ccrm_column_exists($pdo, 'projects', 'budget')) {
-            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `budget` DECIMAL(14,2) NULL AFTER `delay_reason`");
-        }
             $pdo->exec("ALTER TABLE `leads` ADD COLUMN `referral_lead_id` VARCHAR(50) NULL AFTER `interest_note`");
         }
         // 1.9.26: where the visitor came from before they filled in the form

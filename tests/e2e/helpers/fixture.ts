@@ -275,6 +275,12 @@ const PROJECT_TYPES = [
     hasGantt: true,
     hasDeadline: true,
     deadlineWarningDays: 7,
+    deadlineRequired: false,
+    hasFiles: true,
+    fileFields: [
+      { id: 'file_contract', name: 'Zmluva', required: false },
+      { id: 'file_gdpr', name: 'Súhlas GDPR', required: false },
+    ],
     attributes: [
       { id: 'attr-area', name: 'Plocha (m²)', type: 'number', required: true },
       { id: 'attr-start', name: 'Začiatok realizácie', type: 'date', required: false },
