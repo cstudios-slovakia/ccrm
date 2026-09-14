@@ -2960,7 +2960,7 @@ ${log.payload || ''}
             }}
           />
           
-          <main className="flex-1 p-4 md:p-6 overflow-y-auto max-w-[1600px] mx-auto w-full relative flex flex-col justify-between">
+          <main className="flex-1 p-4 md:p-6 overflow-y-auto [scrollbar-gutter:stable] max-w-[1600px] mx-auto w-full relative flex flex-col justify-between">
             <div className="shrink-0 w-full">
               {/* Advance warning that the licence is lapsing. Above the workspace
                   rather than over it: nothing here justifies interrupting work,

@@ -77,7 +77,7 @@ try {
         foreach ($settings as $k => $v) {
             $insSet->execute([$k, $v]);
         }
-        ccrm_seed_default_financial_categories($pdo);
+        // No finance categories: those are demo data, and this is leaving demo mode.
     } else {
         // Keep custom configurations, but toggle DEMO_MODE setting to false
         $stmt = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('DEMO_MODE', 'false') ON DUPLICATE KEY UPDATE `value` = 'false'");

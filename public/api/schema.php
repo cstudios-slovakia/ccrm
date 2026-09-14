@@ -1440,12 +1440,18 @@ if (!function_exists('ccrm_schema_statements')) {
     }
 
     /**
-     * Seeds default financial categories into financial_categories table if table exists and is empty.
+     * Seeds the sample financial categories into an empty financial_categories
+     * table — demo installations only. The set is a stone-slab reseller's chart
+     * of accounts (Laminam, LAM 3+/5+/12+), so a real installation starts empty
+     * and builds its own.
      */
     function ccrm_seed_default_financial_categories(PDO $pdo): void {
         try {
             $hasTable = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'financial_categories'")->fetchColumn();
             if ($hasTable === 0) return;
+
+            $demoMode = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'DEMO_MODE'");
+            if (!$demoMode || $demoMode->fetchColumn() !== 'true') return;
 
             $count = (int)$pdo->query("SELECT COUNT(*) FROM `financial_categories`")->fetchColumn();
             if ($count > 0) return;

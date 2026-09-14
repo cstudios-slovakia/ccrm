@@ -3046,7 +3046,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     <div className="space-y-6 pb-16 font-sans">
       {/* 1. TOP HEADER & COMMAND BAR */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-100 pb-4 select-none">
-        <div className="flex flex-col">
+        <div className="flex flex-col min-w-0">
           <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
             <Coins className="h-6 w-6 text-emerald-600" />
             {t("Financial Management & Revenue Control", "Finančný manažment a riadenie výnosov", "Pénzügyi menedzsment és bevételkezelés")}
@@ -3056,11 +3056,11 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           </p>
         </div>
 
-        {/* Quick Actions */}
-        <div className="flex flex-wrap items-center gap-3">
+        {/* Quick Actions — one row, equal height, never wrapping into a stack */}
+        <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={() => handleOpenCreateModal("income", "global")}
-            className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-2xl shadow-md shadow-emerald-600/20 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+            className="flex items-center justify-center gap-2 h-10 px-4 whitespace-nowrap bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl shadow-sm shadow-emerald-600/20 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
           >
             <Plus className="h-4 w-4" />
             <span>{t("New Income / Invoice", "Nový príjem / Faktúra", "Új bevétel / Számla")}</span>
@@ -3068,7 +3068,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
           <button
             onClick={() => handleOpenCreateModal("expense", "global")}
-            className="flex items-center gap-2 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-2xl shadow-md shadow-rose-600/20 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+            className="flex items-center justify-center gap-2 h-10 px-4 whitespace-nowrap bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-xl shadow-sm shadow-rose-600/20 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
           >
             <Plus className="h-4 w-4" />
             <span>{t("New Expense", "Nový výdavok", "Új kiadás")}</span>
