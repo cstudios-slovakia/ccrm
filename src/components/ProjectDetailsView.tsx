@@ -19,7 +19,7 @@ import {
   isMoneyValueEmpty,
   parseMoneyValue,
 } from "../utils/currency";
-import { evaluateProjectDeadline, projectDisplayName, projectPipelineSegments, projectStatusBadgeClass, projectStatusDotClass, projectStatusOptions } from "../utils/projects";
+import { evaluateProjectDeadline, projectDisplayName, projectPipelineSegments, projectStartDate, projectStatusBadgeClass, projectStatusDotClass, projectStatusOptions } from "../utils/projects";
 import { CustomSelect } from "./ui/CustomSelect";
 import { PipelineStrip } from "./ui/PipelineStrip";
 
@@ -277,6 +277,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   /* Why the project is late. Mandatory once it actually is — see the red flag
      block under the deadline. */
   const [delayReason, setDelayReason] = useState("");
+  /* The real start and finish, set by hand. The start is prefilled with the
+     creation day; a finish date outranks the deadline in the list. */
+  const [startDate, setStartDate] = useState("");
+  const [finishedAt, setFinishedAt] = useState("");
   const [status, setStatus] = useState("active");
   const [associatedLeadId, setAssociatedLeadId] = useState("");
   const [associatedClientId, setAssociatedClientId] = useState("");
@@ -357,6 +361,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       setProjectName(project.name || "");
       setDeadline(project.deadline || "");
       setDelayReason(project.delayReason || "");
+      setStartDate(projectStartDate(project) || todayLocal());
+      setFinishedAt(project.finishedAt || "");
       setStatus(project.status || "active");
       setAssociatedLeadId(project.leadId || "");
       setAssociatedClientId(project.clientId || "");
@@ -602,7 +608,17 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     if (validate) {
       const nextStatus = String(overrides.status ?? status);
       const nextDeadline = overrides.deadline !== undefined ? (overrides.deadline || "") : deadline;
-      const dl = evaluateProjectDeadline({ deadline: nextDeadline, status: nextStatus }, projectType, todayLocal());
+      const nextFinished = overrides.finishedAt !== undefined ? (overrides.finishedAt || "") : finishedAt;
+      if (nextFinished && startDate && nextFinished < startDate) {
+        alert(t(
+          "The real finish date cannot be before the start date.",
+          "Skutočné dokončenie nemôže byť pred začiatkom projektu.",
+          "A tényleges befejezés nem lehet a kezdés előtt.",
+        ));
+        setIsEditing(true);
+        return false;
+      }
+      const dl = evaluateProjectDeadline({ deadline: nextDeadline, status: nextStatus, finishedAt: nextFinished }, projectType, todayLocal());
       const nextReason = String(overrides.delayReason ?? delayReason).trim();
       if (dl?.isOverdue && !nextReason) {
         alert(t(
@@ -640,6 +656,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       // no longer late has no delay to explain, and leaving the old text behind
       // would make it reappear the next time a date slips.
       delayReason: projectType.hasDeadline ? (delayReason.trim() || null) : null,
+      startDate: startDate || null,
+      finishedAt: finishedAt || null,
       status,
       leadId: associatedLeadId || null,
       clientId: associatedClientId || null,
@@ -660,6 +678,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       setProjectName(project.name || "");
       setDeadline(project.deadline || "");
       setDelayReason(project.delayReason || "");
+      setStartDate(projectStartDate(project) || todayLocal());
+      setFinishedAt(project.finishedAt || "");
       setStatus(project.status || "active");
       setAssociatedLeadId(project.leadId || "");
       setAssociatedClientId(project.clientId || "");
@@ -1218,9 +1238,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             {/* Deadline. Only for a project type that is time-boxed — see
                 hasDeadline in Projects -> Settings -> project type. */}
             {projectType.hasDeadline && (() => {
-              const dl = evaluateProjectDeadline({ deadline, status }, projectType, todayLocal());
+              const dl = evaluateProjectDeadline({ deadline, status, finishedAt }, projectType, todayLocal());
+              const dateInputClass = "flex-1 min-w-0 px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500";
               return (
                 <div>
+                  {/* Planned deadline on the left, the real start and finish next
+                      to it. The real finish, once set, is what the list shows. */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
                   <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Deadline", "Termín dokončenia", "Határidő")}</label>
                   {!isEditing ? (
                     <p className="text-xs font-bold text-slate-800">
@@ -1234,7 +1259,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                       type="date"
                       value={deadline}
                       onChange={e => setDeadline(e.target.value)}
-                      className="flex-1 min-w-0 px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      className={dateInputClass}
                     />
                     {deadline && (
                       <button
@@ -1248,15 +1273,71 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     )}
                   </div>
                   )}
+                  </div>
+
+                  <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Real dates", "Skutočný termín", "Tényleges időpontok")}</label>
+                  {!isEditing ? (
+                    <p className="text-xs font-bold text-slate-800">
+                      {startDate ? formatDateLocalized(startDate, userLanguage) : "—"}
+                      {" – "}
+                      {finishedAt
+                        ? formatDateLocalized(finishedAt, userLanguage)
+                        : <span className="text-slate-300 italic font-semibold">{t("in progress", "prebieha", "folyamatban")}</span>}
+                    </p>
+                  ) : (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-14 shrink-0 text-[9px] font-black text-slate-400 uppercase">{t("Start", "Začiatok", "Kezdés")}</span>
+                      <input
+                        type="date"
+                        value={startDate}
+                        onChange={e => setStartDate(e.target.value)}
+                        className={dateInputClass}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-14 shrink-0 text-[9px] font-black text-slate-400 uppercase">{t("Finish", "Koniec", "Befejezés")}</span>
+                      <input
+                        type="date"
+                        value={finishedAt}
+                        min={startDate || undefined}
+                        onChange={e => setFinishedAt(e.target.value)}
+                        className={dateInputClass}
+                      />
+                      {finishedAt && (
+                        <button
+                          type="button"
+                          onClick={() => setFinishedAt("")}
+                          className="shrink-0 p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                          title={t("Clear finish date", "Zrušiť dátum dokončenia", "Befejezés törlése")}
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  )}
+                  </div>
+                  </div>
+
                   {dl && (
                     <p className={`mt-1.5 text-[10px] font-black uppercase tracking-wider ${
                       dl.tone === "overdue"
                         ? "text-rose-600"
                         : dl.tone === "soon"
                           ? "text-amber-600"
-                          : "text-slate-400"
+                          : dl.tone === "finished"
+                            ? "text-emerald-600"
+                            : "text-slate-400"
                     }`}>
-                      {dl.tone === "closed"
+                      {dl.tone === "finished"
+                        ? dl.finishedLateDays > 0
+                          ? t(`Finished ${dl.finishedLateDays} days after the deadline`, `Dokončené ${dl.finishedLateDays} dní po termíne`, `${dl.finishedLateDays} nappal a határidő után befejezve`)
+                          : dl.plannedDeadline
+                            ? t("Finished on time", "Dokončené v termíne", "Határidőre befejezve")
+                            : t("Finished", "Dokončené", "Befejezve")
+                        : dl.tone === "closed"
                         ? t("Closed — the deadline no longer applies.", "Uzavretý — termín už neplatí.", "Lezárva — a határidő már nem érvényes.")
                         : dl.isOverdue
                           ? t(`${dl.overdueDays} days overdue`, `${dl.overdueDays} dní po termíne`, `${dl.overdueDays} nappal késésben`)

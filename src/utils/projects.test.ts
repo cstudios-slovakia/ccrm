@@ -9,6 +9,7 @@ import {
   projectDisplayName,
   projectNeedsDelayReason,
   projectPipelineSegments,
+  projectStartDate,
   projectStatusBadgeClass,
   projectStatusLabel,
   projectStatusOptions,
@@ -232,6 +233,33 @@ test("an unknown status lights no step", () => {
   assert.deepEqual(lit("archived"), [false, false, false, false]);
   assert.deepEqual(lit(undefined), [false, false, false, false]);
   assert.ok(projectPipelineSegments("archived", en).every((s) => s.colorClass === "bg-slate-300"));
+});
+
+test("a real finish date outranks the deadline and ends the countdown", () => {
+  const late = evaluateProjectDeadline(project({ deadline: "2026-08-20", finishedAt: "2026-08-25" }), type(), TODAY);
+  assert.equal(late?.tone, "finished");
+  assert.equal(late?.deadline, "2026-08-25");
+  assert.equal(late?.plannedDeadline, "2026-08-20");
+  assert.equal(late?.finishedLateDays, 5);
+  assert.equal(late?.isOverdue, false);
+  assert.equal(projectNeedsDelayReason(project({ deadline: "2026-08-20" }), late), false);
+
+  const early = evaluateProjectDeadline(project({ deadline: "2026-09-30", finishedAt: "2026-09-01" }), type(), TODAY);
+  assert.equal(early?.finishedLateDays, 0);
+
+  // A finish date with no planned deadline still has something to show.
+  const unplanned = evaluateProjectDeadline(project({ deadline: null, finishedAt: "2026-09-01" }), type(), TODAY);
+  assert.equal(unplanned?.deadline, "2026-09-01");
+  assert.equal(unplanned?.plannedDeadline, "");
+
+  // Still gated by the type.
+  assert.equal(evaluateProjectDeadline(project({ finishedAt: "2026-09-01" }), type({ hasDeadline: false }), TODAY), null);
+});
+
+test("the start date falls back to the creation day", () => {
+  assert.equal(projectStartDate(project({ startDate: "2026-07-01", createdAt: "2026-06-15 10:22:00" })), "2026-07-01");
+  assert.equal(projectStartDate(project({ startDate: null, createdAt: "2026-06-15 10:22:00" })), "2026-06-15");
+  assert.equal(projectStartDate(project()), "");
 });
 
 test("a late project owes a reason, and only a late one", () => {

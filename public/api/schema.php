@@ -317,6 +317,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `status` VARCHAR(50) NOT NULL DEFAULT 'active',
               `deadline` DATE NULL,
               `delay_reason` VARCHAR(500) NULL,
+              `start_date` DATE NULL,
+              `finished_at` DATE NULL,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               FOREIGN KEY (`project_type_id`) REFERENCES `project_types` (`id`) ON DELETE CASCADE
@@ -867,6 +869,15 @@ if (!function_exists('ccrm_schema_statements')) {
         // which is exactly what an unexplained delay looks like to the client.
         if (!ccrm_column_exists($pdo, 'projects', 'delay_reason')) {
             $pdo->exec("ALTER TABLE `projects` ADD COLUMN `delay_reason` VARCHAR(500) NULL AFTER `deadline`");
+        }
+        // When the project really started and really finished, set by hand. NULL
+        // start reads as the creation date on the client; a set finish date
+        // outranks the planned deadline everywhere the project is listed.
+        if (!ccrm_column_exists($pdo, 'projects', 'start_date')) {
+            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `start_date` DATE NULL AFTER `delay_reason`");
+        }
+        if (!ccrm_column_exists($pdo, 'projects', 'finished_at')) {
+            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `finished_at` DATE NULL AFTER `start_date`");
         }
         if (!ccrm_column_exists($pdo, 'tasks', 'deadline_time')) {
             $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `deadline_time` VARCHAR(5) NULL AFTER `deadline`");

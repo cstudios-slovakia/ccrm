@@ -1054,6 +1054,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'status' => $pRow['status'],
                 'deadline' => $pRow['deadline'] ?? null,
                 'delayReason' => $pRow['delay_reason'] ?? null,
+                'startDate' => $pRow['start_date'] ?? null,
+                'finishedAt' => $pRow['finished_at'] ?? null,
+                'createdAt' => $pRow['created_at'] ?? null,
                 'managers' => $managersByProject[$projId] ?? [],
                 'data' => [],
                 'timeline' => [],
@@ -2261,7 +2264,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingProjIds = $pdo->query("SELECT `id` FROM `projects`")->fetchAll(PDO::FETCH_COLUMN);
             $processedProjIds = [];
 
-            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `deadline`, `delay_reason`) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `deadline`=VALUES(`deadline`), `delay_reason`=VALUES(`delay_reason`)");
+            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `deadline`, `delay_reason`, `start_date`, `finished_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `deadline`=VALUES(`deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`)");
 
             // Manager assignments are replaced per project, never globally. The old
             // unconditional `DELETE FROM project_managers` assumed every push carried
@@ -2288,6 +2291,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (preg_match('/^(\d{4}-\d{2}-\d{2})/', (string)($p['deadline'] ?? ''), $dm)) {
                     $projDeadline = $dm[1];
                 }
+                // The real start and finish — calendar days too, same rule.
+                $projStart = preg_match('/^(\d{4}-\d{2}-\d{2})/', (string)($p['startDate'] ?? ''), $sm) ? $sm[1] : null;
+                $projFinished = preg_match('/^(\d{4}-\d{2}-\d{2})/', (string)($p['finishedAt'] ?? ''), $fm) ? $fm[1] : null;
 
                 // Why the project is late. Required by the client once a project
                 // is actually past its deadline; empty is stored as NULL so
@@ -2303,7 +2309,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     empty($p['clientId']) ? null : $p['clientId'],
                     $p['status'] ?? 'active',
                     $projDeadline,
-                    $projDelayReason
+                    $projDelayReason,
+                    $projStart,
+                    $projFinished
                 ]);
 
                 // Only rewrite this project's managers when the payload actually carries

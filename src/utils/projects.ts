@@ -62,11 +62,20 @@ export const normalizeDeadlineWarningDays = (raw: unknown): number => {
  * "ok" — still comfortably ahead. "closed" — the project is finished or
  * abandoned, so its date is worth showing but not worth shouting about.
  */
-export type ProjectDeadlineTone = "overdue" | "soon" | "ok" | "closed";
+export type ProjectDeadlineTone = "overdue" | "soon" | "ok" | "closed" | "finished";
 
 export interface ProjectDeadlineStatus {
-  /** The deadline as "YYYY-MM-DD". */
+  /**
+   * The date that represents the project, "YYYY-MM-DD": the real finish date
+   * when one is set, else the planned deadline. What lists show and sort by.
+   */
   deadline: string;
+  /** The planned deadline, "" when there is none. */
+  plannedDeadline: string;
+  /** The real finish date, "" while the project has not been marked finished. */
+  finishedAt: string;
+  /** Finished this many days after the planned deadline; 0 when on time or unknown. */
+  finishedLateDays: number;
   /** Whole days until it; negative once it has passed. */
   daysLeft: number;
   /** Days past the deadline; 0 while still ahead of it. */
@@ -88,7 +97,7 @@ const isClosedProject = (status: string | undefined): boolean =>
  * nothing at all on null rather than an empty badge.
  */
 export const evaluateProjectDeadline = (
-  project: Pick<Project, "deadline" | "status"> | undefined | null,
+  project: Pick<Project, "deadline" | "status" | "finishedAt"> | undefined | null,
   projectType: Pick<ProjectType, "hasDeadline" | "deadlineWarningDays"> | undefined | null,
   today: string,
 ): ProjectDeadlineStatus | null => {
@@ -97,9 +106,31 @@ export const evaluateProjectDeadline = (
   const deadline = toDateOnly(project?.deadline);
   const deadlineDay = toDayNumber(deadline);
   const todayDay = toDayNumber(today);
+  const warningDays = normalizeDeadlineWarningDays(projectType.deadlineWarningDays);
+
+  // A real finish date is the truth and outranks the plan: the project is done,
+  // nothing counts down and nothing is late any more — it only records by how
+  // much the plan was missed.
+  const finishedAt = toDateOnly(project?.finishedAt);
+  const finishedDay = toDayNumber(finishedAt);
+  if (finishedDay !== null) {
+    const late = deadlineDay === null ? 0 : Math.max(0, finishedDay - deadlineDay);
+    return {
+      deadline: finishedAt,
+      plannedDeadline: deadline,
+      finishedAt,
+      finishedLateDays: late,
+      daysLeft: todayDay === null ? 0 : finishedDay - todayDay,
+      overdueDays: 0,
+      warningDays,
+      tone: "finished",
+      isOverdue: false,
+      isDueSoon: false,
+    };
+  }
+
   if (deadlineDay === null || todayDay === null) return null;
 
-  const warningDays = normalizeDeadlineWarningDays(projectType.deadlineWarningDays);
   const daysLeft = deadlineDay - todayDay;
 
   // A delivered project that ran late is history, not a fire. Colouring it red
@@ -111,6 +142,9 @@ export const evaluateProjectDeadline = (
 
   return {
     deadline,
+    plannedDeadline: deadline,
+    finishedAt: "",
+    finishedLateDays: 0,
     daysLeft,
     overdueDays: Math.max(0, -daysLeft),
     warningDays,
@@ -119,6 +153,14 @@ export const evaluateProjectDeadline = (
     isDueSoon,
   };
 };
+
+/**
+ * When the project really started, "YYYY-MM-DD": the date set by hand, else
+ * the day it was created, else "" (a project not yet saved has neither).
+ */
+export const projectStartDate = (
+  project: Pick<Project, "startDate" | "createdAt"> | undefined | null,
+): string => toDateOnly(project?.startDate) || toDateOnly(project?.createdAt);
 
 /*
   ── THE RED FLAG ────────────────────────────────────────

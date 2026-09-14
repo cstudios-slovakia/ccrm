@@ -378,7 +378,13 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
      type's warning window, plain otherwise — and never alarming for a project
      that is already finished or cancelled. */
   const deadlineLabel = (dl: ProjectDeadlineStatus) =>
-    dl.tone === "closed"
+    dl.tone === "finished"
+      ? t(
+          `Finished ${formatDateLocalized(dl.finishedAt, userLanguage)}`,
+          `Dokončené ${formatDateLocalized(dl.finishedAt, userLanguage)}`,
+          `Befejezve ${formatDateLocalized(dl.finishedAt, userLanguage)}`,
+        )
+      : dl.tone === "closed"
       ? formatDateLocalized(dl.deadline, userLanguage)
       : dl.isOverdue
         ? t(`${dl.overdueDays} days overdue`, `${dl.overdueDays} dní po termíne`, `${dl.overdueDays} nappal késésben`)
@@ -391,12 +397,30 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       ? "bg-rose-50 text-rose-600 border-rose-200"
       : dl.tone === "soon"
         ? "bg-amber-50 text-amber-700 border-amber-200"
-        : "bg-slate-50 text-slate-500 border-slate-200";
+        : dl.tone === "finished"
+          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+          : "bg-slate-50 text-slate-500 border-slate-200";
+
+  // A finished project's tooltip still carries the plan it was measured against.
+  const deadlineTitle = (dl: ProjectDeadlineStatus) =>
+    dl.tone !== "finished" || !dl.plannedDeadline
+      ? formatDateLocalized(dl.deadline, userLanguage)
+      : dl.finishedLateDays > 0
+        ? t(
+            `Deadline ${formatDateLocalized(dl.plannedDeadline, userLanguage)} — finished ${dl.finishedLateDays} days late`,
+            `Termín ${formatDateLocalized(dl.plannedDeadline, userLanguage)} — dokončené ${dl.finishedLateDays} dní po termíne`,
+            `Határidő ${formatDateLocalized(dl.plannedDeadline, userLanguage)} — ${dl.finishedLateDays} nap késéssel befejezve`,
+          )
+        : t(
+            `Deadline ${formatDateLocalized(dl.plannedDeadline, userLanguage)} — finished on time`,
+            `Termín ${formatDateLocalized(dl.plannedDeadline, userLanguage)} — dokončené v termíne`,
+            `Határidő ${formatDateLocalized(dl.plannedDeadline, userLanguage)} — határidőre befejezve`,
+          );
 
   const renderDeadlineBadge = (dl: ProjectDeadlineStatus) => (
     <span
       className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-bold whitespace-nowrap ${deadlineToneClass(dl)}`}
-      title={formatDateLocalized(dl.deadline, userLanguage)}
+      title={deadlineTitle(dl)}
     >
       <CalendarClock className="h-3.5 w-3.5 shrink-0" />
       <span>{deadlineLabel(dl)}</span>

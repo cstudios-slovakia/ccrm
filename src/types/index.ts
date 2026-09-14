@@ -541,6 +541,18 @@ export interface Project {
    * rather than merely noticed. Empty on every project that is not late.
    */
   delayReason?: string | null;
+  /**
+   * When the work really started, "YYYY-MM-DD". Null until someone sets it,
+   * and read as the creation date meanwhile — see projectStartDate().
+   */
+  startDate?: string | null;
+  /**
+   * When the work really finished, "YYYY-MM-DD", set by hand. Once set it
+   * outranks `deadline` in every list, badge and sort.
+   */
+  finishedAt?: string | null;
+  /** Server creation timestamp. Read-only; never sent back as anything meaningful. */
+  createdAt?: string | null;
   timeline?: ProjectTimelineEvent[];
   gantt?: ProjectGanttRow[];
 }
