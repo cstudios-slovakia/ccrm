@@ -573,6 +573,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `name` VARCHAR(150) NOT NULL,
               `parent_id` VARCHAR(50) NULL,
               `level` INT NOT NULL DEFAULT 1,
+              `sort_order` INT NOT NULL DEFAULT 0,
               `color` VARCHAR(30) NULL,
               `icon` VARCHAR(50) NULL,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -736,6 +737,11 @@ if (!function_exists('ccrm_schema_statements')) {
         // "no password change recorded yet" and lets existing sessions continue.
         if (!ccrm_column_exists($pdo, 'users', 'sessions_valid_from')) {
             $pdo->exec("ALTER TABLE `users` ADD COLUMN `sessions_valid_from` DATETIME NULL AFTER `password_hash`");
+        }
+        // Finance categories are ordered by hand (drag & drop in the categories
+        // tab). Existing rows all start at 0 and keep their alphabetical order.
+        if (!ccrm_column_exists($pdo, 'financial_categories', 'sort_order')) {
+            $pdo->exec("ALTER TABLE `financial_categories` ADD COLUMN `sort_order` INT NOT NULL DEFAULT 0 AFTER `level`");
         }
         // `archived` was added to meeting_notes after the initial release.
         if (!ccrm_column_exists($pdo, 'meeting_notes', 'archived')) {

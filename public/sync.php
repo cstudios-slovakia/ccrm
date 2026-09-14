@@ -1286,7 +1286,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $aiCustomTemplates = [];
     try {
         if ($pdo->query("SHOW TABLES LIKE 'financial_categories'")->rowCount() > 0) {
-            $fcStmt = $pdo->query("SELECT * FROM `financial_categories` ORDER BY `level` ASC, `name` ASC");
+            $fcStmt = $pdo->query("SELECT * FROM `financial_categories` ORDER BY `level` ASC, `sort_order` ASC, `name` ASC");
             while ($row = $fcStmt->fetch()) {
                 $financialCategories[] = [
                     'id' => $row['id'],
@@ -1294,6 +1294,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'name' => $row['name'],
                     'parentId' => $row['parent_id'],
                     'level' => (int)($row['level'] ?? 1),
+                    'sortOrder' => (int)($row['sort_order'] ?? 0),
                     'color' => $row['color'],
                     'icon' => $row['icon'],
                     'createdAt' => $row['created_at'],
@@ -3378,7 +3379,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingFcIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedFcIds = [];
 
-            $insFc = $pdo->prepare("INSERT INTO `financial_categories` (`id`, `type`, `name`, `parent_id`, `level`, `color`, `icon`) VALUES (?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `type` = VALUES(`type`), `name` = VALUES(`name`), `parent_id` = VALUES(`parent_id`), `level` = VALUES(`level`), `color` = VALUES(`color`), `icon` = VALUES(`icon`)");
+            $insFc = $pdo->prepare("INSERT INTO `financial_categories` (`id`, `type`, `name`, `parent_id`, `level`, `sort_order`, `color`, `icon`) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `type` = VALUES(`type`), `name` = VALUES(`name`), `parent_id` = VALUES(`parent_id`), `level` = VALUES(`level`), `sort_order` = VALUES(`sort_order`), `color` = VALUES(`color`), `icon` = VALUES(`icon`)");
 
             foreach ($payload['financialCategories'] as $fc) {
                 $fcId = $fc['id'];
@@ -3388,6 +3389,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $fc['name'] ?? '',
                     !empty($fc['parentId']) ? $fc['parentId'] : null,
                     (int)($fc['level'] ?? 1),
+                    (int)($fc['sortOrder'] ?? 0),
                     $fc['color'] ?? null,
                     $fc['icon'] ?? null
                 ]);

@@ -649,6 +649,8 @@ export interface FinancialCategory {
   name: string;
   parentId?: string | null;
   level: 1 | 2 | 3;
+  /** Position among the siblings under the same parent, lowest first. */
+  sortOrder?: number;
   color?: string | null;
   icon?: string | null;
   createdAt?: string;
