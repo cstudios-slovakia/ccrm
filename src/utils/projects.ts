@@ -259,3 +259,71 @@ export const projectStatusDotClass = (status: string | undefined | null): string
       return "bg-slate-400";
   }
 };
+
+/*
+  ── PROJECT PIPELINE ────────────────────────────────────
+
+  The strip across the top of the project card, drawn the way the lead drawer
+  draws the lead pipeline: every open status is a step of its own, and the
+  statuses a project ends in share one closing segment at the end, lit in the
+  colour of whichever one it actually ended in.
+*/
+
+/** The statuses a project ends in — folded into the strip's last segment. */
+const CLOSED_PROJECT_STATUSES: readonly string[] = ["completed", "cancelled"];
+
+/** A step not yet reached. */
+const PIPELINE_UNREACHED_CLASS = "bg-slate-300";
+
+export interface ProjectPipelineSegment {
+  key: string;
+  title: string;
+  tooltip: string;
+  /** Reached — the current status or one before it. */
+  filled: boolean;
+  /** Background class: the status colour once reached, grey until then. */
+  colorClass: string;
+}
+
+/**
+ * The strip's segments for a project in `status`. A closed project has been
+ * through every step, so all of them are lit. An unknown status reaches none —
+ * it is shown raw by the select underneath, never guessed onto a step.
+ */
+export const projectPipelineSegments = (
+  status: string | undefined | null,
+  t: (en: string, sk: string, hu: string) => string,
+): ProjectPipelineSegment[] => {
+  const current = String(status ?? "").trim();
+  const order = projectStatusOrder();
+  const open = order.filter((s) => !CLOSED_PROJECT_STATUSES.includes(s));
+  const closed = order.filter((s) => CLOSED_PROJECT_STATUSES.includes(s));
+  const isClosed = closed.includes(current as ProjectStatus);
+  const currentIndex = open.indexOf(current as ProjectStatus);
+  const reached = t("(Current/Past)", "(Aktuálne/Minulé)", "(Aktuális/Múlt)");
+  const upcoming = t("(Upcoming)", "(Nadchádzajúce)", "(Közelgő)");
+
+  const segments: ProjectPipelineSegment[] = open.map((s, i) => {
+    const filled = isClosed || (currentIndex !== -1 && i <= currentIndex);
+    const title = projectStatusLabel(s, t);
+    return {
+      key: s,
+      title,
+      tooltip: `${title} ${filled ? reached : upcoming}`,
+      filled,
+      colorClass: filled ? projectStatusDotClass(s) : PIPELINE_UNREACHED_CLASS,
+    };
+  });
+
+  const closedTitle = closed.map((s) => projectStatusLabel(s, t)).join(" / ");
+  const closedWord = t("Closed", "Uzavreté", "Lezárva");
+  segments.push({
+    key: "closed",
+    title: closedTitle,
+    tooltip: `${closedWord} (${isClosed ? projectStatusLabel(current, t) : closedTitle})`,
+    filled: isClosed,
+    colorClass: isClosed ? projectStatusDotClass(current) : PIPELINE_UNREACHED_CLASS,
+  });
+
+  return segments;
+};

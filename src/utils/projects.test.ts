@@ -8,6 +8,7 @@ import {
   projectDelayReason,
   projectDisplayName,
   projectNeedsDelayReason,
+  projectPipelineSegments,
   projectStatusBadgeClass,
   projectStatusLabel,
   projectStatusOptions,
@@ -200,6 +201,37 @@ test("the dropdown offers every status, new first", () => {
   const options = projectStatusOptions(en);
   assert.deepEqual(options.map((o) => o.value), [...PROJECT_STATUSES]);
   assert.equal(options[0].label, "New");
+});
+
+/* ── project pipeline strip ─────────────────────────────── */
+
+const lit = (status: string | undefined) =>
+  projectPipelineSegments(status, en).map((s) => s.filled);
+
+test("the pipeline has a step per open status and one closing step", () => {
+  const segments = projectPipelineSegments("new", en);
+  assert.deepEqual(segments.map((s) => s.key), ["new", "active", "on_hold", "closed"]);
+  assert.equal(segments[3].title, "Completed / Cancelled");
+});
+
+test("the pipeline lights every step up to the current one", () => {
+  assert.deepEqual(lit("new"), [true, false, false, false]);
+  assert.deepEqual(lit("active"), [true, true, false, false]);
+  assert.deepEqual(lit("on_hold"), [true, true, true, false]);
+});
+
+test("a closed project lights every step, the last in its own outcome's colour", () => {
+  assert.deepEqual(lit("completed"), [true, true, true, true]);
+  assert.deepEqual(lit("cancelled"), [true, true, true, true]);
+  assert.equal(projectPipelineSegments("completed", en)[3].colorClass, "bg-emerald-500");
+  assert.equal(projectPipelineSegments("cancelled", en)[3].colorClass, "bg-rose-500");
+  assert.match(projectPipelineSegments("cancelled", en)[3].tooltip, /Cancelled/);
+});
+
+test("an unknown status lights no step", () => {
+  assert.deepEqual(lit("archived"), [false, false, false, false]);
+  assert.deepEqual(lit(undefined), [false, false, false, false]);
+  assert.ok(projectPipelineSegments("archived", en).every((s) => s.colorClass === "bg-slate-300"));
 });
 
 test("a late project owes a reason, and only a late one", () => {

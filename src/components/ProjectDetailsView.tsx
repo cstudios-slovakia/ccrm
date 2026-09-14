@@ -19,8 +19,9 @@ import {
   isMoneyValueEmpty,
   parseMoneyValue,
 } from "../utils/currency";
-import { evaluateProjectDeadline, projectDisplayName, projectStatusBadgeClass, projectStatusDotClass, projectStatusOptions } from "../utils/projects";
+import { evaluateProjectDeadline, projectDisplayName, projectPipelineSegments, projectStatusBadgeClass, projectStatusDotClass, projectStatusOptions } from "../utils/projects";
 import { CustomSelect } from "./ui/CustomSelect";
+import { PipelineStrip } from "./ui/PipelineStrip";
 
 const SearchableClientSelect: React.FC<{
   leads: Lead[];
@@ -1126,7 +1127,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
           {/* PROJECT CARD DETAILS */}
           <div className="shrink-0 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 mb-4">
+            <div className="flex items-center justify-between gap-2 pb-3">
               <h4 className="text-xs font-heading font-black text-slate-900 uppercase tracking-widest">
                 {t("Project Card Details", "Detaily karty projektu", "Projekt részletei")}
               </h4>
@@ -1159,6 +1160,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 </div>
               )}
             </div>
+
+            {/* Pipeline strip — edge to edge under the header, in place of its
+                divider, the way the lead drawer shows the lead pipeline. Follows
+                the live status, so it moves the moment the select below does. */}
+            <PipelineStrip segments={projectPipelineSegments(status, t)} className="-mx-5 mb-4" />
 
           <div className="space-y-4">
             {/* Project name. Projects used to have none and simply wore the
