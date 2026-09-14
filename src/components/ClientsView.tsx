@@ -7,7 +7,7 @@ import {
   Calendar, ArrowLeft, Plus, TrendingUp, PencilLine, FileText,
   X, FolderOpen, Download, Trash2, SlidersHorizontal,
   CornerDownLeft, CornerLeftDown, Loader2, Brain,
-  ChevronLeft, ChevronRight, Milestone, Coins, Archive, ArchiveRestore
+  ChevronLeft, ChevronRight, Milestone, Coins, Archive, ArchiveRestore, Settings
 } from "lucide-react";
 import type { Lead, TimelineEvent, Task, FinancialRecord, FinancialCategory, FinancialStatus, ClientCategory } from "../types";
 import { ClientCategoryBadge, ClientCategoryManager, ClientCategorySelect } from "./ClientCategories";
@@ -394,7 +394,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   // "" = every category, NO_CLIENT_CATEGORY = clients filed under none.
   const [filterClientCategory, setFilterClientCategory] = useState("");
   // The categories manager takes the list's place while it is open.
-  const [clientsSubView, setClientsSubView] = useState<"list" | "categories">("list");
+  const [clientsSubView, setClientsSubView] = useState<"list" | "settings">("list");
 
   // Reset pagination to page 1 on filter changes
   useEffect(() => {
@@ -4581,21 +4581,67 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
 
       {/* 1. Title header */}
-      <div className="flex flex-col border-b border-slate-100 pb-4">
-        <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-          <Users className="h-6 w-6 text-emerald-600" /> {getTranslation(systemLanguage, "clients.title")}
-        </h2>
-        <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
-          {getTranslation(systemLanguage, "clients.subtitle")}
-        </p>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-100 pb-4">
+        <div className="flex flex-col">
+          <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+            <Users className="h-6 w-6 text-emerald-600" /> {getTranslation(systemLanguage, "clients.title")}
+          </h2>
+          <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
+            {getTranslation(systemLanguage, "clients.subtitle")}
+          </p>
+        </div>
+
+        {/* Settings — a single quiet button in, and a single way back out. */}
+        <div className="flex items-center gap-2 self-start md:self-auto">
+          {clientsSubView === "settings" ? (
+            <button
+              type="button"
+              onClick={() => setClientsSubView("list")}
+              className="flex items-center gap-1.5 pl-3 pr-4 py-2.5 rounded-2xl border border-slate-200 bg-white text-slate-600 font-heading font-bold text-xs uppercase tracking-wider hover:bg-slate-50 hover:text-slate-900 transition-all cursor-pointer"
+            >
+              <ChevronLeft className="h-4 w-4 shrink-0" />
+              <span>{t("Back to clients", "Späť na klientov", "Vissza az ügyfelekhez")}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setClientsSubView("settings")}
+              title={t("Client settings", "Nastavenia klientov", "Ügyfél beállítások")}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-slate-400 font-heading font-bold text-xs uppercase tracking-wider hover:bg-slate-100 hover:text-slate-700 transition-all cursor-pointer"
+            >
+              <Settings className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">{t("Settings", "Nastavenia", "Beállítások")}</span>
+            </button>
+          )}
+        </div>
       </div>
 
+      {clientsSubView === "settings" ? (
+        <div className="space-y-6">
+          <div className="flex flex-col">
+            <h3 className="font-heading font-black text-slate-800 text-[15px] uppercase tracking-widest">
+              {t("Client Categories", "Kategórie klientov", "Ügyfélkategóriák")}
+            </h3>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mt-0.5">
+              {t("Organize clients into categories and subcategories", "Usporiadajte klientov do kategórií a podkategórií", "Ügyfelek rendezése kategóriákba és alkategóriákba")}
+            </p>
+          </div>
+          <ClientCategoryManager
+            categories={clientCategories}
+            setCategories={(updater) => setClientCategories?.(updater)}
+            onCategoriesDeleted={handleClientCategoriesDeleted}
+            clientCounts={clientCountsByCategory}
+            t={t}
+          />
+        </div>
+      ) : (
+      <>
       {/* 2. Control search & filter bar */}
       <div className="glass-panel p-6 rounded-[28px] border-2 border-emerald-400 bg-white shadow-lg space-y-4">
         <div className="flex flex-col sm:flex-row items-center gap-3 w-full">
-          
+
           {/* Saturated & Prominent Search Input */}
-          <div className="relative flex-1 w-full">
+          <div className="relative flex-1 w-full min-w-[220px]">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-emerald-600 stroke-[2.5]" />
             <input
               type="text"
@@ -4647,22 +4693,6 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             title={showFilterDrawer ? t("Close Filters Drawer", "Zavrieť panel filtrov", "Szűrőpanel bezárása") : t("Open Filters Drawer", "Otvoriť panel filtrov", "Szűrőpanel megnyitása")}
           >
             <SlidersHorizontal className="h-4.5 w-4.5 stroke-[2.5]" />
-          </button>
-
-          {/* Customer categories — the manager takes the list's place while open. */}
-          <button
-            type="button"
-            onClick={() => setClientsSubView(v => (v === "categories" ? "list" : "categories"))}
-            aria-pressed={clientsSubView === "categories"}
-            className={`w-full sm:w-auto px-4 py-3 rounded-2xl border-2 transition-all flex items-center justify-center gap-2 shadow-sm shrink-0 active:scale-95 text-[11px] font-black uppercase tracking-wider cursor-pointer ${
-              clientsSubView === "categories"
-                ? "bg-emerald-700 text-white border-emerald-800 shadow-md shadow-emerald-700/25"
-                : "bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
-            }`}
-            title={t("Manage client categories", "Spravovať kategórie klientov", "Ügyfélkategóriák kezelése")}
-          >
-            <Layers className="h-4.5 w-4.5 stroke-[2.5]" />
-            {t("Categories", "Kategórie", "Kategóriák")}
           </button>
 
         </div>
@@ -4721,16 +4751,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
       </div>
 
-      {clientsSubView === "categories" ? (
-        <ClientCategoryManager
-          categories={clientCategories}
-          setCategories={(updater) => setClientCategories?.(updater)}
-          onCategoriesDeleted={handleClientCategoriesDeleted}
-          clientCounts={clientCountsByCategory}
-          t={t}
-        />
-      ) : (
-        /* Active clients or the archive */
+      {/* Active clients or the archive — aligned to the right */}
+      <div className="flex justify-end">
         <div className="flex items-center gap-1 p-1 w-fit rounded-2xl bg-slate-100 border border-slate-200 select-none">
           {([
             { scope: "active" as const, Icon: Users, label: t("Active clients", "Aktívni klienti", "Aktív ügyfelek"), count: clientProfiles.length - archivedClientsCount },
@@ -4753,10 +4775,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             </button>
           ))}
         </div>
-      )}
+      </div>
 
       {/* 3. Clients Data Grid Table */}
-      <div className={`glass-panel rounded-[28px] border-2 border-emerald-400 bg-white shadow-xl overflow-hidden ${clientsSubView === "categories" ? "hidden" : ""}`}>
+      <div className="glass-panel rounded-[28px] border-2 border-emerald-400 bg-white shadow-xl overflow-hidden">
         <div className="overflow-x-auto lg:overflow-x-auto scrollbar-thin">
           <table className="w-full border-collapse text-left block lg:table">
             <thead className="hidden lg:table-header-group">
@@ -5008,6 +5030,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           </div>
         </div>
       </div>
+      </>
+      )}
 
       {/* TIMELINE EMAIL DETAIL SLIDEOUT OVERLAY */}
       {(selectedTimelineEmail || isClosingEmailDetail) && typeof document !== "undefined" && createPortal(
@@ -5096,7 +5120,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
       {/* REGISTER NEW CLIENT SLIDEOUT OVERLAY */}
       {(showRegisterDrawer || isClosingRegisterDrawer) && (
-        <div className={`fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex flex-col justify-end ${isClosingRegisterDrawer ? "animate-fade-out" : "animate-fade-in"}`}>
+        <div className={`fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-[100000] flex flex-col justify-end ${isClosingRegisterDrawer ? "animate-fade-out" : "animate-fade-in"}`}>
           {/* Backdrop click close */}
           <div className="flex-1" onClick={closeRegisterDrawer} />
           
