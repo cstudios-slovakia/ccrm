@@ -1136,7 +1136,7 @@ ${log.payload || ''}
           // Collections the server refused to write or delete. Keep the previous
           // baseline for those so a skipped lead delete is retried instead of
           // being treated as saved, then resurrected by the next GET.
-          const skipped = new Set(
+          const skipped = new Set<string>(
             Array.isArray(out?.permissionSkipped) ? out.permissionSkipped.map(String) : [],
           );
           const conflicted: Record<string, string[]> = {};
