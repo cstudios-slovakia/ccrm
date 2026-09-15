@@ -320,11 +320,17 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
 
   const prevDashIdRef = useRef(dashboard.id);
 
+  // The background sync hands this view a fresh `dashboard` object on every
+  // poll, so this effect runs every few seconds. It may refresh the working
+  // layout while nothing is unsaved, but only switching to another dashboard
+  // leaves edit mode — resetting it here on every poll threw the user out of
+  // edit mode at random whenever they had not changed anything yet.
   useEffect(() => {
-    if (dashboard.id !== prevDashIdRef.current || isSaved) {
+    const switched = dashboard.id !== prevDashIdRef.current;
+    if (switched || isSaved) {
       setTempLayout(dashboard.layout);
       setTempPrompts(dashboard.prompts || []);
-      setIsEditMode(canEdit && dashboard.layout.widgets.length === 0);
+      if (switched) setIsEditMode(canEdit && dashboard.layout.widgets.length === 0);
       setIsSaved(true);
       prevDashIdRef.current = dashboard.id;
     }
@@ -820,6 +826,21 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
             </button>
           )}
 
+          {/* Leaves edit mode without discarding anything: unsaved changes stay
+              on screen with the Save button next to it. */}
+          {isEditMode && tempLayout.widgets.length > 0 && (
+            <button
+              onClick={() => {
+                setIsEditMode(false);
+                setIsHelpOpen(false);
+              }}
+              className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors text-xs font-heading font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shrink-0"
+            >
+              <X className="h-4 w-4" />
+              <span>{t("Close", "Zavrieť", "Bezárás")}</span>
+            </button>
+          )}
+
           {canEdit && !isSaved && (
             <button
               onClick={handleSave}
@@ -1135,19 +1156,6 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 ) : (
                   <Send className="h-3.5 w-3.5" />
                 )}
-              </button>
-
-              <div className="h-6 w-px bg-slate-200" />
-
-              <button
-                type="button"
-                onClick={() => {
-                  setIsEditMode(false);
-                  setIsHelpOpen(false);
-                }}
-                className="h-9 px-4 border border-slate-200 rounded-xl hover:bg-slate-50 text-[10px] font-black text-slate-500 uppercase tracking-wider transition-colors cursor-pointer shrink-0"
-              >
-                {t("Close", "Zavrieť", "Bezárás")}
               </button>
             </form>
           </div>
