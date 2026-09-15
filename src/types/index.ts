@@ -85,7 +85,10 @@ export interface LeadAssignmentSettings {
   mode: LeadAssignmentMode;
   /** Ordered pool for mode "selected"; ignored otherwise. Names, matching `Lead.owner`. */
   users: string[];
-  /** true = round-robin through the pool; false = always the first user in it. */
+  /**
+   * Kept so the stored blob stays a stable shape. Assignment always round-robins
+   * through the pool — a pool of one person is simply that person every time.
+   */
   rotate: boolean;
 }
 
