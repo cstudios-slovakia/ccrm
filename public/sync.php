@@ -750,32 +750,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // client a permanently empty role list.
     $roles = isset($settings['ROLES_RBAC']) ? json_decode($settings['ROLES_RBAC'], true) : null;
     if (!is_array($roles) || empty($roles)) {
-        $roles = [
-            [
-                'name' => 'Admin',
-                'permissions' => [
-                    'general_config' => 'edit',
-                    'pm_managers' => 'edit',
-                    'pipeline_stages' => 'edit',
-                    'traffic_sources' => 'edit',
-                    'system_reset' => 'edit',
-                    'ai_config' => 'edit',
-                    'nav_edit' => 'edit'
-                ]
-            ],
-            [
-                'name' => 'Project Manager',
-                'permissions' => [
-                    'general_config' => 'nothing',
-                    'pm_managers' => 'nothing',
-                    'pipeline_stages' => 'nothing',
-                    'traffic_sources' => 'nothing',
-                    'system_reset' => 'nothing',
-                    'ai_config' => 'nothing',
-                    'nav_edit' => 'nothing'
-                ]
-            ]
-        ];
+        $roles = ccrm_fallback_roles();
     }
 
     // Reconstruct settings from system_settings DB table. Anything not stored yet
@@ -1481,7 +1456,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // ccrm_user), which masked where the data actually lives; now it reflects
     // config.php so an operator can see the real target at a glance.
     $dbInfo = null;
-    if (($sessionUser['role'] ?? '') === 'admin') {
+    if (ccrm_is_admin($sessionUser)) {
         $dbInfo = [
             'host' => defined('DB_HOST') ? DB_HOST : '',
             'port' => defined('DB_PORT') ? (string) DB_PORT : '',
@@ -1575,7 +1550,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // payloads still carry these sections (the client always sends a full
     // snapshot), so we silently ignore the privileged parts for non-admins
     // rather than reject the whole sync — otherwise ordinary editing breaks.
-    $isAdmin = (($sessionUser['role'] ?? '') === 'admin');
+    $isAdmin = ccrm_is_admin($sessionUser);
+    $perms = ccrm_user_permissions($pdo, $sessionUser);
+    $permissionSkipped = [];
+    $ccrm_skip_writes = function (string $moduleKey, string $collection) use ($perms, &$permissionSkipped): bool {
+        if (ccrm_perm_can_edit($perms, $moduleKey)) {
+            return false;
+        }
+        if (!in_array($collection, $permissionSkipped, true)) {
+            $permissionSkipped[] = $collection;
+            error_log('[ccrm] permissionSkipped: ' . $collection . ' (no edit on ' . $moduleKey . ')');
+        }
+        return true;
+    };
+    $ccrm_skip_deletes = function (string $moduleKey, string $collection) use ($perms, &$permissionSkipped): bool {
+        $mod = ccrm_perm_module($perms, $moduleKey);
+        if (!empty($mod['delete'])) {
+            return false;
+        }
+        $tag = $collection . ':delete';
+        if (!in_array($tag, $permissionSkipped, true)) {
+            $permissionSkipped[] = $tag;
+            error_log('[ccrm] permissionSkipped: ' . $tag . ' (no delete on ' . $moduleKey . ')');
+        }
+        return true;
+    };
 
     $input = file_get_contents('php://input');
     $payload = json_decode($input, true);
@@ -1691,7 +1690,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // MySQL, so running it inside the transaction would silently end it and
         // make the final commit() fail with "There is no active transaction".
         // DDL cannot be rolled back anyway, so it belongs outside the transaction.
-        if (isset($payload['unifiedEntries']) && is_array($payload['unifiedEntries'])) {
+        if (isset($payload['unifiedEntries']) && is_array($payload['unifiedEntries']) && !$ccrm_skip_writes('general_config', 'unifiedEntries')) {
             // Cap dynamic-table provisioning per request so a crafted payload
             // cannot exhaust the database with unbounded CREATE/ALTER TABLE.
             $ddlBudget = 200;
@@ -1763,7 +1762,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         // Project Types dynamic table generation
-        if (isset($payload['projectTypes']) && is_array($payload['projectTypes'])) {
+        if (isset($payload['projectTypes']) && is_array($payload['projectTypes']) && !$ccrm_skip_writes('general_config', 'projectTypes')) {
             require_once __DIR__ . '/api/agent_utils.php';
             // Extract integrations config from existing settings to instantiate RAG connection
             $intConfigRaw = '';
@@ -2140,10 +2139,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     continue;
                 }
                 if ($isAdmin) {
-                    $role = ccrm_normalize_role($u['role'] ?? 'viewer');
+                    $role = ccrm_canonical_role_name(ccrm_load_roles($pdo), $u['role'] ?? '');
                 } else {
-                    // Lock to the caller's stored role, ignoring any client value.
-                    $role = ccrm_normalize_role($existingRoles[$userId] ?? ($sessionUser['role'] ?? 'viewer'));
+                    // Lock to the stored role, ignoring any client value.
+                    $role = $existingRoles[$userId] ?? ccrm_normalize_role($sessionUser['role'] ?? '');
                 }
                 // Audit any admin-driven role change.
                 if ($isAdmin && isset($existingRoles[$userId]) && $existingRoles[$userId] !== $role) {
@@ -2218,7 +2217,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         // 4.2.5. Synchronize Project Types & Projects
-        if (isset($payload['projectTypes']) && is_array($payload['projectTypes'])) {
+        if (isset($payload['projectTypes']) && is_array($payload['projectTypes']) && !$ccrm_skip_writes('general_config', 'projectTypes')) {
             $existingPtIds = $pdo->query("SELECT `id` FROM `project_types`")->fetchAll(PDO::FETCH_COLUMN);
             $processedPtIds = [];
             $insPt = $pdo->prepare("INSERT INTO `project_types` (`id`, `name`, `description`, `icon`, `color`, `attributes_json`, `has_timeline`, `has_gantt`, `has_deadline`, `deadline_warning_days`, `deadline_required`, `has_files`, `file_fields_json`, `timeline_event_types_json`, `timeline_attributes_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `icon`=VALUES(`icon`), `color`=VALUES(`color`), `attributes_json`=VALUES(`attributes_json`), `has_timeline`=VALUES(`has_timeline`), `has_gantt`=VALUES(`has_gantt`), `has_deadline`=VALUES(`has_deadline`), `deadline_warning_days`=VALUES(`deadline_warning_days`), `deadline_required`=VALUES(`deadline_required`), `has_files`=VALUES(`has_files`), `file_fields_json`=VALUES(`file_fields_json`), `timeline_event_types_json`=VALUES(`timeline_event_types_json`), `timeline_attributes_json`=VALUES(`timeline_attributes_json`)");
@@ -2273,7 +2272,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ? $deletionsFor('projectTypes', $existingPtIds)
                 : array_diff($existingPtIds, $processedPtIds);
             $ptToDelete = ccrm_filter_mass_delete($pdo, 'project_types', $ptToDelete, true);
-            if (!empty($ptToDelete)) {
+            if (!empty($ptToDelete) && !$ccrm_skip_deletes('general_config', 'projectTypes')) {
                 $delPt = $pdo->prepare("DELETE FROM `project_types` WHERE `id` = ?");
                 foreach ($ptToDelete as $ptId) {
                     $delPt->execute([$ptId]);
@@ -2293,7 +2292,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        if (isset($payload['projects']) && is_array($payload['projects'])) {
+        if (isset($payload['projects']) && is_array($payload['projects']) && !$ccrm_skip_writes('projects', 'projects')) {
             $existingProjIds = $pdo->query("SELECT `id` FROM `projects`")->fetchAll(PDO::FETCH_COLUMN);
             $processedProjIds = [];
 
@@ -2460,7 +2459,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ? $deletionsFor('projects', $existingProjIds)
                 : array_diff($existingProjIds, $processedProjIds);
             $projToDelete = ccrm_filter_mass_delete($pdo, 'projects', $projToDelete);
-            if (!empty($projToDelete)) {
+            if (!empty($projToDelete) && !$ccrm_skip_deletes('projects', 'projects')) {
                 $delProj = $pdo->prepare("DELETE FROM `projects` WHERE `id` = ?");
                 foreach ($projToDelete as $pid) {
                     $delProj->execute([$pid]);
@@ -2469,7 +2468,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         // 4.3. Synchronize Leads, Categories & Timelines
-        if (isset($payload['leads']) && is_array($payload['leads'])) {
+        if (isset($payload['leads']) && is_array($payload['leads']) && !$ccrm_skip_writes('leads', 'leads')) {
             $stmt = $pdo->query("SELECT * FROM `leads`");
             $dbLeads = [];
             while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -2823,11 +2822,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $leadsToDelete = $isDeltaSync
                 ? $deletionsFor('leads', $existingLeadIds)
                 : array_diff($existingLeadIds, $processedLeadIds);
-            ccrm_delete_omitted($pdo, 'leads', $leadsToDelete, $baseSyncedAt);
+            if (!$ccrm_skip_deletes('leads', 'leads')) {
+                ccrm_delete_omitted($pdo, 'leads', $leadsToDelete, $baseSyncedAt);
+            }
         }
 
         // 4.4. Synchronize Tasks
-        if (isset($payload['tasks']) && is_array($payload['tasks'])) {
+        if (isset($payload['tasks']) && is_array($payload['tasks']) && !$ccrm_skip_writes('tasks', 'tasks')) {
             // updated_at comes along so the conflict guard below can tell a stale
             // re-send apart from a genuine edit.
             $dbTasks = [];
@@ -2919,7 +2920,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         // 4.5. Synchronize Meeting Notes & meeting_tasks
-        if (isset($payload['meetingNotes']) && is_array($payload['meetingNotes'])) {
+        if (isset($payload['meetingNotes']) && is_array($payload['meetingNotes']) && !$ccrm_skip_writes('meetings', 'meetingNotes')) {
             // Fetch existing ids to delete
             // updated_at comes along so the conflict guard below can tell a stale
             // re-send apart from a genuine edit.
@@ -3001,11 +3002,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $meetingsToDelete = $isDeltaSync
                 ? $deletionsFor('meetingNotes', $existingMeetingIds)
                 : array_diff($existingMeetingIds, $processedMeetingIds);
-            ccrm_delete_omitted($pdo, 'meeting_notes', $meetingsToDelete, $baseSyncedAt);
+            if (!$ccrm_skip_deletes('meetings', 'meetingNotes')) {
+                ccrm_delete_omitted($pdo, 'meeting_notes', $meetingsToDelete, $baseSyncedAt);
+            }
         }
 
         // 4.6. Synchronize Unified Universal Entries (Registry & Dynamic Tables)
         if (isset($payload['unifiedEntries']) && is_array($payload['unifiedEntries'])) {
+            $skipUeRegistry = $ccrm_skip_writes('general_config', 'unifiedEntries');
+            $skipUeData = $ccrm_skip_writes('unified_entries', 'unifiedEntriesData');
+            if ($skipUeRegistry && $skipUeData) {
+                // nothing to do
+            } else {
             $stmt = $pdo->query("SELECT `id` FROM `unified_entries`");
             $existingRegistryIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedRegistryIds = [];
@@ -3016,6 +3024,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $ueId = $ue['id'];
                 $modules = $ue['modules'] ?? [];
                 $folderModules = $ue['folderModules'] ?? [];
+                if (!$skipUeRegistry) {
                 $insRegistry->execute([
                     $ueId,
                     $ue['name'],
@@ -3031,6 +3040,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ($ue['archived'] ?? false) ? 1 : 0
                 ]);
                 $processedRegistryIds[] = $ueId;
+                }
 
                 // Dynamically spawn or migrate table for this entry
                 $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($ueId));
@@ -3042,7 +3052,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // commit in MySQL.
 
                 // If rows data is supplied, synchronize it to this dynamic table
-                if (isset($payload['unifiedEntriesData'][$ueId]) && is_array($payload['unifiedEntriesData'][$ueId])) {
+                if (!$skipUeData && isset($payload['unifiedEntriesData'][$ueId]) && is_array($payload['unifiedEntriesData'][$ueId])) {
                     $rows = $payload['unifiedEntriesData'][$ueId];
                     $stmtRows = $pdo->query("SELECT `id` FROM `{$tableName}`");
                     $existingRowIds = $stmtRows->fetchAll(PDO::FETCH_COLUMN);
@@ -3200,8 +3210,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $ueId
                         )))
                         : array_diff($existingRowIds, $processedRowIds);
-                    ccrm_delete_omitted($pdo, $tableName, $rowsToDelete, $baseSyncedAt);
+                    if (!$ccrm_skip_deletes('unified_entries', 'unifiedEntriesData')) {
+                        ccrm_delete_omitted($pdo, $tableName, $rowsToDelete, $baseSyncedAt);
+                    }
                 }
+            }
             }
         }
 
@@ -3215,6 +3228,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             foreach ($payload['customDashboards'] as $dash) {
                 $dashId = $dash['id'];
+                $dashMod = ($dashId === CCRM_HOME_DASHBOARD_ID) ? 'dashboard' : 'dashboard.custom';
+                $dashColl = ($dashId === CCRM_HOME_DASHBOARD_ID) ? 'customDashboards:home' : 'customDashboards';
+                if ($ccrm_skip_writes($dashMod, $dashColl)) {
+                    continue;
+                }
                 $prompts = $dash['prompts'] ?? [];
                 $layout = $dash['layout'] ?? [];
                 $insDash->execute([
@@ -3233,13 +3251,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $dashesToDelete = $isDeltaSync
                 ? $deletionsFor('customDashboards', $existingDashIds)
                 : array_diff($existingDashIds, $processedDashIds);
+            $dashesToDelete = array_values(array_filter($dashesToDelete, function ($id) use ($ccrm_skip_deletes) {
+                $mod = ($id === CCRM_HOME_DASHBOARD_ID) ? 'dashboard' : 'dashboard.custom';
+                $coll = ($id === CCRM_HOME_DASHBOARD_ID) ? 'customDashboards:home' : 'customDashboards';
+                return !$ccrm_skip_deletes($mod, $coll);
+            }));
             if (!empty($dashesToDelete)) {
                 ccrm_delete_omitted($pdo, 'custom_dashboards', $dashesToDelete, null);
             }
         }
 
         // 4.8. Synchronize Warehouses
-        if (isset($payload['warehouses']) && is_array($payload['warehouses'])) {
+        if (isset($payload['warehouses']) && is_array($payload['warehouses']) && !$ccrm_skip_writes('warehouse', 'warehouses')) {
             $stmt = $pdo->query("SELECT `id` FROM `warehouses`");
             $existingWhIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedWhIds = [];
@@ -3260,13 +3283,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $whToDelete = $isDeltaSync ? $deletionsFor('warehouses', $existingWhIds) : array_diff($existingWhIds, $processedWhIds);
-            if (!empty($whToDelete)) {
+            if (!empty($whToDelete) && !$ccrm_skip_deletes('warehouse', 'warehouses')) {
                 ccrm_delete_omitted($pdo, 'warehouses', $whToDelete, null);
             }
         }
 
         // 4.9. Synchronize Suppliers
-        if (isset($payload['suppliers']) && is_array($payload['suppliers'])) {
+        if (isset($payload['suppliers']) && is_array($payload['suppliers']) && !$ccrm_skip_writes('warehouse', 'suppliers')) {
             $stmt = $pdo->query("SELECT `id` FROM `suppliers`");
             $existingSupIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedSupIds = [];
@@ -3298,13 +3321,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $supToDelete = $isDeltaSync ? $deletionsFor('suppliers', $existingSupIds) : array_diff($existingSupIds, $processedSupIds);
-            if (!empty($supToDelete)) {
+            if (!empty($supToDelete) && !$ccrm_skip_deletes('warehouse', 'suppliers')) {
                 ccrm_delete_omitted($pdo, 'suppliers', $supToDelete, null);
             }
         }
 
         // 4.10. Synchronize Warehouse Items
-        if (isset($payload['warehouseItems']) && is_array($payload['warehouseItems'])) {
+        if (isset($payload['warehouseItems']) && is_array($payload['warehouseItems']) && !$ccrm_skip_writes('warehouse', 'warehouseItems')) {
             $stmt = $pdo->query("SELECT `id` FROM `warehouse_items`");
             $existingItemIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedItemIds = [];
@@ -3334,13 +3357,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $itemsToDelete = $isDeltaSync ? $deletionsFor('warehouseItems', $existingItemIds) : array_diff($existingItemIds, $processedItemIds);
-            if (!empty($itemsToDelete)) {
+            if (!empty($itemsToDelete) && !$ccrm_skip_deletes('warehouse', 'warehouseItems')) {
                 ccrm_delete_omitted($pdo, 'warehouse_items', $itemsToDelete, null);
             }
         }
 
         // 4.11. Synchronize Warehouse Stock & Batches
-        if (isset($payload['warehouseStock']) && is_array($payload['warehouseStock'])) {
+        if (isset($payload['warehouseStock']) && is_array($payload['warehouseStock']) && !$ccrm_skip_writes('warehouse', 'warehouseStock')) {
             $insStock = $pdo->prepare("INSERT INTO `warehouse_stock` (`warehouse_id`, `item_id`, `quantity`, `reserved_quantity`, `location`) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `quantity` = VALUES(`quantity`), `reserved_quantity` = VALUES(`reserved_quantity`), `location` = VALUES(`location`)");
             foreach ($payload['warehouseStock'] as $stk) {
                 if (!empty($stk['warehouseId']) && !empty($stk['itemId'])) {
@@ -3359,7 +3382,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        if (isset($payload['warehouseBatches']) && is_array($payload['warehouseBatches'])) {
+        if (isset($payload['warehouseBatches']) && is_array($payload['warehouseBatches']) && !$ccrm_skip_writes('warehouse', 'warehouseBatches')) {
             $stmt = $pdo->query("SELECT `id` FROM `warehouse_batches`");
             $existingBatchIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedBatchIds = [];
@@ -3386,13 +3409,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $batchesToDelete = $isDeltaSync ? $deletionsFor('warehouseBatches', $existingBatchIds) : array_diff($existingBatchIds, $processedBatchIds);
-            if (!empty($batchesToDelete)) {
+            if (!empty($batchesToDelete) && !$ccrm_skip_deletes('warehouse', 'warehouseBatches')) {
                 ccrm_delete_omitted($pdo, 'warehouse_batches', $batchesToDelete, null);
             }
         }
 
         // 4.12. Synchronize Warehouse Movements
-        if (isset($payload['warehouseMovements']) && is_array($payload['warehouseMovements'])) {
+        if (isset($payload['warehouseMovements']) && is_array($payload['warehouseMovements']) && !$ccrm_skip_writes('warehouse', 'warehouseMovements')) {
             $stmt = $pdo->query("SELECT `id` FROM `warehouse_movements`");
             $existingMovIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedMovIds = [];
@@ -3447,13 +3470,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $movToDelete = $isDeltaSync ? $deletionsFor('warehouseMovements', $existingMovIds) : array_diff($existingMovIds, $processedMovIds);
-            if (!empty($movToDelete)) {
+            if (!empty($movToDelete) && !$ccrm_skip_deletes('warehouse', 'warehouseMovements')) {
                 ccrm_delete_omitted($pdo, 'warehouse_movements', $movToDelete, null);
             }
         }
 
         // 4.13. Synchronize Financial Categories
-        if (isset($payload['financialCategories']) && is_array($payload['financialCategories'])) {
+        if (isset($payload['financialCategories']) && is_array($payload['financialCategories']) && !$ccrm_skip_writes('financial', 'financialCategories')) {
             $stmt = $pdo->query("SELECT `id` FROM `financial_categories`");
             $existingFcIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedFcIds = [];
@@ -3476,7 +3499,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $fcToDelete = $isDeltaSync ? $deletionsFor('financialCategories', $existingFcIds) : array_diff($existingFcIds, $processedFcIds);
-            if (!empty($fcToDelete)) {
+            if (!empty($fcToDelete) && !$ccrm_skip_deletes('financial', 'financialCategories')) {
                 ccrm_delete_omitted($pdo, 'financial_categories', $fcToDelete, null);
             }
         }
@@ -3485,7 +3508,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // above, minus the income/expense type. Deleting a category does not
         // touch the clients filed under it here: the app clears their
         // clientCategoryId itself and pushes those leads alongside.
-        if (isset($payload['clientCategories']) && is_array($payload['clientCategories'])) {
+        if (isset($payload['clientCategories']) && is_array($payload['clientCategories']) && !$ccrm_skip_writes('clients', 'clientCategories')) {
             $stmt = $pdo->query("SELECT `id` FROM `client_categories`");
             $existingCcIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedCcIds = [];
@@ -3509,13 +3532,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $ccToDelete = $isDeltaSync ? $deletionsFor('clientCategories', $existingCcIds) : array_diff($existingCcIds, $processedCcIds);
-            if (!empty($ccToDelete)) {
+            if (!empty($ccToDelete) && !$ccrm_skip_deletes('clients', 'clientCategories')) {
                 ccrm_delete_omitted($pdo, 'client_categories', $ccToDelete, null);
             }
         }
 
         // 4.14. Synchronize Financial Records
-        if (isset($payload['financialRecords']) && is_array($payload['financialRecords'])) {
+        if (isset($payload['financialRecords']) && is_array($payload['financialRecords']) && !$ccrm_skip_writes('financial', 'financialRecords')) {
             $stmt = $pdo->query("SELECT `id` FROM `financial_records`");
             $existingFrIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedFrIds = [];
@@ -3556,13 +3579,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $frToDelete = $isDeltaSync ? $deletionsFor('financialRecords', $existingFrIds) : array_diff($existingFrIds, $processedFrIds);
-            if (!empty($frToDelete)) {
+            if (!empty($frToDelete) && !$ccrm_skip_deletes('financial', 'financialRecords')) {
                 ccrm_delete_omitted($pdo, 'financial_records', $frToDelete, null);
             }
         }
 
         // 4.15. Synchronize Invoices & Price Offers
-        if (isset($payload['invoicesOffers']) && is_array($payload['invoicesOffers'])) {
+        if (isset($payload['invoicesOffers']) && is_array($payload['invoicesOffers']) && !$ccrm_skip_writes('invoices', 'invoicesOffers')) {
             $stmt = $pdo->query("SELECT `id` FROM `invoices_offers`");
             $existingIoIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedIoIds = [];
@@ -3675,13 +3698,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $ioToDelete = $isDeltaSync ? $deletionsFor('invoicesOffers', $existingIoIds) : array_diff($existingIoIds, $processedIoIds);
-            if (!empty($ioToDelete)) {
+            if (!empty($ioToDelete) && !$ccrm_skip_deletes('invoices', 'invoicesOffers')) {
                 ccrm_delete_omitted($pdo, 'invoices_offers', $ioToDelete, null, [], false, $isDeltaSync);
             }
         }
 
         // 4.16. Synchronize AI Custom PDF Templates
-        if (isset($payload['aiCustomTemplates']) && is_array($payload['aiCustomTemplates'])) {
+        if (isset($payload['aiCustomTemplates']) && is_array($payload['aiCustomTemplates']) && !$ccrm_skip_writes('general_config', 'aiCustomTemplates')) {
             $stmt = $pdo->query("SELECT `id` FROM `ai_custom_templates`");
             $existingActIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedActIds = [];
@@ -3715,7 +3738,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $actToDelete = $isDeltaSync ? $deletionsFor('aiCustomTemplates', $existingActIds) : array_diff($existingActIds, $processedActIds);
-            if (!empty($actToDelete)) {
+            if (!empty($actToDelete) && !$ccrm_skip_deletes('general_config', 'aiCustomTemplates')) {
                 ccrm_delete_omitted($pdo, 'ai_custom_templates', $actToDelete, null);
             }
         }
@@ -3768,6 +3791,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Projects the server paired with brand-new leads, so the client can
             // show them straight away instead of after the next full pull.
             'createdProjects' => array_values($createdProjects),
+            'permissionSkipped' => array_values($permissionSkipped),
         ]);
     } catch (\Throwable $e) {
         if (isset($pdo) && $pdo->inTransaction()) {

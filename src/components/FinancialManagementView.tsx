@@ -38,6 +38,7 @@ import {
   type CategoryDropTarget
 } from "../utils/financialCategoryTree";
 import { useDragAutoScroll } from "../hooks/useDragAutoScroll";
+import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 
 interface SearchableCategorySelectProps {
   value: string;
@@ -633,22 +634,35 @@ interface FinancialManagementViewProps {
   currencyCode?: string | null;
   onOpenProject?: (projectId: string) => void;
   onOpenClient?: (clientId: string) => void;
+  /** Role access for the financial module. `edit: false` renders the view read-only. */
+  access?: ModuleAccess;
 }
 
 export const FinancialManagementView: React.FC<FinancialManagementViewProps> = ({
   financialRecords = [],
-  setFinancialRecords,
+  setFinancialRecords: setFinancialRecordsRaw,
   financialCategories = [],
-  setFinancialCategories,
+  setFinancialCategories: setFinancialCategoriesRaw,
   projects = [],
   leads = [],
   userLanguage,
   currencyCode,
   onOpenProject,
-  onOpenClient
+  onOpenClient,
+  access = FULL_MODULE_ACCESS
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
+  const canEdit = access.edit;
+  const canDelete = access.delete;
+  const setFinancialRecords: typeof setFinancialRecordsRaw = (updater) => {
+    if (!canEdit) return;
+    setFinancialRecordsRaw(updater);
+  };
+  const setFinancialCategories: typeof setFinancialCategoriesRaw = (updater) => {
+    if (!canEdit) return;
+    setFinancialCategoriesRaw(updater);
+  };
 
   const money = (v: number) => formatMoney(v, currencyCode, userLanguage);
 
@@ -1150,6 +1164,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
   // Helper to open modal for creating a new recurring expense
   const handleOpenCreateRecurringModal = (type: FinancialType = "expense", scope: "global" | "project" | "client" = "global") => {
+    if (!canEdit) return;
     setEditingRecord(null);
     setFormType(type);
     setFormSubtype("expense");
@@ -2390,6 +2405,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
   // Open Creation Modal with preset type & scope
   const handleOpenCreateModal = (type: FinancialType, defaultScope: "global" | "project" | "client" = "global") => {
+    if (!canEdit) return;
     setEditingRecord(null);
     setFormType(type);
     setFormSubtype(type === "income" ? "invoice" : "regular");
@@ -2538,6 +2554,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
   // Delete Transaction
   const handleDeleteTransaction = (id: string) => {
+    if (!canDelete) return;
     if (confirm(t("Are you sure you want to delete this financial record?", "Naozaj chcete vymazať tento finančný záznam?", "Biztosan törölni szeretné ezt a tételt?"))) {
       setFinancialRecords((prev) => prev.filter((r) => r.id !== id));
       (window as any).showToast?.(t("Record deleted", "Záznam bol vymazaný", "Tétel törölve"));
@@ -2593,6 +2610,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
   // Delete Category
   const handleDeleteCategory = (id: string) => {
+    if (!canDelete) return;
     if (confirm(t("Delete category and its subcategories?", "Vymazať kategóriu a všetky jej podkategórie?", "Törli a kategóriát és alkategóriáit?"))) {
       // Find all nested child ids recursively
       const toDeleteIds = new Set<string>([id]);
@@ -2756,6 +2774,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           <span className={`truncate ${styles.name}`}>{cat.name}</span>
           <span className={`shrink-0 ${styles.badge}`}>{styles.badgeText}</span>
         </div>
+        {canDelete && (
         <button
           onClick={() => handleDeleteCategory(cat.id)}
           className="p-1 text-slate-400 hover:text-rose-600 transition-colors duration-150 cursor-pointer"
@@ -2763,6 +2782,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         >
           <Trash2 className={styles.trash} />
         </button>
+        )}
       </div>
     );
   };
@@ -3241,10 +3261,16 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
             {t("Track planned vs real cash flows, project revenue profitability, single & recurring expenses, and 3-level categories.", "Sledovanie plánovaných a reálnych tokov, ziskovosti projektov, jednorazových a pravidelných výdavkov a 3 úrovní kategórií.", "Tervezett és valós pénzáramlások, projektjövedelmezőség, rendszeres kiadások és 3 szintű kategóriák.")}
           </p>
+          {!canEdit && (
+            <span className="mt-2 inline-flex items-center w-fit px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider">
+              {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
+            </span>
+          )}
         </div>
 
         {/* Quick Actions — one row, equal height, never wrapping into a stack */}
         <div className="flex items-center gap-2 shrink-0">
+          {canEdit && (
           <button
             onClick={() => handleOpenCreateModal("income", "global")}
             className="flex items-center justify-center gap-2 h-10 px-4 whitespace-nowrap bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl shadow-sm shadow-emerald-600/20 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
@@ -3252,7 +3278,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             <Plus className="h-4 w-4" />
             <span>{t("New Income / Invoice", "Nový príjem / Faktúra", "Új bevétel / Számla")}</span>
           </button>
+          )}
 
+          {canEdit && (
           <button
             onClick={() => handleOpenCreateModal("expense", "global")}
             className="flex items-center justify-center gap-2 h-10 px-4 whitespace-nowrap bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-xl shadow-sm shadow-rose-600/20 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
@@ -3260,6 +3288,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             <Plus className="h-4 w-4" />
             <span>{t("New Expense", "Nový výdavok", "Új kiadás")}</span>
           </button>
+          )}
         </div>
       </div>
 
@@ -4432,6 +4461,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   <span>{movementsSortOrder === "desc" ? t("Newest First", "Najnovšie", "Legújabb") : t("Oldest First", "Najstaršie", "Legrégebbi")}</span>
                 </button>
 
+                {canEdit && (
                 <button
                   onClick={() => handleOpenCreateModal("income", "global")}
                   className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
@@ -4439,7 +4469,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   <Plus className="h-3.5 w-3.5" />
                   <span>{t("Income", "Príjem", "Bevétel")}</span>
                 </button>
+                )}
 
+                {canEdit && (
                 <button
                   onClick={() => handleOpenCreateModal("expense", "global")}
                   className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
@@ -4447,6 +4479,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   <Plus className="h-3.5 w-3.5" />
                   <span>{t("Expense", "Výdavok", "Kiadás")}</span>
                 </button>
+                )}
               </div>
             </div>
 
@@ -5090,6 +5123,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   </button>
                 )}
 
+                {canEdit && (
                 <button
                   type="button"
                   onClick={() => handleOpenCreateRecurringModal("expense", "global")}
@@ -5098,6 +5132,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   <Plus className="h-4 w-4" />
                   <span>{t("New Recurring Expense", "Nový pravidelný výdavok", "Új rendszeres kiadás")}</span>
                 </button>
+                )}
               </div>
             </div>
 

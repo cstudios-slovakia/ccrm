@@ -188,7 +188,7 @@ if (!function_exists('ccrm_send_cors')) {
 
         return [
             'id'    => $_SESSION['ccrm_uid'],
-            'role'  => $_SESSION['ccrm_role'] ?? 'viewer',
+            'role'  => $_SESSION['ccrm_role'] ?? 'Viewer',
             'email' => $_SESSION['ccrm_email'] ?? '',
         ];
     }
@@ -224,7 +224,7 @@ if (!function_exists('ccrm_send_cors')) {
      */
     function ccrm_require_admin(): array {
         $user = ccrm_require_auth();
-        if (($user['role'] ?? '') !== 'admin') {
+        if (!ccrm_is_admin($user)) {
             http_response_code(403);
             echo json_encode(['success' => false, 'message' => 'Administrator privileges required.']);
             exit;
@@ -233,21 +233,40 @@ if (!function_exists('ccrm_send_cors')) {
     }
 
     /**
-     * Normalize a free-form role label ("Admin", "Project Manager", ...) to the
-     * canonical DB enum value.
+     * True when the session (or user row) is the Admin role. Compared
+     * case-insensitively on the trimmed name so a stored `admin` and a
+     * registry `Admin` both count.
      */
-    function ccrm_normalize_role(?string $role): string {
-        $r = strtolower(str_replace(' ', '_', trim((string)$role)));
-        return in_array($r, ['admin', 'project_manager', 'viewer'], true) ? $r : 'viewer';
+    function ccrm_is_admin(?array $user): bool {
+        return strtolower(trim((string)($user['role'] ?? ''))) === 'admin';
     }
 
-    /** Map a DB enum role back to the label the frontend expects. */
-    function ccrm_role_label(string $dbRole): string {
-        switch ($dbRole) {
-            case 'admin':           return 'Admin';
-            case 'project_manager': return 'Project Manager';
-            default:                return 'Viewer';
+    /**
+     * Normalize a free-form role label for storage. Legacy enum values map to
+     * their display names; any other trimmed name (capped at 100 chars) is kept
+     * as given; empty becomes Viewer.
+     */
+    function ccrm_normalize_role(?string $role): string {
+        $label = trim((string)$role);
+        if ($label === '') {
+            return 'Viewer';
         }
+        $folded = strtolower(str_replace(' ', '_', $label));
+        if ($folded === 'admin') return 'Admin';
+        if ($folded === 'project_manager') return 'Project Manager';
+        if ($folded === 'viewer') return 'Viewer';
+        if (function_exists('mb_substr')) {
+            return mb_substr($label, 0, 100);
+        }
+        return substr($label, 0, 100);
+    }
+
+    /**
+     * Map a stored role back to the label the frontend expects. Same mapping
+     * as ccrm_normalize_role (identity for any name that is not a legacy enum).
+     */
+    function ccrm_role_label(string $dbRole): string {
+        return ccrm_normalize_role($dbRole);
     }
 
     /**
@@ -265,7 +284,7 @@ if (!function_exists('ccrm_send_cors')) {
         }
         try {
             $stmt = $pdo->query(
-                "SELECT `name` FROM `users` ORDER BY (`role` = 'admin') DESC, `name` ASC LIMIT 1"
+                "SELECT `name` FROM `users` ORDER BY (LOWER(TRIM(`role`)) = 'admin') DESC, `name` ASC LIMIT 1"
             );
             $name = $stmt ? $stmt->fetchColumn() : false;
             $cached = ($name !== false && $name !== null) ? (string)$name : '';
@@ -1440,3 +1459,7 @@ HTACCESS;
         return $encoded === false ? $incomingJson : $encoded;
     }
 }
+
+// ccrm_is_admin / ccrm_normalize_role exist when the port of permissions.ts
+// is included. require_once is safe against the circular include.
+require_once __DIR__ . '/permissions.php';

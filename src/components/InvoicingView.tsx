@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import {
   FileText, Plus, Search, Printer, Eye, Trash2, Pencil,
   AlertCircle, Sparkles, Package, ExternalLink, Award, Layers,
-  TrendingUp, RefreshCw, ChevronRight, X, Check, UserPlus
+  TrendingUp, RefreshCw, ChevronRight, X, Check, UserPlus, Lock
 } from "lucide-react";
 import type {
   InvoiceOffer, InvoiceOfferItem, InvoiceOfferType, InvoiceOfferMode,
@@ -22,6 +22,8 @@ import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { formatMoney, resolveCurrencySymbol } from "../utils/currency";
 import { todayLocal, nowLocalStamp, formatDateLocalized } from "../utils/localTime";
 import { cn } from "../utils/cn";
+import { FULL_MODULE_ACCESS } from "../utils/permissions";
+import type { ModuleAccess } from "../utils/permissions";
 
 interface InvoicingViewProps {
   invoicesOffers: InvoiceOffer[];
@@ -37,6 +39,8 @@ interface InvoicingViewProps {
   systemCurrency?: string | null;
   onOpenSettings?: () => void;
   onAddTimelineEvent?: (leadId: string, event: TimelineEvent) => void;
+  /** Role access for the invoicing module. `edit: false` renders the view read-only. */
+  access?: ModuleAccess;
 }
 
 const WIZARD_STEPS = [1, 2, 3, 4, 5] as const;
@@ -108,10 +112,16 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
   systemLanguage = "sk",
   systemCurrency = "EUR",
   onOpenSettings,
-  onAddTimelineEvent
+  onAddTimelineEvent,
+  access = FULL_MODULE_ACCESS
 }) => {
   const lang = (systemLanguage === "sk" || systemLanguage === "hu" ? systemLanguage : "en") as Language;
   const t = (en: string, sk: string, hu: string) => (lang === "sk" ? sk : lang === "hu" ? hu : en);
+  // Role gates: a viewer can browse, filter and print, but never issue, change
+  // or delete a document. Every mutating handler bails out on these as well,
+  // so a hidden control cannot be resurrected through a stale reference.
+  const canEdit = access.edit;
+  const canDelete = access.delete;
   const currency = systemCurrency || "EUR";
   const currencySymbol = resolveCurrencySymbol(currency, lang);
   const money = (value: unknown, decimals = 2) =>
@@ -417,11 +427,13 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
   };
 
   const handleOpenCreateModal = () => {
+    if (!canEdit) return;
     resetDraft("price_offer");
     setIsCreateModalOpen(true);
   };
 
   const handleOpenEditModal = (offer: InvoiceOffer) => {
+    if (!canEdit) return;
     setEditingId(offer.id);
     setDraftType(offer.type);
     setDraftMode(offer.mode);
@@ -488,7 +500,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
   }, [selectedLeadId]);
 
   const handleSelectClientSuggestion = async (item: CompanySuggestion) => {
-    if (!selectedLead) return;
+    if (!canEdit || !selectedLead) return;
 
     const details = await clientLookup.select(item, registryCountry);
     if (!details) {
@@ -577,6 +589,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
   };
 
   const openNewClientModal = () => {
+    if (!canEdit) return;
     setNewClient(emptyNewClient());
     newClientLookup.close();
     setIsNewClientOpen(true);
@@ -589,6 +602,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
 
   const handleCreateClient = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canEdit) return;
 
     const name = newClient.name.trim();
     if (!name) {
@@ -758,6 +772,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
 
   // ------------------------------------------------------------------- actions
   const handleSaveOffer = async () => {
+    if (!canEdit) return;
     const doc = buildDocument();
     if (!doc) {
       toast(t("Please select a client / lead first.", "Najprv vyberte klienta alebo lead.", "Először válasszon ügyfelet."), "error");
@@ -877,10 +892,12 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
   };
 
   const handleChangeStatus = (offerId: string, status: InvoiceOfferStatus) => {
+    if (!canEdit) return;
     setInvoicesOffers(prev => prev.map(o => (o.id === offerId ? { ...o, status } : o)));
   };
 
   const handleDelete = (offer: InvoiceOffer) => {
+    if (!canDelete) return;
     const ok = window.confirm(
       t(
         `Delete document ${offer.documentNumber}? This cannot be undone.`,
@@ -964,15 +981,32 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
               <span>{t("Billing settings", "Fakturačné nastavenia", "Számlázási beállítások")}</span>
             </button>
           )}
-          <button
-            onClick={handleOpenCreateModal}
-            className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-2xl shadow-md shadow-indigo-600/20 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
-          >
-            <Plus className="h-4 w-4" />
-            <span>{t("New document", "Nový doklad", "Új bizonylat")}</span>
-          </button>
+          {canEdit && (
+            <button
+              onClick={handleOpenCreateModal}
+              className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-2xl shadow-md shadow-indigo-600/20 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+            >
+              <Plus className="h-4 w-4" />
+              <span>{t("New document", "Nový doklad", "Új bizonylat")}</span>
+            </button>
+          )}
         </div>
       </div>
+
+      {/* READ-ONLY NOTICE — the role can browse and print, but not issue or change documents */}
+      {!canEdit && (
+        <div className="flex items-center gap-2.5 p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-900">
+          <Lock className="h-4 w-4 shrink-0 text-amber-600" />
+          <span className="font-semibold">{t("Read-only access", "Iba na čítanie", "Csak olvasható")}</span>
+          <span className="text-amber-800/80">
+            {t(
+              "Your role can view and print documents, but not create or change them.",
+              "Vaša rola môže doklady prezerať a tlačiť, ale nie vytvárať ani meniť.",
+              "Az Ön szerepköre megtekintheti és kinyomtathatja a bizonylatokat, de nem hozhat létre és nem módosíthat."
+            )}
+          </span>
+        </div>
+      )}
 
       {/* 2. SETUP NOTICE — a document issued before Settings are filled in carries no company identity */}
       {!billingConfigured && (
@@ -1151,18 +1185,29 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                       {money(offer.totalPrice)}
                     </td>
                     <td className="p-4 align-top text-center">
-                      <CustomSelect
-                        size="sm"
-                        align="right"
-                        value={offer.status}
-                        onChange={next => handleChangeStatus(offer.id, next as InvoiceOfferStatus)}
-                        options={statusOptions}
-                        unstyled
-                        className={cn(
-                          "gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border cursor-pointer transition-all hover:brightness-95",
-                          statusBadgeClass(offer.status)
-                        )}
-                      />
+                      {canEdit ? (
+                        <CustomSelect
+                          size="sm"
+                          align="right"
+                          value={offer.status}
+                          onChange={next => handleChangeStatus(offer.id, next as InvoiceOfferStatus)}
+                          options={statusOptions}
+                          unstyled
+                          className={cn(
+                            "gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border cursor-pointer transition-all hover:brightness-95",
+                            statusBadgeClass(offer.status)
+                          )}
+                        />
+                      ) : (
+                        <span
+                          className={cn(
+                            "inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border",
+                            statusBadgeClass(offer.status)
+                          )}
+                        >
+                          {statusLabel(offer.status)}
+                        </span>
+                      )}
                     </td>
                     <td className="p-4 align-top text-right">
                       <div className="flex items-center justify-end gap-1">
@@ -1173,20 +1218,24 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                         >
                           <Eye className="h-4 w-4" />
                         </button>
-                        <button
-                          onClick={() => handleOpenEditModal(offer)}
-                          title={t("Edit", "Upraviť", "Szerkesztés")}
-                          className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all cursor-pointer"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(offer)}
-                          title={t("Delete", "Odstrániť", "Törlés")}
-                          className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all cursor-pointer"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        {canEdit && (
+                          <button
+                            onClick={() => handleOpenEditModal(offer)}
+                            title={t("Edit", "Upraviť", "Szerkesztés")}
+                            className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all cursor-pointer"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                        )}
+                        {canDelete && (
+                          <button
+                            onClick={() => handleDelete(offer)}
+                            title={t("Delete", "Odstrániť", "Törlés")}
+                            className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all cursor-pointer"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1205,11 +1254,17 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                       </div>
                       <p className="text-xs text-slate-500 leading-relaxed">
                         {invoicesOffers.length === 0
-                          ? t(
-                              'Create your first price offer with "New document".',
-                              'Vytvorte prvú cenovú ponuku tlačidlom „Nový doklad“.',
-                              'Hozza létre az első árajánlatot az „Új bizonylat” gombbal.'
-                            )
+                          ? canEdit
+                            ? t(
+                                'Create your first price offer with "New document".',
+                                'Vytvorte prvú cenovú ponuku tlačidlom „Nový doklad“.',
+                                'Hozza létre az első árajánlatot az „Új bizonylat” gombbal.'
+                              )
+                            : t(
+                                "Documents issued by your team will show up here.",
+                                "Doklady vystavené vaším tímom sa zobrazia tu.",
+                                "A csapata által kiállított bizonylatok itt jelennek meg."
+                              )
                           : t("Try clearing the search or filters.", "Skúste zrušiť vyhľadávanie alebo filtre.", "Törölje a keresést vagy a szűrőket.")}
                       </p>
                     </div>
@@ -1222,7 +1277,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
       </div>
 
       {/* ===================== CREATE / EDIT WIZARD ===================== */}
-      {isCreateModalOpen && (
+      {canEdit && isCreateModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
             {/* Wizard header */}

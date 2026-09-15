@@ -43,6 +43,8 @@ interface SidebarProps {
   currentUser: UserProfile | null;
   roles: RolePermission[];
   canEditNav: boolean;
+  /** Route gate from the permission resolver — the sidebar never reads roles itself. */
+  canOpenRoute: (routeId: string) => boolean;
   onSaveUserLayout: (layout: string[], hidden?: string[]) => void;
   unifiedEntries?: UnifiedEntryRegistry[];
   customDashboards?: CustomDashboard[];
@@ -64,6 +66,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentUser,
   roles,
   canEditNav,
+  canOpenRoute,
   onSaveUserLayout,
   unifiedEntries = [],
   customDashboards = [],
@@ -463,6 +466,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   }, [systemLanguage, dynamicUeItems, dynamicDashItems]);
 
   const isItemVisibleInSystem = (id: string) => {
+    // Role first: a module the role may not open is gone from the sidebar, the
+    // launcher and the layout editor alike, whatever the saved layout says.
+    if (!canOpenRoute(id)) return false;
     if (id === "rag_ai") {
       return showRagAi && integrationsConfig?.vectorDbValidated === true && integrationsConfig?.vectorDb && integrationsConfig?.vectorDb !== "none";
     }
@@ -480,6 +486,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     .filter(isItemVisibleInSystem)
     .map((id: string) => allPossibleItems.find(item => item.id === id))
     .filter(Boolean) as any[];
+  // The layout editor's "hidden" column offers only what the role could show.
+  const visibleHiddenItems = hiddenItems.filter(isItemVisibleInSystem);
 
   return (
     <>
@@ -854,7 +862,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
 
           <div className="flex-1 overflow-y-auto space-y-2 pr-1 scrollbar-thin">
-            {hiddenItems.length === 0 ? (
+            {visibleHiddenItems.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center text-slate-400 select-none">
                 <span className="text-2xl mb-1.5">✨</span>
                 <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
@@ -865,7 +873,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </p>
               </div>
             ) : (
-              hiddenItems.map((id: string) => {
+              visibleHiddenItems.map((id: string) => {
                 const item = allPossibleItems.find((i) => i.id === id);
                 if (!item) return null;
                 const Icon = item.icon;
@@ -1323,6 +1331,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         showSettings={showSettings}
         showMailIcon={showMailIcon}
         showRagAi={showRagAi}
+        canOpenRoute={canOpenRoute}
         customDashboards={customDashboards}
         unifiedEntries={unifiedEntries}
         onOpenCreateDashboard={() => setIsDashModalOpen(true)}

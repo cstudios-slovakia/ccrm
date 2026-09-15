@@ -10,7 +10,7 @@ import type { UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow
 import { resolveAssignmentPool } from "../utils/leadAssignment";
 import { normalizeSlaDays, type LeadStateSla } from "../utils/leadSla";
 import { listIdFor, nextListId, type ListIds } from "../utils/listIds";
-import { getTranslation } from "../utils/translations";
+import { getTranslation, formatTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { ProjectSettings } from "./ProjectSettings";
 import { PasswordInput } from "./PasswordInput";
@@ -28,6 +28,20 @@ import { formatTimestampLocalized } from "../utils/localTime";
 import { LicenseSettings } from "./LicenseSettings";
 import { isAtSeatLimit } from "../utils/license";
 import type { LicenseState } from "../utils/license";
+import {
+  PERMISSION_SECTIONS,
+  findRole,
+  isAdminRoleName,
+  isProtectedRoleName,
+  isSectionFullyDenied,
+  isSectionFullyGranted,
+  adminRolePermissions,
+  newRolePermissions,
+  resolveRolePermissions,
+  withPermission,
+  withSectionGranted,
+} from "../utils/permissions";
+import type { PermissionDef, PermissionSection, PermissionValue } from "../utils/permissions";
 
 // Inline "double-click / pencil to rename" field.
 //
@@ -112,8 +126,8 @@ interface SettingsViewProps {
   roles: RolePermission[];
   setRoles: React.Dispatch<React.SetStateAction<RolePermission[]>>;
   
-  // Active permission checker
-  getPermission: (section: keyof RolePermission["permissions"]) => "edit" | "view" | "nothing";
+  // Active permission checker — a key from src/utils/permissions.ts
+  getPermission: (key: string) => PermissionValue;
   currentUser: UserProfile;
   
   leadStateColors: Record<string, string>;
@@ -570,7 +584,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [newManager, setNewManager] = React.useState("");
   const [newUserEmail, setNewUserEmail] = React.useState("");
   const [newUserPassword, setNewUserPassword] = React.useState("");
-  const [newUserRole, setNewUserRole] = React.useState("Project Manager");
+  // The role a freshly provisioned user gets: the first non-admin role in the
+  // registry, else the first role at all. Never a hardcoded name — a workspace
+  // may have renamed or removed "Project Manager".
+  const defaultNewUserRole = (list: RolePermission[]): string =>
+    (list.find(r => !isAdminRoleName(r.name)) ?? list[0])?.name ?? "";
+  const [newUserRole, setNewUserRole] = React.useState(() => defaultNewUserRole(roles));
+  React.useEffect(() => {
+    if (!findRole(roles, newUserRole)) setNewUserRole(defaultNewUserRole(roles));
+  }, [roles]);
 
   // Role creation states
   const [newRoleName, setNewRoleName] = React.useState("");
@@ -1614,65 +1636,119 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // is denied until it is granted ("nothing"), but a few — tasks.view_all — are on
   // for everyone until a role revokes them, and the cell has to show the state the
   // app actually enforces rather than an empty record.
-  const renderTriStateCell = (
-    roleName: string,
-    section: keyof RolePermission["permissions"],
-    defaultValue: "edit" | "view" | "nothing" = "nothing",
-  ) => {
-    const isAdmin = roleName.toLowerCase() === "admin";
-    const currentValue = isAdmin ? "edit" : (roles.find(r => r.name === roleName)?.permissions[section] || defaultValue);
-    const disabled = isAdmin || getPermission("pm_managers") === "view";
+  const resolvedForRole = (roleName: string): Record<string, PermissionValue> => {
+    if (isAdminRoleName(roleName)) return adminRolePermissions();
+    const role = roles.find(r => r.name === roleName);
+    return resolveRolePermissions(role);
+  };
 
-    const getStyleAndIcon = () => {
-      switch (currentValue) {
-        case "edit":
-          return {
-            btnStyle: "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100/70",
-            icon: <Pencil className="h-3.5 w-3.5 shrink-0" />,
-            label: getTranslation(userLanguage, "settings.rbac.state.edit")
-          };
-        case "view":
-          return {
-            btnStyle: "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100/70",
-            icon: <Eye className="h-3.5 w-3.5 shrink-0" />,
-            label: getTranslation(userLanguage, "settings.rbac.state.view")
-          };
-        case "nothing":
-        default:
-          return {
-            btnStyle: "bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100/40 hover:text-slate-500",
-            icon: <Minus className="h-3.5 w-3.5 shrink-0" />,
-            label: getTranslation(userLanguage, "settings.rbac.state.nothing")
-          };
-      }
-    };
+  const matrixLocked = (roleName: string) =>
+    isAdminRoleName(roleName) || getPermission("pm_managers") !== "edit";
 
-    const { btnStyle, icon, label } = getStyleAndIcon();
-
+  const renderAccessCell = (roleName: string, key: string) => {
+    const currentValue = resolvedForRole(roleName)[key] || "nothing";
+    const disabled = matrixLocked(roleName);
+    const styles =
+      currentValue === "edit"
+        ? { btnStyle: "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100/70", icon: <Pencil className="h-3.5 w-3.5 shrink-0" />, label: getTranslation(userLanguage, "settings.rbac.state.edit") }
+        : currentValue === "view"
+          ? { btnStyle: "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100/70", icon: <Eye className="h-3.5 w-3.5 shrink-0" />, label: getTranslation(userLanguage, "settings.rbac.state.view") }
+          : { btnStyle: "bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100/40 hover:text-slate-500", icon: <Minus className="h-3.5 w-3.5 shrink-0" />, label: getTranslation(userLanguage, "settings.rbac.state.nothing") };
     const handleCycle = () => {
       if (disabled) return;
-      let nextValue: "edit" | "view" | "nothing" = "nothing";
-      if (currentValue === "nothing") nextValue = "view";
-      else if (currentValue === "view") nextValue = "edit";
-      
-      updateRolePermission(roleName, section, nextValue);
+      const next: PermissionValue = currentValue === "nothing" ? "view" : currentValue === "view" ? "edit" : "nothing";
+      updateRolePermission(roleName, key, next);
     };
-
     return (
       <button
         type="button"
         disabled={disabled}
         onClick={handleCycle}
-        className={`mx-auto flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-wider transition-all shadow-sm ${btnStyle} ${
+        className={`mx-auto flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-wider transition-all shadow-sm ${styles.btnStyle} ${
           disabled ? "opacity-80 cursor-not-allowed" : "cursor-pointer active:scale-95 hover:scale-[1.03]"
         }`}
-        title={disabled 
-          ? (userLanguage === "sk" ? `${roleName} oprávnenia sú uzamknuté` : userLanguage === "hu" ? `${roleName} jogosultságok zárolva vannak` : `${roleName} permissions are locked`) 
-          : (userLanguage === "sk" ? `Kliknutím zmeníte: Žiadne → Čítanie → Zápis` : userLanguage === "hu" ? `Kattintson a ciklushoz: Nincs → Megtekintés → Módosítás` : `Click to cycle: None → View → Edit`)}
+        title={disabled
+          ? formatTranslation(userLanguage, "settings.rbac.locked_tip", { role: roleName })
+          : getTranslation(userLanguage, "settings.rbac.cycle_tip")}
       >
-        {icon}
-        <span>{label}</span>
+        {styles.icon}
+        <span>{styles.label}</span>
       </button>
+    );
+  };
+
+  const renderToggleCell = (roleName: string, def: PermissionDef) => {
+    const resolved = resolvedForRole(roleName);
+    const on = resolved[def.key] === "edit";
+    const req = def.requires;
+    const reqValue = req ? resolved[req.key] : "edit";
+    const reqMet = !req || (req.level === "edit" ? reqValue === "edit" : reqValue === "edit" || reqValue === "view");
+    const disabled = matrixLocked(roleName) || !reqMet;
+    const reqLabel = req
+      ? formatTranslation(userLanguage, "settings.rbac.requires", {
+          level: req.level === "edit"
+            ? getTranslation(userLanguage, "settings.rbac.state.edit")
+            : getTranslation(userLanguage, "settings.rbac.state.view"),
+          label: getTranslation(userLanguage, `settings.rbac.perm.${req.key}.label`),
+        })
+      : "";
+    return (
+      <div className={`flex flex-col items-center gap-1 ${!reqMet ? "opacity-40" : ""}`}>
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => {
+            if (disabled) return;
+            updateRolePermission(roleName, def.key, on ? "nothing" : "edit");
+          }}
+          className={`mx-auto flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-wider transition-all shadow-sm ${
+            on
+              ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100/70"
+              : "bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100/40 hover:text-slate-500"
+          } ${disabled ? "opacity-80 cursor-not-allowed" : "cursor-pointer active:scale-95 hover:scale-[1.03]"}`}
+          title={!reqMet ? reqLabel : (disabled ? formatTranslation(userLanguage, "settings.rbac.locked_tip", { role: roleName }) : getTranslation(userLanguage, "settings.rbac.toggle_tip"))}
+        >
+          {on ? <Pencil className="h-3.5 w-3.5 shrink-0" /> : <Minus className="h-3.5 w-3.5 shrink-0" />}
+          <span>{on ? getTranslation(userLanguage, "settings.rbac.state.on") : getTranslation(userLanguage, "settings.rbac.state.off")}</span>
+        </button>
+        {!reqMet && reqLabel && (
+          <span className="text-[8px] font-bold uppercase tracking-wide text-slate-400 max-w-[140px] leading-tight">{reqLabel}</span>
+        )}
+      </div>
+    );
+  };
+
+  const renderSectionSwitch = (roleName: string, section: PermissionSection) => {
+    const resolved = resolvedForRole(roleName);
+    const fullyOn = isSectionFullyGranted(resolved, section);
+    const fullyOff = isSectionFullyDenied(resolved, section);
+    const disabled = matrixLocked(roleName);
+    return (
+      <label
+        className={`inline-flex items-center justify-center gap-1.5 ${disabled ? "cursor-not-allowed opacity-70" : "cursor-pointer"}`}
+        title={getTranslation(userLanguage, "settings.rbac.section_switch_tip")}
+      >
+        <input
+          type="checkbox"
+          disabled={disabled}
+          checked={fullyOn}
+          ref={(el) => {
+            if (el) el.indeterminate = !fullyOn && !fullyOff;
+          }}
+          onChange={() => {
+            if (disabled) return;
+            updateRoleSection(roleName, section, !fullyOn);
+          }}
+          className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+        />
+        <span className="text-[9px] font-black uppercase tracking-wider text-slate-500">
+          {fullyOn
+            ? getTranslation(userLanguage, "settings.rbac.state.on")
+            : fullyOff
+              ? getTranslation(userLanguage, "settings.rbac.state.off")
+              : getTranslation(userLanguage, "settings.rbac.state.partial")}
+        </span>
+      </label>
     );
   };
 
@@ -2077,14 +2153,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
     const newRole: RolePermission = {
       name: nameVal,
-      permissions: {
-        general_config: "nothing",
-        pm_managers: "nothing",
-        pipeline_stages: "nothing",
-        traffic_sources: "nothing",
-        system_reset: "nothing",
-        nav_edit: "nothing"
-      }
+      permissions: newRolePermissions(),
     };
 
     setRoles([...roles, newRole]);
@@ -2093,7 +2162,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const handleRemoveRole = (roleName: string) => {
     if (getPermission("pm_managers") !== "edit") return;
-    if (roleName === "Admin" || roleName === "Project Manager") {
+    if (isProtectedRoleName(roleName)) {
       (window as any).showToast(
         userLanguage === "sk" 
           ? `Rola "${roleName}" je chránená systémom a nemožno ju vymazať.` 
@@ -2103,7 +2172,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       );
       return;
     }
-    if (users.some(u => u.role === roleName)) {
+    if (users.some(u => (u.role || "").toLowerCase() === roleName.toLowerCase())) {
       (window as any).showToast(
         userLanguage === "sk" 
           ? `Rolovú skupinu "${roleName}" nemožno vymazať, pretože je priradená jednému alebo viacerým aktívnym používateľom.` 
@@ -2124,9 +2193,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
-  const updateRolePermission = (roleName: string, section: keyof RolePermission["permissions"], value: "edit" | "view" | "nothing") => {
+  const updateRolePermission = (roleName: string, key: string, value: PermissionValue) => {
     if (getPermission("pm_managers") !== "edit") return;
-    if (roleName === "Admin") {
+    if (isAdminRoleName(roleName)) {
       (window as any).showToast(
         userLanguage === "sk" 
           ? "Oprávnenia roly správcu Admin sú systémovo uzamknuté na úpravy, aby bol zaručený trvalý prístup." 
@@ -2136,19 +2205,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       );
       return;
     }
+    setRoles(prev => prev.map(r => r.name === roleName ? withPermission(r, key, value) : r));
+  };
 
-    setRoles(prev => prev.map(r => {
-      if (r.name === roleName) {
-        return {
-          ...r,
-          permissions: {
-            ...r.permissions,
-            [section]: value
-          }
-        };
-      }
-      return r;
-    }));
+  const updateRoleSection = (roleName: string, section: PermissionSection, granted: boolean) => {
+    if (getPermission("pm_managers") !== "edit") return;
+    if (isAdminRoleName(roleName)) {
+      (window as any).showToast(
+        userLanguage === "sk"
+          ? "Oprávnenia roly správcu Admin sú systémovo uzamknuté na úpravy, aby bol zaručený trvalý prístup."
+          : userLanguage === "hu"
+            ? "Az adminisztrátori szerepkör jogosultságai a folyamatos hozzáférés érdekében rendszer szinten zárolva vannak a módosításhoz."
+            : "The Admin role permissions are system-locked to Edit to guarantee continuous access."
+      );
+      return;
+    }
+    setRoles(prev => prev.map(r => r.name === roleName ? withSectionGranted(r, section, granted) : r));
   };
 
   const handleCreateUnifiedEntry = (e: React.FormEvent) => {
@@ -2256,7 +2328,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     .map(tab => ({ ...tab, label: getTranslation(userLanguage, `settings.tab.${tab.id}`) }))
     .filter(tab => getPermission(tab.permKey) !== "nothing");
   // Read-only alert component
-  const renderReadOnlyBanner = (permKey: keyof RolePermission["permissions"]) => {
+  const renderReadOnlyBanner = (permKey: string) => {
     const isReadOnly = getPermission(permKey) === "view";
     if (!isReadOnly) return null;
     return (
@@ -3659,6 +3731,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </td>
                           <td className="py-3 px-4 text-slate-500 font-semibold select-all">{u.email}</td>
                           <td className="py-3 px-4">
+                            <div className="flex flex-col items-start gap-1">
                             <span 
                               className="px-2.5 py-0.5 rounded-full border text-[8.5px] font-black uppercase tracking-wider"
                               style={{
@@ -3669,6 +3742,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             >
                               {u.role}
                             </span>
+                            {!isAdminRoleName(u.role) && !findRole(roles, u.role) && (
+                              <span
+                                className="px-2 py-0.5 rounded-full border border-amber-300 bg-amber-50 text-amber-800 text-[8px] font-black uppercase tracking-wider"
+                                title={getTranslation(userLanguage, "settings.managers.unknown_role_hint")}
+                              >
+                                {getTranslation(userLanguage, "settings.managers.unknown_role")}
+                              </span>
+                            )}
+                            </div>
                           </td>
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-1.5">
@@ -3801,7 +3883,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 const updated = { ...selectedUser, role: v };
                                 handleUpdateUser(updated);
                               }}
-                              options={roles.map(r => ({ value: r.name, label: r.name }))}
+                              options={[
+                                ...(!isAdminRoleName(selectedUser.role) && !findRole(roles, selectedUser.role)
+                                  ? [{ value: selectedUser.role, label: `${selectedUser.role} ${getTranslation(userLanguage, "settings.managers.unknown_suffix")}` }]
+                                  : []),
+                                ...roles.map(r => ({ value: r.name, label: r.name })),
+                              ]}
                             />
                           ) : (
                             <div className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 font-extrabold uppercase select-text tracking-wide w-full">
@@ -4059,14 +4146,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </span>
               </div>
 
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-5 py-4 text-[11px] text-slate-600 space-y-2">
+                <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">{getTranslation(userLanguage, "settings.rbac.legend.title")}</p>
+                <ul className="grid sm:grid-cols-2 gap-x-6 gap-y-1 font-semibold">
+                  <li><span className="font-black text-slate-400 uppercase tracking-wider text-[9px] mr-1.5">{getTranslation(userLanguage, "settings.rbac.state.nothing")}</span>{getTranslation(userLanguage, "settings.rbac.legend.none")}</li>
+                  <li><span className="font-black text-blue-500 uppercase tracking-wider text-[9px] mr-1.5">{getTranslation(userLanguage, "settings.rbac.state.view")}</span>{getTranslation(userLanguage, "settings.rbac.legend.view")}</li>
+                  <li><span className="font-black text-emerald-600 uppercase tracking-wider text-[9px] mr-1.5">{getTranslation(userLanguage, "settings.rbac.state.edit")}</span>{getTranslation(userLanguage, "settings.rbac.legend.edit")}</li>
+                  <li><span className="font-black text-slate-500 uppercase tracking-wider text-[9px] mr-1.5">{getTranslation(userLanguage, "settings.rbac.state.on")}/{getTranslation(userLanguage, "settings.rbac.state.off")}</span>{getTranslation(userLanguage, "settings.rbac.legend.toggle")}</li>
+                  <li className="sm:col-span-2"><span className="font-black text-indigo-600 uppercase tracking-wider text-[9px] mr-1.5">{getTranslation(userLanguage, "settings.rbac.state.partial")}</span>{getTranslation(userLanguage, "settings.rbac.legend.section")}</li>
+                </ul>
+              </div>
+
               {/* RBAC Matrix Table (Flipped: columns are roles, rows are functions) */}
               <div className="overflow-x-auto rounded-2xl border border-slate-200 shadow-sm">
                 <table className="w-full text-left border-collapse bg-white">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-black uppercase text-slate-600 tracking-wider">
-                      <th className="py-4 px-5 min-w-[200px]">{userLanguage === "sk" ? "OPRÁVNENIE / FUNKCIA" : userLanguage === "hu" ? "JOGOSULTSÁG / FUNKCIÓ" : "PERMISSION / FUNCTION"}</th>
+                      <th className="py-4 px-5 min-w-[200px]">{getTranslation(userLanguage, "settings.rbac.th_permission")}</th>
                       {roles.map((role) => {
-                        const isAdmin = role.name === "Admin";
+                        const isAdmin = isAdminRoleName(role.name);
                         return (
                           <th key={role.name} className="py-4 px-5 text-center min-w-[140px]">
                             <div className="flex flex-col items-center justify-center gap-1.5">
@@ -4087,7 +4185,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               </div>
                               
                               {/* Delete action for custom roles */}
-                              {!isAdmin && role.name !== "Project Manager" && (
+                              {!isAdmin && !isProtectedRoleName(role.name) && (
                                 getPermission("pm_managers") === "edit" ? (
                                   <button
                                     type="button"
@@ -4102,7 +4200,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 )
                               )}
                               
-                              {(isAdmin || role.name === "Project Manager") && (
+                              {isProtectedRoleName(role.name) && (
                                 <span className="text-[9px] text-slate-400 font-bold block select-none uppercase tracking-wider">{getTranslation(userLanguage, "settings.rbac.protected")}</span>
                               )}
 
@@ -4127,137 +4225,50 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-700">
-                    {(() => {
-                      const permissionGroups = [
-                        {
-                          groupName: userLanguage === "sk" ? "Klientske Príležitosti & Obchody" : userLanguage === "hu" ? "Ügyfél lehetőségek & Üzletek" : "Client Leads & Opportunities",
-                          permissions: [
-                            { key: "leads.view", label: t("View Leads List", "Prezeranie zoznamu", "Leadek listájának megtekintése"), desc: t("Access overview and Kanban pipeline board", "Prístup k prehľadu a Kanban nástenke príležitostí", "Hozzáférés az áttekintéshez és a Kanban pipeline táblához") },
-                            { key: "leads.create", label: t("Create Leads", "Vytvorenie príležitostí", "Leadek létrehozása"), desc: t("Add a new business or personal prospect", "Možnosť pridať nového klienta alebo partnera", "Új üzleti vagy személyes érdeklődő hozzáadása") },
-                            { key: "leads.edit", label: t("Edit Leads", "Úprava príležitostí", "Leadek szerkesztése"), desc: t("Modify estimated deal values, ratings, states, and client info", "Zmena hodnôt, ratingov, stavu a informácií o klientskom dopyte", "Becsült üzleti értékek, minősítések, állapotok és ügyféladatok módosítása") },
-                            { key: "leads.delete", label: t("Delete Leads", "Odstránenie príležitostí", "Leadek törlése"), desc: t("Permanently remove a lead opportunity and its entire feed", "Trvalé vymazanie príležitostí a celého ich historického feedu", "Lead lehetőség és teljes előzménye végleges eltávolítása") }
-                          ]
-                        },
-                        {
-                          groupName: userLanguage === "sk" ? "Úlohy & Kanban Checklisty" : userLanguage === "hu" ? "Feladatok & Kanban teendők" : "Checklist Tasks & Kanban Boards",
-                          permissions: [
-                            { key: "tasks.view", label: t("View Tasks Board", "Prezeranie úloh", "Feladattábla megtekintése"), desc: t("Inspect system task cards, deadlines, and active priority boards", "Prístup k nástenke úloh, prioritám a termínom", "Feladatkártyák, határidők és aktív prioritási táblák megtekintése") },
-                            { key: "tasks.create", label: t("Create Tasks", "Vytvorenie úloh", "Feladatok létrehozása"), desc: t("Generate a new task card and specify task checklists", "Možnosť vytvoriť a delegovať novú úlohu pre tím", "Új feladatkártya létrehozása és teendőlisták megadása") },
-                            { key: "tasks.edit", label: t("Edit Tasks", "Úprava úloh", "Feladatok szerkesztése"), desc: t("Drag tasks across status lanes, reassign, or alter deadlines", "Presúvanie stavov úloh (Kanban), priradenie PM a termínov", "Feladatok mozgatása az állapotsávok között, újrakiosztás vagy határidők módosítása") },
-                            { key: "tasks.delete", label: t("Delete Tasks", "Odstránenie úloh", "Feladatok törlése"), desc: t("Remove task registries completely from databases", "Trvalé vymazanie checklistov a celých úloh zo systému", "Feladatok teljes eltávolítása az adatbázisból") },
-                            // On for every role unless it is revoked here — see resolveTaskViewAll.
-                            { key: "tasks.view_all", defaultValue: "view" as const, label: t("View Team Tasks", "Prezeranie úloh tímu", "Csapat feladatainak megtekintése"), desc: t("See every colleague's open tasks in the Global Tasks board. Switch to None to leave a role with only its own workload.", "Zobrazí otvorené úlohy všetkých kolegov v Globálnych úlohách. Prepnutím na Žiadne rola uvidí len svoje vlastné vyťaženie.", "Minden kolléga nyitott feladatainak megtekintése a Globális feladatok táblán. A Nincs értékre váltva a szerepkör csak a saját munkaterhelését látja.") }
-                          ]
-                        },
-                        {
-                          groupName: userLanguage === "sk" ? "Schôdzky & Kalendár" : userLanguage === "hu" ? "Naptár & Foglalások" : "Appointments & Calendar Slots",
-                          permissions: [
-                            { key: "calendar.view", label: t("View Bookings", "Prezeranie termínov", "Foglalások megtekintése"), desc: t("Browse scheduled meetings, slots, and time allocations", "Zobrazenie voľných a obsadených časových slotov tímu", "Ütemezett találkozók, időpontok és időbeosztások böngészése") },
-                            { key: "calendar.create", label: t("Create Bookings", "Rezervácia termínov", "Foglalások létrehozása"), desc: t("Add a new client meeting block to the calendar", "Rezervovanie nového termínu pre klienta v kalendári", "Új ügyféltalálkozó hozzáadása a naptárhoz") },
-                            { key: "calendar.edit", label: t("Edit Bookings", "Zmena rezervácie", "Foglalások szerkesztése"), desc: t("Reschedule or adjust description details of active calendar events", "Zmena trvania, dňa a detailov schôdzok", "Aktív naptáresemények átütemezése vagy részleteinek módosítása") },
-                            { key: "calendar.delete", label: t("Delete Bookings", "Zrušenie rezervácií", "Foglalások törlése"), desc: t("Remove booked timeslots and cancel team calendar events", "Vymazanie a stornovanie dohodnutého termínu", "Lefoglalt időpontok eltávolítása és csapatnaptár-események lemondása") }
-                          ]
-                        },
-                        {
-                          groupName: userLanguage === "sk" ? "Evidencia Odpracovaného Času" : userLanguage === "hu" ? "Időmérés & Stopwatch" : "Stopwatch & Time Tracking Logs",
-                          permissions: [
-                            { key: "time_records.view", label: t("View Time Reports", "Prezeranie výkazov", "Időkimutatások megtekintése"), desc: t("Review stopwatch timesheets and summary work reports", "Prístup k prehľadom, grafom a zaznamenanému času kolegov", "Stopperórás munkaidő-kimutatások és összefoglaló munkajelentések áttekintése") },
-                            { key: "time_records.log", label: t("Log Stopwatch Time", "Zapisovanie stopiek", "Stopperidő rögzítése"), desc: t("Start, pause, and manually save time tracking stopwatch intervals", "Možnosť spustiť stopky a zaznamenať hodiny pre projekt", "Időmérő intervallumok indítása, szüneteltetése és kézi mentése") }
-                          ]
-                        },
-                        {
-                          groupName: userLanguage === "sk" ? "Newsletter & E-mailový Marketing" : userLanguage === "hu" ? "Hírlevél & Marketing kampányok" : "Bulk Email Marketing & Newsletters",
-                          permissions: [
-                            { key: "newsletter.view", label: t("View Campaigns", "Prezeranie kampaní", "Kampányok megtekintése"), desc: t("Browse draft and sent templates, open rates, and click ratios", "Zobrazenie histórie odoslaných newsletterov a metrík", "Piszkozatok és elküldött sablonok, megnyitási és kattintási arányok böngészése") },
-                            { key: "newsletter.edit", label: t("Edit Templates", "Úprava šablón", "Sablonok szerkesztése"), desc: t("Create or edit layout HTML design templates for bulk mailings", "Písanie a úprava HTML šablón a kampaní newsletterov", "HTML sablonok létrehozása vagy szerkesztése tömeges küldésekhez") },
-                            { key: "newsletter.send", label: t("Send Bulk Mailings", "Odosielanie správ", "Tömeges küldés"), desc: t("Trigger mass delivery system using defined subscriber segments", "Možnosť spustiť odoslanie kampane zoznamu adresátov", "Tömeges kézbesítés indítása a megadott feliratkozói szegmensek alapján") }
-                          ]
-                        },
-                        {
-                          groupName: userLanguage === "sk" ? "Evidencia Zamestnancov (HR)" : userLanguage === "hu" ? "Munkatársak nyilvántartása (HR)" : "HR Employee Directories",
-                          permissions: [
-                            { key: "hr.view", label: t("View Employee Roster", "Zoznam zamestnancov", "Munkatársak listájának megtekintése"), desc: t("Browse list of active system users, avatars, and metrics", "Prezeranie zoznamu PM a kolegov, ich kontaktov a skóre", "Aktív rendszerfelhasználók, profilképek és mutatók böngészése") },
-                            { key: "hr.edit", label: t("Edit Worker Files", "Úprava personálnych údajov", "Munkatársi adatok szerkesztése"), desc: t("Manage wages, departments, and approve/reject leave requests", "Správa mzdy, úprava departmentov a dovoleniek", "Bérek és részlegek kezelése, szabadságkérelmek jóváhagyása/elutasítása") }
-                          ]
-                        },
-                        {
-                          groupName: userLanguage === "sk" ? "Správca Súborov & Dokumenty" : userLanguage === "hu" ? "Fájlkezelő & Ajánlatok" : "File Cabinet & Proposals",
-                          permissions: [
-                            { key: "files.view", label: t("Browse File Database", "Prezeranie súborov", "Fájladatbázis böngészése"), desc: t("List, download, and review proposals, contracts, or offer attachments", "Sťahovanie zmlúv, cenových ponúk a priložených príloh", "Ajánlatok, szerződések és mellékletek listázása, letöltése és áttekintése") },
-                            { key: "files.create", label: t("Upload Documents", "Nahrávanie súborov", "Dokumentumok feltöltése"), desc: t("Upload contract proposals or attachment documents to timeline events", "Nahrávanie zmlúv a príloh k zoznamu timeline udalostí", "Szerződéstervezetek vagy mellékletek feltöltése az idővonal eseményeihez") },
-                            { key: "files.delete", label: t("Delete Documents", "Odstránenie súborov", "Dokumentumok törlése"), desc: t("Remove document uploads permanently from physical and db storage", "Trvalé mazanie súborov z databázy príloh", "Feltöltött dokumentumok végleges eltávolítása a tárhelyről és az adatbázisból") }
-                          ]
-                        },
-                        {
-                          groupName: t("Artificial Intelligence (AI & RAG)", "Umelá Inteligencia (AI & RAG)", "Mesterséges intelligencia (AI & RAG)"),
-                          permissions: [
-                            { key: "ai_config", label: t("AI Settings & Embeddings", "AI Nastavenia & Model", "AI beállítások & beágyazások"), desc: t("Configure OpenAI access keys, select vector databases, and manage client training data for RAG", "Konfigurácia kľúčov OpenAI a výber vektorových DB", "OpenAI hozzáférési kulcsok beállítása, vektoradatbázisok kiválasztása és RAG tanítóadatok kezelése") },
-                            { key: "rag_view", label: t("RAG AI Assistant Access", "RAG AI Asistent (Prístup)", "RAG AI asszisztens hozzáférés"), desc: t("Enable user profile access to view and chat with the CRM RAG AI assistant", "Umožňuje používateľom pristupovať a chatovať s RAG AI asistentom", "Felhasználói hozzáférés engedélyezése a CRM RAG AI asszisztens megtekintéséhez és használatához") }
-                          ]
-                        },
-                        {
-                          groupName: userLanguage === "sk" ? "Globálne Systémové Nastavenia" : userLanguage === "hu" ? "Globális Rendszerbeállítások" : "Global System Configurations",
-                          permissions: [
-                            { key: "general_config", label: t("Branding & Language Config", "Všeobecná konfigurácia", "Márkajelzés & nyelvi beállítások"), desc: t("Configure system name, languages, active branding colors, and currency", "Úprava názvu systému, loga, jazykov a aktívnych mien", "Rendszernév, nyelvek, márkaszínek és pénznem beállítása") },
-                            { key: "pm_managers", label: t("Manage Managers Directory", "Správa používateľov & PM", "Vezetők kezelése"), desc: t("Create new workspace managers, upgrade roles, or reset login profiles", "Možnosť spravovať heslá, priraďovať roly a mazať PM účty", "Új munkaterület-vezetők létrehozása, szerepkörök módosítása vagy bejelentkezési profilok visszaállítása") },
-                            { key: "pipeline_stages", label: t("Leads (Pipeline Config)", "Leady (fázy pipeline)", "Leadek (pipeline beállítás)"), desc: t("Reorder, rename, append, or configure lead pipeline stages and automatic lead assignment", "Preusporiadanie, premenovanie a farby fáz pipeline leadov a automatické priraďovanie leadov", "Lead pipeline fázisok átrendezése, átnevezése, színei és a leadek automatikus kiosztása") },
-                            { key: "traffic_sources", label: t("Marketing Sources & Slabs", "Zdroje a kategórie", "Marketingforrások & kategóriák"), desc: t("Edit marketing channels, custom categories of slabs, and tag colors", "Správa marketingových kanálov, kategórií materiálu a farieb tagov", "Marketingcsatornák, egyéni kategóriák és címkeszínek szerkesztése") },
-                            { key: "system_reset", label: t("Danger Zone System Reset", "Reset celého systému", "Rendszer-visszaállítás (veszélyzóna)"), desc: t("Erase CRM database completely, reload clean seeders, or delete logs", "Trvalé stiahnutie mock seedrov, čistenie databáz, mazanie", "A CRM adatbázis teljes törlése, tiszta kezdőadatok betöltése vagy naplók törlése") },
-                            { key: "nav_edit", label: userLanguage === "sk" ? "Editor štruktúry menu" : userLanguage === "hu" ? "Menüszerkezet Szerkesztő" : "Sidebar Navigation Editor", desc: userLanguage === "sk" ? "Umožňuje používateľom meniť poradie a viditeľnosť položiek v menu" : userLanguage === "hu" ? "Lehetővé teszi a menüelemek sorrendjének és láthatóságának módosítását" : "Allows users to customize the ordering and visibility of sidebar menu items" }
-                          ]
-                        }
-                      ];
-
-                      return permissionGroups.flatMap((group, gIdx) => {
-                        const rows = [];
-                        
-                        // Render Group Header Category Row
-                        rows.push(
-                          <tr key={`g-${gIdx}`} className="bg-slate-50 border-y border-slate-200 select-none">
-                            <td colSpan={roles.length + 1} className="py-2.5 px-5 text-left">
-                              <span className="text-[10px] font-black tracking-widest text-indigo-900 uppercase">
-                                📊 {group.groupName}
-                              </span>
+                    {PERMISSION_SECTIONS.flatMap((section) => {
+                      const rows: React.ReactNode[] = [];
+                      rows.push(
+                        <tr key={`sec-${section.id}`} className="bg-slate-50 border-y border-slate-200 select-none">
+                          <td className="py-2.5 px-5 text-left">
+                            <span className="text-[10px] font-black tracking-widest text-indigo-900 uppercase">
+                              {getTranslation(userLanguage, `settings.rbac.section.${section.id}`)}
+                            </span>
+                          </td>
+                          {roles.map((role) => (
+                            <td key={role.name} className="py-2.5 px-5 text-center">
+                              {renderSectionSwitch(role.name, section)}
                             </td>
+                          ))}
+                        </tr>
+                      );
+                      for (const perm of section.permissions) {
+                        rows.push(
+                          <tr key={perm.key} className="hover:bg-slate-50/50 transition-colors">
+                            <td className="py-3 px-5 max-w-[280px]">
+                              <div className="flex flex-col space-y-1 text-left">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-heading font-bold text-slate-800 text-xs tracking-wide">
+                                    {getTranslation(userLanguage, `settings.rbac.perm.${perm.key}.label`)}
+                                  </span>
+                                  <code className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-semibold select-all">
+                                    {perm.key}
+                                  </code>
+                                </div>
+                                <p className="text-[10px] font-semibold text-slate-400 leading-normal">
+                                  {getTranslation(userLanguage, `settings.rbac.perm.${perm.key}.desc`)}
+                                </p>
+                              </div>
+                            </td>
+                            {roles.map((role) => (
+                              <td key={role.name} className="py-3 px-5 text-center">
+                                {perm.kind === "toggle" ? renderToggleCell(role.name, perm) : renderAccessCell(role.name, perm.key)}
+                              </td>
+                            ))}
                           </tr>
                         );
-
-                        // Render Permissions rows
-                        group.permissions.forEach((perm) => {
-                          rows.push(
-                            <tr key={perm.key} className="hover:bg-slate-50/50 transition-colors">
-                              {/* Function detail with descriptive label & slug badge */}
-                              <td className="py-3 px-5 max-w-[280px]">
-                                <div className="flex flex-col space-y-1 text-left">
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span className="font-heading font-bold text-slate-800 text-xs tracking-wide">
-                                      {perm.label}
-                                    </span>
-                                    <code className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-semibold select-all">
-                                      {perm.key}
-                                    </code>
-                                  </div>
-                                  {perm.desc && (
-                                    <p className="text-[10px] font-semibold text-slate-400 leading-normal">
-                                      {perm.desc}
-                                    </p>
-                                  )}
-                                </div>
-                              </td>
-
-                              {/* Tri-state cell for each role column */}
-                              {roles.map((role) => (
-                                <td key={role.name} className="py-3 px-5 text-center">
-                                  {renderTriStateCell(role.name, perm.key as keyof RolePermission["permissions"], (perm as { defaultValue?: "edit" | "view" | "nothing" }).defaultValue)}
-                                </td>
-                              ))}
-                            </tr>
-                          );
-                        });
-
-                        return rows;
-                      });
-                    })()}
+                      }
+                      return rows;
+                    })}
                   </tbody>
                 </table>
               </div>

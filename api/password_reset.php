@@ -72,7 +72,7 @@ function ccrm_pwreset_find_sender(PDO $pdo): ?array {
         }
         $score = 0;
         if (!empty($es['isValidated'])) $score += 2;
-        if (($r['role'] ?? '') === 'admin') $score += 1;
+        if (ccrm_is_admin($r)) $score += 1;
         if ($score > $bestScore) {
             $bestScore = $score;
             $best = $es;

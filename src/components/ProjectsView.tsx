@@ -1,11 +1,13 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import * as Icons from "lucide-react";
-import { Plus, Trash2, Settings, Search, Users, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, CalendarClock, Flag, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { Plus, Trash2, Settings, Search, Users, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, CalendarClock, Flag, ArrowUp, ArrowDown, ArrowUpDown, Lock } from "lucide-react";
 import type { Project, ProjectAutoCreateSettings, ProjectStatus, ProjectType, Lead, UserProfile, FinancialRecord, FinancialCategory } from "../types";
 import { ProjectDetailsView } from "./ProjectDetailsView";
 import { ProjectSettings } from "./ProjectSettings";
 import { CustomSelect } from "./ui/CustomSelect";
 import type { Language } from "../utils/translations";
+import { FULL_MODULE_ACCESS } from "../utils/permissions";
+import type { ModuleAccess } from "../utils/permissions";
 import { readableOn } from "../utils/accentColor";
 import { parseAppHash } from "../utils/hash";
 import {
@@ -93,7 +95,13 @@ interface ProjectsViewProps {
   leads: Lead[];
   users: UserProfile[];
   userLanguage: Language;
-  canEdit: boolean;
+  /**
+   * The user's view/edit/delete answers for the projects module. `edit` gates
+   * every control that creates or changes a project (and the project settings
+   * tab's inputs), `delete` the controls that remove one. Defaults to full
+   * access so a caller that has not wired permissions yet loses nothing.
+   */
+  access?: ModuleAccess;
   /** Rules for turning every incoming lead into a project (edited in the Settings tab). */
   projectAutoCreate?: ProjectAutoCreateSettings;
   setProjectAutoCreate?: React.Dispatch<React.SetStateAction<ProjectAutoCreateSettings>>;
@@ -114,7 +122,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   leads,
   users,
   userLanguage,
-  canEdit,
+  access = FULL_MODULE_ACCESS,
   projectAutoCreate,
   setProjectAutoCreate,
   leadCategories = [],
@@ -125,6 +133,10 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   currencyCode
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
+
+  // Read once here; every handler below checks the flag before it writes.
+  const canEdit = access.edit;
+  const canDelete = access.delete;
 
   const [activeSubTab, setActiveSubTab] = useState<"list" | "settings">("list");
   const [searchQuery, setSearchQuery] = useState("");
@@ -281,14 +293,16 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
      and offered nothing to do about it. Jump to the settings tab with its create
      form already open. */
   const handleStartCreateProjectType = () => {
+    if (!canEdit) return;
     setIsCreateDropdownOpen(false);
     setActiveSubTab("settings");
     setPendingTypeCreate(true);
   };
 
   const handleStartCreateProject = (type: ProjectType) => {
+    if (!canEdit) return;
     setIsCreateDropdownOpen(false);
-    
+
     // Create new blank project
     const newProj: Project = {
       id: "proj-" + Date.now(),
@@ -307,6 +321,9 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   };
 
   const handleSaveProject = (updatedProject: Project) => {
+    // The details view hides its own save controls in read-only mode; this is
+    // the backstop for any path that still reaches it.
+    if (!canEdit) return;
     setProjects(prev => {
       const exists = prev.some(p => p.id === updatedProject.id);
       if (exists) {
@@ -323,6 +340,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
   const handleDeleteProject = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!canDelete) return;
     if (!window.confirm(t("Are you sure you want to delete this project?", "Naozaj chcete vymazať tento projekt?", "Biztosan törli ezt a projektet?"))) {
       return;
     }
@@ -521,6 +539,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         financialCategories={financialCategories}
         setFinancialCategories={setFinancialCategories}
         currencyCode={currencyCode}
+        canEdit={canEdit}
+        canDelete={canDelete}
         onClose={() => {
           setEditingProject(null);
           setEditingProjectType(null);
@@ -534,13 +554,28 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
   return (
     <div className="space-y-6 text-left">
-      
+
       {/* Top Header Section */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-100 pb-4 select-none">
         <div className="flex flex-col">
           <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
             <Briefcase className="h-6 w-6 text-purple-600" />
             {t("Project Management", "Manažment projektov", "Projektmenedzsment")}
+            {/* Read-only: the role can look at projects but not touch them. Said
+                once, up here, rather than by every control that is missing. */}
+            {!canEdit && (
+              <span
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-amber-200 bg-amber-50 text-[10px] font-black uppercase tracking-wider text-amber-700 whitespace-nowrap"
+                title={t(
+                  "Your role can view projects but not create or change them.",
+                  "Vaša rola môže projekty prezerať, ale nie vytvárať ani meniť.",
+                  "A szerepköre megtekintheti a projekteket, de nem hozhat létre és nem módosíthat.",
+                )}
+              >
+                <Lock className="h-3 w-3 shrink-0" />
+                <span>{t("Read-only access", "Iba na čítanie", "Csak olvasható")}</span>
+              </span>
+            )}
           </h2>
           <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
             {t("Track deliverables, roadmaps, and client workflows", "Sledovanie dodávok, plánov a klientskych procesov", "Szállítások, útemtervek és ügyfélfolyamatok nyomon követése")}
@@ -933,7 +968,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                             </span>
                           </td>
                           <td className="px-4 py-3">
-                            {canEdit && (
+                            {canDelete && (
                               <button
                                 type="button"
                                 onClick={(e) => handleDeleteProject(p.id, e)}
@@ -1044,7 +1079,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                     )}
 
                     {/* Hover delete trigger */}
-                    {canEdit && (
+                    {canDelete && (
                       <button
                         type="button"
                         onClick={(e) => handleDeleteProject(p.id, e)}

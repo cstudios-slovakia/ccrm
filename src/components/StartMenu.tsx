@@ -25,6 +25,8 @@ interface StartMenuProps {
   showSettings?: boolean;
   showMailIcon?: boolean;
   showRagAi?: boolean;
+  /** Route gate from the permission resolver; tiles for closed routes are not offered. */
+  canOpenRoute: (routeId: string) => boolean;
   customDashboards?: CustomDashboard[];
   unifiedEntries?: UnifiedEntryRegistry[];
   onOpenCreateDashboard?: () => void;
@@ -65,6 +67,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   showSettings = true,
   showMailIcon = false,
   showRagAi = false,
+  canOpenRoute,
   customDashboards = [],
   unifiedEntries = [],
   onOpenCreateDashboard,
@@ -462,7 +465,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       defaultSection: "system"
     });
 
-    return items;
+    // Drop every tile the role may not open (custom dashboards and registries
+    // included) so the launcher never advertises a route the router would deny.
+    return items.filter((item) => canOpenRoute(item.id));
   }, [
     systemLanguage,
     customDashboards,
@@ -470,6 +475,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     showMailIcon,
     showRagAi,
     showSettings,
+    canOpenRoute,
     t
   ]);
 

@@ -74,6 +74,7 @@ import {
   projectStatusLabel,
 } from "../utils/projects";
 import { evaluateLeadSla, type LeadSlaStatus, type LeadStateSla } from "../utils/leadSla";
+import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 
 // Named preset deadline times offered in the gate quick-add picker, mirroring the
 // task dashboard's Add-task drawer. A "Custom" option reveals a free time input so
@@ -945,6 +946,13 @@ interface LeadsDatagridProps {
     /** Rules for handing an ownerless new lead to a project manager (Settings -> Users). */
     leadAssignment?: LeadAssignmentSettings;
     currencyCode?: string | null;
+    /**
+     * What the current user may do with leads (role matrix, `leads` +
+     * `leads.delete`). `edit: false` renders the grid and the detail read-only;
+     * `delete: false` hides every delete control on its own. Defaults to full
+     * access so the component keeps working where the caller passes nothing.
+     */
+    access?: ModuleAccess;
 }
 
 export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
@@ -982,9 +990,23 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     leadStateSla = {},
     leadAssignment = DEFAULT_LEAD_ASSIGNMENT,
     currencyCode,
+    access = FULL_MODULE_ACCESS,
 }) => {
     const t = (en: string, sk: string, hu: string) =>
         systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
+
+    // Role gates. Every mutating handler checks these itself too, so a keyboard
+    // shortcut, a context menu or a stale button can never write past them.
+    const canEdit = access.edit;
+    const canDelete = access.delete;
+
+    // Shown at the top of the list and of the detail when the role only reads.
+    const readOnlyNotice = !canEdit ? (
+        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider shadow-sm w-fit">
+            <Lock className="h-3.5 w-3.5 stroke-[2.5]" />
+            {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
+        </div>
+    ) : null;
     const money = (value: number, opts?: Intl.NumberFormatOptions) =>
         formatMoney(value, currencyCode, systemLanguage, opts);
 
@@ -1817,6 +1839,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const [isConvertDropdownOpen, setIsConvertDropdownOpen] = useState(false);
 
     const handleConvertToProject = (type: ProjectType) => {
+        if (!canEdit) return;
         if (!activeLead || !setProjects || !setActiveTab) return;
 
         setIsConvertDropdownOpen(false);
@@ -1902,6 +1925,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     };
 
     const handlePairProject = (projectId: string) => {
+        if (!canEdit) return;
         if (!activeLead || !setProjects || !projectId) return;
         setProjects((prev) =>
             prev.map((p) =>
@@ -1921,7 +1945,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     };
 
     const handleUnpairProject = (projectId: string) => {
-        if (!setProjects) return;
+        if (!canEdit || !setProjects) return;
         if (
             !window.confirm(
                 t(
@@ -2005,6 +2029,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     useEffect(() => {
         if (!activeLead || !activeLeadFingerprint || !isOpenAiConfigured)
             return;
+        // The summary is written back onto the lead, so a read-only role only
+        // ever sees the one somebody with edit access already generated.
+        if (!canEdit) return;
         if (activeLead.aiSummaryFingerprint === activeLeadFingerprint) return;
         if (isGeneratingSummary) return;
 
@@ -2758,7 +2785,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     const handleUpdateLeadProfile = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!activeLead) return;
+        if (!canEdit || !activeLead) return;
         if (!leadName.trim() || !leadValue.trim()) {
             (window as any).showToast(
                 t(
@@ -2831,7 +2858,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     const handleAddLeadTimelineEvent = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!activeLead || !logType) return;
+        if (!canEdit || !activeLead || !logType) return;
 
         let contentString = logContent.trim();
         let titleString = "";
@@ -3202,6 +3229,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     // plain text so they can be edited in a simple textarea (they re-render fine
     // as plain text).
     const handleStartEditEvent = (event: TimelineEvent) => {
+        if (!canEdit) return;
         let text = event.content || "";
         if (event.type === "note" && text.trim().startsWith("[")) {
             try {
@@ -3227,7 +3255,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     };
 
     const handleSaveEditEvent = (eventId: string) => {
-        if (!activeLead) return;
+        if (!canEdit || !activeLead) return;
         const nextContent = editingEventDraft;
         // Timestamps drive the whole timeline (ordering, the future/past split and
         // the "today" divider), so a half-filled date/time is dropped rather than
@@ -3297,7 +3325,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     );
 
     const handleDeleteTimelineEvent = (eventId: string) => {
-        if (!activeLead) return;
+        if (!canDelete || !activeLead) return;
         const ok = window.confirm(
             t(
                 "Delete this event from the lead history?",
@@ -3333,7 +3361,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     // live in api/task.php), so dropping the row from local state alone left it
     // in the database and the next poll or reload brought it straight back.
     const handleDeleteGateTask = async (task: Task) => {
-        if (deletingTaskIds.has(task.id)) return;
+        if (!canDelete || deletingTaskIds.has(task.id)) return;
         const confirmed = window.confirm(
             t(
                 `Permanently delete "${task.title}"? This cannot be undone.`,
@@ -3383,7 +3411,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     const handleAddInlineLockingTask = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!activeLead) return;
+        if (!canEdit || !activeLead) return;
         if (!inlineTaskTitle.trim()) {
             (window as any).showToast(
                 systemLanguage === "sk"
@@ -3459,7 +3487,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     // Save edited client properties across ALL associated database leads
     const handleSaveClientDetails = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!selectedClientName) return;
+        if (!canEdit || !selectedClientName) return;
         if (!editClientName.trim()) {
             (window as any).showToast(
                 t(
@@ -3496,6 +3524,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     // Initialize inline editing
     const startInlineEdit = (lead: Lead) => {
+        if (!canEdit) return;
         setEditingRowId(lead.id);
         setInlineName(lead.name);
         setInlineCity(lead.city);
@@ -3507,6 +3536,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     // Save inline edit
     const saveInlineEdit = (id: string) => {
+        if (!canEdit) return;
         if (!inlineName.trim() || !inlineValue.trim()) {
             (window as any).showToast(
                 t(
@@ -3550,6 +3580,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     // Delete lead
     const handleDeleteLead = (id: string, name: string) => {
+        if (!canDelete) return;
         if (
             confirm(
                 systemLanguage === "sk"
@@ -3599,6 +3630,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
      * @param newStatus String target stage status key (e.g. "contacted", "accepted")
      */
     const handleUpdateLeadState = (id: string, newStatus: string) => {
+        if (!canEdit) return false;
         const lead = leads.find((l) => l.id === id);
         if (lead && lead.status !== newStatus) {
             // An archived task is out of every calendar and task list, so it must
@@ -3686,6 +3718,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
      */
     const handleCreateLead = (e: React.FormEvent) => {
         e.preventDefault();
+        if (!canEdit) return;
         if (!newLeadName.trim() || !newLeadValue.trim()) {
             (window as any).showToast(
                 t(
@@ -4349,6 +4382,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         <ArrowLeft className="h-4.5 w-4.5 stroke-[2.5] shrink-0" />{" "}
                         {getTranslation(systemLanguage, "common.back_to_leads")}
                     </button>
+                    {readOnlyNotice}
 
                     <div className="flex flex-1 min-w-0 items-center justify-end gap-3 flex-wrap">
                         {/* AI Summary Purple Card */}
@@ -4413,7 +4447,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             </span>
 
                             {/* Convert to Project Button */}
-                            {projectTypes &&
+                            {canEdit &&
+                            projectTypes &&
                             projectTypes.length > 0 &&
                             setProjects &&
                             setActiveTab && (
@@ -4698,9 +4733,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 </span>
 
                                 {/* Pencil Toggle edit button */}
+                                {canEdit && (
                                 <button
                                     type="button"
                                     onClick={() => {
+                                        if (!canEdit) return;
                                         if (isEditingLead) {
                                             // Revert changes on toggle off
                                             setLeadName(activeLead.name);
@@ -4749,6 +4786,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         <PencilLine className="h-4.5 w-4.5 stroke-[2.5]" />
                                     )}
                                 </button>
+                                )}
                             </div>
 
                             {/* Lead state section: the pipeline strip sits directly under
@@ -4849,7 +4887,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         <StatusSelector
                                             status={leadStatus}
                                             onChange={handleDirectLeadStateChange}
-                                            isEditing={true}
+                                            isEditing={canEdit}
                                         />
                                         {breachedSlaById[activeLead.id] && (
                                             <SlaBreachBadge
@@ -5426,7 +5464,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     <input
                                                         type="checkbox"
                                                         checked={!!doneAt}
+                                                        disabled={!canEdit}
                                                         onChange={(e) => {
+                                                            if (!canEdit)
+                                                                return;
                                                             const checked =
                                                                 e.target
                                                                     .checked;
@@ -5524,12 +5565,15 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                         <div className="relative shrink-0 select-none mt-0.5">
                                                             <CustomSelect
                                                                 size="sm"
+                                                                disabled={!canEdit}
                                                                 value={
                                                                     task.status
                                                                 }
                                                                 onChange={(
                                                                     newStatus,
                                                                 ) => {
+                                                                    if (!canEdit)
+                                                                        return;
                                                                     const now =
                                                                         new Date();
                                                                     const completedAtStr =
@@ -5722,6 +5766,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                         ];
                                                                     return (
                                                                         <CustomSelect
+                                                                            disabled={!canEdit}
                                                                             value={
                                                                                 assignees[0] ||
                                                                                 ""
@@ -5729,6 +5774,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                             onChange={(
                                                                                 next,
                                                                             ) => {
+                                                                                if (!canEdit)
+                                                                                    return;
                                                                                 setTasks(
                                                                                     (
                                                                                         prev,

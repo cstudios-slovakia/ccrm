@@ -116,6 +116,17 @@ interface ProjectDetailsViewProps {
   onSave: (updatedProject: Project) => void;
   /** A project that has never been saved: opens straight in edit mode, so it can be named. */
   isNew?: boolean;
+  /**
+   * Whether the user may change the project at all — the card, its attributes
+   * and uploads, the timeline, the Gantt rows, the budget and the finance rows.
+   * Off, the view is read-only. Defaults to true.
+   */
+  canEdit?: boolean;
+  /**
+   * Whether the user may remove things — attachments, timeline events, Gantt
+   * rows and finance rows. Never wider than `canEdit`. Defaults to true.
+   */
+  canDelete?: boolean;
 }
 
 export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
@@ -130,9 +141,13 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   currencyCode,
   onClose,
   onSave,
-  isNew = false
+  isNew = false,
+  canEdit = true,
+  canDelete: canDeleteProp = true
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
+  // Removing something is a change, so the delete flag never outranks edit.
+  const canDelete = canEdit && canDeleteProp;
   const money = (v: number) => formatMoney(v, currencyCode, userLanguage);
   // What a money attribute starts on. Only the default: the currency is stored
   // with the value, so each record keeps whichever one it was actually filled in.
@@ -289,8 +304,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   // the picker only comes back while re-pairing.
   const [pickingClient, setPickingClient] = useState(false);
   // The left card reads as a card, not as a form. A project is looked at far
-  // more often than it is changed, so the inputs only come out on Edit.
-  const [isEditing, setIsEditing] = useState(false);
+  // more often than it is changed, so the inputs only come out on Edit — and
+  // never for a read-only role, whatever the state says.
+  const [isEditingState, setIsEditing] = useState(false);
+  const isEditing = canEdit && isEditingState;
   const [dynamicData, setDynamicData] = useState<Record<string, any>>({});
   const [timeline, setTimeline] = useState<ProjectTimelineEvent[]>([]);
   const [gantt, setGantt] = useState<ProjectGanttRow[]>([]);
@@ -476,7 +493,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
   const handleSaveBudget = (e: React.FormEvent) => {
     e.preventDefault();
-    if (budgetDraft === null) return;
+    if (!canEdit || budgetDraft === null) return;
     const raw = budgetDraft.replace(/\s/g, "").replace(",", ".");
     const value = raw === "" ? 0 : Number(raw);
     if (!Number.isFinite(value) || value < 0) return;
@@ -486,6 +503,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   };
 
   const handleOpenProjectFinModal = (type: FinancialType, record?: FinancialRecord) => {
+    if (!canEdit) return;
     if (record) {
       setFinEditingRecord(record);
       setFinFormType(record.type);
@@ -516,7 +534,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
   const handleSaveProjectFinancial = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!finFormTitle.trim() || !project) return;
+    if (!canEdit || !finFormTitle.trim() || !project) return;
 
     let path = "";
     if (finFormCategoryId) {
@@ -566,6 +584,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   };
 
   const handleDeleteProjectFinancial = (id: string) => {
+    if (!canDelete) return;
     if (confirm(t("Delete this financial record?", "Vymazať tento finančný záznam?", "Törli ezt a tételt?"))) {
       if (setFinancialRecords) {
         setFinancialRecords((prev) => prev.filter((r) => r.id !== id));
@@ -577,7 +596,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
   const handleFileUpload = async (attrId: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !canEdit) return;
 
     setIsUploading(attrId);
     const eventId = `proj-${project.id}-${attrId}`;
@@ -620,6 +639,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   };
 
   const handleRemoveFile = (attrId: string, fileIndex: number) => {
+    if (!canDelete) return;
     const currentFiles = asList(dynamicData[attrId]);
     const nextFiles = currentFiles.filter((_: any, idx: number) => idx !== fileIndex);
     setDynamicData(prev => ({
@@ -644,13 +664,15 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               <span className="truncate">{f.name}</span>
               <span className="text-[10px] text-slate-400 font-medium shrink-0">({f.size})</span>
             </a>
-            <button
-              type="button"
-              onClick={() => handleRemoveFile(attrId, fIdx)}
-              className="p-1 hover:bg-rose-50 rounded text-rose-600 shrink-0 cursor-pointer"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
+            {canDelete && (
+              <button
+                type="button"
+                onClick={() => handleRemoveFile(attrId, fIdx)}
+                className="p-1 hover:bg-rose-50 rounded text-rose-600 shrink-0 cursor-pointer"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            )}
           </div>
         ))}
       </div>
@@ -685,6 +707,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
    * Returns false when a required attribute blocked the save.
    */
   const handleSave = (overrides: Partial<Project> = {}, validate = true): boolean => {
+    // Every write to the project funnels through here — the one place a
+    // read-only role is refused, whichever control got as far as calling it.
+    if (!canEdit) return false;
     /* A project past its deadline owes an explanation. Checked against the
        values being saved — moving it to Completed or pushing the deadline out
        settles the debt in the same keystroke, so neither has to be fought
@@ -794,7 +819,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   // Timeline Handlers
   const handleAddTimelineEvent = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTeTitle.trim()) return;
+    if (!canEdit || !newTeTitle.trim()) return;
 
     // Validate required timeline attributes
     const selectedTeType = projectType.timelineEventTypes?.find(t => t.id === newTeType);
@@ -831,6 +856,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   };
 
   const handleRemoveTimelineEvent = (id: string) => {
+    if (!canDelete) return;
     if (!window.confirm(t("Delete timeline event?", "Vymazať udalosť časovej osi?", "Törli az idővonal eseményt?"))) return;
     setTimeline(prev => prev.filter(e => e.id !== id));
   };
@@ -838,7 +864,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   // Gantt Handlers
   const handleAddGanttRow = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newGeTitle.trim()) return;
+    if (!canEdit || !newGeTitle.trim()) return;
 
     const newRow: ProjectGanttRow = {
       id: "pgr-" + Date.now(),
@@ -857,10 +883,18 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   };
 
   const handleUpdateGanttProgress = (id: string, progress: number) => {
+    if (!canEdit) return;
     setGantt(prev => prev.map(r => r.id === id ? { ...r, progress } : r));
   };
 
+  /** The task editor writes straight into the rows, so it stays shut for a read-only role. */
+  const openGanttEdit = (row: ProjectGanttRow) => {
+    if (!canEdit) return;
+    setSelectedGanttEdit(row);
+  };
+
   const handleRemoveGanttRow = (id: string) => {
+    if (!canDelete) return;
     if (!window.confirm(t("Delete Gantt row?", "Vymazať riadok Gantt diagramu?", "Törli a Gantt diagram sort?"))) return;
     setGantt(prev => prev.filter(r => r.id !== id));
   };
@@ -1021,13 +1055,28 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => handleSave()}
-            className="flex items-center gap-1.5 px-4.5 py-2 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs uppercase tracking-wider transition-all shadow-md cursor-pointer"
-          >
-            <Icons.Save className="h-4.5 w-4.5" />
-            <span>{t("Save Changes", "Uložiť zmeny", "Mentés")}</span>
-          </button>
+          {canEdit ? (
+            <button
+              onClick={() => handleSave()}
+              className="flex items-center gap-1.5 px-4.5 py-2 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs uppercase tracking-wider transition-all shadow-md cursor-pointer"
+            >
+              <Icons.Save className="h-4.5 w-4.5" />
+              <span>{t("Save Changes", "Uložiť zmeny", "Mentés")}</span>
+            </button>
+          ) : (
+            /* Read-only: the same pill the list wears, where the save button would be. */
+            <span
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-amber-200 bg-amber-50 text-[10px] font-black uppercase tracking-wider text-amber-700 whitespace-nowrap"
+              title={t(
+                "Your role can view this project but not change it.",
+                "Vaša rola môže tento projekt prezerať, ale nie meniť.",
+                "A szerepköre megtekintheti ezt a projektet, de nem módosíthatja.",
+              )}
+            >
+              <Icons.Lock className="h-3 w-3 shrink-0" />
+              <span>{t("Read-only access", "Iba na čítanie", "Csak olvasható")}</span>
+            </span>
+          )}
         </div>
       </div>
 
@@ -1071,13 +1120,15 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         "Ez a projekt nincs leaddel vagy ügyféllel párosítva.",
                       )}
                     </p>
-                    <button
-                      type="button"
-                      onClick={() => { setIsEditing(true); setPickingClient(true); }}
-                      className="mt-2.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
-                    >
-                      {t("Pair now", "Spárovať", "Párosítás")}
-                    </button>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={() => { setIsEditing(true); setPickingClient(true); }}
+                        className="mt-2.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
+                      >
+                        {t("Pair now", "Spárovať", "Párosítať")}
+                      </button>
+                    )}
                   </div>
                 );
               }
@@ -1252,7 +1303,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               <h4 className="text-xs font-heading font-black text-slate-900 uppercase tracking-widest">
                 {t("Project Card Details", "Detaily karty projektu", "Projekt részletei")}
               </h4>
-              {!isEditing ? (
+              {!canEdit ? null : !isEditing ? (
                 <button
                   type="button"
                   onClick={() => setIsEditing(true)}
@@ -1322,7 +1373,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Status", "Stav", "Állapot")}</label>
               <CustomSelect
                 value={status}
+                disabled={!canEdit}
                 onChange={v => {
+                  if (!canEdit) return;
                   setStatus(v);
                   // Completing stamps today as the real finish, reopening clears
                   // it — see finishedAtForStatus. Only where the field is shown.
@@ -1505,14 +1558,16 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                               "Még nincs indoklás — a projekt megjelölve marad a listában, amíg meg nem adja.",
                             )}
                           </p>
-                          <button
-                            type="button"
-                            onClick={() => setIsEditing(true)}
-                            className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-600 text-white text-[10px] font-black uppercase tracking-wider hover:bg-rose-700 transition-colors cursor-pointer"
-                          >
-                            <Icons.Flag className="h-3 w-3 shrink-0" />
-                            <span>{t("Explain the delay", "Zdôvodniť meškanie", "Késés indoklása")}</span>
-                          </button>
+                          {canEdit && (
+                            <button
+                              type="button"
+                              onClick={() => setIsEditing(true)}
+                              className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-600 text-white text-[10px] font-black uppercase tracking-wider hover:bg-rose-700 transition-colors cursor-pointer"
+                            >
+                              <Icons.Flag className="h-3 w-3 shrink-0" />
+                              <span>{t("Explain the delay", "Zdôvodniť meškanie", "Késés indoklása")}</span>
+                            </button>
+                          )}
                         </>
                       )}
                     </div>
@@ -1865,7 +1920,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           {/* TAB CONTENT: Timeline */}
           {activeRightTab === "timeline" && projectType.hasTimeline && (
             <div className="flex-1 overflow-hidden flex flex-col lg:flex-row gap-6">
-              {/* Timeline Form */}
+              {/* Timeline Form — writes an event, so a read-only role gets the list alone. */}
+              {canEdit && (
               <div className="lg:w-1/3 flex flex-col shrink-0 bg-slate-50 p-4 border border-slate-200 rounded-2xl h-fit">
                 <span className="text-[10px] font-black text-slate-400 uppercase mb-3 block">
                   {t("Log Timeline Event", "Zaznamenať udalosť", "Esemény rögzítése")}
@@ -2090,7 +2146,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                   id={`te-file-input-${attr.id}`}
                                   onChange={async (e) => {
                                     const file = e.target.files?.[0];
-                                    if (!file) return;
+                                    if (!file || !canEdit) return;
                                     setIsUploading(`te-${attr.id}`);
                                     const eventId = `pte-${project.id}-${attr.id}-${Date.now()}`;
                                     const formData = new FormData();
@@ -2130,6 +2186,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   </button>
                 </form>
               </div>
+              )}
 
               {/* Timeline Events List */}
               <div className="flex-1 overflow-y-auto space-y-3.5 pr-1 scrollbar-thin">
@@ -2217,13 +2274,15 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         })()}
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveTimelineEvent(event.id)}
-                        className="absolute right-3 bottom-3 opacity-0 group-hover:opacity-100 p-1.5 hover:bg-rose-50 text-rose-600 rounded-lg transition-all cursor-pointer"
-                      >
-                        <Trash2 className="h-4.5 w-4.5" />
-                      </button>
+                      {canDelete && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveTimelineEvent(event.id)}
+                          className="absolute right-3 bottom-3 opacity-0 group-hover:opacity-100 p-1.5 hover:bg-rose-50 text-rose-600 rounded-lg transition-all cursor-pointer"
+                        >
+                          <Trash2 className="h-4.5 w-4.5" />
+                        </button>
+                      )}
                     </div>
                   ))
                 )}
@@ -2237,7 +2296,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             return (
               <div className="flex-1 overflow-hidden flex flex-col gap-4 text-xs font-semibold">
                 
-                {/* Gantt Entry Form Inline */}
+                {/* Gantt Entry Form Inline — adds a row, so only for a role that may edit. */}
+                {canEdit && (
                 <form onSubmit={handleAddGanttRow} className="bg-slate-50 p-4 border border-slate-200 rounded-2xl flex flex-wrap gap-4 items-end shrink-0">
                   <div className="flex-1 min-w-[200px]">
                     <label className="block text-[9px] text-slate-400 uppercase mb-1">{t("Task Title", "Názov úlohy", "Feladat címe")}</label>
@@ -2289,6 +2349,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     <span>{t("Add Row", "Pridať", "Hozzáadás")}</span>
                   </button>
                 </form>
+                )}
 
                 {/* THE GANTT CONTAINER: Left Table & Right Timeline Scrollable */}
                 <div className="flex-1 border border-slate-200 rounded-3xl overflow-hidden bg-white shadow-sm flex flex-col relative min-h-[350px]">
@@ -2358,7 +2419,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                               <div className="flex items-center gap-1 shrink-0 ml-2">
                                 <button
                                   type="button"
-                                  onClick={() => setSelectedGanttEdit(row)}
+                                  onClick={() => openGanttEdit(row)}
                                   className="text-slate-500 hover:text-indigo-600 hover:bg-indigo-50/50 font-bold px-2 py-0.5 rounded-xl border border-slate-200 transition-all text-[10.5px] cursor-pointer"
                                 >
                                   {row.endDate ? (
@@ -2483,7 +2544,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                     <div 
                                       className="h-6 rounded-lg bg-emerald-500/20 border border-emerald-500/40 shrink-0 select-none cursor-pointer flex items-center justify-center hover:bg-emerald-500/30 transition-colors"
                                       style={{ width: pillWidth }}
-                                      onClick={() => setSelectedGanttEdit(row)}
+                                      onClick={() => openGanttEdit(row)}
                                       title={`${formatDateLocalized(row.startDate || row.endDate, userLanguage)} to ${formatDateLocalized(row.endDate || row.startDate, userLanguage)}`}
                                     />
                                     
@@ -2502,7 +2563,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                     {/* Task name display next to badge */}
                                     <span 
                                       className="ml-2 text-[11px] font-bold text-slate-700 truncate cursor-pointer hover:underline max-w-[300px]"
-                                      onClick={() => setSelectedGanttEdit(row)}
+                                      onClick={() => openGanttEdit(row)}
                                     >
                                       {row.title}
                                     </span>
@@ -2518,7 +2579,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                     )}
                                     <span 
                                       className="ml-2 text-[11px] font-bold text-slate-400 italic cursor-pointer hover:underline truncate max-w-[250px]"
-                                      onClick={() => setSelectedGanttEdit(row)}
+                                      onClick={() => openGanttEdit(row)}
                                     >
                                       {row.title} ({t("no dates", "bez termínu", "nincs határidő")})
                                     </span>

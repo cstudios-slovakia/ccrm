@@ -356,15 +356,15 @@ export interface UserProfile {
   metadata_json?: any;
 }
 
+export type PermissionValue = "edit" | "view" | "nothing";
+
 export interface RolePermission {
   name: string;
+  // Sparse map of permission key -> value. Keys absent from a stored role are
+  // resolved by src/utils/permissions.ts (legacy defaults, folded legacy keys);
+  // never read this map directly in a view — go through buildAccess().
   permissions: {
-    general_config: "edit" | "view" | "nothing";
-    pm_managers: "edit" | "view" | "nothing";
-    pipeline_stages: "edit" | "view" | "nothing";
-    traffic_sources: "edit" | "view" | "nothing";
-    system_reset: "edit" | "view" | "nothing";
-    [key: string]: "edit" | "view" | "nothing"; // Allow granular & custom permission slugs dynamically
+    [key: string]: PermissionValue | undefined;
   };
   defaultNavLayout?: string[]; // Array of active module item IDs in order
 }

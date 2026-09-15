@@ -23,7 +23,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `email` VARCHAR(150) NOT NULL UNIQUE,
               `password_hash` VARCHAR(255) NOT NULL,
               `sessions_valid_from` DATETIME NULL COMMENT 'Sessions issued before this are rejected (set on password change)',
-              `role` ENUM('admin', 'project_manager', 'viewer') NOT NULL DEFAULT 'viewer',
+              `role` VARCHAR(100) NOT NULL DEFAULT 'Viewer',
               `avatar` VARCHAR(255) NULL,
               `color` VARCHAR(20) NULL,
               `metadata_json` TEXT NULL COMMENT 'Plugin support',
@@ -42,7 +42,7 @@ if (!function_exists('ccrm_schema_statements')) {
 
             // Role Permissions
             "CREATE TABLE IF NOT EXISTS `role_permissions` (
-              `role` ENUM('admin', 'project_manager', 'viewer') NOT NULL,
+              `role` VARCHAR(100) NOT NULL,
               `permission_slug` VARCHAR(100) NOT NULL,
               PRIMARY KEY (`role`, `permission_slug`),
               FOREIGN KEY (`permission_slug`) REFERENCES `permissions` (`slug`) ON DELETE CASCADE
@@ -1007,6 +1007,40 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_migrate_list_ids($pdo);
         ccrm_backfill_task_completion_attribution($pdo);
         ccrm_seed_default_financial_categories($pdo);
+        ccrm_migrate_user_role_varchar($pdo);
+    }
+
+    /**
+     * Widen `users.role` (and unused `role_permissions.role`) from the
+     * original ENUM('admin','project_manager','viewer') to VARCHAR(100) so a
+     * custom role name survives a save. Relabels the three legacy values to
+     * the names the registry uses. Idempotent and never throws.
+     */
+    function ccrm_migrate_user_role_varchar(PDO $pdo): void {
+        $widen = function (string $table, string $alter) use ($pdo): void {
+            try {
+                $type = $pdo->query(
+                    "SELECT `DATA_TYPE` FROM `information_schema`.`COLUMNS`
+                     WHERE `TABLE_SCHEMA` = DATABASE()
+                       AND `TABLE_NAME` = " . $pdo->quote($table) . "
+                       AND `COLUMN_NAME` = 'role'"
+                )->fetchColumn();
+                if ($type === 'enum') {
+                    $pdo->exec($alter);
+                }
+            } catch (\Throwable $e) {
+                error_log('[ccrm] ccrm_migrate_user_role_varchar ' . $table . ': ' . $e->getMessage());
+            }
+        };
+        $widen('users', "ALTER TABLE `users` MODIFY COLUMN `role` VARCHAR(100) NOT NULL DEFAULT 'Viewer'");
+        $widen('role_permissions', "ALTER TABLE `role_permissions` MODIFY COLUMN `role` VARCHAR(100) NOT NULL");
+        try {
+            $pdo->exec("UPDATE `users` SET `role` = 'Admin' WHERE `role` = 'admin'");
+            $pdo->exec("UPDATE `users` SET `role` = 'Project Manager' WHERE `role` = 'project_manager'");
+            $pdo->exec("UPDATE `users` SET `role` = 'Viewer' WHERE `role` = 'viewer'");
+        } catch (\Throwable $e) {
+            error_log('[ccrm] ccrm_migrate_user_role_varchar relabel: ' . $e->getMessage());
+        }
     }
 
     /**

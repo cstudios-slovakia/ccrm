@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { Sparkles, Save, Edit, RefreshCw, Send, AlertCircle, LayoutDashboard, FileText, HelpCircle, X, Info, Languages, Layers, Rows3, History, ChevronDown, ChevronUp, GripVertical, Trash2, Copy, Plus, LayoutGrid, RotateCcw, Wand2 } from "lucide-react";
+import { Sparkles, Save, Edit, RefreshCw, Send, AlertCircle, LayoutDashboard, FileText, HelpCircle, X, Info, Languages, Layers, Rows3, History, ChevronDown, ChevronUp, GripVertical, Trash2, Copy, Plus, LayoutGrid, RotateCcw, Wand2, Lock } from "lucide-react";
 import type { CustomDashboard } from "../types";
 import { cn } from "../utils/cn";
 import type { Language } from "../utils/translations";
@@ -7,6 +7,7 @@ import { formatMoney } from "../utils/currency";
 import { localeCodeFor } from "../utils/localTime";
 import { chartTheme, useAppearance } from "../utils/theme";
 import { useDragAutoScroll } from "../hooks/useDragAutoScroll";
+import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 import {
   WIDGET_PRESETS,
   WIDGET_SIZES,
@@ -32,6 +33,8 @@ interface DynamicDashboardViewProps {
    * picker needs the full list from Settings to offer the empty ones too.
    */
   pipelineStages?: string[];
+  /** Role access for this dashboard. `edit: false` is view-only widgets. */
+  access?: ModuleAccess;
 }
 
 /** Where a `tabs` widget's per-tab query result is stored in the data/error maps. */
@@ -223,15 +226,22 @@ const adaptWidgetToType = (widget: any, nextType: string, sampleRow: any): any =
 
 export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   dashboard,
-  onSaveDashboard,
+  onSaveDashboard: onSaveDashboardRaw,
   systemLanguage,
   currencyCode,
   variant = "custom",
-  pipelineStages = []
+  pipelineStages = [],
+  access = FULL_MODULE_ACCESS
 }) => {
   const isHome = variant === "home";
   const t = (en: string, sk: string, hu: string) =>
     systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
+  const canEdit = access.edit;
+  const canDelete = access.delete;
+  const onSaveDashboard = (updated: CustomDashboard) => {
+    if (!canEdit) return;
+    onSaveDashboardRaw(updated);
+  };
   const money = (value: number, opts?: Intl.NumberFormatOptions) =>
     formatMoney(value, currencyCode, (systemLanguage as Language) || "en", opts);
   // AI-generated widget titles/column labels come back either as a plain
@@ -262,7 +272,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     });
   };
 
-  const [isEditMode, setIsEditMode] = useState(dashboard.layout.widgets.length === 0);
+  const [isEditMode, setIsEditMode] = useState(canEdit && dashboard.layout.widgets.length === 0);
   const [promptText, setPromptText] = useState("");
   const [selectedModel, setSelectedModel] = useState(dashboard.activeModel || "gpt-5.6-terra");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -314,7 +324,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     if (dashboard.id !== prevDashIdRef.current || isSaved) {
       setTempLayout(dashboard.layout);
       setTempPrompts(dashboard.prompts || []);
-      setIsEditMode(dashboard.layout.widgets.length === 0);
+      setIsEditMode(canEdit && dashboard.layout.widgets.length === 0);
       setIsSaved(true);
       prevDashIdRef.current = dashboard.id;
     }
@@ -388,6 +398,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
 
   const handleRunPrompt = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (!canEdit) return;
     if (!promptText.trim()) return;
 
     setIsGenerating(true);
@@ -457,6 +468,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   }, [dashboard.id]);
 
   const handleSave = () => {
+    if (!canEdit) return;
     const updated: CustomDashboard = {
       ...dashboard,
       layout: tempLayout,
@@ -478,6 +490,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   --------------------------------------------------------------------- */
 
   const mutateWidgets = (fn: (widgets: any[]) => any[]) => {
+    if (!canEdit) return;
     setTempLayout((prev: any) => ({ ...prev, widgets: fn(prev?.widgets || []) }));
     setIsSaved(false);
   };
@@ -491,7 +504,10 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   const updateWidget = (id: string, patch: Record<string, any>) =>
     mutateWidgets(ws => ws.map(w => (w.id === id ? { ...w, ...patch } : w)));
 
-  const removeWidget = (id: string) => mutateWidgets(ws => ws.filter(w => w.id !== id));
+  const removeWidget = (id: string) => {
+    if (!canDelete) return;
+    mutateWidgets(ws => ws.filter(w => w.id !== id));
+  };
 
   const duplicateWidget = (id: string) =>
     mutateWidgets(ws => {
@@ -593,6 +609,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   };
 
   const resetToDefaultWidgets = () => {
+    if (!canEdit) return;
     if (!window.confirm(t(
       "Replace the current widgets with the default dashboard?",
       "Nahradiť aktuálne moduly predvolenou nástenkou?",
@@ -608,6 +625,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
    */
   const handleGenerateWidget = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (!canEdit) return;
     const request = widgetPrompt.trim();
     if (!request) return;
 
@@ -743,7 +761,13 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2 shrink-0 flex-wrap">
-          {isEditMode && tempLayout.widgets.length > 0 && (
+          {!canEdit && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider">
+              <Lock className="h-3.5 w-3.5" />
+              {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
+            </span>
+          )}
+          {canEdit && isEditMode && tempLayout.widgets.length > 0 && (
             <button
               onClick={() => { setAddTab("library"); setIsAddOpen(true); }}
               className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20 transition-all text-xs font-heading font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shrink-0 hover:scale-[1.02] active:scale-95"
@@ -786,7 +810,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
             </span>
           )}
 
-          {tempLayout.widgets.length > 0 && !isEditMode && (
+          {tempLayout.widgets.length > 0 && !isEditMode && canEdit && (
             <button
               onClick={() => setIsEditMode(true)}
               className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors text-xs font-heading font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shrink-0"
@@ -796,7 +820,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
             </button>
           )}
 
-          {!isSaved && (
+          {canEdit && !isSaved && (
             <button
               onClick={handleSave}
               className="px-5 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20 transition-all font-heading font-bold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95 shrink-0"
@@ -827,16 +851,26 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
               <Sparkles className="h-8 w-8 text-indigo-600 animate-pulse" />
             </div>
             <h2 className="text-2xl font-black text-slate-800 uppercase tracking-wide">
-              {t("Generate your Dashboard", "Vytvorte si svoj panel", "Irányítópult létrehozása")}
+              {canEdit
+                ? t("Generate your Dashboard", "Vytvorte si svoj panel", "Irányítópult létrehozása")
+                : t("No widgets yet", "Zatiaľ žiadne moduly", "Még nincsenek modulok")}
             </h2>
             <p className="text-sm text-slate-500 mt-2 max-w-md">
-              {t(
-                "Type what you want to analyze. The AI agent will fetch live database records, build custom metrics and charts.",
-                "Zadajte, čo chcete analyzovať. AI agent načíta živé databázové záznamy a zostaví metriky a grafy.",
-                "Írja be, mit szeretne elemezni. Az AI lekéri az élő adatbázis rekordokat, és diagramokat készít."
-              )}
+              {canEdit
+                ? t(
+                    "Type what you want to analyze. The AI agent will fetch live database records, build custom metrics and charts.",
+                    "Zadajte, čo chcete analyzovať. AI agent načíta živé databázové záznamy a zostaví metriky a grafy.",
+                    "Írja be, mit szeretne elemezni. Az AI lekéri az élő adatbázis rekordokat, és diagramokat készít."
+                  )
+                : t(
+                    "This dashboard has no widgets to show.",
+                    "Tento panel zatiaľ nemá žiadne moduly.",
+                    "Ennek az irányítópultnak nincsenek moduljai."
+                  )}
             </p>
 
+            {canEdit && (
+            <>
             {/* Nothing here needs an AI key: a dashboard can also be assembled
                 from the ready-made widget library, or reset to the starter set. */}
             <div className="flex flex-wrap items-center justify-center gap-2 mt-6">
@@ -926,6 +960,8 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 </button>
               </div>
             </form>
+            </>
+            )}
           </div>
         ) : (
           /* Render Generated Layout Grid */
@@ -972,6 +1008,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                       t={t}
                       title={localize(w.title)}
                       isDragging={draggedWidgetId === w.id}
+                      canDelete={canDelete}
                       onDragStart={() => setDraggedWidgetId(w.id)}
                       onDragEnd={() => { setDraggedWidgetId(null); setDragOverWidgetId(null); }}
                       onMove={(dir) => moveWidget(w.id, dir)}
@@ -1120,7 +1157,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
       {/* Add-widget drawer: ready-made widgets on one tab, a one-shot AI prompt
           on the other. Both append to the working layout, so nothing is stored
           until Save — exactly like a whole-panel generation. */}
-      {isAddOpen && (
+      {canEdit && isAddOpen && (
         <>
           <div
             className="fixed inset-0 bg-slate-900/30 backdrop-blur-[1px] z-[9998] animate-in fade-in duration-200"
@@ -1641,6 +1678,7 @@ const WidgetEditBar: React.FC<{
   onRename: (value: string) => void;
   onDuplicate: () => void;
   onRemove: () => void;
+  canDelete?: boolean;
   /** Every phase this widget could report on; empty for widgets that have none. */
   stageOptions: string[];
   /** The phases it reports now; empty means "whatever currently has leads". */
@@ -1650,7 +1688,7 @@ const WidgetEditBar: React.FC<{
 }> = ({
   widget, index, total, title, isDragging, t,
   onDragStart, onDragEnd, onMove, onSize, onType, onChartType, onColor, onRename, onDuplicate, onRemove,
-  stageOptions, stageSelection, onStages, onMetricKey
+  stageOptions, stageSelection, onStages, onMetricKey, canDelete = true
 }) => {
   const resolvedType = resolveWidgetType(widget).type;
   const currentSize = (WIDGET_SIZES as string[]).includes(widget.size) ? (widget.size as WidgetSize) : "full";
@@ -1738,6 +1776,7 @@ const WidgetEditBar: React.FC<{
           >
             <Copy className="h-3.5 w-3.5" />
           </button>
+          {canDelete && (
           <button
             type="button"
             onClick={onRemove}
@@ -1746,6 +1785,7 @@ const WidgetEditBar: React.FC<{
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
+          )}
         </div>
       </div>
 

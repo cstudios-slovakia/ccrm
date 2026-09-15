@@ -15,7 +15,8 @@ import { SOCIAL_MEDIA_ENABLED } from "./utils/featureFlags";
 import type { MeetingNote } from "./components/MeetingRoomView";
 import { getTranslation, formatTranslation } from "./utils/translations";
 import { orderLeadStates } from "./utils/leadStates";
-import { resolveTaskViewAll } from "./utils/taskSelectors";
+import { buildAccess, firstAllowedRoute, permissionKeyForRoute } from "./utils/permissions";
+import { AccessDeniedView } from "./components/AccessDeniedView";
 import { InstallerWizard } from "./components/InstallerWizard";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AiKeyBanner } from "./components/ui/AiKeyBanner";
@@ -866,30 +867,19 @@ ${log.payload || ''}
       ? `${viewName} | ${systemName} — ${VERSION}`
       : `${viewName} | ${systemName}`;
   }, [activeTab, systemName, userLanguage, leads, customDashboards, unifiedEntries]);
+  // Single permission resolver for the shell: sidebar, launcher, header
+  // shortcuts and the route guard all read from it. Views receive their own
+  // `ModuleAccess` slice so none of them has to know about roles.
+  const access = useMemo(() => buildAccess(currentUser, roles), [currentUser, roles]);
+
   const taskAccess = (() => {
-    if (!currentUser) {
-      return { view: false, create: false, edit: false, delete: false, viewAll: false };
-    }
-    if (currentUser.role.toLowerCase() === "admin") {
-      return { view: true, create: true, edit: true, delete: true, viewAll: true };
-    }
-    const role = roles.find((item) => item.name === currentUser.role);
-    const permissions: Partial<RolePermission["permissions"]> = role?.permissions || {};
-    const isProjectManager = currentUser.role.toLowerCase() === "project manager";
-    const allowed = (slug: string, projectManagerDefault = false) => {
-      if (Object.prototype.hasOwnProperty.call(permissions, slug)) {
-        return permissions[slug] === "edit" || permissions[slug] === "view";
-      }
-      return isProjectManager && projectManagerDefault;
-    };
-    // Unlike the slugs above, seeing the team board is on by default and has to
-    // be revoked explicitly — see resolveTaskViewAll.
+    const m = access.module("tasks");
     return {
-      view: allowed("tasks.view", true),
-      create: allowed("tasks.create", true),
-      edit: allowed("tasks.edit", true),
-      delete: permissions["tasks.delete"] === "edit",
-      viewAll: resolveTaskViewAll(permissions, false),
+      view: m.view,
+      create: m.edit,
+      edit: m.edit,
+      delete: m.delete,
+      viewAll: access.can("tasks.view_all"),
     };
   })();
 
@@ -901,29 +891,15 @@ ${log.payload || ''}
     return acc;
   }, {} as Record<string, string>);
 
-  // Permission resolver helper
-  const getPermission = (section: keyof RolePermission["permissions"]) => {
-    if (!currentUser) return "nothing";
-    if (currentUser.role.toLowerCase() === "admin") return "edit"; // Admin always has absolute write privileges
-    const userRole = roles.find(r => r.name === currentUser.role);
-    if (!userRole) return "nothing";
-    return userRole.permissions[section] || "nothing";
-  };
-
-  // Has settings access flag
-  const hasSettingsAccess = 
-    getPermission("general_config") !== "nothing" ||
-    getPermission("pm_managers") !== "nothing" ||
-    getPermission("pipeline_stages") !== "nothing" ||
-    getPermission("traffic_sources") !== "nothing" ||
-    getPermission("system_reset") !== "nothing" ||
-    getPermission("ai_config") !== "nothing";
+  // Settings still reads single keys by name (its categories map 1:1 to keys).
+  const getPermission = (section: string) => access.value(section);
 
   // Guard routing pathway from unauthorised users
   useEffect(() => {
-    if (currentUser && activeTab === "settings" && !hasSettingsAccess) {
-      setActiveTab("dashboard");
-      window.location.hash = "dashboard";
+    if (currentUser && activeTab.startsWith("settings") && !access.hasSettingsAccess) {
+      const target = firstAllowedRoute(access) ?? "dashboard";
+      setActiveTab(target);
+      window.location.hash = target;
     }
   }, [activeTab, currentUser, roles]);
 
@@ -2192,6 +2168,33 @@ ${log.payload || ''}
 
     const { route: activeRoute } = parseAppHash(activeTab);
 
+    // Route guard: the sidebar hides what the role may not open, but a typed
+    // hash, an old bookmark or a permission revoked mid-session still lands
+    // here. Unknown routes fall through to the tasks board below, and
+    // permissionKeyForRoute maps them to "tasks" so that case is covered too.
+    const routeKey = permissionKeyForRoute(activeRoute);
+    if (routeKey !== null && !access.canOpenRoute(activeRoute)) {
+      return (
+        <AccessDeniedView
+          systemLanguage={userLanguage}
+          fallbackRoute={firstAllowedRoute(access)}
+          onNavigate={(route) => {
+            setActiveTab(route);
+            window.location.hash = route;
+          }}
+          roleName={currentUser?.role}
+          hasKnownRole={access.hasKnownRole}
+          onLogout={() => {
+            fetch("/api/logout.php", { method: "POST" })
+              .finally(() => {
+                setCurrentUser(null);
+                window.location.href = "/";
+              });
+          }}
+        />
+      );
+    }
+
     if (activeRoute.startsWith("user-")) {
       const username = decodeURIComponent(activeRoute.replace("user-", ""));
       return (
@@ -2264,6 +2267,7 @@ ${log.payload || ''}
         return (
           <DynamicDashboardView
             dashboard={dashboard}
+            access={access.module("dashboard.custom")}
             onSaveDashboard={(updated: CustomDashboard) => {
               updateCustomDashboardsAndSync((prev) =>
                 prev.map((d) => (d.id === updated.id ? updated : d))
@@ -2286,6 +2290,7 @@ ${log.payload || ''}
         return (
           <UnifiedEntryView
             registry={ueRegistry}
+            access={access.module("unified_entries")}
             rows={unifiedEntriesData[ueId] || []}
             setRows={(updater: any) => updateUnifiedEntriesDataAndSync(ueId, updater)}
             systemLanguage={userLanguage}
@@ -2306,6 +2311,7 @@ ${log.payload || ''}
           projectManagers={projectManagers}
           leadSources={leadSources}
           initialSelectedClient={clientName}
+          access={access.module("clients")}
           clientCategories={clientCategories}
           setClientCategories={updateClientCategoriesAndSync}
           systemLanguage={userLanguage}
@@ -2333,6 +2339,7 @@ ${log.payload || ''}
           leadStateColors={leadStateColors}
           leadStateParents={leadStateParents}
           initialSelectedLeadId={leadId}
+          access={access.module("leads")}
           projectManagerColors={projectManagerColors}
           leadCategories={leadCategories}
           leadSourceColors={leadSourceColors}
@@ -2440,6 +2447,7 @@ ${log.payload || ''}
         return (
           <LeadsDatagrid 
             systemName={systemName}
+            access={access.module("leads")}
             leads={leads}
             setLeads={updateLeadsAndSync}
             leadStates={orderedLeadStates}
@@ -2479,7 +2487,7 @@ ${log.payload || ''}
             leads={leads}
             users={users}
             userLanguage={userLanguage}
-            canEdit={getPermission("general_config") === "edit"}
+            access={access.module("projects")}
             projectAutoCreate={projectAutoCreate}
             setProjectAutoCreate={setProjectAutoCreate}
             leadCategories={leadCategories}
@@ -2494,6 +2502,7 @@ ${log.payload || ''}
         return (
           <ClientsView 
             leads={leads}
+            access={access.module("clients")}
             setLeads={updateLeadsAndSync}
             projectManagers={projectManagers}
             projectManagerColors={projectManagerColors}
@@ -2517,6 +2526,7 @@ ${log.payload || ''}
       case "financial":
         return (
           <FinancialManagementView
+            access={access.module("financial")}
             financialRecords={financialRecords}
             setFinancialRecords={updateFinancialRecordsAndSync}
             financialCategories={financialCategories}
@@ -2542,6 +2552,7 @@ ${log.payload || ''}
       case "invoices":
         return (
           <InvoicingView
+            access={access.module("invoices")}
             invoicesOffers={invoicesOffers}
             setInvoicesOffers={updateInvoicesOffersAndSync}
             leads={leads}
@@ -2561,7 +2572,7 @@ ${log.payload || ''}
         );
       case "files":
         return (
-          <FilesView leads={leads} setLeads={updateLeadsAndSync} systemLanguage={userLanguage} currencyCode={currencyCode} />
+          <FilesView leads={leads} setLeads={updateLeadsAndSync} systemLanguage={userLanguage} currencyCode={currencyCode} access={access.module("files")} />
         );
       case "personal-settings":
         return (
@@ -2585,6 +2596,7 @@ ${log.payload || ''}
       case "email":
         return (
           <EmailView
+            access={access.module("email")}
             currentUser={activeUser}
             leads={leads}
             setLeads={updateLeadsAndSync}
@@ -2603,6 +2615,7 @@ ${log.payload || ''}
           <DynamicDashboardView
             dashboard={homeDashboard}
             variant="home"
+            access={access.module("dashboard")}
             onSaveDashboard={(updated: CustomDashboard) => {
               updateCustomDashboardsAndSync((prev) =>
                 prev.some(d => d.id === HOME_DASHBOARD_ID)
@@ -2638,6 +2651,7 @@ ${log.payload || ''}
       case "meetings":
         return (
           <MeetingRoomView 
+            access={access.module("meetings")}
             leads={leads}
             users={users}
             currentUser={activeUser}
@@ -2655,6 +2669,7 @@ ${log.payload || ''}
       case "automation":
         return (
           <AutomationView
+            access={access.module("automation")}
             systemLanguage={userLanguage}
             users={users}
             leads={leads}
@@ -2667,7 +2682,7 @@ ${log.payload || ''}
         );
       case "social_media":
         return (
-          <SocialMediaView systemLanguage={userLanguage} integrationsConfig={integrationsConfig} isDemoMode={isDemoMode} />
+          <SocialMediaView systemLanguage={userLanguage} integrationsConfig={integrationsConfig} isDemoMode={isDemoMode} access={access.module("social_media")} />
         );
       case "updates":
         return (
@@ -2676,6 +2691,7 @@ ${log.payload || ''}
       case "warehouse":
         return (
           <WarehouseView
+            access={access.module("warehouse")}
             systemLanguage={userLanguage}
             systemCurrency={currencyCode}
             currentUser={activeUser}
@@ -2894,8 +2910,12 @@ ${log.payload || ''}
               );
             }, 0);
           }
-          // Route the user to their chosen default landing page right after login
-          const dp = getDefaultPageForUser(user) || "dashboard";
+          // Route the user to their chosen default landing page right after
+          // login - unless the role may not open it, in which case the first
+          // permitted module wins (the route guard would only show a wall).
+          const userAccess = buildAccess(user, roles);
+          const preferred = getDefaultPageForUser(user) || "dashboard";
+          const dp = userAccess.canOpenRoute(preferred) ? preferred : (firstAllowedRoute(userAccess) ?? preferred);
           setActiveTab(dp);
           window.location.hash = dp;
         }}
@@ -2916,11 +2936,12 @@ ${log.payload || ''}
         <Sidebar 
           activeTab={activeTab} 
           setActiveTab={(tab) => { 
-            if (tab === "settings" && !hasSettingsAccess) return;
+            if (!access.canOpenRoute(tab)) return;
             window.location.hash = tab; 
           }} 
           systemName={systemName}
-          showSettings={hasSettingsAccess}
+          showSettings={access.hasSettingsAccess}
+          canOpenRoute={access.canOpenRoute}
           onLogout={() => {
             fetch("/api/logout.php", { method: "POST" })
               .finally(() => {
@@ -2931,10 +2952,10 @@ ${log.payload || ''}
           systemLanguage={userLanguage}
           showMailIcon={showMailIcon}
           integrationsConfig={integrationsConfig}
-          showRagAi={getPermission("rag_view") !== "nothing"}
+          showRagAi={access.can("rag_ai")}
           currentUser={currentUser}
           roles={roles}
-          canEditNav={getPermission("nav_edit") === "edit" || currentUser?.role?.toLowerCase() === "project manager"}
+          canEditNav={access.can("nav_edit")}
           onSaveUserLayout={handleSaveUserLayout}
           unifiedEntries={unifiedEntries}
           customDashboards={customDashboards}
@@ -2983,6 +3004,10 @@ ${log.payload || ''}
               setActiveTab("updates");
               window.location.hash = "updates";
             }}
+            canOpenRoute={access.canOpenRoute}
+            canCreateTask={access.canEdit("tasks")}
+            canCreateMeeting={access.canEdit("meetings")}
+            canRunWorkflows={access.canEdit("automation")}
           />
           
           <main className="flex-1 p-4 md:p-6 overflow-y-auto [scrollbar-gutter:stable] max-w-[1600px] mx-auto w-full relative flex flex-col justify-between">
@@ -2994,7 +3019,7 @@ ${log.payload || ''}
               <LicenseBanner
                 state={licenseState}
                 language={userLanguage}
-                isAdmin={(currentUser?.role || "").toLowerCase() === "admin"}
+                isAdmin={access.isAdmin}
                 onOpenLicenseSettings={() => {
                   window.location.hash = "settings/license";
                 }}

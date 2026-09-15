@@ -137,8 +137,17 @@ export const ClientCategoryManager: React.FC<{
   /** Clients filed directly under each category id. */
   clientCounts: Record<string, number>;
   t: Translate;
-}> = ({ categories, setCategories, onCategoriesDeleted, clientCounts, t }) => {
+  /**
+   * A role that may view clients but not change them sees the tree as it is:
+   * no quick-add form, no drag handles, no rename, recolour or delete.
+   */
+  readOnly?: boolean;
+  /** `false` hides the delete buttons while everything else stays editable. */
+  canDelete?: boolean;
+}> = ({ categories, setCategories, onCategoriesDeleted, clientCounts, t, readOnly = false, canDelete = true }) => {
   const toast = (msg: string) => (window as any).showToast?.(msg);
+  const editable = !readOnly;
+  const deletable = editable && canDelete;
 
   // --- quick add ---
   const [newName, setNewName] = useState("");
@@ -172,6 +181,7 @@ export const ClientCategoryManager: React.FC<{
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!editable) return;
     const name = newName.trim();
     if (!name) {
       toast(t("Category name is required.", "Názov kategórie je povinný.", "A kategória neve kötelező."));
@@ -201,6 +211,7 @@ export const ClientCategoryManager: React.FC<{
 
   // --- delete ---
   const handleDelete = (cat: ClientCategory) => {
+    if (!deletable) return;
     const ids = clientCategoryDescendantIds(categories, cat.id);
     ids.add(cat.id);
     const affected = [...ids].reduce((sum, id) => sum + (clientCounts[id] || 0), 0);
@@ -229,7 +240,7 @@ export const ClientCategoryManager: React.FC<{
     const id = renamingId;
     const name = renameDraft.trim();
     setRenamingId(null);
-    if (!id || !name) return;
+    if (!editable || !id || !name) return;
     setCategories((prev) => prev.map((c) => (c.id === id && c.name !== name ? { ...c, name } : c)));
   };
 
@@ -242,6 +253,7 @@ export const ClientCategoryManager: React.FC<{
   }, []);
   const shownColorOf = (cat: ClientCategory): string | null => colorDrafts[cat.id] ?? cat.color ?? null;
   const handleColorChange = (id: string, color: string) => {
+    if (!editable) return;
     setColorDrafts((drafts) => ({ ...drafts, [id]: color }));
     clearTimeout(colorTimers.current[id]);
     colorTimers.current[id] = setTimeout(() => {
@@ -265,6 +277,10 @@ export const ClientCategoryManager: React.FC<{
   };
 
   const handleDragStart = (e: React.DragEvent<HTMLElement>, id: string) => {
+    if (!editable) {
+      e.preventDefault();
+      return;
+    }
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", id);
     setDraggedId(id);
@@ -306,7 +322,7 @@ export const ClientCategoryManager: React.FC<{
     const dragId = draggedId;
     const drop = dropTarget;
     endDrag();
-    if (!dragId || !drop) return;
+    if (!editable || !dragId || !drop) return;
     const next = moveClientCategory(categories, dragId, drop);
     if (!next || next === categories) return;
     setCategories((prev) => moveClientCategory(prev, dragId, drop) ?? prev);
@@ -324,15 +340,15 @@ export const ClientCategoryManager: React.FC<{
       <div
         key={cat.id}
         data-client-category-row={cat.id}
-        draggable={!isRenaming}
+        draggable={editable && !isRenaming}
         onDragStart={(e) => handleDragStart(e, cat.id)}
         onDragEnd={endDrag}
         onDragOver={(e) => handleDragOver(e, cat.id)}
         onDrop={handleDrop}
-        title={t("Drag to reorder or move under another category", "Potiahnutím zmeníte poradie alebo nadradenú kategóriu", "Húzza az átrendezéshez vagy áthelyezéshez")}
+        title={editable ? t("Drag to reorder or move under another category", "Potiahnutím zmeníte poradie alebo nadradenú kategóriu", "Húzza az átrendezéshez vagy áthelyezéshez") : undefined}
         className={cn(
           "group relative flex items-center justify-between gap-2 transition-[opacity,background-color,box-shadow] duration-150",
-          isRenaming ? "cursor-default" : "cursor-grab active:cursor-grabbing",
+          isRenaming || !editable ? "cursor-default" : "cursor-grab active:cursor-grabbing",
           styles.row,
           draggedId === cat.id && "opacity-40",
           drop === "inside" && "ring-2 ring-inset ring-emerald-400 !bg-emerald-50"
@@ -346,15 +362,18 @@ export const ClientCategoryManager: React.FC<{
         )}
 
         <div className="flex items-center gap-2 min-w-0 flex-1">
-          <GripVertical className="h-3.5 w-3.5 shrink-0 text-slate-300 group-hover:text-emerald-500 transition-colors duration-150" />
+          {editable && (
+            <GripVertical className="h-3.5 w-3.5 shrink-0 text-slate-300 group-hover:text-emerald-500 transition-colors duration-150" />
+          )}
           <ColorPicker
             value={shownColor}
             fallback={FALLBACK_COLOR}
             onChange={(color) => handleColorChange(cat.id, color)}
-            title={t("Change color", "Zmeniť farbu", "Szín módosítása")}
+            disabled={!editable}
+            title={editable ? t("Change color", "Zmeniť farbu", "Szín módosítása") : undefined}
             className={styles.swatch}
           />
-          {isRenaming ? (
+          {isRenaming && editable ? (
             <input
               autoFocus
               value={renameDraft}
@@ -374,6 +393,7 @@ export const ClientCategoryManager: React.FC<{
             <span
               className={cn("truncate", styles.name)}
               onDoubleClick={() => {
+                if (!editable) return;
                 setRenamingId(cat.id);
                 setRenameDraft(cat.name);
               }}
@@ -391,27 +411,31 @@ export const ClientCategoryManager: React.FC<{
             </span>
           )}
         </div>
-        <div className="flex items-center gap-0.5 shrink-0">
-          <button
-            type="button"
-            onClick={() => {
-              setRenamingId(cat.id);
-              setRenameDraft(cat.name);
-            }}
-            className="p-1 text-slate-400 hover:text-emerald-600 active:scale-90 transition-all duration-150 cursor-pointer"
-            title={t("Rename category", "Premenovať kategóriu", "Kategória átnevezése")}
-          >
-            <PencilLine className={styles.icon} />
-          </button>
-          <button
-            type="button"
-            onClick={() => handleDelete(cat)}
-            className="p-1 text-slate-400 hover:text-rose-600 active:scale-90 transition-all duration-150 cursor-pointer"
-            title={t("Delete category", "Vymazať", "Törlés")}
-          >
-            <Trash2 className={styles.icon} />
-          </button>
-        </div>
+        {editable && (
+          <div className="flex items-center gap-0.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setRenamingId(cat.id);
+                setRenameDraft(cat.name);
+              }}
+              className="p-1 text-slate-400 hover:text-emerald-600 active:scale-90 transition-all duration-150 cursor-pointer"
+              title={t("Rename category", "Premenovať kategóriu", "Kategória átnevezése")}
+            >
+              <PencilLine className={styles.icon} />
+            </button>
+            {deletable && (
+              <button
+                type="button"
+                onClick={() => handleDelete(cat)}
+                className="p-1 text-slate-400 hover:text-rose-600 active:scale-90 transition-all duration-150 cursor-pointer"
+                title={t("Delete category", "Vymazať", "Törlés")}
+              >
+                <Trash2 className={styles.icon} />
+              </button>
+            )}
+          </div>
+        )}
       </div>
     );
   };
@@ -435,6 +459,7 @@ export const ClientCategoryManager: React.FC<{
       </div>
 
       {/* Quick add */}
+      {editable && (
       <form onSubmit={handleCreate} className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-wrap items-end gap-3">
         <div className="flex-1 min-w-[200px]">
           <label className="text-[11px] font-bold text-slate-500 block mb-1">
@@ -483,25 +508,30 @@ export const ClientCategoryManager: React.FC<{
           {t("Add Category", "Pridať kategóriu", "Kategória hozzáadása")}
         </button>
       </form>
+      )}
 
       {roots.length === 0 ? (
         <div className="rounded-2xl border-2 border-dashed border-slate-200 px-6 py-10 text-center text-xs font-semibold text-slate-400">
-          {t(
-            "No client categories yet — add the first one above.",
-            "Zatiaľ žiadne kategórie klientov — pridajte prvú vyššie.",
-            "Még nincsenek ügyfélkategóriák — adja hozzá az elsőt fent."
-          )}
+          {editable
+            ? t(
+                "No client categories yet — add the first one above.",
+                "Zatiaľ žiadne kategórie klientov — pridajte prvú vyššie.",
+                "Még nincsenek ügyfélkategóriák — adja hozzá az elsőt fent."
+              )
+            : t("No client categories yet.", "Zatiaľ žiadne kategórie klientov.", "Még nincsenek ügyfélkategóriák.")}
         </div>
       ) : (
         <>
-          <p className="-mt-3 text-[11px] text-slate-400 flex items-center gap-1.5">
-            <GripVertical className="h-3.5 w-3.5 shrink-0" />
-            {t(
-              "Drag a category to reorder it or move it under another one; click its colour dot to recolour it, double-click its name to rename it.",
-              "Potiahnutím kategórie zmeníte poradie alebo ju presuniete pod inú; kliknutím na farebnú bodku zmeníte farbu, dvojklikom na názov ju premenujete.",
-              "Húzással átrendezheti vagy más kategória alá helyezheti; a színes pontra kattintva módosíthatja a színét, a névre duplán kattintva átnevezheti."
-            )}
-          </p>
+          {editable && (
+            <p className="-mt-3 text-[11px] text-slate-400 flex items-center gap-1.5">
+              <GripVertical className="h-3.5 w-3.5 shrink-0" />
+              {t(
+                "Drag a category to reorder it or move it under another one; click its colour dot to recolour it, double-click its name to rename it.",
+                "Potiahnutím kategórie zmeníte poradie alebo ju presuniete pod inú; kliknutím na farebnú bodku zmeníte farbu, dvojklikom na názov ju premenujete.",
+                "Húzással átrendezheti vagy más kategória alá helyezheti; a színes pontra kattintva módosíthatja a színét, a névre duplán kattintva átnevezheti."
+              )}
+            </p>
+          )}
           <div
             className="space-y-3"
             onDragLeave={(e) => {

@@ -10,6 +10,8 @@ import {
   ChevronLeft, ChevronRight, Milestone, Coins, Archive, ArchiveRestore, Settings
 } from "lucide-react";
 import type { Lead, TimelineEvent, Task, FinancialRecord, FinancialCategory, FinancialStatus, ClientCategory } from "../types";
+import { FULL_MODULE_ACCESS } from "../utils/permissions";
+import type { ModuleAccess } from "../utils/permissions";
 import { ClientCategoryBadge, ClientCategoryManager, ClientCategorySelect } from "./ClientCategories";
 import { clientCategoryFilterIds, clientCategoryPath } from "../utils/clientCategoryTree";
 import { cn } from "../utils/cn";
@@ -61,6 +63,13 @@ interface ClientsViewProps {
   /** Customer categories (the Categories panel of the client register). */
   clientCategories?: ClientCategory[];
   setClientCategories?: (updater: ClientCategory[] | ((prev: ClientCategory[]) => ClientCategory[])) => void;
+  /**
+   * The user's access to the clients module. `edit` unlocks everything that
+   * creates or changes a client and what is filed under it, `delete` the
+   * controls that remove something. Defaults to full access so callers that
+   * predate the role matrix keep working unchanged.
+   */
+  access?: ModuleAccess;
 }
 
 /** The "without a category" row of the category filter. Not a real category id. */
@@ -377,9 +386,15 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   setFinancialRecords,
   financialCategories = [],
   clientCategories = [],
-  setClientCategories
+  setClientCategories,
+  access = FULL_MODULE_ACCESS
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
+  // Role gates. `view` is what let the user in; read-only users still search,
+  // filter, open a profile and download what they can see. Deleting is never
+  // open to a role that cannot edit, whatever the delete toggle says.
+  const canEdit = access.edit;
+  const canDelete = canEdit && access.delete;
   const currencySymbol = resolveCurrencySymbol(currencyCode, systemLanguage);
   const money = (value: number, opts?: Intl.NumberFormatOptions) => formatMoney(value, currencyCode, systemLanguage, opts);
   const [searchQuery, setSearchQuery] = useState("");
@@ -403,6 +418,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   
   // State hook to toggle detail card edit mode
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+
+  // A role change while the profile form is open must not leave it unlocked.
+  useEffect(() => {
+    if (!canEdit && isEditingProfile) setIsEditingProfile(false);
+  }, [canEdit, isEditingProfile]);
 
   // Register Client Drawer & Input States
   const [showRegisterDrawer, setShowRegisterDrawer] = useState(false);
@@ -472,7 +492,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   // between "checking" and the verdict, the "Saving…" pill never went away and the
   // unload guard blocked reloading the page. Only the explicit onBlur check writes.
   const validateVatCode = async (vat: string, isProfile: boolean, opts?: { persist?: boolean }) => {
-    const persist = opts?.persist !== false;
+    // A read-only role may see the verdict, never write it into the record.
+    const persist = canEdit && opts?.persist !== false;
     const cleanVat = vat.replace(/[^A-Za-z0-9]/g, "").trim();
     if (cleanVat.length < 4) {
       if (isProfile) {
@@ -715,6 +736,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
   const handleRegisterClient = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canEdit) return;
     if (!newClientName.trim()) {
       (window as any).showToast(t("Client name is required!", "Meno klienta je povinné!", "Az ügyfél neve kötelező!"));
       return;
@@ -1314,6 +1336,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   }, [financialRecords, activeClient]);
 
   const handleOpenClientInvoiceModal = (inv?: FinancialRecord) => {
+    if (!canEdit) return;
     if (inv) {
       setClientInvEditing(inv);
       setClientInvTitle(inv.title);
@@ -1342,7 +1365,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
   const handleSaveClientInvoice = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!clientInvTitle.trim() || !activeClient) return;
+    if (!canEdit || !clientInvTitle.trim() || !activeClient) return;
 
     let path = "";
     if (clientInvCategoryId) {
@@ -1393,6 +1416,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   };
 
   const handleDeleteClientInvoice = (id: string) => {
+    if (!canDelete) return;
     if (confirm(t("Delete this invoice?", "Vymazať túto faktúru?", "Törli ezt a számlát?"))) {
       if (setFinancialRecords) {
         setFinancialRecords((prev) => prev.filter((r) => r.id !== id));
@@ -1421,7 +1445,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   };
 
   const handleDownloadStatement = async (statementId: string, client: any) => {
-    if (!client) return;
+    // The PDF link itself still works for a read-only role; only the AI
+    // summary written back into the record is skipped.
+    if (!client || !canEdit) return;
 
     // Switch to financial status tab to show loading state
     setActiveDetailTab("financial_status");
@@ -4589,6 +4615,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
             {getTranslation(systemLanguage, "clients.subtitle")}
           </p>
+          {!canEdit && (
+            <span className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider w-fit">
+              {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
+            </span>
+          )}
         </div>
 
         {/* Settings — a single quiet button in, and a single way back out. */}
@@ -4632,6 +4663,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             onCategoriesDeleted={handleClientCategoriesDeleted}
             clientCounts={clientCountsByCategory}
             t={t}
+            readOnly={!canEdit}
+            canDelete={canDelete}
           />
         </div>
       ) : (
@@ -4653,6 +4686,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           </div>
 
           {/* Register New Client Button */}
+          {canEdit && (
           <button
             type="button"
             onClick={() => setShowRegisterDrawer(true)}
@@ -4661,6 +4695,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             <Plus className="h-4.5 w-4.5 text-emerald-100 stroke-[2.5]" />
             {systemLanguage === "sk" ? "Registrovať klienta" : systemLanguage === "hu" ? "Ügyfél regisztráció" : "Register Client"}
           </button>
+          )}
 
           {/* Saturated Client Type Selector */}
           <div className="relative w-full sm:w-[180px] shrink-0">

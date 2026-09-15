@@ -3,9 +3,11 @@ import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { 
   Send, Trash2, Search, Mail, Plus, X, Loader2, 
   Reply, CheckCircle2, CircleAlert, Clock, Phone, FileText, Calendar, TrendingUp,
-  CornerDownLeft, CornerLeftDown, ChevronDown, ChevronUp, Brain, RefreshCw
+  CornerDownLeft, CornerLeftDown, ChevronDown, ChevronUp, Brain, RefreshCw, Lock
 } from "lucide-react";
 import type { Lead, Task, UserProfile } from "../types";
+import type { ModuleAccess } from "../utils/permissions";
+import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import { formatBytes } from "../utils/formatBytes";
 import { nowLocalStamp, localeCodeFor, formatTimestampLocalized } from "../utils/localTime";
 import { getTranslation } from "../utils/translations";
@@ -24,6 +26,10 @@ interface EmailViewProps {
   setTasks: (newTasks: Task[] | ((prev: Task[]) => Task[])) => void;
   users: UserProfile[];
   taskStates?: string[];
+  /** Role access for the email module. `edit: false` makes the client read-only:
+      mail can be read, searched and attachments opened, but nothing is sent,
+      created or written into the CRM. */
+  access?: ModuleAccess;
 }
 
 // Geometric Icon component from AuroraMail
@@ -61,9 +67,12 @@ export const EmailView: React.FC<EmailViewProps> = ({
   tasks,
   setTasks,
   users,
-  taskStates = ["New", "In progress", "Blocked", "Done"]
+  taskStates = ["New", "In progress", "Blocked", "Done"],
+  access = FULL_MODULE_ACCESS
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
+  const canEdit = access.edit;
+  const canDelete = access.delete;
   // Folder & Email States
   const activeFolder = "INBOX";
   const [emails, setEmails] = useState<any[]>([]);
@@ -185,6 +194,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
   };
 
   const handleAddAttachmentToDocs = async (uid: string, folder: string, att: any, matchedClientObj: any) => {
+    if (!canEdit) return;
     try {
       const eventId = `ev-doc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       if (typeof (window as any).showToast === "function") {
@@ -307,6 +317,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
   };
 
   const handleAddEmailActionItemAsTask = (actionItem: string, emailUid: string, matchedLead: Lead | null, assignedUser: string) => {
+    if (!canEdit) return;
     const newCrmTask: Task = {
       id: `task-ai-${Date.now()}`,
       title: actionItem,
@@ -331,6 +342,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
 
   const handleCreateClientSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canEdit) return;
     if (!clientFormName.trim() || !clientFormEmail.trim() || !clientFormCity.trim()) return;
     
     const newLead: Lead = {
@@ -554,6 +566,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
 
   // Compose a new email
   const openNewComposer = (defaultTo = "", defaultSubject = "", defaultBody = "") => {
+    if (!canEdit) return;
     const newComp = {
       id: Date.now(),
       to: defaultTo,
@@ -565,6 +578,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
   };
 
   const handleSendEmail = async (composer: any) => {
+    if (!canEdit) return;
     setIsSending(true);
     try {
       const res = await fetch("/api/mail_broker.php?action=send_email", {
@@ -595,6 +609,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
   };
 
   const handleDeleteEmail = async (uid: any) => {
+    if (!canDelete) return;
     if (!confirm(t("Are you sure you want to delete this email?", "Naozaj chcete odstrániť tento e-mail?", "Biztosan törölni szeretné ezt az e-mailt?"))) return;
     try {
       const res = await fetch(`/api/mail_broker.php?action=delete_email&uid=${uid}&folder=${encodeURIComponent(activeFolder)}`, {
@@ -811,13 +826,24 @@ export const EmailView: React.FC<EmailViewProps> = ({
   return (
     <div className="space-y-6 select-none animate-fade-in text-slate-800">
     {/* Title header */}
-    <div className="flex flex-col border-b border-slate-100 pb-4">
-      <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-        <Mail className="h-6 w-6 text-pink-600" /> {t("Email Inbox", "Emailová schránka", "E-mail postafiók")}
-      </h2>
-      <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
-        {t("Unified SMTP / IMAP inbox connected to your CRM contacts", "Jednotná SMTP / IMAP schránka prepojená s kontaktmi CRM", "Egységes SMTP / IMAP postafiók a CRM kapcsolatokhoz")}
-      </p>
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-4">
+      <div className="flex flex-col">
+        <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+          <Mail className="h-6 w-6 text-pink-600" /> {t("Email Inbox", "Emailová schránka", "E-mail postafiók")}
+        </h2>
+        <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
+          {t("Unified SMTP / IMAP inbox connected to your CRM contacts", "Jednotná SMTP / IMAP schránka prepojená s kontaktmi CRM", "Egységes SMTP / IMAP postafiók a CRM kapcsolatokhoz")}
+        </p>
+      </div>
+      {!canEdit && (
+        <span
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider shadow-inner shrink-0"
+          title={t("Your role can read mail but not send it or write into the CRM from here.", "Vaša rola môže poštu čítať, ale nie odosielať ani odtiaľto zapisovať do CRM.", "A szerepköre olvashatja a leveleket, de nem küldhet, és innen nem írhat a CRM-be.")}
+        >
+          <Lock className="h-3.5 w-3.5 stroke-[2.5]" />
+          {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
+        </span>
+      )}
     </div>
 
     <div className={`grid grid-cols-1 lg:grid-cols-12 gap-5 select-none h-[calc(100vh-300px)] items-stretch overflow-hidden animate-slide-up email-view-root ${isLargeFont ? 'email-view-large' : ''}`}>
@@ -880,13 +906,15 @@ export const EmailView: React.FC<EmailViewProps> = ({
             >
               <RefreshCw size={14} className={isSyncingEmails ? "animate-spin" : ""} />
             </button>
-            <button
-              type="button"
-              onClick={() => openNewComposer()}
-              className="py-2 px-3.5 bg-pink-600 hover:bg-pink-700 active:scale-95 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow shrink-0 cursor-pointer"
-            >
-              <Plus size={14} /> {t("New", "Nový", "Új")}
-            </button>
+            {canEdit && (
+              <button
+                type="button"
+                onClick={() => openNewComposer()}
+                className="py-2 px-3.5 bg-pink-600 hover:bg-pink-700 active:scale-95 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow shrink-0 cursor-pointer"
+              >
+                <Plus size={14} /> {t("New", "Nový", "Új")}
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-400 px-0.5">
@@ -1134,13 +1162,15 @@ export const EmailView: React.FC<EmailViewProps> = ({
                 </div>
                 
                 {/* Global reply button to latest sender */}
-                <button
-                  onClick={() => openNewComposer(activeThread.latestEmail.from.address, `Re: ${activeThread.subject}`)}
-                  className="px-3.5 py-1.5 rounded-xl border border-pink-200 bg-pink-50 text-pink-700 hover:bg-pink-100 hover:text-pink-800 text-[10px] font-black uppercase flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
-                >
-                  <Reply size={13} />
-                  {t("Reply Thread", "Odpovedať na vlákno", "Válasz a szálra")}
-                </button>
+                {canEdit && (
+                  <button
+                    onClick={() => openNewComposer(activeThread.latestEmail.from.address, `Re: ${activeThread.subject}`)}
+                    className="px-3.5 py-1.5 rounded-xl border border-pink-200 bg-pink-50 text-pink-700 hover:bg-pink-100 hover:text-pink-800 text-[10px] font-black uppercase flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
+                  >
+                    <Reply size={13} />
+                    {t("Reply Thread", "Odpovedať na vlákno", "Válasz a szálra")}
+                  </button>
+                )}
               </div>
 
               {/* CRM Match Info card */}
@@ -1161,20 +1191,22 @@ export const EmailView: React.FC<EmailViewProps> = ({
                           </p>
                         </div>
                       </div>
-                      <button
-                        onClick={() => {
-                          setClientFormEmail(senderEmail);
-                          setClientFormName(senderName);
-                          setClientFormCity("");
-                          setClientFormPhone("");
-                          setClientFormType("person");
-                          setIsClientSlideoutOpen(true);
-                        }}
-                        style={{ backgroundColor: "#6366f1", color: "#ffffff" }}
-                        className="px-2.5 py-1.5 hover:bg-indigo-700 rounded-xl text-[9px] font-black uppercase tracking-wider cursor-pointer transition-all shadow-sm"
-                      >
-                        {t("Create Client", "Vytvoriť klienta", "Ügyfél létrehozása")}
-                      </button>
+                      {canEdit && (
+                        <button
+                          onClick={() => {
+                            setClientFormEmail(senderEmail);
+                            setClientFormName(senderName);
+                            setClientFormCity("");
+                            setClientFormPhone("");
+                            setClientFormType("person");
+                            setIsClientSlideoutOpen(true);
+                          }}
+                          style={{ backgroundColor: "#6366f1", color: "#ffffff" }}
+                          className="px-2.5 py-1.5 hover:bg-indigo-700 rounded-xl text-[9px] font-black uppercase tracking-wider cursor-pointer transition-all shadow-sm"
+                        >
+                          {t("Create Client", "Vytvoriť klienta", "Ügyfél létrehozása")}
+                        </button>
+                      )}
                     </div>
                   );
                 }
@@ -1261,7 +1293,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                   <span className="shrink-0 flex items-center gap-1 text-[8px] font-black uppercase text-emerald-600 bg-emerald-100 border border-emerald-200 px-1.5 py-0.5 rounded-md">
                                     {assignedUser ? `✓ ${assignedUser.substring(0, 2).toUpperCase()}` : "✓"}
                                   </span>
-                                ) : (
+                                ) : !canEdit ? null : (
                                   <>
                                     <button
                                       onClick={() => setAssigningActionItem(assigningActionItem?.item === item ? null : { item, emailUid: `thread-${activeThread.id}` })}
@@ -1402,7 +1434,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                             <span className="shrink-0 text-[7.5px] font-black uppercase text-emerald-600 bg-emerald-100 border border-emerald-200 px-1.5 py-0.5 rounded">
                                               {assignedUser ? `✓ ${assignedUser.substring(0, 2).toUpperCase()}` : "✓"}
                                             </span>
-                                          ) : (
+                                          ) : !canEdit ? null : (
                                             <>
                                               <button
                                                 onClick={() => setAssigningActionItem(assigningActionItem?.item === item ? null : { item, emailUid: email.uid })}
@@ -1462,13 +1494,17 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                       >
                                         {t("Download", "Stiahnuť", "Letöltés")}
                                       </button>
-                                      <span className="text-slate-300">|</span>
-                                      <button
-                                        onClick={() => handleAddAttachmentToDocs(email.uid, email.isSent ? 'Sent' : activeFolder, att, msgLead)}
-                                        className="text-emerald-700 hover:text-emerald-900 font-extrabold uppercase text-[8px] cursor-pointer"
-                                      >
-                                        {t("Add to Docs", "Pridať do dokumentov", "Hozzáadás a dokumentumokhoz")}
-                                      </button>
+                                      {canEdit && (
+                                        <>
+                                          <span className="text-slate-300">|</span>
+                                          <button
+                                            onClick={() => handleAddAttachmentToDocs(email.uid, email.isSent ? 'Sent' : activeFolder, att, msgLead)}
+                                            className="text-emerald-700 hover:text-emerald-900 font-extrabold uppercase text-[8px] cursor-pointer"
+                                          >
+                                            {t("Add to Docs", "Pridať do dokumentov", "Hozzáadás a dokumentumokhoz")}
+                                          </button>
+                                        </>
+                                      )}
                                     </div>
                                   );
                                 })}
@@ -1514,20 +1550,26 @@ export const EmailView: React.FC<EmailViewProps> = ({
                           )}
                           
                           {/* Footer Action items inside card */}
-                          <div className="mt-3.5 pt-3 border-t border-slate-100 flex justify-end gap-2.5">
-                            <button
-                              onClick={() => openNewComposer(email.from.address, `Re: ${email.subject}`)}
-                              className="px-3 py-1.5 border border-slate-200 bg-white hover:bg-slate-50 text-[9px] font-bold text-slate-600 hover:text-slate-800 rounded-xl flex items-center gap-1 transition-all cursor-pointer"
-                            >
-                              <Reply size={11} /> {t("Reply", "Odpovedať", "Válasz")}
-                            </button>
-                            <button
-                              onClick={() => handleDeleteEmail(email.uid)}
-                              className="px-3 py-1.5 border border-rose-200 bg-white hover:bg-rose-50 text-[9px] font-bold text-rose-600 hover:text-rose-800 rounded-xl flex items-center gap-1 transition-all cursor-pointer"
-                            >
-                              <Trash2 size={11} /> {t("Delete", "Odstrániť", "Törlés")}
-                            </button>
-                          </div>
+                          {(canEdit || canDelete) && (
+                            <div className="mt-3.5 pt-3 border-t border-slate-100 flex justify-end gap-2.5">
+                              {canEdit && (
+                                <button
+                                  onClick={() => openNewComposer(email.from.address, `Re: ${email.subject}`)}
+                                  className="px-3 py-1.5 border border-slate-200 bg-white hover:bg-slate-50 text-[9px] font-bold text-slate-600 hover:text-slate-800 rounded-xl flex items-center gap-1 transition-all cursor-pointer"
+                                >
+                                  <Reply size={11} /> {t("Reply", "Odpovedať", "Válasz")}
+                                </button>
+                              )}
+                              {canDelete && (
+                                <button
+                                  onClick={() => handleDeleteEmail(email.uid)}
+                                  className="px-3 py-1.5 border border-rose-200 bg-white hover:bg-rose-50 text-[9px] font-bold text-rose-600 hover:text-rose-800 rounded-xl flex items-center gap-1 transition-all cursor-pointer"
+                                >
+                                  <Trash2 size={11} /> {t("Delete", "Odstrániť", "Törlés")}
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

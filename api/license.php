@@ -115,7 +115,7 @@ $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
 if ($method === 'GET') {
     $user = ccrm_require_auth();
-    $isAdmin = (($user['role'] ?? '') === 'admin');
+    $isAdmin = ccrm_is_admin($user);
 
     // Opportunistic background re-check, throttled inside ccrm_license_refresh:
     // at most one call every CCRM_LICENSE_REFRESH_HOURS across all requests. A
