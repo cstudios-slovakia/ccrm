@@ -279,15 +279,17 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
 }
 
 /**
- * Delete rows that the client omitted from its payload — but never delete a row
- * that changed after the client's last sync ($baseSyncedAt). Otherwise a client
- * working from a stale snapshot would silently delete records another user
- * created or edited in the meantime (last-write-wins data loss).
+ * Delete rows the client removed — either by omitting them from a v1 snapshot
+ * or by naming them in a v2 `deleted` list.
  *
- * $baseSyncedAt is the DB clock value ('YYYY-MM-DD HH:MM:SS') captured in the GET
- * the client synced from, so it is compared against the same clock as updated_at.
- * When it is null (legacy client that didn't send one) we fall back to the old
- * unconditional delete so behaviour is unchanged for those clients.
+ * For delete-by-omission, never remove a row that changed after the client's
+ * last sync ($baseSyncedAt). Otherwise a stale snapshot would wipe records
+ * another user created in the meantime. Named (v2) deletions skip that clock
+ * check: the client listed the id on purpose, including a row it created a
+ * moment earlier whose updated_at is newer than the previous GET.
+ *
+ * $baseSyncedAt is the DB clock value captured in the GET the client synced
+ * from. Null (legacy client) falls back to an unconditional delete.
  *
  * $table is only ever a trusted, sanitized name (fixed table names or the
  * already-validated ue_<id>), never raw user input.
@@ -358,6 +360,27 @@ function ccrm_ts_to_micro(string $ts): ?float {
         return null;
     }
     return ((float) $seconds) + (isset($m[2]) ? (float) ('0.' . $m[2]) : 0.0);
+}
+
+/**
+ * The DB clock the client echoes back as baseSyncedAt. NOW(3) is preferred so
+ * the concurrency guard can tell two writes in the same second apart; hosts
+ * that reject fractional-second NOW() fall back to whole seconds. Always a
+ * string (or null) so json_encode + the client's `typeof === "string"` check
+ * agree — some PDO builds otherwise hand back a DateTime that becomes `{}`.
+ */
+function ccrm_db_clock(PDO $pdo): ?string {
+    foreach (['SELECT NOW(3)', 'SELECT NOW()'] as $sql) {
+        try {
+            $value = $pdo->query($sql)->fetchColumn();
+            if ($value !== false && $value !== null && $value !== '') {
+                return (string) $value;
+            }
+        } catch (\Throwable $e) {
+            continue;
+        }
+    }
+    return null;
 }
 
 /**
@@ -441,11 +464,18 @@ function ccrm_filter_mass_delete(PDO $pdo, string $table, array $toDelete, bool 
         && $deleteCount >= $minRows
         && ($deleteCount / $serverTotal) >= CCRM_MASS_DELETE_FRACTION);
 
-    if ($wouldEmptyTable || $massFraction) {
+    // Named (v2) deletions skip the fraction cap the same way they skip the
+    // empty-table rule: the client listed the ids. Omission still cannot wipe
+    // half a table in one push. $strict tables (users, project_types) keep the
+    // empty-table block even when named, so the last project type cannot DROP
+    // its data tables through a single-item delete.
+    if ($wouldEmptyTable || ($massFraction && !$explicit)) {
         error_log(sprintf(
-            '[ccrm] BLOCKED delete-by-omission on `%s`: %d of %d rows (%.0f%%%s) — likely an empty/stale client push; no rows deleted.',
-            $table, $deleteCount, $serverTotal, 100 * $deleteCount / max(1, $serverTotal), $strict ? ', strict' : ''
+            '[ccrm] BLOCKED delete-by-omission on `%s`: %d of %d rows (%.0f%%%s%s) — likely an empty/stale client push; no rows deleted.',
+            $table, $deleteCount, $serverTotal, 100 * $deleteCount / max(1, $serverTotal), $strict ? ', strict' : '', $explicit ? ', named' : ''
         ));
+        $GLOBALS['ccrm_delete_blocked'] = $GLOBALS['ccrm_delete_blocked'] ?? [];
+        $GLOBALS['ccrm_delete_blocked'][$table] = array_values($toDelete);
         return [];
     }
 
@@ -471,13 +501,22 @@ function ccrm_delete_omitted(PDO $pdo, string $table, array $idsToDelete, ?strin
         return;
     }
 
-    if ($baseSyncedAt !== null) {
+    // Named (protocol-v2) deletions are recorded user intent, so they must not
+    // be blocked by the snapshot clock. The updated_at guard exists for
+    // delete-by-omission: a stale full snapshot must not wipe rows another user
+    // created after it was taken. A client that listed the id in `deleted` saw
+    // that row and chose to remove it — including a row they themselves created
+    // a moment earlier, whose updated_at is newer than the previous GET.
+    // TIMESTAMP(3) hosts make that race the common case for "create then
+    // immediately delete"; without this the DELETE matches zero rows and the
+    // lead reappears on the next refresh.
+    if ($baseSyncedAt !== null && !$explicit) {
         $stmt = $pdo->prepare("DELETE FROM `{$table}` WHERE `id` = ? AND `updated_at` <= ?");
     } else {
         $stmt = $pdo->prepare("DELETE FROM `{$table}` WHERE `id` = ?");
     }
     foreach ($toDelete as $id) {
-        if ($baseSyncedAt !== null) {
+        if ($baseSyncedAt !== null && !$explicit) {
             $stmt->execute([$id, $baseSyncedAt]);
         } else {
             $stmt->execute([$id]);
@@ -1447,8 +1486,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // DB clock at read time. The client echoes this back as baseSyncedAt on the
     // next POST so the server can tell "the user deleted this" apart from "the
     // client never saw this newer row" (see ccrm_delete_omitted).
-    $serverTime = null;
-    try { $serverTime = $pdo->query("SELECT NOW(3)")->fetchColumn(); } catch (\Throwable $e) {}
+    $serverTime = ccrm_db_clock($pdo);
 
     // Real database connection info for the Settings "Database" panel. Admins
     // only — this is infrastructure detail (host/name/user), never the password.
@@ -1553,8 +1591,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $isAdmin = ccrm_is_admin($sessionUser);
     $perms = ccrm_user_permissions($pdo, $sessionUser);
     $permissionSkipped = [];
-    $ccrm_skip_writes = function (string $moduleKey, string $collection) use ($perms, &$permissionSkipped): bool {
-        if (ccrm_perm_can_edit($perms, $moduleKey)) {
+    $ccrm_skip_writes = function (string $moduleKey, string $collection) use ($perms, $isAdmin, &$permissionSkipped): bool {
+        if ($isAdmin || ccrm_perm_can_edit($perms, $moduleKey)) {
             return false;
         }
         if (!in_array($collection, $permissionSkipped, true)) {
@@ -1563,7 +1601,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         return true;
     };
-    $ccrm_skip_deletes = function (string $moduleKey, string $collection) use ($perms, &$permissionSkipped): bool {
+    $ccrm_skip_deletes = function (string $moduleKey, string $collection) use ($perms, $isAdmin, &$permissionSkipped): bool {
+        if ($isAdmin) {
+            return false;
+        }
         $mod = ccrm_perm_module($perms, $moduleKey);
         if (!empty($mod['delete'])) {
             return false;
@@ -1620,6 +1661,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // away instead of pushing its own blank owner over it on the next sync.
     $assignedOwners = [];
 
+    // Named deletions the mass-delete circuit breaker refused (see
+    // ccrm_filter_mass_delete). Reported so the client does not treat HTTP 200
+    // as "the row is gone".
+    $GLOBALS['ccrm_delete_blocked'] = [];
+
     // Projects the server created for brand-new leads (Projects → Settings →
     // automatic project creation). Reported back for the same reason as the
     // owners above: the client would otherwise not see them until the next full
@@ -1658,7 +1704,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // its delete step. (Harmless in delta mode — an empty list means "no edits"
     // here, never "delete the rest", which is only how v1 reads it.)
     if ($isDeltaSync) {
-        foreach (['leads', 'meetingNotes', 'users', 'customDashboards', 'projects', 'projectTypes'] as $entity) {
+        foreach ([
+            'leads', 'meetingNotes', 'users', 'customDashboards', 'projects', 'projectTypes',
+            'warehouses', 'suppliers', 'warehouseItems', 'warehouseStock', 'warehouseBatches',
+            'warehouseMovements', 'financialCategories', 'financialRecords', 'invoicesOffers',
+            'aiCustomTemplates', 'clientCategories',
+        ] as $entity) {
             if (!isset($payload[$entity]) && ccrm_explicit_deleted_ids($explicitDeletes, $entity)) {
                 $payload[$entity] = [];
             }
@@ -1907,8 +1958,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $pdo->beginTransaction();
 
-        // 4.1. Save system settings & configurations (admin-only).
-        if ($isAdmin && isset($payload['settings'])) {
+        // 4.1. Save system settings & configurations.
+        //
+        // Admin writes every key. A non-admin with a settings permission writes
+        // only the keys that permission covers — otherwise pipeline_stages=edit
+        // looked saved in the UI and reverted on the next GET, because this
+        // block used to be admin-only.
+        $canSettingsGeneral = $isAdmin || ccrm_perm_can_edit($perms, 'general_config');
+        $canSettingsPipeline = $isAdmin || ccrm_perm_can_edit($perms, 'pipeline_stages');
+        $canSettingsSources = $isAdmin || ccrm_perm_can_edit($perms, 'traffic_sources');
+        $canSettingsAi = $isAdmin || ccrm_perm_can_edit($perms, 'ai_config');
+        if (isset($payload['settings']) && ($canSettingsGeneral || $canSettingsPipeline || $canSettingsSources || $canSettingsAi)) {
             $s = $payload['settings'];
 
             // Preserve masked secrets: merge the inbound integrations config over
@@ -2014,11 +2074,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ];
 
             $insSet = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
+            $settingsAllowedKeys = [];
+            if ($canSettingsGeneral) {
+                $settingsAllowedKeys = array_merge($settingsAllowedKeys, [
+                    'SYSTEM_NAME', 'SYSTEM_LANGUAGE', 'SYSTEM_CURRENCY',
+                    'TASK_STATES', 'TASK_STATE_COLORS', 'CUSTOM_LABELS',
+                    'COMPANY_BILLING_SETTINGS', 'INVOICING_INTEGRATIONS',
+                    'PROJECT_AUTO_CREATE',
+                ]);
+            }
+            if ($canSettingsPipeline) {
+                $settingsAllowedKeys = array_merge($settingsAllowedKeys, [
+                    'LEAD_STATES', 'LEAD_CATEGORIES', 'LEAD_CATEGORY_IDS',
+                    'LEAD_STATE_COLORS', 'LEAD_CATEGORY_COLORS',
+                    'LEAD_STAGE_GROUPS', 'LEAD_STATE_PARENTS', 'LEAD_STATE_FOLLOWUP',
+                    'LEAD_STATE_SLA', 'LEAD_ASSIGNMENT',
+                ]);
+            }
+            if ($canSettingsSources) {
+                $settingsAllowedKeys = array_merge($settingsAllowedKeys, [
+                    'LEAD_SOURCES', 'LEAD_SOURCE_IDS', 'LEAD_SOURCE_COLORS',
+                ]);
+            }
+            if ($canSettingsAi) {
+                $settingsAllowedKeys[] = 'INTEGRATIONS_CONFIG';
+            }
+            $settingsAllowed = array_flip($settingsAllowedKeys);
             foreach ($settingsList as $k => $v) {
                 // A null here means "nothing inbound and nothing stored" — skip it
                 // rather than writing a NULL row over a value another writer may
                 // have just saved.
-                if ($v === null) {
+                if ($v === null || !isset($settingsAllowed[$k])) {
                     continue;
                 }
                 $insSet->execute([$k, $v]);
@@ -2210,7 +2296,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ? $deletionsFor('users', $existingUserIds)
                     : array_diff($existingUserIds, $processedUserIds);
                 if (!empty($usersToDelete)) {
-                    ccrm_delete_omitted($pdo, 'users', $usersToDelete, $baseSyncedAt, [$sessionUser['id']], true);
+                    ccrm_delete_omitted($pdo, 'users', $usersToDelete, $baseSyncedAt, [$sessionUser['id']], true, $isDeltaSync);
                     ccrm_audit_log($pdo, $sessionUser, 'user.delete', 'Removed users: ' . implode(', ', $usersToDelete));
                 }
             }
@@ -2271,7 +2357,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $ptToDelete = $isDeltaSync
                 ? $deletionsFor('projectTypes', $existingPtIds)
                 : array_diff($existingPtIds, $processedPtIds);
-            $ptToDelete = ccrm_filter_mass_delete($pdo, 'project_types', $ptToDelete, true);
+            $ptToDelete = ccrm_filter_mass_delete($pdo, 'project_types', $ptToDelete, true, $isDeltaSync);
             if (!empty($ptToDelete) && !$ccrm_skip_deletes('general_config', 'projectTypes')) {
                 $delPt = $pdo->prepare("DELETE FROM `project_types` WHERE `id` = ?");
                 foreach ($ptToDelete as $ptId) {
@@ -2458,7 +2544,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $projToDelete = $isDeltaSync
                 ? $deletionsFor('projects', $existingProjIds)
                 : array_diff($existingProjIds, $processedProjIds);
-            $projToDelete = ccrm_filter_mass_delete($pdo, 'projects', $projToDelete);
+            $projToDelete = ccrm_filter_mass_delete($pdo, 'projects', $projToDelete, false, $isDeltaSync);
             if (!empty($projToDelete) && !$ccrm_skip_deletes('projects', 'projects')) {
                 $delProj = $pdo->prepare("DELETE FROM `projects` WHERE `id` = ?");
                 foreach ($projToDelete as $pid) {
@@ -2467,8 +2553,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        // 4.3. Synchronize Leads, Categories & Timelines
-        if (isset($payload['leads']) && is_array($payload['leads']) && !$ccrm_skip_writes('leads', 'leads')) {
+        // 4.3. Synchronize Leads, Categories & Timelines (same table as clients)
+        $canWriteLead = $isAdmin || ccrm_perm_can_edit($perms, 'leads');
+        $canWriteClient = $isAdmin || ccrm_perm_can_edit($perms, 'clients');
+        $leadDeletePerm = ccrm_perm_module($perms, 'leads');
+        $clientDeletePerm = ccrm_perm_module($perms, 'clients');
+        $canDeleteLead = $isAdmin || !empty($leadDeletePerm['delete']);
+        $canDeleteClient = $isAdmin || !empty($clientDeletePerm['delete']);
+        if (isset($payload['leads']) && is_array($payload['leads']) && ($canWriteLead || $canWriteClient || $canDeleteLead || $canDeleteClient)) {
             $stmt = $pdo->query("SELECT * FROM `leads`");
             $dbLeads = [];
             while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -2534,6 +2626,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $leadId = $l['id'];
                 $processedLeadIds[] = $leadId;
+
+                // Clients live in the same table. A role with clients.edit but not
+                // leads.edit (or the reverse) must still persist the rows it is
+                // allowed to touch, instead of skip_writes('leads') no-op'ing the
+                // whole collection with HTTP 200.
+                $isClientRow = (($l['clientType'] ?? 'person') !== 'person');
+                if ($isClientRow ? !$canWriteClient : !$canWriteLead) {
+                    $skipTag = $isClientRow ? 'leads:clients' : 'leads';
+                    if (!in_array($skipTag, $permissionSkipped, true)) {
+                        $permissionSkipped[] = $skipTag;
+                    }
+                    continue;
+                }
 
                 // Optimization: Skip if the lead is identical to what we have in the DB
                 if (isset($dbLeads[$leadId]) && ccrm_leads_are_identical($l, $dbLeads[$leadId], $defaultOwner)) {
@@ -2822,8 +2927,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $leadsToDelete = $isDeltaSync
                 ? $deletionsFor('leads', $existingLeadIds)
                 : array_diff($existingLeadIds, $processedLeadIds);
-            if (!$ccrm_skip_deletes('leads', 'leads')) {
-                ccrm_delete_omitted($pdo, 'leads', $leadsToDelete, $baseSyncedAt);
+            $filteredLeadDeletes = [];
+            foreach ($leadsToDelete as $delId) {
+                $row = $dbLeads[$delId] ?? null;
+                $isClientRow = $row && (($row['client_type'] ?? 'person') !== 'person');
+                if ($isClientRow ? $canDeleteClient : $canDeleteLead) {
+                    $filteredLeadDeletes[] = $delId;
+                } else {
+                    $skipTag = $isClientRow ? 'leads:clients:delete' : 'leads:delete';
+                    if (!in_array($skipTag, $permissionSkipped, true)) {
+                        $permissionSkipped[] = $skipTag;
+                    }
+                }
+            }
+            if (!empty($filteredLeadDeletes)) {
+                ccrm_delete_omitted($pdo, 'leads', $filteredLeadDeletes, $baseSyncedAt, [], false, $isDeltaSync);
             }
         }
 
@@ -3003,7 +3121,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ? $deletionsFor('meetingNotes', $existingMeetingIds)
                 : array_diff($existingMeetingIds, $processedMeetingIds);
             if (!$ccrm_skip_deletes('meetings', 'meetingNotes')) {
-                ccrm_delete_omitted($pdo, 'meeting_notes', $meetingsToDelete, $baseSyncedAt);
+                ccrm_delete_omitted($pdo, 'meeting_notes', $meetingsToDelete, $baseSyncedAt, [], false, $isDeltaSync);
             }
         }
 
@@ -3211,7 +3329,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         )))
                         : array_diff($existingRowIds, $processedRowIds);
                     if (!$ccrm_skip_deletes('unified_entries', 'unifiedEntriesData')) {
-                        ccrm_delete_omitted($pdo, $tableName, $rowsToDelete, $baseSyncedAt);
+                        ccrm_delete_omitted($pdo, $tableName, $rowsToDelete, $baseSyncedAt, [], false, $isDeltaSync);
                     }
                 }
             }
@@ -3257,7 +3375,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 return !$ccrm_skip_deletes($mod, $coll);
             }));
             if (!empty($dashesToDelete)) {
-                ccrm_delete_omitted($pdo, 'custom_dashboards', $dashesToDelete, null);
+                ccrm_delete_omitted($pdo, 'custom_dashboards', $dashesToDelete, null, [], false, $isDeltaSync);
             }
         }
 
@@ -3284,7 +3402,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $whToDelete = $isDeltaSync ? $deletionsFor('warehouses', $existingWhIds) : array_diff($existingWhIds, $processedWhIds);
             if (!empty($whToDelete) && !$ccrm_skip_deletes('warehouse', 'warehouses')) {
-                ccrm_delete_omitted($pdo, 'warehouses', $whToDelete, null);
+                ccrm_delete_omitted($pdo, 'warehouses', $whToDelete, null, [], false, $isDeltaSync);
             }
         }
 
@@ -3322,7 +3440,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $supToDelete = $isDeltaSync ? $deletionsFor('suppliers', $existingSupIds) : array_diff($existingSupIds, $processedSupIds);
             if (!empty($supToDelete) && !$ccrm_skip_deletes('warehouse', 'suppliers')) {
-                ccrm_delete_omitted($pdo, 'suppliers', $supToDelete, null);
+                ccrm_delete_omitted($pdo, 'suppliers', $supToDelete, null, [], false, $isDeltaSync);
             }
         }
 
@@ -3358,7 +3476,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $itemsToDelete = $isDeltaSync ? $deletionsFor('warehouseItems', $existingItemIds) : array_diff($existingItemIds, $processedItemIds);
             if (!empty($itemsToDelete) && !$ccrm_skip_deletes('warehouse', 'warehouseItems')) {
-                ccrm_delete_omitted($pdo, 'warehouse_items', $itemsToDelete, null);
+                ccrm_delete_omitted($pdo, 'warehouse_items', $itemsToDelete, null, [], false, $isDeltaSync);
             }
         }
 
@@ -3410,7 +3528,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $batchesToDelete = $isDeltaSync ? $deletionsFor('warehouseBatches', $existingBatchIds) : array_diff($existingBatchIds, $processedBatchIds);
             if (!empty($batchesToDelete) && !$ccrm_skip_deletes('warehouse', 'warehouseBatches')) {
-                ccrm_delete_omitted($pdo, 'warehouse_batches', $batchesToDelete, null);
+                ccrm_delete_omitted($pdo, 'warehouse_batches', $batchesToDelete, null, [], false, $isDeltaSync);
             }
         }
 
@@ -3471,7 +3589,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $movToDelete = $isDeltaSync ? $deletionsFor('warehouseMovements', $existingMovIds) : array_diff($existingMovIds, $processedMovIds);
             if (!empty($movToDelete) && !$ccrm_skip_deletes('warehouse', 'warehouseMovements')) {
-                ccrm_delete_omitted($pdo, 'warehouse_movements', $movToDelete, null);
+                ccrm_delete_omitted($pdo, 'warehouse_movements', $movToDelete, null, [], false, $isDeltaSync);
             }
         }
 
@@ -3500,7 +3618,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $fcToDelete = $isDeltaSync ? $deletionsFor('financialCategories', $existingFcIds) : array_diff($existingFcIds, $processedFcIds);
             if (!empty($fcToDelete) && !$ccrm_skip_deletes('financial', 'financialCategories')) {
-                ccrm_delete_omitted($pdo, 'financial_categories', $fcToDelete, null);
+                ccrm_delete_omitted($pdo, 'financial_categories', $fcToDelete, null, [], false, $isDeltaSync);
             }
         }
 
@@ -3533,7 +3651,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $ccToDelete = $isDeltaSync ? $deletionsFor('clientCategories', $existingCcIds) : array_diff($existingCcIds, $processedCcIds);
             if (!empty($ccToDelete) && !$ccrm_skip_deletes('clients', 'clientCategories')) {
-                ccrm_delete_omitted($pdo, 'client_categories', $ccToDelete, null);
+                ccrm_delete_omitted($pdo, 'client_categories', $ccToDelete, null, [], false, $isDeltaSync);
             }
         }
 
@@ -3580,7 +3698,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $frToDelete = $isDeltaSync ? $deletionsFor('financialRecords', $existingFrIds) : array_diff($existingFrIds, $processedFrIds);
             if (!empty($frToDelete) && !$ccrm_skip_deletes('financial', 'financialRecords')) {
-                ccrm_delete_omitted($pdo, 'financial_records', $frToDelete, null);
+                ccrm_delete_omitted($pdo, 'financial_records', $frToDelete, null, [], false, $isDeltaSync);
             }
         }
 
@@ -3739,7 +3857,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $actToDelete = $isDeltaSync ? $deletionsFor('aiCustomTemplates', $existingActIds) : array_diff($existingActIds, $processedActIds);
             if (!empty($actToDelete) && !$ccrm_skip_deletes('general_config', 'aiCustomTemplates')) {
-                ccrm_delete_omitted($pdo, 'ai_custom_templates', $actToDelete, null);
+                ccrm_delete_omitted($pdo, 'ai_custom_templates', $actToDelete, null, [], false, $isDeltaSync);
             }
         }
 
@@ -3772,8 +3890,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Also return the post-commit DB clock so the client advances its
         // baseSyncedAt and can safely delete rows it just created/edited on a
         // later sync.
-        $serverTime = null;
-        try { $serverTime = $pdo->query("SELECT NOW(3)")->fetchColumn(); } catch (\Throwable $e) {}
+        $serverTime = ccrm_db_clock($pdo);
         echo json_encode([
             'success' => true,
             'message' => 'CCRM Database Synced Successfully!',
@@ -3792,6 +3909,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // show them straight away instead of after the next full pull.
             'createdProjects' => array_values($createdProjects),
             'permissionSkipped' => array_values($permissionSkipped),
+            'deleteBlocked' => (object) ($GLOBALS['ccrm_delete_blocked'] ?? []),
         ]);
     } catch (\Throwable $e) {
         if (isset($pdo) && $pdo->inTransaction()) {

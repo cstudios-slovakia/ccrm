@@ -1121,18 +1121,94 @@ ${log.payload || ''}
         // The server now holds this exact payload — remember it so a later 401
         // can tell a genuine unsaved edit apart from an echoed no-op push.
         lastConfirmedPushSigRef.current = computePushSig(payload);
-        // The server now holds these records, so the next push only has to carry
-        // what changes from here. Done only on a confirmed write: advancing the
-        // baseline after a failed push would make the client believe an edit was
-        // saved and never send it again.
-        Object.assign(syncedRecordsRef.current, pendingBaselines);
-        Object.assign(ueSyncedRecordsRef.current, pendingUeBaselines);
-        // Advance our snapshot clock so a delete right after this edit is not
-        // wrongly skipped by the server's concurrency guard.
+        let out: any = null;
         try {
-          const out = await res.json();
-          if (out && typeof out.serverTime === "string") {
-            baseSyncedAtRef.current = out.serverTime;
+          out = await res.json();
+        } catch { /* non-JSON (PHP warning before the body) — still advance below */ }
+        try {
+          // PDO may return NOW() as a DateTime/number on some hosts; the server
+          // now stringifies, but coerce anyway so a delete after create still
+          // carries a usable baseSyncedAt.
+          const clock = out?.serverTime;
+          if (clock != null && String(clock).trim() !== "" && String(clock) !== "[object Object]") {
+            baseSyncedAtRef.current = String(clock);
+          }
+          // Collections the server refused to write or delete. Keep the previous
+          // baseline for those so a skipped lead delete is retried instead of
+          // being treated as saved, then resurrected by the next GET.
+          const skipped = new Set(
+            Array.isArray(out?.permissionSkipped) ? out.permissionSkipped.map(String) : [],
+          );
+          const conflicted: Record<string, string[]> = {};
+          if (out?.conflicts && typeof out.conflicts === "object") {
+            for (const [k, ids] of Object.entries(out.conflicts as Record<string, unknown>)) {
+              if (Array.isArray(ids) && ids.length) conflicted[k] = ids.map(String);
+            }
+          }
+          const deleteBlockedKeys = new Set<string>();
+          if (out?.deleteBlocked && typeof out.deleteBlocked === "object") {
+            const tableToKey: Record<string, string> = {
+              leads: "leads", meeting_notes: "meetingNotes", users: "users",
+              project_types: "projectTypes", projects: "projects",
+              custom_dashboards: "customDashboards", warehouses: "warehouses",
+              suppliers: "suppliers", warehouse_items: "warehouseItems",
+              warehouse_batches: "warehouseBatches", warehouse_movements: "warehouseMovements",
+              financial_categories: "financialCategories", client_categories: "clientCategories",
+              financial_records: "financialRecords", invoices_offers: "invoicesOffers",
+              ai_custom_templates: "aiCustomTemplates",
+            };
+            for (const [table, ids] of Object.entries(out.deleteBlocked as Record<string, unknown>)) {
+              if (Array.isArray(ids) && ids.length && tableToKey[table]) {
+                deleteBlockedKeys.add(tableToKey[table]);
+              }
+            }
+          }
+          for (const [key, next] of Object.entries(pendingBaselines)) {
+            if (
+              skipped.has(key) ||
+              skipped.has(`${key}:delete`) ||
+              deleteBlockedKeys.has(key) ||
+              (key === "leads" && (skipped.has("leads:clients") || skipped.has("leads:clients:delete")))
+            ) {
+              continue;
+            }
+            const conflictIds = conflicted[key] ?? [];
+            if (conflictIds.length && syncedRecordsRef.current[key]) {
+              const merged = new Map(next);
+              const prev = syncedRecordsRef.current[key];
+              for (const id of conflictIds) {
+                if (prev.has(id)) merged.set(id, prev.get(id) as string);
+                else merged.delete(id);
+              }
+              syncedRecordsRef.current[key] = merged;
+            } else {
+              syncedRecordsRef.current[key] = next;
+            }
+          }
+          if (!skipped.has("unifiedEntriesData") && !skipped.has("unifiedEntriesData:delete")) {
+            Object.assign(ueSyncedRecordsRef.current, pendingUeBaselines);
+          }
+          const skippedWork = [...skipped].filter((tag) => {
+            const base = tag.replace(/:delete$/, "");
+            const payloadKey = base === "leads:clients" ? "leads" : base;
+            if (tag.endsWith(":delete")) {
+              const ids = (payload as any).deleted?.[payloadKey];
+              return Array.isArray(ids) && ids.length > 0;
+            }
+            const body = (payload as any)[payloadKey];
+            return Array.isArray(body) ? body.length > 0 : body != null && typeof body === "object";
+          });
+          const conflictCount = Object.values(conflicted).reduce((n, ids) => n + ids.length, 0);
+          const blockedCount = [...deleteBlockedKeys].length;
+          if ((skippedWork.length || conflictCount || blockedCount) && typeof (window as any).showToast === "function") {
+            (window as any).showToast(
+              t(
+                "Some changes were not saved on the server. They will be retried, or revert after refresh.",
+                "Niektoré zmeny sa na serveri neuložili. Skúsime ich znova, alebo sa po obnovení vrátia.",
+                "Néhány módosítás nem került a szerverre. Újrapróbáljuk, vagy frissítés után visszaállnak.",
+              ),
+              "warning",
+            );
           }
           // Owners the server put on brand-new, unassigned leads (Settings →
           // Users → auto-assignment). Adopt them locally: without this the
@@ -1821,8 +1897,8 @@ ${log.payload || ''}
         }
         return;
       }
-      if (typeof data.serverTime === "string") {
-        baseSyncedAtRef.current = data.serverTime;
+      if (data.serverTime != null && String(data.serverTime).trim() !== "" && String(data.serverTime) !== "[object Object]") {
+        baseSyncedAtRef.current = String(data.serverTime);
       }
       if (data.leads && Array.isArray(data.leads)) {
         setLeads((prev) => JSON.stringify(prev) === JSON.stringify(data.leads) ? prev : data.leads);
