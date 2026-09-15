@@ -14,6 +14,7 @@ import {
   buildPresetWidget,
   buildDefaultHomeWidgets,
   newWidgetId,
+  presetOfWidget,
   type WidgetSize
 } from "../utils/dashboardWidgets";
 
@@ -254,6 +255,19 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     }
     return value ?? "";
   };
+
+  /**
+   * What a widget IS, independent of what it has been renamed to: the library
+   * preset's name, the title the AI first gave it, or failing both the plain
+   * widget type. Shown on the card in edit mode and used as the title whenever
+   * the user leaves their own name empty.
+   */
+  const typeTitleOf = (widget: any): any =>
+    presetOfWidget(widget)?.title ?? widget?.baseTitle ?? widget?.title ?? null;
+  const typeNameOf = (widget: any): string =>
+    localize(typeTitleOf(widget)) || widgetTypeLabel(resolveWidgetType(widget).type, t);
+  const displayTitleOf = (widget: any): string =>
+    localize(widget?.title).trim() || typeNameOf(widget);
   // A widget/column whose title/label is still a plain string predates the
   // { en, sk, hu } schema (or came from a model that ignored it) — those are
   // the only ones that still need translating; freshly generated widgets
@@ -605,7 +619,10 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     mutateWidgets(ws =>
       ws.map(w => {
         if (w.id !== id) return w;
-        return { ...w, title: { en: value, sk: value, hu: value } };
+        // An AI widget keeps the name it arrived with, so it can still be told
+        // apart (and restored) after the user renames it.
+        const baseTitle = presetOfWidget(w) || w.baseTitle ? w.baseTitle : w.title;
+        return { ...w, ...(baseTitle ? { baseTitle } : {}), title: { en: value, sk: value, hu: value } };
       })
     );
 
@@ -652,7 +669,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
       const json = await res.json();
       const generated = json?.layout?.widgets;
       if (json.success && Array.isArray(generated) && generated.length > 0) {
-        addWidgets([{ ...generated[0], id: newWidgetId("ai") }]);
+        addWidgets([{ ...generated[0], id: newWidgetId("ai"), baseTitle: generated[0].title }]);
         setWidgetPrompt("");
         setIsAddOpen(false);
       } else {
@@ -690,9 +707,9 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
 
     switch (type) {
       case "metric":
-        return <DashboardMetric widget={widget} data={data} localizedTitle={localize(widget.title)} money={money} />;
+        return <DashboardMetric widget={widget} data={data} localizedTitle={displayTitleOf(widget)} money={money} />;
       case "chart":
-        return <DashboardChart widget={widget} data={data} localizedTitle={localize(widget.title)} />;
+        return <DashboardChart widget={widget} data={data} localizedTitle={displayTitleOf(widget)} />;
       case "table":
         return (
           <DashboardTable
@@ -1028,6 +1045,8 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                       total={tempLayout.widgets.length}
                       t={t}
                       title={localize(w.title)}
+                      typeName={typeNameOf(w)}
+                      onResetTitle={() => updateWidget(w.id, { title: typeTitleOf(w) ?? "" })}
                       isDragging={draggedWidgetId === w.id}
                       canDelete={canDelete}
                       onDragStart={() => setDraggedWidgetId(w.id)}
@@ -1051,7 +1070,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                     {/* In edit mode the title is the editable field in the bar
                         above, so it is not repeated here. */}
                     <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                      {isEditMode ? null : localize(w.title)}
+                      {isEditMode ? null : displayTitleOf(w)}
                     </span>
                     <div
                       className="w-7 h-7 rounded-xl flex items-center justify-center text-white scale-90"
@@ -1669,11 +1688,26 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
 
 const SIZE_LABELS: Record<WidgetSize, string> = { sm: "S", md: "M", lg: "L", full: "XL" };
 
+const widgetTypeLabel = (type: string, t: (en: string, sk: string, hu: string) => string) => {
+  switch (type) {
+    case "metric": return t("Metric", "Metrika", "Mérőszám");
+    case "chart": return t("Chart", "Graf", "Diagram");
+    case "table": return t("Table", "Tabuľka", "Táblázat");
+    case "timeline": return t("Timeline", "Časová os", "Idővonal");
+    case "accordion": return t("Accordion", "Rozbaľovací zoznam", "Harmonika");
+    case "tabs": return t("Tabs", "Záložky", "Fülek");
+    default: return type;
+  }
+};
+
 const WidgetEditBar: React.FC<{
   widget: any;
   index: number;
   total: number;
   title: string;
+  /** What the widget is (preset / original name); the title only overrides it. */
+  typeName: string;
+  onResetTitle: () => void;
   isDragging: boolean;
   t: (en: string, sk: string, hu: string) => string;
   onDragStart: () => void;
@@ -1694,24 +1728,15 @@ const WidgetEditBar: React.FC<{
   onStages: (statuses: string[]) => void;
   onMetricKey: (dataKey: string) => void;
 }> = ({
-  widget, index, total, title, isDragging, t,
+  widget, index, total, title, typeName, onResetTitle, isDragging, t,
   onDragStart, onDragEnd, onMove, onSize, onType, onChartType, onColor, onRename, onDuplicate, onRemove,
   stageOptions, stageSelection, onStages, onMetricKey, canDelete = true
 }) => {
   const resolvedType = resolveWidgetType(widget).type;
   const currentSize = (WIDGET_SIZES as string[]).includes(widget.size) ? (widget.size as WidgetSize) : "full";
 
-  const typeLabel = (type: string) => {
-    switch (type) {
-      case "metric": return t("Metric", "Metrika", "Mérőszám");
-      case "chart": return t("Chart", "Graf", "Diagram");
-      case "table": return t("Table", "Tabuľka", "Táblázat");
-      case "timeline": return t("Timeline", "Časová os", "Idővonal");
-      case "accordion": return t("Accordion", "Rozbaľovací zoznam", "Harmonika");
-      case "tabs": return t("Tabs", "Záložky", "Fülek");
-      default: return type;
-    }
-  };
+  const typeLabel = (type: string) => widgetTypeLabel(type, t);
+  const isRenamed = title.trim() !== "" && title.trim() !== typeName;
 
   const selectClass =
     "h-7 rounded-lg border border-slate-200 bg-white px-2 text-[10px] font-black uppercase tracking-wider text-slate-600 cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500";
@@ -1736,6 +1761,19 @@ const WidgetEditBar: React.FC<{
 
   return (
     <div className="-mt-2 mb-3 pb-3 border-b border-dashed border-indigo-100 space-y-2">
+      {/* The widget's type stays visible whatever it has been renamed to. */}
+      <div className="flex items-center gap-1.5 min-w-0">
+        <span
+          className="min-w-0 truncate px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-600 text-[9px] font-black uppercase tracking-widest"
+          title={t("Widget type", "Typ modulu", "Modul típusa")}
+        >
+          {typeName}
+        </span>
+        <span className="shrink-0 text-[9px] font-bold uppercase tracking-widest text-slate-400">
+          {typeLabel(resolvedType)}
+        </span>
+      </div>
+
       <div className="flex items-center gap-2">
         <span
           draggable
@@ -1753,9 +1791,20 @@ const WidgetEditBar: React.FC<{
         <input
           value={title}
           onChange={(e) => onRename(e.target.value)}
-          placeholder={t("Widget title", "Názov modulu", "Modul címe")}
-          className="flex-1 min-w-0 h-7 px-2 rounded-lg border border-transparent hover:border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 bg-transparent text-[11px] font-bold text-slate-700 focus:outline-none transition-colors"
+          placeholder={typeName}
+          title={t("Custom name — leave empty to use the type name", "Vlastný názov — nechajte prázdne pre názov typu", "Egyéni név — hagyja üresen a típusnévhez")}
+          className="flex-1 min-w-0 h-7 px-2 rounded-lg border border-transparent hover:border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 bg-transparent text-[11px] font-bold text-slate-700 placeholder:text-slate-400 focus:outline-none transition-colors"
         />
+        {isRenamed && (
+          <button
+            type="button"
+            onClick={onResetTitle}
+            title={t("Restore the type name", "Obnoviť názov typu", "Típusnév visszaállítása")}
+            className="shrink-0 p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+          </button>
+        )}
 
         <div className="flex items-center gap-0.5 shrink-0">
           <button
