@@ -15,6 +15,7 @@ import {
   evaluateProjectDeadline,
   projectDisplayName,
   projectDelayReason,
+  projectMissedDeadline,
   projectNeedsDelayReason,
   projectStatusBadgeClass,
   projectStatusLabel,
@@ -445,12 +446,12 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     </span>
   );
 
-  /* The red flag. A project past its deadline carries one: filled and shouting
-     while the delay is unexplained, quiet and holding the reason as its tooltip
-     once someone has written it down. Nothing at all when the project is on
-     time — the badge above already says so. */
+  /* The red flag. A project that missed its deadline carries one — still open
+     and past it, or finished after it. Filled and shouting while the delay is
+     unexplained, quiet and holding the reason as its tooltip once someone has
+     written it down. Nothing at all when the project is on time. */
   const renderDelayFlag = (p: Project, dl: ProjectDeadlineStatus | null) => {
-    if (!dl?.isOverdue) return null;
+    if (!projectMissedDeadline(dl)) return null;
     const reason = projectDelayReason(p);
 
     return reason ? (

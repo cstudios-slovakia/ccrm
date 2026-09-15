@@ -3,11 +3,11 @@ import * as Icons from "lucide-react";
 import {
   Settings, Save, Database, Trash2, ShieldAlert, Sliders,
   Globe, Plus, X, Tag, Share2, Users, ShieldCheck, Lock,
-  Eye, Pencil, Minus, GripVertical, ArrowLeft, Activity, Clock, CheckSquare,
+  Eye, Pencil, Minus, GripVertical, ArrowLeft, Activity, Clock, CheckSquare, Check,
   Menu, ArrowUp, FolderOpen, Search, FileText, Building2, Sparkles
 } from "lucide-react";
-import type { UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, ProjectType, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, LeadAssignmentMode, ProjectAutoCreateSettings } from "../types";
-import { resolveAssignmentPool } from "../utils/leadAssignment";
+import type { UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, ProjectType, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings } from "../types";
+import { leadAssignmentPanel, resolveAssignmentPool, type LeadAssignmentPanel } from "../utils/leadAssignment";
 import { normalizeSlaDays, type LeadStateSla } from "../utils/leadSla";
 import { listIdFor, nextListId, type ListIds } from "../utils/listIds";
 import { getTranslation, formatTranslation } from "../utils/translations";
@@ -94,6 +94,382 @@ const InlineRenameName: React.FC<{
         </button>
       )}
     </span>
+  );
+};
+
+const LeadAssignmentCard: React.FC<{
+  users: UserProfile[];
+  leadAssignment: LeadAssignmentSettings;
+  setLeadAssignment: React.Dispatch<React.SetStateAction<LeadAssignmentSettings>>;
+  canEdit: boolean;
+  userLanguage: Language;
+}> = ({ users, leadAssignment, setLeadAssignment, canEdit, userLanguage }) => {
+  const t = (en: string, sk: string, hu: string) =>
+    userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
+  const userNames = users.map((u) => u.name).filter(Boolean);
+  const pool = resolveAssignmentPool(leadAssignment, userNames);
+  const [panel, setPanel] = React.useState<LeadAssignmentPanel>(() =>
+    leadAssignmentPanel(leadAssignment),
+  );
+
+  React.useEffect(() => {
+    if (leadAssignment.mode === "off") setPanel("nobody");
+    else if (leadAssignment.mode === "all") setPanel("many");
+    else if (leadAssignment.users.length >= 2) setPanel("many");
+  }, [leadAssignment.mode, leadAssignment.users]);
+
+  const choosePanel = (next: LeadAssignmentPanel) => {
+    setPanel(next);
+    setLeadAssignment((prev) => {
+      if (next === "nobody") return { ...prev, mode: "off", rotate: true };
+      if (next === "one") {
+        const first = resolveAssignmentPool(
+          prev.mode === "off" ? { ...prev, mode: "selected" } : prev,
+          userNames,
+        )[0] ?? "";
+        return { mode: "selected", users: first ? [first] : [], rotate: true };
+      }
+      if (prev.mode === "all") return { ...prev, rotate: true };
+      return { ...prev, mode: prev.mode === "off" ? "selected" : prev.mode, rotate: true };
+    });
+  };
+
+  const pickOne = (name: string) =>
+    setLeadAssignment({ mode: "selected", users: [name], rotate: true });
+
+  const allCurrentSelected =
+    leadAssignment.mode === "all" ||
+    (userNames.length > 0 && userNames.every((n) => leadAssignment.users.includes(n)));
+
+  const toggleManyUser = (name: string) => {
+    setLeadAssignment((prev) => {
+      const living =
+        prev.mode === "all"
+          ? resolveAssignmentPool({ ...prev, mode: "all" }, userNames)
+          : prev.users.filter((n) => userNames.includes(n));
+      const selected = living.includes(name)
+        ? living.filter((n) => n !== name)
+        : [...living, name];
+      if (userNames.length >= 2 && userNames.every((n) => selected.includes(n))) {
+        return { ...prev, mode: "all", rotate: true };
+      }
+      return { mode: "selected", users: selected, rotate: true };
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (allCurrentSelected) {
+      setLeadAssignment((prev) => ({ ...prev, mode: "selected", users: [], rotate: true }));
+    } else {
+      setLeadAssignment((prev) => ({ ...prev, mode: "all", rotate: true }));
+    }
+  };
+
+  const moveUser = (name: string, delta: number) =>
+    setLeadAssignment((prev) => {
+      const next = [...prev.users];
+      const from = next.indexOf(name);
+      const to = from + delta;
+      if (from < 0 || to < 0 || to >= next.length) return prev;
+      next.splice(to, 0, next.splice(from, 1)[0]);
+      return { ...prev, users: next, rotate: true };
+    });
+
+  const PANELS: { id: LeadAssignmentPanel; label: string; hint: string }[] = [
+    {
+      id: "nobody",
+      label: t("Nobody", "Nikto", "Senki"),
+      hint: t("New leads stay unassigned", "Nové leady zostanú nepriradené", "Az új leadek kiosztatlanok maradnak"),
+    },
+    {
+      id: "one",
+      label: t("One person", "Jedna osoba", "Egy személy"),
+      hint: t("Every new lead goes to this person", "Každý nový lead dostane táto osoba", "Minden új lead ehhez a személyhez kerül"),
+    },
+    {
+      id: "many",
+      label: t("Several people", "Viaceré osoby", "Több személy"),
+      hint: t("New leads rotate between them", "Nové leady sa striedajú medzi nimi", "Az új leadek köztük rotálnak"),
+    },
+  ];
+
+  const listedNames =
+    panel === "one"
+      ? userNames
+      : leadAssignment.mode === "all"
+        ? pool
+        : [
+            ...leadAssignment.users.filter((u) => userNames.includes(u)),
+            ...userNames.filter((u) => !leadAssignment.users.includes(u)),
+          ];
+
+  const manyCount = pool.length;
+  const manyTooFew = panel === "many" && manyCount < 2;
+  const someSelected = manyCount > 0 && !allCurrentSelected;
+
+  const avatar = (name: string) => {
+    const user = users.find((u) => u.name === name);
+    const color = user?.color ?? "#94a3b8";
+    return (
+      <div
+        className="h-6 w-6 rounded-md font-heading font-black text-[9px] flex items-center justify-center border shrink-0"
+        style={{
+          backgroundColor: `${color}12`,
+          color,
+          borderColor: `${color}30`,
+        }}
+      >
+        {name.substring(0, 2).toUpperCase()}
+      </div>
+    );
+  };
+
+  return (
+    <div className="glass-panel p-6 rounded-3xl space-y-5 border border-white/60 bg-white/95 shadow-glass">
+      <div className="space-y-1 border-b border-slate-200 pb-3">
+        <h3 className="text-sm font-heading font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+          <Share2 className="h-4.5 w-4.5 text-indigo-500" />
+          {t("Automatic lead assignment", "Automatické priraďovanie leadov", "Automatikus lead-kiosztás")}
+        </h3>
+        <p className="text-[10px] font-semibold text-slate-500 leading-relaxed max-w-2xl pt-3">
+          {t(
+            "When a new lead arrives without an owner — from the web form, automations, imports, or added here without picking anyone — it is assigned to one person. Leads that already have an owner are never touched.",
+            "Nový lead, ktorý príde bez vlastníka — z webového formulára, z automatizácií, z importov alebo pridaný tu bez výberu osoby — sa pridelí jednej osobe. Leadov, ktoré už majú vlastníka, sa to nikdy netýka.",
+            "A gazda nélkül érkező új lead — webűrlapról, automatizációból, importból, vagy itt személy kiválasztása nélkül — egyetlen személyhez kerül. A már gazdával rendelkező leadeket ez soha nem érinti.",
+          )}
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2" role="radiogroup" aria-label={t("Assignment mode", "Režim priradenia", "Kiosztási mód")}>
+        {PANELS.map((m) => {
+          const active = panel === m.id;
+          return (
+            <button
+              key={m.id}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              disabled={!canEdit}
+              onClick={() => choosePanel(m.id)}
+              className={cn(
+                "text-left px-3.5 py-2.5 rounded-xl border transition-all duration-150 ease-out",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 focus-visible:ring-offset-1",
+                active
+                  ? "bg-indigo-50 border-indigo-300 ring-2 ring-indigo-500/15"
+                  : "bg-white border-slate-200 hover:border-slate-300 hover:-translate-y-px",
+                canEdit ? "cursor-pointer active:scale-[0.98]" : "opacity-60 cursor-not-allowed",
+              )}
+            >
+              <span className={cn(
+                "block text-[10px] font-black uppercase tracking-wider",
+                active ? "text-indigo-700" : "text-slate-700",
+              )}>
+                {m.label}
+              </span>
+              <span className={cn(
+                "block text-[9px] font-semibold mt-0.5 leading-snug",
+                active ? "text-indigo-500" : "text-slate-400",
+              )}>
+                {m.hint}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {panel !== "nobody" && (
+        <div key={panel} className="space-y-4 animate-fade-in">
+          {panel === "many" && userNames.length > 0 && (
+            <button
+              type="button"
+              disabled={!canEdit}
+              onClick={toggleSelectAll}
+              aria-pressed={allCurrentSelected}
+              className={cn(
+                "w-full flex items-center gap-3 rounded-xl border px-3.5 py-2.5 text-left transition-all duration-150 ease-out",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40",
+                allCurrentSelected
+                  ? "bg-indigo-50/80 border-indigo-200"
+                  : "bg-white border-slate-200 hover:border-slate-300",
+                canEdit ? "cursor-pointer active:scale-[0.995]" : "opacity-60 cursor-not-allowed",
+              )}
+            >
+              <span
+                className={cn(
+                  "h-4 w-4 shrink-0 rounded border flex items-center justify-center transition-colors",
+                  allCurrentSelected ? "bg-indigo-600 border-indigo-600 text-white" : "bg-white border-slate-300",
+                )}
+              >
+                {allCurrentSelected ? (
+                  <Check className="h-3 w-3" strokeWidth={3} />
+                ) : someSelected ? (
+                  <Minus className="h-3 w-3 text-indigo-500" strokeWidth={3} />
+                ) : null}
+              </span>
+              <span className="min-w-0">
+                <span className={cn(
+                  "block text-[10px] font-black uppercase tracking-wider",
+                  allCurrentSelected ? "text-indigo-800" : "text-slate-700",
+                )}>
+                  {t("Select all", "Vybrať všetkých", "Összes kijelölése")}
+                </span>
+                <span className={cn(
+                  "block text-[9px] font-semibold mt-0.5 leading-snug",
+                  allCurrentSelected ? "text-indigo-500" : "text-slate-400",
+                )}>
+                  {t(
+                    "Everyone, including people added later",
+                    "Všetci, vrátane neskôr pridaných",
+                    "Mindenki, a később hozzáadottakkal együtt",
+                  )}
+                </span>
+              </span>
+            </button>
+          )}
+
+          <div className="rounded-xl border border-slate-200 bg-white divide-y divide-slate-100 overflow-hidden">
+            {users.length === 0 && (
+              <div className="px-3.5 py-3 text-[10px] font-semibold text-slate-400 italic">
+                {t("No users to assign to yet.", "Zatiaľ nie sú žiadni používatelia na priradenie.", "Még nincs kihez kiosztani.")}
+              </div>
+            )}
+            {listedNames.map((name) => {
+              const selected = panel === "one"
+                ? pool[0] === name
+                : leadAssignment.mode === "all" || leadAssignment.users.includes(name);
+              const orderIndex = pool.indexOf(name);
+              return (
+                <div
+                  key={name}
+                  className={cn(
+                    "flex items-center gap-1 pr-2 transition-colors duration-150",
+                    selected ? "bg-indigo-50/40" : "bg-white",
+                  )}
+                >
+                  <button
+                    type="button"
+                    role={panel === "one" ? "radio" : "checkbox"}
+                    aria-checked={selected}
+                    disabled={!canEdit}
+                    onClick={() => panel === "one" ? pickOne(name) : toggleManyUser(name)}
+                    className={cn(
+                      "flex-1 min-w-0 flex items-center gap-3 px-3.5 py-2.5 text-left transition-colors duration-150",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500/40",
+                      canEdit ? "cursor-pointer" : "opacity-60 cursor-not-allowed",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "shrink-0 flex items-center justify-center transition-all duration-150",
+                        panel === "one"
+                          ? cn("h-4 w-4 rounded-full border", selected ? "border-indigo-600" : "border-slate-300 bg-white")
+                          : cn("h-4 w-4 rounded border", selected ? "bg-indigo-600 border-indigo-600 text-white" : "bg-white border-slate-300"),
+                      )}
+                    >
+                      {panel === "one"
+                        ? (selected && <span className="h-2 w-2 rounded-full bg-indigo-600" />)
+                        : (selected && <Check className="h-3 w-3" strokeWidth={3} />)}
+                    </span>
+                    {avatar(name)}
+                    <span className={cn(
+                      "flex-1 min-w-0 truncate text-[11px] font-extrabold",
+                      selected ? "text-slate-800" : "text-slate-400",
+                    )}>
+                      {name}
+                    </span>
+                    {panel === "many" && selected && orderIndex >= 0 && (
+                      <span className="text-[9px] font-black text-indigo-400 tabular-nums shrink-0">
+                        #{orderIndex + 1}
+                      </span>
+                    )}
+                  </button>
+                  {panel === "many" && leadAssignment.mode === "selected" && selected && (
+                    <div className="flex items-center gap-0.5 shrink-0">
+                      <button
+                        type="button"
+                        disabled={!canEdit || leadAssignment.users.indexOf(name) <= 0}
+                        onClick={() => moveUser(name, -1)}
+                        className="p-1 rounded-md text-indigo-300 hover:text-indigo-700 hover:bg-indigo-100 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-indigo-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+                        title={t("Move up", "Posunúť vyššie", "Feljebb")}
+                      >
+                        <ArrowUp className="h-3 w-3" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!canEdit || leadAssignment.users.indexOf(name) >= leadAssignment.users.length - 1}
+                        onClick={() => moveUser(name, 1)}
+                        className="p-1 rounded-md text-indigo-300 hover:text-indigo-700 hover:bg-indigo-100 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-indigo-300 transition-colors rotate-180 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+                        title={t("Move down", "Posunúť nižšie", "Lejjebb")}
+                      >
+                        <ArrowUp className="h-3 w-3" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {panel === "one" && (
+            pool.length === 0 ? (
+              <p className="text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-2.5">
+                {t(
+                  "Pick who should get every new lead.",
+                  "Vyberte, kto má dostať každý nový lead.",
+                  "Válassza ki, ki kapja az összes új leadet.",
+                )}
+              </p>
+            ) : (
+              <p className="text-[10px] font-bold text-slate-500 bg-white border border-slate-200 rounded-xl px-3.5 py-2.5">
+                {t(
+                  `Every new lead goes to ${pool[0]}.`,
+                  `Každý nový lead dostane ${pool[0]}.`,
+                  `Minden új lead ${pool[0]} kapja.`,
+                )}
+              </p>
+            )
+          )}
+
+          {panel === "many" && (
+            <>
+              {manyTooFew ? (
+                <div className="text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-2.5 leading-relaxed">
+                  <p>
+                    {t(
+                      "Pick at least two people to rotate between, or switch to One person.",
+                      "Vyberte aspoň dvoch ľudí na striedanie, alebo prejdite na Jednu osobu.",
+                      "Válasszon legalább két személyt a rotációhoz, vagy váltson Egy személyre.",
+                    )}
+                  </p>
+                  <button
+                    type="button"
+                    disabled={!canEdit}
+                    onClick={() => choosePanel("one")}
+                    className="mt-1.5 text-indigo-700 hover:text-indigo-900 underline-offset-2 hover:underline font-black uppercase tracking-wider text-[9px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 rounded"
+                  >
+                    {t("Use One person", "Použiť Jednu osobu", "Egy személy használata")}
+                  </button>
+                </div>
+              ) : (
+                <p className="text-[10px] font-bold text-slate-500 bg-white border border-slate-200 rounded-xl px-3.5 py-2.5">
+                  <span className="text-slate-400 uppercase tracking-wider font-black mr-1.5">
+                    {t("Order", "Poradie", "Sorrend")}:
+                  </span>
+                  {pool.join(" → ")}
+                </p>
+              )}
+              <p className="text-[9px] font-semibold text-slate-400 leading-relaxed px-0.5">
+                {t(
+                  "Each lead has only one assignee. With several people selected, new leads rotate through them in the order above.",
+                  "Každý lead má len jedného vlastníka. Pri viacerých vybraných osobách sa nové leady striedajú v poradí vyššie.",
+                  "Minden leadnek csak egy felelőse van. Több kiválasztott személy esetén az új leadek a fenti sorrendben rotálnak.",
+                )}
+              </p>
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 };
 
@@ -4710,249 +5086,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 imports, and leads added in the app without picking anyone.
                 The pick itself happens server-side, so one rotation is
                 shared by every device and every entry point. */}
-            {(() => {
-              const canEditAssign = getPermission("pipeline_stages") === "edit";
-              const userNames = users.map((u) => u.name).filter(Boolean);
-              const pool = resolveAssignmentPool(leadAssignment, userNames);
-              const setMode = (mode: LeadAssignmentMode) =>
-                setLeadAssignment((prev) => ({
-                  ...prev,
-                  mode,
-                  // Seed the pool from everyone the first time "selected" is
-                  // chosen, so the list is never empty and silently inert.
-                  users: mode === "selected" && prev.users.length === 0 ? userNames : prev.users,
-                }));
-              const toggleUser = (name: string) =>
-                setLeadAssignment((prev) => ({
-                  ...prev,
-                  users: prev.users.includes(name)
-                    ? prev.users.filter((u) => u !== name)
-                    : [...prev.users, name],
-                }));
-              const moveUser = (name: string, delta: number) =>
-                setLeadAssignment((prev) => {
-                  const next = [...prev.users];
-                  const from = next.indexOf(name);
-                  const to = from + delta;
-                  if (from < 0 || to < 0 || to >= next.length) return prev;
-                  next.splice(to, 0, next.splice(from, 1)[0]);
-                  return { ...prev, users: next };
-                });
-
-              const MODES: { id: LeadAssignmentMode; label: string; hint: string }[] = [
-                {
-                  id: "off",
-                  label: t("Nobody", "Nikto", "Senki"),
-                  hint: t("New leads stay unassigned", "Nové leady zostanú nepriradené", "Az új leadek kiosztatlanok maradnak"),
-                },
-                {
-                  id: "selected",
-                  label: t("Selected users", "Vybraní používatelia", "Kiválasztott felhasználók"),
-                  hint: t("Only the people you tick below", "Iba ľudia označení nižšie", "Csak az alább bejelölt személyek"),
-                },
-                {
-                  id: "all",
-                  label: t("All users", "Všetci používatelia", "Minden felhasználó"),
-                  hint: t("Everyone in the user registry", "Všetci z registra používateľov", "Mindenki a felhasználói nyilvántartásból"),
-                },
-              ];
-
-              return (
-                <div className="glass-panel p-6 rounded-3xl space-y-5 border border-white/60 bg-white/95 shadow-glass">
-                  <div className="space-y-1 border-b border-slate-200 pb-3">
-                    <h3 className="text-sm font-heading font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                      <Share2 className="h-4.5 w-4.5 text-indigo-500" />
-                      {t("Automatic lead assignment", "Automatické priraďovanie leadov", "Automatikus lead-kiosztás")}
-                    </h3>
-                    <p className="text-[10px] font-semibold text-slate-500 leading-relaxed max-w-2xl pt-3">
-                      {t(
-                        "A new lead that arrives without a project manager is handed to the people below — leads from the web form, from automations, from imports, and leads added here without picking anyone. Leads that already have an owner are never touched.",
-                        "Nový lead, ktorý príde bez projektového manažéra, sa pridelí ľuďom nižšie — leady z webového formulára, z automatizácií, z importov a leady pridané tu bez výberu osoby. Leadov, ktoré už majú vlastníka, sa to nikdy netýka.",
-                        "A projektmenedzser nélkül érkező új lead az alábbi személyekhez kerül — a webűrlapról, automatizációkból és importokból érkező leadek, valamint az itt személy kiválasztása nélkül hozzáadott leadek. A már gazdával rendelkező leadeket ez soha nem érinti.",
-                      )}
-                    </p>
-                  </div>
-
-                  {/* Mode picker */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    {MODES.map((m) => {
-                      const active = leadAssignment.mode === m.id;
-                      return (
-                        <button
-                          key={m.id}
-                          type="button"
-                          disabled={!canEditAssign}
-                          onClick={() => setMode(m.id)}
-                          className={cn(
-                            "text-left px-3.5 py-2.5 rounded-xl border transition-all",
-                            active
-                              ? "bg-indigo-50 border-indigo-300 ring-2 ring-indigo-500/15"
-                              : "bg-white border-slate-200 hover:border-slate-300",
-                            canEditAssign ? "cursor-pointer active:scale-[0.98]" : "opacity-60 cursor-not-allowed",
-                          )}
-                        >
-                          <span className={cn(
-                            "block text-[10px] font-black uppercase tracking-wider",
-                            active ? "text-indigo-700" : "text-slate-700",
-                          )}>
-                            {m.label}
-                          </span>
-                          <span className="block text-[9px] font-semibold text-slate-400 mt-0.5 leading-snug">
-                            {m.hint}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {leadAssignment.mode !== "off" && (
-                    <>
-                      {/* Rotation toggle */}
-                      <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-3">
-                        <button
-                          type="button"
-                          disabled={!canEditAssign}
-                          onClick={() => setLeadAssignment((prev) => ({ ...prev, rotate: !prev.rotate }))}
-                          className={cn(
-                            "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors mt-0.5",
-                            leadAssignment.rotate ? "bg-indigo-600" : "bg-slate-300",
-                            canEditAssign ? "cursor-pointer hover:opacity-90" : "opacity-50 cursor-not-allowed",
-                          )}
-                        >
-                          <span className={cn(
-                            "inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform",
-                            leadAssignment.rotate ? "translate-x-4" : "translate-x-0.5",
-                          )} />
-                        </button>
-                        <div className="min-w-0">
-                          <span className="block text-[10px] font-black uppercase tracking-wider text-slate-700">
-                            {t("Rotate", "Rotovať", "Rotáció")}
-                          </span>
-                          <span className="block text-[9px] font-semibold text-slate-400 mt-0.5 leading-snug">
-                            {leadAssignment.rotate
-                              ? t(
-                                  "New leads are split evenly, going to each person in turn, in the order listed below.",
-                                  "Nové leady sa rozdeľujú rovnomerne, postupne každej osobe v poradí uvedenom nižšie.",
-                                  "Az új leadek egyenletesen oszlanak el, sorban mindenkihez, az alább látható sorrendben.",
-                                )
-                              : t(
-                                  "Every new lead goes to the first person in the list below.",
-                                  "Každý nový lead dostane prvá osoba v zozname nižšie.",
-                                  "Minden új lead a lenti lista első személyéhez kerül.",
-                                )}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Pool — ticks and order for "selected", read-only preview for "all" */}
-                      <div className="rounded-xl border border-slate-200 bg-white divide-y divide-slate-100 overflow-hidden">
-                        {users.length === 0 && (
-                          <div className="px-3.5 py-3 text-[10px] font-semibold text-slate-400 italic">
-                            {t("No users to assign to yet.", "Zatiaľ nie sú žiadni používatelia na priradenie.", "Még nincs kihez kiosztani.")}
-                          </div>
-                        )}
-                        {(leadAssignment.mode === "all"
-                          ? pool
-                          : [...leadAssignment.users.filter((u) => userNames.includes(u)),
-                             ...userNames.filter((u) => !leadAssignment.users.includes(u))]
-                        ).map((name) => {
-                          const user = users.find((u) => u.name === name);
-                          const selected = leadAssignment.mode === "all" || leadAssignment.users.includes(name);
-                          const orderIndex = pool.indexOf(name);
-                          return (
-                            <div key={name} className="flex items-center gap-3 px-3.5 py-2.5">
-                              <button
-                                type="button"
-                                disabled={!canEditAssign || leadAssignment.mode === "all"}
-                                onClick={() => toggleUser(name)}
-                                className={cn(
-                                  "h-4 w-4 shrink-0 rounded border flex items-center justify-center transition-colors",
-                                  selected ? "bg-indigo-600 border-indigo-600 text-white" : "bg-white border-slate-300",
-                                  canEditAssign && leadAssignment.mode !== "all"
-                                    ? "cursor-pointer hover:border-indigo-400"
-                                    : "opacity-60 cursor-not-allowed",
-                                )}
-                                title={leadAssignment.mode === "all"
-                                  ? t("Everyone is included in this mode", "V tomto režime sú zahrnutí všetci", "Ebben a módban mindenki benne van")
-                                  : undefined}
-                              >
-                                {selected && <CheckSquare className="h-3 w-3" strokeWidth={3} />}
-                              </button>
-                              <div
-                                className="h-6 w-6 rounded-md font-heading font-black text-[9px] flex items-center justify-center border shrink-0"
-                                style={{
-                                  backgroundColor: `${user?.color ?? "#94a3b8"}12`,
-                                  color: user?.color ?? "#94a3b8",
-                                  borderColor: `${user?.color ?? "#94a3b8"}30`,
-                                }}
-                              >
-                                {name.substring(0, 2).toUpperCase()}
-                              </div>
-                              <span className={cn(
-                                "flex-1 min-w-0 truncate text-[11px] font-extrabold",
-                                selected ? "text-slate-800" : "text-slate-400",
-                              )}>
-                                {name}
-                              </span>
-                              {selected && leadAssignment.rotate && orderIndex >= 0 && (
-                                <span className="text-[9px] font-black text-slate-400 tabular-nums shrink-0">
-                                  #{orderIndex + 1}
-                                </span>
-                              )}
-                              {leadAssignment.mode === "selected" && selected && (
-                                <div className="flex items-center gap-0.5 shrink-0">
-                                  <button
-                                    type="button"
-                                    disabled={!canEditAssign || leadAssignment.users.indexOf(name) <= 0}
-                                    onClick={() => moveUser(name, -1)}
-                                    className="p-1 rounded-md text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-300 transition-colors"
-                                    title={t("Move up", "Posunúť vyššie", "Feljebb")}
-                                  >
-                                    <ArrowUp className="h-3 w-3" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    disabled={!canEditAssign || leadAssignment.users.indexOf(name) >= leadAssignment.users.length - 1}
-                                    onClick={() => moveUser(name, 1)}
-                                    className="p-1 rounded-md text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-300 transition-colors rotate-180"
-                                    title={t("Move down", "Posunúť nižšie", "Lejjebb")}
-                                  >
-                                    <ArrowUp className="h-3 w-3" />
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {/* What the rules actually add up to. A pool that resolves
-                          to nobody (every chosen name has since been deleted)
-                          looks configured but silently assigns nothing. */}
-                      {pool.length === 0 ? (
-                        <p className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-2.5">
-                          {t(
-                            "Nobody is selected — new leads will stay unassigned.",
-                            "Nikto nie je vybraný — nové leady zostanú nepriradené.",
-                            "Senki nincs kiválasztva — az új leadek kiosztatlanok maradnak.",
-                          )}
-                        </p>
-                      ) : (
-                        <p className="text-[10px] font-bold text-slate-500 bg-white border border-slate-200 rounded-xl px-3.5 py-2.5">
-                          <span className="text-slate-400 uppercase tracking-wider font-black mr-1.5">
-                            {leadAssignment.rotate
-                              ? t("Order", "Poradie", "Sorrend")
-                              : t("Assigned to", "Priradené", "Kiosztva")}
-                            :
-                          </span>
-                          {leadAssignment.rotate ? pool.join(" → ") : pool[0]}
-                        </p>
-                      )}
-                    </>
-                  )}
-                </div>
-              );
-            })()}
+            <LeadAssignmentCard
+              users={users}
+              leadAssignment={leadAssignment}
+              setLeadAssignment={setLeadAssignment}
+              canEdit={getPermission("pipeline_stages") === "edit"}
+              userLanguage={userLanguage}
+            />
           </div>
         )}
 

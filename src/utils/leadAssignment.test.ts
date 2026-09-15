@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   DEFAULT_LEAD_ASSIGNMENT,
   isAutoAssignActive,
+  leadAssignmentPanel,
   normalizeLeadAssignment,
   resolveAssignmentPool,
 } from "./leadAssignment.ts";
@@ -34,9 +35,18 @@ test("the user pool is cleaned up but keeps the order it was given", () => {
   assert.equal(cfg.rotate, true);
 });
 
-test("rotation is only off when it is switched off explicitly", () => {
+test("rotation cannot be switched off — several people always take turns", () => {
   assert.equal(normalizeLeadAssignment({ mode: "all" }).rotate, true);
-  assert.equal(normalizeLeadAssignment({ mode: "all", rotate: false }).rotate, false);
+  assert.equal(normalizeLeadAssignment({ mode: "all", rotate: false }).rotate, true);
+  assert.equal(normalizeLeadAssignment({ mode: "selected", users: ["Sam"], rotate: false }).rotate, true);
+});
+
+test("the settings cards map off / one person / several people", () => {
+  assert.equal(leadAssignmentPanel(DEFAULT_LEAD_ASSIGNMENT), "nobody");
+  assert.equal(leadAssignmentPanel(normalizeLeadAssignment({ mode: "selected", users: ["Sam"] })), "one");
+  assert.equal(leadAssignmentPanel(normalizeLeadAssignment({ mode: "selected", users: [] })), "one");
+  assert.equal(leadAssignmentPanel(normalizeLeadAssignment({ mode: "selected", users: ["Sam", "Ada"] })), "many");
+  assert.equal(leadAssignmentPanel(normalizeLeadAssignment({ mode: "all" })), "many");
 });
 
 test("mode off assigns to nobody, however the pool is filled in", () => {

@@ -24,6 +24,7 @@ node_modules
 /assets/
 dist-ssr
 *.local
+RBAC_REBUILD_HANDOFF.md
 
 # Local port/env overrides (e.g. CCRM_DEV_BACKEND_PORT when 8080 is already
 # taken by another project on a given machine) — read by both `docker compose`

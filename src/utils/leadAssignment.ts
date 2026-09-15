@@ -7,6 +7,9 @@ export const DEFAULT_LEAD_ASSIGNMENT: LeadAssignmentSettings = {
   rotate: true,
 };
 
+/** The three cards in Settings → Pipeline. One lead still has one assignee. */
+export type LeadAssignmentPanel = "nobody" | "one" | "many";
+
 /**
  * Coerce anything (a stored blob, a sync payload, `undefined`) to a usable
  * config. Mirrors ccrm_normalize_lead_assignment() in api/auth.php — both sides
@@ -24,7 +27,18 @@ export function normalizeLeadAssignment(value: unknown): LeadAssignmentSettings 
       if (name && !users.includes(name)) users.push(name);
     }
   }
-  return { mode, users, rotate: raw.rotate !== false };
+  return { mode, users, rotate: true };
+}
+
+/**
+ * Which settings card a stored config belongs on. "selected" with fewer than
+ * two names is One person — the Many card keeps its own panel state in the UI
+ * so a half-filled rotation can warn instead of jumping tabs.
+ */
+export function leadAssignmentPanel(config: LeadAssignmentSettings): LeadAssignmentPanel {
+  if (config.mode === "off") return "nobody";
+  if (config.mode === "all") return "many";
+  return config.users.length >= 2 ? "many" : "one";
 }
 
 /**

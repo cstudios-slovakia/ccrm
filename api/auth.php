@@ -301,8 +301,9 @@ if (!function_exists('ccrm_send_cors')) {
      *          'selected' — the pool is `users`, in the order the admin listed
      *          'all'      — the pool is every registered user, ordered by name
      *   users  ordered pool for mode 'selected'
-     *   rotate true  — round-robin: each new lead goes to the next in the pool
-     *          false — every new lead goes to the first user in the pool
+     *   rotate always true — one lead has one assignee; several people in the
+     *          pool take turns. Kept on the blob so the stored shape stays
+     *          stable across clients.
      *
      * Applied to both the stored value and anything a client pushes, so a
      * malformed blob can never reach the assignment logic.
@@ -327,8 +328,7 @@ if (!function_exists('ccrm_send_cors')) {
         return [
             'mode'   => $mode,
             'users'  => $users,
-            // Rotation is the useful default; only an explicit false turns it off.
-            'rotate' => !array_key_exists('rotate', $cfg) || (bool)$cfg['rotate'],
+            'rotate' => true,
         ];
     }
 
@@ -409,10 +409,6 @@ if (!function_exists('ccrm_send_cors')) {
         $pool = ccrm_lead_assignment_pool($pdo);
         if (!$pool) {
             return '';
-        }
-        $cfg = ccrm_lead_assignment_config($pdo);
-        if (!$cfg['rotate']) {
-            return $pool[0];
         }
 
         // Read the cursor once per request, then keep advancing it in memory so a
