@@ -5,9 +5,80 @@ import crypto from 'node:crypto';
 export const FINDINGS_DIR = path.resolve('test-results', 'qa-findings');
 export const REPORT_PATH = path.resolve('test-results', 'qa-audit-report.md');
 export const FINDINGS_JSON = path.resolve('test-results', 'qa-findings.json');
-export const HISTORY_DIR = path.resolve('test-results', 'qa-history');
 export const LATEST_FULL_REPORT = path.resolve('test-results', 'qa-audit-report-latest-full.md');
 export const LATEST_FULL_JSON = path.resolve('test-results', 'qa-findings-latest-full.json');
+
+/**
+ * Every run gets its own self-contained folder under `test-results/runs/`.
+ *
+ * The previous layout kept archived reports in `qa-history/` but left every
+ * run's screenshots in one shared flat `test-results/screenshots/`. An archived
+ * report therefore pointed at evidence that later runs kept adding to and never
+ * cleaned, so the PNGs grew without bound and you could not tell which image
+ * belonged to which report. A run folder holds the report, the findings JSON and
+ * the screenshots it references, together, and old folders are pruned.
+ */
+export const RUNS_DIR = path.resolve('test-results', 'runs');
+const RUN_ID_MARKER = path.resolve('test-results', 'qa-run-id.txt');
+
+/** How many past run folders to keep on disk. */
+export const KEEP_RUNS = Math.max(1, Number(process.env.QA_KEEP_RUNS ?? 10) || 10);
+
+function stampNow(): string {
+  const d = new Date();
+  const p2 = (n: number) => String(n).padStart(2, '0');
+  return (
+    `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}` +
+    `_${p2(d.getHours())}-${p2(d.getMinutes())}-${p2(d.getSeconds())}`
+  );
+}
+
+/**
+ * Called once from globalSetup, before any worker starts. Creates this run's
+ * folder and records its id so every worker process writes evidence into it.
+ */
+export function beginRun(kind: SuiteKind): string {
+  const id = `${stampNow()}-${kind}`;
+  fs.mkdirSync(path.join(RUNS_DIR, id, 'screenshots'), { recursive: true });
+  fs.writeFileSync(RUN_ID_MARKER, id, 'utf-8');
+  process.env.QA_RUN_ID = id;
+  return id;
+}
+
+/** This run's id, shared across the main process and every worker. */
+export function currentRunId(): string {
+  if (process.env.QA_RUN_ID) return process.env.QA_RUN_ID;
+  if (fs.existsSync(RUN_ID_MARKER)) {
+    const id = fs.readFileSync(RUN_ID_MARKER, 'utf-8').trim();
+    if (id) {
+      process.env.QA_RUN_ID = id;
+      return id;
+    }
+  }
+  return beginRun(inferSuiteKind());
+}
+
+export function currentRunDir(): string {
+  return path.join(RUNS_DIR, currentRunId());
+}
+
+/** Where `captureEvidence` writes, repo-relative so the report can link to it. */
+export function screenshotDirRelative(): string {
+  return path.relative(process.cwd(), path.join(currentRunDir(), 'screenshots')).split(path.sep).join('/');
+}
+
+/** Drops the oldest run folders so the directory cannot grow without bound. */
+export function pruneOldRuns(keep: number = KEEP_RUNS) {
+  if (!fs.existsSync(RUNS_DIR)) return;
+  const dirs = fs
+    .readdirSync(RUNS_DIR, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .sort();
+  for (const name of dirs.slice(0, Math.max(0, dirs.length - keep))) {
+    fs.rmSync(path.join(RUNS_DIR, name), { recursive: true, force: true });
+  }
+}
 
 /** UTF-8 BOM so Windows editors do not mojibake Slovak in the markdown report. */
 const UTF8_BOM = '\uFEFF';
@@ -22,7 +93,11 @@ const SUITE_KIND_MARKER = path.resolve('test-results', 'qa-suite-kind.txt');
  * would leak the previous run's kind.
  */
 export function inferSuiteKindFromArgv(argv: string[] = process.argv.slice(2)): SuiteKind {
-  if (argv.some((a) => a === '--grep' || a === '-g')) return 'partial';
+  /* Both spellings: playwright accepts `--grep pattern` and `--grep=pattern`,
+     and `scripts/qa/run-qa.mjs` passes the second. Matching only the separate
+     form let a scoped run label itself `full` and overwrite the last full
+     report — the one file that is supposed to survive a partial re-run. */
+  if (argv.some((a) => a === '-g' || a === '--grep' || /^--grep(-invert)?=/.test(a))) return 'partial';
   if (argv.some((a) => /\.spec\.[cm]?[tj]s$/.test(a))) return 'partial';
   return 'full';
 }
@@ -47,15 +122,17 @@ export function inferSuiteKind(): SuiteKind {
   return inferSuiteKindFromArgv();
 }
 
-/** Copies the previous markdown/json report aside so a grep re-run cannot erase it. */
-export function archiveCurrentReportIfPresent() {
-  if (!fs.existsSync(REPORT_PATH)) return;
-  fs.mkdirSync(HISTORY_DIR, { recursive: true });
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  fs.copyFileSync(REPORT_PATH, path.join(HISTORY_DIR, `${stamp}-qa-audit-report.md`));
-  if (fs.existsSync(FINDINGS_JSON)) {
-    fs.copyFileSync(FINDINGS_JSON, path.join(HISTORY_DIR, `${stamp}-qa-findings.json`));
-  }
+
+/**
+ * A canary names its scope "Canary: ...". Their findings are expected -- the
+ * canary PASSES when the known product bug is still detected -- so they must
+ * not be counted as a failing verdict in the run summary. No canary is active
+ * right now; this stays as the contract for the next one.
+ */
+export const CANARY_MODULE_PREFIX = 'Canary:';
+
+export function isCanaryFinding(f: { module: string }): boolean {
+  return f.module.startsWith(CANARY_MODULE_PREFIX);
 }
 
 export type Severity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
@@ -232,7 +309,12 @@ export function readAllFindings(): CollectedData {
   return merged;
 }
 
-export function generateMarkdownReport(): { markdown: string; data: CollectedData; suiteKind: SuiteKind } {
+export function generateMarkdownReport(): {
+  markdown: string;
+  data: CollectedData;
+  suiteKind: SuiteKind;
+  runDir: string;
+} {
   const data = readAllFindings();
   const suiteKind = inferSuiteKind();
   const counts: Record<Severity, number> = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
@@ -240,6 +322,7 @@ export function generateMarkdownReport(): { markdown: string; data: CollectedDat
 
   let md = `# CCRM Automated QA Audit Report\n\n`;
   md += `**Generated**: ${new Date().toISOString()}\n\n`;
+  md += '**Run folder**: `test-results/runs/' + currentRunId() + '/` - report, findings and screenshots for this run.\n\n';
   md += `**Suite**: ${suiteKind}`;
   if (suiteKind === 'partial') {
     md += ` — this run was filtered; the last complete audit is \`test-results/qa-audit-report-latest-full.md\` if one exists.`;
@@ -293,7 +376,19 @@ export function generateMarkdownReport(): { markdown: string; data: CollectedDat
     fs.writeFileSync(LATEST_FULL_REPORT, UTF8_BOM + md, 'utf-8');
     fs.writeFileSync(LATEST_FULL_JSON, JSON.stringify(data, null, 2), 'utf-8');
   }
-  return { markdown: md, data, suiteKind };
+
+  /* The run folder already holds this run's screenshots. Copy the report and
+     findings in beside them, rewriting screenshot links to be relative to that
+     folder, so the folder can be zipped, attached to a ticket or uploaded as a
+     CI artifact with its evidence still resolving. */
+  const runDir = currentRunDir();
+  fs.mkdirSync(runDir, { recursive: true });
+  const localMd = md.split(screenshotDirRelative() + '/').join('screenshots/');
+  fs.writeFileSync(path.join(runDir, 'report.md'), UTF8_BOM + localMd, 'utf-8');
+  fs.writeFileSync(path.join(runDir, 'findings.json'), JSON.stringify(data, null, 2), 'utf-8');
+  pruneOldRuns();
+
+  return { markdown: md, data, suiteKind, runDir };
 }
 
 function indentBlock(text: string): string {

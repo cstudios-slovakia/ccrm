@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { createPortal } from "react-dom";
-import { Search, Calendar, User, Users, Clock, CheckSquare, Plus, ArrowLeft, Filter, Sparkles, AlertCircle, ChevronDown, X, Archive, Settings, Mic, Play, Pause, Square, Volume2, Trash2 } from "lucide-react";
+import { Search, Calendar, User, Users, Clock, CheckSquare, Plus, ArrowLeft, Filter, Sparkles, AlertCircle, ChevronDown, X, Archive, Settings, Mic, Play, Pause, Square, Volume2, Trash2, Lock } from "lucide-react";
 import type { Lead, UserProfile, Task } from "../types";
 import { cn } from "../utils/cn";
 import { BlockEditor } from "./BlockEditor";
 import type { EditorBlock } from "./BlockEditor";
+import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 import { Markdown } from "../utils/markdown";
-import { todayLocal } from "../utils/localTime";
+import { todayLocal, formatDateLocalized, localeCodeFor } from "../utils/localTime";
 import { CustomSelect } from "./ui/CustomSelect";
 
 const parseNotesToBlocks = (notes: string): EditorBlock[] => {
@@ -66,6 +67,7 @@ export interface MeetingNote {
 }
 
 interface MeetingRoomViewProps {
+  access?: ModuleAccess;
   leads: Lead[];
   users: UserProfile[];
   currentUser: UserProfile;
@@ -81,20 +83,31 @@ interface MeetingRoomViewProps {
 }
 
 export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
+  access = FULL_MODULE_ACCESS,
   leads,
   users,
   currentUser,
   systemLanguage,
   meetingNotes,
-  setMeetingNotes,
+  setMeetingNotes: setMeetingNotesRaw,
   initialView = "list",
   onClearInitialView,
   integrationsConfig,
-  setTasks,
+  setTasks: setTasksRaw,
   taskStates = ["New", "In progress", "Blocked", "Done"]
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
-  const [viewState, setViewState] = useState<"list" | "new" | "detail">(initialView);
+  const canEdit = access.edit;
+  const canDelete = access.delete;
+  const setMeetingNotes: typeof setMeetingNotesRaw = (updater) => {
+    if (!canEdit) return;
+    setMeetingNotesRaw(updater);
+  };
+  const setTasks: typeof setTasksRaw = (updater) => {
+    if (!canEdit) return;
+    setTasksRaw(updater);
+  };
+  const [viewState, setViewState] = useState<"list" | "new" | "detail">(initialView === "new" && !canEdit ? "list" : initialView);
   const [selectedMeeting, setSelectedMeeting] = useState<MeetingNote | null>(null);
   
   // Search & Filter state
@@ -707,6 +720,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               </div>
             </div>
             <Volume2 className="h-4 w-4 text-slate-400 shrink-0" />
+            {canDelete && (
             <button
               type="button"
               onClick={removeAudioFile}
@@ -715,6 +729,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
             >
               <Trash2 className="h-4 w-4" />
             </button>
+            )}
           </div>
         )}
 
@@ -841,6 +856,11 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
         const isRecord = query === "record=true";
 
         if (path === "new") {
+          if (!canEdit) {
+            window.location.hash = "meetings";
+            setViewState("list");
+            return;
+          }
           setViewState("new");
           setSelectedMeeting(null);
           // If we requested recording mode, activate recording bar
@@ -1513,7 +1533,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                         <div className="flex flex-wrap items-center gap-1.5 text-[9px] text-slate-400 font-bold uppercase tracking-wider">
                           <span className="flex items-center gap-0.5">
                             <Calendar className="h-3 w-3" />
-                            {task.dueDate || t("No deadline", "Bez termínu", "Nincs határidő")}
+                            {task.dueDate ? formatDateLocalized(task.dueDate, systemLanguage) : t("No deadline", "Bez termínu", "Nincs határidő")}
                           </span>
                           <span>•</span>
                           <span className={cn(
@@ -1624,6 +1644,13 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                 </p>
               </div>
               <div className="flex gap-2 shrink-0">
+                {!canEdit && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider">
+                    <Lock className="h-3.5 w-3.5" />
+                    {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
+                  </span>
+                )}
+                {canEdit && (
                 <button
                   onClick={() => {
                     window.location.hash = "meetings/new?record=true";
@@ -1633,6 +1660,8 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                   <Mic className="h-4.5 w-4.5" />
                   {systemLanguage === "sk" ? "Nahrať stretnutie" : systemLanguage === "hu" ? "Rögzítés" : "Record Meeting"}
                 </button>
+                )}
+                {canEdit && (
                 <button
                   onClick={() => { window.location.hash = "meetings/new"; }}
                   className="px-5 py-3 rounded-2xl bg-[#0b1329] text-white hover:bg-slate-900 shadow-md shadow-[#0b1329]/20 transition-all font-heading font-bold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95 shrink-0"
@@ -1640,6 +1669,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                   <Plus className="h-4.5 w-4.5" />
                   {systemLanguage === "sk" ? "Nové stretnutie" : systemLanguage === "hu" ? "Új megbeszélés" : "New Meeting Note"}
                 </button>
+                )}
               </div>
             </>
           ) : (
@@ -1654,7 +1684,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                 {systemLanguage === "sk" ? "Späť na zoznam" : systemLanguage === "hu" ? "Vissza a listához" : "Back to List"}
               </button>
 
-              {viewState === "detail" && selectedMeeting && (
+              {viewState === "detail" && selectedMeeting && canEdit && (
                 <button
                   onClick={() => {
                     const updated = { ...selectedMeeting, archived: !selectedMeeting.archived };
@@ -1798,7 +1828,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                       {/* Date Badge */}
                       <div className="flex flex-col items-center justify-center bg-slate-50 border border-slate-200/60 rounded-xl p-2 w-16 shrink-0 text-center">
                         <span className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider leading-none">
-                          {new Date(m.date).toLocaleString('default', { month: 'short' })}
+                          {new Date(m.date).toLocaleString(localeCodeFor(systemLanguage), { month: 'short' })}
                         </span>
                         <span className="text-base font-heading font-black text-slate-800 leading-tight">
                           {new Date(m.date).getDate()}
@@ -1846,9 +1876,11 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                       </div>
                       
                       {/* Archive/Unarchive Action Button */}
+                      {canEdit && (
                       <button
                         type="button"
                         onClick={(e) => {
+                          if (!canEdit) return;
                           e.stopPropagation();
                           const updated = { ...m, archived: !m.archived };
                           setMeetingNotes(prev => prev.map(item => item.id === m.id ? updated : item));
@@ -1873,6 +1905,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                       >
                         <Archive className="h-4 w-4" />
                       </button>
+                      )}
                     </div>
                   </div>
                 ))}

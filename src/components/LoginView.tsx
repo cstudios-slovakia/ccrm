@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { LogIn, Key, Mail, Terminal, AlertCircle, AlertTriangle, CheckCircle, Loader2 } from "lucide-react";
 import { PasswordInput } from "./PasswordInput";
 import type { UserProfile } from "../types";
-import { getTranslation } from "../utils/translations";
+import { getTranslation, formatTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import LightRays from "./LightRays";
 import { hasCookieAccess, hasPersistentStorage } from "../utils/safeStorage";
@@ -442,11 +442,11 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
           </div>
 
           <div className="text-[9px] font-extrabold text-white/60 uppercase tracking-widest text-center h-4 drop-shadow">
-            {gameState === 'won' 
-              ? "🎉 DECRYPTED! (CLICK ANY CELL TO RESTART)" 
-              : gameState === 'lost' 
-              ? "💥 BOOM! (CLICK ANY CELL TO RESTART)" 
-              : `💣 ${minesRemaining} MINES | RIGHT-CLICK TO FLAG`}
+            {gameState === 'won'
+              ? `🎉 ${getTranslation(systemLanguage, "login.game_won")}`
+              : gameState === 'lost'
+              ? `💥 ${getTranslation(systemLanguage, "login.game_lost")}`
+              : `💣 ${formatTranslation(systemLanguage, "login.game_hint", { count: minesRemaining })}`}
           </div>
         </div>
       )}
@@ -462,7 +462,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
             </div>
             <div>
               <h2 className="text-2xl font-heading font-black text-slate-900 tracking-tight uppercase">
-                {systemName} {getTranslation(systemLanguage, "login.title")}
+                {systemName}
               </h2>
               <p className="text-[10px] text-slate-500 font-extrabold uppercase tracking-widest mt-1">
                 {getTranslation(systemLanguage, "login.subtitle")}

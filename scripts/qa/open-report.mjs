@@ -13,9 +13,46 @@ import path from 'node:path';
 
 const args = process.argv.slice(2);
 if (args.includes('--help') || args.includes('-h')) {
-  console.log('Usage: npm run test:qa:report [-- --html]');
-  console.log('       Opens test-results/qa-audit-report.md (this run).');
-  console.log('       A previous full-suite copy lives at qa-audit-report-latest-full.md');
+  console.log('Usage: npm run test:qa:report [-- --html] [-- --list]');
+  console.log('       Opens test-results/qa-audit-report.md (the latest run).');
+  console.log('       --list  show the saved run folders in test-results/runs/');
+  console.log('       --html  also open Playwright traces and video');
+  process.exit(0);
+}
+
+const RUNS_DIR = path.resolve('test-results', 'runs');
+
+function savedRuns() {
+  if (!fs.existsSync(RUNS_DIR)) return [];
+  return fs
+    .readdirSync(RUNS_DIR, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .sort()
+    .reverse();
+}
+
+if (args.includes('--list')) {
+  const runs = savedRuns();
+  if (runs.length === 0) {
+    console.log('No saved runs yet. Run npm run test:qa first.');
+    process.exit(0);
+  }
+  console.log(`Saved QA runs (newest first) in test-results/runs/:
+`);
+  for (const r of runs) {
+    const findings = path.join(RUNS_DIR, r, 'findings.json');
+    let summary = '';
+    try {
+      const d = JSON.parse(fs.readFileSync(findings, 'utf-8'));
+      summary = `${d.findings.length} defect(s), ${d.passes.length} check(s) passed`;
+    } catch {
+      summary = 'no findings.json';
+    }
+    console.log(`  ${r}  -  ${summary}`);
+  }
+  console.log(`
+Open one: test-results/runs/<name>/report.md`);
   process.exit(0);
 }
 
@@ -31,6 +68,11 @@ const target = fs.existsSync(report) ? report : latestFull;
 console.log(`Opening ${path.relative(process.cwd(), target)}`);
 if (fs.existsSync(latestFull) && path.resolve(latestFull) !== path.resolve(target)) {
   console.log(`Last full-suite report: ${path.relative(process.cwd(), latestFull)}`);
+}
+const runs = savedRuns();
+if (runs.length > 0) {
+  console.log(`${runs.length} saved run(s) in test-results/runs/ - newest: ${runs[0]}`);
+  console.log(`List them all: npm run test:qa:report -- --list`);
 }
 
 function openFile(file) {

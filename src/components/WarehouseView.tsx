@@ -48,8 +48,15 @@ import {
   Warehouse as WarehouseIcon
 } from "lucide-react";
 import { CustomSelect } from "./ui/CustomSelect";
+import { CompanyLookupSpinner, CompanySuggestions } from "./ui/CompanySuggestions";
+import { useCompanyLookup } from "../utils/useCompanyLookup";
+import { fetchCompanyDetailsByCompanyId } from "../utils/companyRegistryApi";
+import { registryCountryOf } from "../utils/companyRegistry";
+import type { CompanyDetails, CompanyLookupField, CompanySuggestion } from "../utils/companyRegistry";
 import { formatMoney } from "../utils/currency";
+import { formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
 import type { Language } from "../utils/translations";
+import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 
 const formatCurrency = (val: number, lang: Language, currency?: string | null) =>
   formatMoney(val, currency, lang, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -101,6 +108,7 @@ interface WarehouseViewProps {
   leads: Lead[];
   users?: UserProfile[];
   onAddTimelineEvent?: (leadId: string, event: any) => void;
+  access?: ModuleAccess;
 }
 
 export const WarehouseView: React.FC<WarehouseViewProps> = ({
@@ -108,23 +116,36 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   systemCurrency,
   currentUser,
   warehouses,
-  setWarehouses,
+  setWarehouses: setWarehousesRaw,
   suppliers,
-  setSuppliers,
+  setSuppliers: setSuppliersRaw,
   warehouseItems,
-  setWarehouseItems,
+  setWarehouseItems: setWarehouseItemsRaw,
   warehouseStock,
-  setWarehouseStock,
+  setWarehouseStock: setWarehouseStockRaw,
   warehouseBatches,
-  setWarehouseBatches,
+  setWarehouseBatches: setWarehouseBatchesRaw,
   warehouseMovements,
-  setWarehouseMovements,
+  setWarehouseMovements: setWarehouseMovementsRaw,
   leads,
   users = [],
-  onAddTimelineEvent
+  onAddTimelineEvent: onAddTimelineEventRaw,
+  access = FULL_MODULE_ACCESS
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
+
+  const canEdit = access.edit;
+  const canDelete = access.delete;
+  const setWarehouses: typeof setWarehousesRaw = (u) => { if (!canEdit) return; setWarehousesRaw(u); };
+  const setSuppliers: typeof setSuppliersRaw = (u) => { if (!canEdit) return; setSuppliersRaw(u); };
+  const setWarehouseItems: typeof setWarehouseItemsRaw = (u) => { if (!canEdit) return; setWarehouseItemsRaw(u); };
+  const setWarehouseStock: typeof setWarehouseStockRaw = (u) => { if (!canEdit) return; setWarehouseStockRaw(u); };
+  const setWarehouseBatches: typeof setWarehouseBatchesRaw = (u) => { if (!canEdit) return; setWarehouseBatchesRaw(u); };
+  const setWarehouseMovements: typeof setWarehouseMovementsRaw = (u) => { if (!canEdit) return; setWarehouseMovementsRaw(u); };
+  const onAddTimelineEvent = onAddTimelineEventRaw
+    ? ((leadId: string, event: any) => { if (!canEdit) return; onAddTimelineEventRaw(leadId, event); })
+    : undefined;
 
   // Active Tab
   type TabType = "items" | "movements" | "warehouses" | "suppliers" | "batches" | "analytics";
@@ -150,14 +171,19 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     const handleHash = () => {
       const rawHash = window.location.hash.replace(/^#/, "");
       if (rawHash === "warehouse/issue/new" || rawHash === "warehouse/issue" || rawHash === "warehouse/new-issue") {
-        setIsGoodsIssueOpen(true);
-        setSelectedProductDetailId(null);
-        setActiveSubTab("movements");
+        if (!canEdit) {
+          setIsGoodsIssueOpen(false);
+          setSelectedProductDetailId(null);
+        } else {
+          setIsGoodsIssueOpen(true);
+          setSelectedProductDetailId(null);
+          setActiveSubTab("movements");
+        }
       } else if (rawHash.startsWith("warehouse/") || rawHash.startsWith("warehouse-")) {
         setIsGoodsIssueOpen(false);
         const sub = rawHash.replace(/^warehouse[\/-]/, "");
         if (sub === "new") {
-          setSelectedProductDetailId("new");
+          setSelectedProductDetailId(canEdit ? "new" : null);
           setActiveSubTab("items");
         } else if (sub.startsWith("item-item-")) {
           // Handle legacy redundant prefix
@@ -181,7 +207,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     handleHash();
     window.addEventListener("hashchange", handleHash);
     return () => window.removeEventListener("hashchange", handleHash);
-  }, []);
+  }, [canEdit]);
 
   // When selectedProductDetailId changes from URL, auto-populate itemForm
   useEffect(() => {
@@ -599,117 +625,75 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     }).sort((a, b) => new Date(a.expirationDate).getTime() - new Date(b.expirationDate).getTime());
   }, [warehouseBatches, warehouseItems, warehouses]);
 
-  // ARES / RegisterUZ Auto-fill helper
-  const handleFetchAres = async (icoInput: string) => {
-    const ico = icoInput.replace(/\s+/g, "");
-    if (!ico || ico.length < 6) {
+  // ------------------------------------------------------- company registry
+  // The supplier form searches the same registers as the client forms: type a
+  // name, IČO, DIČ or IČ DPH and pick a row, or press Auto-Fill with an IČO
+  // already in the field. Sole traders (zrsr.sk) resolve like companies do.
+  const supplierLookup = useCompanyLookup<CompanyLookupField>({ country: supplierForm.country });
+
+  const searchSupplierRegistry = (field: CompanyLookupField, value: string) => {
+    supplierLookup.search(field, value, supplierForm.country);
+  };
+
+  const applyRegistryToSupplier = (details: CompanyDetails) => {
+    setSupplierForm(prev => ({
+      ...prev,
+      name: details.name || prev.name,
+      companyId: details.companyId || prev.companyId,
+      taxId: details.taxId || prev.taxId,
+      vatId: details.vatId || prev.vatId,
+      street: details.street || prev.street,
+      city: details.city || prev.city,
+      postalCode: details.postalCode || prev.postalCode,
+      country: details.country || prev.country
+    }));
+
+    if (typeof (window as any).showToast === "function") {
+      (window as any).showToast(t("Supplier details loaded from the business register.", "Údaje dodávateľa boli načítané z registra.", "A beszállító adatai betöltve a cégjegyzékből."));
+    }
+  };
+
+  const handleSelectSupplierSuggestion = async (item: CompanySuggestion) => {
+    if (!canEdit) return;
+    const details = await supplierLookup.select(item, supplierForm.country);
+
+    if (details) {
+      applyRegistryToSupplier(details);
+      return;
+    }
+
+    // Detail lookup failed — keep what the picked row already carried.
+    setSupplierForm(prev => ({
+      ...prev,
+      name: item.name || prev.name,
+      companyId: item.companyId || prev.companyId,
+      taxId: item.taxId || prev.taxId,
+      vatId: item.taxId ? `${registryCountryOf(prev.country) === "CZ" ? "CZ" : "SK"}${item.taxId}` : prev.vatId
+    }));
+    if (typeof (window as any).showToast === "function") {
+      (window as any).showToast(t("Error loading company details.", "Chyba pri načítaní údajov z registra.", "Hiba a cégadatok betöltésekor."), "error");
+    }
+  };
+
+  /** The Auto-Fill button: one IČO, no suggestion picked. */
+  const handleFetchRegistry = async (icoInput: string) => {
+    if (!canEdit) return;
+    const ico = icoInput.replace(/\D+/g, "");
+    if (ico.length < 6) {
       alert(t("Please enter a valid 8-digit IČO number.", "Zadajte platné 8-miestne IČO.", "Kérjük, adjon meg érvényes 8 jegyű adószámot."));
       return;
     }
 
     setIsAresLoading(true);
     try {
-      // 1. Try Slovak Register (RegisterUZ via /api/registeruz.php)
-      try {
-        const skRes = await fetch(`/api/registeruz.php?action=lookup&ico=${encodeURIComponent(ico)}`);
-        if (skRes.ok) {
-          const skData = await skRes.json();
-          if (skData && (skData.nazovUJ || skData.ico)) {
-            const nameVal = skData.nazovUJ || "";
-            const companyIdVal = skData.ico || ico;
-            const taxIdVal = skData.dic || "";
-            let vatVal = "";
-            if (skData.dic) {
-              vatVal = skData.dic.toUpperCase().startsWith("SK") ? skData.dic : `SK${skData.dic}`;
-            }
-
-            setSupplierForm(prev => ({
-              ...prev,
-              name: nameVal || prev.name,
-              companyId: companyIdVal,
-              taxId: taxIdVal || prev.taxId,
-              vatId: vatVal || prev.vatId,
-              street: skData.ulica || prev.street,
-              city: skData.mesto || prev.city,
-              postalCode: skData.psc || prev.postalCode,
-              country: "Slovakia"
-            }));
-
-            if (typeof (window as any).showToast === "function") {
-              (window as any).showToast(t("Supplier details loaded from Slovak Register.", "Údaje dodávateľa boli úspešne načítané z registra.", "A beszállító adatai sikeresen betöltve."));
-            }
-            return;
-          }
-        }
-      } catch (skErr) {
-        console.warn("RegisterUZ lookup error:", skErr);
+      // Without a country the number is tried against both registers — an
+      // 8-digit IČO looks the same on either side of the border.
+      const details = await fetchCompanyDetailsByCompanyId(ico, registryCountryOf(supplierForm.country) ? supplierForm.country : null);
+      if (details) {
+        applyRegistryToSupplier(details);
+        return;
       }
-
-      // 2. Try Czech Register (ARES CZ via /api/ares_cz.php or direct ARES fallback)
-      try {
-        let czData: any = null;
-        try {
-          const czRes = await fetch(`/api/ares_cz.php?action=detail&id=${encodeURIComponent(ico)}`);
-          if (czRes.ok) {
-            czData = await czRes.json();
-          }
-        } catch {}
-
-        if (!czData || !czData.obchodniJmeno) {
-          const directAres = await fetch(`https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/ekonomicke-subjekty/${encodeURIComponent(ico)}`);
-          if (directAres.ok) {
-            czData = await directAres.json();
-          }
-        }
-
-        if (czData && (czData.obchodniJmeno || czData.ico)) {
-          const nameVal = czData.obchodniJmeno || "";
-          const companyIdVal = czData.ico || ico;
-          let rawDic = czData.dic || "";
-          let cleanedTaxId = rawDic;
-          if (rawDic.toUpperCase().startsWith("CZ")) {
-            cleanedTaxId = rawDic.substring(2);
-          }
-          let vatVal = rawDic;
-          if (!vatVal && czData.ico) {
-            vatVal = `CZ${czData.ico}`;
-          }
-
-          const sidlo = czData.sidlo || {};
-          const cityVal = sidlo.nazevObce || "";
-          const streetPart = sidlo.nazevUlice || sidlo.nazevCastiObce || sidlo.nazevObce || "";
-          const houseNo = sidlo.cisloDomovni || "";
-          const orientNo = sidlo.cisloOrientacni || "";
-          let streetVal = streetPart;
-          if (houseNo || orientNo) {
-            streetVal += " " + houseNo + (orientNo ? "/" + orientNo : "");
-          }
-          if (!streetVal && czData.textovaAdresa) {
-            streetVal = czData.textovaAdresa;
-          }
-
-          setSupplierForm(prev => ({
-            ...prev,
-            name: nameVal || prev.name,
-            companyId: companyIdVal,
-            taxId: cleanedTaxId || prev.taxId,
-            vatId: vatVal || prev.vatId,
-            street: streetVal.trim() || prev.street,
-            city: cityVal || prev.city,
-            postalCode: sidlo.psc ? String(sidlo.psc) : prev.postalCode,
-            country: "Czech Republic"
-          }));
-
-          if (typeof (window as any).showToast === "function") {
-            (window as any).showToast(t("Supplier details loaded from Czech ARES.", "Údaje dodávateľa boli úspešne načítané z ARES.", "A beszállító adatai sikeresen betöltve az ARES-ből."));
-          }
-          return;
-        }
-      } catch (czErr) {
-        console.warn("ARES fetch failed:", czErr);
-      }
-
-      alert(t("Company not found in Slovak (RegisterUZ) or Czech (ARES) register.", "Spoločnosť sa nenašla v obchodnom registri (SR ani ČR).", "A vállalat nem található a cégjegyzékben."));
+      alert(t("Company not found in the Slovak or Czech business register.", "Spoločnosť sa nenašla v obchodnom registri (SR ani ČR).", "A vállalat nem található a cégjegyzékben."));
     } catch (err) {
       console.warn("Register fetch failed", err);
       alert(t("Lookup failed. Please enter details manually.", "Vyhľadávanie v registri zlyhalo. Vyplňte údaje ručne.", "A lekérdezés sikertelen."));
@@ -719,6 +703,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   };
 
   const handleOpenCreateItem = () => {
+    if (!canEdit) return;
     setEditingItem(null);
     setItemForm({
       name: "",
@@ -768,6 +753,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   };
 
   const handleProductImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!canEdit) return;
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -810,6 +796,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   };
 
   const startHoldToUnlock = () => {
+    if (!canEdit) return;
     if (!isProductCardLocked) return;
     setIsHoldingLock(true);
     setLockHoldProgress(0);
@@ -873,6 +860,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   }, [suppliers, leads, t]);
 
   const handleOpenProductPurchaseModal = () => {
+    if (!canEdit) return;
     const currentItem = warehouseItems.find(i => i.id === selectedProductDetailId);
     if (!currentItem) return;
     setProductPurchasePartnerId(suppliers[0] ? `sup_${suppliers[0].id}` : (leads[0] ? `lead_${leads[0].id}` : ""));
@@ -888,6 +876,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   };
 
   const handleOpenProductSaleModal = () => {
+    if (!canEdit) return;
     const currentItem = warehouseItems.find(i => i.id === selectedProductDetailId);
     if (!currentItem) return;
     setProductSalePartnerId(leads[0] ? `lead_${leads[0].id}` : (suppliers[0] ? `sup_${suppliers[0].id}` : ""));
@@ -904,6 +893,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   };
 
   const handleSaveProductPurchase = () => {
+    if (!canEdit) return;
     const currentItem = warehouseItems.find(i => i.id === selectedProductDetailId);
     if (!currentItem) return;
     if (productPurchaseAmount <= 0) {
@@ -1017,6 +1007,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   };
 
   const handleSaveProductSale = () => {
+    if (!canEdit) return;
     const currentItem = warehouseItems.find(i => i.id === selectedProductDetailId);
     if (!currentItem) return;
     if (productSaleAmount <= 0) {
@@ -1106,6 +1097,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   };
 
   const handleDeleteItem = (itemId: string) => {
+    if (!canDelete) return;
     const item = warehouseItems.find(i => i.id === itemId);
     if (!window.confirm(t(
       `Are you sure you want to delete product "${item?.name || itemId}"? This will remove all associated stock records.`,
@@ -1128,6 +1120,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
   // Save / Update Item handler
   const handleSaveItem = () => {
+    if (!canEdit) return;
     if (!itemForm.name.trim() || !itemForm.sku.trim()) {
       alert(t("Please fill in Product Name and SKU.", "Vyplňte názov tovaru a SKU kód.", "Kérjük, töltse ki a termék nevét és a cikkszámot."));
       return;
@@ -1194,6 +1187,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
   // Save / Update Supplier handler
   const handleSaveSupplier = () => {
+    if (!canEdit) return;
     if (!supplierForm.name.trim()) {
       alert(t("Please enter supplier company name.", "Zadajte názov dodávateľa.", "Adja meg a szállító nevét."));
       return;
@@ -1253,6 +1247,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
   // Delete Supplier handler
   const handleDeleteSupplier = (supplierId: string) => {
+    if (!canDelete) return;
     const sup = suppliers.find(s => s.id === supplierId);
     if (!sup) return;
 
@@ -1280,6 +1275,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
   // Save / Update Warehouse handler
   const handleSaveWarehouse = () => {
+    if (!canEdit) return;
     if (!warehouseForm.name.trim()) {
       alert(t("Please enter warehouse name.", "Zadajte názov skladu.", "Adja meg a raktár nevét."));
       return;
@@ -1337,6 +1333,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
   // Delete Warehouse handler
   const handleDeleteWarehouse = (warehouseId: string) => {
+    if (!canDelete) return;
     const wh = warehouses.find(w => w.id === warehouseId);
     if (!wh) return;
 
@@ -1390,6 +1387,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
   // Set Default Warehouse
   const handleSetDefaultWarehouse = (warehouseId: string) => {
+    if (!canEdit) return;
     setWarehouses(prev => prev.map(w => ({
       ...w,
       isDefault: w.id === warehouseId
@@ -1398,6 +1396,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
   // Submit New Receipt (Príjemka - PRI)
   const handleCreateReceipt = () => {
+    if (!canEdit) return;
     const validItems = receiptItems.filter(it => it.itemId && it.quantity > 0);
     if (validItems.length === 0) {
       alert(t("Please add at least one item with valid quantity.", "Pridajte aspoň jednu položku s platným množstvom.", "Kérjük, adjon hozzá legalább egy érvényes tételt."));
@@ -1522,6 +1521,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   // DEDICATED GOODS ISSUE (VÝDAJKA) LOGIC & HELPERS
   // ---------------------------------------------------------------------------
   const handleOpenGoodsIssue = (prefillItemId?: string) => {
+    if (!canEdit) return;
     setIsGoodsIssueOpen(true);
     setSelectedProductDetailId(null);
     
@@ -1572,6 +1572,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     unitSellPrice: number | string;
     note: string;
   }>) => {
+    if (!canEdit) return;
     setIssueItems(prev => prev.map(row => {
       if (row.id !== rowId) return row;
       const updated = { ...row, ...patch };
@@ -1621,6 +1622,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   };
 
   const handleAddProductToIssue = (item: WarehouseItem) => {
+    if (!canEdit) return;
     const existing = issueItems.find(r => r.itemId === item.id);
     if (existing) {
       handleUpdateIssueRow(existing.id, { quantity: Number((Number(existing.quantity) + 1).toFixed(2)) });
@@ -1642,6 +1644,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   };
 
   const handleAddEmptyIssueRow = () => {
+    if (!canEdit) return;
     const defaultItem = warehouseItems[0];
     const newRow = {
       id: `gi-row-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -1657,11 +1660,13 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   };
 
   const handleRemoveIssueRow = (rowId: string) => {
+    if (!canDelete) return;
     setIssueItems(prev => prev.filter(r => r.id !== rowId));
   };
 
   // Submit New Issue (Výdajka - VYD)
   const handleCreateIssue = () => {
+    if (!canEdit) return;
     const validItems = issueItems.filter(it => it.itemId && Number(it.quantity) > 0);
     if (validItems.length === 0) {
       alert(t("Please add at least one item with valid quantity.", "Pridajte aspoň jednu položku s platným množstvom.", "Kérjük, adjon hozzá legalább egy érvényes tételt."));
@@ -1788,6 +1793,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
   // Submit New Transfer (Prevodka - PRE)
   const handleCreateTransfer = () => {
+    if (!canEdit) return;
     if (transferSourceWh === transferTargetWh) {
       alert(t("Source and Destination warehouses cannot be the same.", "Zdrojový a cieľový sklad nemôžu byť zhodné.", "A forrás- és célraktár nem lehet azonos."));
       return;
@@ -1894,7 +1900,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   // ---------------------------------------------------------------------------
   // DEDICATED FULL VIEW: NEW GOODS ISSUE (VÝDAJKA TOVARU A PREDAJ ZÁKAZNÍKOVI)
   // ---------------------------------------------------------------------------
-  if (isGoodsIssueOpen) {
+  if (isGoodsIssueOpen && canEdit) {
     const selectedClient = leads.find(l => l.id === issueLeadId);
     
     const filteredClients = leads.filter(l => 
@@ -1985,6 +1991,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               {t("Cancel", "Zrušiť", "Mégse")}
             </button>
 
+            {canEdit && (
             <button
               onClick={handleCreateIssue}
               className={`flex items-center gap-1.5 md:gap-2 rounded-xl bg-blue-950 hover:bg-blue-900 text-white font-black shadow-lg shadow-blue-950/20 transition-all ${
@@ -1994,6 +2001,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               <CheckCircle2 className={isHeaderStuck ? "w-3.5 h-3.5 text-emerald-400" : "w-4 h-4 text-emerald-400"} />
               <span>{t("Confirm Issue & Deduct Stock", "Vytvoriť výdajku a odpísať zo skladu", "Kiadás megerősítése")}</span>
             </button>
+            )}
           </div>
         </div>
 
@@ -2431,6 +2439,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                 </div>
                                 <span className="text-[10px] text-slate-400">/{prod.unit}</span>
                               </div>
+                              {canEdit && (
                               <button
                                 type="button"
                                 className="px-3 py-1.5 rounded-xl bg-blue-950 group-hover:bg-blue-900 text-white text-xs font-bold transition flex items-center gap-1 shadow-sm"
@@ -2438,6 +2447,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                 <Plus className="w-3.5 h-3.5" />
                                 <span>{t("Add", "Pridať", "Hozzáadás")}</span>
                               </button>
+                              )}
                             </div>
                           </div>
                         );
@@ -2447,6 +2457,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 )}
               </div>
 
+              {canEdit && (
               <button
                 type="button"
                 onClick={handleAddEmptyIssueRow}
@@ -2455,6 +2466,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 <Plus className="w-4 h-4" />
                 <span>{t("Add Empty Row", "Pridať prázdny riadok", "Üres sor hozzáadása")}</span>
               </button>
+              )}
             </div>
 
             {/* LINE ITEMS DATA GRID */}
@@ -2567,7 +2579,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                           { value: "", label: t("Auto: Earliest Expiration (FEFO)", "Auto: Najskoršia exspirácia (FEFO)", "Legkorábbi lejárat") },
                                           ...itemBatches.map(b => ({
                                             value: b.id,
-                                            label: `${b.batchNumber} (Exp: ${b.expirationDate}, ${b.currentQuantity} ${selItem.unit})`,
+                                            label: `${b.batchNumber} (Exp: ${formatDateLocalized(b.expirationDate, systemLanguage)}, ${b.currentQuantity} ${selItem.unit})`,
                                           })),
                                         ]}
                                         size="sm"
@@ -2684,14 +2696,16 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
                             {/* 9. Actions */}
                             <td className="py-3 px-2 text-center">
+                              {canDelete && (
                               <button
                                 type="button"
-                                onClick={() => handleRemoveIssueRow(row.id)}
+                                onClick={() => { if (!canDelete) return; handleRemoveIssueRow(row.id); }}
                                 className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition"
                                 title={t("Remove Row", "Odstrániť riadok", "Sor törlése")}
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
+                              )}
                             </td>
                           </tr>
                         );
@@ -2703,6 +2717,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
               {/* TABLE FOOTER */}
               <div className="p-4 bg-slate-50 border-t border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-3">
+                {canEdit && (
                 <button
                   type="button"
                   onClick={handleAddEmptyIssueRow}
@@ -2711,6 +2726,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   <Plus className="w-4 h-4" />
                   <span>{t("Add another line item", "Pridať ďalšiu položku do zoznamu", "További tétel hozzáadása")}</span>
                 </button>
+                )}
 
                 <div className="flex items-center gap-4 text-xs">
                   <span className="text-slate-500">
@@ -2733,7 +2749,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   // ---------------------------------------------------------------------------
   // DEDICATED FULL VIEW: PRODUCT CREATE / EDIT & 360° INVENTORY MANAGEMENT
   // ---------------------------------------------------------------------------
-  if (selectedProductDetailId !== null) {
+  if (selectedProductDetailId !== null && (canEdit || selectedProductDetailId !== "new")) {
     const isNew = selectedProductDetailId === "new";
     const currentItem = isNew ? null : warehouseItems.find(i => i.id === selectedProductDetailId);
     const overallStock = currentItem ? getStockInfoForItem(currentItem.id, "all") : { onHand: 0, reserved: 0, available: 0, locations: "" };
@@ -2886,6 +2902,13 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               </button>
             )}
 
+            {!canEdit && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider">
+                <Lock className="h-3.5 w-3.5" />
+                {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
+              </span>
+            )}
+
             <button
               onClick={() => {
                 setSelectedProductDetailId(null);
@@ -2900,9 +2923,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               {t("Cancel", "Zrušiť", "Mégse")}
             </button>
 
-            {!isNew && (
+            {!isNew && canDelete && (
               <button
-                onClick={() => currentItem && handleDeleteItem(currentItem.id)}
+                onClick={() => { if (!canDelete) return; currentItem && handleDeleteItem(currentItem.id); }}
                 className={`rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold transition-all flex items-center gap-1.5 ${
                   isHeaderStuck ? "p-1.5 md:px-2.5 md:py-1.5 text-xs" : "p-2.5 text-xs rounded-2xl"
                 }`}
@@ -2913,6 +2936,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               </button>
             )}
 
+            {canEdit && (
             <button
               onClick={handleSaveItem}
               className={`flex items-center gap-1.5 md:gap-2 rounded-xl bg-blue-950 hover:bg-blue-900 text-white font-black shadow-lg shadow-blue-950/20 transition-all ${
@@ -2922,6 +2946,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               <Save className={isHeaderStuck ? "w-3.5 h-3.5" : "w-4 h-4"} />
               <span>{isNew ? t("Create Product", "Vytvoriť tovar", "Termék létrehozása") : t("Save Changes", "Uložiť zmeny", "Módosítások mentése")}</span>
             </button>
+            )}
           </div>
         </div>
 
@@ -3035,7 +3060,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   <span>{t("Fixed Product Data", "Pevné údaje tovaru", "Fix termékadatok")}</span>
                 </div>
 
-                {isProductCardLocked ? (
+                {canEdit && (isProductCardLocked ? (
                   <button
                     type="button"
                     onMouseDown={startHoldToUnlock}
@@ -3071,7 +3096,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     <Unlock className="w-3.5 h-3.5 text-emerald-600" />
                     <span className="text-[11px] font-bold">{t("Unlocked", "Odomknuté", "Feloldva")}</span>
                   </button>
-                )}
+                ))}
               </div>
 
               {/* TOP HEADER: SMALL IMAGE (WITH UPLOAD) ON LEFT, NAME ON RIGHT (WEBSHOP STYLE) */}
@@ -3324,7 +3349,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     </div>
 
                     {/* Add new option button if query is entered and doesn't match */}
-                    {categorySearchQuery.trim() && !allAvailableCategories.some(c => c.toLowerCase() === categorySearchQuery.trim().toLowerCase()) && (
+                    {categorySearchQuery.trim() && !allAvailableCategories.some(c => c.toLowerCase() === categorySearchQuery.trim().toLowerCase()) && canEdit && (
                       <button
                         type="button"
                         onClick={() => {
@@ -3535,7 +3560,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             </div>
 
             {/* QUICK ACTIONS CARD (IF EDITING) */}
-            {!isNew && currentItem && (
+            {!isNew && currentItem && canEdit && (
               <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm space-y-3">
                 <h3 className="font-bold text-slate-900 text-xs uppercase tracking-wider text-slate-400">
                   {t("Quick Operations", "Rýchle operácie s tovarom", "Gyors műveletek")}
@@ -3990,7 +4015,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                               </div>
                                             </td>
                                             <td className="py-2.5 px-3 font-mono text-slate-700">
-                                              {batch.expirationDate ? batch.expirationDate.slice(0, 10) : "-"}
+                                              {batch.expirationDate ? formatDateLocalized(batch.expirationDate, systemLanguage) : "-"}
                                             </td>
                                             <td className="py-2.5 px-3">
                                               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 ${
@@ -4045,6 +4070,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   </div>
 
                   {/* ACTION BUTTONS */}
+                  {canEdit && (
                   <div className="flex items-center gap-2 shrink-0">
                     <button
                       type="button"
@@ -4052,7 +4078,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
                     >
                       <ArrowDownLeft className="w-4 h-4" />
-                      <span>{t("Log Purchase (PRI)", "+ Zaznamenať nákup (PRI)", "+ Bevételezés (PRI)")}</span>
+                      <span>{t("Log Purchase (PRI)", "Zaznamenať nákup (PRI)", "Bevételezés (PRI)")}</span>
                     </button>
 
                     <button
@@ -4064,6 +4090,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       <span>{t("Log Sale (VYD)", "- Zaznamenať predaj (VYD)", "- Kiadás (VYD)")}</span>
                     </button>
                   </div>
+                  )}
                 </div>
 
                 {/* MOVEMENTS TABLE */}
@@ -4076,6 +4103,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       <p className="text-sm font-semibold text-slate-600">
                         {t("No stock movements recorded for this product yet.", "Pre tento tovar zatiaľ neboli zaevidované žiadne skladové pohyby.", "Még nincsenek rögzített mozgások.")}
                       </p>
+                      {canEdit && (
                       <button
                         type="button"
                         onClick={handleOpenProductPurchaseModal}
@@ -4084,6 +4112,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         <ArrowDownLeft className="w-4 h-4" />
                         <span>{t("Log First Purchase", "Zaznamenať prvý nákup", "Első bevételezés")}</span>
                       </button>
+                      )}
                     </div>
                   ) : (
                     <div className="overflow-x-auto rounded-2xl border border-slate-100">
@@ -4111,7 +4140,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                             return (
                               <tr key={mov.id} className="hover:bg-slate-50/60 transition">
                                 <td className="py-3 px-3.5 font-mono text-slate-500 text-[11px]">
-                                  {mov.issuedAt ? mov.issuedAt.slice(0, 16) : mov.createdAt?.slice(0, 16)}
+                                  {formatTimestampLocalized(mov.issuedAt ? mov.issuedAt.slice(0, 16) : mov.createdAt?.slice(0, 16), systemLanguage)}
                                 </td>
                                 <td className="py-3 px-3.5">
                                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
@@ -4182,7 +4211,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
         </div>
 
         {/* MODAL: LOG PURCHASE (PRI) FOR CURRENT PRODUCT */}
-        {isProductPurchaseModalOpen && currentItem && (
+        {isProductPurchaseModalOpen && currentItem && canEdit && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
             <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-6 space-y-4 border border-slate-100 max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -4397,6 +4426,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   >
                     {t("Cancel", "Zrušiť", "Mégse")}
                   </button>
+                  {canEdit && (
                   <button
                     type="button"
                     onClick={handleSaveProductPurchase}
@@ -4405,6 +4435,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     <Check className="w-4 h-4" />
                     <span>{t("Confirm Receipt", "Potvrdiť príjemku", "Bevételezés rögzítése")}</span>
                   </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -4412,7 +4443,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
         )}
 
         {/* MODAL: LOG SALE (VYD) FOR CURRENT PRODUCT */}
-        {isProductSaleModalOpen && currentItem && (
+        {isProductSaleModalOpen && currentItem && canEdit && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
             <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-6 space-y-4 border border-slate-100 max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -4593,7 +4624,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       return selBatch ? (
                         <div className="flex items-center gap-2">
                           <span className="font-mono font-bold text-slate-900">{selBatch.batchNumber}</span>
-                          <span className="text-slate-500 font-mono">({selBatch.expirationDate?.slice(0, 10)})</span>
+                          <span className="text-slate-500 font-mono">({formatDateLocalized(selBatch.expirationDate, systemLanguage)})</span>
                           {expStatus && (
                             <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
                               expStatus.status === "expired" ? "bg-rose-100 text-rose-800" : expStatus.status === "warning" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"
@@ -4664,7 +4695,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                               <div>
                                 <div className="flex items-center gap-2">
                                   <span className="font-mono font-bold">{b.batchNumber}</span>
-                                  <span className="font-mono text-[11px] opacity-80">({b.expirationDate?.slice(0, 10)})</span>
+                                  <span className="font-mono text-[11px] opacity-80">({formatDateLocalized(b.expirationDate, systemLanguage)})</span>
                                   {bIdx === 0 && (
                                     <span className="px-1.5 py-0.2 rounded bg-amber-200 text-amber-900 text-[9px] font-black uppercase">
                                       FEFO
@@ -4720,6 +4751,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   >
                     {t("Cancel", "Zrušiť", "Mégse")}
                   </button>
+                  {canEdit && (
                   <button
                     type="button"
                     onClick={handleSaveProductSale}
@@ -4728,6 +4760,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     <Check className="w-4 h-4" />
                     <span>{t("Confirm Issue", "Potvrdiť výdajku", "Kiadás megerősítése")}</span>
                   </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -4753,6 +4786,12 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
         {/* Quick Action Buttons */}
         <div className="flex flex-wrap items-center gap-2.5">
+          {!canEdit && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider">
+              <Lock className="h-3.5 w-3.5" />
+              {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
+            </span>
+          )}
           {/* Warehouse Selector */}
           <div className="flex items-center gap-1.5 min-w-[210px]">
             <CustomSelect
@@ -4777,6 +4816,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             </button>
           </div>
 
+          {canEdit && (
           <button
             onClick={handleOpenCreateItem}
             className="flex items-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-semibold shadow-md transition hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
@@ -4784,7 +4824,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             <Plus className="w-4 h-4" />
             <span>{t("New Item", "Nový tovar", "Új termék")}</span>
           </button>
+          )}
 
+          {canEdit && (
           <button
             onClick={() => setIsReceiptModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-semibold shadow-md shadow-emerald-600/20 transition hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
@@ -4792,7 +4834,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             <ArrowDownLeft className="w-4 h-4" />
             <span>{t("Receipt (PRI)", "Príjemka (PRI)", "Bevételezés")}</span>
           </button>
+          )}
 
+          {canEdit && (
           <button
             onClick={() => handleOpenGoodsIssue()}
             className="flex items-center gap-2 px-4 py-2.5 bg-blue-900 hover:bg-blue-800 text-white rounded-2xl text-xs font-semibold shadow-md shadow-blue-900/20 transition hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
@@ -4800,7 +4844,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             <ArrowUpRight className="w-4 h-4" />
             <span>{t("Issue (VYD)", "Výdajka (VYD)", "Kiadás")}</span>
           </button>
+          )}
 
+          {canEdit && (
           <button
             onClick={() => setIsTransferModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl text-xs font-semibold transition hover:scale-[1.02] active:scale-[0.98] cursor-pointer border border-slate-200"
@@ -4808,6 +4854,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             <ArrowLeftRight className="w-4 h-4" />
             <span>{t("Transfer", "Prevodka", "Átadás")}</span>
           </button>
+          )}
         </div>
       </div>
 
@@ -5233,6 +5280,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                               >
                                 <Link2 className="w-3.5 h-3.5" />
                               </button>
+                              {canEdit && (
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -5243,6 +5291,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                               >
                                 <Edit2 className="w-3.5 h-3.5" />
                               </button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -5299,6 +5348,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               </button>
             </div>
 
+            {canEdit && (
             <button
               onClick={() => handleOpenGoodsIssue()}
               className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs font-bold transition shadow-sm"
@@ -5306,6 +5356,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               <Plus className="w-3.5 h-3.5" />
               <span>{t("New Goods Issue (VYD)", "Nová výdajka (VYD)", "Új kiadás (VYD)")}</span>
             </button>
+            )}
           </div>
 
           {/* Movements Document Journal */}
@@ -5359,7 +5410,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                               {mov.type === "inward" ? t("Receipt", "Príjemka", "Bevétel") : mov.type === "outward" ? t("Issue", "Výdajka", "Kiadás") : t("Transfer", "Prevodka", "Átadás")}
                             </span>
                             <span className="text-xs text-slate-400">&bull;</span>
-                            <span className="text-xs text-slate-500 font-mono">{mov.issuedAt}</span>
+                            <span className="text-xs text-slate-500 font-mono">{formatTimestampLocalized(mov.issuedAt, systemLanguage)}</span>
                           </div>
 
                           <div className="text-xs text-slate-600 mt-1 flex flex-wrap items-center gap-2">
@@ -5473,6 +5524,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               </p>
             </div>
 
+            {canEdit && (
             <button
               onClick={() => {
                 setEditingWarehouse(null);
@@ -5490,6 +5542,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               <Plus className="w-4 h-4" />
               <span>{t("New Warehouse", "Pridať sklad", "Új raktár")}</span>
             </button>
+            )}
           </div>
 
           {/* Warehouses Grid */}
@@ -5534,6 +5587,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
                       {/* Action buttons */}
                       <div className="flex items-center gap-1">
+                        {canEdit && (
                         <button
                           onClick={() => {
                             setEditingWarehouse(wh);
@@ -5551,13 +5605,16 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
+                        )}
+                        {canDelete && (
                         <button
-                          onClick={() => handleDeleteWarehouse(wh.id)}
+                          onClick={() => { if (!canDelete) return; handleDeleteWarehouse(wh.id); }}
                           className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
                           title={t("Delete Warehouse", "Vymazať sklad", "Raktár törlése")}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
+                        )}
                       </div>
                     </div>
 
@@ -5600,6 +5657,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   {/* Card Footer Actions */}
                   <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2 text-xs">
                     {!wh.isDefault ? (
+                      canEdit ? (
                       <button
                         onClick={() => handleSetDefaultWarehouse(wh.id)}
                         className="text-[11px] font-semibold text-slate-500 hover:text-amber-700 flex items-center gap-1 transition cursor-pointer"
@@ -5607,6 +5665,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         <Star className="w-3 h-3" />
                         <span>{t("Set as default", "Nastaviť ako predvolený", "Legyen alapértelmezett")}</span>
                       </button>
+                      ) : <span />
                     ) : (
                       <span className="text-[11px] font-semibold text-amber-700 flex items-center gap-1">
                         <Check className="w-3 h-3" />
@@ -5645,6 +5704,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               </p>
             </div>
 
+            {canEdit && (
             <button
               onClick={() => {
                 setEditingSupplier(null);
@@ -5673,6 +5733,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               <Plus className="w-4 h-4" />
               <span>{t("New Supplier", "Pridať dodávateľa", "Új beszállító")}</span>
             </button>
+            )}
           </div>
 
           {/* Suppliers Cards Grid */}
@@ -5694,6 +5755,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     </div>
 
                     <div className="flex items-center gap-1">
+                      {canEdit && (
                       <button
                         onClick={() => {
                           setEditingSupplier(sup);
@@ -5724,14 +5786,17 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       >
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
+                      )}
 
+                      {canDelete && (
                       <button
-                        onClick={() => handleDeleteSupplier(sup.id)}
+                        onClick={() => { if (!canDelete) return; handleDeleteSupplier(sup.id); }}
                         className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
                         title={t("Delete Supplier", "Vymazať dodávateľa", "Beszállító törlése")}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
+                      )}
                     </div>
                   </div>
 
@@ -5851,7 +5916,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       </td>
 
                       <td className="py-3 px-4 font-mono font-bold text-slate-900">
-                        {batch.expirationDate}
+                        {formatDateLocalized(batch.expirationDate, systemLanguage)}
                       </td>
 
                       <td className="py-3 px-4 text-right font-black text-slate-900 text-sm">
@@ -5948,7 +6013,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       {/* ========================================================================= */}
       {/* MODAL 2: NEW RECEIPT (PRÍJEMKA - PRI) */}
       {/* ========================================================================= */}
-      {isReceiptModalOpen && (
+      {isReceiptModalOpen && canEdit && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-3xl max-w-3xl w-full p-6 shadow-2xl border border-slate-100 my-8">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
@@ -6027,6 +6092,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                     {t("Receipt Line Items", "Prijímané položky", "Tételek")}
                   </label>
+                  {canEdit && (
                   <button
                     type="button"
                     onClick={() => setReceiptItems([...receiptItems, { itemId: warehouseItems[0]?.id || "", quantity: 1, unitPurchasePrice: warehouseItems[0]?.avgPurchasePrice || 0, batchNumber: "", expirationDate: "", note: "" }])}
@@ -6035,6 +6101,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     <Plus className="w-3.5 h-3.5" />
                     <span>{t("Add Row", "Pridať položku", "Sor hozzáadása")}</span>
                   </button>
+                  )}
                 </div>
 
                 <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
@@ -6095,9 +6162,11 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                               placeholder="Nákupná cena"
                               className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold text-emerald-800"
                             />
+                            {canDelete && (
                             <button
                               type="button"
                               onClick={() => {
+                                if (!canDelete) return;
                                 if (receiptItems.length > 1) {
                                   setReceiptItems(receiptItems.filter((_, i) => i !== idx));
                                 }
@@ -6106,6 +6175,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
+                            )}
                           </div>
                         </div>
 
@@ -6153,6 +6223,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               >
                 {t("Cancel", "Zrušiť", "Mégse")}
               </button>
+              {canEdit && (
               <button
                 onClick={handleCreateReceipt}
                 className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-sm flex items-center gap-1.5"
@@ -6160,6 +6231,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 <CheckCircle2 className="w-4 h-4" />
                 <span>{t("Confirm Receipt & Update Stock", "Potvrdiť príjemku a naskladniť", "Bevételezés jóváhagyása")}</span>
               </button>
+              )}
             </div>
           </div>
         </div>
@@ -6170,7 +6242,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       {/* ========================================================================= */}
       {/* MODAL 4: NEW TRANSFER (PREVODKA - PRE) */}
       {/* ========================================================================= */}
-      {isTransferModalOpen && (
+      {isTransferModalOpen && canEdit && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 my-8">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
@@ -6249,6 +6321,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                     {t("Items to Relocate", "Presúvané položky", "Átadott tételek")}
                   </label>
+                  {canEdit && (
                   <button
                     type="button"
                     onClick={() => setTransferItems([...transferItems, { itemId: warehouseItems[0]?.id || "", quantity: 1, note: "" }])}
@@ -6257,6 +6330,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     <Plus className="w-3.5 h-3.5" />
                     <span>{t("Add Row", "Pridať položku", "Sor hozzáadása")}</span>
                   </button>
+                  )}
                 </div>
 
                 <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
@@ -6300,9 +6374,11 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                           <span className="text-[11px] text-slate-400 font-semibold">{selItem?.unit || "ks"}</span>
                         </div>
 
+                        {canDelete && (
                         <button
                           type="button"
                           onClick={() => {
+                            if (!canDelete) return;
                             if (transferItems.length > 1) {
                               setTransferItems(transferItems.filter((_, i) => i !== idx));
                             }
@@ -6311,6 +6387,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
+                        )}
                       </div>
                     );
                   })}
@@ -6325,6 +6402,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               >
                 {t("Cancel", "Zrušiť", "Mégse")}
               </button>
+              {canEdit && (
               <button
                 onClick={handleCreateTransfer}
                 className="px-5 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold transition shadow-sm flex items-center gap-1.5"
@@ -6332,6 +6410,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 <CheckCircle2 className="w-4 h-4" />
                 <span>{t("Confirm Transfer", "Potvrdiť prevodku", "Átadás jóváhagyása")}</span>
               </button>
+              )}
             </div>
           </div>
         </div>
@@ -6340,7 +6419,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       {/* ========================================================================= */}
       {/* MODAL 5: NEW / EDIT SUPPLIER */}
       {/* ========================================================================= */}
-      {isSupplierModalOpen && (
+      {isSupplierModalOpen && canEdit && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 my-8">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
@@ -6353,7 +6432,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     {editingSupplier ? t("Edit Supplier", "Upraviť dodávateľa", "Beszállító szerkesztése") : t("New Supplier", "Nový dodávateľ", "Új beszállító")}
                   </h3>
                   <p className="text-xs text-slate-500">
-                    {t("Enter IČO to auto-fill invoicing details from business register (SK/CZ)", "Zadajte IČO pre automatické načítanie údajov z registra (SR/ČR)", "Adószám megadása az automatikus kitöltéshez (SK/CZ)")}
+                    {t("Type a name, IČO, DIČ or IČ DPH to auto-fill from the business register (SK/CZ)", "Začnite písať názov, IČO, DIČ alebo IČ DPH — údaje sa načítajú z registra (SR/ČR)", "Írjon nevet, adószámot vagy közösségi adószámot az automatikus kitöltéshez (SK/CZ)")}
                   </p>
                 </div>
               </div>
@@ -6372,20 +6451,33 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     IČO {t("(Company Registration #)", "(Identifikačné číslo)", "(Cégjegyzékszám)")}
                   </label>
                   <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={supplierForm.companyId}
-                      onChange={(e) => setSupplierForm({ ...supplierForm, companyId: e.target.value })}
-                      placeholder="napr. 48123456"
-                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
-                    />
+                    <div className="relative flex-1">
+                      <input
+                        type="text"
+                        value={supplierForm.companyId}
+                        onChange={(e) => {
+                          setSupplierForm({ ...supplierForm, companyId: e.target.value });
+                          searchSupplierRegistry("companyId", e.target.value);
+                        }}
+                        placeholder="napr. 48123456"
+                        className="w-full px-3.5 py-2 pr-9 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                      />
+                      <CompanyLookupSpinner visible={supplierLookup.isLoading && supplierLookup.activeField === "companyId"} />
+                      <CompanySuggestions
+                        suggestions={supplierLookup.suggestions}
+                        visible={supplierLookup.activeField === "companyId"}
+                        onSelect={handleSelectSupplierSuggestion}
+                        onDismiss={supplierLookup.close}
+                        systemLanguage={systemLanguage}
+                      />
+                    </div>
                     <button
                       type="button"
-                      disabled={isAresLoading}
-                      onClick={() => handleFetchAres(supplierForm.companyId)}
+                      disabled={isAresLoading || supplierLookup.isResolving}
+                      onClick={() => handleFetchRegistry(supplierForm.companyId)}
                       className="px-3.5 py-2 bg-blue-900 hover:bg-blue-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shrink-0 transition"
                     >
-                      {isAresLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                      {isAresLoading || supplierLookup.isResolving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
                       <span>{t("Auto-Fill", "Načítať z registra", "Kitöltés")}</span>
                     </button>
                   </div>
@@ -6406,40 +6498,79 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   </div>
                 </div>
 
-                <div className="sm:col-span-3">
+                <div className="sm:col-span-3 relative">
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                     {t("Company Name", "Obchodné meno dodávateľa", "Cégnév")} *
                   </label>
-                  <input
-                    type="text"
-                    value={supplierForm.name}
-                    onChange={(e) => setSupplierForm({ ...supplierForm, name: e.target.value })}
-                    placeholder={t("e.g. Supplier s.r.o.", "napr. Dodávateľ s.r.o.", "pl. Beszállító Kft.")}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={supplierForm.name}
+                      onChange={(e) => {
+                        setSupplierForm({ ...supplierForm, name: e.target.value });
+                        searchSupplierRegistry("name", e.target.value);
+                      }}
+                      placeholder={t("e.g. Supplier s.r.o.", "napr. Dodávateľ s.r.o.", "pl. Beszállító Kft.")}
+                      className="w-full px-3.5 py-2 pr-9 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                    />
+                    <CompanyLookupSpinner visible={supplierLookup.isLoading && supplierLookup.activeField === "name"} />
+                  </div>
+                  <CompanySuggestions
+                    suggestions={supplierLookup.suggestions}
+                    visible={supplierLookup.activeField === "name"}
+                    onSelect={handleSelectSupplierSuggestion}
+                    onDismiss={supplierLookup.close}
+                    systemLanguage={systemLanguage}
                   />
                 </div>
 
-                <div>
+                <div className="relative">
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                     DIČ
                   </label>
-                  <input
-                    type="text"
-                    value={supplierForm.taxId}
-                    onChange={(e) => setSupplierForm({ ...supplierForm, taxId: e.target.value })}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={supplierForm.taxId}
+                      onChange={(e) => {
+                        setSupplierForm({ ...supplierForm, taxId: e.target.value });
+                        searchSupplierRegistry("taxId", e.target.value);
+                      }}
+                      className="w-full px-3.5 py-2 pr-9 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                    />
+                    <CompanyLookupSpinner visible={supplierLookup.isLoading && supplierLookup.activeField === "taxId"} />
+                  </div>
+                  <CompanySuggestions
+                    suggestions={supplierLookup.suggestions}
+                    visible={supplierLookup.activeField === "taxId"}
+                    onSelect={handleSelectSupplierSuggestion}
+                    onDismiss={supplierLookup.close}
+                    systemLanguage={systemLanguage}
                   />
                 </div>
 
-                <div>
+                <div className="relative">
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                     IČ DPH (VAT ID)
                   </label>
-                  <input
-                    type="text"
-                    value={supplierForm.vatId}
-                    onChange={(e) => setSupplierForm({ ...supplierForm, vatId: e.target.value })}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={supplierForm.vatId}
+                      onChange={(e) => {
+                        setSupplierForm({ ...supplierForm, vatId: e.target.value });
+                        searchSupplierRegistry("vatId", e.target.value);
+                      }}
+                      className="w-full px-3.5 py-2 pr-9 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-blue-900 focus:outline-none"
+                    />
+                    <CompanyLookupSpinner visible={supplierLookup.isLoading && supplierLookup.activeField === "vatId"} />
+                  </div>
+                  <CompanySuggestions
+                    suggestions={supplierLookup.suggestions}
+                    visible={supplierLookup.activeField === "vatId"}
+                    onSelect={handleSelectSupplierSuggestion}
+                    onDismiss={supplierLookup.close}
+                    systemLanguage={systemLanguage}
                   />
                 </div>
 
@@ -6521,10 +6652,10 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
             <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between gap-2">
               <div>
-                {editingSupplier && (
+                {editingSupplier && canDelete && (
                   <button
                     type="button"
-                    onClick={() => handleDeleteSupplier(editingSupplier.id)}
+                    onClick={() => { if (!canDelete) return; handleDeleteSupplier(editingSupplier.id); }}
                     className="px-3.5 py-2 text-red-600 hover:bg-red-50 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -6540,12 +6671,14 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 >
                   {t("Cancel", "Zrušiť", "Mégse")}
                 </button>
+                {canEdit && (
                 <button
                   onClick={handleSaveSupplier}
                   className="px-5 py-2 bg-blue-900 hover:bg-blue-800 text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
                 >
                   {editingSupplier ? t("Save Changes", "Uložiť zmeny", "Mentés") : t("Create Supplier", "Vytvoriť dodávateľa", "Létrehozás")}
                 </button>
+                )}
               </div>
             </div>
           </div>
@@ -6555,7 +6688,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       {/* ========================================================================= */}
       {/* MODAL 6: NEW / EDIT WAREHOUSE */}
       {/* ========================================================================= */}
-      {isWarehouseModalOpen && (
+      {isWarehouseModalOpen && canEdit && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 my-8">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
@@ -6662,10 +6795,10 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
             <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between gap-2">
               <div>
-                {editingWarehouse && (
+                {editingWarehouse && canDelete && (
                   <button
                     type="button"
-                    onClick={() => handleDeleteWarehouse(editingWarehouse.id)}
+                    onClick={() => { if (!canDelete) return; handleDeleteWarehouse(editingWarehouse.id); }}
                     className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -6681,12 +6814,14 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 >
                   {t("Cancel", "Zrušiť", "Mégse")}
                 </button>
+                {canEdit && (
                 <button
                   onClick={handleSaveWarehouse}
                   className="px-5 py-2 bg-blue-900 hover:bg-blue-800 text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
                 >
                   {editingWarehouse ? t("Save Changes", "Uložiť zmeny", "Mentés") : t("Create Warehouse", "Vytvoriť sklad", "Létrehozás")}
                 </button>
+                )}
               </div>
             </div>
           </div>
@@ -6718,7 +6853,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               </div>
 
               <div className="text-right text-xs">
-                <div className="font-bold text-slate-900">{t("Date", "Dátum", "Dátum")}: {selectedMovementForPrint.issuedAt}</div>
+                <div className="font-bold text-slate-900">{t("Date", "Dátum", "Dátum")}: {formatTimestampLocalized(selectedMovementForPrint.issuedAt, systemLanguage)}</div>
                 <div className="text-slate-400 mt-1">{t("Author", "Vystavil", "Kiállította")}: {selectedMovementForPrint.createdBy}</div>
               </div>
             </div>

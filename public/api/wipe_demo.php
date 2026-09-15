@@ -48,6 +48,9 @@ try {
     // Wipe customizable lists if "Keep Configs" was false
     if (!$keepConfigs) {
         $pdo->exec("DELETE FROM `financial_categories`;");
+        if ($pdo->query("SHOW TABLES LIKE 'client_categories'")->rowCount() > 0) {
+            $pdo->exec("DELETE FROM `client_categories`;");
+        }
         // Preserve the language the CRM was installed in BEFORE dropping the
         // settings, so the reset re-seeds the pipeline labels in that language
         // (mirrors setup.php) instead of forcing English/Slovak defaults.
@@ -77,7 +80,7 @@ try {
         foreach ($settings as $k => $v) {
             $insSet->execute([$k, $v]);
         }
-        ccrm_seed_default_financial_categories($pdo);
+        // No finance categories: those are demo data, and this is leaving demo mode.
     } else {
         // Keep custom configurations, but toggle DEMO_MODE setting to false
         $stmt = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('DEMO_MODE', 'false') ON DUPLICATE KEY UPDATE `value` = 'false'");

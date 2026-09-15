@@ -1,12 +1,14 @@
 import React, { useState, useMemo } from "react";
 import { 
   FolderOpen, FileText, Search, Clock, User, Euro, 
-  ArrowRight, Download, Handshake, Receipt, Plus, X, UploadCloud, File, Trash, Loader2, Eye
+  ArrowRight, Download, Handshake, Receipt, Plus, X, UploadCloud, File, Trash, Loader2, Eye, Lock
 } from "lucide-react";
 import type { Lead } from "../types";
 import { CustomSelect } from "./ui/CustomSelect";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
+import type { ModuleAccess } from "../utils/permissions";
+import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import { formatBytes } from "../utils/formatBytes";
 import { formatMoney } from "../utils/currency";
 import { nowLocalStamp, formatTimestampLocalized } from "../utils/localTime";
@@ -25,10 +27,14 @@ interface FilesViewProps {
   setLeads: (updater: Lead[] | ((prev: Lead[]) => Lead[])) => void;
   systemLanguage: Language;
   currencyCode?: string | null;
+  /** Role access for the files module. `edit: false` renders the cabinet read-only. */
+  access?: ModuleAccess;
 }
 
-export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLanguage, currencyCode }) => {
+export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLanguage, currencyCode, access = FULL_MODULE_ACCESS }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
+  const canEdit = access.edit;
+  const canDelete = access.delete;
   const money = (value: number, opts?: Intl.NumberFormatOptions) => formatMoney(value, currencyCode, systemLanguage, opts);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -126,6 +132,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
   };
 
   const addFilesToQueue = (files: File[]) => {
+    if (!canEdit) return;
     const newQueuedFiles: QueuedFile[] = files.map(file => {
       const nameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
       return {
@@ -158,6 +165,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
 
   const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canEdit) return;
     if (uploadQueue.length === 0 || isUploading) return;
 
     setIsUploading(true);
@@ -300,6 +308,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
   };
 
   const handleDeleteFile = async (eventId: string, fileName: string) => {
+    if (!canDelete) return;
     const confirmMsg = systemLanguage === "sk"
       ? `Naozaj chcete vymazať súbor "${fileName}"?`
       : systemLanguage === "hu"
@@ -444,21 +453,31 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
           <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">{getTranslation(systemLanguage, "files.subtitle")}</p>
         </div>
 
-        {/* Upload Documents Trigger Button */}
-        <button
-          type="button"
-          onClick={() => setIsUploadDrawerOpen(true)}
-          className="px-4 py-2 rounded-xl bg-amber-700 hover:bg-amber-600 border border-amber-800 text-white transition-all text-xs font-black uppercase flex items-center gap-2 shadow-md shadow-amber-700/20 active:scale-[0.98] cursor-pointer"
-        >
-          <Plus className="h-4 w-4 stroke-[3]" />
-          <span>
-            {systemLanguage === "sk" 
-              ? "Nahrať dokumenty" 
-              : systemLanguage === "hu"
-                ? "Dokumentumok feltöltése"
-                : "Upload Documents"}
+        {/* Upload Documents Trigger Button — a read-only role sees a notice instead */}
+        {canEdit ? (
+          <button
+            type="button"
+            onClick={() => setIsUploadDrawerOpen(true)}
+            className="px-4 py-2 rounded-xl bg-amber-700 hover:bg-amber-600 border border-amber-800 text-white transition-all text-xs font-black uppercase flex items-center gap-2 shadow-md shadow-amber-700/20 active:scale-[0.98] cursor-pointer"
+          >
+            <Plus className="h-4 w-4 stroke-[3]" />
+            <span>
+              {systemLanguage === "sk"
+                ? "Nahrať dokumenty"
+                : systemLanguage === "hu"
+                  ? "Dokumentumok feltöltése"
+                  : "Upload Documents"}
+            </span>
+          </button>
+        ) : (
+          <span
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider shadow-inner"
+            title={t("Your role can browse and download documents but not change them.", "Vaša rola môže dokumenty prezerať a sťahovať, ale nie meniť.", "A szerepköre böngészheti és letöltheti a dokumentumokat, de nem módosíthatja őket.")}
+          >
+            <Lock className="h-3.5 w-3.5 stroke-[2.5]" />
+            {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
           </span>
-        </button>
+        )}
       </div>
 
       {/* 2. Amber Control Filter Bar with Always-Visible File Type Switcher */}
@@ -666,13 +685,15 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
                             <Download className="h-3 w-3 stroke-[2.5]" />
                             <span>{systemLanguage === "sk" ? "Stiahnuť" : systemLanguage === "hu" ? "Letöltés" : "Download"}</span>
                           </a>
-                          <button 
-                            onClick={() => handleDeleteFile(file.id, file.fileName)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50/50 transition-all cursor-pointer"
-                            title={t("Delete file permanently", "Natrvalo vymazať súbor", "Fájl végleges törlése")}
-                          >
-                            <Trash className="h-4 w-4 stroke-[2.2]" />
-                          </button>
+                          {canDelete && (
+                            <button
+                              onClick={() => handleDeleteFile(file.id, file.fileName)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50/50 transition-all cursor-pointer"
+                              title={t("Delete file permanently", "Natrvalo vymazať súbor", "Fájl végleges törlése")}
+                            >
+                              <Trash className="h-4 w-4 stroke-[2.2]" />
+                            </button>
+                          )}
                         </div>
                       </td>
 
@@ -696,7 +717,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
       </div>
 
       {/* DOCUMENT UPLOAD SLIDEOUT DRAWER (slides up from bottom) */}
-      {(isUploadDrawerOpen || isClosingUpload) && (
+      {canEdit && (isUploadDrawerOpen || isClosingUpload) && (
         <div className={`fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-end justify-center ${isClosingUpload ? "animate-fade-out" : "animate-fade-in"}`}>
           {/* Backdrop click close */}
           <div className="fixed inset-0 -z-10" onClick={closeUploadDrawer} />

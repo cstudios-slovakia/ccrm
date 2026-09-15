@@ -188,7 +188,7 @@ if (!function_exists('ccrm_send_cors')) {
 
         return [
             'id'    => $_SESSION['ccrm_uid'],
-            'role'  => $_SESSION['ccrm_role'] ?? 'viewer',
+            'role'  => $_SESSION['ccrm_role'] ?? 'Viewer',
             'email' => $_SESSION['ccrm_email'] ?? '',
         ];
     }
@@ -224,7 +224,7 @@ if (!function_exists('ccrm_send_cors')) {
      */
     function ccrm_require_admin(): array {
         $user = ccrm_require_auth();
-        if (($user['role'] ?? '') !== 'admin') {
+        if (!ccrm_is_admin($user)) {
             http_response_code(403);
             echo json_encode(['success' => false, 'message' => 'Administrator privileges required.']);
             exit;
@@ -233,21 +233,40 @@ if (!function_exists('ccrm_send_cors')) {
     }
 
     /**
-     * Normalize a free-form role label ("Admin", "Project Manager", ...) to the
-     * canonical DB enum value.
+     * True when the session (or user row) is the Admin role. Compared
+     * case-insensitively on the trimmed name so a stored `admin` and a
+     * registry `Admin` both count.
      */
-    function ccrm_normalize_role(?string $role): string {
-        $r = strtolower(str_replace(' ', '_', trim((string)$role)));
-        return in_array($r, ['admin', 'project_manager', 'viewer'], true) ? $r : 'viewer';
+    function ccrm_is_admin(?array $user): bool {
+        return strtolower(trim((string)($user['role'] ?? ''))) === 'admin';
     }
 
-    /** Map a DB enum role back to the label the frontend expects. */
-    function ccrm_role_label(string $dbRole): string {
-        switch ($dbRole) {
-            case 'admin':           return 'Admin';
-            case 'project_manager': return 'Project Manager';
-            default:                return 'Viewer';
+    /**
+     * Normalize a free-form role label for storage. Legacy enum values map to
+     * their display names; any other trimmed name (capped at 100 chars) is kept
+     * as given; empty becomes Viewer.
+     */
+    function ccrm_normalize_role(?string $role): string {
+        $label = trim((string)$role);
+        if ($label === '') {
+            return 'Viewer';
         }
+        $folded = strtolower(str_replace(' ', '_', $label));
+        if ($folded === 'admin') return 'Admin';
+        if ($folded === 'project_manager') return 'Project Manager';
+        if ($folded === 'viewer') return 'Viewer';
+        if (function_exists('mb_substr')) {
+            return mb_substr($label, 0, 100);
+        }
+        return substr($label, 0, 100);
+    }
+
+    /**
+     * Map a stored role back to the label the frontend expects. Same mapping
+     * as ccrm_normalize_role (identity for any name that is not a legacy enum).
+     */
+    function ccrm_role_label(string $dbRole): string {
+        return ccrm_normalize_role($dbRole);
     }
 
     /**
@@ -265,7 +284,7 @@ if (!function_exists('ccrm_send_cors')) {
         }
         try {
             $stmt = $pdo->query(
-                "SELECT `name` FROM `users` ORDER BY (`role` = 'admin') DESC, `name` ASC LIMIT 1"
+                "SELECT `name` FROM `users` ORDER BY (LOWER(TRIM(`role`)) = 'admin') DESC, `name` ASC LIMIT 1"
             );
             $name = $stmt ? $stmt->fetchColumn() : false;
             $cached = ($name !== false && $name !== null) ? (string)$name : '';
@@ -273,6 +292,461 @@ if (!function_exists('ccrm_send_cors')) {
             $cached = '';
         }
         return $cached;
+    }
+
+    /**
+     * Normalize a lead auto-assignment config blob to its canonical shape.
+     *
+     *   mode   'off'      — no auto-assignment (the historical behaviour)
+     *          'selected' — the pool is `users`, in the order the admin listed
+     *          'all'      — the pool is every registered user, ordered by name
+     *   users  ordered pool for mode 'selected'
+     *   rotate true  — round-robin: each new lead goes to the next in the pool
+     *          false — every new lead goes to the first user in the pool
+     *
+     * Applied to both the stored value and anything a client pushes, so a
+     * malformed blob can never reach the assignment logic.
+     */
+    function ccrm_normalize_lead_assignment($cfg): array {
+        if (!is_array($cfg)) {
+            $cfg = [];
+        }
+        $mode = $cfg['mode'] ?? 'off';
+        if (!in_array($mode, ['off', 'selected', 'all'], true)) {
+            $mode = 'off';
+        }
+        $users = [];
+        if (isset($cfg['users']) && is_array($cfg['users'])) {
+            foreach ($cfg['users'] as $u) {
+                $u = trim((string)$u);
+                if ($u !== '' && !in_array($u, $users, true)) {
+                    $users[] = $u;
+                }
+            }
+        }
+        return [
+            'mode'   => $mode,
+            'users'  => $users,
+            // Rotation is the useful default; only an explicit false turns it off.
+            'rotate' => !array_key_exists('rotate', $cfg) || (bool)$cfg['rotate'],
+        ];
+    }
+
+    /** The stored lead auto-assignment config, normalized. Cached per request. */
+    function ccrm_lead_assignment_config(\PDO $pdo): array {
+        static $cached = null;
+        if ($cached !== null) {
+            return $cached;
+        }
+        $raw = false;
+        try {
+            $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'LEAD_ASSIGNMENT'");
+            $stmt->execute();
+            $raw = $stmt->fetchColumn();
+        } catch (\Throwable $e) {
+            $raw = false;
+        }
+        $decoded = ($raw !== false && $raw !== null && $raw !== '') ? json_decode((string)$raw, true) : null;
+        $cached = ccrm_normalize_lead_assignment($decoded);
+        return $cached;
+    }
+
+    /**
+     * The ordered list of users new leads are handed out to. Empty when
+     * auto-assignment is off, or when nothing in the configured selection
+     * matches a user who still exists — a deleted colleague silently drops out
+     * of the rotation instead of stranding leads on a name nobody answers to.
+     */
+    function ccrm_lead_assignment_pool(\PDO $pdo): array {
+        $cfg = ccrm_lead_assignment_config($pdo);
+        if ($cfg['mode'] === 'off') {
+            return [];
+        }
+        try {
+            $stmt = $pdo->query("SELECT `name` FROM `users` ORDER BY `name` ASC");
+            $names = $stmt ? $stmt->fetchAll(\PDO::FETCH_COLUMN) : [];
+        } catch (\Throwable $e) {
+            return [];
+        }
+        $all = [];
+        foreach ($names as $n) {
+            $n = trim((string)$n);
+            if ($n !== '') {
+                $all[] = $n;
+            }
+        }
+        if ($cfg['mode'] === 'all') {
+            return $all;
+        }
+        // 'selected': keep the admin's chosen order, drop names that no longer exist.
+        $byLower = [];
+        foreach ($all as $n) {
+            $byLower[mb_strtolower($n)] = $n;
+        }
+        $pool = [];
+        foreach ($cfg['users'] as $u) {
+            $key = mb_strtolower($u);
+            if (isset($byLower[$key])) {
+                $pool[] = $byLower[$key];
+            }
+        }
+        return $pool;
+    }
+
+    /**
+     * Pick the owner for a brand-new lead that arrived without one.
+     *
+     * Returns '' when auto-assignment is not configured, so every caller keeps
+     * whatever fallback it had before rather than silently gaining one.
+     *
+     * The round-robin cursor stores the NAME handed out last, not an index: an
+     * index would quietly point at a different person the moment the pool is
+     * reordered or a colleague leaves. It is server-owned — clients never push
+     * it — and is written inside the caller's transaction, so a sync that rolls
+     * back does not burn a slot in the rotation.
+     */
+    function ccrm_auto_assign_owner(\PDO $pdo): string {
+        $pool = ccrm_lead_assignment_pool($pdo);
+        if (!$pool) {
+            return '';
+        }
+        $cfg = ccrm_lead_assignment_config($pdo);
+        if (!$cfg['rotate']) {
+            return $pool[0];
+        }
+
+        // Read the cursor once per request, then keep advancing it in memory so a
+        // sync carrying several new leads spreads them instead of handing every
+        // one of them to the same person.
+        static $cursor = null;
+        if ($cursor === null) {
+            $cursor = '';
+            try {
+                $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'LEAD_ASSIGNMENT_CURSOR'");
+                $stmt->execute();
+                $stored = $stmt->fetchColumn();
+                if ($stored !== false && $stored !== null) {
+                    $cursor = (string)$stored;
+                }
+            } catch (\Throwable $e) {
+                // No cursor readable — start at the top of the pool.
+            }
+        }
+
+        $idx = -1;
+        foreach ($pool as $i => $name) {
+            if (mb_strtolower($name) === mb_strtolower($cursor)) {
+                $idx = $i;
+                break;
+            }
+        }
+        $next = $pool[($idx + 1) % count($pool)];
+        $cursor = $next;
+
+        try {
+            $pdo->prepare(
+                "INSERT INTO `system_settings` (`key`, `value`) VALUES ('LEAD_ASSIGNMENT_CURSOR', ?)
+                 ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)"
+            )->execute([$next]);
+        } catch (\Throwable $e) {
+            // The in-memory cursor still advances for the rest of this request.
+        }
+
+        return $next;
+    }
+
+    /**
+     * The states a project may be in, in the order the UI offers them. Mirrors
+     * PROJECT_STATUSES in src/types — anything else reaching the `projects`
+     * table (from a workflow action, say) would render as a raw string on a
+     * card nothing can filter by. The first entry is where a new project starts.
+     *
+     * A function rather than a `const`: this whole block is inside a
+     * function_exists() guard, and PHP refuses to declare a top-level const in a
+     * conditional block.
+     */
+    function ccrm_project_statuses(): array {
+        return ['new', 'active', 'completed', 'on_hold', 'cancelled'];
+    }
+
+    /**
+     * Normalize an automatic-project-creation config blob to its canonical shape.
+     *
+     *   enabled        false — no project is created (the historical behaviour)
+     *   projectTypeId  the type a lead no category rule matched is given
+     *   categoryTypes  interest category name -> the type a lead in it is given
+     *   assignOwner    put the lead's project manager on the project
+     *
+     * Applied to both the stored value and anything a client pushes, so a
+     * malformed blob can never reach the creation logic.
+     */
+    function ccrm_normalize_project_auto_create($cfg): array {
+        if (!is_array($cfg)) {
+            $cfg = [];
+        }
+
+        // Category -> project type, keeping only entries with both halves.
+        // Sorted because the client folds this blob into its settings
+        // signature as JSON: the same map with its keys in another order
+        // would read as a change and push settings forever. See
+        // normalizeProjectAutoCreate in src/utils/projectAutoCreate.ts, which
+        // sorts identically.
+        $categoryTypes = [];
+        $rawMap = $cfg['categoryTypes'] ?? null;
+        if (is_array($rawMap)) {
+            foreach ($rawMap as $name => $typeId) {
+                $name = trim((string)$name);
+                $typeId = is_string($typeId) ? trim($typeId) : '';
+                if ($name !== '' && $typeId !== '') {
+                    $categoryTypes[$name] = $typeId;
+                }
+            }
+            ksort($categoryTypes);
+        }
+
+        return [
+            'enabled' => ($cfg['enabled'] ?? false) === true,
+            'projectTypeId' => trim((string)($cfg['projectTypeId'] ?? '')),
+            // Left as a PHP array: an empty one encodes as [] rather than {},
+            // which normalizeProjectAutoCreate() on the client already reads
+            // as "no entries".
+            'categoryTypes' => $categoryTypes,
+            // Assigning the lead's manager is the useful default; only an
+            // explicit false turns it off.
+            'assignOwner' => !array_key_exists('assignOwner', $cfg) || (bool)$cfg['assignOwner'],
+        ];
+    }
+
+    /**
+     * Per-phase SLA limits, normalized: lowercased state name -> whole positive
+     * days. Mirrors normalizeLeadStateSla in src/utils/leadSla.ts, key sorting
+     * included — the client compares this blob against its own to decide whether
+     * settings actually changed, and two spellings of the same map would make it
+     * push settings forever.
+     */
+    function ccrm_normalize_lead_state_sla($map): array {
+        if (!is_array($map)) {
+            return [];
+        }
+        $out = [];
+        foreach ($map as $state => $days) {
+            $key = strtolower(trim((string)$state));
+            $n = (int)$days;
+            if ($key === '' || $n <= 0) {
+                continue;
+            }
+            $out[$key] = min($n, 3650);
+        }
+        ksort($out);
+        return $out;
+    }
+
+    /** The stored automatic-project-creation config, normalized. Cached per request. */
+    function ccrm_project_auto_create_config(\PDO $pdo): array {
+        static $cached = null;
+        if ($cached !== null) {
+            return $cached;
+        }
+        $raw = false;
+        try {
+            $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'PROJECT_AUTO_CREATE'");
+            $stmt->execute();
+            $raw = $stmt->fetchColumn();
+        } catch (\Throwable $e) {
+            $raw = false;
+        }
+        $decoded = ($raw !== false && $raw !== null && $raw !== '') ? json_decode((string)$raw, true) : null;
+        $cached = ccrm_normalize_project_auto_create($decoded);
+        return $cached;
+    }
+
+    /**
+     * The interest categories a lead carries, as stored.
+     *
+     * Only reached when a caller has none to hand: sync.php writes
+     * `lead_categories` after the lead row, so it passes its own list instead
+     * of asking for one that is not there yet.
+     */
+    function ccrm_lead_category_names(\PDO $pdo, string $leadId): array {
+        try {
+            $stmt = $pdo->prepare("SELECT `category_name` FROM `lead_categories` WHERE `lead_id` = ?");
+            $stmt->execute([$leadId]);
+            $names = [];
+            foreach ($stmt->fetchAll(\PDO::FETCH_COLUMN) as $name) {
+                $name = trim((string)$name);
+                if ($name !== '') {
+                    $names[] = $name;
+                }
+            }
+            return $names;
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    /**
+     * The project types a lead carrying $categories should be given a project
+     * of — one per mapped category, in the order the lead lists them, never
+     * the same type twice.
+     *
+     * A lead whose categories are empty, or map to nothing, falls back to the
+     * single configured type; when that is empty too, it gets nothing.
+     *
+     * Mirrors autoCreateTypeIdsForLead() in src/utils/projectAutoCreate.ts,
+     * which is what the settings card uses to say what will happen.
+     */
+    function ccrm_auto_create_project_type_ids(array $cfg, array $categories): array {
+        // Category names reach us from a lead row, which may have been written
+        // when the category was spelled differently; matching without regard to
+        // case costs nothing and saves a silently unmatched lead. mbstring is
+        // not guaranteed on every host, and without it a name with diacritics
+        // simply has to match exactly.
+        $fold = function ($value): string {
+            $value = trim((string)$value);
+            return function_exists('mb_strtolower') ? mb_strtolower($value, 'UTF-8') : strtolower($value);
+        };
+
+        $byLowerName = [];
+        foreach (((array)($cfg['categoryTypes'] ?? [])) as $name => $typeId) {
+            $key = $fold($name);
+            if ($key !== '' && is_string($typeId) && trim($typeId) !== '') {
+                $byLowerName[$key] = trim($typeId);
+            }
+        }
+
+        $ids = [];
+        foreach ($categories as $name) {
+            $key = $fold($name);
+            if ($key !== '' && isset($byLowerName[$key]) && !in_array($byLowerName[$key], $ids, true)) {
+                $ids[] = $byLowerName[$key];
+            }
+        }
+
+        if ($ids) {
+            return $ids;
+        }
+        $fallback = trim((string)($cfg['projectTypeId'] ?? ''));
+        return $fallback !== '' ? [$fallback] : [];
+    }
+
+    /**
+     * Create the projects a brand-new lead is paired with, if the operator
+     * asked for any (Projects → Settings → automatic project creation).
+     *
+     * Which types those are depends on the lead's interest categories: each
+     * mapped category contributes one project, and a lead that matches none
+     * falls back to the single configured type. $categories may be passed in by
+     * a caller that has not written `lead_categories` yet (sync.php); leave it
+     * null to read what is stored.
+     *
+     * Returns the created projects in the shape the client holds them in — an
+     * empty list when nothing was created, because the feature is off, no type
+     * applies, the configured types have since been deleted, or this lead
+     * already has a project of every type it would get.
+     *
+     * Made server-side, and from one function, for the same reasons as
+     * ccrm_auto_assign_owner(): it has to cover leads that never pass through
+     * the app at all (the public web-form webhook, workflow create_lead
+     * actions), and two devices syncing the same new lead must not each produce
+     * their own project for it.
+     *
+     * Creation skips any type this lead already has a project of. That makes
+     * the call idempotent, so a retried sync — or a lead re-pushed by an older
+     * client that thinks it is new — cannot pile up duplicates.
+     *
+     * PROJECT-AUTO-CREATE-DISABLED (v1.9.29): nothing calls this any more —
+     * the calls in sync.php, api/pipeline.php and api/workflows_engine.php are
+     * commented out, and the settings card is hidden. Kept intact for rollback.
+     */
+    function ccrm_auto_create_project_for_lead(\PDO $pdo, string $leadId, string $ownerName = '', ?array $categories = null): array {
+        $cfg = ccrm_project_auto_create_config($pdo);
+        if (!$cfg['enabled'] || $leadId === '') {
+            return [];
+        }
+
+        $created = [];
+        try {
+            $names = $categories === null ? ccrm_lead_category_names($pdo, $leadId) : $categories;
+            $typeIds = ccrm_auto_create_project_type_ids($cfg, $names);
+            if (!$typeIds) {
+                return [];
+            }
+
+            $typeStmt = $pdo->prepare("SELECT `id` FROM `project_types` WHERE `id` = ?");
+            $existing = $pdo->prepare("SELECT `id` FROM `projects` WHERE `lead_id` = ? AND `project_type_id` = ? LIMIT 1");
+            // 'new' is the first status in ccrm_project_statuses(), and where
+            // every project starts however it was created. Nothing promotes it:
+            // which lead status makes a project active differs per installation,
+            // so that belongs in a workflow ("Lead status changed" ->
+            // "Change project status"), not in this insert.
+            $insProject = $pdo->prepare(
+                "INSERT INTO `projects` (`id`, `project_type_id`, `lead_id`, `client_id`, `status`)
+                 VALUES (?, ?, ?, ?, 'new')"
+            );
+            $insManager = $pdo->prepare("INSERT IGNORE INTO `project_managers` (`project_id`, `user_id`) VALUES (?, ?)");
+            $ownerName = trim($ownerName);
+
+            foreach ($typeIds as $typeId) {
+                // A configured type may have been deleted since it was chosen.
+                // Creating against a missing type would violate the projects ->
+                // project_types foreign key and abort the whole sync transaction.
+                $typeStmt->execute([$typeId]);
+                if ($typeStmt->fetchColumn() === false) {
+                    continue;
+                }
+
+                $existing->execute([$leadId, $typeId]);
+                if ($existing->fetchColumn() !== false) {
+                    continue;
+                }
+
+                $projectId = 'proj-' . sprintf('%04x%04x', mt_rand(0, 0xffff), mt_rand(0, 0xffff));
+                $insProject->execute([$projectId, $typeId, $leadId, $leadId]);
+
+                $managers = [];
+                if ($cfg['assignOwner'] && $ownerName !== '') {
+                    $insManager->execute([$projectId, $ownerName]);
+                    $managers[] = $ownerName;
+                }
+
+                // The per-type attribute row. Optional — sync.php's GET falls back to
+                // empty data when it is missing — so a type whose table has not been
+                // built yet must not take the project down with it.
+                try {
+                    $dataTable = 'proj_data_' . preg_replace('/[^a-z0-9_]/', '', strtolower($typeId));
+                    if ($pdo->query("SHOW TABLES LIKE " . $pdo->quote($dataTable))->rowCount() > 0) {
+                        $pdo->prepare("INSERT IGNORE INTO `{$dataTable}` (`id`, `project_id`) VALUES (?, ?)")
+                            ->execute([$projectId, $projectId]);
+                    }
+                } catch (\Throwable $e) {
+                    // Attributes stay empty; the project itself is already saved.
+                }
+
+                $created[] = [
+                    'id' => $projectId,
+                    'projectTypeId' => $typeId,
+                    // No name and no deadline: an auto-created project reads as its
+                    // paired lead until someone names it (projectDisplayName), and
+                    // only its manager knows when it is actually due.
+                    'name' => '',
+                    'deadline' => null,
+                    'leadId' => $leadId,
+                    'clientId' => $leadId,
+                    'status' => 'new',
+                    'managers' => $managers,
+                    'data' => (object)[],
+                    'timeline' => [],
+                    'gantt' => [],
+                ];
+            }
+        } catch (\Throwable $e) {
+            // A lead is worth more than the projects that would have accompanied
+            // it: never let this take down the insert that triggered it. Whatever
+            // was created before the failure is real, so it is still returned.
+            return $created;
+        }
+
+        return $created;
     }
 
     /** True if the given string already looks like a bcrypt/argon hash. */
@@ -726,6 +1200,135 @@ HTACCESS;
     }
 
     /**
+     * Secret fields inside INVOICING_INTEGRATIONS, per provider. Unlike
+     * INTEGRATIONS_CONFIG these live one level down (`superfaktura.apiKey`,
+     * `idoklad.clientSecret`), so they need their own walk rather than the flat
+     * ccrm_*_config_secrets helpers.
+     */
+    function ccrm_invoicing_secret_map(): array {
+        return [
+            'superfaktura' => ['apiKey'],
+            'idoklad' => ['clientSecret'],
+        ];
+    }
+
+    /** Apply $fn to every provider secret in an INVOICING_INTEGRATIONS array. */
+    function ccrm_walk_invoicing_secrets($config, callable $fn): array {
+        if (!is_array($config)) {
+            return [];
+        }
+        foreach (ccrm_invoicing_secret_map() as $provider => $keys) {
+            if (!isset($config[$provider]) || !is_array($config[$provider])) {
+                continue;
+            }
+            foreach ($keys as $k) {
+                if (isset($config[$provider][$k]) && is_string($config[$provider][$k]) && $config[$provider][$k] !== '') {
+                    $config[$provider][$k] = $fn($config[$provider][$k]);
+                }
+            }
+        }
+        return $config;
+    }
+
+    /** Encrypt accounting-connector secrets before they are persisted. */
+    function ccrm_encrypt_invoicing_secrets($config): array {
+        return ccrm_walk_invoicing_secrets($config, 'ccrm_encrypt_secret');
+    }
+
+    /** Decrypt accounting-connector secrets for server-side use. */
+    function ccrm_decrypt_invoicing_secrets($config): array {
+        return ccrm_walk_invoicing_secrets($config, 'ccrm_decrypt_secret');
+    }
+
+    /**
+     * Replace accounting-connector secrets with the mask before the config is
+     * sent to a browser. Every authenticated user receives the settings blob on
+     * sync, so unmasked keys here handed the company's SuperFaktúra / iDoklad
+     * credentials to every account in the CRM, whatever their role.
+     */
+    function ccrm_mask_invoicing_secrets($config): array {
+        return ccrm_walk_invoicing_secrets($config, function () { return CCRM_SECRET_MASK; });
+    }
+
+    /**
+     * Merge an inbound INVOICING_INTEGRATIONS over the stored one, keeping any
+     * provider secret the client left masked or omitted.
+     */
+    function ccrm_merge_invoicing_secrets($incoming, $existing): array {
+        if (!is_array($incoming)) {
+            return is_array($existing) ? $existing : [];
+        }
+        if (!is_array($existing)) {
+            $existing = [];
+        }
+        foreach (ccrm_invoicing_secret_map() as $provider => $keys) {
+            if (!isset($incoming[$provider]) || !is_array($incoming[$provider])) {
+                continue;
+            }
+            foreach ($keys as $k) {
+                $inbound = $incoming[$provider][$k] ?? null;
+                $hasReal = is_string($inbound) && $inbound !== '' && $inbound !== CCRM_SECRET_MASK;
+                if ($hasReal) {
+                    continue;
+                }
+                if (isset($existing[$provider][$k])) {
+                    $incoming[$provider][$k] = $existing[$provider][$k];
+                } else {
+                    unset($incoming[$provider][$k]);
+                }
+            }
+        }
+        return $incoming;
+    }
+
+    /**
+     * iDoklad country id for a free-text country name. iDoklad is a Czech
+     * service whose id 2 is Slovakia and 1 is Czechia; anything unrecognised
+     * falls back to Slovakia, which is where this CRM is deployed.
+     */
+    function ccrm_idoklad_country_id($country): int {
+        $c = mb_strtolower(trim((string)$country));
+        if ($c === '') {
+            return 2;
+        }
+        $czech = ['cz', 'czechia', 'czech republic', 'česko', 'česká republika', 'ceska republika', 'cesko'];
+        foreach ($czech as $needle) {
+            if ($c === $needle) {
+                return 1;
+            }
+        }
+        return 2;
+    }
+
+    /**
+     * Persist a base64 PDF returned by an accounting API under /uploads and hand
+     * back its public path, so the CRM can link the official document instead of
+     * only storing its remote id. Returns null when the payload is unusable.
+     */
+    function ccrm_store_external_pdf($base64, string $baseName): ?string {
+        if (!is_string($base64) || $base64 === '') {
+            return null;
+        }
+        $binary = base64_decode($base64, true);
+        // A valid PDF starts with %PDF-; anything else is an error page or JSON.
+        if ($binary === false || strncmp($binary, '%PDF-', 5) !== 0) {
+            return null;
+        }
+        // ccrm_uploads_dir() also (re)installs the .htaccess guard that keeps
+        // uploads/ inert, so never write there by hand.
+        $dir = ccrm_uploads_dir();
+        if (!is_dir($dir)) {
+            return null;
+        }
+        $safeBase = preg_replace('/[^A-Za-z0-9._-]/', '', $baseName) ?: 'document';
+        $fileName = $safeBase . '-' . bin2hex(random_bytes(4)) . '.pdf';
+        if (@file_put_contents($dir . $fileName, $binary) === false) {
+            return null;
+        }
+        return '/uploads/' . $fileName;
+    }
+
+    /**
      * Resolve the OpenAI chat model to use, from the admin-configured
      * INTEGRATIONS_CONFIG, falling back to a sane default. Centralised so the
      * default is not scattered as a literal across every AI endpoint.
@@ -856,3 +1459,7 @@ HTACCESS;
         return $encoded === false ? $incomingJson : $encoded;
     }
 }
+
+// ccrm_is_admin / ccrm_normalize_role exist when the port of permissions.ts
+// is included. require_once is safe against the circular include.
+require_once __DIR__ . '/permissions.php';

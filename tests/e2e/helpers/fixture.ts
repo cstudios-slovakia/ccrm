@@ -137,6 +137,7 @@ const LEADS = [
     website: 'https://novakstavby.sk',
     legalForm: 's.r.o.',
     categories: ['Products', 'Services'],
+    clientCategoryId: 'cc-construction-roofing',
     timeline: [
       {
         id: 'ev-novak-1',
@@ -272,15 +273,30 @@ const PROJECT_TYPES = [
     color: '#4f46e5',
     hasTimeline: true,
     hasGantt: true,
+    hasDeadline: true,
+    deadlineWarningDays: 7,
+    deadlineRequired: false,
+    hasFiles: true,
+    fileFields: [
+      { id: 'file_contract', name: 'Zmluva', required: false },
+      { id: 'file_gdpr', name: 'Súhlas GDPR', required: false },
+    ],
     attributes: [
       { id: 'attr-area', name: 'Plocha (m²)', type: 'number', required: true },
       { id: 'attr-start', name: 'Začiatok realizácie', type: 'date', required: false },
       { id: 'attr-note', name: 'Poznámka', type: 'textarea', required: false },
       { id: 'attr-variant', name: 'Variant', type: 'select', required: false, options: ['Štandard', 'Premium'] },
+      { id: 'attr-budget', name: 'Rozpočet', type: 'money', required: false },
     ],
     timelineEventTypes: [
       { id: 'pet-visit', name: 'Obhliadka', color: '#0ea5e9', icon: 'Eye', attributes: [] },
-      { id: 'pet-work', name: 'Realizácia', color: '#16a34a', icon: 'Hammer', attributes: [] },
+      {
+        id: 'pet-work',
+        name: 'Realizácia',
+        color: '#16a34a',
+        icon: 'Hammer',
+        attributes: [{ id: 'attr-cost', name: 'Náklad etapy', type: 'money', required: false }],
+      },
     ],
   },
   {
@@ -300,11 +316,19 @@ const PROJECTS = [
   {
     id: 'project-1',
     projectTypeId: 'ptype-roof',
+    name: 'Strecha Silvia — etapa 1',
     leadId: 'lead-silvia',
     clientId: 'lead-silvia',
     status: 'active',
+    deadline: isoDate(4),
     managers: ['Erik'],
-    data: { 'attr-area': 145, 'attr-start': isoDate(5), 'attr-note': 'Prístup z dvora.', 'attr-variant': 'Premium' },
+    data: {
+      'attr-area': 145,
+      'attr-start': isoDate(5),
+      'attr-note': 'Prístup z dvora.',
+      'attr-variant': 'Premium',
+      'attr-budget': { amount: 18400, currency: 'EUR' },
+    },
     timeline: [
       {
         id: 'pev-1',
@@ -329,6 +353,21 @@ const PROJECTS = [
     status: 'on_hold',
     managers: ['Mária'],
     data: { 'attr-count': 24 },
+    timeline: [],
+    gantt: [],
+  },
+  {
+    // Late, and paired with nobody: before projects carried a name this one had
+    // nothing to be called at all.
+    id: 'project-3',
+    projectTypeId: 'ptype-roof',
+    name: 'Havarijná oprava — bytový dom Košice',
+    leadId: null,
+    clientId: null,
+    status: 'active',
+    deadline: isoDate(-6),
+    managers: [],
+    data: { 'attr-area': 62 },
     timeline: [],
     gantt: [],
   },
@@ -495,6 +534,12 @@ const FINANCIAL_CATEGORIES = [
   { id: 'fc-expense-wages', type: 'expense', name: 'Mzdy', level: 1, color: '#f97316', icon: 'Users', createdAt: isoStamp(-100) },
 ];
 
+const CLIENT_CATEGORIES = [
+  { id: 'cc-construction', name: 'Stavebníctvo', level: 1, sortOrder: 0, color: '#0ea5e9', icon: 'Layers', createdAt: isoStamp(-90) },
+  { id: 'cc-construction-roofing', name: 'Strechári', parentId: 'cc-construction', level: 2, sortOrder: 0, color: null, icon: 'Folder', createdAt: isoStamp(-90) },
+  { id: 'cc-retail', name: 'Maloobchod', level: 1, sortOrder: 1, color: '#a855f7', icon: 'Layers', createdAt: isoStamp(-90) },
+];
+
 const FINANCIAL_RECORDS = [
   {
     id: 'fr-1',
@@ -583,40 +628,22 @@ const MEETING_NOTES = [
   {
     id: 'mn-1',
     title: 'Porada — pondelok',
+    content: 'Prebrali sme stav projektov a fakturáciu.',
+    createdAt: isoStamp(-7, '09:00'),
+    author: 'Erik',
+    participants: ['Erik', 'Mária'],
     date: isoDate(-7),
-    leadId: '',
-    leadName: '',
-    duration: 45,
-    notes: 'Prebrali sme stav projektov a fakturáciu.',
-    aiSummary: {
-      summary: 'Prebrali sme stav projektov a fakturáciu.',
-      actionItems: [],
-      sentiment: 'neutral',
-      topics: ['porada'],
-    },
-    archived: false,
-    audioFile: null,
-    transcription: null,
-    automatedNotes: null,
+    tags: ['porada'],
   },
   {
     id: 'mn-2',
     title: 'Stretnutie s Novák Stavby',
+    content: 'Dohodnutý rozsah dodávky materiálu.',
+    createdAt: isoStamp(-2, '14:00'),
+    author: 'Mária',
+    participants: ['Mária'],
     date: isoDate(-2),
-    leadId: '',
-    leadName: 'Novák Stavby',
-    duration: 60,
-    notes: 'Dohodnutý rozsah dodávky materiálu.',
-    aiSummary: {
-      summary: 'Dohodnutý rozsah dodávky materiálu.',
-      actionItems: [],
-      sentiment: 'positive',
-      topics: ['klient'],
-    },
-    archived: false,
-    audioFile: null,
-    transcription: null,
-    automatedNotes: null,
+    tags: ['klient'],
   },
 ];
 
@@ -632,6 +659,20 @@ const UNIFIED_ENTRIES = [
     folderModules: ['title'],
     foldersEnabled: true,
     showFolderSummary: true,
+    warningDays: 30,
+    archived: false,
+  },
+  {
+    id: 'ue-technika',
+    name: 'Technika a náradie',
+    entryName: 'Zariadenie',
+    folderName: 'Kategória',
+    icon: 'Wrench',
+    color: '#f59e0b',
+    modules: ['title', 'number', 'money'],
+    folderModules: ['title'],
+    foldersEnabled: true,
+    showFolderSummary: false,
     warningDays: 30,
     archived: false,
   },
@@ -663,6 +704,12 @@ const UNIFIED_ENTRIES_DATA = {
       filePath: '/uploads/revizia.pdf',
       clientId: 'lead-novak',
     },
+  ],
+  'ue-technika': [
+    { id: 'ue-t-f-1', parentId: null, isFolder: true, title: 'Elektrické náradie', icon: 'Folder' },
+    { id: 'ue-t-1', parentId: 'ue-t-f-1', isFolder: false, title: 'Falcovačka Schlebach Pico', numberValue: 2, moneyAmount: 8450, moneyCurrency: 'EUR' },
+    { id: 'ue-t-2', parentId: 'ue-t-f-1', isFolder: false, title: 'Zvárací automat Leister', numberValue: 1, moneyAmount: 3200, moneyCurrency: 'CZK' },
+    { id: 'ue-t-3', parentId: null, isFolder: false, title: 'Montážna plošina Genie Z-45', numberValue: 1, moneyAmount: 24900, moneyCurrency: 'EUR' },
   ],
 };
 
@@ -708,6 +755,10 @@ const SETTINGS = {
   leadStageGroups: {},
   leadStateParents: {},
   leadStateFollowUp: { contacted: true },
+  // A phase SLA short enough that `lead-novak` (offer sent, 25 days old, never
+  // moved) is breached, so the audit walks the overdue badge in the list, the
+  // kanban card and the lead detail rather than only the settings input.
+  leadStateSla: { 'offer sent': 5 },
   taskStates: TASK_STATES,
   taskStateColors: { New: '#3b82f6', 'In progress': '#f59e0b', Blocked: '#ef4444', Done: '#10b981' },
 };
@@ -737,6 +788,7 @@ export function buildSyncPayload() {
     warehouseBatches: WAREHOUSE_BATCHES,
     warehouseMovements: WAREHOUSE_MOVEMENTS,
     financialCategories: FINANCIAL_CATEGORIES,
+    clientCategories: CLIENT_CATEGORIES,
     financialRecords: FINANCIAL_RECORDS,
     settings: SETTINGS,
   };
@@ -789,6 +841,42 @@ export async function installBackendMocks(page: Page) {
     }),
   );
 
+  // Licence: a healthy, configured one. Given explicitly rather than left to the
+  // catch-all below so the Settings -> Licence tab renders its real content for
+  // the crawler instead of the "licensing not configured" placeholder. `active`
+  // on purpose — the expiry banner is covered by unit tests over the pure
+  // decision function (utils/license.test.ts), and a banner in every screenshot
+  // of every audited module would drown the reports it appears in.
+  await page.route('**/api/license.php**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        license: {
+          configured: true,
+          status: 'active',
+          valid: true,
+          keyMasked: 'CCRM-********QA01',
+          expiresAt: '2099-12-31',
+          daysRemaining: 3650,
+          warnDays: 30,
+          maxUsers: 25,
+          seatsUsed: 4,
+          customer: 'QA Automated Suite',
+          plan: 'standard',
+          activatedAt: '2026-01-01 09:00:00',
+          lastCheckAt: '2026-01-01 09:00:00',
+          lastAttemptAt: '2026-01-01 09:00:00',
+          lastError: null,
+          offlineDays: 0,
+          updatesAllowed: true,
+          updatesBlockedReason: null,
+        },
+      }),
+    }),
+  );
+
   // Everything else under /api/ and the upload endpoints: succeed quietly so a
   // missing PHP backend never shows up as an app defect.
   await page.route('**/api/**', (route) =>
@@ -798,6 +886,102 @@ export async function installBackendMocks(page: Page) {
       body: JSON.stringify({ success: true, data: [], items: [], agents: [], accounts: [], posts: [] }),
     }),
   );
+
+  // Dashboard widgets query the analytics endpoint per widget, so this must be
+  // registered AFTER the catch-all above: Playwright tries the most recently
+  // added matching route first. Registered before it, every widget was answered
+  // with an empty array and the crawler audited a dashboard of zeroes.
+  await page.route('**/api/dashboard_query.php', async (route) => {
+    let action = '';
+    let sql = '';
+    let statuses: string[] = [];
+    try {
+      const body = JSON.parse(route.request().postData() || '{}');
+      action = (body.action as string) || '';
+      sql = String(body?.params?.sql ?? body?.sql ?? '');
+      statuses = Array.isArray(body?.params?.statuses) ? body.params.statuses.map(String) : [];
+    } catch {
+      action = '';
+    }
+
+    const data = (() => {
+      switch (action) {
+        case 'leads_count':
+          return { count: LEADS.length };
+        case 'pipeline_value':
+          return { value: LEADS.reduce((sum, lead) => sum + (Number(lead.value) || 0), 0) };
+        case 'leads_by_status': {
+          const rows = [
+            { status: 'new', count: 4, total_value: 18000 },
+            { status: 'contacted', count: 3, total_value: 21000 },
+            { status: 'offer sent', count: 2, total_value: 34000 },
+            { status: 'accepted', count: 2, total_value: 51000 },
+          ];
+          if (statuses.length === 0) return rows;
+          // Mirrors the real endpoint: the picked phases, in the picked order,
+          // with a zero row standing in for a phase no lead sits in.
+          return statuses.map(
+            (status) =>
+              rows.find((row) => row.status.toLowerCase() === status.trim().toLowerCase()) ?? {
+                status,
+                count: 0,
+                total_value: 0,
+              },
+          );
+        }
+        case 'leads_by_source':
+          return [
+            { source: 'website', count: 5, total_value: 42000 },
+            { source: 'referral', count: 3, total_value: 27000 },
+            { source: 'campaign', count: 2, total_value: 11000 },
+          ];
+        case 'tasks_summary':
+          return [
+            { status: 'todo', count: 5 },
+            { status: 'in_progress', count: 3 },
+            { status: 'done', count: 7 },
+          ];
+        case 'tasks_by_owner':
+          return [
+            { owner: 'Ada Admin', count: 6 },
+            { owner: 'Sam Sales', count: 4 },
+          ];
+        case 'recent_leads':
+          return LEADS.slice(0, 5).map((lead) => ({
+            id: lead.id,
+            name: lead.name,
+            status: lead.status,
+            value: lead.value,
+            owner: lead.owner,
+            created_at: lead.createdAt,
+          }));
+        case 'recent_tasks':
+          return TASKS.slice(0, 5).map((task) => ({
+            id: task.id,
+            title: task.title,
+            status: task.status,
+            priority: task.priority,
+            owner: task.owner,
+            deadline: task.deadline,
+          }));
+        case 'recent_meetings':
+          return [
+            { id: 'm1', title: 'Kick-off — Nordic Retail', created_at: '2026-01-20' },
+            { id: 'm2', title: 'Site survey', created_at: '2026-01-14' },
+          ];
+        // The `sql` action covers every widget the AI (or a preset) writes its
+        // own query for; the table it reads is enough to answer plausibly.
+        default:
+          return /\bfrom\s+tasks\b/i.test(sql) ? [{ count: 8 }] : [{ count: 4 }];
+      }
+    })();
+
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, data }),
+    });
+  });
   await page.route('**/upload.php', (route) =>
     route.fulfill({
       status: 200,

@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `name` VARCHAR(100) NOT NULL,
   `email` VARCHAR(150) NOT NULL UNIQUE,
   `password_hash` VARCHAR(255) NOT NULL,
-  `role` ENUM('admin', 'project_manager', 'viewer') NOT NULL DEFAULT 'viewer',
+  `role` VARCHAR(100) NOT NULL DEFAULT 'Viewer' COMMENT 'Role name as listed in the ROLES_RBAC registry (system_settings)',
   `avatar` VARCHAR(255) NULL,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS `permissions` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `role_permissions` (
-  `role` ENUM('admin', 'project_manager', 'viewer') NOT NULL,
+  `role` VARCHAR(100) NOT NULL,
   `permission_slug` VARCHAR(100) NOT NULL,
   PRIMARY KEY (`role`, `permission_slug`),
   FOREIGN KEY (`permission_slug`) REFERENCES `permissions` (`slug`) ON DELETE CASCADE

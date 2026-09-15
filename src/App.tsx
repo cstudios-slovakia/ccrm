@@ -3,22 +3,31 @@ import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { LoginView } from "./components/LoginView";
 import { TaskDashboardView } from "./components/TaskDashboardView";
-import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, FinancialRecord } from "./types";
+import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, FinancialRecord, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings } from "./types";
+import { DEFAULT_LEAD_ASSIGNMENT, normalizeLeadAssignment } from "./utils/leadAssignment";
+import { DEFAULT_PROJECT_AUTO_CREATE, normalizeProjectAutoCreate } from "./utils/projectAutoCreate";
+import { normalizeLeadStateSla, type LeadStateSla } from "./utils/leadSla";
+import { listIdsSignature, normalizeListIds, type ListIds } from "./utils/listIds";
 import { VERSION } from "./utils/version";
 import { parseAppHash, workspaceResetKey } from "./utils/hash";
+import { HOME_DASHBOARD_ID, buildDefaultHomeDashboard } from "./utils/dashboardWidgets";
 import { SOCIAL_MEDIA_ENABLED } from "./utils/featureFlags";
 import type { MeetingNote } from "./components/MeetingRoomView";
-import { getTranslation } from "./utils/translations";
+import { getTranslation, formatTranslation } from "./utils/translations";
 import { orderLeadStates } from "./utils/leadStates";
-import { resolveTaskViewAll } from "./utils/taskSelectors";
+import { buildAccess, firstAllowedRoute, permissionKeyForRoute } from "./utils/permissions";
+import { AccessDeniedView } from "./components/AccessDeniedView";
 import { InstallerWizard } from "./components/InstallerWizard";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AiKeyBanner } from "./components/ui/AiKeyBanner";
 import FilePreviewPane from "./components/FilePreviewPane";
 import { RefreshCw, AlertOctagon, Trash2, Copy } from "lucide-react";
 import { ShaderGradient, ShaderGradientCanvas } from "shadergradient";
-import { getStoredTheme, applyTheme } from "./utils/theme";
+import { getStoredTheme, getStoredThemeMode, isThemeMode, startThemeWatcher, type Appearance, type ThemeMode } from "./utils/theme";
 import { hasPersistentStorage } from "./utils/safeStorage";
+import { LicenseBanner } from "./components/LicenseBanner";
+import { fetchLicenseState } from "./utils/licenseApi";
+import type { LicenseState } from "./utils/license";
 import type { UserPrefs, UserPrefsApi } from "./utils/userPrefs";
 import {
   DEFAULT_USER_PREFS,
@@ -87,6 +96,7 @@ const AutomationView = safeLazy(() => import("./components/AutomationView").then
 const SocialMediaView = safeLazy(() => import("./components/SocialMediaView").then(m => ({ default: m.SocialMediaView })));
 const WarehouseView = safeLazy(() => import("./components/WarehouseView").then(m => ({ default: m.WarehouseView })));
 const FinancialManagementView = safeLazy(() => import("./components/FinancialManagementView").then(m => ({ default: m.FinancialManagementView })));
+const InvoicingView = safeLazy(() => import("./components/InvoicingView").then(m => ({ default: m.InvoicingView })));
 
 const ShaderGradientAny = ShaderGradient as any;
 
@@ -110,15 +120,33 @@ const computeSettingsSig = (s: any): string => {
     s.leadStates ?? [],
     s.leadSources ?? [],
     s.leadCategories ?? [],
+    // Normalized on both sides so an install that has never stored an id map
+    // compares equal to the one the server derives. Reduced to a sorted array
+    // of pairs because two equal maps with their keys written in a different
+    // order would stringify differently and push forever. See listIdsSignature.
+    listIdsSignature(normalizeListIds(s.leadSources ?? [], s.leadSourceIds)),
+    listIdsSignature(normalizeListIds(s.leadCategories ?? [], s.leadCategoryIds)),
     s.leadStateColors && Object.keys(s.leadStateColors).length ? s.leadStateColors : null,
     s.leadSourceColors && Object.keys(s.leadSourceColors).length ? s.leadSourceColors : null,
     s.leadCategoryColors && Object.keys(s.leadCategoryColors).length ? s.leadCategoryColors : null,
     s.leadStageGroups && Object.keys(s.leadStageGroups).length ? s.leadStageGroups : null,
     s.leadStateParents && Object.keys(s.leadStateParents).length ? s.leadStateParents : null,
     s.leadStateFollowUp && Object.keys(s.leadStateFollowUp).length ? s.leadStateFollowUp : null,
+    // Normalized on both sides so "no SLA anywhere" has one spelling whichever
+    // side you ask. See normalizeLeadStateSla / ccrm_normalize_lead_state_sla.
+    normalizeLeadStateSla(s.leadStateSla),
+    // Normalized on both sides so an absent value and an explicit "off" blob
+    // (which is what the server sends back) compare equal instead of pushing
+    // forever. See normalizeLeadAssignment / ccrm_normalize_lead_assignment.
+    normalizeLeadAssignment(s.leadAssignment),
+    // Normalized on both sides for the same reason. See normalizeProjectAutoCreate
+    // / ccrm_normalize_project_auto_create.
+    normalizeProjectAutoCreate(s.projectAutoCreate),
     s.taskStates ?? [],
     s.taskStateColors && Object.keys(s.taskStateColors).length ? s.taskStateColors : null,
     s.integrationsConfig ?? null,
+    s.companyBillingSettings ?? null,
+    s.invoicingIntegrations ?? null,
   ]);
 };
 
@@ -133,12 +161,14 @@ const computePushSig = (p: {
   warehouses?: unknown; suppliers?: unknown; warehouseItems?: unknown;
   warehouseStock?: unknown; warehouseBatches?: unknown; warehouseMovements?: unknown;
   financialCategories?: unknown; financialRecords?: unknown;
+  invoicesOffers?: unknown; aiCustomTemplates?: unknown; clientCategories?: unknown;
   settings?: any;
 }): string => JSON.stringify([
   p.leads, p.tasks, p.users, p.roles, p.meetingNotes, p.unifiedEntries,
   p.unifiedEntriesData, p.customDashboards, p.projectTypes, p.projects,
   p.warehouses, p.suppliers, p.warehouseItems, p.warehouseStock, p.warehouseBatches, p.warehouseMovements,
   p.financialCategories, p.financialRecords,
+  p.invoicesOffers, p.aiCustomTemplates, p.clientCategories,
   computeSettingsSig(p.settings),
 ]);
 
@@ -241,6 +271,11 @@ function App() {
   const warehouseMovementsRef = useRef<WarehouseMovement[]>([]);
   const financialCategoriesRef = useRef<FinancialCategory[]>([]);
   const financialRecordsRef = useRef<FinancialRecord[]>([]);
+  const invoicesOffersRef = useRef<InvoiceOffer[]>([]);
+  const aiCustomTemplatesRef = useRef<AiCustomTemplate[]>([]);
+  const clientCategoriesRef = useRef<ClientCategory[]>([]);
+  const companyBillingSettingsRef = useRef<CompanyBillingSettings | null>(null);
+  const invoicingIntegrationsRef = useRef<ExternalInvoicingConfig | null>(null);
   // DB clock from the last GET/POST. Sent back as baseSyncedAt so the server can
   // avoid deleting records a concurrent user added after our snapshot.
   const baseSyncedAtRef = useRef<string | null>(null);
@@ -287,10 +322,10 @@ function App() {
     const rawHash = window.location.hash.replace("#", "");
     const baseHash = rawHash.split(/[/?]/)[0];
     const hashLower = baseHash.toLowerCase();
-    if (hashLower.startsWith("client-") || hashLower.startsWith("lead-") || hashLower.startsWith("user-") || hashLower.startsWith("ue_") || hashLower.startsWith("dash_") || hashLower.startsWith("settings") || hashLower.startsWith("warehouse") || hashLower.startsWith("financial")) {
-      return rawHash; // Keep case sensitivity and allow sub-tabs for settings, warehouse, and financial
+    if (hashLower.startsWith("client-") || hashLower.startsWith("lead-") || hashLower.startsWith("user-") || hashLower.startsWith("ue_") || hashLower.startsWith("dash_") || hashLower.startsWith("settings") || hashLower.startsWith("warehouse") || hashLower.startsWith("financial") || hashLower.startsWith("invoices")) {
+      return rawHash; // Keep case sensitivity and allow sub-tabs for settings, warehouse, financial and invoices
     }
-    const validTabs = ["dashboard", "overview", "leads", "clients", "tasks", "files", "personal-settings", "email", "rag_ai", "automation", "meetings", "projects", "updates", "warehouse", "financial", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
+    const validTabs = ["dashboard", "overview", "leads", "clients", "invoices", "tasks", "files", "personal-settings", "email", "rag_ai", "automation", "meetings", "projects", "updates", "warehouse", "financial", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
     return validTabs.includes(hashLower) ? rawHash : "dashboard";
   };
 
@@ -384,11 +419,25 @@ function App() {
   const [systemName, setSystemName] = useState("CCRM");
   const [systemLanguage, setSystemLanguage] = useState<"en" | "sk" | "hu">("sk");
   const [userLanguage, setUserLanguage] = useState<"en" | "sk" | "hu">("sk");
+  // Appearance (light/dark/system/auto) and the light palette are independent:
+  // switching to dark and back has to give the user their herb theme again.
   const [userTheme, setUserTheme] = useState<string>(getStoredTheme);
+  const [themeMode, setThemeMode] = useState<ThemeMode>(getStoredThemeMode);
+  const [appearance, setAppearance] = useState<Appearance>(
+    () => (document.documentElement.getAttribute("data-appearance") === "dark" ? "dark" : "light")
+  );
 
-  useEffect(() => {
-    applyTheme(userTheme);
-  }, [userTheme]);
+  // The watcher owns the actual repaint. It also has to react to the OS theme
+  // flipping and to the sun rising or setting, so it reads the current choice
+  // through a ref rather than being re-attached on every change.
+  const themeStateRef = useRef({ mode: themeMode, palette: userTheme });
+  themeStateRef.current = { mode: themeMode, palette: userTheme };
+  useEffect(
+    // Re-attached on every explicit change so the watcher repaints at once and
+    // re-arms its timers for the mode that is now in force.
+    () => startThemeWatcher(() => themeStateRef.current, setAppearance),
+    [themeMode, userTheme]
+  );
 
   // Same three-language shorthand every view uses for one-off copy that has no
   // entry in translations.ts.
@@ -422,6 +471,11 @@ function App() {
   const [warehouseMovements, setWarehouseMovements] = useState<WarehouseMovement[]>([]);
   const [financialCategories, setFinancialCategories] = useState<FinancialCategory[]>([]);
   const [financialRecords, setFinancialRecords] = useState<FinancialRecord[]>([]);
+  const [invoicesOffers, setInvoicesOffers] = useState<InvoiceOffer[]>([]);
+  const [aiCustomTemplates, setAiCustomTemplates] = useState<AiCustomTemplate[]>([]);
+  const [clientCategories, setClientCategories] = useState<ClientCategory[]>([]);
+  const [companyBillingSettings, setCompanyBillingSettings] = useState<CompanyBillingSettings | null>(null);
+  const [invoicingIntegrations, setInvoicingIntegrations] = useState<ExternalInvoicingConfig | null>(null);
 
   // Initial states set to empty / defaults without localStorage or mockData loaders
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -454,6 +508,14 @@ function App() {
   const [leadCategories, setLeadCategories] = useState<string[]>([
     "Products", "Services"
   ]);
+
+  // The permanent id each source / category answers to when a website form
+  // names it (`source_id` / `category_id` in the /api/pipeline.php payload).
+  // Kept apart from the lists above precisely so that reordering them in
+  // Settings cannot change what a form already deployed means — see
+  // src/utils/listIds.ts. Filled in from the server on the first sync.
+  const [leadSourceIds, setLeadSourceIds] = useState<ListIds>({});
+  const [leadCategoryIds, setLeadCategoryIds] = useState<ListIds>({});
 
   const [leadStateColors, setLeadStateColors] = useState<Record<string, string>>({
     "new": "#3b82f6",
@@ -496,6 +558,24 @@ function App() {
   // Keyed by lowercased state name (admin-configurable in Settings). Robust to
   // renaming/removing states — a removed state's entry simply stops mattering.
   const [leadStateFollowUp, setLeadStateFollowUp] = useState<Record<string, boolean>>({});
+
+  // Per-state SLA: how many days a lead may sit in that phase before the leads
+  // list and the lead detail start flagging it. Keyed by lowercased state name;
+  // a state without an entry simply has no limit. See utils/leadSla.ts.
+  const [leadStateSla, setLeadStateSla] = useState<LeadStateSla>({});
+
+  // Who new leads without an owner are handed to (Settings → Users). The rules
+  // live here; the actual pick is made server-side so one rotation is shared by
+  // every device and by leads that never pass through this app at all (the
+  // public webhook, workflow actions, imports).
+  const [leadAssignment, setLeadAssignment] = useState<LeadAssignmentSettings>(DEFAULT_LEAD_ASSIGNMENT);
+
+  // Whether every new lead is paired with a freshly created project, and of
+  // which type (Projects → Settings). Like the rules above, the creation itself
+  // happens server-side so it also covers leads that never pass through this
+  // app — the public webhook and workflow actions — and so two devices syncing
+  // the same new lead cannot each produce a project for it.
+  const [projectAutoCreate, setProjectAutoCreate] = useState<ProjectAutoCreateSettings>(DEFAULT_PROJECT_AUTO_CREATE);
 
   const [integrationsConfig, setIntegrationsConfig] = useState<any>({
     emailProvider: "smtp",
@@ -550,6 +630,39 @@ function App() {
       sessionStorage.removeItem("crm_current_user_rbac");
     }
   }, [currentUser]);
+
+  // Licence for this installation. Fetched once per session and re-checked on a
+  // slow timer — it changes about once a year, and api/license.php throttles the
+  // call it makes to the licence server behind this anyway.
+  //
+  // `null` means "not known yet, or could not be read", and every consumer treats
+  // that as "say nothing": no banner, no seat limit. A licence check that fails
+  // must never be the reason someone cannot add a colleague.
+  const [licenseState, setLicenseState] = useState<LicenseState | null>(null);
+  // Read from inside the sync push handler, which is rebuilt on every render and
+  // must not close over a licence state that was current three renders ago.
+  const licenseStateRef = useRef<LicenseState | null>(null);
+  licenseStateRef.current = licenseState;
+
+  useEffect(() => {
+    if (!currentUser) {
+      setLicenseState(null);
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      const next = await fetchLicenseState();
+      if (!cancelled && next) setLicenseState(next);
+    };
+    load();
+    // Six hours: long enough to be invisible, short enough that a licence that
+    // expires overnight is reflected in a browser tab left open for days.
+    const timer = window.setInterval(load, 6 * 60 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [currentUser?.email]);
 
   // Theme, error sidebar and the leads-screen view modes are per-user
   // preferences read out of the DB — see the UserPrefs block below.
@@ -709,10 +822,10 @@ ${log.payload || ''}
           viewName = getTranslation(userLanguage, "sidebar.settings");
           break;
         case "overview":
-          viewName = getTranslation(userLanguage, "sidebar.dashboard");
+          viewName = getTranslation(userLanguage, "sidebar.analytics");
           break;
         case "tasks":
-          viewName = t("Tasks", "Úlohy", "Feladatok");
+          viewName = getTranslation(userLanguage, "sidebar.tasks");
           break;
         case "projects":
           viewName = t("Projects", "Projekty", "Projektek");
@@ -735,9 +848,14 @@ ${log.payload || ''}
         case "warehouse":
           viewName = t("Warehouse & Inventory", "Sklad a zásoby", "Raktár és készlet");
           break;
+        case "invoices":
+          viewName = t("Invoices & Price Offers", "Cenové ponuky a faktúry", "Árajánlatok és számlák");
+          break;
         case "dashboard":
+          viewName = getTranslation(userLanguage, "sidebar.dashboard");
+          break;
         default:
-          viewName = t("Task Dashboard", "Panel úloh", "Feladat Irányítópult");
+          viewName = getTranslation(userLanguage, "sidebar.tasks");
           break;
       }
     }
@@ -749,30 +867,19 @@ ${log.payload || ''}
       ? `${viewName} | ${systemName} — ${VERSION}`
       : `${viewName} | ${systemName}`;
   }, [activeTab, systemName, userLanguage, leads, customDashboards, unifiedEntries]);
+  // Single permission resolver for the shell: sidebar, launcher, header
+  // shortcuts and the route guard all read from it. Views receive their own
+  // `ModuleAccess` slice so none of them has to know about roles.
+  const access = useMemo(() => buildAccess(currentUser, roles), [currentUser, roles]);
+
   const taskAccess = (() => {
-    if (!currentUser) {
-      return { view: false, create: false, edit: false, delete: false, viewAll: false };
-    }
-    if (currentUser.role.toLowerCase() === "admin") {
-      return { view: true, create: true, edit: true, delete: true, viewAll: true };
-    }
-    const role = roles.find((item) => item.name === currentUser.role);
-    const permissions: Partial<RolePermission["permissions"]> = role?.permissions || {};
-    const isProjectManager = currentUser.role.toLowerCase() === "project manager";
-    const allowed = (slug: string, projectManagerDefault = false) => {
-      if (Object.prototype.hasOwnProperty.call(permissions, slug)) {
-        return permissions[slug] === "edit" || permissions[slug] === "view";
-      }
-      return isProjectManager && projectManagerDefault;
-    };
-    // Unlike the slugs above, seeing the team board is on by default and has to
-    // be revoked explicitly — see resolveTaskViewAll.
+    const m = access.module("tasks");
     return {
-      view: allowed("tasks.view", true),
-      create: allowed("tasks.create", true),
-      edit: allowed("tasks.edit", true),
-      delete: permissions["tasks.delete"] === "edit",
-      viewAll: resolveTaskViewAll(permissions, false),
+      view: m.view,
+      create: m.edit,
+      edit: m.edit,
+      delete: m.delete,
+      viewAll: access.can("tasks.view_all"),
     };
   })();
 
@@ -784,29 +891,15 @@ ${log.payload || ''}
     return acc;
   }, {} as Record<string, string>);
 
-  // Permission resolver helper
-  const getPermission = (section: keyof RolePermission["permissions"]) => {
-    if (!currentUser) return "nothing";
-    if (currentUser.role.toLowerCase() === "admin") return "edit"; // Admin always has absolute write privileges
-    const userRole = roles.find(r => r.name === currentUser.role);
-    if (!userRole) return "nothing";
-    return userRole.permissions[section] || "nothing";
-  };
-
-  // Has settings access flag
-  const hasSettingsAccess = 
-    getPermission("general_config") !== "nothing" ||
-    getPermission("pm_managers") !== "nothing" ||
-    getPermission("pipeline_stages") !== "nothing" ||
-    getPermission("traffic_sources") !== "nothing" ||
-    getPermission("system_reset") !== "nothing" ||
-    getPermission("ai_config") !== "nothing";
+  // Settings still reads single keys by name (its categories map 1:1 to keys).
+  const getPermission = (section: string) => access.value(section);
 
   // Guard routing pathway from unauthorised users
   useEffect(() => {
-    if (currentUser && activeTab === "settings" && !hasSettingsAccess) {
-      setActiveTab("dashboard");
-      window.location.hash = "dashboard";
+    if (currentUser && activeTab.startsWith("settings") && !access.hasSettingsAccess) {
+      const target = firstAllowedRoute(access) ?? "dashboard";
+      setActiveTab(target);
+      window.location.hash = target;
     }
   }, [activeTab, currentUser, roles]);
 
@@ -831,6 +924,11 @@ ${log.payload || ''}
   warehouseMovementsRef.current = warehouseMovements;
   financialCategoriesRef.current = financialCategories;
   financialRecordsRef.current = financialRecords;
+  invoicesOffersRef.current = invoicesOffers;
+  aiCustomTemplatesRef.current = aiCustomTemplates;
+  clientCategoriesRef.current = clientCategories;
+  companyBillingSettingsRef.current = companyBillingSettings;
+  invoicingIntegrationsRef.current = invoicingIntegrations;
 
   // --- REAL-TIME SERVER SYNCHRONIZER ENGINE ---
   const pushStateToServer = (
@@ -853,6 +951,9 @@ ${log.payload || ''}
     nextWarehouseMovements?: WarehouseMovement[],
     nextFinancialCategories?: FinancialCategory[],
     nextFinancialRecords?: FinancialRecord[],
+    nextInvoicesOffers?: InvoiceOffer[],
+    nextAiCustomTemplates?: AiCustomTemplate[],
+    nextClientCategories?: ClientCategory[],
     options?: { showIndicator?: boolean }
   ): Promise<void> => {
     if (!isInstalled || !currentUser || !isInitialSyncResolved) return pushChainRef.current;
@@ -890,6 +991,9 @@ ${log.payload || ''}
     const liveWarehouseMovements = nextWarehouseMovements ?? warehouseMovementsRef.current;
     const liveFinancialCategories = nextFinancialCategories ?? financialCategoriesRef.current;
     const liveFinancialRecords = nextFinancialRecords ?? financialRecordsRef.current;
+    const liveInvoicesOffers = nextInvoicesOffers ?? invoicesOffersRef.current;
+    const liveAiCustomTemplates = nextAiCustomTemplates ?? aiCustomTemplatesRef.current;
+    const liveClientCategories = nextClientCategories ?? clientCategoriesRef.current;
 
     const payload: any = {
       baseSyncedAt: baseSyncedAtRef.current,
@@ -911,6 +1015,9 @@ ${log.payload || ''}
       warehouseMovements: liveWarehouseMovements,
       financialCategories: liveFinancialCategories,
       financialRecords: liveFinancialRecords,
+      invoicesOffers: liveInvoicesOffers,
+      aiCustomTemplates: liveAiCustomTemplates,
+      clientCategories: liveClientCategories,
       settings: {
         systemName,
         systemLanguage,
@@ -918,15 +1025,22 @@ ${log.payload || ''}
         leadStates,
         leadSources,
         leadCategories,
+        leadSourceIds,
+        leadCategoryIds,
         leadStateColors,
         leadSourceColors,
         leadCategoryColors,
         leadStageGroups,
         leadStateParents,
         leadStateFollowUp,
+        leadStateSla,
+        leadAssignment,
+        projectAutoCreate,
         taskStates,
         taskStateColors,
-        integrationsConfig: nextIntegrationsConfig ?? integrationsConfigRef.current
+        integrationsConfig: nextIntegrationsConfig ?? integrationsConfigRef.current,
+        companyBillingSettings: companyBillingSettingsRef.current,
+        invoicingIntegrations: invoicingIntegrationsRef.current
       }
     };
 
@@ -959,6 +1073,9 @@ ${log.payload || ''}
       narrow("warehouseMovements", liveWarehouseMovements);
       narrow("financialCategories", liveFinancialCategories);
       narrow("financialRecords", liveFinancialRecords);
+      narrow("invoicesOffers", liveInvoicesOffers);
+      narrow("aiCustomTemplates", liveAiCustomTemplates);
+      narrow("clientCategories", liveClientCategories);
 
       // The registry list stays whole on purpose: sync.php walks unifiedEntries to
       // reach each entry's dynamic table, so an entry omitted here would silently
@@ -1016,6 +1133,55 @@ ${log.payload || ''}
           const out = await res.json();
           if (out && typeof out.serverTime === "string") {
             baseSyncedAtRef.current = out.serverTime;
+          }
+          // Owners the server put on brand-new, unassigned leads (Settings →
+          // Users → auto-assignment). Adopt them locally: without this the
+          // client keeps its blank owner, shows the lead as unassigned until
+          // the next full pull, and pushes the blank straight back over the
+          // server's pick on the following sync.
+          const assigned = out?.assignedOwners;
+          if (assigned && typeof assigned === "object" && Object.keys(assigned).length > 0) {
+            setLeads((prev) =>
+              prev.map((lead) => {
+                const owner = assigned[lead.id];
+                return typeof owner === "string" && owner && !lead.owner
+                  ? { ...lead, owner }
+                  : lead;
+              })
+            );
+          }
+          // Projects the server paired with brand-new leads (Projects →
+          // Settings → automatic project creation). Adopt them the same way:
+          // without this they would not appear until the next full pull, and a
+          // client still on protocol v1 would push its own project list back
+          // over them, taking them with it.
+          const created = out?.createdProjects;
+          if (Array.isArray(created) && created.length > 0) {
+            setProjects((prev) => {
+              const known = new Set(prev.map((p) => p.id));
+              const additions = (created as Project[]).filter(
+                (p) => p && typeof p.id === "string" && !known.has(p.id)
+              );
+              if (additions.length === 0) return prev;
+              const next = [...additions, ...prev];
+              projectsRef.current = next;
+              return next;
+            });
+          }
+          // Accounts the server refused because the licence has no seat left.
+          // The push itself succeeded, so without this the new colleague would
+          // simply not be there after the next poll, with nothing said.
+          if (Array.isArray(out?.seatRejections) && out.seatRejections.length > 0) {
+            const emails = out.seatRejections.filter((e: unknown) => typeof e === "string");
+            if (emails.length > 0 && typeof (window as any).showToast === "function") {
+              (window as any).showToast(
+                formatTranslation(userLanguage, "license.seat_rejected", {
+                  emails: emails.join(", "),
+                  max: licenseStateRef.current?.maxUsers ?? "—",
+                }),
+                "warning"
+              );
+            }
           }
         } catch { /* non-JSON response — keep the previous snapshot clock */ }
       } else {
@@ -1099,6 +1265,17 @@ ${log.payload || ''}
       return nextDashboards;
     });
   };
+
+  /**
+   * The Dashboard section is stored as a reserved entry in `customDashboards`,
+   * so it syncs and versions exactly like a user-made AI panel. Until someone
+   * saves a change to it there is nothing on the server, and the starter layout
+   * from `buildDefaultHomeDashboard()` stands in.
+   */
+  const homeDashboard = useMemo(
+    () => customDashboards.find(d => d.id === HOME_DASHBOARD_ID) || buildDefaultHomeDashboard(),
+    [customDashboards]
+  );
 
   const updateRolesAndSync = (newRoles: RolePermission[] | ((prev: RolePermission[]) => RolePermission[])) => {
     setRoles(prev => {
@@ -1232,6 +1409,51 @@ ${log.payload || ''}
     });
   };
 
+  const updateInvoicesOffersAndSync = (newOffers: InvoiceOffer[] | ((prev: InvoiceOffer[]) => InvoiceOffer[])) => {
+    setInvoicesOffers(prev => {
+      const next = typeof newOffers === "function" ? newOffers(prev) : newOffers;
+      invoicesOffersRef.current = next;
+      pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
+      return next;
+    });
+  };
+
+  const updateClientCategoriesAndSync = (newCats: ClientCategory[] | ((prev: ClientCategory[]) => ClientCategory[])) => {
+    setClientCategories(prev => {
+      const next = typeof newCats === "function" ? newCats(prev) : newCats;
+      clientCategoriesRef.current = next;
+      pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
+      return next;
+    });
+  };
+
+  const updateAiCustomTemplatesAndSync = (newTemplates: AiCustomTemplate[] | ((prev: AiCustomTemplate[]) => AiCustomTemplate[])) => {
+    setAiCustomTemplates(prev => {
+      const next = typeof newTemplates === "function" ? newTemplates(prev) : newTemplates;
+      aiCustomTemplatesRef.current = next;
+      pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
+      return next;
+    });
+  };
+
+  const updateCompanyBillingSettingsAndSync = (newSettings: CompanyBillingSettings | null | ((prev: CompanyBillingSettings | null) => CompanyBillingSettings | null)) => {
+    setCompanyBillingSettings(prev => {
+      const next = typeof newSettings === "function" ? newSettings(prev) : newSettings;
+      companyBillingSettingsRef.current = next;
+      pushStateToServer();
+      return next;
+    });
+  };
+
+  const updateInvoicingIntegrationsAndSync = (newIntegrations: ExternalInvoicingConfig | null | ((prev: ExternalInvoicingConfig | null) => ExternalInvoicingConfig | null)) => {
+    setInvoicingIntegrations(prev => {
+      const next = typeof newIntegrations === "function" ? newIntegrations(prev) : newIntegrations;
+      invoicingIntegrationsRef.current = next;
+      pushStateToServer();
+      return next;
+    });
+  };
+
   const updateMeetingNotesAndSync = (newNotes: MeetingNote[] | ((prev: MeetingNote[]) => MeetingNote[])) => {
     setMeetingNotes(prev => {
       const nextNotes = typeof newNotes === "function" ? newNotes(prev) : newNotes;
@@ -1319,6 +1541,50 @@ ${log.payload || ''}
 
   const errorSidebarEnabled = userPrefs.errorSidebarEnabled;
 
+  // The appearance and the palette live in two places on purpose: localStorage,
+  // which index.html can read before the first frame, and the user's DB row,
+  // which follows the account to another browser. This adopts the row whenever
+  // it disagrees — on login, and after a sync brings a change made elsewhere.
+  //
+  // Read straight out of the blob rather than through `userPrefs`, which fills
+  // absent keys in from DEFAULT_USER_PREFS: an account that has never saved a
+  // theme would otherwise look like it had chosen "system", and adopting that
+  // would throw away the choice the visitor just made in this browser.
+  const storedThemePrefs = useMemo(() => {
+    const preferences = parseUserMetadata({ metadata_json: currentUserMetaJson }).preferences;
+    return preferences && typeof preferences === "object"
+      ? { mode: (preferences as Partial<UserPrefs>).themeMode, palette: (preferences as Partial<UserPrefs>).theme }
+      : { mode: undefined, palette: undefined };
+  }, [currentUserMetaJson]);
+  const storedThemeMode = storedThemePrefs.mode;
+  const storedThemePalette = storedThemePrefs.palette;
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    if (isThemeMode(storedThemeMode) && storedThemeMode !== themeModeRef.current) {
+      setThemeMode(storedThemeMode);
+    }
+    if (storedThemePalette && storedThemePalette !== themePaletteRef.current) {
+      setUserTheme(storedThemePalette);
+    }
+  }, [isLoggedIn, storedThemeMode, storedThemePalette]);
+
+  // Writing a preference re-renders with a new `userPrefs`, so the effect above
+  // must compare against what is on screen right now, not against a value it
+  // captured — otherwise a local change and the row it just wrote fight.
+  const themeModeRef = useRef(themeMode);
+  themeModeRef.current = themeMode;
+  const themePaletteRef = useRef(userTheme);
+  themePaletteRef.current = userTheme;
+
+  const changeThemeMode = (mode: ThemeMode) => {
+    setThemeMode(mode);
+    setUserPref("themeMode", mode);
+  };
+  const changeThemePalette = (palette: string) => {
+    setUserTheme(palette);
+    setUserPref("theme", palette);
+  };
+
   useEffect(() => {
     if (errorSidebarEnabled) {
       fetchErrorLogs();
@@ -1346,14 +1612,18 @@ ${log.payload || ''}
     }
     const nextMeta = {
       ...parseUserMetadata(currentUser),
-      preferences: { ...DEFAULT_USER_PREFS, ...readLegacyPrefs() }
+      // The appearance is seeded from what this browser is actually showing,
+      // not from DEFAULT_USER_PREFS: writing the default here would be read
+      // straight back by the adoption effect above and would silently undo the
+      // theme the visitor picked before they ever logged in.
+      preferences: { ...DEFAULT_USER_PREFS, ...readLegacyPrefs(), themeMode, theme: userTheme }
     };
     updateUsersAndSync(prevUsers => prevUsers.map(u =>
       u.email === currentUser.email ? { ...u, metadata_json: nextMeta } : u
     ));
     setCurrentUser(prev => prev ? { ...prev, metadata_json: nextMeta } : prev);
     clearLegacyPrefs();
-  }, [currentUser, users, isInitialSyncResolved]);
+  }, [currentUser, users, isInitialSyncResolved, themeMode, userTheme]);
 
   const handleSaveUserLayout = (layout: string[], hidden?: string[]) => {
     if (!currentUser) return;
@@ -1435,9 +1705,10 @@ ${log.payload || ''}
   useEffect(() => {
     if (!isInstalled || !isInitialSyncResolved) return;
     const currentSig = computeSettingsSig({
-      leadStates, leadSources, leadCategories, systemName, systemLanguage, systemCurrency,
+      leadStates, leadSources, leadCategories, leadSourceIds, leadCategoryIds,
+      systemName, systemLanguage, systemCurrency,
       leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups,
-      leadStateParents, leadStateFollowUp, taskStates, taskStateColors,
+      leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors,
     });
     // Before we have ever seen the server's settings, just record the current
     // signature — there is nothing to push yet, and pushing here would echo the
@@ -1465,7 +1736,7 @@ ${log.payload || ''}
       // newest values.
       pushStateToServer();
     }, 700);
-  }, [leadStates, leadSources, leadCategories, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, taskStates, taskStateColors, isInitialSyncResolved]);
+  }, [leadStates, leadSources, leadCategories, leadSourceIds, leadCategoryIds, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, isInitialSyncResolved]);
 
   // Layout Hash change listener
   useEffect(() => {
@@ -1493,6 +1764,15 @@ ${log.payload || ''}
   // outside the SPA (cron agents, AI summaries) that don't bump the version
   // still surface within a minute.
   useEffect(() => {
+    // Nothing to poll for until the app is installed, and polling through an
+    // install is actively harmful: `setup.php` writes config.php as part of a
+    // successful run, so the very next tick sees `installed: true` and one of
+    // the branches below flips `isInstalled` back on. That unmounts the wizard
+    // mid-flow — and on a fresh install step 3 is the only place the generated
+    // admin password is ever shown, so it is lost before it can be read. The
+    // wizard reloads the page itself once the user leaves step 3.
+    if (!isInstalled) return;
+
     let lastDataVersion: string | null = null;
     let tick = 0;
 
@@ -1620,20 +1900,54 @@ ${log.payload || ''}
       if (data.financialRecords && Array.isArray(data.financialRecords)) {
         setFinancialRecords(data.financialRecords);
       }
+      if (data.invoicesOffers && Array.isArray(data.invoicesOffers)) {
+        setInvoicesOffers(data.invoicesOffers);
+      }
+      if (data.aiCustomTemplates && Array.isArray(data.aiCustomTemplates)) {
+        setAiCustomTemplates(data.aiCustomTemplates);
+      }
+      if (data.clientCategories && Array.isArray(data.clientCategories)) {
+        setClientCategories(data.clientCategories);
+      }
       if (data.settings) {
         const s = data.settings;
         if (s.systemName && s.systemName !== systemName) setSystemName(s.systemName);
         if (s.systemLanguage && s.systemLanguage !== systemLanguage) setSystemLanguage(s.systemLanguage);
         if (s.systemCurrency !== undefined && s.systemCurrency !== systemCurrency) setSystemCurrency(s.systemCurrency || "");
+        if (s.companyBillingSettings) setCompanyBillingSettings(s.companyBillingSettings);
+        if (s.invoicingIntegrations) setInvoicingIntegrations(s.invoicingIntegrations);
         setLeadStates((prev) => s.leadStates && JSON.stringify(s.leadStates) !== JSON.stringify(prev) ? s.leadStates : prev);
         setLeadSources((prev) => s.leadSources && JSON.stringify(s.leadSources) !== JSON.stringify(prev) ? s.leadSources : prev);
         setLeadCategories((prev) => s.leadCategories && JSON.stringify(s.leadCategories) !== JSON.stringify(prev) ? s.leadCategories : prev);
         setLeadStateColors((prev) => s.leadStateColors && JSON.stringify(s.leadStateColors) !== JSON.stringify(prev) ? s.leadStateColors : prev);
         setLeadSourceColors((prev) => s.leadSourceColors && JSON.stringify(s.leadSourceColors) !== JSON.stringify(prev) ? s.leadSourceColors : prev);
         setLeadCategoryColors((prev) => s.leadCategoryColors && JSON.stringify(s.leadCategoryColors) !== JSON.stringify(prev) ? s.leadCategoryColors : prev);
+        // Normalized against the list that arrived with them, so an install
+        // upgrading from positional ids adopts the same 1..N map the backend
+        // just froze instead of an empty one.
+        setLeadSourceIds((prev) => {
+          const next = normalizeListIds(s.leadSources ?? leadSources, s.leadSourceIds);
+          return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
+        });
+        setLeadCategoryIds((prev) => {
+          const next = normalizeListIds(s.leadCategories ?? leadCategories, s.leadCategoryIds);
+          return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
+        });
         setLeadStageGroups((prev) => s.leadStageGroups && JSON.stringify(s.leadStageGroups) !== JSON.stringify(prev) ? s.leadStageGroups : prev);
         setLeadStateParents((prev) => s.leadStateParents && JSON.stringify(s.leadStateParents) !== JSON.stringify(prev) ? s.leadStateParents : prev);
         setLeadStateFollowUp((prev) => s.leadStateFollowUp && JSON.stringify(s.leadStateFollowUp) !== JSON.stringify(prev) ? s.leadStateFollowUp : prev);
+        setLeadStateSla((prev) => {
+          const next = normalizeLeadStateSla(s.leadStateSla);
+          return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
+        });
+        setLeadAssignment((prev) => {
+          const next = normalizeLeadAssignment(s.leadAssignment);
+          return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
+        });
+        setProjectAutoCreate((prev) => {
+          const next = normalizeProjectAutoCreate(s.projectAutoCreate);
+          return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
+        });
         setTaskStates((prev) => s.taskStates && JSON.stringify(s.taskStates) !== JSON.stringify(prev) ? s.taskStates : prev);
         setTaskStateColors((prev) => s.taskStateColors && JSON.stringify(s.taskStateColors) !== JSON.stringify(prev) ? s.taskStateColors : prev);
         if (s.integrationsConfig) syncIntegrationsConfig(s.integrationsConfig);
@@ -1668,6 +1982,9 @@ ${log.payload || ''}
         warehouseMovements: baselineOf(data.warehouseMovements ?? warehouseMovementsRef.current),
         financialCategories: baselineOf(data.financialCategories ?? financialCategoriesRef.current),
         financialRecords: baselineOf(data.financialRecords ?? financialRecordsRef.current),
+        invoicesOffers: baselineOf(data.invoicesOffers ?? invoicesOffersRef.current),
+        aiCustomTemplates: baselineOf(data.aiCustomTemplates ?? aiCustomTemplatesRef.current),
+        clientCategories: baselineOf(data.clientCategories ?? clientCategoriesRef.current),
       };
       const ueData = data.unifiedEntriesData ?? unifiedEntriesDataRef.current ?? {};
       const nextUeBaselines: Record<string, RecordBaseline> = {};
@@ -1696,6 +2013,9 @@ ${log.payload || ''}
         warehouseMovements: data.warehouseMovements ?? warehouseMovementsRef.current,
         financialCategories: data.financialCategories ?? financialCategoriesRef.current,
         financialRecords: data.financialRecords ?? financialRecordsRef.current,
+        invoicesOffers: data.invoicesOffers ?? invoicesOffersRef.current,
+        aiCustomTemplates: data.aiCustomTemplates ?? aiCustomTemplatesRef.current,
+        clientCategories: data.clientCategories ?? clientCategoriesRef.current,
         settings: data.settings ?? {},
       });
     };
@@ -1848,6 +2168,33 @@ ${log.payload || ''}
 
     const { route: activeRoute } = parseAppHash(activeTab);
 
+    // Route guard: the sidebar hides what the role may not open, but a typed
+    // hash, an old bookmark or a permission revoked mid-session still lands
+    // here. Unknown routes fall through to the tasks board below, and
+    // permissionKeyForRoute maps them to "tasks" so that case is covered too.
+    const routeKey = permissionKeyForRoute(activeRoute);
+    if (routeKey !== null && !access.canOpenRoute(activeRoute)) {
+      return (
+        <AccessDeniedView
+          systemLanguage={userLanguage}
+          fallbackRoute={firstAllowedRoute(access)}
+          onNavigate={(route) => {
+            setActiveTab(route);
+            window.location.hash = route;
+          }}
+          roleName={currentUser?.role}
+          hasKnownRole={access.hasKnownRole}
+          onLogout={() => {
+            fetch("/api/logout.php", { method: "POST" })
+              .finally(() => {
+                setCurrentUser(null);
+                window.location.href = "/";
+              });
+          }}
+        />
+      );
+    }
+
     if (activeRoute.startsWith("user-")) {
       const username = decodeURIComponent(activeRoute.replace("user-", ""));
       return (
@@ -1868,6 +2215,11 @@ ${log.payload || ''}
           setLeadStateColors={setLeadStateColors}
           leadCategories={leadCategories}
           setLeadCategories={setLeadCategories}
+          leadSourceIds={leadSourceIds}
+          setLeadSourceIds={setLeadSourceIds}
+          leadCategoryIds={leadCategoryIds}
+          setLeadCategoryIds={setLeadCategoryIds}
+          setProjectAutoCreate={setProjectAutoCreate}
           leadSourceColors={leadSourceColors}
           setLeadSourceColors={setLeadSourceColors}
           leadCategoryColors={leadCategoryColors}
@@ -1876,6 +2228,10 @@ ${log.payload || ''}
           setLeadStageGroups={setLeadStageGroups}
           leadStateFollowUp={leadStateFollowUp}
           setLeadStateFollowUp={setLeadStateFollowUp}
+          leadStateSla={leadStateSla}
+          setLeadStateSla={setLeadStateSla}
+          leadAssignment={leadAssignment}
+          setLeadAssignment={setLeadAssignment}
           systemLanguage={systemLanguage}
           setSystemLanguage={setSystemLanguage}
           systemCurrency={systemCurrency}
@@ -1892,6 +2248,14 @@ ${log.payload || ''}
           dbInfo={dbInfo || undefined}
           projectTypes={projectTypes}
           setProjectTypes={updateProjectTypesAndSync}
+          companyBillingSettings={companyBillingSettings}
+          setCompanyBillingSettings={updateCompanyBillingSettingsAndSync}
+          invoicingIntegrations={invoicingIntegrations}
+          setInvoicingIntegrations={updateInvoicingIntegrationsAndSync}
+          aiCustomTemplates={aiCustomTemplates}
+          setAiCustomTemplates={updateAiCustomTemplatesAndSync}
+          licenseState={licenseState}
+          onLicenseStateChange={setLicenseState}
         />
       );
     }
@@ -1903,6 +2267,7 @@ ${log.payload || ''}
         return (
           <DynamicDashboardView
             dashboard={dashboard}
+            access={access.module("dashboard.custom")}
             onSaveDashboard={(updated: CustomDashboard) => {
               updateCustomDashboardsAndSync((prev) =>
                 prev.map((d) => (d.id === updated.id ? updated : d))
@@ -1910,6 +2275,7 @@ ${log.payload || ''}
             }}
             systemLanguage={userLanguage}
             currencyCode={currencyCode}
+            pipelineStages={orderedLeadStates}
           />
         );
       }
@@ -1924,11 +2290,13 @@ ${log.payload || ''}
         return (
           <UnifiedEntryView
             registry={ueRegistry}
+            access={access.module("unified_entries")}
             rows={unifiedEntriesData[ueId] || []}
             setRows={(updater: any) => updateUnifiedEntriesDataAndSync(ueId, updater)}
             systemLanguage={userLanguage}
             leads={leads}
             subPath={subPath}
+            systemCurrency={currencyCode}
           />
         );
       }
@@ -1943,6 +2311,9 @@ ${log.payload || ''}
           projectManagers={projectManagers}
           leadSources={leadSources}
           initialSelectedClient={clientName}
+          access={access.module("clients")}
+          clientCategories={clientCategories}
+          setClientCategories={updateClientCategoriesAndSync}
           systemLanguage={userLanguage}
           tasks={tasks}
           setTasks={updateTasksAndSync}
@@ -1968,6 +2339,7 @@ ${log.payload || ''}
           leadStateColors={leadStateColors}
           leadStateParents={leadStateParents}
           initialSelectedLeadId={leadId}
+          access={access.module("leads")}
           projectManagerColors={projectManagerColors}
           leadCategories={leadCategories}
           leadSourceColors={leadSourceColors}
@@ -1981,9 +2353,12 @@ ${log.payload || ''}
           integrationsConfig={integrationsConfig}
           leadStageGroups={leadStageGroups}
           projectTypes={projectTypes}
+          projects={projects}
           setProjects={updateProjectsAndSync}
           setActiveTab={setActiveTab}
           leadStateFollowUp={leadStateFollowUp}
+          leadStateSla={leadStateSla}
+          leadAssignment={leadAssignment}
           currencyCode={currencyCode}
         />
       );
@@ -2011,6 +2386,11 @@ ${log.payload || ''}
           setLeadStateColors={setLeadStateColors}
           leadCategories={leadCategories}
           setLeadCategories={setLeadCategories}
+          leadSourceIds={leadSourceIds}
+          setLeadSourceIds={setLeadSourceIds}
+          leadCategoryIds={leadCategoryIds}
+          setLeadCategoryIds={setLeadCategoryIds}
+          setProjectAutoCreate={setProjectAutoCreate}
           leadSourceColors={leadSourceColors}
           setLeadSourceColors={setLeadSourceColors}
           leadCategoryColors={leadCategoryColors}
@@ -2019,6 +2399,10 @@ ${log.payload || ''}
           setLeadStageGroups={setLeadStageGroups}
           leadStateFollowUp={leadStateFollowUp}
           setLeadStateFollowUp={setLeadStateFollowUp}
+          leadStateSla={leadStateSla}
+          setLeadStateSla={setLeadStateSla}
+          leadAssignment={leadAssignment}
+          setLeadAssignment={setLeadAssignment}
           systemLanguage={systemLanguage}
           setSystemLanguage={setSystemLanguage}
           systemCurrency={systemCurrency}
@@ -2038,12 +2422,20 @@ ${log.payload || ''}
           setTasks={updateTasksAndSync}
           projectTypes={projectTypes}
           setProjectTypes={updateProjectTypesAndSync}
+          companyBillingSettings={companyBillingSettings}
+          setCompanyBillingSettings={updateCompanyBillingSettingsAndSync}
+          invoicingIntegrations={invoicingIntegrations}
+          setInvoicingIntegrations={updateInvoicingIntegrationsAndSync}
+          aiCustomTemplates={aiCustomTemplates}
+          setAiCustomTemplates={updateAiCustomTemplatesAndSync}
           unifiedEntries={unifiedEntries}
           setUnifiedEntries={updateUnifiedEntriesAndSync}
           unifiedEntriesData={unifiedEntriesData}
           initialSubTab={subTab}
           settingsAction={settingsAction}
           settingsActionId={settingsActionId}
+          licenseState={licenseState}
+          onLicenseStateChange={setLicenseState}
         />
       );
     }
@@ -2055,6 +2447,7 @@ ${log.payload || ''}
         return (
           <LeadsDatagrid 
             systemName={systemName}
+            access={access.module("leads")}
             leads={leads}
             setLeads={updateLeadsAndSync}
             leadStates={orderedLeadStates}
@@ -2075,9 +2468,12 @@ ${log.payload || ''}
             integrationsConfig={integrationsConfig}
             leadStageGroups={leadStageGroups}
             projectTypes={projectTypes}
+            projects={projects}
             setProjects={updateProjectsAndSync}
             setActiveTab={setActiveTab}
             leadStateFollowUp={leadStateFollowUp}
+            leadStateSla={leadStateSla}
+            leadAssignment={leadAssignment}
             currencyCode={currencyCode}
           />
         );
@@ -2091,7 +2487,10 @@ ${log.payload || ''}
             leads={leads}
             users={users}
             userLanguage={userLanguage}
-            canEdit={getPermission("general_config") === "edit"}
+            access={access.module("projects")}
+            projectAutoCreate={projectAutoCreate}
+            setProjectAutoCreate={setProjectAutoCreate}
+            leadCategories={leadCategories}
             financialRecords={financialRecords}
             setFinancialRecords={updateFinancialRecordsAndSync}
             financialCategories={financialCategories}
@@ -2103,6 +2502,7 @@ ${log.payload || ''}
         return (
           <ClientsView 
             leads={leads}
+            access={access.module("clients")}
             setLeads={updateLeadsAndSync}
             projectManagers={projectManagers}
             projectManagerColors={projectManagerColors}
@@ -2119,11 +2519,14 @@ ${log.payload || ''}
             setFinancialRecords={updateFinancialRecordsAndSync}
             financialCategories={financialCategories}
             setFinancialCategories={updateFinancialCategoriesAndSync}
+            clientCategories={clientCategories}
+            setClientCategories={updateClientCategoriesAndSync}
           />
         );
       case "financial":
         return (
           <FinancialManagementView
+            access={access.module("financial")}
             financialRecords={financialRecords}
             setFinancialRecords={updateFinancialRecordsAndSync}
             financialCategories={financialCategories}
@@ -2146,9 +2549,30 @@ ${log.payload || ''}
             }}
           />
         );
+      case "invoices":
+        return (
+          <InvoicingView
+            access={access.module("invoices")}
+            invoicesOffers={invoicesOffers}
+            setInvoicesOffers={updateInvoicesOffersAndSync}
+            leads={leads}
+            setLeads={updateLeadsAndSync}
+            warehouseItems={warehouseItems}
+            companyBillingSettings={companyBillingSettings}
+            aiCustomTemplates={aiCustomTemplates}
+            invoicingIntegrations={invoicingIntegrations}
+            currentUser={activeUser}
+            systemLanguage={userLanguage}
+            systemCurrency={currencyCode}
+            onOpenSettings={() => {
+              window.location.hash = "settings/invoicing";
+              setActiveTab("settings/invoicing");
+            }}
+          />
+        );
       case "files":
         return (
-          <FilesView leads={leads} setLeads={updateLeadsAndSync} systemLanguage={userLanguage} currencyCode={currencyCode} />
+          <FilesView leads={leads} setLeads={updateLeadsAndSync} systemLanguage={userLanguage} currencyCode={currencyCode} access={access.module("files")} />
         );
       case "personal-settings":
         return (
@@ -2160,7 +2584,10 @@ ${log.payload || ''}
             userLanguage={userLanguage}
             setUserLanguage={changeUserLanguage}
             userTheme={userTheme}
-            setUserTheme={setUserTheme}
+            setUserTheme={changeThemePalette}
+            themeMode={themeMode}
+            setThemeMode={changeThemeMode}
+            appearance={appearance}
             onSync={() => {}}
             errorSidebarEnabled={errorSidebarEnabled}
             setErrorSidebarEnabled={(enabled: boolean) => setUserPref("errorSidebarEnabled", enabled)}
@@ -2169,6 +2596,7 @@ ${log.payload || ''}
       case "email":
         return (
           <EmailView
+            access={access.module("email")}
             currentUser={activeUser}
             leads={leads}
             setLeads={updateLeadsAndSync}
@@ -2182,6 +2610,24 @@ ${log.payload || ''}
           />
         );
 
+      case "dashboard":
+        return (
+          <DynamicDashboardView
+            dashboard={homeDashboard}
+            variant="home"
+            access={access.module("dashboard")}
+            onSaveDashboard={(updated: CustomDashboard) => {
+              updateCustomDashboardsAndSync((prev) =>
+                prev.some(d => d.id === HOME_DASHBOARD_ID)
+                  ? prev.map(d => (d.id === HOME_DASHBOARD_ID ? updated : d))
+                  : [...prev, updated]
+              );
+            }}
+            systemLanguage={userLanguage}
+            currencyCode={currencyCode}
+            pipelineStages={orderedLeadStates}
+          />
+        );
       case "overview":
         return (
           <Dashboard 
@@ -2205,6 +2651,7 @@ ${log.payload || ''}
       case "meetings":
         return (
           <MeetingRoomView 
+            access={access.module("meetings")}
             leads={leads}
             users={users}
             currentUser={activeUser}
@@ -2222,18 +2669,20 @@ ${log.payload || ''}
       case "automation":
         return (
           <AutomationView
+            access={access.module("automation")}
             systemLanguage={userLanguage}
             users={users}
             leads={leads}
             taskStates={taskStates}
             leadStates={orderedLeadStates}
             leadSources={leadSources}
+            projectTypes={projectTypes}
             setAppTab={setActiveTab}
           />
         );
       case "social_media":
         return (
-          <SocialMediaView systemLanguage={userLanguage} integrationsConfig={integrationsConfig} isDemoMode={isDemoMode} />
+          <SocialMediaView systemLanguage={userLanguage} integrationsConfig={integrationsConfig} isDemoMode={isDemoMode} access={access.module("social_media")} />
         );
       case "updates":
         return (
@@ -2242,6 +2691,7 @@ ${log.payload || ''}
       case "warehouse":
         return (
           <WarehouseView
+            access={access.module("warehouse")}
             systemLanguage={userLanguage}
             systemCurrency={currencyCode}
             currentUser={activeUser}
@@ -2448,16 +2898,24 @@ ${log.payload || ''}
             pendingPushRef.current = false;
             setTimeout(() => {
               pushStateToServer(
+                // 22 positional "next…" slots precede the options object. Keep this
+                // padding in step with the pushStateToServer signature: when the
+                // invoices/AI-template slots were added the options object silently
+                // slid into `nextInvoicesOffers`, corrupting the replayed payload.
                 undefined, undefined, undefined, undefined, undefined, undefined,
                 undefined, undefined, undefined, undefined, undefined,
                 undefined, undefined, undefined, undefined, undefined, undefined,
-                undefined, undefined,
+                undefined, undefined, undefined, undefined, undefined,
                 { showIndicator: false }
               );
             }, 0);
           }
-          // Route the user to their chosen default landing page right after login
-          const dp = getDefaultPageForUser(user) || "dashboard";
+          // Route the user to their chosen default landing page right after
+          // login - unless the role may not open it, in which case the first
+          // permitted module wins (the route guard would only show a wall).
+          const userAccess = buildAccess(user, roles);
+          const preferred = getDefaultPageForUser(user) || "dashboard";
+          const dp = userAccess.canOpenRoute(preferred) ? preferred : (firstAllowedRoute(userAccess) ?? preferred);
           setActiveTab(dp);
           window.location.hash = dp;
         }}
@@ -2478,11 +2936,12 @@ ${log.payload || ''}
         <Sidebar 
           activeTab={activeTab} 
           setActiveTab={(tab) => { 
-            if (tab === "settings" && !hasSettingsAccess) return;
+            if (!access.canOpenRoute(tab)) return;
             window.location.hash = tab; 
           }} 
           systemName={systemName}
-          showSettings={hasSettingsAccess}
+          showSettings={access.hasSettingsAccess}
+          canOpenRoute={access.canOpenRoute}
           onLogout={() => {
             fetch("/api/logout.php", { method: "POST" })
               .finally(() => {
@@ -2493,10 +2952,10 @@ ${log.payload || ''}
           systemLanguage={userLanguage}
           showMailIcon={showMailIcon}
           integrationsConfig={integrationsConfig}
-          showRagAi={getPermission("rag_view") !== "nothing"}
+          showRagAi={access.can("rag_ai")}
           currentUser={currentUser}
           roles={roles}
-          canEditNav={getPermission("nav_edit") === "edit" || currentUser?.role?.toLowerCase() === "project manager"}
+          canEditNav={access.can("nav_edit")}
           onSaveUserLayout={handleSaveUserLayout}
           unifiedEntries={unifiedEntries}
           customDashboards={customDashboards}
@@ -2532,10 +2991,10 @@ ${log.payload || ''}
             }}
             onAddTask={() => {
               const route = parseAppHash(activeTab).route;
-              // Dashboard and the task panel are the same view. Navigating
-              // dashboard → tasks remounts the calendar (ErrorBoundary resetKey)
-              // and races the create drawer against that remount.
-              if (route !== "tasks" && route !== "dashboard") {
+              // Already on the task panel: navigating to it again would remount
+              // the calendar (ErrorBoundary resetKey) and race the create drawer
+              // against that remount.
+              if (route !== "tasks") {
                 setActiveTab("tasks");
                 window.location.hash = "tasks";
               }
@@ -2545,10 +3004,26 @@ ${log.payload || ''}
               setActiveTab("updates");
               window.location.hash = "updates";
             }}
+            canOpenRoute={access.canOpenRoute}
+            canCreateTask={access.canEdit("tasks")}
+            canCreateMeeting={access.canEdit("meetings")}
+            canRunWorkflows={access.canEdit("automation")}
           />
           
-          <main className="flex-1 p-4 md:p-6 overflow-y-auto max-w-[1600px] mx-auto w-full relative flex flex-col justify-between">
+          <main className="flex-1 p-4 md:p-6 overflow-y-auto [scrollbar-gutter:stable] max-w-[1600px] mx-auto w-full relative flex flex-col justify-between">
             <div className="shrink-0 w-full">
+              {/* Advance warning that the licence is lapsing. Above the workspace
+                  rather than over it: nothing here justifies interrupting work,
+                  and it stays out of the per-view ErrorBoundary so a crash in one
+                  module cannot take the notice down with it. */}
+              <LicenseBanner
+                state={licenseState}
+                language={userLanguage}
+                isAdmin={access.isAdmin}
+                onOpenLicenseSettings={() => {
+                  window.location.hash = "settings/license";
+                }}
+              />
               {/* Whole views (RAG assistant, automations, meeting summaries, the
                   email assistant) are inert without an OpenAI key, and used to give
                   no hint of it until a button failed. One banner above the view
@@ -2590,7 +3065,7 @@ ${log.payload || ''}
           column so they can never land on top of each other — they used to be two
           independently positioned "fixed" banners 4px apart, which read as a single
           garbled banner whenever both were up. */}
-      <div className="fixed bottom-6 right-6 z-[9999] flex flex-col items-end gap-2 pointer-events-none">
+      <div className="fixed bottom-20 right-6 z-[20001] flex flex-col items-end gap-2 pointer-events-none lg:bottom-6">
         {/* Global save indicator — reassures the user their change is being saved
             and, together with the beforeunload guard, that they should not leave or
             reload the page until it disappears. */}

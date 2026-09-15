@@ -26,7 +26,7 @@ Dispatches user credentials and returns active RBAC profiles.
       "id": "u-1",
       "name": "Erik",
       "email": "admin@laminam.sk",
-      "role": "admin",
+      "role": "Admin",
       "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop"
     }
   }

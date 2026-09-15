@@ -1,12 +1,28 @@
 import React, { useState } from "react";
 import * as Icons from "lucide-react";
-import { LayoutDashboard, ChevronLeft, ChevronRight, Settings, LogOut, TableProperties, Users, FolderOpen, BarChart3, Mail, Brain, PencilLine, Pencil, X, GripVertical, Download, Upload, Save, Trash2, Sparkles, Coins } from "lucide-react";
+import { LayoutDashboard, ChevronLeft, ChevronRight, Settings, LogOut, TableProperties, Users, FolderOpen, BarChart3, Mail, Brain, PencilLine, Pencil, X, GripVertical, Download, Upload, Save, Trash2, Sparkles, Coins, ListTodo } from "lucide-react";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { cn } from "../utils/cn";
 import { SOCIAL_MEDIA_ENABLED } from "../utils/featureFlags";
 import type { UserProfile, RolePermission, UnifiedEntryRegistry, CustomDashboard } from "../types";
 import { StartMenu } from "./StartMenu";
+import { isHomeDashboard } from "../utils/dashboardWidgets";
+
+/**
+ * `dashboard` used to BE the task panel — the tasks section was split out of it
+ * and the id now belongs to the widget dashboard. A navigation layout saved
+ * before the split lists only "dashboard", which would leave its owner with no
+ * way back to their tasks, so the new item is slotted in right behind it.
+ */
+const withTasksSection = (layout: string[]): string[] => {
+  if (layout.includes("tasks")) return layout;
+  const at = layout.indexOf("dashboard");
+  if (at === -1) return layout;
+  const next = [...layout];
+  next.splice(at + 1, 0, "tasks");
+  return next;
+};
 
 const ALL_LUCIDE_ICONS = Object.keys(Icons).filter(key => {
   return /^[A-Z][a-zA-Z0-9]*$/.test(key) && 
@@ -27,6 +43,8 @@ interface SidebarProps {
   currentUser: UserProfile | null;
   roles: RolePermission[];
   canEditNav: boolean;
+  /** Route gate from the permission resolver — the sidebar never reads roles itself. */
+  canOpenRoute: (routeId: string) => boolean;
   onSaveUserLayout: (layout: string[], hidden?: string[]) => void;
   unifiedEntries?: UnifiedEntryRegistry[];
   customDashboards?: CustomDashboard[];
@@ -48,6 +66,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentUser,
   roles,
   canEditNav,
+  canOpenRoute,
   onSaveUserLayout,
   unifiedEntries = [],
   customDashboards = [],
@@ -130,7 +149,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // Dynamic Custom Dashboards mapping
   const dynamicDashItems = React.useMemo(() => {
     return (customDashboards || [])
-      .filter(dash => !dash.archived)
+      // The built-in Dashboard is stored alongside the AI panels but has its own
+      // nav item, so it must not also be listed as a custom one.
+      .filter(dash => !dash.archived && !isHomeDashboard(dash.id))
       .map(dash => {
         const IconComponent = (Icons as any)[dash.icon] || LayoutDashboard;
         return {
@@ -224,12 +245,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // Layout resolution logic
   const defaultSystemLayout = React.useMemo(() => {
     return [
-      "dashboard", 
+      "dashboard",
+      "tasks",
       "overview", 
       "projects",
       "rag_ai", 
       "leads", 
       "clients", 
+      "invoices",
       "warehouse",
       "financial",
       "meetings", 
@@ -261,10 +284,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const resolvedLayout = React.useMemo(() => {
     if (canEditNav && Array.isArray(userMetadata?.navLayout) && userMetadata.navLayout.length > 0) {
       const stored: string[] = userMetadata.navLayout;
-      return stored;
+      return withTasksSection(stored);
     }
     if (userRole?.defaultNavLayout && Array.isArray(userRole.defaultNavLayout) && userRole.defaultNavLayout.length > 0) {
-      return userRole.defaultNavLayout;
+      return withTasksSection(userRole.defaultNavLayout);
     }
     // Default behavior: show all default items on the sidebar
     return defaultSystemLayout;
@@ -421,26 +444,31 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const allPossibleItems = React.useMemo(() => {
     return [
-      { id: "dashboard", label: systemLanguage === "sk" ? "Panel úloh" : systemLanguage === "hu" ? "Feladat Irányítópult" : "Task Dashboard", icon: LayoutDashboard, color: "#ff5d00" },
-      { id: "overview", label: getTranslation(systemLanguage, "sidebar.dashboard"), icon: BarChart3, color: "#0891b2" },
-      { id: "projects", label: systemLanguage === "sk" ? "Projekty" : systemLanguage === "hu" ? "Projektek" : "Projects", icon: Icons.Briefcase || LayoutDashboard, color: "#a855f7", isLavender: true },
-      { id: "rag_ai", label: systemLanguage === "sk" ? "RAG AI Asistent" : systemLanguage === "hu" ? "RAG AI Asszisztens" : "RAG AI Assistant", icon: Brain, color: "#8b5cf6", isPurple: true },
-      { id: "leads", label: getTranslation(systemLanguage, "sidebar.leads"), icon: TableProperties, color: "#2563eb" },
-      { id: "clients", label: getTranslation(systemLanguage, "sidebar.clients"), icon: Users, color: "#059669" },
-      { id: "warehouse", label: getTranslation(systemLanguage, "sidebar.warehouse"), icon: Icons.Package || Icons.Boxes || FolderOpen, color: "#1e3a8a", isNavy: true },
-      { id: "financial", label: getTranslation(systemLanguage, "sidebar.financial"), icon: Coins, color: "#10b981", isEmerald: true },
-      { id: "meetings", label: getTranslation(systemLanguage, "sidebar.meetings"), icon: PencilLine, color: "#4f46e5", isNightBlue: true },
+      { id: "dashboard", label: getTranslation(systemLanguage, "sidebar.dashboard"), icon: LayoutDashboard, color: "var(--color-indigo-600)" },
+      { id: "tasks", label: getTranslation(systemLanguage, "sidebar.tasks"), icon: ListTodo, color: "#ff5d00" },
+      { id: "overview", label: getTranslation(systemLanguage, "sidebar.analytics"), icon: BarChart3, color: "var(--color-cyan-600)" },
+      { id: "projects", label: systemLanguage === "sk" ? "Projekty" : systemLanguage === "hu" ? "Projektek" : "Projects", icon: Icons.Briefcase || LayoutDashboard, color: "var(--color-purple-500)", isLavender: true },
+      { id: "rag_ai", label: systemLanguage === "sk" ? "RAG AI Asistent" : systemLanguage === "hu" ? "RAG AI Asszisztens" : "RAG AI Assistant", icon: Brain, color: "var(--color-violet-500)", isPurple: true },
+      { id: "leads", label: getTranslation(systemLanguage, "sidebar.leads"), icon: TableProperties, color: "var(--color-blue-600)" },
+      { id: "clients", label: getTranslation(systemLanguage, "sidebar.clients"), icon: Users, color: "var(--color-emerald-600)" },
+      { id: "invoices", label: systemLanguage === "sk" ? "Cenové ponuky & Faktúry" : systemLanguage === "hu" ? "Ajánlatok és számlák" : "Invoices & Offers", icon: Icons.FileText || Coins, color: "var(--color-indigo-500)", isIndigo: true },
+      { id: "warehouse", label: getTranslation(systemLanguage, "sidebar.warehouse"), icon: Icons.Package || Icons.Boxes || FolderOpen, color: "var(--color-blue-900)", isNavy: true },
+      { id: "financial", label: getTranslation(systemLanguage, "sidebar.financial"), icon: Coins, color: "var(--color-emerald-500)", isEmerald: true },
+      { id: "meetings", label: getTranslation(systemLanguage, "sidebar.meetings"), icon: PencilLine, color: "var(--color-indigo-600)", isNightBlue: true },
       ...dynamicUeItems,
       ...dynamicDashItems,
-      { id: "files", label: getTranslation(systemLanguage, "sidebar.files"), icon: FolderOpen, color: "#b45309" },
-      { id: "email", label: systemLanguage === "sk" ? "Pošta" : systemLanguage === "hu" ? "Levelezés" : "Mail Client", icon: Mail, color: "#db2777" },
-      { id: "automation", label: systemLanguage === "sk" ? "Automatizácia" : systemLanguage === "hu" ? "Automatizálás" : "Automation", icon: Icons.Workflow || Icons.Network || Icons.GitFork || FolderOpen, color: "#6b21a8", isPurple: true },
-      { id: "social_media", label: systemLanguage === "sk" ? "Sociálne siete" : systemLanguage === "hu" ? "Közösségi média" : "Social Media", icon: Icons.Share2 || Icons.Globe, color: "#f43f5e", isRose: true },
-      { id: "updates", label: systemLanguage === "sk" ? "Novinky" : systemLanguage === "hu" ? "Újdonságok" : "Updates", icon: Sparkles, color: "#d97706" }
+      { id: "files", label: getTranslation(systemLanguage, "sidebar.files"), icon: FolderOpen, color: "var(--color-amber-700)" },
+      { id: "email", label: systemLanguage === "sk" ? "Pošta" : systemLanguage === "hu" ? "Levelezés" : "Mail Client", icon: Mail, color: "var(--color-pink-600)" },
+      { id: "automation", label: systemLanguage === "sk" ? "Automatizácia" : systemLanguage === "hu" ? "Automatizálás" : "Automation", icon: Icons.Workflow || Icons.Network || Icons.GitFork || FolderOpen, color: "var(--color-purple-800)", isPurple: true },
+      { id: "social_media", label: systemLanguage === "sk" ? "Sociálne siete" : systemLanguage === "hu" ? "Közösségi média" : "Social Media", icon: Icons.Share2 || Icons.Globe, color: "var(--color-rose-500)", isRose: true },
+      { id: "updates", label: systemLanguage === "sk" ? "Novinky" : systemLanguage === "hu" ? "Újdonságok" : "Updates", icon: Sparkles, color: "var(--color-amber-600)" }
     ];
   }, [systemLanguage, dynamicUeItems, dynamicDashItems]);
 
   const isItemVisibleInSystem = (id: string) => {
+    // Role first: a module the role may not open is gone from the sidebar, the
+    // launcher and the layout editor alike, whatever the saved layout says.
+    if (!canOpenRoute(id)) return false;
     if (id === "rag_ai") {
       return showRagAi && integrationsConfig?.vectorDbValidated === true && integrationsConfig?.vectorDb && integrationsConfig?.vectorDb !== "none";
     }
@@ -458,6 +486,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     .filter(isItemVisibleInSystem)
     .map((id: string) => allPossibleItems.find(item => item.id === id))
     .filter(Boolean) as any[];
+  // The layout editor's "hidden" column offers only what the role could show.
+  const visibleHiddenItems = hiddenItems.filter(isItemVisibleInSystem);
 
   return (
     <>
@@ -505,7 +535,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
             {!isCollapsed && (
               <div className="flex flex-col animate-in fade-in duration-300 min-w-0 flex-1">
-                <span className="font-heading font-bold text-sm leading-snug bg-gradient-to-r from-slate-800 to-slate-950 bg-clip-text text-transparent truncate group-hover:text-indigo-600 transition-colors">
+                <span className="font-heading font-bold text-sm leading-snug text-slate-800 truncate group-hover:text-indigo-600 transition-colors">
                   {systemName}
                 </span>
                 <span className="text-[10px] text-slate-400 tracking-wider font-semibold uppercase mt-0.5 truncate">
@@ -566,6 +596,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           ? (isActive
                               ? "bg-blue-950 text-white font-bold shadow-lg shadow-blue-950/30 border border-blue-900/20"
                               : "text-blue-950 hover:text-blue-900 hover:bg-blue-50/50")
+                        : item.isIndigo
+                          ? (isActive
+                              ? "bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-600/30 border border-indigo-500/20"
+                              : "text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50/50")
                         : item.isEmerald
                           ? (isActive
                               ? "bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-600/30 border border-emerald-500/20"
@@ -828,7 +862,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
 
           <div className="flex-1 overflow-y-auto space-y-2 pr-1 scrollbar-thin">
-            {hiddenItems.length === 0 ? (
+            {visibleHiddenItems.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center text-slate-400 select-none">
                 <span className="text-2xl mb-1.5">✨</span>
                 <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
@@ -839,7 +873,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </p>
               </div>
             ) : (
-              hiddenItems.map((id: string) => {
+              visibleHiddenItems.map((id: string) => {
                 const item = allPossibleItems.find((i) => i.id === id);
                 if (!item) return null;
                 const Icon = item.icon;
@@ -904,18 +938,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
               setIsMobileMenuOpen(false);
               setIsStartMenuOpen(true);
             }}
-            className="flex items-center gap-3.5 mb-8 animate-in fade-in slide-in-from-top-4 duration-300 shrink-0 text-left p-2 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer w-full"
+            className="flex items-center gap-3.5 mb-8 animate-in fade-in slide-in-from-top-4 duration-300 shrink-0 text-left p-2 rounded-2xl hover:bg-slate-100 transition-colors cursor-pointer w-full"
           >
-            <div className="h-10 w-10 flex items-center justify-center gap-1.5 shrink-0 select-none rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+            <div className="h-10 w-10 flex items-center justify-center gap-1.5 shrink-0 select-none rounded-2xl bg-slate-100 border border-slate-200">
               <span className="h-2.5 w-2.5 rounded-full bg-orange-500" />
               <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
               <span className="h-2.5 w-2.5 rounded-full bg-indigo-500" />
             </div>
             <div className="flex flex-col text-left">
-              <span className="font-heading font-bold text-sm leading-none bg-gradient-to-r from-slate-800 to-slate-950 dark:from-slate-100 dark:to-white bg-clip-text text-transparent">
+              <span className="font-heading font-bold text-sm leading-none text-slate-800">
                 {systemName}
               </span>
-              <span className="text-[9px] text-indigo-600 dark:text-indigo-400 tracking-wider font-extrabold uppercase mt-1">
+              <span className="text-[9px] text-indigo-600 tracking-wider font-extrabold uppercase mt-1">
                 {t("Open Start Menu", "Otvoriť Štart menu", "Start menü megnyitása")} ➔
               </span>
             </div>
@@ -965,6 +999,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           : (isMobileMenuOpen
                               ? "bg-purple-50 border-purple-100 text-purple-500"
                               : "bg-purple-50/50 border-purple-100 text-purple-500 hover:bg-purple-100 hover:text-purple-600"))
+                      : item.isIndigo
+                        ? (isActive
+                            ? "bg-indigo-600 border-indigo-700 text-white"
+                            : (isMobileMenuOpen
+                                ? "bg-indigo-50 border-indigo-200 text-indigo-600"
+                                : "bg-indigo-50/50 border-indigo-100 text-indigo-600 hover:bg-indigo-100 hover:text-indigo-700"))
                       : item.isEmerald
                         ? (isActive
                             ? "bg-emerald-600 border-emerald-700 text-white"
@@ -978,7 +1018,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                 ? "bg-slate-100 border-slate-200 text-slate-800"
                                 : "bg-slate-50/50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900"))
                         : isActive
-                          ? (item.id === "dashboard"
+                          ? (item.id === "tasks"
                               ? "bg-[#ff5d00] border-[#ff5d00] text-white"
                               : item.id === "overview"
                                 ? "bg-cyan-600 border-cyan-700 text-white"
@@ -988,8 +1028,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                     ? "bg-emerald-600 border-emerald-700 text-white"
                                     : item.id === "email"
                                       ? "bg-pink-600 border-pink-700 text-white"
-                                      : item.id === "tasks"
-                                        ? "bg-violet-600 border-violet-700 text-white"
+                                      : item.id === "dashboard"
+                                        ? "bg-indigo-600 border-indigo-700 text-white"
                                         : "bg-amber-700 border-amber-800 text-white"
                             )
                           : (isMobileMenuOpen 
@@ -1291,6 +1331,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         showSettings={showSettings}
         showMailIcon={showMailIcon}
         showRagAi={showRagAi}
+        canOpenRoute={canOpenRoute}
         customDashboards={customDashboards}
         unifiedEntries={unifiedEntries}
         onOpenCreateDashboard={() => setIsDashModalOpen(true)}

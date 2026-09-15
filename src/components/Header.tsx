@@ -37,6 +37,13 @@ interface HeaderProps {
     onNavigateMeetings?: (action: "list" | "new") => void;
     onAddTask?: () => void;
     onNavigateUpdates?: () => void;
+    /** Route gate from the permission resolver; search hits and shortcuts into closed modules are dropped. */
+    canOpenRoute?: (routeId: string) => boolean;
+    /** Quick-create shortcuts appear only when the role may edit the module. */
+    canCreateTask?: boolean;
+    canCreateMeeting?: boolean;
+    /** Manual workflow triggers run automations, so they follow automation edit rights. */
+    canRunWorkflows?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -51,6 +58,10 @@ export const Header: React.FC<HeaderProps> = ({
     onNavigateMeetings,
     onAddTask,
     onNavigateUpdates,
+    canOpenRoute = () => true,
+    canCreateTask = true,
+    canCreateMeeting = true,
+    canRunWorkflows = true,
 }) => {
     const t = (en: string, sk: string, hu: string) =>
         systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
@@ -189,16 +200,16 @@ export const Header: React.FC<HeaderProps> = ({
 
                 // The CMS is the only source of release notes, so an entry that is
                 // not published there must never show up in the app.
-                const allUpdates = localizedList.sort(
+                const sortedUpdates = [...localizedList].sort(
                     (a, b) =>
                         new Date(b.postDate).getTime() -
                         new Date(a.postDate).getTime(),
                 );
-                setUpdatesList(allUpdates);
+                setUpdatesList(sortedUpdates);
 
                 // Check if there is a new unseen update
-                if (allUpdates.length > 0) {
-                    const latestId = allUpdates[0].id;
+                if (sortedUpdates.length > 0) {
+                    const latestId = sortedUpdates[0].id;
                     if (seenUpdateIdRef.current !== latestId) {
                         setHasNewUpdate(true);
                     }
@@ -211,6 +222,10 @@ export const Header: React.FC<HeaderProps> = ({
         };
         fetchUpdateNotes();
     }, [systemLanguage]);
+
+    // Search hits carry their hash ("#lead-42", "#meetings/7"); the gate wants the route id.
+    const canOpenSearchHit = (item: any) =>
+        typeof item?.url === "string" && canOpenRoute(item.url.replace(/^#/, ""));
 
     const handleOpenUpdates = () => {
         if (onNavigateUpdates) {
@@ -336,7 +351,7 @@ export const Header: React.FC<HeaderProps> = ({
             );
             if (res.ok) {
                 const data = await res.json();
-                setSearchResults(Array.isArray(data) ? data : []);
+                setSearchResults((Array.isArray(data) ? data : []).filter(canOpenSearchHit));
                 setShowSearchDropdown(true);
                 setSelectedIndex(-1);
             } else {
@@ -390,6 +405,7 @@ export const Header: React.FC<HeaderProps> = ({
     };
 
     const handleSelectSearchResult = (item: any) => {
+        if (!canOpenSearchHit(item)) return;
         window.location.hash = item.url;
         setShowSearchDropdown(false);
         setSearchQuery("");
@@ -626,7 +642,7 @@ export const Header: React.FC<HeaderProps> = ({
                     </a>
                 )}
 
-                {/* Create Task Top-Bar Action Button */}
+                {canCreateTask && (
                 <button
                     onClick={onAddTask}
                     className="h-10 w-10 rounded-xl border bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-300 hover:bg-slate-50 flex items-center justify-center transition-colors shadow-sm cursor-pointer shrink-0"
@@ -640,8 +656,10 @@ export const Header: React.FC<HeaderProps> = ({
                 >
                     <CheckSquare className="h-5 w-5 text-indigo-600" />
                 </button>
+                )}
 
-                {/* Meeting Room Popover Utilities */}
+
+                {canOpenRoute("meetings") && (
                 <div className="relative" ref={meetingsDropdownRef}>
                     <button
                         onClick={() => setIsMeetingsOpen(!isMeetingsOpen)}
@@ -726,7 +744,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 </div>
                             </button>
 
-                            {/* New Meeting */}
+                            {canCreateMeeting && (
                             <button
                                 onClick={() => {
                                     setIsMeetingsOpen(false);
@@ -745,6 +763,8 @@ export const Header: React.FC<HeaderProps> = ({
                                           : "New Meeting"}
                                 </span>
                             </button>
+                            )}
+
 
                             {/* Show Meetings */}
                             <button
@@ -768,8 +788,10 @@ export const Header: React.FC<HeaderProps> = ({
                         </div>
                     )}
                 </div>
+                )}
 
-                {/* Automation Toolbox Popover */}
+
+                {canRunWorkflows && (
                 <div className="relative" ref={toolboxDropdownRef}>
                     <button
                         onClick={() => setIsToolboxOpen(!isToolboxOpen)}
@@ -886,9 +908,11 @@ export const Header: React.FC<HeaderProps> = ({
                         </div>
                     )}
                 </div>
+                )}
+
 
                 {/* Product Release Notes Updates Button */}
-                {updatesList.length > 0 && (
+                {canOpenRoute("updates") && updatesList.length > 0 && (
                     <div className="relative">
                         <button
                             onClick={handleOpenUpdates}

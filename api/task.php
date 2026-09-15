@@ -55,28 +55,12 @@ if (!$task) {
     exit;
 }
 
-$isAdmin = ($sessionUser['role'] ?? '') === 'admin';
+$isAdmin = ccrm_is_admin($sessionUser);
 $isCreator = !empty($task['created_by'])
     && hash_equals((string)$task['created_by'], (string)$task['session_user_name']);
 
-$hasDeletePermission = false;
-if (!$isAdmin) {
-    $rolesRaw = $pdo->query(
-        "SELECT `value` FROM `system_settings` WHERE `key` = 'ROLES_RBAC' LIMIT 1"
-    )->fetchColumn();
-    $roles = $rolesRaw ? json_decode($rolesRaw, true) : [];
-    if (is_array($roles)) {
-        foreach ($roles as $role) {
-            if (
-                ccrm_normalize_role($role['name'] ?? '') === ($sessionUser['role'] ?? '')
-                && (($role['permissions']['tasks.delete'] ?? 'nothing') === 'edit')
-            ) {
-                $hasDeletePermission = true;
-                break;
-            }
-        }
-    }
-}
+$perms = ccrm_user_permissions($pdo, $sessionUser);
+$hasDeletePermission = (bool)(ccrm_perm_module($perms, 'tasks')['delete'] ?? false);
 
 // Legacy tasks predate created_by. Preserve their previous behavior by allowing
 // an assignee to delete them; new tasks use the immutable creator field.

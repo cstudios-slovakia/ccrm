@@ -108,28 +108,29 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({
 
                 // The CMS is the only source of release notes, so an entry that is
                 // not published there must never show up in the app.
-                const allUpdates = localizedList.sort(
+                const sortedUpdates = [...localizedList].sort(
                     (a, b) =>
                         new Date(b.postDate).getTime() -
                         new Date(a.postDate).getTime(),
                 );
-                setUpdates(allUpdates);
+                setUpdates(sortedUpdates);
 
                 // Mark as read when entering this view. The header reads the same
                 // preference out of context, so its badge clears without an event hop.
-                if (allUpdates.length > 0) {
-                    setSeenUpdateIdRef.current(allUpdates[0].id);
+                if (sortedUpdates.length > 0) {
+                    setSeenUpdateIdRef.current(sortedUpdates[0].id);
                 }
             } catch (err: any) {
                 console.error("Error fetching release notes:", err);
-                setUpdates([]);
                 setError(
-                    t(
-                        "Could not load update notes.",
-                        "Novinky sa nepodarilo načítať.",
-                        "A frissítéseket nem sikerült betölteni.",
-                    ),
+                    err?.message ||
+                        t(
+                            "Failed to load update notes from Craft CMS.",
+                            "Nepodarilo sa načítať novinky zo servera Craft CMS.",
+                            "Nem sikerült betölteni a frissítéseket a Craft CMS-ből.",
+                        ),
                 );
+                setUpdates([]);
             } finally {
                 setLoading(false);
             }

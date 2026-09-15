@@ -11,7 +11,7 @@ import {
   CalendarDays, Target, Maximize2, Minimize2,
   ArrowUpRight, ArrowDownRight, ArrowUpDown,
   SlidersHorizontal,
-  Copy, Sparkles
+  Copy, Sparkles, GripVertical
 } from "lucide-react";
 import type {
   FinancialRecord,
@@ -24,9 +24,21 @@ import type {
   UserProfile
 } from "../types";
 import { CustomSelect } from "./ui/CustomSelect";
+import { ColorPicker } from "./ui/ColorPicker";
+import { inheritedColor, nextCategoryColor } from "../utils/color";
 import type { Language } from "../utils/translations";
 import { formatMoney } from "../utils/currency";
 import { todayLocal, formatDateLocalized } from "../utils/localTime";
+import {
+  categoryChildren,
+  moveCategory,
+  nextCategorySortOrder,
+  resolveCategoryDrop,
+  type CategoryDropPosition,
+  type CategoryDropTarget
+} from "../utils/financialCategoryTree";
+import { useDragAutoScroll } from "../hooks/useDragAutoScroll";
+import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 
 interface SearchableCategorySelectProps {
   value: string;
@@ -112,7 +124,7 @@ const SearchableCategorySelect: React.FC<SearchableCategorySelectProps> = ({
             <>
               <span
                 className="w-2.5 h-2.5 rounded-full shrink-0"
-                style={{ backgroundColor: selectedCategory.color || (selectedCategory.type === "income" ? "#10b981" : "#f43f5e") }}
+                style={{ backgroundColor: inheritedColor(categories, selectedCategory.id) || (selectedCategory.type === "income" ? "#10b981" : "#f43f5e") }}
               />
               <span className="font-semibold text-slate-800  truncate">
                 {getCategoryPath(selectedCategory)}
@@ -225,7 +237,7 @@ const SearchableCategorySelect: React.FC<SearchableCategorySelectProps> = ({
                       <div className="flex items-center gap-2 truncate">
                         <span
                           className="w-2 h-2 rounded-full shrink-0"
-                          style={{ backgroundColor: c.color || "#f43f5e" }}
+                          style={{ backgroundColor: inheritedColor(categories, c.id) || "#f43f5e" }}
                         />
                         <span className={c.level === 1 ? "font-bold text-slate-900 " : "font-normal"}>
                           {c.level === 1 ? c.name : c.level === 2 ? `↳ ${c.name}` : `↳↳ ${c.name}`}
@@ -265,7 +277,7 @@ const SearchableCategorySelect: React.FC<SearchableCategorySelectProps> = ({
                       <div className="flex items-center gap-2 truncate">
                         <span
                           className="w-2 h-2 rounded-full shrink-0"
-                          style={{ backgroundColor: c.color || "#10b981" }}
+                          style={{ backgroundColor: inheritedColor(categories, c.id) || "#10b981" }}
                         />
                         <span className={c.level === 1 ? "font-bold text-slate-900 " : "font-normal"}>
                           {c.level === 1 ? c.name : c.level === 2 ? `↳ ${c.name}` : `↳↳ ${c.name}`}
@@ -622,22 +634,35 @@ interface FinancialManagementViewProps {
   currencyCode?: string | null;
   onOpenProject?: (projectId: string) => void;
   onOpenClient?: (clientId: string) => void;
+  /** Role access for the financial module. `edit: false` renders the view read-only. */
+  access?: ModuleAccess;
 }
 
 export const FinancialManagementView: React.FC<FinancialManagementViewProps> = ({
   financialRecords = [],
-  setFinancialRecords,
+  setFinancialRecords: setFinancialRecordsRaw,
   financialCategories = [],
-  setFinancialCategories,
+  setFinancialCategories: setFinancialCategoriesRaw,
   projects = [],
   leads = [],
   userLanguage,
   currencyCode,
   onOpenProject,
-  onOpenClient
+  onOpenClient,
+  access = FULL_MODULE_ACCESS
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
+  const canEdit = access.edit;
+  const canDelete = access.delete;
+  const setFinancialRecords: typeof setFinancialRecordsRaw = (updater) => {
+    if (!canEdit) return;
+    setFinancialRecordsRaw(updater);
+  };
+  const setFinancialCategories: typeof setFinancialCategoriesRaw = (updater) => {
+    if (!canEdit) return;
+    setFinancialCategoriesRaw(updater);
+  };
 
   const money = (v: number) => formatMoney(v, currencyCode, userLanguage);
 
@@ -777,7 +802,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   const [catTreeType, setCatTreeType] = useState<FinancialType>("expense");
   const [newCatName, setNewCatName] = useState("");
   const [newCatParentId, setNewCatParentId] = useState<string>("");
-  const [newCatColor, setNewCatColor] = useState("#3b82f6");
+  const [newCatColor, setNewCatColor] = useState("");
+  // Until a colour is picked on purpose, a subcategory inherits its parent's and
+  // a main category gets the next colour no other main category of its type has.
+  const [newCatColorTouched, setNewCatColorTouched] = useState(false);
 
   // Transaction Form fields
   const [formType, setFormType] = useState<FinancialType>("expense");
@@ -1136,6 +1164,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
   // Helper to open modal for creating a new recurring expense
   const handleOpenCreateRecurringModal = (type: FinancialType = "expense", scope: "global" | "project" | "client" = "global") => {
+    if (!canEdit) return;
     setEditingRecord(null);
     setFormType(type);
     setFormSubtype("expense");
@@ -1868,25 +1897,31 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
   // Build hierarchical category helper for forms and tree view
   const categoryTree = useMemo(() => {
-    const buildTree = (type: FinancialType) => {
-      const items = financialCategories.filter((c) => c.type === type);
-      const roots = items.filter((c) => !c.parentId || c.level === 1);
-
-      return roots.map((root) => {
-        const level2Children = items.filter((c) => c.parentId === root.id);
-        const level2Tree = level2Children.map((l2) => {
-          const level3Children = items.filter((c) => c.parentId === l2.id);
-          return { ...l2, children: level3Children };
-        });
-        return { ...root, children: level2Tree };
-      });
-    };
+    const buildTree = (type: FinancialType) =>
+      categoryChildren(financialCategories, type, null).map((root) => ({
+        ...root,
+        children: categoryChildren(financialCategories, type, root.id).map((l2) => ({
+          ...l2,
+          children: categoryChildren(financialCategories, type, l2.id)
+        }))
+      }));
 
     return {
       incomeTree: buildTree("income"),
       expenseTree: buildTree("expense")
     };
   }, [financialCategories]);
+
+  // Categories tab: dragging a row rewrites its position, level and parent together.
+  const [draggedCategoryId, setDraggedCategoryId] = useState<string | null>(null);
+  const [categoryDropTarget, setCategoryDropTarget] = useState<CategoryDropTarget | null>(null);
+  const categoryTreeRef = useRef<HTMLDivElement | null>(null);
+  useDragAutoScroll(draggedCategoryId !== null, categoryTreeRef);
+
+  // A colour picker fires on every pixel the pointer crosses, so the swatch
+  // previews a local draft and only the colour the user settles on is saved.
+  const [categoryColorDrafts, setCategoryColorDrafts] = useState<Record<string, string>>({});
+  const categoryColorTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   // Overview Table Matrix Data Calculation Hook
   const overviewTableData = useMemo(() => {
@@ -2370,6 +2405,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
   // Open Creation Modal with preset type & scope
   const handleOpenCreateModal = (type: FinancialType, defaultScope: "global" | "project" | "client" = "global") => {
+    if (!canEdit) return;
     setEditingRecord(null);
     setFormType(type);
     setFormSubtype(type === "income" ? "invoice" : "regular");
@@ -2518,11 +2554,22 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
   // Delete Transaction
   const handleDeleteTransaction = (id: string) => {
+    if (!canDelete) return;
     if (confirm(t("Are you sure you want to delete this financial record?", "Naozaj chcete vymazať tento finančný záznam?", "Biztosan törölni szeretné ezt a tételt?"))) {
       setFinancialRecords((prev) => prev.filter((r) => r.id !== id));
       (window as any).showToast?.(t("Record deleted", "Záznam bol vymazaný", "Tétel törölve"));
     }
   };
+
+  const suggestedRootCatColor = useMemo(
+    () => nextCategoryColor(financialCategories.filter((c) => c.type === catTreeType && !c.parentId).map((c) => c.color)),
+    [financialCategories, catTreeType]
+  );
+  const newCatFormColor = newCatColorTouched
+    ? newCatColor
+    : newCatParentId
+      ? inheritedColor(financialCategories, newCatParentId) || suggestedRootCatColor
+      : suggestedRootCatColor;
 
   // Create Category
   const handleCreateCategory = (e: React.FormEvent) => {
@@ -2548,7 +2595,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       name: newCatName.trim(),
       parentId: newCatParentId || null,
       level: parentLevel as 1 | 2 | 3,
-      color: newCatColor,
+      sortOrder: nextCategorySortOrder(financialCategories, catTreeType, newCatParentId || null),
+      color: newCatColorTouched ? newCatColor : newCatParentId ? null : suggestedRootCatColor,
       icon: parentLevel === 1 ? "Layers" : parentLevel === 2 ? "Folder" : "Tag",
       createdAt: new Date().toISOString()
     };
@@ -2556,11 +2604,13 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     setFinancialCategories((prev) => [...prev, newCat]);
     setNewCatName("");
     setNewCatParentId("");
+    setNewCatColorTouched(false);
     (window as any).showToast?.(t("Category added!", "Kategória bola pridaná!", "Kategória hozzáadva!"));
   };
 
   // Delete Category
   const handleDeleteCategory = (id: string) => {
+    if (!canDelete) return;
     if (confirm(t("Delete category and its subcategories?", "Vymazať kategóriu a všetky jej podkategórie?", "Törli a kategóriát és alkategóriáit?"))) {
       // Find all nested child ids recursively
       const toDeleteIds = new Set<string>([id]);
@@ -2578,6 +2628,163 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       setFinancialCategories((prev) => prev.filter((c) => !toDeleteIds.has(c.id)));
       (window as any).showToast?.(t("Category removed", "Kategória odstránená", "Kategória eltávolítva"));
     }
+  };
+
+  const endCategoryDrag = () => {
+    setDraggedCategoryId(null);
+    setCategoryDropTarget(null);
+  };
+
+  const handleCategoryDragStart = (e: React.DragEvent<HTMLElement>, id: string) => {
+    e.stopPropagation();
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", id); // Firefox will not start a drag without data
+    setDraggedCategoryId(id);
+  };
+
+  /**
+   * The top quarter of a row drops before it, the bottom quarter after it and
+   * the middle inside it. When the row cannot take the dragged category as a
+   * child (too deep), the middle falls back to the nearer edge.
+   */
+  const categoryDropFromPointer = (e: React.DragEvent<HTMLElement>, targetId: string | null): CategoryDropTarget | null => {
+    if (!draggedCategoryId) return null;
+    let candidates: CategoryDropPosition[] = ["after"];
+    if (targetId !== null) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const ratio = (e.clientY - rect.top) / Math.max(rect.height, 1);
+      const nearerEdge: CategoryDropPosition = ratio < 0.5 ? "before" : "after";
+      candidates = ratio < 0.25 ? ["before"] : ratio > 0.75 ? ["after"] : ["inside", nearerEdge];
+    }
+    for (const position of candidates) {
+      const drop = { targetId, position };
+      if (resolveCategoryDrop(financialCategories, draggedCategoryId, drop)) return drop;
+    }
+    return null;
+  };
+
+  const handleCategoryDragOver = (e: React.DragEvent<HTMLElement>, targetId: string | null) => {
+    if (!draggedCategoryId) return;
+    e.stopPropagation();
+    const drop = categoryDropFromPointer(e, targetId);
+    if (!drop) {
+      e.dataTransfer.dropEffect = "none";
+      if (categoryDropTarget) setCategoryDropTarget(null);
+      return;
+    }
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (categoryDropTarget?.targetId !== drop.targetId || categoryDropTarget?.position !== drop.position) {
+      setCategoryDropTarget(drop);
+    }
+  };
+
+  const handleCategoryDrop = (e: React.DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const dragId = draggedCategoryId;
+    const drop = categoryDropTarget;
+    endCategoryDrag();
+    if (!dragId || !drop) return;
+
+    const next = moveCategory(financialCategories, dragId, drop);
+    if (!next || next === financialCategories) return;
+    setFinancialCategories((prev) => moveCategory(prev, dragId, drop) ?? prev);
+    (window as any).showToast?.(t("Category moved", "Kategória bola presunutá", "Kategória áthelyezve"));
+  };
+
+  const categoryColor = (cat: FinancialCategory | undefined | null): string | null =>
+    cat ? categoryColorDrafts[cat.id] ?? cat.color ?? null : null;
+
+  const handleCategoryColorChange = (id: string, color: string) => {
+    setCategoryColorDrafts((drafts) => ({ ...drafts, [id]: color }));
+    clearTimeout(categoryColorTimers.current[id]);
+    categoryColorTimers.current[id] = setTimeout(() => {
+      delete categoryColorTimers.current[id];
+      setFinancialCategories((prev) => prev.map((c) => (c.id === id && c.color !== color ? { ...c, color } : c)));
+      setCategoryColorDrafts((drafts) => {
+        const rest = { ...drafts };
+        delete rest[id];
+        return rest;
+      });
+    }, 400);
+  };
+
+  const CATEGORY_ROW_STYLES = {
+    1: {
+      row: "p-3.5 bg-slate-50/80 border-b border-slate-100",
+      swatch: "h-3.5 w-3.5",
+      name: "font-bold text-xs text-slate-900 uppercase tracking-wider",
+      badge: "px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-200 text-slate-600",
+      badgeText: "Level 1",
+      trash: "h-3.5 w-3.5"
+    },
+    2: {
+      row: "p-2 rounded-xl bg-white border border-slate-100",
+      swatch: "h-3 w-3",
+      name: "font-semibold text-xs text-slate-800",
+      badge: "px-1.5 py-0.2 rounded text-[10px] bg-slate-100 text-slate-500",
+      badgeText: "Level 2",
+      trash: "h-3 w-3"
+    },
+    3: {
+      row: "p-1.5 px-3 rounded-lg bg-slate-50 border border-slate-100 text-xs",
+      swatch: "h-2.5 w-2.5",
+      name: "text-slate-700 font-medium",
+      badge: "text-[10px] text-slate-400",
+      badgeText: "(Level 3)",
+      trash: "h-3 w-3"
+    }
+  } as const;
+
+  /** One draggable row of the category tree; `inheritedColor` is shown while the category has none of its own. */
+  const renderCategoryRow = (cat: FinancialCategory, level: 1 | 2 | 3, inheritedColor?: string | null) => {
+    const styles = CATEGORY_ROW_STYLES[level];
+    const drop = draggedCategoryId && categoryDropTarget?.targetId === cat.id ? categoryDropTarget.position : null;
+    const shownColor = categoryColor(cat) || inheritedColor || "#6366f1";
+
+    return (
+      <div
+        key={cat.id}
+        draggable
+        onDragStart={(e) => handleCategoryDragStart(e, cat.id)}
+        onDragEnd={endCategoryDrag}
+        onDragOver={(e) => handleCategoryDragOver(e, cat.id)}
+        onDrop={handleCategoryDrop}
+        title={t("Drag to reorder or move under another category", "Potiahnutím zmeníte poradie alebo nadradenú kategóriu", "Húzza az átrendezéshez vagy áthelyezéshez")}
+        className={`group relative flex items-center justify-between cursor-grab active:cursor-grabbing transition-[opacity,background-color,box-shadow] duration-150 ${styles.row} ${
+          draggedCategoryId === cat.id ? "opacity-40" : ""
+        } ${drop === "inside" ? "ring-2 ring-inset ring-indigo-400 !bg-indigo-50" : ""}`}
+      >
+        {drop === "before" && (
+          <span className="pointer-events-none absolute inset-x-2 top-0 h-0.5 rounded-full bg-indigo-500 animate-in fade-in duration-150" />
+        )}
+        {drop === "after" && (
+          <span className="pointer-events-none absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-indigo-500 animate-in fade-in duration-150" />
+        )}
+
+        <div className="flex items-center gap-2 min-w-0">
+          <GripVertical className="h-3.5 w-3.5 shrink-0 text-slate-300 group-hover:text-indigo-500 transition-colors duration-150" />
+          <ColorPicker
+            value={shownColor}
+            onChange={(color) => handleCategoryColorChange(cat.id, color)}
+            title={t("Change color", "Zmeniť farbu", "Szín módosítása")}
+            className={styles.swatch}
+          />
+          <span className={`truncate ${styles.name}`}>{cat.name}</span>
+          <span className={`shrink-0 ${styles.badge}`}>{styles.badgeText}</span>
+        </div>
+        {canDelete && (
+        <button
+          onClick={() => handleDeleteCategory(cat.id)}
+          className="p-1 text-slate-400 hover:text-rose-600 transition-colors duration-150 cursor-pointer"
+          title={t("Delete category", "Vymazať", "Törlés")}
+        >
+          <Trash2 className={styles.trash} />
+        </button>
+        )}
+      </div>
+    );
   };
 
   // Shared Transaction Form Fields (used in both Slideout Drawer for Edit and Center Popup for Create)
@@ -3046,7 +3253,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     <div className="space-y-6 pb-16 font-sans">
       {/* 1. TOP HEADER & COMMAND BAR */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-100 pb-4 select-none">
-        <div className="flex flex-col">
+        <div className="flex flex-col min-w-0">
           <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
             <Coins className="h-6 w-6 text-emerald-600" />
             {t("Financial Management & Revenue Control", "Finančný manažment a riadenie výnosov", "Pénzügyi menedzsment és bevételkezelés")}
@@ -3054,25 +3261,34 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
             {t("Track planned vs real cash flows, project revenue profitability, single & recurring expenses, and 3-level categories.", "Sledovanie plánovaných a reálnych tokov, ziskovosti projektov, jednorazových a pravidelných výdavkov a 3 úrovní kategórií.", "Tervezett és valós pénzáramlások, projektjövedelmezőség, rendszeres kiadások és 3 szintű kategóriák.")}
           </p>
+          {!canEdit && (
+            <span className="mt-2 inline-flex items-center w-fit px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider">
+              {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
+            </span>
+          )}
         </div>
 
-        {/* Quick Actions */}
-        <div className="flex flex-wrap items-center gap-3">
+        {/* Quick Actions — one row, equal height, never wrapping into a stack */}
+        <div className="flex items-center gap-2 shrink-0">
+          {canEdit && (
           <button
             onClick={() => handleOpenCreateModal("income", "global")}
-            className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-2xl shadow-md shadow-emerald-600/20 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+            className="flex items-center justify-center gap-2 h-10 px-4 whitespace-nowrap bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl shadow-sm shadow-emerald-600/20 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
           >
             <Plus className="h-4 w-4" />
             <span>{t("New Income / Invoice", "Nový príjem / Faktúra", "Új bevétel / Számla")}</span>
           </button>
+          )}
 
+          {canEdit && (
           <button
             onClick={() => handleOpenCreateModal("expense", "global")}
-            className="flex items-center gap-2 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-2xl shadow-md shadow-rose-600/20 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+            className="flex items-center justify-center gap-2 h-10 px-4 whitespace-nowrap bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-xl shadow-sm shadow-rose-600/20 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
           >
             <Plus className="h-4 w-4" />
             <span>{t("New Expense", "Nový výdavok", "Új kiadás")}</span>
           </button>
+          )}
         </div>
       </div>
 
@@ -4245,6 +4461,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   <span>{movementsSortOrder === "desc" ? t("Newest First", "Najnovšie", "Legújabb") : t("Oldest First", "Najstaršie", "Legrégebbi")}</span>
                 </button>
 
+                {canEdit && (
                 <button
                   onClick={() => handleOpenCreateModal("income", "global")}
                   className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
@@ -4252,7 +4469,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   <Plus className="h-3.5 w-3.5" />
                   <span>{t("Income", "Príjem", "Bevétel")}</span>
                 </button>
+                )}
 
+                {canEdit && (
                 <button
                   onClick={() => handleOpenCreateModal("expense", "global")}
                   className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
@@ -4260,6 +4479,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   <Plus className="h-3.5 w-3.5" />
                   <span>{t("Expense", "Výdavok", "Kiadás")}</span>
                 </button>
+                )}
               </div>
             </div>
 
@@ -4903,6 +5123,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   </button>
                 )}
 
+                {canEdit && (
                 <button
                   type="button"
                   onClick={() => handleOpenCreateRecurringModal("expense", "global")}
@@ -4911,6 +5132,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   <Plus className="h-4 w-4" />
                   <span>{t("New Recurring Expense", "Nový pravidelný výdavok", "Új rendszeres kiadás")}</span>
                 </button>
+                )}
               </div>
             </div>
 
@@ -5296,12 +5518,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 onChange={(val) => setNewCatParentId(val)}
                 options={[
                   { value: "", label: t("★ None (Create as Level 1 Root)", "★ Žiadna (Vytvoriť ako Hlavnú L1)", "★ Nincs (Fő L1 kategória)") },
-                  ...financialCategories
-                    .filter((c) => c.type === catTreeType && c.level < 3)
-                    .map((c) => ({
-                      value: c.id,
-                      label: c.level === 1 ? `● ${c.name} (L1)` : `  ↳ ${c.name} (L2)`,
-                    })),
+                  ...(catTreeType === "expense" ? categoryTree.expenseTree : categoryTree.incomeTree).flatMap((l1) => [
+                    { value: l1.id, label: `● ${l1.name} (L1)` },
+                    ...l1.children.map((l2) => ({ value: l2.id, label: `  ↳ ${l2.name} (L2)` })),
+                  ]),
                 ]}
                 size="sm"
                 className="w-full text-xs font-semibold rounded-xl bg-white border-slate-200"
@@ -5309,12 +5529,16 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             </div>
 
             <div>
-              <label className="text-[11px] font-bold text-slate-500 block mb-1">{t("Color", "Farba", "Szín")}</label>
-              <input
-                type="color"
-                value={newCatColor}
-                onChange={(e) => setNewCatColor(e.target.value)}
-                className="h-9 w-12 rounded-xl bg-white  border border-slate-200  cursor-pointer p-0.5"
+              <label className="text-[11px] font-bold text-slate-500 block mb-1">
+                {newCatParentId && !newCatColorTouched ? t("Color (inherited)", "Farba (zdedená)", "Szín (örökölt)") : t("Color", "Farba", "Szín")}
+              </label>
+              <ColorPicker
+                variant="field"
+                value={newCatFormColor}
+                onChange={(color) => {
+                  setNewCatColor(color);
+                  setNewCatColorTouched(true);
+                }}
               />
             </div>
 
@@ -5326,63 +5550,38 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             </button>
           </form>
 
-          {/* Tree Rendering */}
-          <div className="space-y-3">
-            {(catTreeType === "expense" ? categoryTree.expenseTree : categoryTree.incomeTree).map((l1: any) => (
+          {/* Tree Rendering: every row drags — onto a row's edge to sit beside it, onto its middle to go under it */}
+          <p className="-mt-3 text-[11px] text-slate-400 flex items-center gap-1.5">
+            <GripVertical className="h-3.5 w-3.5 shrink-0" />
+            {t(
+              "Drag a category to reorder it or move it under another one; click its colour dot to recolour it.",
+              "Potiahnutím kategórie zmeníte poradie alebo ju presuniete pod inú; kliknutím na farebnú bodku zmeníte farbu.",
+              "Húzással átrendezheti vagy más kategória alá helyezheti; a színes pontra kattintva módosíthatja a színét."
+            )}
+          </p>
+          <div
+            ref={categoryTreeRef}
+            className="space-y-3"
+            onDragLeave={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setCategoryDropTarget(null);
+            }}
+          >
+            {(catTreeType === "expense" ? categoryTree.expenseTree : categoryTree.incomeTree).map((l1) => (
               <div key={l1.id} className="border border-slate-200  rounded-2xl overflow-hidden bg-white ">
                 {/* Level 1 Header */}
-                <div className="p-3.5 bg-slate-50/80  flex items-center justify-between border-b border-slate-100 ">
-                  <div className="flex items-center gap-2.5">
-                    <span className="h-3.5 w-3.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: l1.color }} />
-                    <span className="font-bold text-xs text-slate-900  uppercase tracking-wider">{l1.name}</span>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-200  text-slate-600 ">Level 1</span>
-                  </div>
-                  <button
-                    onClick={() => handleDeleteCategory(l1.id)}
-                    className="p-1 text-slate-400 hover:text-rose-600"
-                    title={t("Delete category", "Vymazať", "Törlés")}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
+                {renderCategoryRow(l1, 1)}
 
                 {/* Level 2 Children */}
-                {l1.children && l1.children.length > 0 && (
+                {l1.children.length > 0 && (
                   <div className="p-3 space-y-2 bg-slate-50/30 ">
-                    {l1.children.map((l2: any) => (
+                    {l1.children.map((l2) => (
                       <div key={l2.id} className="pl-4 border-l-2 border-slate-200  space-y-2">
-                        <div className="flex items-center justify-between p-2 rounded-xl bg-white  border border-slate-100 ">
-                          <div className="flex items-center gap-2">
-                            <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: l2.color || l1.color }} />
-                            <span className="font-semibold text-xs text-slate-800 ">{l2.name}</span>
-                            <span className="px-1.5 py-0.2 rounded text-[10px] bg-slate-100  text-slate-500">Level 2</span>
-                          </div>
-                          <button
-                            onClick={() => handleDeleteCategory(l2.id)}
-                            className="p-1 text-slate-400 hover:text-rose-600"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </button>
-                        </div>
+                        {renderCategoryRow(l2, 2, categoryColor(l1))}
 
                         {/* Level 3 Children */}
-                        {l2.children && l2.children.length > 0 && (
+                        {l2.children.length > 0 && (
                           <div className="pl-6 space-y-1">
-                            {l2.children.map((l3: any) => (
-                              <div key={l3.id} className="flex items-center justify-between p-1.5 px-3 rounded-lg bg-slate-50  border border-slate-100  text-xs">
-                                <div className="flex items-center gap-2">
-                                  <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: l3.color || l2.color }} />
-                                  <span className="text-slate-700  font-medium">{l3.name}</span>
-                                  <span className="text-[10px] text-slate-400">(Level 3)</span>
-                                </div>
-                                <button
-                                  onClick={() => handleDeleteCategory(l3.id)}
-                                  className="p-0.5 text-slate-400 hover:text-rose-600"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </button>
-                              </div>
-                            ))}
+                            {l2.children.map((l3) => renderCategoryRow(l3, 3, categoryColor(l2) || categoryColor(l1)))}
                           </div>
                         )}
                       </div>
@@ -5391,6 +5590,25 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 )}
               </div>
             ))}
+
+            {/* Drop zone: the end of the main categories */}
+            {draggedCategoryId && (
+              <div
+                onDragOver={(e) => handleCategoryDragOver(e, null)}
+                onDrop={handleCategoryDrop}
+                className={`animate-in fade-in slide-in-from-bottom-1 duration-200 rounded-2xl border-2 border-dashed px-4 py-3 text-center text-xs font-semibold transition-colors ${
+                  categoryDropTarget?.targetId === null
+                    ? "border-indigo-400 bg-indigo-50 text-indigo-600"
+                    : "border-slate-200 text-slate-400"
+                }`}
+              >
+                {t(
+                  "Drop here to make it a main category (L1) at the end",
+                  "Pustite sem — stane sa hlavnou kategóriou (L1) na konci zoznamu",
+                  "Engedje el ide — fő kategória (L1) lesz a lista végén"
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

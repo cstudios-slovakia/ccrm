@@ -1,15 +1,39 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import * as Icons from "lucide-react";
-import { Plus, Trash2, ArrowUp, ArrowDown, Save, X } from "lucide-react";
+import { Plus, Trash2, ArrowUp, ArrowDown, Save, X, Workflow, LayoutGrid, Rows3, CalendarClock, Paperclip, FileText } from "lucide-react";
 import { CustomSelect } from "./ui/CustomSelect";
-import type { ProjectType, ProjectAttribute, ProjectAttributeType, TimelineEventType } from "../types";
+import { ColorPicker } from "./ui/ColorPicker";
+import type { ProjectAutoCreateSettings, ProjectType, ProjectAttribute, ProjectAttributeType, ProjectFileField, TimelineEventType } from "../types";
+import { DEFAULT_PROJECT_AUTO_CREATE, isProjectAutoCreateActive } from "../utils/projectAutoCreate";
+import { DEFAULT_DEADLINE_WARNING_DAYS, normalizeDeadlineWarningDays } from "../utils/projects";
 import type { Language } from "../utils/translations";
+import { useUserPref } from "../utils/userPrefs";
+
+/**
+ * PROJECT-AUTO-CREATE-DISABLED (v1.9.29): automatic project creation from leads
+ * is switched off, so its settings card is hidden. Setting this back to true
+ * also needs the server calls restored — grep for the same marker.
+ */
+const PROJECT_AUTO_CREATE_ENABLED = false;
 
 interface ProjectSettingsProps {
   projectTypes: ProjectType[];
   setProjectTypes: React.Dispatch<React.SetStateAction<ProjectType[]>>;
   userLanguage: Language;
   canEdit: boolean;
+  /** Rules for turning every incoming lead into a project. */
+  projectAutoCreate?: ProjectAutoCreateSettings;
+  setProjectAutoCreate?: React.Dispatch<React.SetStateAction<ProjectAutoCreateSettings>>;
+  /** The interest categories a lead can carry, so each can be given its own project type. */
+  leadCategories?: string[];
+  /**
+   * Open straight into the "create project type" form. Set by the projects list
+   * when someone picks "New project type" from the + New Project dropdown,
+   * which used to dead-end at "No types configured" with nowhere to go.
+   */
+  autoStartCreate?: boolean;
+  /** Called once the request above has been honoured, so it fires only once. */
+  onAutoStartCreateHandled?: () => void;
 }
 
 const ALL_LUCIDE_ICONS = Object.keys(Icons).filter(key => {
@@ -26,18 +50,55 @@ const ATTRIBUTE_TYPES: { id: ProjectAttributeType; label: [string, string, strin
   { id: "time", label: ["Time", "Čas", "Idő"] },
   { id: "datetime", label: ["Date & Time", "Dátum a čas", "Dátum és idő"] },
   { id: "number", label: ["Number", "Číslo", "Szám"] },
+  { id: "money", label: ["Money (amount + currency)", "Suma (Čiastka + mena)", "Összeg (összeg + pénznem)"] },
   { id: "checkbox", label: ["Checkbox", "Zaškrtávacie pole", "Jelölőnégyzet"] },
   { id: "radio", label: ["Radio Button", "Prepínač", "Választógomb"] },
   { id: "files", label: ["File Upload", "Nahranie súboru", "Fájlfeltöltés"] },
   { id: "contact", label: ["Contact Picker", "Výber kontaktu", "Kapcsolatválasztó"] }
 ];
 
+/** The light switch that turns a built-in attribute on or off. */
+const Switch: React.FC<{ checked: boolean; onChange: (next: boolean) => void; disabled?: boolean; label: string }> = ({
+  checked,
+  onChange,
+  disabled,
+  label,
+}) => (
+  <button
+    type="button"
+    role="switch"
+    aria-checked={checked}
+    aria-label={label}
+    disabled={disabled}
+    onClick={() => onChange(!checked)}
+    className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-all duration-150 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 focus-visible:ring-offset-2 ${
+      checked ? "bg-indigo-600" : "bg-slate-300"
+    } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:opacity-90"}`}
+  >
+    <span
+      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
+        checked ? "translate-x-4" : "translate-x-0.5"
+      }`}
+    />
+  </button>
+);
+
 export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
   projectTypes,
   setProjectTypes,
   userLanguage,
-  canEdit
+  canEdit,
+  projectAutoCreate = DEFAULT_PROJECT_AUTO_CREATE,
+  setProjectAutoCreate,
+  leadCategories = [],
+  autoStartCreate = false,
+  onAutoStartCreateHandled
 }) => {
+  /* The view the projects screen opens on. The same preference the toggle in
+     the list writes, deliberately: a separate stored default would sooner or
+     later disagree with the toggle, and nobody could tell which one won. */
+  const [projectsViewMode, setProjectsViewMode] = useUserPref("projectsViewMode");
+
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
   const attributeTypeLabel = (id: ProjectAttributeType) => {
     const entry = ATTRIBUTE_TYPES.find((a) => a.id === id);
@@ -54,6 +115,13 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
   const [typeColor, setTypeColor] = useState("#a855f7"); // Default lavender
   const [hasTimeline, setHasTimeline] = useState(false);
   const [hasGantt, setHasGantt] = useState(false);
+  const [hasDeadline, setHasDeadline] = useState(false);
+  const [deadlineWarningDays, setDeadlineWarningDays] = useState(DEFAULT_DEADLINE_WARNING_DAYS);
+  const [deadlineRequired, setDeadlineRequired] = useState(false);
+  const [hasFiles, setHasFiles] = useState(false);
+  const [fileFields, setFileFields] = useState<ProjectFileField[]>([]);
+  const [newFileFieldName, setNewFileFieldName] = useState("");
+  const [newFileFieldRequired, setNewFileFieldRequired] = useState(false);
   const [attributes, setAttributes] = useState<ProjectAttribute[]>([]);
 
   // Timeline Custom Events states
@@ -99,12 +167,29 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     setTypeColor("#a855f7");
     setHasTimeline(false);
     setHasGantt(false);
+    setHasDeadline(false);
+    setDeadlineWarningDays(DEFAULT_DEADLINE_WARNING_DAYS);
+    setDeadlineRequired(false);
+    setHasFiles(false);
+    setFileFields([]);
+    setNewFileFieldName("");
+    setNewFileFieldRequired(false);
     setAttributes([]);
     setTimelineEventTypes([]);
     setSelectedTeTypeId(null);
     setIsCreating(true);
     setEditingType(null);
   };
+
+  /* The projects list can ask for the create form directly — see autoStartCreate.
+     The request is acknowledged straight away so it fires once and does not
+     re-open the form every time this component re-renders. */
+  useEffect(() => {
+    if (!autoStartCreate || !canEdit) return;
+    handleStartCreate();
+    onAutoStartCreateHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStartCreate, canEdit]);
 
   const handleStartEdit = (type: ProjectType) => {
     setEditingType(type);
@@ -114,6 +199,17 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     setTypeColor(type.color);
     setHasTimeline(type.hasTimeline);
     setHasGantt(type.hasGantt);
+    setHasDeadline(!!type.hasDeadline);
+    // A type saved before deadlines existed has no window of its own; offer the
+    // default rather than 0, which would read as "never warn me early".
+    setDeadlineWarningDays(
+      type.hasDeadline ? normalizeDeadlineWarningDays(type.deadlineWarningDays) : DEFAULT_DEADLINE_WARNING_DAYS
+    );
+    setDeadlineRequired(!!type.deadlineRequired);
+    setHasFiles(!!type.hasFiles);
+    setFileFields(type.fileFields || []);
+    setNewFileFieldName("");
+    setNewFileFieldRequired(false);
     setAttributes(type.attributes || []);
     setTimelineEventTypes(type.timelineEventTypes || []);
     setSelectedTeTypeId(type.timelineEventTypes && type.timelineEventTypes.length > 0 ? type.timelineEventTypes[0].id : null);
@@ -150,6 +246,31 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
       if (!window.confirm(confirmMsg)) return;
     }
     setAttributes(prev => prev.filter(a => a.id !== attrId));
+  };
+
+  const handleAddFileField = () => {
+    const name = newFileFieldName.trim();
+    if (!name) return;
+    if (fileFields.some(f => f.name.toLowerCase() === name.toLowerCase())) return;
+    // The prefix keeps a slot's data column from ever colliding with an attribute's.
+    const id = "file_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
+    setFileFields(prev => [...prev, { id, name, required: newFileFieldRequired }]);
+    setNewFileFieldName("");
+    setNewFileFieldRequired(false);
+  };
+
+  const handleRemoveFileField = (fieldId: string) => {
+    // A slot that was already saved has uploads behind it; one added in this
+    // session has nothing to lose.
+    if (editingType?.fileFields?.some(f => f.id === fieldId)) {
+      const confirmMsg = t(
+        "WARNING: Removing this file field will permanently delete the files attached to it in existing projects. Do you want to proceed?",
+        "VAROVANIE: Odstránenie tohto poľa trvalo vymaže súbory, ktoré sú k nemu priložené v existujúcich projektoch. Chcete pokračovať?",
+        "FIGYELMEZTETÉS: Ezen fájlmező törlése véglegesen törli a meglévő projektekben hozzá csatolt fájlokat. Folytatja?"
+      );
+      if (!window.confirm(confirmMsg)) return;
+    }
+    setFileFields(prev => prev.filter(f => f.id !== fieldId));
   };
 
   const handleMoveAttribute = (index: number, direction: "up" | "down") => {
@@ -255,6 +376,15 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
       color: typeColor,
       hasTimeline,
       hasGantt,
+      hasDeadline,
+      // Only meaningful while deadlines are on. Storing 0 for a type with them
+      // off keeps the saved shape identical whichever way the switch was flipped.
+      deadlineWarningDays: hasDeadline ? normalizeDeadlineWarningDays(deadlineWarningDays) : 0,
+      deadlineRequired: hasDeadline && deadlineRequired,
+      // The slots are kept while the switch is off: turning it off hides the
+      // uploads, it does not delete them.
+      hasFiles,
+      fileFields,
       attributes,
       timelineEventTypes
     };
@@ -390,6 +520,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                       )}
                     </button>
                   ))}
+                  <ColorPicker variant="palette" value={typeColor} onChange={setTypeColor} disabled={!canEdit} className="h-8 w-8 p-1" />
                 </div>
               </div>
             </div>
@@ -421,6 +552,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                   {t("Enable Gantt Chart (project roadmap)", "Povoliť Ganttov diagram", "Gantt diagram engedélyezése")}
                 </span>
               </label>
+
             </div>
 
             {/* Custom Event Types for Timeline */}
@@ -520,6 +652,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                             )}
                           </button>
                         ))}
+                        <ColorPicker variant="palette" value={newTeTypeColor} onChange={setNewTeTypeColor} />
                       </div>
                       <button
                         type="button"
@@ -725,6 +858,190 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
             <h4 className="font-heading font-bold text-sm text-slate-700">
               {t("Project Attributes", "Atribúty projektu", "Projekt attribútumok")}
             </h4>
+
+            {/* Built-in attributes. Every type has them; each is switched on or
+                off rather than added, and brings its own settings when on. */}
+            <div className="space-y-2">
+              {/* Deadline */}
+              <div className={`bg-white border rounded-2xl shadow-sm transition-colors duration-150 ${hasDeadline ? "border-indigo-200" : "border-slate-200"}`}>
+                <div className="flex items-center justify-between gap-3 p-3 text-xs font-semibold">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className={`flex items-center justify-center h-8 w-8 rounded-xl shrink-0 transition-colors duration-150 ${hasDeadline ? "bg-indigo-50 text-indigo-600" : "bg-slate-100 text-slate-400"}`}>
+                      <CalendarClock className="h-4 w-4" />
+                    </span>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-slate-800 text-[13px]">{t("Deadline", "Termín dokončenia", "Határidő")}</span>
+                      <span className="text-slate-400 font-medium truncate">
+                        {t("Due date and countdown", "Dátum dokončenia a odpočet", "Esedékesség és visszaszámlálás")}
+                        {hasDeadline && deadlineRequired && t(" • Required", " • Povinné", " • Kötelező")}
+                      </span>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={hasDeadline}
+                    onChange={setHasDeadline}
+                    disabled={!canEdit}
+                    label={t("Deadline", "Termín dokončenia", "Határidő")}
+                  />
+                </div>
+
+                {hasDeadline && (
+                  <div className="border-t border-slate-100 p-3 space-y-3 animate-fade-in">
+                    <label className="flex items-center gap-2 cursor-pointer select-none w-fit">
+                      <input
+                        type="checkbox"
+                        disabled={!canEdit}
+                        checked={deadlineRequired}
+                        onChange={e => setDeadlineRequired(e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600"
+                      />
+                      <span className="text-xs font-semibold text-slate-600">{t("Required field", "Povinné pole", "Kötelező mező")}</span>
+                    </label>
+
+                    {/* How early the countdown starts warning. Off by default is not an
+                        option here — a deadline nobody is reminded of is just a date. */}
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
+                        {t("Warn this many days ahead", "Upozorniť toľkoto dní vopred", "Ennyi nappal előbb figyelmeztessen")}
+                      </label>
+                      <div className="flex items-center gap-2.5">
+                        <input
+                          type="number"
+                          min={0}
+                          max={365}
+                          disabled={!canEdit}
+                          value={deadlineWarningDays}
+                          onChange={e => setDeadlineWarningDays(normalizeDeadlineWarningDays(e.target.value))}
+                          className="w-20 shrink-0 px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 bg-white transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                        />
+                        <span className="text-[11px] font-medium text-slate-400 leading-snug">
+                          {deadlineWarningDays > 0
+                            ? t(
+                                `Projects turn amber ${deadlineWarningDays} days before they are due, and red once late.`,
+                                `Projekty zožltnú ${deadlineWarningDays} dní pred termínom a sčervenajú po ňom.`,
+                                `A projektek ${deadlineWarningDays} nappal a határidő előtt sárgák, utána pirosak lesznek.`,
+                              )
+                            : t(
+                                "No early warning — projects are only flagged once they are late.",
+                                "Bez včasného upozornenia — projekty sa označia až po termíne.",
+                                "Nincs korai figyelmeztetés — a projektek csak lejárat után lesznek megjelölve.",
+                              )}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Files — named document slots every project of this type carries */}
+              <div className={`bg-white border rounded-2xl shadow-sm transition-colors duration-150 ${hasFiles ? "border-indigo-200" : "border-slate-200"}`}>
+                <div className="flex items-center justify-between gap-3 p-3 text-xs font-semibold">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className={`flex items-center justify-center h-8 w-8 rounded-xl shrink-0 transition-colors duration-150 ${hasFiles ? "bg-indigo-50 text-indigo-600" : "bg-slate-100 text-slate-400"}`}>
+                      <Paperclip className="h-4 w-4" />
+                    </span>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-slate-800 text-[13px]">{t("Files", "Súbory", "Fájlok")}</span>
+                      <span className="text-slate-400 font-medium truncate">
+                        {hasFiles && fileFields.length > 0
+                          ? `${fileFields.length} ${t("fields", "polí", "mező")}` +
+                            (fileFields.some(f => f.required)
+                              ? ` • ${fileFields.filter(f => f.required).length} ${t("required", "povinných", "kötelező")}`
+                              : "")
+                          : t("Documents such as a contract or GDPR consent", "Dokumenty ako zmluva alebo súhlas GDPR", "Dokumentumok, pl. szerződés vagy GDPR hozzájárulás")}
+                      </span>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={hasFiles}
+                    onChange={setHasFiles}
+                    disabled={!canEdit}
+                    label={t("Files", "Súbory", "Fájlok")}
+                  />
+                </div>
+
+                {hasFiles && (
+                  <div className="border-t border-slate-100 p-3 space-y-2 animate-fade-in">
+                    {fileFields.length === 0 ? (
+                      <div className="p-3 border-2 border-dashed border-slate-200 rounded-xl text-center text-slate-400 text-xs">
+                        {t("No file fields yet — add one below.", "Zatiaľ žiadne polia pre súbory — pridajte ich nižšie.", "Még nincsenek fájlmezők — adjon hozzá lent.")}
+                      </div>
+                    ) : (
+                      fileFields.map(field => (
+                        <div key={field.id} className="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold animate-fade-in">
+                          <FileText className="h-4 w-4 shrink-0 text-slate-400" />
+                          <span className="flex-1 min-w-0 truncate text-slate-800">{field.name}</span>
+                          <label className="flex items-center gap-1.5 cursor-pointer select-none shrink-0">
+                            <input
+                              type="checkbox"
+                              disabled={!canEdit}
+                              checked={field.required}
+                              onChange={e => {
+                                const required = e.target.checked;
+                                setFileFields(prev => prev.map(f => f.id === field.id ? { ...f, required } : f));
+                              }}
+                              className="h-4 w-4 rounded border-slate-300 text-indigo-600"
+                            />
+                            <span className="text-[11px] font-semibold text-slate-500">{t("Required", "Povinné", "Kötelező")}</span>
+                          </label>
+                          <button
+                            type="button"
+                            disabled={!canEdit}
+                            onClick={() => handleRemoveFileField(field.id)}
+                            className="p-1 hover:bg-rose-50 rounded text-rose-600 shrink-0 transition-colors duration-150 active:scale-95 cursor-pointer disabled:opacity-30"
+                            title={t("Remove", "Odobrať", "Eltávolítás")}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))
+                    )}
+
+                    {canEdit && (
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        <input
+                          value={newFileFieldName}
+                          onChange={e => setNewFileFieldName(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleAddFileField();
+                            }
+                          }}
+                          placeholder={t("e.g. Contract, GDPR consent", "napr. Zmluva, Súhlas GDPR", "pl. Szerződés, GDPR hozzájárulás")}
+                          className="flex-1 min-w-[8rem] px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                        />
+                        <label className="flex items-center gap-1.5 cursor-pointer select-none shrink-0">
+                          <input
+                            type="checkbox"
+                            checked={newFileFieldRequired}
+                            onChange={e => setNewFileFieldRequired(e.target.checked)}
+                            className="h-4 w-4 rounded border-slate-300 text-indigo-600"
+                          />
+                          <span className="text-[11px] font-semibold text-slate-500">{t("Required", "Povinné", "Kötelező")}</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={handleAddFileField}
+                          disabled={!newFileFieldName.trim()}
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 transition-all duration-150 active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                        >
+                          <Plus className="h-4 w-4" />
+                          <span>{t("Add", "Pridať", "Hozzáadás")}</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <span className="text-[10px] font-heading font-black text-slate-400 uppercase tracking-widest shrink-0">
+                {t("Custom attributes", "Vlastné atribúty", "Egyedi attribútumok")}
+              </span>
+              <div className="h-px flex-1 bg-slate-200" />
+            </div>
 
             {/* Existing attributes list */}
             <div className="space-y-2 max-h-60 overflow-y-auto pr-2 scrollbar-thin">
@@ -935,6 +1252,44 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
         )}
       </div>
 
+      {/* ── DISPLAY ─────────────────────────────────────────────────────── */}
+      <div className="glass-panel p-4 rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-wrap items-center justify-between gap-3 text-left">
+        <div className="flex flex-col">
+          <span className="font-heading font-black text-slate-800 text-xs uppercase tracking-widest">
+            {t("Default project view", "Predvolené zobrazenie projektov", "Alapértelmezett projekt nézet")}
+          </span>
+          <span className="text-[11px] font-semibold text-slate-400 mt-0.5">
+            {t(
+              "Which view the projects screen opens on. The switcher in the list changes it too.",
+              "Zobrazenie, ktorým sa otvorí zoznam projektov. Prepínač v zozname ho tiež mení.",
+              "Melyik nézettel nyílik meg a projektek képernyő. A listában lévő kapcsoló is módosítja.",
+            )}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200 select-none shrink-0">
+          {([
+            { mode: "list" as const, Icon: Rows3, label: t("List", "Zoznam", "Lista") },
+            { mode: "grid" as const, Icon: LayoutGrid, label: t("Cards", "Karty", "Kártyák") },
+          ]).map(({ mode, Icon, label }) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setProjectsViewMode(mode)}
+              aria-pressed={projectsViewMode === mode}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer ${
+                projectsViewMode === mode
+                  ? "bg-white text-indigo-600 shadow-sm"
+                  : "text-slate-400 hover:text-slate-600"
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5 shrink-0" />
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       {projectTypes.length === 0 ? (
         <div className="glass-panel p-8 rounded-3xl border border-white/60 bg-white/95 text-center text-slate-400 shadow-glass">
           <p className="text-sm font-semibold">{t("No project types configured.", "Nie sú nakonfigurované žiadne typy projektov.", "Nincsenek projekt típusok beállítva.")}</p>
@@ -975,6 +1330,16 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                         {t("Gantt", "Gantt", "Gantt")}
                       </span>
                     )}
+                    {type.hasDeadline && (
+                      <span className="px-2 py-0.5 rounded-full bg-amber-50 text-[10px] font-bold text-amber-600 border border-amber-100">
+                        {t("Deadline", "Termín", "Határidő")}
+                      </span>
+                    )}
+                    {type.hasFiles && (type.fileFields?.length || 0) > 0 && (
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-[10px] font-bold text-emerald-600 border border-emerald-100">
+                        {t("Files", "Súbory", "Fájlok")}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -993,6 +1358,255 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
           ))}
         </div>
       )}
+
+      {/* ── AUTOMATIC CREATION FROM LEADS ──────────────────────────────────
+          Every lead that arrives gets a project already paired with it — one
+          per interest category that names a type, or a single project of the
+          fallback type. The creation happens server-side, so it covers leads
+          that never pass through this app — the public web-form webhook and
+          workflow actions — and two devices syncing the same new lead cannot
+          each produce their own project for it.
+
+          PROJECT-AUTO-CREATE-DISABLED (v1.9.29): hidden, because the server no
+          longer creates projects from leads. Flip the constant at the top of
+          this file (and restore the server calls) to bring it back. */}
+      {PROJECT_AUTO_CREATE_ENABLED && setProjectAutoCreate && (() => {
+        const active = isProjectAutoCreateActive(projectAutoCreate, projectTypes);
+        const chosenType = projectTypes.find(pt => pt.id === projectAutoCreate.projectTypeId);
+        const canToggle = canEdit && projectTypes.length > 0;
+        const update = (patch: Partial<ProjectAutoCreateSettings>) =>
+          setProjectAutoCreate(prev => ({ ...prev, ...patch }));
+        const NO_TYPE_LABEL = t("No project", "Žiadny projekt", "Nincs projekt");
+
+        /** The map with one category pointed at a type, or cleared of it. */
+        const setCategoryType = (map: Record<string, string>, category: string, typeId: string) => {
+          const next = { ...map };
+          if (typeId) next[category] = typeId;
+          else delete next[category];
+          return next;
+        };
+
+        // Only the rules that will actually fire: a type deleted after it was
+        // chosen must not be read out as if it still creates something.
+        const mappedRules = leadCategories
+          .map((category) => ({
+            category,
+            type: projectTypes.find(pt => pt.id === projectAutoCreate.categoryTypes[category])?.name,
+          }))
+          .filter((r): r is { category: string; type: string } => !!r.type);
+
+        return (
+          <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass text-left space-y-5">
+            <div className="space-y-1">
+              <h3 className="font-heading font-black text-slate-800 text-[15px] uppercase tracking-widest flex items-center gap-2">
+                <Workflow className="h-4.5 w-4.5 text-indigo-500" />
+                {t("Automatic project creation", "Automatické vytváranie projektov", "Automatikus projektlétrehozás")}
+              </h3>
+              <p className="text-[11px] font-semibold text-slate-500 leading-relaxed max-w-3xl">
+                {t(
+                  "Every new lead is paired with a project — leads from the web form, from automations, from imports, and leads added by hand. Each interest category can name its own project type, so a lead ticking two of them gets one project of each. A lead whose interests match no rule falls back to the type below.",
+                  "Každý nový lead sa spáruje s projektom — leady z webového formulára, z automatizácií, z importov aj leady pridané ručne. Každá kategória záujmu môže mať vlastný typ projektu, takže lead s dvoma kategóriami dostane projekt z každej. Lead, ktorého záujmy nezodpovedajú žiadnemu pravidlu, dostane záložný typ nižšie.",
+                  "Minden új lead projekttel lesz párosítva — a webűrlapról, automatizációkból és importokból érkező, valamint a kézzel hozzáadott leadek. Minden érdeklődési kategóriának saját projekt típusa lehet, így a két kategóriát megjelölő lead mindegyikből kap egyet. Az egyik szabályra sem illeszkedő lead az alábbi tartalék típust kapja.",
+                )}
+              </p>
+            </div>
+
+            {projectTypes.length === 0 ? (
+              <p className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
+                {t(
+                  "Create a project type first — there is nothing to create projects from yet.",
+                  "Najprv vytvorte typ projektu — zatiaľ nie je z čoho projekty vytvárať.",
+                  "Előbb hozzon létre egy projekt típust — jelenleg nincs miből projektet létrehozni.",
+                )}
+              </p>
+            ) : (
+              <>
+                {/* On/off */}
+                <div className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3.5">
+                  <button
+                    type="button"
+                    disabled={!canToggle}
+                    onClick={() => update({ enabled: !projectAutoCreate.enabled })}
+                    className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors mt-0.5 ${
+                      projectAutoCreate.enabled ? "bg-indigo-600" : "bg-slate-300"
+                    } ${canToggle ? "cursor-pointer hover:opacity-90" : "opacity-50 cursor-not-allowed"}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                      projectAutoCreate.enabled ? "translate-x-4" : "translate-x-0.5"
+                    }`} />
+                  </button>
+                  <div className="min-w-0">
+                    <span className="block text-[10px] font-black uppercase tracking-wider text-slate-700">
+                      {t("Create a project for every new lead", "Vytvoriť projekt pre každý nový lead", "Projekt létrehozása minden új leadhez")}
+                    </span>
+                    <span className="block text-[10px] font-semibold text-slate-400 mt-0.5 leading-snug">
+                      {t(
+                        "Off by default. Existing leads are left alone — this only applies to leads that arrive from now on.",
+                        "Predvolene vypnuté. Existujúcich leadov sa to netýka — platí len pre leady, ktoré prídu odteraz.",
+                        "Alapértelmezés szerint kikapcsolva. A meglévő leadeket nem érinti — csak a mostantól érkező leadekre vonatkozik.",
+                      )}
+                    </span>
+                  </div>
+                </div>
+
+                {projectAutoCreate.enabled && (
+                  <>
+                    {/* One rule per interest category. The map is keyed by the
+                        category name, which is what a lead stores; SettingsView
+                        carries the entry across a rename and drops it on a
+                        delete, exactly as it does for the colour map. */}
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">
+                        {t("Project type per interest category", "Typ projektu podľa kategórie záujmu", "Projekt típus érdeklődési kategóriánként")}
+                      </label>
+                      {leadCategories.length === 0 ? (
+                        <p className="text-[11px] font-bold text-slate-500 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3">
+                          {t(
+                            "No interest categories are configured — add them in Settings to give each its own project type.",
+                            "Nie sú nastavené žiadne kategórie záujmu — pridajte ich v Nastaveniach, aby mohla každá dostať vlastný typ projektu.",
+                            "Nincsenek beállított érdeklődési kategóriák — adja hozzá őket a Beállításokban, hogy mindegyik saját projekt típust kaphasson.",
+                          )}
+                        </p>
+                      ) : (
+                        <div className="rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
+                          {leadCategories.map((cat) => (
+                            <div key={cat} className="flex items-center gap-3 px-4 py-2.5">
+                              <span className="text-[11px] font-black text-slate-700 truncate flex-1 min-w-0" title={cat}>
+                                {cat}
+                              </span>
+                              <div className="w-full max-w-[16rem] shrink-0">
+                                <CustomSelect
+                                  size="sm"
+                                  disabled={!canEdit}
+                                  value={projectAutoCreate.categoryTypes[cat] || ""}
+                                  onChange={(v) => update({ categoryTypes: setCategoryType(projectAutoCreate.categoryTypes, cat, v) })}
+                                  placeholder={NO_TYPE_LABEL}
+                                  options={[
+                                    { value: "", label: NO_TYPE_LABEL },
+                                    ...projectTypes.map(pt => ({ value: pt.id, label: pt.name })),
+                                  ]}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Everything the rules above did not catch */}
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">
+                        {t("Type for leads no rule matched", "Typ pre leady bez zhody", "Típus a szabályt nem találó leadekhez")}
+                      </label>
+                      <CustomSelect
+                        disabled={!canEdit}
+                        value={projectAutoCreate.projectTypeId}
+                        onChange={(v) => update({ projectTypeId: v })}
+                        placeholder={NO_TYPE_LABEL}
+                        options={[
+                          { value: "", label: NO_TYPE_LABEL },
+                          ...projectTypes.map(pt => ({ value: pt.id, label: pt.name })),
+                        ]}
+                      />
+                      <p className="text-[10px] font-semibold text-slate-400 mt-1.5 leading-snug">
+                        {t(
+                          "Used for a lead that carries no interest category, or none that names a type above.",
+                          "Použije sa pre lead bez kategórie záujmu, alebo keď žiadna z jeho kategórií nemá vyššie určený typ.",
+                          "Az érdeklődési kategória nélküli leadhez használja, vagy ha egyik kategóriája sem nevez meg fenti típust.",
+                        )}
+                      </p>
+                    </div>
+
+                    {/* Manager */}
+                    <div className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3.5">
+                      <button
+                        type="button"
+                        disabled={!canEdit}
+                        onClick={() => update({ assignOwner: !projectAutoCreate.assignOwner })}
+                        className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors mt-0.5 ${
+                          projectAutoCreate.assignOwner ? "bg-indigo-600" : "bg-slate-300"
+                        } ${canEdit ? "cursor-pointer hover:opacity-90" : "opacity-50 cursor-not-allowed"}`}
+                      >
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                          projectAutoCreate.assignOwner ? "translate-x-4" : "translate-x-0.5"
+                        }`} />
+                      </button>
+                      <div className="min-w-0">
+                        <span className="block text-[10px] font-black uppercase tracking-wider text-slate-700">
+                          {t("Hand the project to the lead's manager", "Prideliť projekt manažérovi leadu", "A projekt a lead menedzseréhez kerül")}
+                        </span>
+                        <span className="block text-[10px] font-semibold text-slate-400 mt-0.5 leading-snug">
+                          {t(
+                            "The lead's project manager becomes the project's manager too. Leave it off to create projects nobody is on yet.",
+                            "Projektový manažér leadu sa stane aj manažérom projektu. Vypnite, ak majú projekty vznikať bez priradenej osoby.",
+                            "A lead projektmenedzsere a projekt menedzsere is lesz. Kapcsolja ki, ha a projektek felelős nélkül jöjjenek létre.",
+                          )}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* What the rules actually add up to. A type deleted after it
+                        was chosen leaves this looking configured while the server
+                        creates nothing. */}
+                    {active ? (
+                      <div className="text-[11px] font-bold text-slate-500 bg-white border border-slate-200 rounded-2xl px-4 py-3 space-y-1">
+                        <span className="block text-slate-400 uppercase tracking-wider font-black">
+                          {t("Result", "Výsledok", "Eredmény")}:
+                        </span>
+                        {mappedRules.map(({ category, type }) => (
+                          <span key={category} className="block">
+                            {t(
+                              `A lead interested in "${category}" gets a "${type}" project.`,
+                              `Lead so záujmom „${category}“ dostane projekt typu „${type}“.`,
+                              `A „${category}” iránt érdeklődő lead „${type}” projektet kap.`,
+                            )}
+                          </span>
+                        ))}
+                        {mappedRules.length > 0 && (
+                          <span className="block text-slate-400">
+                            {t(
+                              "A lead in several of them gets one project of each.",
+                              "Lead s viacerými z nich dostane projekt z každej.",
+                              "A több ilyen kategóriával rendelkező lead mindegyikből kap egyet.",
+                            )}
+                          </span>
+                        )}
+                        <span className="block">
+                          {chosenType
+                            ? t(
+                                `Every other lead gets a "${chosenType.name}" project.`,
+                                `Každý ostatný lead dostane projekt typu „${chosenType.name}“.`,
+                                `Minden más lead „${chosenType.name}” projektet kap.`,
+                              )
+                            : t(
+                                "A lead matching none of these rules gets no project.",
+                                "Lead, ktorý nezodpovedá žiadnemu pravidlu, projekt nedostane.",
+                                "Az egyik szabályra sem illeszkedő lead nem kap projektet.",
+                              )}
+                        </span>
+                      </div>
+                    ) : (
+                      <p className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
+                        {projectAutoCreate.projectTypeId || Object.keys(projectAutoCreate.categoryTypes).length > 0
+                          ? t(
+                              "The chosen project types no longer exist — pick others, or no projects will be created.",
+                              "Zvolené typy projektov už neexistujú — vyberte iné, inak sa žiadne projekty nevytvoria.",
+                              "A kiválasztott projekt típusok már nem léteznek — válasszon másikat, különben nem jön létre projekt.",
+                            )
+                          : t(
+                              "No project type chosen yet — no projects will be created.",
+                              "Zatiaľ nie je vybraný typ projektu — žiadne projekty sa nevytvoria.",
+                              "Még nincs kiválasztva projekt típus — nem jön létre projekt.",
+                            )}
+                      </p>
+                    )}
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 };

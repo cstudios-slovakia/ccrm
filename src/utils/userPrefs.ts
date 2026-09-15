@@ -20,14 +20,36 @@ import { createContext, useContext } from "react";
  * to read it without a user object (see getStoredLanguage in translations.ts).
  */
 export interface UserPrefs {
-  /** Theme id. Reserved: main has no theme picker yet. */
+  /** Light palette id — see HERB_THEMES in utils/theme.ts. */
   theme: string;
+  /**
+   * Appearance: "system" | "light" | "dark" | "auto" (sunrise/sunset). Typed as
+   * a plain string so this module stays free of a theme import; utils/theme.ts
+   * validates it with isThemeMode() before anything is applied.
+   *
+   * It is also mirrored into localStorage, because index.html has to know the
+   * answer before the session — and this row — has loaded.
+   */
+  themeMode: string;
   /** Debug affordance: show the error-log quick access in the main sidebar. */
   errorSidebarEnabled: boolean;
   /** Leads screen: table or kanban board. */
   leadsViewMode: "list" | "kanban";
   /** Leads screen: dense rows. */
   leadsCompactMode: boolean;
+  /**
+   * Projects screen: roomy cards or a dense table. Doubles as the "default
+   * view" setting — it is both what the toggle in the list writes and what the
+   * screen opens on, so there is one answer to "which view do I get?" rather
+   * than a stored default quietly disagreeing with the toggle.
+   */
+  projectsViewMode: "grid" | "list";
+  /**
+   * Projects screen: which column the list is ordered by, or null for the
+   * stored order. Loosely typed like themeMode; ProjectsView validates it with
+   * normalizeProjectSort() from utils/projectSort.ts.
+   */
+  projectsSort: { key: string; direction: string } | null;
   /** Leads screen: grouping / sorting. */
   leadsOrderingMode: "state" | "pm" | "created_newest" | "created_oldest" | "size" | "rating";
   /**
@@ -37,6 +59,13 @@ export interface UserPrefs {
   leadsVisibleStates: string[] | null;
   /** Id of the newest release note the user has already opened. */
   seenUpdateId: string | null;
+  /**
+   * Licence notice the user chose never to see again, stored as the SITUATION's
+   * signature rather than a plain boolean (see licenseNoticeSignature in
+   * utils/license.ts). Silencing "expires in three weeks" therefore does not
+   * also silence "expired", and a renewed key brings the notice back.
+   */
+  licenseNoticeSuppressed: string | null;
   /**
    * "Don't show again" on the banner that warns an AI section is unusable
    * because no OpenAI key is configured. Per user, not per browser: someone who
@@ -49,12 +78,16 @@ export interface UserPrefs {
 
 export const DEFAULT_USER_PREFS: UserPrefs = {
   theme: "basic",
+  themeMode: "system",
   errorSidebarEnabled: false,
   leadsViewMode: "list",
+  projectsViewMode: "list",
+  projectsSort: null,
   leadsCompactMode: false,
   leadsOrderingMode: "state",
   leadsVisibleStates: null,
   seenUpdateId: null,
+  licenseNoticeSuppressed: null,
   aiKeyBannerDismissed: false,
   ragDefaultAgent: null,
 };
@@ -115,7 +148,10 @@ export function useUserPref<K extends keyof UserPrefs>(
  * migrateLegacyPrefs usage in App.tsx.
  */
 const LEGACY_PREF_KEYS = [
-  "crm_user_theme",
+  // `crm_user_theme` is deliberately NOT wiped: since the theme switcher landed
+  // it is no longer only a legacy copy, it is the mirror the pre-paint script in
+  // index.html reads to pick the right palette before the bundle loads. Clearing
+  // it would put a flash of the default theme on every reload.
   "ccrm_error_sidebar_enabled",
   "crm_leads_visible_states",
   "ccrm_seen_update_id",

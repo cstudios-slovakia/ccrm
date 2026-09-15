@@ -8,6 +8,7 @@ import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { resolveCurrencySymbol, resolveCurrencyPosition, formatMoney } from "../utils/currency";
 import { formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
+import { liftAccent, readableOn } from "../utils/accentColor";
 
 interface DashboardProps {
   systemName: string;
@@ -1410,7 +1411,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                   className="inline-block px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider border select-none leading-none"
                                   style={{
                                     backgroundColor: `${leadSourceColors[p.source.toLowerCase()] || "#10b981"}15`,
-                                    color: leadSourceColors[p.source.toLowerCase()] || "#10b981",
+                                    color: liftAccent(leadSourceColors[p.source.toLowerCase()] || "#10b981"),
                                     borderColor: `${leadSourceColors[p.source.toLowerCase()] || "#10b981"}35`
                                   }}
                                 >
@@ -1429,9 +1430,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                 const subColor = leadStateColors[sName] || "#38bdf8";
                                 return (
                                   <span 
-                                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider select-none text-white leading-none"
+                                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider select-none leading-none"
                                     style={{
-                                      background: `linear-gradient(135deg, ${parentColor}, ${subColor})`
+                                      background: `linear-gradient(135deg, ${parentColor}, ${subColor})`,
+                                      // The gradient's midpoint is what the text
+                                      // actually sits on; a pale state colour
+                                      // needs ink, not more white.
+                                      color: readableOn(subColor)
                                     }}
                                   >
                                     {parentName.toUpperCase()} &gt; {p.status.toUpperCase()}
@@ -1441,9 +1446,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                 const mainColor = leadStateColors[sName] || "#6366f1";
                                 return (
                                   <span 
-                                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider select-none text-white leading-none"
+                                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider select-none leading-none"
                                     style={{
-                                      backgroundColor: mainColor
+                                      backgroundColor: mainColor,
+                                      color: readableOn(mainColor)
                                     }}
                                   >
                                     {p.status.toUpperCase()}
@@ -2168,7 +2174,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">{t("Selected Data Node", "Vybraný dátový bod", "Kiválasztott adatpont")}</span>
                           <span className="text-xs font-black text-slate-800 mt-0.5">{pt.label}</span>
                           <div className="flex items-center justify-center gap-3 mt-1 text-[11px] font-bold">
-                            <span className="text-slate-500">{t("Date", "Dátum", "Dátum")}: <strong className="text-slate-700">{pt.date}</strong></span>
+                            <span className="text-slate-500">{t("Date", "Dátum", "Dátum")}: <strong className="text-slate-700">{formatTimestampLocalized(pt.date, systemLanguage)}</strong></span>
                             <span className="text-slate-500">{t("Change", "Zmena", "Változás")}: <strong className="text-slate-700">+{inspectingChart.valuePrefix}{pt.value.toLocaleString()}{inspectingChart.valueSuffix}</strong></span>
                             <span className="text-slate-500">{t("Value", "Hodnota", "Érték")}: <strong style={{ color: inspectingChart.color }}>{inspectingChart.valuePrefix}{pt.cumulative.toLocaleString()}{inspectingChart.valueSuffix}</strong></span>
                           </div>
@@ -2202,7 +2208,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     >
                       <div className="flex flex-col min-w-0 pr-2">
                         <span className="text-[11px] font-bold text-slate-800 truncate leading-snug">{pt.label}</span>
-                        <span className="text-[8px] text-slate-400 font-bold mt-0.5">{pt.date}</span>
+                        <span className="text-[8px] text-slate-400 font-bold mt-0.5">{formatTimestampLocalized(pt.date, systemLanguage)}</span>
                       </div>
                       <div className="flex flex-col items-end shrink-0">
                         <strong className="text-xs font-black text-slate-800">

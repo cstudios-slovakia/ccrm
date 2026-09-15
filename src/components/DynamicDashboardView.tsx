@@ -1,16 +1,40 @@
-import React, { useState, useEffect, useRef } from "react";
-import { Sparkles, Save, Edit, RefreshCw, Send, AlertCircle, LayoutDashboard, FileText, HelpCircle, X, Info, Languages, Layers, Rows3, History, ChevronDown } from "lucide-react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import { Sparkles, Save, Edit, RefreshCw, Send, AlertCircle, LayoutDashboard, FileText, HelpCircle, X, Info, Languages, Layers, Rows3, History, ChevronDown, ChevronUp, GripVertical, Trash2, Copy, Plus, LayoutGrid, RotateCcw, Wand2, Lock } from "lucide-react";
 import type { CustomDashboard } from "../types";
 import { cn } from "../utils/cn";
 import type { Language } from "../utils/translations";
 import { formatMoney } from "../utils/currency";
 import { localeCodeFor } from "../utils/localTime";
+import { chartTheme, useAppearance } from "../utils/theme";
+import { useDragAutoScroll } from "../hooks/useDragAutoScroll";
+import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
+import {
+  WIDGET_PRESETS,
+  WIDGET_SIZES,
+  buildPresetWidget,
+  buildDefaultHomeWidgets,
+  newWidgetId,
+  type WidgetSize
+} from "../utils/dashboardWidgets";
 
 interface DynamicDashboardViewProps {
   dashboard: CustomDashboard;
   onSaveDashboard: (updated: CustomDashboard) => void;
   systemLanguage: string;
   currencyCode?: string | null;
+  /**
+   * "home" is the built-in Dashboard section: it keeps its own heading and can
+   * be reset back to the starter widgets. "custom" is a user-created AI panel.
+   */
+  variant?: "custom" | "home";
+  /**
+   * Every configured pipeline phase, in pipeline order. A stage-by-phase widget
+   * can only ever report the phases leads actually sit in, so the editor's phase
+   * picker needs the full list from Settings to offer the empty ones too.
+   */
+  pipelineStages?: string[];
+  /** Role access for this dashboard. `edit: false` is view-only widgets. */
+  access?: ModuleAccess;
 }
 
 /** Where a `tabs` widget's per-tab query result is stored in the data/error maps. */
@@ -26,6 +50,13 @@ const WIDGET_ICONS: Record<string, React.ComponentType<{ className?: string }>> 
 };
 
 const WIDGET_TYPES = ["metric", "chart", "table", "timeline", "accordion", "tabs"];
+
+/**
+ * The types the widget editor offers. `tabs` is rendered but not offered: it
+ * holds one query per tab rather than a query of its own, so switching an
+ * existing widget to it by hand would produce a card with nothing to show.
+ */
+const EDITABLE_WIDGET_TYPES = ["metric", "chart", "table", "timeline", "accordion"];
 
 /**
  * Every chart flavour the renderer understands (keys are `canonical()`-ed), mapped
@@ -48,6 +79,17 @@ const CHART_BASE_TYPES: Record<string, string> = {
 const CHART_TYPES = [...Object.keys(CHART_BASE_TYPES), "gauge"];
 
 const canonical = (value: any) => String(value ?? "").toLowerCase().replace(/[\s_-]/g, "");
+
+/**
+ * The one query action whose result is a pipeline breakdown, and so the only
+ * widget the editor offers a phase picker for. Its rows are
+ * `{ status, count, total_value }` and it accepts a `statuses` param naming
+ * which phases to report — including phases no lead sits in.
+ */
+const STAGE_QUERY_ACTION = "leads_by_status";
+
+/** Phase names compare case- and separator-insensitively, like everywhere else. */
+const sameStage = (a: any, b: any) => canonical(a) === canonical(b);
 
 /** Solid accent for the widget palette names the AI is allowed to pick from. */
 const ACCENT_COLORS: Record<string, string> = {
@@ -101,14 +143,105 @@ const pickKey = (row: any, explicit: any, candidates: string[]): string | null =
   return null;
 };
 
+/** First key in a sample row whose values look numeric — the natural series. */
+const numericKeyOf = (row: any): string | null => {
+  if (!row || typeof row !== "object") return null;
+  const hit = Object.keys(row).find(k => row[k] !== null && row[k] !== "" && !isNaN(Number(row[k])));
+  return hit || null;
+};
+
+/** First key that is not the numeric one — the natural label/category. */
+const labelKeyOf = (row: any, numericKey: string | null): string | null => {
+  if (!row || typeof row !== "object") return null;
+  const keys = Object.keys(row);
+  return keys.find(k => k !== numericKey) || keys[0] || null;
+};
+
+/**
+ * Rewrites a widget so it can render as `nextType`.
+ *
+ * A widget carries the fields its own renderer needs and nothing more — a chart
+ * has `mapping`, a table has `columns` — so switching type in the editor has to
+ * fill in the missing half. `sampleRow` is the first row the widget's query
+ * actually returned, which is what makes the guesses land on real column names
+ * instead of placeholders.
+ */
+const adaptWidgetToType = (widget: any, nextType: string, sampleRow: any): any => {
+  const next = { ...widget, type: nextType };
+  const numericKey = numericKeyOf(sampleRow);
+  const labelKey = labelKeyOf(sampleRow, numericKey);
+
+  if (nextType === "chart") {
+    next.chartType = CHART_TYPES.includes(canonical(widget.chartType)) ? widget.chartType : "bar";
+    const mapping = { ...(widget.mapping || {}) };
+    if (!mapping.labelsKey && labelKey) mapping.labelsKey = labelKey;
+    if (!mapping.dataKey && numericKey) mapping.dataKey = numericKey;
+    next.mapping = mapping;
+  }
+
+  if (nextType === "metric") {
+    // A metric shows one figure out of the first row, and the row's first column
+    // is rarely it — a phase breakdown leads with the phase name. Point the card
+    // at the first numeric column instead.
+    const mapping = { ...(widget.mapping || {}) };
+    if (!mapping.dataKey && numericKey) mapping.dataKey = numericKey;
+    next.mapping = mapping;
+  }
+
+  if (nextType === "table") {
+    if (!Array.isArray(widget.columns) || widget.columns.length === 0) {
+      const keys = sampleRow && typeof sampleRow === "object" ? Object.keys(sampleRow).slice(0, 5) : [];
+      next.columns = keys.map(key => {
+        const label = key.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
+        return {
+          key,
+          // Derived from a database column name, so the same text stands in for
+          // all three languages rather than leaving the label untranslated.
+          label: { en: label, sk: label, hu: label },
+          format: /value|price|total|amount|worth|revenue/i.test(key)
+            ? "currency"
+            : /date|_at|deadline/i.test(key)
+              ? "date"
+              : "text"
+        };
+      });
+    }
+  }
+
+  if (nextType === "timeline" || nextType === "accordion") {
+    const mapping = { ...(widget.mapping || {}) };
+    mapping.titleKey = pickKey(sampleRow, mapping.titleKey, TITLE_KEY_CANDIDATES) || mapping.titleKey;
+    if (nextType === "timeline") {
+      mapping.dateKey = pickKey(sampleRow, mapping.dateKey, DATE_KEY_CANDIDATES) || mapping.dateKey;
+      mapping.descriptionKey = pickKey(sampleRow, mapping.descriptionKey, BODY_KEY_CANDIDATES) || mapping.descriptionKey;
+    } else {
+      mapping.contentKey = pickKey(sampleRow, mapping.contentKey, BODY_KEY_CANDIDATES) || mapping.contentKey;
+      mapping.subtitleKey = pickKey(sampleRow, mapping.subtitleKey, DATE_KEY_CANDIDATES) || mapping.subtitleKey;
+    }
+    next.mapping = mapping;
+  }
+
+  return next;
+};
+
 export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   dashboard,
-  onSaveDashboard,
+  onSaveDashboard: onSaveDashboardRaw,
   systemLanguage,
-  currencyCode
+  currencyCode,
+  variant = "custom",
+  pipelineStages = [],
+  access = FULL_MODULE_ACCESS
 }) => {
+  const isHome = variant === "home";
   const t = (en: string, sk: string, hu: string) =>
     systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
+  const canEdit = access.edit;
+  const canDelete = access.delete;
+  const onSaveDashboard = (updated: CustomDashboard) => {
+    if (!canEdit) return;
+    onSaveDashboardRaw(updated);
+  };
   const money = (value: number, opts?: Intl.NumberFormatOptions) =>
     formatMoney(value, currencyCode, (systemLanguage as Language) || "en", opts);
   // AI-generated widget titles/column labels come back either as a plain
@@ -139,7 +272,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     });
   };
 
-  const [isEditMode, setIsEditMode] = useState(dashboard.layout.widgets.length === 0);
+  const [isEditMode, setIsEditMode] = useState(canEdit && dashboard.layout.widgets.length === 0);
   const [promptText, setPromptText] = useState("");
   const [selectedModel, setSelectedModel] = useState(dashboard.activeModel || "gpt-5.6-terra");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -171,13 +304,27 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   const [tempLayout, setTempLayout] = useState(dashboard.layout);
   const [tempPrompts, setTempPrompts] = useState(dashboard.prompts || []);
 
+  // Manual widget editor: the "add widget" drawer, and the card being dragged.
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [addTab, setAddTab] = useState<"library" | "ai">("library");
+  const [widgetPrompt, setWidgetPrompt] = useState("");
+  const [isGeneratingWidget, setIsGeneratingWidget] = useState(false);
+  const [widgetPromptError, setWidgetPromptError] = useState<string | null>(null);
+  const [draggedWidgetId, setDraggedWidgetId] = useState<string | null>(null);
+  const [dragOverWidgetId, setDragOverWidgetId] = useState<string | null>(null);
+
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  // Long layouts: keep <main> scrolling while a card is dragged near its edges.
+  useDragAutoScroll(draggedWidgetId !== null, rootRef);
+
   const prevDashIdRef = useRef(dashboard.id);
 
   useEffect(() => {
     if (dashboard.id !== prevDashIdRef.current || isSaved) {
       setTempLayout(dashboard.layout);
       setTempPrompts(dashboard.prompts || []);
-      setIsEditMode(dashboard.layout.widgets.length === 0);
+      setIsEditMode(canEdit && dashboard.layout.widgets.length === 0);
       setIsSaved(true);
       prevDashIdRef.current = dashboard.id;
     }
@@ -233,14 +380,25 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     });
   };
 
+  // Only the queries decide whether data has to be re-fetched. Keying the effect
+  // on the whole layout meant every editor action — resizing a card, dragging it
+  // one place left, renaming it — re-ran every widget's query.
+  const layoutRef = useRef(tempLayout);
+  layoutRef.current = tempLayout;
+  const querySignature = useMemo(
+    () => JSON.stringify((tempLayout?.widgets || []).map((w: any) => [w?.id, w?.query, w?.tabs?.map((tb: any) => tb?.query)])),
+    [tempLayout]
+  );
+
   useEffect(() => {
-    if (tempLayout.widgets.length > 0) {
-      fetchAllWidgetsData();
+    if ((layoutRef.current?.widgets || []).length > 0) {
+      fetchAllWidgetsData(layoutRef.current);
     }
-  }, [tempLayout]);
+  }, [querySignature]);
 
   const handleRunPrompt = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (!canEdit) return;
     if (!promptText.trim()) return;
 
     setIsGenerating(true);
@@ -310,6 +468,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   }, [dashboard.id]);
 
   const handleSave = () => {
+    if (!canEdit) return;
     const updated: CustomDashboard = {
       ...dashboard,
       layout: tempLayout,
@@ -321,6 +480,186 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     setIsEditMode(false);
     if (typeof (window as any).showToast === "function") {
       (window as any).showToast(t("Dashboard saved successfully!", "Panel bol úspešne uložený!", "Irányítópult sikeresen mentve!"));
+    }
+  };
+
+  /* ---------------------------------------------------------------------
+     Manual widget editing. Everything here works on `tempLayout`, exactly
+     like an AI generation does, so a hand edit and a prompt refinement are
+     both discarded by leaving without saving.
+  --------------------------------------------------------------------- */
+
+  const mutateWidgets = (fn: (widgets: any[]) => any[]) => {
+    if (!canEdit) return;
+    setTempLayout((prev: any) => ({ ...prev, widgets: fn(prev?.widgets || []) }));
+    setIsSaved(false);
+  };
+
+  /** First row the widget's query returned — what type conversion guesses from. */
+  const sampleRowOf = (widgetId: string) => {
+    const data = widgetData[widgetId];
+    return Array.isArray(data) ? data[0] : data;
+  };
+
+  const updateWidget = (id: string, patch: Record<string, any>) =>
+    mutateWidgets(ws => ws.map(w => (w.id === id ? { ...w, ...patch } : w)));
+
+  const removeWidget = (id: string) => {
+    if (!canDelete) return;
+    mutateWidgets(ws => ws.filter(w => w.id !== id));
+  };
+
+  const duplicateWidget = (id: string) =>
+    mutateWidgets(ws => {
+      const index = ws.findIndex(w => w.id === id);
+      if (index === -1) return ws;
+      const copy = { ...ws[index], id: newWidgetId("widget") };
+      return [...ws.slice(0, index + 1), copy, ...ws.slice(index + 1)];
+    });
+
+  /** Shifts a widget one place earlier (-1) or later (+1) in the grid flow. */
+  const moveWidget = (id: string, direction: -1 | 1) =>
+    mutateWidgets(ws => {
+      const index = ws.findIndex(w => w.id === id);
+      const target = index + direction;
+      if (index === -1 || target < 0 || target >= ws.length) return ws;
+      const next = [...ws];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+
+  /** Drop-to-reorder: the dragged widget takes the target's position. */
+  const moveWidgetBefore = (id: string, targetId: string) =>
+    mutateWidgets(ws => {
+      if (id === targetId) return ws;
+      const from = ws.findIndex(w => w.id === id);
+      const to = ws.findIndex(w => w.id === targetId);
+      if (from === -1 || to === -1) return ws;
+      const next = [...ws];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+
+  const changeWidgetType = (id: string, nextType: string) =>
+    mutateWidgets(ws => ws.map(w => (w.id === id ? adaptWidgetToType(w, nextType, sampleRowOf(id)) : w)));
+
+  /**
+   * Phases a stage-breakdown widget can be narrowed to: everything Settings has
+   * configured, plus any phase the widget is already reporting or filtering on.
+   * The union matters after a phase is renamed or retired in Settings — the old
+   * name stays pickable for as long as leads still carry it, instead of the
+   * widget quietly filtering on a phase the editor no longer shows.
+   */
+  const stageOptionsFor = (widget: any): string[] => {
+    if (widget?.query?.action !== STAGE_QUERY_ACTION) return [];
+    const data = widgetData[widget.id];
+    const fromData = Array.isArray(data) ? data.map((row: any) => row?.status) : [];
+    const picked = widget?.query?.params?.statuses;
+    const seen = new Set<string>();
+    return [...pipelineStages, ...fromData, ...(Array.isArray(picked) ? picked : [])]
+      .map(stage => String(stage ?? "").trim())
+      .filter(stage => {
+        if (!stage) return false;
+        const key = canonical(stage);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  };
+
+  /** Which phases a widget currently reports. Empty means "whatever has leads". */
+  const stageSelectionOf = (widget: any): string[] => {
+    const picked = widget?.query?.params?.statuses;
+    return Array.isArray(picked) ? picked.filter(Boolean) : [];
+  };
+
+  const setWidgetStages = (id: string, statuses: string[]) =>
+    mutateWidgets(ws =>
+      ws.map(w => {
+        if (w.id !== id) return w;
+        const query = { ...(w.query || {}) };
+        query.params = { ...(query.params || {}), statuses };
+        return { ...w, query };
+      })
+    );
+
+  /** Which column a metric card shows — `count` or `total_value` on a phase widget. */
+  const setWidgetMetricKey = (id: string, dataKey: string) =>
+    mutateWidgets(ws =>
+      ws.map(w => (w.id === id ? { ...w, mapping: { ...(w.mapping || {}), dataKey } } : w))
+    );
+
+  /**
+   * Widget titles are `{ en, sk, hu }`. A rename types one language, so the
+   * other two are filled with the same text rather than left showing the old
+   * title to half the team.
+   */
+  const renameWidget = (id: string, value: string) =>
+    mutateWidgets(ws =>
+      ws.map(w => {
+        if (w.id !== id) return w;
+        return { ...w, title: { en: value, sk: value, hu: value } };
+      })
+    );
+
+  const addWidgets = (widgets: any[]) => {
+    if (widgets.length === 0) return;
+    mutateWidgets(ws => [...ws, ...widgets]);
+  };
+
+  const resetToDefaultWidgets = () => {
+    if (!canEdit) return;
+    if (!window.confirm(t(
+      "Replace the current widgets with the default dashboard?",
+      "Nahradiť aktuálne moduly predvolenou nástenkou?",
+      "Lecseréli a jelenlegi modulokat az alapértelmezett irányítópultra?"
+    ))) return;
+    mutateWidgets(() => buildDefaultHomeWidgets());
+  };
+
+  /**
+   * Single-widget generation, on the same endpoint the whole-panel prompt uses.
+   * History is deliberately not sent: the model would otherwise continue the
+   * conversation and hand back a replacement for the entire dashboard.
+   */
+  const handleGenerateWidget = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!canEdit) return;
+    const request = widgetPrompt.trim();
+    if (!request) return;
+
+    setIsGeneratingWidget(true);
+    setWidgetPromptError(null);
+    try {
+      const res = await fetch("/api/generate_dashboard.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt:
+            "Add exactly ONE widget to an existing dashboard. Respond with the standard JSON layout object whose \"widgets\" array holds that single widget and nothing else. " +
+            `The widget must show: ${request}`,
+          history: [],
+          model: selectedModel
+        })
+      });
+      const json = await res.json();
+      const generated = json?.layout?.widgets;
+      if (json.success && Array.isArray(generated) && generated.length > 0) {
+        addWidgets([{ ...generated[0], id: newWidgetId("ai") }]);
+        setWidgetPrompt("");
+        setIsAddOpen(false);
+      } else {
+        setWidgetPromptError(
+          json.message || t("Failed to generate the widget.", "Vygenerovanie modulu zlyhalo.", "A modul létrehozása sikertelen.")
+        );
+      }
+    } catch (err: any) {
+      setWidgetPromptError(
+        err?.message || t("Connection to AI agent failed.", "Pripojenie k AI agentovi zlyhalo.", "Az AI ügynökhöz való kapcsolódás sikertelen.")
+      );
+    } finally {
+      setIsGeneratingWidget(false);
     }
   };
 
@@ -362,7 +701,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
       case "timeline":
         return <DashboardTimeline widget={widget} data={data} t={t} systemLanguage={systemLanguage as Language} localize={localize} />;
       case "accordion":
-        return <DashboardAccordion widget={widget} data={data} t={t} localize={localize} />;
+        return <DashboardAccordion widget={widget} data={data} t={t} localize={localize} systemLanguage={systemLanguage as Language} />;
       case "tabs":
         if (depth > 0) {
           // Tabs nested inside tabs have no sane layout and no fetched data.
@@ -398,7 +737,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   };
 
   return (
-    <div className="w-full space-y-6 animate-in fade-in slide-in-from-top-4 duration-300">
+    <div ref={rootRef} className="w-full space-y-6 animate-in fade-in slide-in-from-top-4 duration-300">
       {/* HEADER — same shape as every other module: title block on the left,
           actions on the right, hairline rule underneath. This view used to paint
           its own full-bleed background and padding on top of the app's own
@@ -407,15 +746,47 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-4">
         <div className="flex flex-col">
           <h1 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-            <Sparkles className="h-6 w-6" style={{ color: dashboard.color }} />
-            {dashboard.name}
+            {isHome ? (
+              <LayoutDashboard className="h-6 w-6" style={{ color: dashboard.color }} />
+            ) : (
+              <Sparkles className="h-6 w-6" style={{ color: dashboard.color }} />
+            )}
+            {isHome ? t("Dashboard", "Nástenka", "Irányítópult") : dashboard.name}
           </h1>
           <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
-            {t("Custom Dynamic AI Dashboard", "Vlastný dynamický AI panel", "Egyéni dinamikus AI irányítópult")}
+            {isHome
+              ? t("Your workspace at a glance", "Váš prehľad na jednom mieste", "A munkaterülete egy pillantásra")
+              : t("Custom Dynamic AI Dashboard", "Vlastný dynamický AI panel", "Egyéni dinamikus AI irányítópult")}
           </p>
         </div>
 
         <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          {!canEdit && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider">
+              <Lock className="h-3.5 w-3.5" />
+              {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
+            </span>
+          )}
+          {canEdit && isEditMode && tempLayout.widgets.length > 0 && (
+            <button
+              onClick={() => { setAddTab("library"); setIsAddOpen(true); }}
+              className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20 transition-all text-xs font-heading font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shrink-0 hover:scale-[1.02] active:scale-95"
+            >
+              <Plus className="h-4 w-4" />
+              <span>{t("Add widget", "Pridať modul", "Modul hozzáadása")}</span>
+            </button>
+          )}
+
+          {isEditMode && isHome && tempLayout.widgets.length > 0 && (
+            <button
+              onClick={resetToDefaultWidgets}
+              className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors text-xs font-heading font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shrink-0"
+            >
+              <RotateCcw className="h-4 w-4" />
+              <span>{t("Reset", "Obnoviť", "Visszaállítás")}</span>
+            </button>
+          )}
+
           {isEditMode && (
             <button
               onClick={() => setIsHelpOpen(true)}
@@ -439,7 +810,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
             </span>
           )}
 
-          {tempLayout.widgets.length > 0 && !isEditMode && (
+          {tempLayout.widgets.length > 0 && !isEditMode && canEdit && (
             <button
               onClick={() => setIsEditMode(true)}
               className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors text-xs font-heading font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shrink-0"
@@ -449,7 +820,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
             </button>
           )}
 
-          {!isSaved && (
+          {canEdit && !isSaved && (
             <button
               onClick={handleSave}
               className="px-5 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20 transition-all font-heading font-bold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95 shrink-0"
@@ -480,15 +851,48 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
               <Sparkles className="h-8 w-8 text-indigo-600 animate-pulse" />
             </div>
             <h2 className="text-2xl font-black text-slate-800 uppercase tracking-wide">
-              {t("Generate your Dashboard", "Vytvorte si svoj panel", "Irányítópult létrehozása")}
+              {canEdit
+                ? t("Generate your Dashboard", "Vytvorte si svoj panel", "Irányítópult létrehozása")
+                : t("No widgets yet", "Zatiaľ žiadne moduly", "Még nincsenek modulok")}
             </h2>
             <p className="text-sm text-slate-500 mt-2 max-w-md">
-              {t(
-                "Type what you want to analyze. The AI agent will fetch live database records, build custom metrics and charts.",
-                "Zadajte, čo chcete analyzovať. AI agent načíta živé databázové záznamy a zostaví metriky a grafy.",
-                "Írja be, mit szeretne elemezni. Az AI lekéri az élő adatbázis rekordokat, és diagramokat készít."
-              )}
+              {canEdit
+                ? t(
+                    "Type what you want to analyze. The AI agent will fetch live database records, build custom metrics and charts.",
+                    "Zadajte, čo chcete analyzovať. AI agent načíta živé databázové záznamy a zostaví metriky a grafy.",
+                    "Írja be, mit szeretne elemezni. Az AI lekéri az élő adatbázis rekordokat, és diagramokat készít."
+                  )
+                : t(
+                    "This dashboard has no widgets to show.",
+                    "Tento panel zatiaľ nemá žiadne moduly.",
+                    "Ennek az irányítópultnak nincsenek moduljai."
+                  )}
             </p>
+
+            {canEdit && (
+            <>
+            {/* Nothing here needs an AI key: a dashboard can also be assembled
+                from the ready-made widget library, or reset to the starter set. */}
+            <div className="flex flex-wrap items-center justify-center gap-2 mt-6">
+              <button
+                type="button"
+                onClick={() => { setAddTab("library"); setIsAddOpen(true); }}
+                className="px-5 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all text-xs font-black uppercase tracking-wider flex items-center gap-2 cursor-pointer active:scale-95"
+              >
+                <LayoutGrid className="h-4 w-4 text-indigo-600" />
+                <span>{t("Pick from the widget library", "Vybrať z knižnice modulov", "Válasszon a modulkönyvtárból")}</span>
+              </button>
+              {isHome && (
+                <button
+                  type="button"
+                  onClick={() => mutateWidgets(() => buildDefaultHomeWidgets())}
+                  className="px-5 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all text-xs font-black uppercase tracking-wider flex items-center gap-2 cursor-pointer active:scale-95"
+                >
+                  <RotateCcw className="h-4 w-4 text-indigo-600" />
+                  <span>{t("Use the default layout", "Použiť predvolené rozloženie", "Alapértelmezett elrendezés")}</span>
+                </button>
+              )}
+            </div>
 
             <form onSubmit={handleRunPrompt} className="w-full mt-8 bg-white border border-slate-200/80 rounded-[28px] shadow-xl p-5 space-y-4 text-left">
               <div>
@@ -556,18 +960,37 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 </button>
               </div>
             </form>
+            </>
+            )}
           </div>
         ) : (
           /* Render Generated Layout Grid */
           <div className="grid grid-cols-12 gap-6 text-left pb-2">
-            {tempLayout.widgets.map((w: any) => {
+            {tempLayout.widgets.map((w: any, index: number) => {
               const WidgetIcon = WIDGET_ICONS[resolveWidgetType(w).type] || FileText;
               return (
                 <div
                   key={w.id}
+                  // Reordering is drag-and-drop on the card itself (the handle sets
+                  // `draggable`), matching how the sidebar's own layout editor works.
+                  onDragOver={(e) => {
+                    if (!isEditMode || !draggedWidgetId) return;
+                    e.preventDefault();
+                    if (dragOverWidgetId !== w.id) setDragOverWidgetId(w.id);
+                  }}
+                  onDrop={(e) => {
+                    if (!isEditMode || !draggedWidgetId) return;
+                    e.preventDefault();
+                    moveWidgetBefore(draggedWidgetId, w.id);
+                    setDraggedWidgetId(null);
+                    setDragOverWidgetId(null);
+                  }}
                   className={cn(
                     "bg-white rounded-3xl border border-slate-200/80 shadow-sm p-6 flex flex-col justify-between overflow-hidden min-h-[140px] relative animate-in fade-in duration-300",
-                    getGridSpan(w.size)
+                    getGridSpan(w.size),
+                    isEditMode && "ring-1 ring-indigo-100 transition-all",
+                    isEditMode && draggedWidgetId === w.id && "opacity-40",
+                    isEditMode && dragOverWidgetId === w.id && draggedWidgetId !== w.id && "ring-2 ring-indigo-400 border-indigo-300"
                   )}
                 >
                   {/* Loader Overlay */}
@@ -577,9 +1000,37 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                     </div>
                   )}
 
+                  {isEditMode && (
+                    <WidgetEditBar
+                      widget={w}
+                      index={index}
+                      total={tempLayout.widgets.length}
+                      t={t}
+                      title={localize(w.title)}
+                      isDragging={draggedWidgetId === w.id}
+                      canDelete={canDelete}
+                      onDragStart={() => setDraggedWidgetId(w.id)}
+                      onDragEnd={() => { setDraggedWidgetId(null); setDragOverWidgetId(null); }}
+                      onMove={(dir) => moveWidget(w.id, dir)}
+                      onSize={(size) => updateWidget(w.id, { size })}
+                      onType={(type) => changeWidgetType(w.id, type)}
+                      onChartType={(chartType) => updateWidget(w.id, { chartType })}
+                      stageOptions={stageOptionsFor(w)}
+                      stageSelection={stageSelectionOf(w)}
+                      onStages={(statuses) => setWidgetStages(w.id, statuses)}
+                      onMetricKey={(dataKey) => setWidgetMetricKey(w.id, dataKey)}
+                      onColor={(color) => updateWidget(w.id, { color })}
+                      onRename={(value) => renameWidget(w.id, value)}
+                      onDuplicate={() => duplicateWidget(w.id)}
+                      onRemove={() => removeWidget(w.id)}
+                    />
+                  )}
+
                   <div className="w-full flex items-center justify-between pb-3 mb-3 border-b border-slate-100/50">
+                    {/* In edit mode the title is the editable field in the bar
+                        above, so it is not repeated here. */}
                     <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                      {localize(w.title)}
+                      {isEditMode ? null : localize(w.title)}
                     </span>
                     <div
                       className="w-7 h-7 rounded-xl flex items-center justify-center text-white scale-90"
@@ -603,18 +1054,36 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 </div>
               );
             })}
+
+            {isEditMode && (
+              <button
+                type="button"
+                onClick={() => { setAddTab("library"); setIsAddOpen(true); }}
+                className="col-span-12 md:col-span-6 lg:col-span-3 min-h-[140px] rounded-3xl border-2 border-dashed border-slate-200 text-slate-400 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50/40 transition-all flex flex-col items-center justify-center gap-2 cursor-pointer active:scale-[0.98]"
+              >
+                <Plus className="h-6 w-6" />
+                <span className="text-[10px] font-black uppercase tracking-wider">
+                  {t("Add widget", "Pridať modul", "Modul hozzáadása")}
+                </span>
+              </button>
+            )}
           </div>
         )}
 
         {/* Prompt Bar docked at the bottom of the workspace in Edit Mode. Sticky
             (not the old viewport-fixed overlay) so it stays anchored to this
             view's own scroll flow like the rest of the app instead of floating
-            over — and clipping — the last row of widgets. */}
+            over — and clipping — the last row of widgets.
+
+            The sticky wrapper is full-width while the bar itself is only
+            max-w-3xl, so its transparent left/right margins used to swallow
+            every click on the widgets underneath. Only the bar takes pointer
+            events. */}
         {isEditMode && tempLayout.widgets.length > 0 && (
-          <div className="sticky bottom-6 z-40 mt-6 animate-in slide-in-from-bottom-6 duration-300">
+          <div className="sticky bottom-6 z-40 mt-6 pointer-events-none animate-in slide-in-from-bottom-6 duration-300">
             <form
               onSubmit={handleRunPrompt}
-              className="max-w-3xl mx-auto bg-white/90 backdrop-blur-md border border-slate-200/80 rounded-[28px] shadow-2xl p-4 flex items-center gap-3.5"
+              className="pointer-events-auto max-w-3xl mx-auto bg-white/90 backdrop-blur-md border border-slate-200/80 rounded-[28px] shadow-2xl p-4 flex items-center gap-3.5"
             >
               <textarea
                 rows={1}
@@ -684,6 +1153,190 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Add-widget drawer: ready-made widgets on one tab, a one-shot AI prompt
+          on the other. Both append to the working layout, so nothing is stored
+          until Save — exactly like a whole-panel generation. */}
+      {canEdit && isAddOpen && (
+        <>
+          <div
+            className="fixed inset-0 bg-slate-900/30 backdrop-blur-[1px] z-[9998] animate-in fade-in duration-200"
+            onClick={() => setIsAddOpen(false)}
+          />
+          <div className="fixed right-0 top-0 h-screen w-full max-w-[460px] bg-white border-l border-slate-200 shadow-2xl z-[9999] flex flex-col animate-in slide-in-from-right duration-300">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-50 flex items-center justify-center">
+                  <Plus className="h-5 w-5 text-indigo-600" />
+                </div>
+                <div>
+                  <h3 className="text-base font-heading font-extrabold text-slate-900 tracking-tight">
+                    {t("Add widget", "Pridať modul", "Modul hozzáadása")}
+                  </h3>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5 block">
+                    {t("Library or AI", "Knižnica alebo AI", "Könyvtár vagy AI")}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsAddOpen(false)}
+                className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+                aria-label={t("Close", "Zavrieť", "Bezárás")}
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="px-6 pt-4 shrink-0">
+              <div className="flex items-center gap-1 p-1 rounded-2xl bg-slate-100">
+                {([
+                  { id: "library" as const, label: t("Library", "Knižnica", "Könyvtár"), icon: LayoutGrid },
+                  { id: "ai" as const, label: t("Generate with AI", "Vytvoriť s AI", "Létrehozás AI-val"), icon: Wand2 }
+                ]).map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setAddTab(tab.id)}
+                    className={cn(
+                      "flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer",
+                      addTab === tab.id
+                        ? "bg-white text-indigo-600 shadow-sm"
+                        : "text-slate-500 hover:text-slate-700"
+                    )}
+                  >
+                    <tab.icon className="h-3.5 w-3.5" />
+                    <span>{tab.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+              {addTab === "library" ? (
+                (["leads", "tasks", "activity"] as const).map(group => {
+                  const presets = WIDGET_PRESETS.filter(p => p.group === group);
+                  if (presets.length === 0) return null;
+                  const groupLabel =
+                    group === "leads"
+                      ? t("Leads & pipeline", "Leady a pipeline", "Leadek és pipeline")
+                      : group === "tasks"
+                        ? t("Tasks", "Úlohy", "Feladatok")
+                        : t("Activity", "Aktivita", "Tevékenység");
+                  return (
+                    <div key={group} className="space-y-2">
+                      <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400">{groupLabel}</h4>
+                      {presets.map(preset => (
+                        <button
+                          key={preset.id}
+                          onClick={() => addWidgets([buildPresetWidget(preset)])}
+                          className="w-full text-left p-3.5 rounded-2xl border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/40 transition-all cursor-pointer group flex items-start gap-3 active:scale-[0.99]"
+                        >
+                          <div className="w-8 h-8 rounded-xl bg-slate-100 group-hover:bg-white flex items-center justify-center shrink-0 transition-colors">
+                            {React.createElement(
+                              WIDGET_ICONS[resolveWidgetType(preset.build()).type] || FileText,
+                              { className: "h-4 w-4 text-slate-500 group-hover:text-indigo-600" }
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <span className="block text-xs font-bold text-slate-800">{localize(preset.title)}</span>
+                            <span className="block text-[11px] text-slate-500 leading-snug mt-0.5">
+                              {localize(preset.description)}
+                            </span>
+                          </div>
+                          <Plus className="h-4 w-4 text-slate-300 group-hover:text-indigo-500 ml-auto shrink-0 mt-0.5" />
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })
+              ) : (
+                <form onSubmit={handleGenerateWidget} className="space-y-4">
+                  <div className="p-3.5 rounded-2xl bg-indigo-50/50 border border-indigo-100 text-[11px] text-slate-600 leading-relaxed flex gap-2">
+                    <Info className="h-4 w-4 text-indigo-500 shrink-0 mt-0.5" />
+                    <span>
+                      {t(
+                        "Describe one widget. The AI writes the query against your live data and adds a single card to this dashboard.",
+                        "Opíšte jeden modul. AI napíše dopyt nad vašimi živými dátami a pridá na nástenku jednu kartu.",
+                        "Írjon le egy modult. Az AI lekérdezést ír az élő adataira, és egyetlen kártyát ad az irányítópulthoz."
+                      )}
+                    </span>
+                  </div>
+
+                  <textarea
+                    rows={4}
+                    value={widgetPrompt}
+                    onChange={(e) => setWidgetPrompt(e.target.value)}
+                    placeholder={t(
+                      "e.g. a bar chart of won deals per month this year",
+                      "napr. stĺpcový graf uzavretých obchodov po mesiacoch",
+                      "pl. oszlopdiagram a havi megnyert üzletekről"
+                    )}
+                    className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm bg-slate-50 transition-all font-semibold resize-none"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleGenerateWidget();
+                      }
+                    }}
+                  />
+
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between w-full gap-3">
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">
+                        {t("Model Power", "Výkon modelu", "Modell Teljesítmény")}
+                      </span>
+                      <span className="text-[9px] font-black text-purple-600 uppercase tracking-wider whitespace-nowrap">
+                        {modelLevelLabel}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="2"
+                      value={modelLevelIndex}
+                      onChange={(e) => handleModelSliderChange(Number(e.target.value))}
+                      className="w-full accent-purple-600 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer"
+                    />
+                  </div>
+
+                  {widgetPromptError && (
+                    <div className="p-3 rounded-2xl bg-rose-50 border border-rose-100 text-rose-700 text-xs font-semibold flex items-start gap-2">
+                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                      <span>{widgetPromptError}</span>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={isGeneratingWidget || !widgetPrompt.trim()}
+                    className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white disabled:text-slate-400 rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-indigo-600/10 cursor-pointer"
+                  >
+                    {isGeneratingWidget ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                        <span>{t("Generating...", "Generujem...", "Generálás...")}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4" />
+                        <span>{t("Generate widget", "Vytvoriť modul", "Modul létrehozása")}</span>
+                      </>
+                    )}
+                  </button>
+                </form>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-slate-100 shrink-0">
+              <button
+                onClick={() => setIsAddOpen(false)}
+                className="w-full py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer"
+              >
+                {t("Done", "Hotovo", "Kész")}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* UX Help Slideout Drawer */}
       {isHelpOpen && (
@@ -1001,6 +1654,270 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
 };
 
 /* Single-value KPI card. Extracted from the grid so a `tabs` widget can host one. */
+/* ---------------------------------------------------------------------------
+   Widget editor chrome. Rendered on top of each card in edit mode; every control
+   writes straight into the working layout, which is only persisted on Save.
+--------------------------------------------------------------------------- */
+
+const SIZE_LABELS: Record<WidgetSize, string> = { sm: "S", md: "M", lg: "L", full: "XL" };
+
+const WidgetEditBar: React.FC<{
+  widget: any;
+  index: number;
+  total: number;
+  title: string;
+  isDragging: boolean;
+  t: (en: string, sk: string, hu: string) => string;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+  onMove: (direction: -1 | 1) => void;
+  onSize: (size: WidgetSize) => void;
+  onType: (type: string) => void;
+  onChartType: (chartType: string) => void;
+  onColor: (color: string) => void;
+  onRename: (value: string) => void;
+  onDuplicate: () => void;
+  onRemove: () => void;
+  canDelete?: boolean;
+  /** Every phase this widget could report on; empty for widgets that have none. */
+  stageOptions: string[];
+  /** The phases it reports now; empty means "whatever currently has leads". */
+  stageSelection: string[];
+  onStages: (statuses: string[]) => void;
+  onMetricKey: (dataKey: string) => void;
+}> = ({
+  widget, index, total, title, isDragging, t,
+  onDragStart, onDragEnd, onMove, onSize, onType, onChartType, onColor, onRename, onDuplicate, onRemove,
+  stageOptions, stageSelection, onStages, onMetricKey, canDelete = true
+}) => {
+  const resolvedType = resolveWidgetType(widget).type;
+  const currentSize = (WIDGET_SIZES as string[]).includes(widget.size) ? (widget.size as WidgetSize) : "full";
+
+  const typeLabel = (type: string) => {
+    switch (type) {
+      case "metric": return t("Metric", "Metrika", "Mérőszám");
+      case "chart": return t("Chart", "Graf", "Diagram");
+      case "table": return t("Table", "Tabuľka", "Táblázat");
+      case "timeline": return t("Timeline", "Časová os", "Idővonal");
+      case "accordion": return t("Accordion", "Rozbaľovací zoznam", "Harmonika");
+      case "tabs": return t("Tabs", "Záložky", "Fülek");
+      default: return type;
+    }
+  };
+
+  const selectClass =
+    "h-7 rounded-lg border border-slate-200 bg-white px-2 text-[10px] font-black uppercase tracking-wider text-slate-600 cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500";
+
+  const hasSelection = stageSelection.length > 0;
+
+  /**
+   * Plain click solos a phase — that is the whole point of the picker, and with
+   * a long pipeline toggling the other nine off would be absurd. Ctrl/Cmd/Shift
+   * adds and removes instead, starting from "everything" when nothing is picked
+   * yet. The last phase cannot be removed: a widget reporting no phase at all
+   * would fall back to reporting all of them, which is not what the click meant.
+   */
+  const toggleStage = (stage: string, additive: boolean): string[] => {
+    if (!additive) return [stage];
+    const base = hasSelection ? stageSelection : stageOptions;
+    const isOn = base.some(s => sameStage(s, stage));
+    if (!isOn) return [...base, stage];
+    const next = base.filter(s => !sameStage(s, stage));
+    return next.length > 0 ? next : base;
+  };
+
+  return (
+    <div className="-mt-2 mb-3 pb-3 border-b border-dashed border-indigo-100 space-y-2">
+      <div className="flex items-center gap-2">
+        <span
+          draggable
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
+          title={t("Drag to reorder", "Potiahnutím zmeníte poradie", "Húzza az átrendezéshez")}
+          className={cn(
+            "shrink-0 p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-grab active:cursor-grabbing",
+            isDragging && "text-indigo-600"
+          )}
+        >
+          <GripVertical className="h-4 w-4" />
+        </span>
+
+        <input
+          value={title}
+          onChange={(e) => onRename(e.target.value)}
+          placeholder={t("Widget title", "Názov modulu", "Modul címe")}
+          className="flex-1 min-w-0 h-7 px-2 rounded-lg border border-transparent hover:border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 bg-transparent text-[11px] font-bold text-slate-700 focus:outline-none transition-colors"
+        />
+
+        <div className="flex items-center gap-0.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => onMove(-1)}
+            disabled={index === 0}
+            title={t("Move earlier", "Posunúť dopredu", "Előrébb")}
+            className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 transition-colors cursor-pointer disabled:cursor-default"
+          >
+            <ChevronUp className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => onMove(1)}
+            disabled={index === total - 1}
+            title={t("Move later", "Posunúť dozadu", "Hátrébb")}
+            className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 transition-colors cursor-pointer disabled:cursor-default"
+          >
+            <ChevronDown className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={onDuplicate}
+            title={t("Duplicate", "Duplikovať", "Másolás")}
+            className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
+          >
+            <Copy className="h-3.5 w-3.5" />
+          </button>
+          {canDelete && (
+          <button
+            type="button"
+            onClick={onRemove}
+            title={t("Remove widget", "Odstrániť modul", "Modul eltávolítása")}
+            className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+          )}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        {/* Size: the four spans of the 12-column grid. */}
+        <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-slate-100">
+          {WIDGET_SIZES.map(size => (
+            <button
+              key={size}
+              type="button"
+              onClick={() => onSize(size)}
+              title={t("Widget width", "Šírka modulu", "Modul szélessége")}
+              className={cn(
+                "w-6 h-6 rounded-md text-[9px] font-black uppercase transition-all cursor-pointer",
+                currentSize === size ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              )}
+            >
+              {SIZE_LABELS[size]}
+            </button>
+          ))}
+        </div>
+
+        <select
+          value={EDITABLE_WIDGET_TYPES.includes(resolvedType) ? resolvedType : ""}
+          onChange={(e) => onType(e.target.value)}
+          className={selectClass}
+          title={t("Widget type", "Typ modulu", "Modul típusa")}
+        >
+          {!EDITABLE_WIDGET_TYPES.includes(resolvedType) && (
+            <option value="" disabled>{typeLabel(resolvedType)}</option>
+          )}
+          {EDITABLE_WIDGET_TYPES.map(type => (
+            <option key={type} value={type}>{typeLabel(type)}</option>
+          ))}
+        </select>
+
+        {resolvedType === "chart" && (
+          <select
+            value={CHART_TYPES.includes(canonical(widget.chartType)) ? canonical(widget.chartType) : "bar"}
+            onChange={(e) => onChartType(e.target.value)}
+            className={selectClass}
+            title={t("Chart type", "Typ grafu", "Diagram típusa")}
+          >
+            {CHART_TYPES.map(type => (
+              <option key={type} value={type}>{type}</option>
+            ))}
+          </select>
+        )}
+
+        <div className="flex items-center gap-1 ml-auto">
+          {Object.keys(ACCENT_COLORS).map(name => (
+            <button
+              key={name}
+              type="button"
+              onClick={() => onColor(name)}
+              title={name}
+              aria-label={name}
+              className={cn(
+                "w-3.5 h-3.5 rounded-full transition-transform cursor-pointer hover:scale-125",
+                widget.color === name ? "ring-2 ring-offset-1 ring-slate-400 scale-110" : ""
+              )}
+              style={{ backgroundColor: ACCENT_COLORS[name] }}
+            />
+          ))}
+        </div>
+      </div>
+
+      {stageOptions.length > 0 && (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 shrink-0">
+            {t("Phases", "Fázy", "Fázisok")}
+          </span>
+
+          {stageOptions.map(stage => {
+            // No selection at all is the pre-picker default: the query reports
+            // every phase that has leads, so every chip is on.
+            const isOn = !hasSelection || stageSelection.some(s => sameStage(s, stage));
+            return (
+              <button
+                key={stage}
+                type="button"
+                onClick={(e) => onStages(toggleStage(stage, e.ctrlKey || e.metaKey || e.shiftKey))}
+                title={t(
+                  "Click for this phase only, Ctrl+click to add or remove one",
+                  "Kliknutím zobrazíte iba túto fázu, Ctrl+klik pridá alebo odoberie",
+                  "Kattintson csak ehhez a fázishoz, Ctrl+kattintás hozzáad vagy elvesz"
+                )}
+                className={cn(
+                  "h-6 px-2 rounded-lg text-[10px] font-bold capitalize transition-all cursor-pointer border",
+                  isOn
+                    ? "bg-indigo-50 border-indigo-200 text-indigo-700"
+                    : "bg-white border-slate-200 text-slate-400 hover:text-slate-600 hover:border-slate-300"
+                )}
+              >
+                {stage}
+              </button>
+            );
+          })}
+
+          <button
+            type="button"
+            onClick={() => onStages(stageOptions)}
+            title={t(
+              "Show every phase, including the empty ones",
+              "Zobraziť všetky fázy vrátane prázdnych",
+              "Minden fázis megjelenítése, az üreseket is"
+            )}
+            className="h-6 px-2 rounded-lg text-[10px] font-black uppercase tracking-wider text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
+          >
+            {t("All", "Všetky", "Mind")}
+          </button>
+
+          {/* One phase is a single figure, so the card can drop the breakdown and
+              just show the number — which of the two columns is the question the
+              chips cannot answer. */}
+          {resolvedType === "metric" && (
+            <select
+              value={canonical(widget.mapping?.dataKey) === "totalvalue" ? "total_value" : "count"}
+              onChange={(e) => onMetricKey(e.target.value)}
+              className={cn(selectClass, "ml-auto")}
+              title={t("Figure to show", "Zobrazené číslo", "Megjelenített szám")}
+            >
+              <option value="count">{t("Count", "Počet", "Darab")}</option>
+              <option value="total_value">{t("Value", "Hodnota", "Érték")}</option>
+            </select>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const DashboardMetric: React.FC<{
   widget: any;
   data: any;
@@ -1018,17 +1935,22 @@ const DashboardMetric: React.FC<{
       if (data.length === 0) return "0";
       const firstRow = data[0];
       if (typeof firstRow === "object" && firstRow !== null) {
-        const values = Object.values(firstRow);
-        if (values.length > 0) {
-          const val = values[0];
-          const keys = Object.keys(firstRow);
-          const firstKeyLower = keys[0].toLowerCase();
+        const keys = Object.keys(firstRow);
+        if (keys.length > 0) {
+          // `mapping.dataKey` names the column the card is about. Without it the
+          // first column is the only guess available, which is right for a
+          // single-figure query and wrong for anything shaped like a breakdown.
+          const key = widget.mapping?.dataKey && keys.includes(widget.mapping.dataKey)
+            ? widget.mapping.dataKey
+            : keys[0];
+          const val = firstRow[key];
+          const keyLower = key.toLowerCase();
           const titleLower = localizedTitle.toLowerCase();
           const isCurrency =
-            firstKeyLower.includes("value") ||
-            firstKeyLower.includes("worth") ||
-            firstKeyLower.includes("revenue") ||
-            firstKeyLower.includes("price") ||
+            keyLower.includes("value") ||
+            keyLower.includes("worth") ||
+            keyLower.includes("revenue") ||
+            keyLower.includes("price") ||
             titleLower.includes("value") ||
             titleLower.includes("worth") ||
             titleLower.includes("revenue");
@@ -1036,7 +1958,12 @@ const DashboardMetric: React.FC<{
           if (isCurrency && !isNaN(Number(val))) {
             return money(Number(val));
           }
-          return typeof val === "number" ? val.toLocaleString() : String(val);
+          if (typeof val === "number") return val.toLocaleString();
+          // COUNT(*) arrives from PDO as a string; a count is still a number.
+          if (typeof val === "string" && val.trim() !== "" && !isNaN(Number(val))) {
+            return Number(val).toLocaleString();
+          }
+          return String(val);
         }
       }
       return JSON.stringify(data);
@@ -1093,6 +2020,10 @@ const GaugeWidget: React.FC<DashboardChartProps> = ({ widget, data }) => {
 };
 
 const DashboardChart: React.FC<DashboardChartProps> = ({ widget, data, localizedTitle }) => {
+  // See FinancialReportView in ClientsView.tsx: canvas colours are literals and
+  // have to be rebuilt when the appearance changes.
+  const appearance = useAppearance();
+  const chart = chartTheme(appearance);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartInstanceRef = useRef<any>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
@@ -1176,20 +2107,20 @@ const DashboardChart: React.FC<DashboardChartProps> = ({ widget, data, localized
         // Scatter needs a numeric x axis; every other type keeps Chart.js's own
         // default for its controller (category for bar/line).
         ...(isScatter ? { type: "linear" } : {}),
-        grid: { display: isScatter || isHorizontal, color: "#f1f5f9" },
-        ticks: { font: { size: 9, weight: "bold" } }
+        grid: { display: isScatter || isHorizontal, color: chart.grid },
+        ticks: { color: chart.tick, font: { size: 9, weight: "bold" } }
       },
       y: {
-        grid: { display: isHorizontal ? false : true, color: "#f1f5f9" },
-        ticks: { font: { size: 9, weight: "bold" } }
+        grid: { display: isHorizontal ? false : true, color: chart.grid },
+        ticks: { color: chart.tick, font: { size: 9, weight: "bold" } }
       }
     };
 
     const radarScales = {
       r: {
-        grid: { color: "#e2e8f0" },
-        angleLines: { color: "#e2e8f0" },
-        pointLabels: { font: { size: 9, weight: "bold" }, color: "#64748b" },
+        grid: { color: chart.grid },
+        angleLines: { color: chart.grid },
+        pointLabels: { font: { size: 9, weight: "bold" }, color: chart.tick },
         ticks: { font: { size: 8 }, backdropColor: "transparent" }
       }
     };
@@ -1225,6 +2156,7 @@ const DashboardChart: React.FC<DashboardChartProps> = ({ widget, data, localized
               position: "bottom",
               labels: {
                 boxWidth: 10,
+                color: chart.label,
                 font: { size: 9, weight: "bold" }
               }
             }
@@ -1245,7 +2177,7 @@ const DashboardChart: React.FC<DashboardChartProps> = ({ widget, data, localized
         chartInstanceRef.current.destroy();
       }
     };
-  }, [widget, data, localizedTitle, kind]);
+  }, [widget, data, appearance, localizedTitle, kind]);
 
   if (kind === "gauge") {
     return <GaugeWidget widget={widget} data={data} />;
@@ -1405,7 +2337,8 @@ const DashboardAccordion: React.FC<{
   data: any;
   t: (en: string, sk: string, hu: string) => string;
   localize: (value: any) => string;
-}> = ({ widget, data, t }) => {
+  systemLanguage: Language;
+}> = ({ widget, data, t, systemLanguage }) => {
   const [openIndex, setOpenIndex] = useState<number | null>(0);
   const dataList = Array.isArray(data) ? data : [];
   if (dataList.length === 0) return <EmptyRows t={t} />;
@@ -1436,7 +2369,7 @@ const DashboardAccordion: React.FC<{
               </span>
               <div className="flex items-center gap-2 shrink-0">
                 {subtitleKey && row[subtitleKey] ? (
-                  <span className="text-[10px] font-bold text-slate-400">{String(row[subtitleKey])}</span>
+                  <span className="text-[10px] font-bold text-slate-400">{formatTimestamp(row[subtitleKey], systemLanguage)}</span>
                 ) : null}
                 <ChevronDown
                   className={cn(

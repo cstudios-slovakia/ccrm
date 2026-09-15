@@ -9,7 +9,12 @@ RUN npm ci
 
 COPY . .
 
-RUN npm run build
+# Vite only, not the full `npm run build`: this image is dev-only and only
+# ever uses the compiled dist/ output, so `tsc -b` type-checking here just
+# checks the same source a second time for nothing the image needs — and it
+# took about 5 minutes inside Docker on Windows. The real type check stays in
+# the local `npm run build` and in `npm run deploy`.
+RUN npx vite build
 
 # Stage 2: Setup PHP-Apache to run backend and serve frontend
 FROM php:8.2-apache

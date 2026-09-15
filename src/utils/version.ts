@@ -1,2 +1,5 @@
-export const VERSION = "1.8.46-Imbe";
-export const VERSION_CODENAME = VERSION.split("-")[1] || "Imbe";
+export const VERSION = "1.9.45-Jackfruit";
+// Release codename ("Jackfruit"), used to name the RAG assistant. Kept as its own
+// export because RagAiView reads it at module scope — dropping it silently named
+// the assistant `undefined`.
+export const VERSION_CODENAME = VERSION.split("-")[1] || "Jackfruit";

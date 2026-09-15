@@ -1,15 +1,20 @@
 import fs from 'node:fs';
-import path from 'node:path';
-import { archiveCurrentReportIfPresent, FINDINGS_DIR } from './helpers/reportCollector';
+import { FINDINGS_DIR, beginRun, inferSuiteKind, pruneOldRuns } from './helpers/reportCollector';
 
 /**
- * Worker findings must start empty so this run does not inherit last run's
- * defects. The human markdown report is archived first, so a Clients-only
- * re-run cannot erase a previous full-suite report from disk.
+ * Opens a fresh run folder and clears the per-worker scratch.
+ *
+ * Worker findings must start empty so this run does not inherit the last run's
+ * defects. Everything a human reads afterwards -- report, findings JSON and the
+ * screenshots it links to -- is written into `test-results/runs/<stamp>-<kind>/`,
+ * so a re-run never overwrites or orphans a previous run's evidence.
  */
 export default function globalSetup() {
-  archiveCurrentReportIfPresent();
+  pruneOldRuns();
+  const runId = beginRun(inferSuiteKind());
+
   fs.rmSync(FINDINGS_DIR, { recursive: true, force: true });
   fs.mkdirSync(FINDINGS_DIR, { recursive: true });
-  fs.mkdirSync(path.resolve('test-results', 'screenshots'), { recursive: true });
+
+  console.log(`\nQA run: test-results/runs/${runId}/\n`);
 }

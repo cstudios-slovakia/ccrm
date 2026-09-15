@@ -1,5 +1,6 @@
 import type { Locator, Page } from '@playwright/test';
 import { installBackendMocks } from './fixture';
+import { screenshotDirRelative } from './reportCollector';
 
 /**
  * Waiting budgets, in milliseconds.
@@ -284,10 +285,15 @@ export async function dismissOverlays(page: Page, attempts = 3): Promise<boolean
   return (await readViewState(page)).overlayCount === 0;
 }
 
-/** Screenshot helper that returns a repo-relative path for the report. */
+/**
+ * Screenshot helper that returns a repo-relative path for the report.
+ *
+ * Writes into this run's folder rather than a shared flat directory, so a later
+ * run cannot orphan the evidence an earlier report links to.
+ */
 export async function captureEvidence(page: Page, slug: string): Promise<string> {
   const safe = slug.replace(/[^a-zA-Z0-9._-]+/g, '-').slice(0, 80);
-  const rel = `test-results/screenshots/${safe}-${Date.now()}.png`;
+  const rel = `${screenshotDirRelative()}/${safe}-${Date.now()}.png`;
   await page.screenshot({ path: rel, fullPage: false }).catch(() => {});
   return rel;
 }

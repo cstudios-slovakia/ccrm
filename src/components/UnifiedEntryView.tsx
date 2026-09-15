@@ -3,10 +3,13 @@ import * as Icons from "lucide-react";
 import { 
   Folder, FolderPlus, Plus, ChevronRight, Calendar, 
   FileText, Trash2, Edit3, Move, X, Download, 
-  UploadCloud, Search, Briefcase, Users
+  UploadCloud, Search, Briefcase, Users, Hash, Coins, Lock
 } from "lucide-react";
 import type { UnifiedEntryRegistry, UnifiedEntryRow } from "../types";
 import { formatDateLocalized } from "../utils/localTime";
+import { CURRENCY_OPTIONS, currencyForRegion, formatMoney } from "../utils/currency";
+import { CustomSelect } from "./ui/CustomSelect";
+import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 
 interface UnifiedEntryViewProps {
   registry: UnifiedEntryRegistry;
@@ -15,6 +18,11 @@ interface UnifiedEntryViewProps {
   systemLanguage: "en" | "sk" | "hu";
   leads?: any[]; // Passed down from App to allow linking client
   subPath?: string | null;
+  /** Configured system currency ("" / null = follow the display language). Only the
+      default for a new money entry — every row carries its own currency. */
+  systemCurrency?: string | null;
+  /** Role access for this unified-entry registry. `edit: false` is browse/download only. */
+  access?: ModuleAccess;
 }
 
 // Resolved dynamically from Lucide Icons collection
@@ -22,12 +30,20 @@ interface UnifiedEntryViewProps {
 export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
   registry,
   rows,
-  setRows,
+  setRows: setRowsRaw,
   systemLanguage,
   leads = [],
-  subPath = null
+  subPath = null,
+  systemCurrency = null,
+  access = FULL_MODULE_ACCESS
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
+  const canEdit = access.edit;
+  const canDelete = access.delete;
+  const setRows: typeof setRowsRaw = (updater) => {
+    if (!canEdit) return;
+    setRowsRaw(updater);
+  };
   const [searchQuery, setSearchQuery] = useState("");
 
   // Modals / Editors state
@@ -49,6 +65,10 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
   const [leadSearchQuery, setLeadSearchQuery] = useState("");
   const [isLeadDropdownOpen, setIsLeadDropdownOpen] = useState(false);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
+  const [formNumber, setFormNumber] = useState("");
+  const [formMoneyAmount, setFormMoneyAmount] = useState("");
+  const defaultCurrency = systemCurrency || currencyForRegion(systemLanguage);
+  const [formMoneyCurrency, setFormMoneyCurrency] = useState(defaultCurrency);
   const [formFile, setFormFile] = useState<{
     fileName: string;
     fileSize: string;
@@ -79,6 +99,9 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
         setFormLeadId(entryRow.leadId || "");
         const ld = entryRow.leadId ? leads.find(l => l.id === entryRow.leadId) : null;
         setLeadSearchQuery(ld ? ld.name : "");
+        setFormNumber(entryRow.numberValue !== undefined && entryRow.numberValue !== null ? String(entryRow.numberValue) : "");
+        setFormMoneyAmount(entryRow.moneyAmount !== undefined && entryRow.moneyAmount !== null ? String(entryRow.moneyAmount) : "");
+        setFormMoneyCurrency(entryRow.moneyCurrency || defaultCurrency);
         setFormFile(entryRow.fileName ? {
           fileName: entryRow.fileName,
           fileSize: entryRow.fileSize || "",
@@ -93,6 +116,8 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
   const isFileActive = registry.modules.includes("file") || (registry.foldersEnabled && registry.folderModules?.includes("file"));
   const isClientActive = registry.modules.includes("client") || (registry.foldersEnabled && registry.folderModules?.includes("client"));
   const isLeadActive = registry.modules.includes("lead") || (registry.foldersEnabled && registry.folderModules?.includes("lead"));
+  const isNumberActive = registry.modules.includes("number") || (registry.foldersEnabled && registry.folderModules?.includes("number"));
+  const isMoneyActive = registry.modules.includes("money") || (registry.foldersEnabled && registry.folderModules?.includes("money"));
 
   const folderSingularEn = registry.folderName || "Folder";
   const folderSingularSk = registry.folderName || "priečinok";
@@ -141,6 +166,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!canEdit) return;
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -179,6 +205,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
   };
 
   const handleOpenCreateEntry = () => {
+    if (!canEdit) return;
     setEditingRow(null);
     setEditingIsFolder(false);
     setFormTitle("");
@@ -188,11 +215,15 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
     setClientSearchQuery("");
     setFormLeadId("");
     setLeadSearchQuery("");
+    setFormNumber("");
+    setFormMoneyAmount("");
+    setFormMoneyCurrency(defaultCurrency);
     setFormFile(null);
     setIsEditing(true);
   };
 
   const handleOpenCreateFolder = () => {
+    if (!canEdit) return;
     setEditingRow(null);
     setEditingIsFolder(true);
     setFormTitle("");
@@ -202,11 +233,15 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
     setClientSearchQuery("");
     setFormLeadId("");
     setLeadSearchQuery("");
+    setFormNumber("");
+    setFormMoneyAmount("");
+    setFormMoneyCurrency(defaultCurrency);
     setFormFile(null);
     setIsEditing(true);
   };
 
   const handleOpenEditRow = (row: UnifiedEntryRow) => {
+    if (!canEdit) return;
     setEditingRow(row);
     setEditingIsFolder(row.isFolder);
     setFormTitle(row.title || "");
@@ -218,6 +253,9 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
     setFormLeadId(row.leadId || "");
     const ld = row.leadId ? leads.find(l => l.id === row.leadId) : null;
     setLeadSearchQuery(ld ? ld.name : "");
+    setFormNumber(row.numberValue !== undefined && row.numberValue !== null ? String(row.numberValue) : "");
+    setFormMoneyAmount(row.moneyAmount !== undefined && row.moneyAmount !== null ? String(row.moneyAmount) : "");
+    setFormMoneyCurrency(row.moneyCurrency || defaultCurrency);
     setFormFile(row.fileName ? {
       fileName: row.fileName,
       fileSize: row.fileSize || "",
@@ -227,8 +265,18 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
     setIsEditing(true);
   };
 
+  // An empty box means "no value", not zero — the row keeps the field unset so
+  // the table shows a dash rather than a misleading 0.
+  const parseAmount = (raw: string): number | undefined => {
+    const trimmed = raw.trim().replace(",", ".");
+    if (!trimmed) return undefined;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  };
+
   const handleSaveEntry = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canEdit) return;
 
     const activeModules = editingIsFolder 
       ? (registry.folderModules || ["title"]) 
@@ -245,6 +293,9 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
             warningDays: activeModules.includes("due_date") ? formWarningDays : undefined,
             clientId: activeModules.includes("client") ? formClientId : undefined,
             leadId: activeModules.includes("lead") ? formLeadId : undefined,
+            numberValue: activeModules.includes("number") ? parseAmount(formNumber) : undefined,
+            moneyAmount: activeModules.includes("money") ? parseAmount(formMoneyAmount) : undefined,
+            moneyCurrency: activeModules.includes("money") ? formMoneyCurrency : undefined,
             fileName: activeModules.includes("file") ? formFile?.fileName : undefined,
             fileSize: activeModules.includes("file") ? formFile?.fileSize : undefined,
             fileType: activeModules.includes("file") ? formFile?.fileType : undefined,
@@ -265,6 +316,9 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
         warningDays: activeModules.includes("due_date") ? formWarningDays : undefined,
         clientId: activeModules.includes("client") ? formClientId : undefined,
         leadId: activeModules.includes("lead") ? formLeadId : undefined,
+        numberValue: activeModules.includes("number") ? parseAmount(formNumber) : undefined,
+        moneyAmount: activeModules.includes("money") ? parseAmount(formMoneyAmount) : undefined,
+        moneyCurrency: activeModules.includes("money") ? formMoneyCurrency : undefined,
         fileName: activeModules.includes("file") ? formFile?.fileName : undefined,
         fileSize: activeModules.includes("file") ? formFile?.fileSize : undefined,
         fileType: activeModules.includes("file") ? formFile?.fileType : undefined,
@@ -280,6 +334,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
 
   const handleSaveDedicatedEntry = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canEdit) return;
     if (!editingEntryRow) return;
 
     const activeModules = registry.modules;
@@ -293,6 +348,9 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
           warningDays: activeModules.includes("due_date") ? formWarningDays : undefined,
           clientId: activeModules.includes("client") ? formClientId : undefined,
           leadId: activeModules.includes("lead") ? formLeadId : undefined,
+          numberValue: activeModules.includes("number") ? parseAmount(formNumber) : undefined,
+          moneyAmount: activeModules.includes("money") ? parseAmount(formMoneyAmount) : undefined,
+          moneyCurrency: activeModules.includes("money") ? formMoneyCurrency : undefined,
           fileName: activeModules.includes("file") ? formFile?.fileName : undefined,
           fileSize: activeModules.includes("file") ? formFile?.fileSize : undefined,
           fileType: activeModules.includes("file") ? formFile?.fileType : undefined,
@@ -560,7 +618,52 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
     );
   };
 
+  const renderNumberField = () => (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+        {t("Number", "Číslo", "Szám")}
+      </label>
+      <input
+        type="number"
+        step="any"
+        value={formNumber}
+        onChange={(e) => setFormNumber(e.target.value)}
+        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700"
+        placeholder={t("e.g. 12", "napr. 12", "pl. 12")}
+      />
+    </div>
+  );
+
+  // Amount and currency travel together: the currency is stored on the row, so
+  // two entries in the same registry can be priced in different currencies.
+  const renderMoneyField = () => (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+        {t("Amount", "Suma", "Összeg")}
+      </label>
+      <div className="flex items-center gap-2">
+        <input
+          type="number"
+          step="any"
+          value={formMoneyAmount}
+          onChange={(e) => setFormMoneyAmount(e.target.value)}
+          className="flex-1 min-w-0 px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700"
+          placeholder={t("e.g. 1500", "napr. 1500", "pl. 1500")}
+        />
+        <div className="w-28 shrink-0">
+          <CustomSelect
+            value={formMoneyCurrency}
+            onChange={setFormMoneyCurrency}
+            className="!text-xs"
+            options={CURRENCY_OPTIONS.map(c => ({ value: c.code, label: `${c.code} ${c.symbol}` }))}
+          />
+        </div>
+      </div>
+    </div>
+  );
+
   const handleDeleteItem = (id: string, isFolder: boolean) => {
+    if (!canDelete) return;
     const confirmMsg = isFolder
       ? t(
           `Deleting a ${folderSingularEn.toLowerCase()} will delete all its nested contents recursively. Proceed?`,
@@ -585,7 +688,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
   };
 
   const handleMoveItem = (targetFolderId: string | null) => {
-    if (!movingItem) return;
+    if (!canEdit || !movingItem) return;
     setRows(prev => prev.map(r => {
       if (r.id === movingItem.id) {
         return { ...r, parentId: targetFolderId };
@@ -684,7 +787,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
           >
             <ChevronRight className="h-4 w-4 rotate-180" />
           </button>
-          <div>
+          <div className="flex-1 min-w-0">
             <h2 className="text-xl font-heading font-bold text-slate-900 uppercase tracking-wider">
               {t(`Details & Editing: ${entrySingularEn.toLowerCase()}`, `Detail a úprava: ${entrySingularSk.toLowerCase()}`, `${entrySingularHu.toLowerCase()} részletei és szerkesztése`)}
             </h2>
@@ -692,11 +795,18 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
               {editingEntryRow.title || t("Untitled", "Bez názvu", "Névtelen")}
             </p>
           </div>
+          {!canEdit && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider shrink-0">
+              <Lock className="h-3.5 w-3.5" />
+              {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
+            </span>
+          )}
         </div>
 
         {/* Edit Form */}
         <div className="max-w-2xl bg-white rounded-3xl border border-slate-200 shadow-xl p-6 text-left">
-          <form onSubmit={handleSaveDedicatedEntry} className="space-y-6">
+          <form onSubmit={handleSaveDedicatedEntry}>
+          <fieldset disabled={!canEdit} className="space-y-6">
             {/* Title module */}
             {activeModules.includes("title") && (
               <div className="flex flex-col gap-1.5">
@@ -707,9 +817,10 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                   type="text"
                   value={formTitle}
                   onChange={(e) => setFormTitle(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700 disabled:bg-slate-50 disabled:text-slate-500"
                   placeholder={t("Enter name...", "Zadajte názov...", "Adjon meg egy nevet...")}
                   required
+                  disabled={!canEdit}
                 />
               </div>
             )}
@@ -769,6 +880,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                       >
                         <Download className="h-4 w-4" />
                       </a>
+                      {canEdit && (
                       <button
                         type="button"
                         onClick={() => setFormFile(null)}
@@ -777,9 +889,10 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
+                      )}
                     </div>
                   </div>
-                ) : (
+                ) : canEdit ? (
                   <div className="relative border-2 border-dashed border-slate-200 hover:border-indigo-500 rounded-2xl p-6 transition-all bg-slate-50/50 hover:bg-indigo-50/5 text-center cursor-pointer group">
                     <input
                       type="file"
@@ -797,18 +910,27 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                       <span className="text-[10px] text-slate-400">{t("Max size: 50MB", "Max. veľkosť: 50MB", "Max. méret: 50MB")}</span>
                     </div>
                   </div>
+                ) : (
+                  <span className="text-xs text-slate-400">{t("No attachment", "Žiadna príloha", "Nincs melléklet")}</span>
                 )}
               </div>
             )}
+
+            {/* Number module */}
+            {activeModules.includes("number") && renderNumberField()}
+
+            {/* Money module */}
+            {activeModules.includes("money") && renderMoneyField()}
 
             {/* Client module */}
             {activeModules.includes("client") && renderClientSelector()}
 
             {/* Lead module */}
             {activeModules.includes("lead") && renderLeadSelector()}
+          </fieldset>
 
             {/* Footer Buttons */}
-            <div className="flex justify-end gap-3 border-t border-slate-100 pt-5">
+            <div className="flex justify-end gap-3 border-t border-slate-100 pt-5 mt-6">
               <button
                 type="button"
                 onClick={() => {
@@ -818,6 +940,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
               >
                 {t("Cancel", "Zrušiť", "Mégse")}
               </button>
+              {canEdit && (
               <button
                 type="submit"
                 className="px-5 py-2.5 rounded-xl text-white text-xs font-black uppercase tracking-wider shadow-md hover:shadow-lg transition-all cursor-pointer"
@@ -825,6 +948,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
               >
                 {t("Save Changes", "Uložiť zmeny", "Módosítások mentése")}
               </button>
+              )}
             </div>
           </form>
         </div>
@@ -855,7 +979,13 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2 shrink-0 flex-wrap">
-          {registry.foldersEnabled && (
+          {!canEdit && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider">
+              <Lock className="h-3.5 w-3.5" />
+              {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
+            </span>
+          )}
+          {canEdit && registry.foldersEnabled && (
             <button
               type="button"
               onClick={handleOpenCreateFolder}
@@ -865,6 +995,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
               {t("New " + folderSingularEn, "Nový " + folderSingularSk.toLowerCase(), "Új " + folderSingularHu.toLowerCase())}
             </button>
           )}
+          {canEdit && (
           <button
             type="button"
             onClick={handleOpenCreateEntry}
@@ -874,6 +1005,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
             <Plus className="h-4.5 w-4.5" />
             {t("New " + entrySingularEn, "Nový " + entrySingularSk.toLowerCase(), "Új " + entrySingularHu.toLowerCase())}
           </button>
+          )}
         </div>
       </div>
  
@@ -900,6 +1032,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                     }}
                     onDrop={(e) => {
                       e.preventDefault();
+                      if (!canEdit) return;
                       const draggedId = e.dataTransfer.getData("text/plain");
                       if (draggedId && draggedId !== crumb.id) {
                         setRows(prev => prev.map(r => {
@@ -964,6 +1097,8 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                   <th className="py-3.5 px-6">{t(`Title / ${folderSingularEn}`, `Názov / ${folderSingularSk}`, `Cím / ${folderSingularHu}`)}</th>
                   {isDueDateActive && <th className="py-3.5 px-4">{t("Due Date", "Termín", "Határidő")}</th>}
                   {isFileActive && <th className="py-3.5 px-4">{t("Attachment", "Súbor", "Melléklet")}</th>}
+                  {isNumberActive && <th className="py-3.5 px-4">{t("Number", "Číslo", "Szám")}</th>}
+                  {isMoneyActive && <th className="py-3.5 px-4">{t("Amount", "Suma", "Összeg")}</th>}
                   {isClientActive && <th className="py-3.5 px-4">{t("Client", "Klient", "Ügyfél")}</th>}
                   {isLeadActive && <th className="py-3.5 px-4">{t("Lead", "Lead", "Lead")}</th>}
                   <th className="py-3.5 px-6 text-right">{t("Actions", "Akcie", "Műveletek")}</th>
@@ -1008,7 +1143,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                       className={`hover:bg-slate-50/50 transition-colors group cursor-pointer ${
                         dragOverFolderId === row.id ? "bg-indigo-50/80 border-y border-indigo-300" : ""
                       }`}
-                      draggable={true}
+                      draggable={canEdit}
                       onDragStart={(e) => {
                         e.dataTransfer.setData("text/plain", row.id);
                       }}
@@ -1028,6 +1163,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                       onDrop={(e) => {
                         e.preventDefault();
                         setDragOverFolderId(null);
+                        if (!canEdit) return;
                         const draggedId = e.dataTransfer.getData("text/plain");
                         if (draggedId && draggedId !== row.id) {
                           // Prevent dragging a folder inside itself
@@ -1113,6 +1249,34 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                         </td>
                       )}
 
+                      {/* Number */}
+                      {isNumberActive && (
+                        <td className="py-3 px-4 text-slate-500">
+                          {rowModules.includes("number") && row.numberValue !== undefined && row.numberValue !== null ? (
+                            <span className="inline-flex items-center gap-1.5 text-slate-700 font-bold tabular-nums">
+                              <Hash className="h-3.5 w-3.5 text-slate-400" />
+                              {row.numberValue.toLocaleString()}
+                            </span>
+                          ) : (
+                            <span className="text-slate-300">-</span>
+                          )}
+                        </td>
+                      )}
+
+                      {/* Money */}
+                      {isMoneyActive && (
+                        <td className="py-3 px-4 text-slate-500">
+                          {rowModules.includes("money") && row.moneyAmount !== undefined && row.moneyAmount !== null ? (
+                            <span className="inline-flex items-center gap-1.5 text-slate-700 font-bold tabular-nums">
+                              <Coins className="h-3.5 w-3.5 text-slate-400" />
+                              {formatMoney(row.moneyAmount, row.moneyCurrency || defaultCurrency, systemLanguage, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          ) : (
+                            <span className="text-slate-300">-</span>
+                          )}
+                        </td>
+                      )}
+
                       {/* Client */}
                       {isClientActive && (
                         <td className="py-3 px-4 text-slate-500">
@@ -1153,7 +1317,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                       {/* Action buttons */}
                       <td className="py-3 px-6 text-right">
                         <div className="flex items-center justify-end gap-2 opacity-80 group-hover:opacity-100 transition-opacity">
-                          {registry.foldersEnabled && (
+                          {canEdit && registry.foldersEnabled && (
                             <button
                               type="button"
                               onClick={() => {
@@ -1166,6 +1330,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                               <Move className="h-4 w-4" />
                             </button>
                           )}
+                          {canEdit && (
                           <button
                             type="button"
                             onClick={() => {
@@ -1182,6 +1347,8 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                           >
                             <Edit3 className="h-4 w-4" />
                           </button>
+                          )}
+                          {canDelete && (
                           <button
                             type="button"
                             onClick={() => handleDeleteItem(row.id, row.isFolder)}
@@ -1190,6 +1357,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1201,7 +1369,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
       </div>
 
       {/* New / Edit Row Modal Dialog (Folders and Entries Unified) */}
-      {isEditing && (() => {
+      {isEditing && canEdit && (() => {
         const activeFormModules = editingIsFolder ? (registry.folderModules || ["title"]) : registry.modules;
         return (
           <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-[2000] p-4">
@@ -1317,6 +1485,12 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                   </div>
                 )}
 
+                {/* Number module */}
+                {activeFormModules.includes("number") && renderNumberField()}
+
+                {/* Money module */}
+                {activeFormModules.includes("money") && renderMoneyField()}
+
                 {/* Client module */}
                 {activeFormModules.includes("client") && renderClientSelector()}
 
@@ -1348,7 +1522,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
 
 
       {/* Move Item Folder Selection Modal Dialog */}
-      {isMoving && movingItem && (
+      {isMoving && canEdit && movingItem && (
         <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-[2000] p-4 select-none">
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full border border-slate-100 shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4 text-left">

@@ -15,53 +15,107 @@ surface is not on the ladder, it is a suite gap, not a silent pass.
 
 ## 1. Running it
 
+Human-facing guide (setup, results, how to add a test): **`docs/TESTING.md`**.
+This file is the deep reference: coverage ladder, categories, severity.
+
 ```powershell
-npm run test:qa:setup     # once per machine — downloads the Chromium build
-npm run test:qa           # full audit: canaries + navigation + modules + recordings
+npm run test:qa:setup     # once per machine - downloads the Chromium build
+npm run test:qa           # only the tests covering what you changed
+npm run test:qa:full      # the whole audit - ask for this on purpose
 ```
 
-The dev server starts automatically (`reuseExistingServer` is on, so an already
-running `npm run dev` is reused). A full run takes a few minutes.
+**`npm run test:qa` is scoped, not full.** It asks git what changed, maps those
+files to the tests covering them (`scripts/qa/run-qa.mjs`), and runs only those.
+Editing `EmailView.tsx` runs two tests instead of twenty-seven. Editing
+`App.tsx`, `src/utils/` or anything under `src/components/ui/` cannot be
+attributed to one module, so it runs the shell tests - navigation, header,
+recordings - rather than the whole crawler. Changing the harness
+itself (`tests/e2e/`, `playwright.config.ts`, `scripts/qa/`) escalates to a full
+run, since the code choosing the subset is the code that changed. Changing only
+PHP or docs runs nothing and starts no browser at all.
+
+A scoped run is a filter, never a verdict on the rest of the app. Before a
+release, a deploy, or any "is everything still fine?" question, run
+`npm run test:qa:full`.
+
+`node scripts/qa/run-qa.mjs --files src/components/EmailView.tsx -- --list`
+prints what a given change would run, without opening a browser.
+
+The dev server starts automatically on **port 5273** - deliberately not 5173, and
+not adjacent to it. Vite walks upward (5174, 5175, ...) when 5173 is busy, so a
+second checkout's dev server lands exactly there. `--strictPort` plus no implicit
+reuse means a run either audits *this* checkout or refuses to start, instead of
+silently auditing another branch. Set `QA_REUSE_SERVER=1` to reuse a server
+already on the QA port.
+
+A full run takes a few minutes.
 
 | Command | Scope |
 |---|---|
-| `npm run test:qa` | Everything (full suite; updates `qa-audit-report-latest-full.md`) |
-| `npm run test:qa:canary` | Harness acceptance: the two known product bugs must still be detected |
+| `npm run test:qa` | **Only what changed** (see above) |
+| `npm run test:qa:full` | Everything (updates `qa-audit-report-latest-full.md`) |
+| `npm run test:qa:module Warehouse` | One named module |
 | `npm run test:qa:nav` | Shell navigation and header controls only |
 | `npm run test:qa:crawler` | Per-module deep audit only |
 | `npm run test:qa:recorder` | Chrome Recorder replays only |
 | `npm run test:qa:headed` | Same as full, with a visible browser |
-| `npm run test:qa:report` | Open `test-results/qa-audit-report.md` |
+| `npm run test:qa:report` | Open the latest report (`-- --list` lists saved runs) |
 | `npm run test:qa:report:html` | Playwright traces / video |
 | `npm run test:qa:typecheck` | Type-check the suite itself |
 
 Environment switches:
 
-- `QA_FAIL_ON=CRITICAL|HIGH|MEDIUM|LOW|NEVER` — severity that fails the run (default `HIGH`).
-- `QA_WORKERS=n` — parallel workers (default 3).
-- `QA_RECORDING=path.json` — replay a single recording.
-- `BASE_URL=…` — audit a deployed environment instead of localhost.
+- `QA_FAIL_ON=CRITICAL|HIGH|MEDIUM|LOW|NEVER` - severity that fails the run (default `HIGH`).
+- `QA_WORKERS=n` - parallel workers (default 2).
+- `QA_MAX_CORES=n` - hard CPU ceiling; browsers are pinned to `n` cores (default: half the machine, `0` disables).
+- `QA_VIDEO=1` - record video. Off by default: playwright records *every* test to
+  keep the ones that fail, one `ffmpeg` per worker, and traces already show what
+  a defect looked like.
+- `QA_KEEP_RUNS=n` - how many past run folders to keep (default 10).
+- `QA_OPEN=1` - open the report automatically when defects are found.
+- `QA_PORT=n` / `QA_REUSE_SERVER=1` - dev-server port, and reuse an existing one.
+- `QA_SERVER_LOGS=1` - un-silence the Vite dev server output.
+- `QA_RECORDING=path.json` - replay a single recording.
+- `BASE_URL=...` - audit a deployed environment (no local dev server is started).
 
 **A defect fails the run.** Findings at `QA_FAIL_ON` or above throw in the test
 that found them (except canaries, which *pass* when they find their known bug).
 A green full run means nothing at HIGH or above was found.
 
-Canaries are inverted: they **fail the harness** if the known bug is missed.
-Do not fix Čas termínu or the Silvia `?tab=` parser to make canaries green.
-If those product bugs are fixed, **delete the canary**.
+Canaries are inverted: they **fail the harness** if their known bug is missed.
+When the product bug is genuinely fixed, **delete the canary** rather than
+weakening it. None are active at present: the two that pinned Čas termínu
+occlusion and the Silvia `?tab=` parser were removed once those bugs were
+fixed. `assertKnownBugDetected()` in `tests/e2e/helpers/gate.ts` remains for
+the next one.
+
+It also runs without being asked: `npm run deploy` gates on it, and
+`.github/workflows/qa.yml` runs it on every push and pull request.
 
 ---
 
 ## 2. Output
 
-- `test-results/qa-audit-report.md` — this run: summary table, then one block per
-  defect with action / expected / actual / evidence / **proposed fix** / screenshot.
-- `test-results/qa-audit-report-latest-full.md` — last **full** `npm run test:qa`.
-  A Clients-only re-run overwrites the current file but not this copy.
-- `test-results/qa-history/` — timestamped copies of previous reports.
-- `test-results/qa-findings.json` — the same data for tooling.
-- `test-results/screenshots/` — captured at the moment each defect was observed.
-- `playwright-report/` — traces and video for failed tests (`npm run test:qa:report:html`).
+Every run gets its own folder. Nothing is silently overwritten, and old folders
+are pruned to `QA_KEEP_RUNS`.
+
+```
+test-results/
+  qa-audit-report.md                <- the latest run, always here
+  qa-findings.json                  <- same data, for tooling
+  qa-audit-report-latest-full.md    <- last COMPLETE run; a partial run never overwrites it
+  runs/
+    2026-08-27_22-16-24-full/       <- self-contained
+      report.md                     <- screenshot links relative to this folder
+      findings.json
+      screenshots/                  <- only this run's evidence
+  artifacts/                        <- Playwright traces and video
+playwright-report/                  <- Playwright HTML report
+```
+
+A run folder can be zipped, attached to a ticket or downloaded from CI and its
+screenshots still resolve. The verdict (`RESULT: PASSED` / `RESULT: FAILED`,
+counts, top findings) prints in the terminal the moment the run ends.
 
 Defect IDs are stable across runs (derived from module + target + action +
 category), so `DDOC-9992FBC0` refers to the same defect tomorrow.
@@ -83,8 +137,8 @@ until it is added here.
 | Create form | Labeled create buttons (header + main) before Plus-icon-only. Fill every field. **Every** dropdown in the form (no cap). Submit. | `crawler.spec.ts` |
 | Edit drawer | One edit control per module (pencil / "Upraviť"). Dropdowns inside, no submit. | `crawler.spec.ts` |
 | Page filters | Filter / status dropdowns on the landing view, capped (they mutate the view). | `crawler.spec.ts` |
-| Known bugs | Čas termínu occlusion; Silvia timeline `?tab=` error screen. | `canary.spec.ts` |
 | Pinned journeys | Chrome Recorder JSON in `tests/recordings/`. | `recorder.spec.ts` |
+| Dark mode | Every module, plus the client drawer and the new-lead modal, opened with the appearance forced to dark. Every run of text is measured against the surface actually behind it; anything under 3:1 is a defect. | `darkmode.spec.ts` |
 
 `#dashboard` and `#tasks` are the same view. Only `#dashboard` is crawled;
 navigation still clicks both sidebar items.
@@ -168,8 +222,18 @@ Two things to know when editing it:
 
 When asked to test the app, audit buttons, or check for UI errors:
 
+0. **Pick the scope deliberately, and say which you ran.** `npm run test:qa`
+   covers what changed and is the right answer for "does my change work?".
+   `npm run test:qa:full` is for "is the whole app still fine?" — a release, a
+   deploy, or an explicit request for a full audit.
+
+   A full run is ~27 tests driving parallel Chromium instances; measured on a
+   12-core machine it took 87% of the CPU for several minutes and made the
+   desktop unusable. Do not start one to check a one-module edit, and do not
+   start one unprompted after every change. If you think a full run is
+   warranted and the user did not ask for one, say so and let them decide.
+
 1. Run `npm run test:qa` (add `npm run test:qa:setup` first if Chromium is missing).
-   To prove the harness itself still works: `npm run test:qa:canary`.
 2. Read `test-results/qa-audit-report.md` — start with the summary table.
    If this was a partial run, also read `qa-audit-report-latest-full.md`.
 3. For each defect, open the screenshot and trace the finding to the component in
@@ -182,5 +246,3 @@ When asked to test the app, audit buttons, or check for UI errors:
    and `VIEW_RENDERED_EMPTY` on a register usually mean the harness needs work,
    not the app. Third-party `shadergradient` throws are LOW noise.
 6. Do not "fix" a defect by loosening the check.
-7. Do not fix Čas termínu or the client `?tab=` parser unless the user asked to
-   fix those product bugs. They are oracles for the canaries.

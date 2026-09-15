@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { useUserPref } from "../utils/userPrefs";
-import { resolveAssigneeName } from "../utils/taskSelectors";
+import { canArchiveTask, resolveAssigneeName } from "../utils/taskSelectors";
+import { liftAccent } from "../utils/accentColor";
 import { createPortal } from "react-dom";
 import {
     Users,
@@ -49,6 +50,9 @@ import {
     Truck,
     Flag,
     Star,
+    Link2,
+    Unlink,
+    AlarmClock,
 } from "lucide-react";
 import type {
     Lead,
@@ -59,8 +63,18 @@ import type {
     UserProfile,
     Project,
     ProjectType,
+    LeadAssignmentSettings,
 } from "../types";
 import { DOCUMENT_EVENT_TYPES } from "../types";
+import { DEFAULT_LEAD_ASSIGNMENT, isAutoAssignActive } from "../utils/leadAssignment";
+import { pairableProjects, projectsForLead } from "../utils/projectAutoCreate";
+import {
+  DEFAULT_PROJECT_STATUS,
+  projectStatusBadgeClass,
+  projectStatusLabel,
+} from "../utils/projects";
+import { evaluateLeadSla, type LeadSlaStatus, type LeadStateSla } from "../utils/leadSla";
+import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 
 // Named preset deadline times offered in the gate quick-add picker, mirroring the
 // task dashboard's Add-task drawer. A "Custom" option reveals a free time input so
@@ -314,6 +328,60 @@ import {
     // formatTimestampLocalized — only used by the commented-out e-mail full view
 } from "../utils/localTime";
 import { formatMoney } from "../utils/currency";
+
+// "1 deň / 2-4 dni / 5+ dní" — Slovak counts differently above four, and a badge
+// reading "3 dní" is the kind of thing an operator never stops noticing.
+const slaDays = (n: number, lang: Language): string =>
+    lang === "sk"
+        ? `${n} ${n === 1 ? "deň" : n < 5 ? "dni" : "dní"}`
+        : lang === "hu"
+          ? `${n} nap`
+          : `${n} ${n === 1 ? "day" : "days"}`;
+
+/*
+  "This lead has been sitting in its phase past its limit."
+
+  The limit is set per phase in Settings -> Pipeline stages (see utils/leadSla.ts);
+  this badge is what an operator actually sees for it, in the leads list, on the
+  kanban card and on the lead itself. It flickers on purpose: a breached lead is
+  one row among a hundred, and a static amber pill is exactly what the eye learns
+  to skip. The animation is `animate-sla-flicker` in index.css and holds still
+  under prefers-reduced-motion.
+*/
+const SlaBreachBadge: React.FC<{
+    sla: LeadSlaStatus;
+    lang: Language;
+    /** "full" spells the numbers out (lead detail); "compact" is the list pill. */
+    variant?: "compact" | "full";
+}> = ({ sla, lang, variant = "compact" }) => {
+    const days = (n: number) => slaDays(n, lang);
+
+    const title =
+        lang === "sk"
+            ? `V tejto fáze už ${days(sla.daysInPhase)} — limit je ${days(sla.limitDays)}, prekročený o ${days(sla.overdueDays)}. Posuňte lead do ďalšej fázy.`
+            : lang === "hu"
+              ? `Már ${days(sla.daysInPhase)} ebben a fázisban — a határidő ${days(sla.limitDays)}, ${days(sla.overdueDays)} késés. Léptesse tovább a leadet.`
+              : `In this phase for ${days(sla.daysInPhase)} — the limit is ${days(sla.limitDays)}, so it is ${days(sla.overdueDays)} overdue. Move the lead on.`;
+
+    return (
+        <span
+            role="status"
+            title={title}
+            className={`animate-sla-flicker inline-flex items-center gap-1 shrink-0 rounded-full border border-rose-300 bg-rose-50 text-rose-700 font-black uppercase tracking-wider cursor-help ${
+                variant === "full"
+                    ? "px-2.5 py-1 text-[10px]"
+                    : "px-1.5 py-0.5 text-[9px]"
+            }`}
+        >
+            <AlarmClock
+                className={variant === "full" ? "h-3.5 w-3.5 stroke-[2.5]" : "h-3 w-3 stroke-[2.5]"}
+            />
+            {variant === "full"
+                ? `${lang === "sk" ? "SLA prekročené" : lang === "hu" ? "SLA túllépve" : "SLA overdue"} · ${sla.daysInPhase}/${sla.limitDays} ${lang === "hu" ? "nap" : lang === "sk" ? "dní" : "days"}`
+                : `+${sla.overdueDays} ${lang === "hu" ? "nap" : lang === "sk" ? "d" : "d"}`}
+        </span>
+    );
+};
 
 type LeadStatusSelectorProps = {
     status: string;
@@ -868,10 +936,23 @@ interface LeadsDatagridProps {
     integrationsConfig?: any;
     leadStageGroups?: Record<string, "new" | "in_progress" | "closed">;
     projectTypes?: ProjectType[];
+    /** Every project in the system; the ones paired with a lead are looked up by `leadId`. */
+    projects?: Project[];
     setProjects?: React.Dispatch<React.SetStateAction<Project[]>>;
     setActiveTab?: (tab: string) => void;
     leadStateFollowUp?: Record<string, boolean>;
+    /** Per-phase SLA in days, keyed by lowercased state name (Settings -> Pipeline stages). */
+    leadStateSla?: LeadStateSla;
+    /** Rules for handing an ownerless new lead to a project manager (Settings -> Users). */
+    leadAssignment?: LeadAssignmentSettings;
     currencyCode?: string | null;
+    /**
+     * What the current user may do with leads (role matrix, `leads` +
+     * `leads.delete`). `edit: false` renders the grid and the detail read-only;
+     * `delete: false` hides every delete control on its own. Defaults to full
+     * access so the component keeps working where the caller passes nothing.
+     */
+    access?: ModuleAccess;
 }
 
 export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
@@ -902,15 +983,38 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     integrationsConfig,
     leadStageGroups = {},
     projectTypes = [],
+    projects = [],
     setProjects,
     setActiveTab,
     leadStateFollowUp = {},
+    leadStateSla = {},
+    leadAssignment = DEFAULT_LEAD_ASSIGNMENT,
     currencyCode,
+    access = FULL_MODULE_ACCESS,
 }) => {
     const t = (en: string, sk: string, hu: string) =>
         systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
+
+    // Role gates. Every mutating handler checks these itself too, so a keyboard
+    // shortcut, a context menu or a stale button can never write past them.
+    const canEdit = access.edit;
+    const canDelete = access.delete;
+
+    // Shown at the top of the list and of the detail when the role only reads.
+    const readOnlyNotice = !canEdit ? (
+        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider shadow-sm w-fit">
+            <Lock className="h-3.5 w-3.5 stroke-[2.5]" />
+            {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
+        </div>
+    ) : null;
     const money = (value: number, opts?: Intl.NumberFormatOptions) =>
         formatMoney(value, currencyCode, systemLanguage, opts);
+
+    // True when a new lead left without a project manager will actually be given
+    // one (Settings -> Users -> automatic lead assignment). The server makes the
+    // pick on sync, so the create form deliberately leaves the owner blank and
+    // says so, instead of quietly defaulting to whoever is first in the list.
+    const autoAssignActive = isAutoAssignActive(leadAssignment, projectManagers);
 
     // Lead states flagged as "follow-up" in Settings, in the configured order.
     // Each becomes its own checkbox on the lead so several follow-up rounds can be
@@ -919,6 +1023,31 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const followUpStates = leadStates.filter(
         (s) => !!leadStateFollowUp[s.toLowerCase()],
     );
+
+    /*
+      Leads past the SLA limit of the phase they are in, keyed by lead id.
+      Only breached leads are kept, so every call site is a plain lookup.
+
+      Recomputed whenever the leads or the limits change, which is also what keeps
+      "today" from going stale in a tab left open across midnight — any edit to any
+      lead re-reads the clock.
+    */
+    const breachedSlaById = useMemo(() => {
+        const out: Record<string, LeadSlaStatus> = {};
+        if (!Object.keys(leadStateSla).length) return out;
+        const today = todayLocal();
+        leads.forEach((l) => {
+            const sla = evaluateLeadSla(
+                l,
+                leadStateSla,
+                leadStageGroups,
+                leadStateParents,
+                today,
+            );
+            if (sla?.isBreached) out[l.id] = sla;
+        });
+        return out;
+    }, [leads, leadStateSla, leadStageGroups, leadStateParents]);
     const getSafeStateColor = (stateName: string) => {
         if (!leadStateColors) return "#64748b";
         const key = (stateName || "").toLowerCase();
@@ -1710,6 +1839,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const [isConvertDropdownOpen, setIsConvertDropdownOpen] = useState(false);
 
     const handleConvertToProject = (type: ProjectType) => {
+        if (!canEdit) return;
         if (!activeLead || !setProjects || !setActiveTab) return;
 
         setIsConvertDropdownOpen(false);
@@ -1758,7 +1888,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             projectTypeId: type.id,
             leadId: activeLead.id,
             clientId: activeLead.id,
-            status: "active",
+            status: DEFAULT_PROJECT_STATUS,
             managers: activeLead.owner ? [activeLead.owner] : [],
             data: dynamicData,
             timeline: [],
@@ -1777,6 +1907,68 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
         setActiveTab("projects");
         window.location.hash = `projects?edit=${newProj.id}`;
+    };
+
+    /* ── LEAD ↔ PROJECT PAIRING ──────────────────────────────────────────
+       The pairing is one field on the project (`leadId`), edited from either
+       end: "Paired lead / client" on the project itself, and the card below on
+       the lead. One lead can carry several projects, so the lead side is always
+       a lookup rather than a stored list. */
+
+    // The unpaired project waiting in the "pair an existing project" picker.
+    const [pairProjectId, setPairProjectId] = useState("");
+
+    const openProject = (projectId: string) => {
+        if (!setActiveTab) return;
+        setActiveTab("projects");
+        window.location.hash = `projects?edit=${projectId}`;
+    };
+
+    const handlePairProject = (projectId: string) => {
+        if (!canEdit) return;
+        if (!activeLead || !setProjects || !projectId) return;
+        setProjects((prev) =>
+            prev.map((p) =>
+                p.id === projectId
+                    ? { ...p, leadId: activeLead.id, clientId: activeLead.id }
+                    : p,
+            ),
+        );
+        setPairProjectId("");
+        (window as any).showToast(
+            t(
+                "Project paired with this lead.",
+                "Projekt bol spárovaný s týmto leadom.",
+                "A projekt párosítva lett ezzel a leaddel.",
+            ),
+        );
+    };
+
+    const handleUnpairProject = (projectId: string) => {
+        if (!canEdit || !setProjects) return;
+        if (
+            !window.confirm(
+                t(
+                    "Unpair this project from the lead? The project itself is kept.",
+                    "Zrušiť spárovanie projektu s leadom? Samotný projekt zostane zachovaný.",
+                    "Megszünteti a projekt párosítását a leaddel? Maga a projekt megmarad.",
+                ),
+            )
+        ) {
+            return;
+        }
+        setProjects((prev) =>
+            prev.map((p) =>
+                p.id === projectId ? { ...p, leadId: null, clientId: null } : p,
+            ),
+        );
+        (window as any).showToast(
+            t(
+                "Project unpaired.",
+                "Spárovanie projektu bolo zrušené.",
+                "A projekt párosítása megszűnt.",
+            ),
+        );
     };
 
     const [leadName, setLeadName] = useState("");
@@ -1837,6 +2029,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     useEffect(() => {
         if (!activeLead || !activeLeadFingerprint || !isOpenAiConfigured)
             return;
+        // The summary is written back onto the lead, so a read-only role only
+        // ever sees the one somebody with edit access already generated.
+        if (!canEdit) return;
         if (activeLead.aiSummaryFingerprint === activeLeadFingerprint) return;
         if (isGeneratingSummary) return;
 
@@ -2590,7 +2785,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     const handleUpdateLeadProfile = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!activeLead) return;
+        if (!canEdit || !activeLead) return;
         if (!leadName.trim() || !leadValue.trim()) {
             (window as any).showToast(
                 t(
@@ -2663,7 +2858,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     const handleAddLeadTimelineEvent = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!activeLead || !logType) return;
+        if (!canEdit || !activeLead || !logType) return;
 
         let contentString = logContent.trim();
         let titleString = "";
@@ -3034,6 +3229,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     // plain text so they can be edited in a simple textarea (they re-render fine
     // as plain text).
     const handleStartEditEvent = (event: TimelineEvent) => {
+        if (!canEdit) return;
         let text = event.content || "";
         if (event.type === "note" && text.trim().startsWith("[")) {
             try {
@@ -3059,7 +3255,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     };
 
     const handleSaveEditEvent = (eventId: string) => {
-        if (!activeLead) return;
+        if (!canEdit || !activeLead) return;
         const nextContent = editingEventDraft;
         // Timestamps drive the whole timeline (ordering, the future/past split and
         // the "today" divider), so a half-filled date/time is dropped rather than
@@ -3129,7 +3325,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     );
 
     const handleDeleteTimelineEvent = (eventId: string) => {
-        if (!activeLead) return;
+        if (!canDelete || !activeLead) return;
         const ok = window.confirm(
             t(
                 "Delete this event from the lead history?",
@@ -3165,7 +3361,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     // live in api/task.php), so dropping the row from local state alone left it
     // in the database and the next poll or reload brought it straight back.
     const handleDeleteGateTask = async (task: Task) => {
-        if (deletingTaskIds.has(task.id)) return;
+        if (!canDelete || deletingTaskIds.has(task.id)) return;
         const confirmed = window.confirm(
             t(
                 `Permanently delete "${task.title}"? This cannot be undone.`,
@@ -3215,7 +3411,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     const handleAddInlineLockingTask = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!activeLead) return;
+        if (!canEdit || !activeLead) return;
         if (!inlineTaskTitle.trim()) {
             (window as any).showToast(
                 systemLanguage === "sk"
@@ -3291,7 +3487,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     // Save edited client properties across ALL associated database leads
     const handleSaveClientDetails = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!selectedClientName) return;
+        if (!canEdit || !selectedClientName) return;
         if (!editClientName.trim()) {
             (window as any).showToast(
                 t(
@@ -3328,6 +3524,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     // Initialize inline editing
     const startInlineEdit = (lead: Lead) => {
+        if (!canEdit) return;
         setEditingRowId(lead.id);
         setInlineName(lead.name);
         setInlineCity(lead.city);
@@ -3339,6 +3536,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     // Save inline edit
     const saveInlineEdit = (id: string) => {
+        if (!canEdit) return;
         if (!inlineName.trim() || !inlineValue.trim()) {
             (window as any).showToast(
                 t(
@@ -3382,6 +3580,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     // Delete lead
     const handleDeleteLead = (id: string, name: string) => {
+        if (!canDelete) return;
         if (
             confirm(
                 systemLanguage === "sk"
@@ -3431,6 +3630,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
      * @param newStatus String target stage status key (e.g. "contacted", "accepted")
      */
     const handleUpdateLeadState = (id: string, newStatus: string) => {
+        if (!canEdit) return false;
         const lead = leads.find((l) => l.id === id);
         if (lead && lead.status !== newStatus) {
             // An archived task is out of every calendar and task list, so it must
@@ -3518,6 +3718,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
      */
     const handleCreateLead = (e: React.FormEvent) => {
         e.preventDefault();
+        if (!canEdit) return;
         if (!newLeadName.trim() || !newLeadValue.trim()) {
             (window as any).showToast(
                 t(
@@ -3581,12 +3782,25 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         setSelectedExistingClient("");
     };
 
+    // The grid's own universe. A `client-*` id is a client-register record (a won
+    // client, or a contact pulled in from invoicing) and `unassigned-docs` is a
+    // synthetic bucket -- neither is a pipeline lead. The header counters have to
+    // start from the same set the list renders, or an install whose leads table is
+    // all imported clients reports "434 active" above an empty pipeline.
+    const pipelineLeads = useMemo(
+        () =>
+            leads.filter(
+                (lead) =>
+                    lead.id !== "unassigned-docs" &&
+                    !(lead.id || "").startsWith("client-"),
+            ),
+        [leads],
+    );
+
     // Filter and Sort leads
     const processedLeads = useMemo(() => {
-        return leads
+        return pipelineLeads
             .filter((lead) => {
-                if (lead.id === "unassigned-docs") return false;
-                if (lead.id && lead.id.startsWith("client-")) return false;
                 // Email and phone are searchable too: leads that share a client name are
                 // otherwise indistinguishable in the list, and the contact details are the
                 // only thing that tells them apart.
@@ -3701,7 +3915,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             })
             .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     }, [
-        leads,
+        pipelineLeads,
         searchQuery,
         selectedState,
         selectedSource,
@@ -4168,6 +4382,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         <ArrowLeft className="h-4.5 w-4.5 stroke-[2.5] shrink-0" />{" "}
                         {getTranslation(systemLanguage, "common.back_to_leads")}
                     </button>
+                    {readOnlyNotice}
 
                     <div className="flex flex-1 min-w-0 items-center justify-end gap-3 flex-wrap">
                         {/* AI Summary Purple Card */}
@@ -4232,7 +4447,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             </span>
 
                             {/* Convert to Project Button */}
-                            {projectTypes &&
+                            {canEdit &&
+                            projectTypes &&
                             projectTypes.length > 0 &&
                             setProjects &&
                             setActiveTab && (
@@ -4517,9 +4733,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 </span>
 
                                 {/* Pencil Toggle edit button */}
+                                {canEdit && (
                                 <button
                                     type="button"
                                     onClick={() => {
+                                        if (!canEdit) return;
                                         if (isEditingLead) {
                                             // Revert changes on toggle off
                                             setLeadName(activeLead.name);
@@ -4568,6 +4786,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         <PencilLine className="h-4.5 w-4.5 stroke-[2.5]" />
                                     )}
                                 </button>
+                                )}
                             </div>
 
                             {/* Lead state section: the pipeline strip sits directly under
@@ -4664,13 +4883,40 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             "profile.lead_state",
                                         )}
                                     </label>
-                                    <div className="select-none">
+                                    <div className="select-none flex items-center gap-2 flex-wrap">
                                         <StatusSelector
                                             status={leadStatus}
                                             onChange={handleDirectLeadStateChange}
-                                            isEditing={true}
+                                            isEditing={canEdit}
                                         />
+                                        {breachedSlaById[activeLead.id] && (
+                                            <SlaBreachBadge
+                                                sla={breachedSlaById[activeLead.id]}
+                                                lang={systemLanguage}
+                                                variant="full"
+                                            />
+                                        )}
                                     </div>
+
+                                    {/* The badge alone says a limit was passed; this
+                                        says by how long and since when, which is what
+                                        someone opening the lead is about to ask. */}
+                                    {breachedSlaById[activeLead.id] && (
+                                        <p className="text-[10px] font-bold text-rose-600 leading-relaxed pt-1">
+                                            {(() => {
+                                                const sla = breachedSlaById[activeLead.id];
+                                                const since = formatDateLocalized(
+                                                    sla.enteredAt.slice(0, 10),
+                                                    systemLanguage,
+                                                );
+                                                return t(
+                                                    `Unchanged since ${since} — ${slaDays(sla.overdueDays, systemLanguage)} past this phase's limit of ${slaDays(sla.limitDays, systemLanguage)}.`,
+                                                    `Bez zmeny od ${since} — o ${slaDays(sla.overdueDays, systemLanguage)} viac, než dovoľuje limit tejto fázy (${slaDays(sla.limitDays, systemLanguage)}).`,
+                                                    `${since} óta változatlan — ${slaDays(sla.overdueDays, systemLanguage)} a fázis ${slaDays(sla.limitDays, systemLanguage)} határidején túl.`,
+                                                );
+                                            })()}
+                                        </p>
+                                    )}
                                 </div>
                             </div>
 
@@ -4864,6 +5110,44 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     : undefined,
                                             )}
                                         </div>
+                                    </div>
+
+                                    {/* Traffic origin — where the visitor came from before
+                                        the form (facebook, instagram, google, direct...).
+                                        Reported by the web-form webhook, never edited here:
+                                        it is a fact about the visit, not a choice. */}
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">
+                                            {getTranslation(
+                                                systemLanguage,
+                                                "profile.traffic_origin",
+                                            )}
+                                        </label>
+                                        {activeLead.trafficOrigin ? (
+                                            <div
+                                                className="pt-2 px-3 cursor-default"
+                                                title={
+                                                    activeLead.trafficOriginDetail ||
+                                                    undefined
+                                                }
+                                            >
+                                                <div className="text-slate-900 text-sm font-black uppercase tracking-wider select-all">
+                                                    🧭 {activeLead.trafficOrigin}
+                                                </div>
+                                                {activeLead.trafficOriginDetail && (
+                                                    <div className="text-[10px] text-slate-400 font-medium truncate max-w-[260px]">
+                                                        {activeLead.trafficOriginDetail}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="pt-2 px-3 text-slate-400 text-xs font-bold uppercase tracking-wider cursor-default">
+                                                {getTranslation(
+                                                    systemLanguage,
+                                                    "profile.traffic_origin_unknown",
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 
@@ -5180,7 +5464,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     <input
                                                         type="checkbox"
                                                         checked={!!doneAt}
+                                                        disabled={!canEdit}
                                                         onChange={(e) => {
+                                                            if (!canEdit)
+                                                                return;
                                                             const checked =
                                                                 e.target
                                                                     .checked;
@@ -5278,12 +5565,15 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                         <div className="relative shrink-0 select-none mt-0.5">
                                                             <CustomSelect
                                                                 size="sm"
+                                                                disabled={!canEdit}
                                                                 value={
                                                                     task.status
                                                                 }
                                                                 onChange={(
                                                                     newStatus,
                                                                 ) => {
+                                                                    if (!canEdit)
+                                                                        return;
                                                                     const now =
                                                                         new Date();
                                                                     const completedAtStr =
@@ -5476,6 +5766,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                         ];
                                                                     return (
                                                                         <CustomSelect
+                                                                            disabled={!canEdit}
                                                                             value={
                                                                                 assignees[0] ||
                                                                                 ""
@@ -5483,6 +5774,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                             onChange={(
                                                                                 next,
                                                                             ) => {
+                                                                                if (!canEdit)
+                                                                                    return;
                                                                                 setTasks(
                                                                                     (
                                                                                         prev,
@@ -5558,7 +5851,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                 "Obnoviť úlohu",
                                                                 "Feladat visszaállítása",
                                                             )}
-                                                            className="text-slate-400 hover:text-emerald-600 transition-colors p-1"
+                                                            // Restoring is the creator's call, like archiving — see canArchiveTask.
+                                                            disabled={!canArchiveTask(task, currentUser ?? undefined)}
+                                                            className="text-slate-400 hover:text-emerald-600 transition-colors p-1 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:text-slate-400"
                                                         >
                                                             <ArchiveRestore className="h-3.5 w-3.5" />
                                                         </button>
@@ -5748,13 +6043,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                                 <button
                                     type="submit"
-                                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-black text-[10px] uppercase tracking-wider shadow hover:shadow-violet-600/10 hover:scale-[1.01] transition-all cursor-pointer border border-violet-500/20"
+                                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-black text-[10px] uppercase tracking-wider shadow hover:shadow-violet-600/10 hover:scale-[1.01] transition-all cursor-pointer border border-violet-500/20 flex items-center justify-center gap-1.5"
                                 >
+                                    <Plus className="h-3.5 w-3.5" />
                                     {systemLanguage === "sk"
-                                        ? "+ Pridať úlohu fázovej brány"
+                                        ? "Pridať úlohu fázovej brány"
                                         : systemLanguage === "hu"
-                                          ? "+ Kapu feladat hozzáadása"
-                                          : "+ Add Pipeline Gate Task"}
+                                          ? "Kapu feladat hozzáadása"
+                                          : "Add Pipeline Gate Task"}
                                 </button>
                             </form>
                         </div>
@@ -7320,6 +7616,176 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     </div>
                 </div>
 
+                {/* Linked Projects Card — moved below both panels so it reads
+                    as the last thing in the lead detail, after the timeline. */}
+                {setProjects && projectTypes.length > 0 && (() => {
+                    const linked = projectsForLead(projects, activeLead.id);
+                    const available = pairableProjects(projects);
+                    const typeOf = (typeId: string) =>
+                        projectTypes.find((pt) => pt.id === typeId);
+                    const statusLabel = (status: string) => projectStatusLabel(status, t);
+                    const statusClass = projectStatusBadgeClass;
+
+                    return (
+                        <div className="glass-panel p-6 rounded-[28px] border-2 border-purple-400 bg-white shadow-xl space-y-4">
+                            <div className="border-b-2 border-slate-100 pb-2 flex items-center justify-between gap-2">
+                                <span className="text-xs font-black text-purple-700 uppercase tracking-wider flex items-center gap-1.5">
+                                    <Briefcase className="h-4.5 w-4.5 text-purple-600 stroke-[2.5] shrink-0" />
+                                    {t(
+                                        "LINKED PROJECTS",
+                                        "SPÁROVANÉ PROJEKTY",
+                                        "KAPCSOLT PROJEKTEK",
+                                    )}
+                                </span>
+                                <span className="px-2 py-0.5 rounded-full text-[8px] font-black bg-purple-50 text-purple-700 border border-purple-200">
+                                    {linked.length}
+                                </span>
+                            </div>
+
+                            {linked.length === 0 ? (
+                                <p className="text-[11px] font-semibold text-slate-400 italic">
+                                    {t(
+                                        "No project is paired with this lead yet.",
+                                        "S týmto leadom zatiaľ nie je spárovaný žiadny projekt.",
+                                        "Még nincs projekt párosítva ehhez a leadhez.",
+                                    )}
+                                </p>
+                            ) : (
+                                <div className="space-y-2">
+                                    {linked.map((p) => {
+                                        const pType = typeOf(p.projectTypeId);
+                                        return (
+                                            <div
+                                                key={p.id}
+                                                className="flex items-center gap-2.5 rounded-2xl border border-slate-200 bg-slate-50/60 px-3 py-2.5 hover:border-purple-300 transition-colors"
+                                            >
+                                                <span
+                                                    className="h-2.5 w-2.5 rounded-full shrink-0"
+                                                    style={{
+                                                        backgroundColor:
+                                                            pType?.color ||
+                                                            "#a855f7",
+                                                    }}
+                                                />
+                                                <div className="min-w-0 flex-1">
+                                                    <span className="block text-[11px] font-black text-slate-800 truncate">
+                                                        {pType?.name ||
+                                                            t(
+                                                                "Unknown project type",
+                                                                "Neznámy typ projektu",
+                                                                "Ismeretlen projekt típus",
+                                                            )}
+                                                    </span>
+                                                    {p.managers &&
+                                                        p.managers.length > 0 && (
+                                                            <span className="block text-[9px] font-bold text-slate-400 truncate mt-0.5">
+                                                                {p.managers.join(
+                                                                    ", ",
+                                                                )}
+                                                            </span>
+                                                        )}
+                                                </div>
+                                                <span
+                                                    className={`px-2 py-0.5 rounded-full text-[8px] font-black border shrink-0 ${statusClass(p.status)}`}
+                                                >
+                                                    {statusLabel(p.status)}
+                                                </span>
+                                                {setActiveTab && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            openProject(p.id)
+                                                        }
+                                                        className="p-1.5 rounded-lg text-slate-400 hover:text-purple-600 hover:bg-purple-50 transition-colors cursor-pointer shrink-0"
+                                                        title={t(
+                                                            "Open project",
+                                                            "Otvoriť projekt",
+                                                            "Projekt megnyitása",
+                                                        )}
+                                                    >
+                                                        <ArrowRight className="h-3.5 w-3.5" />
+                                                    </button>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        handleUnpairProject(p.id)
+                                                    }
+                                                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer shrink-0"
+                                                    title={t(
+                                                        "Unpair project",
+                                                        "Zrušiť spárovanie",
+                                                        "Párosítás megszüntetése",
+                                                    )}
+                                                >
+                                                    <Unlink className="h-3.5 w-3.5" />
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+
+                            {/* Pair an existing project. Only projects that
+                                belong to nobody are offered — re-pointing one
+                                that is already paired elsewhere would silently
+                                take it off the other lead. */}
+                            <div className="pt-1 space-y-2">
+                                <label className="block text-[9px] font-black text-slate-400 uppercase tracking-wider">
+                                    {t(
+                                        "Pair an existing project",
+                                        "Spárovať existujúci projekt",
+                                        "Meglévő projekt párosítása",
+                                    )}
+                                </label>
+                                {available.length === 0 ? (
+                                    <p className="text-[10px] font-semibold text-slate-400 italic">
+                                        {t(
+                                            "Every project already belongs to a lead. Use “Convert to Project” above to create a new one.",
+                                            "Všetky projekty už patria niektorému leadu. Nový vytvoríte tlačidlom „Konvertovať na projekt“ vyššie.",
+                                            "Minden projekt már egy leadhez tartozik. Újat a fenti „Konvertálás projektté” gombbal hozhat létre.",
+                                        )}
+                                    </p>
+                                ) : (
+                                    <div className="flex items-center gap-2">
+                                        <div className="flex-1 min-w-0">
+                                            <CustomSelect
+                                                size="sm"
+                                                value={pairProjectId}
+                                                onChange={setPairProjectId}
+                                                placeholder={t(
+                                                    "Choose a project...",
+                                                    "Vyberte projekt...",
+                                                    "Válasszon projektet...",
+                                                )}
+                                                options={available.map((p) => ({
+                                                    value: p.id,
+                                                    // Projects carry no name of
+                                                    // their own, so the type plus
+                                                    // the tail of the id is what
+                                                    // tells two of a kind apart.
+                                                    label: `${typeOf(p.projectTypeId)?.name || p.projectTypeId} · ${p.id.slice(-4)}`,
+                                                }))}
+                                            />
+                                        </div>
+                                        <button
+                                            type="button"
+                                            disabled={!pairProjectId}
+                                            onClick={() =>
+                                                handlePairProject(pairProjectId)
+                                            }
+                                            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-black text-[9px] uppercase tracking-wider transition-colors cursor-pointer shrink-0"
+                                        >
+                                            <Link2 className="h-3.5 w-3.5" />
+                                            {t("Pair", "Spárovať", "Párosítás")}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })()}
+
                 {/* TIMELINE EMAIL DETAIL SLIDEOUT OVERLAY — commented out on request.
                     E-mails now expand inline in the timeline via "Show more", so there is
                     no separate full view. To bring it back, uncomment this block, the card
@@ -7507,7 +7973,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                       : "Leads Status"}
                             </span>
                             <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black bg-blue-50 text-blue-600 border border-blue-100 uppercase tracking-wider">
-                                {leads.length}{" "}
+                                {pipelineLeads.length}{" "}
                                 {systemLanguage === "sk"
                                     ? "aktívnych"
                                     : systemLanguage === "hu"
@@ -7538,12 +8004,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         ? {
                                               backgroundColor: `${stateColor}08`,
                                               borderColor: `${stateColor}18`,
-                                              color: stateColor,
+                                              color: liftAccent(stateColor),
                                           }
                                         : {
-                                              backgroundColor: "#f8fafc",
-                                              borderColor: "#e2e8f0",
-                                              color: "#94a3b8",
+                                              // Theme tokens, not literals: the hardcoded slate here
+                                              // left the inactive chip white-on-white in dark mode.
+                                              backgroundColor: "rgb(var(--muted))",
+                                              borderColor: "rgb(var(--border))",
+                                              color: "rgb(var(--muted-foreground))",
                                               opacity: 0.7,
                                           }
                                 }
@@ -7555,11 +8023,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         isActive
                                             ? {
                                                   backgroundColor: `${stateColor}12`,
-                                                  color: stateColor,
+                                                  color: liftAccent(stateColor),
                                               }
                                             : {
-                                                  backgroundColor: "#e2e8f0",
-                                                  color: "#94a3b8",
+                                                  backgroundColor: "rgb(var(--border))",
+                                                  color: "rgb(var(--muted-foreground))",
                                               }
                                     }
                                 >
@@ -7573,9 +8041,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
             {/* 2. Control search, filter, and sort bar (Blue accents) */}
             <div className="glass-panel p-6 rounded-[28px] border border-blue-100 bg-white/90 shadow-glass space-y-4 relative z-30">
-                <div className="flex flex-col sm:flex-row items-center gap-4 justify-between border-b border-slate-100/80 pb-4">
+                <div className="flex flex-wrap items-center gap-4 justify-between border-b border-slate-100/80 pb-4">
                     <div className="flex items-center gap-2.5 w-full sm:max-w-md">
-                        <div className="relative flex-1">
+                        <div className="relative flex-1 min-w-[11rem]">
                             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-blue-500" />
                             <input
                                 type="text"
@@ -7634,7 +8102,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         )}
                     </div>
 
-                    <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+                    <div className="flex flex-wrap items-center justify-center gap-3 w-full sm:w-auto">
                         {/* View Mode Toggle: List vs Kanban */}
                         <div className="flex bg-slate-100 p-0.5 rounded-2xl border border-slate-200 gap-0.5 select-none shrink-0 w-full sm:w-auto justify-center">
                             <button
@@ -7769,7 +8237,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             onClick={() => {
                                 setNewLeadStatus(leadStates[0] || "");
                                 setNewLeadSource(leadSources[0] || "");
-                                setNewLeadOwner(projectManagers[0] || "");
+                                setNewLeadOwner(
+                                    autoAssignActive
+                                        ? ""
+                                        : projectManagers[0] || "",
+                                );
                                 setIsModalOpen(true);
                             }}
                             className="w-full sm:w-auto px-5 py-3 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-extrabold shadow-lg shadow-blue-600/25 transition-all flex items-center justify-center gap-2 group hover:-translate-y-0.5"
@@ -8569,7 +9041,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     </div>
                 )}
 
-                {leads.length === 0 && (
+                {pipelineLeads.length === 0 && (
                     <div className="flex flex-col items-center justify-center text-center py-16 px-6 gap-3">
                         <div className="h-14 w-14 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center">
                             <TableProperties className="h-7 w-7 text-blue-500" />
@@ -9191,11 +9663,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                     </div>
                                                                                 ) : (
                                                                                     <span
-                                                                                        className="px-2 py-0.5 rounded text-[9px] font-extrabold uppercase border select-none transition-colors"
+                                                                                        className="px-2 py-0.5 rounded text-[9px] font-extrabold uppercase border select-none transition-colors whitespace-nowrap"
                                                                                         style={{
                                                                                             backgroundColor: `${getSafeSourceColor(lead.source)}15`,
-                                                                                            color: getSafeSourceColor(
-                                                                                                lead.source,
+                                                                                            color: liftAccent(
+                                                                                                getSafeSourceColor(lead.source),
                                                                                             ),
                                                                                             borderColor: `${getSafeSourceColor(lead.source)}35`,
                                                                                         }}
@@ -9270,8 +9742,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                                 className="px-2.5 py-0.5 lg:py-1 rounded-full border text-[9px] lg:text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition-all shadow-sm"
                                                                                                 style={{
                                                                                                     backgroundColor: `${getSafePMColor(lead.owner)}15`,
-                                                                                                    color: getSafePMColor(
-                                                                                                        lead.owner,
+                                                                                                    color: liftAccent(
+                                                                                                        getSafePMColor(lead.owner),
                                                                                                     ),
                                                                                                     borderColor: `${getSafePMColor(lead.owner)}30`,
                                                                                                 }}
@@ -9365,6 +9837,21 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                                 )
                                                                                             }
                                                                                         />
+                                                                                        {breachedSlaById[
+                                                                                            lead.id
+                                                                                        ] && (
+                                                                                            <SlaBreachBadge
+                                                                                                sla={
+                                                                                                    breachedSlaById[
+                                                                                                        lead
+                                                                                                            .id
+                                                                                                    ]
+                                                                                                }
+                                                                                                lang={
+                                                                                                    systemLanguage
+                                                                                                }
+                                                                                            />
+                                                                                        )}
                                                                                     </div>
 
                                                                                     {/* Next Task or Next State */}
@@ -9824,7 +10311,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                         <span
                                                                                             className="italic"
                                                                                             style={{
-                                                                                                color: "#7c3aed",
+                                                                                                color: "rgb(var(--accent))",
                                                                                             }}
                                                                                         >
                                                                                             {generateAiSummary(
@@ -10044,10 +10531,21 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                 : "p-4 gap-2.5"
                                                                         }`}
                                                                     >
-                                                                        {/* Row 1: Hover Actions */}
+                                                                        {/* Row 1: SLA warning (always on) + hover actions */}
                                                                         <div
-                                                                            className={`flex items-center justify-end shrink-0 ${compactMode ? "h-2" : "h-4"}`}
+                                                                            className={`flex items-center justify-between gap-1 shrink-0 ${compactMode ? "min-h-2" : "min-h-4"}`}
                                                                         >
+                                                                            {/* Kanban is the other reading of the same list, so a
+                                                                                breached lead has to be as obvious here as in a row. */}
+                                                                            {breachedSlaById[lead.id] ? (
+                                                                                <SlaBreachBadge
+                                                                                    sla={breachedSlaById[lead.id]}
+                                                                                    lang={systemLanguage}
+                                                                                />
+                                                                            ) : (
+                                                                                <span />
+                                                                            )}
+
                                                                             {/* Card quick actions on hover */}
                                                                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                                                 <button
@@ -10189,7 +10687,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                             {/* PM Avatar & Source */}
                                                                             <div className="flex items-center gap-2">
                                                                                 <span
-                                                                                    className="px-1.5 py-0.5 rounded text-[7.5px] font-black uppercase border select-none leading-none tracking-wider"
+                                                                                    className="px-1.5 py-0.5 rounded text-[7.5px] font-black uppercase border select-none leading-none tracking-wider whitespace-nowrap"
                                                                                     style={{
                                                                                         backgroundColor: `${getSafeSourceColor(leadSource)}15`,
                                                                                         color: getSafeSourceColor(
@@ -10329,7 +10827,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                             {
                                                                                                 value: "",
                                                                                                 label: (
-                                                                                                    <span style={{ color: "#475569" }}>
+                                                                                                    <span style={{ color: "rgb(var(--muted-foreground))" }}>
                                                                                                         {systemLanguage ===
                                                                                                         "sk"
                                                                                                             ? "Žiadny podstav"
@@ -10420,7 +10918,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         <strong className="text-blue-600">
                             {processedLeads.length}
                         </strong>{" "}
-                        {t("of", "z", "/")} {leads.length}{" "}
+                        {t("of", "z", "/")} {pipelineLeads.length}{" "}
                         {t("leads", "leadov", "lead")}
                     </div>
                 </div>
@@ -10441,7 +10939,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     <div
                         className={`w-full max-w-2xl max-h-[min(100vh,100dvh)] overflow-y-auto rounded-t-[32px] border-t border-x border-blue-100 shadow-2xl p-7 space-y-6 relative z-10 ${isClosingModal ? "animate-slide-out-bottom" : "animate-slide-in-bottom"}`}
                         style={{
-                            background: "#ffffff",
+                            background: "rgb(var(--card))",
                             backdropFilter: "none",
                         }}
                     >
@@ -10736,11 +11234,39 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     <CustomSelect
                                         value={newLeadOwner}
                                         onChange={(v) => setNewLeadOwner(v)}
-                                        options={projectManagers.map((pm) => ({
-                                            value: pm,
-                                            label: pm,
-                                        }))}
+                                        placeholder={t(
+                                            "Unassigned",
+                                            "Nepriradené",
+                                            "Nincs kiosztva",
+                                        )}
+                                        options={[
+                                            ...(autoAssignActive
+                                                ? [
+                                                      {
+                                                          value: "",
+                                                          label: t(
+                                                              "Assign automatically",
+                                                              "Priradiť automaticky",
+                                                              "Automatikus kiosztás",
+                                                          ),
+                                                      },
+                                                  ]
+                                                : []),
+                                            ...projectManagers.map((pm) => ({
+                                                value: pm,
+                                                label: pm,
+                                            })),
+                                        ]}
                                     />
+                                    {autoAssignActive && !newLeadOwner && (
+                                        <p className="text-[9px] font-semibold text-slate-400 leading-snug pt-0.5">
+                                            {t(
+                                                "The next manager in the rotation is picked when the lead is saved.",
+                                                "Pri uložení leadu sa vyberie ďalší manažér v poradí.",
+                                                "A lead mentésekor a sorban következő menedzser kerül kiválasztásra.",
+                                            )}
+                                        </p>
+                                    )}
                                 </div>
                             </div>
 
@@ -10940,7 +11466,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     <div
                         className={`h-screen w-full sm:w-[500px] border-l border-emerald-100/50 shadow-2xl flex flex-col justify-between p-6 ${isClosingClient ? "animate-slide-out-right" : "animate-slide-in-right"}`}
                         style={{
-                            background: "#ffffff",
+                            background: "rgb(var(--card))",
                             backdropFilter: "none",
                         }}
                     >

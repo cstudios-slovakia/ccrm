@@ -670,6 +670,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $block .= "- File Attachment: " . $r['file_name'] . " (" . ($r['file_size'] ?? '') . ")\n";
                 }
 
+                if (isset($r['number_value']) && $r['number_value'] !== null) {
+                    $block .= "- Number: " . (0 + $r['number_value']) . "\n";
+                }
+                if (isset($r['money_amount']) && $r['money_amount'] !== null) {
+                    $block .= "- Amount / Suma: " . (0 + $r['money_amount']) . " " . ($r['money_currency'] ?: '') . "\n";
+                }
+
                 $context_blocks[] = [
                     'text' => $block,
                     'score' => $score,
