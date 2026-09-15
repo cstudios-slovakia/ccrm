@@ -108,9 +108,9 @@ export const evaluateProjectDeadline = (
   const todayDay = toDayNumber(today);
   const warningDays = normalizeDeadlineWarningDays(projectType.deadlineWarningDays);
 
-  // A real finish date is the truth and outranks the plan: the project is done,
-  // nothing counts down and nothing is late any more — it only records by how
-  // much the plan was missed.
+  // A real finish date is the truth and outranks the plan: the project is done
+  // and nothing counts down. Whether it missed the plan is recorded in
+  // finishedLateDays, which still asks for a delay reason.
   const finishedAt = toDateOnly(project?.finishedAt);
   const finishedDay = toDayNumber(finishedAt);
   if (finishedDay !== null) {
@@ -189,9 +189,9 @@ export const finishedAtForStatus = (
   carries a mandatory `delayReason`, and until that is written down the project
   wears a red flag in the list and refuses to be saved from its own card.
 
-  Only "late" asks for it. A finished, cancelled or still-on-time project has
-  nothing to explain, and evaluateProjectDeadline() is the single judge of
-  which is which.
+  A missed deadline asks for it: still open and past the date, or finished
+  after it. On time, or closed without a late finish, has nothing to explain.
+  evaluateProjectDeadline() is the single judge of which is which.
 */
 
 /** The delay reason as stored, trimmed; "" when there is none. */
@@ -200,14 +200,23 @@ export const projectDelayReason = (
 ): string => String(project?.delayReason ?? "").trim();
 
 /**
- * True when this project is past its deadline and nobody has said why yet.
+ * True when the project missed its planned date: still open and past it, or
+ * finished after it. Both cases owe a delay reason; a real finish date does
+ * not wipe the debt.
+ */
+export const projectMissedDeadline = (
+  deadline: ProjectDeadlineStatus | null | undefined,
+): boolean => !!deadline?.isOverdue || (deadline?.finishedLateDays ?? 0) > 0;
+
+/**
+ * True when this project missed its deadline and nobody has said why yet.
  * Pass the deadline verdict the caller already computed, so a list and a card
  * looking at the same project can never disagree.
  */
 export const projectNeedsDelayReason = (
   project: Pick<Project, "delayReason"> | undefined | null,
   deadline: ProjectDeadlineStatus | null | undefined,
-): boolean => !!deadline?.isOverdue && projectDelayReason(project) === "";
+): boolean => projectMissedDeadline(deadline) && projectDelayReason(project) === "";
 
 /**
  * What to call this project on screen: its own name, else the paired lead's,

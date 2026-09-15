@@ -19,7 +19,7 @@ import {
   isMoneyValueEmpty,
   parseMoneyValue,
 } from "../utils/currency";
-import { evaluateProjectDeadline, finishedAtForStatus, projectDisplayName, projectPipelineSegments, projectStartDate, projectStatusBadgeClass, projectStatusDotClass, projectStatusOptions } from "../utils/projects";
+import { evaluateProjectDeadline, finishedAtForStatus, projectDisplayName, projectMissedDeadline, projectPipelineSegments, projectStartDate, projectStatusBadgeClass, projectStatusDotClass, projectStatusOptions } from "../utils/projects";
 import { CustomSelect } from "./ui/CustomSelect";
 import { PipelineStrip } from "./ui/PipelineStrip";
 
@@ -710,10 +710,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     // Every write to the project funnels through here — the one place a
     // read-only role is refused, whichever control got as far as calling it.
     if (!canEdit) return false;
-    /* A project past its deadline owes an explanation. Checked against the
-       values being saved — moving it to Completed or pushing the deadline out
-       settles the debt in the same keystroke, so neither has to be fought
-       through an alert. */
+    /* A project that missed its deadline owes an explanation — still open and
+       past it, or finished after it. Checked against the values being saved,
+       so pushing the deadline out (or finishing on time) settles the debt in
+       the same keystroke. Completing late does not. */
     if (validate) {
       const nextStatus = String(overrides.status ?? status);
       const nextDeadline = overrides.deadline !== undefined ? (overrides.deadline || "") : deadline;
@@ -738,7 +738,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       }
       const dl = evaluateProjectDeadline({ deadline: nextDeadline, status: nextStatus, finishedAt: nextFinished }, projectType, todayLocal());
       const nextReason = String(overrides.delayReason ?? delayReason).trim();
-      if (dl?.isOverdue && !nextReason) {
+      if (projectMissedDeadline(dl) && !nextReason) {
         alert(t(
           "This project is past its deadline — a reason for the delay is required.",
           "Projekt je po termíne — zdôvodnenie meškania je povinné.",
@@ -1397,6 +1397,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 hasDeadline in Projects -> Settings -> project type. */}
             {projectType.hasDeadline && (() => {
               const dl = evaluateProjectDeadline({ deadline, status, finishedAt }, projectType, todayLocal());
+              const missedDeadline = projectMissedDeadline(dl);
               const dateInputClass = "flex-1 min-w-0 px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500";
               return (
                 <div>
@@ -1483,7 +1484,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
                   {dl && (
                     <p className={`mt-1.5 text-[10px] font-black uppercase tracking-wider ${
-                      dl.tone === "overdue"
+                      missedDeadline
                         ? "text-rose-600"
                         : dl.tone === "soon"
                           ? "text-amber-600"
@@ -1507,11 +1508,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     </p>
                   )}
 
-                  {/* The red flag. Once the project is genuinely past its date,
-                      the reason for the delay is a required field: the card
-                      refuses to save without one, and until it is written down
-                      the project wears a flag everywhere it is listed. */}
-                  {dl?.isOverdue && (
+                  {/* The red flag. Once the project missed its date — still
+                      open and past it, or finished after it — the reason for
+                      the delay is required: the card refuses to save without
+                      one, and until it is written down the project wears a
+                      flag everywhere it is listed. */}
+                  {missedDeadline && (
                     <div className="mt-3 p-3 rounded-2xl border border-rose-200 bg-rose-50">
                       <label className="flex items-center gap-1.5 text-[10px] font-black text-rose-700 uppercase tracking-wider mb-1.5">
                         <Icons.Flag className="h-3.5 w-3.5 shrink-0 fill-current" />

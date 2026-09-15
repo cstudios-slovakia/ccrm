@@ -8,6 +8,7 @@ import {
   normalizeDeadlineWarningDays,
   projectDelayReason,
   projectDisplayName,
+  projectMissedDeadline,
   projectNeedsDelayReason,
   projectPipelineSegments,
   projectStartDate,
@@ -243,10 +244,15 @@ test("a real finish date outranks the deadline and ends the countdown", () => {
   assert.equal(late?.plannedDeadline, "2026-08-20");
   assert.equal(late?.finishedLateDays, 5);
   assert.equal(late?.isOverdue, false);
-  assert.equal(projectNeedsDelayReason(project({ deadline: "2026-08-20" }), late), false);
+  // Finished late is not "currently overdue" (the list's live countdown), but
+  // it still missed the plan and still owes a reason.
+  assert.equal(projectMissedDeadline(late), true);
+  assert.equal(projectNeedsDelayReason(project({ deadline: "2026-08-20" }), late), true);
 
   const early = evaluateProjectDeadline(project({ deadline: "2026-09-30", finishedAt: "2026-09-01" }), type(), TODAY);
   assert.equal(early?.finishedLateDays, 0);
+  assert.equal(projectMissedDeadline(early), false);
+  assert.equal(projectNeedsDelayReason(project({ deadline: "2026-09-30" }), early), false);
 
   // A finish date with no planned deadline still has something to show.
   const unplanned = evaluateProjectDeadline(project({ deadline: null, finishedAt: "2026-09-01" }), type(), TODAY);
@@ -295,6 +301,17 @@ test("a late project owes a reason, and only a late one", () => {
   assert.equal(projectNeedsDelayReason(late, evaluateProjectDeadline(late, type({ hasDeadline: false }), TODAY)), false);
   const closed = project({ deadline: "2026-08-20", status: "completed" });
   assert.equal(projectNeedsDelayReason(closed, evaluateProjectDeadline(closed, type(), TODAY)), false);
+
+  // A real finish after the planned date is the same debt — filling in actual
+  // dates must not hide the reason field the open overdue state already showed.
+  const finishedLate = project({ deadline: "2026-08-20", finishedAt: "2026-08-25" });
+  const finishedLateDl = evaluateProjectDeadline(finishedLate, type(), TODAY);
+  assert.equal(projectMissedDeadline(finishedLateDl), true);
+  assert.equal(projectNeedsDelayReason(finishedLate, finishedLateDl), true);
+  assert.equal(
+    projectNeedsDelayReason({ ...finishedLate, delayReason: "supplier delay" }, finishedLateDl),
+    false,
+  );
 });
 
 test("a missing delay reason reads as empty, never as \"null\"", () => {
