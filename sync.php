@@ -1075,6 +1075,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'finishedAt' => $pRow['finished_at'] ?? null,
                 'createdAt' => $pRow['created_at'] ?? null,
                 'budget' => isset($pRow['budget']) ? (float)$pRow['budget'] : null,
+                'customFileFields' => json_decode($pRow['custom_files_json'] ?? '[]', true) ?: [],
                 'managers' => $managersByProject[$projId] ?? [],
                 'data' => [],
                 'timeline' => [],
@@ -2382,7 +2383,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingProjIds = $pdo->query("SELECT `id` FROM `projects`")->fetchAll(PDO::FETCH_COLUMN);
             $processedProjIds = [];
 
-            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `deadline`, `delay_reason`, `start_date`, `finished_at`, `budget`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `deadline`=VALUES(`deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`), `budget`=VALUES(`budget`)");
+            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `deadline`, `delay_reason`, `start_date`, `finished_at`, `budget`, `custom_files_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `deadline`=VALUES(`deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`), `budget`=VALUES(`budget`), `custom_files_json`=COALESCE(VALUES(`custom_files_json`), `custom_files_json`)");
 
             // Manager assignments are replaced per project, never globally. The old
             // unconditional `DELETE FROM project_managers` assumed every push carried
@@ -2425,6 +2426,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ? round(min((float)$p['budget'], 999999999999.99), 2)
                     : null;
 
+                // File slots added on this project alone. A client that sends no
+                // list at all means "unchanged" — NULL, which the COALESCE above
+                // turns into keeping what is stored.
+                $projCustomFiles = null;
+                if (array_key_exists('customFileFields', $p) && is_array($p['customFileFields'])) {
+                    $cleanCustom = [];
+                    foreach ($p['customFileFields'] as $cf) {
+                        if (!is_array($cf) || empty($cf['id']) || trim((string)($cf['name'] ?? '')) === '') continue;
+                        $cleanCustom[] = [
+                            'id' => mb_substr((string)$cf['id'], 0, 100),
+                            'name' => mb_substr(trim((string)$cf['name']), 0, 200),
+                            'files' => is_array($cf['files'] ?? null) ? array_values($cf['files']) : [],
+                        ];
+                    }
+                    $projCustomFiles = json_encode($cleanCustom);
+                }
+
                 $insProj->execute([
                     $projId,
                     $p['projectTypeId'],
@@ -2436,7 +2454,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $projDelayReason,
                     $projStart,
                     $projFinished,
-                    $projBudget
+                    $projBudget,
+                    $projCustomFiles
                 ]);
 
                 // Only rewrite this project's managers when the payload actually carries

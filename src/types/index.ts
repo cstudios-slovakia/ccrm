@@ -474,23 +474,39 @@ export interface ProjectType {
   /** A project of this type cannot be saved without a deadline. Only read while hasDeadline is on. */
   deadlineRequired?: boolean;
   /**
-   * The built-in "Files" attribute: named document slots every project of this
-   * type carries (contract, GDPR consent, ...). Turning it off hides the slots
-   * and their uploads without deleting them.
+   * Legacy switch for the default files. The Files tab no longer has an on/off
+   * switch — a type with default files shows them — so this is always written
+   * as true and never read.
    */
   hasFiles?: boolean;
+  /** The default files: named document slots every project of this type carries (contract, GDPR consent, ...). */
   fileFields?: ProjectFileField[];
   timelineEventTypes?: TimelineEventType[];
 }
 
 /**
- * One document slot of the built-in "Files" attribute. Its uploads live in
+ * One default file slot of a project type. Its uploads live in
  * `Project.data[id]`, in the same shape a "files" attribute stores.
  */
 export interface ProjectFileField {
   id: string;
   name: string;
-  required: boolean;
+  /** Legacy. Every file is optional now; kept only so old saved types still parse. */
+  required?: boolean;
+}
+
+/** An uploaded file, as a "files" attribute or file slot stores it. */
+export interface ProjectUploadedFile {
+  name: string;
+  size: string;
+  path: string;
+}
+
+/** A file slot added to one project only, on top of its type's default files. */
+export interface ProjectCustomFileField {
+  id: string;
+  name: string;
+  files: ProjectUploadedFile[];
 }
 
 export interface ProjectTimelineEvent {
@@ -582,6 +598,12 @@ export interface Project {
    * direct costs are measured against on the finance tab. Null while unset.
    */
   budget?: number | null;
+  /**
+   * File slots added on this project alone, each carrying its own uploads.
+   * Stored whole in `projects.custom_files_json`; absent from a payload means
+   * "unchanged", so an older client cannot wipe them.
+   */
+  customFileFields?: ProjectCustomFileField[];
 }
 
 // Warehouse & Inventory Management Types

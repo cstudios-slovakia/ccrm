@@ -3,11 +3,11 @@ import * as Icons from "lucide-react";
 import {
   Plus, Trash2, Upload, FileText, ArrowLeft, Mail, Phone,
   Coins, TrendingUp, TrendingDown, DollarSign,
-  PieChart, X, Edit3, Wallet, Check
+  PieChart, X, Edit3, Wallet, Check, Paperclip, CircleCheck, CircleAlert
 } from "lucide-react";
 import type {
   Project, ProjectType, Lead, UserProfile,
-  ProjectTimelineEvent, ProjectGanttRow,
+  ProjectTimelineEvent, ProjectGanttRow, ProjectCustomFileField, ProjectUploadedFile,
   FinancialRecord, FinancialCategory, FinancialStatus, FinancialType
 } from "../types";
 import { getTranslation, type Language } from "../utils/translations";
@@ -100,6 +100,11 @@ const SearchableClientSelect: React.FC<{
     </div>
   );
 };
+
+/** The tabs of the right-hand column, as they also appear in the URL's `tab` parameter. */
+type RightTab = "timeline" | "gantt" | "finances" | "files";
+const isRightTab = (value: string | null): value is RightTab =>
+  value === "timeline" || value === "gantt" || value === "finances" || value === "files";
 
 interface ProjectDetailsViewProps {
   project: Project | null;
@@ -311,20 +316,25 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const [dynamicData, setDynamicData] = useState<Record<string, any>>({});
   const [timeline, setTimeline] = useState<ProjectTimelineEvent[]>([]);
   const [gantt, setGantt] = useState<ProjectGanttRow[]>([]);
+  // File slots added on this project alone, on top of the type's default files.
+  const [customFileFields, setCustomFileFields] = useState<ProjectCustomFileField[]>([]);
+  const [newCustomFileName, setNewCustomFileName] = useState("");
+  // An upload finishes after an await, by which time the render that started it
+  // is stale; the Files tab reads the slots from here so two uploads racing
+  // each other cannot drop one another's file.
+  const latestFilesRef = React.useRef({ data: dynamicData, custom: customFileFields });
+  latestFilesRef.current = { data: dynamicData, custom: customFileFields };
 
   // Right Side tab control with URL sync
-  const getInitialRightTab = (): "timeline" | "gantt" | "finances" => {
+  const getInitialRightTab = (): RightTab => {
     const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
     const tabParam = params.get("tab");
-    if (tabParam === "finances" || tabParam === "gantt" || tabParam === "timeline") {
-      return tabParam;
-    }
-    return "timeline";
+    return isRightTab(tabParam) ? tabParam : "timeline";
   };
 
-  const [activeRightTab, setActiveRightTab] = useState<"timeline" | "gantt" | "finances">(getInitialRightTab);
+  const [activeRightTab, setActiveRightTab] = useState<RightTab>(getInitialRightTab);
 
-  const handleRightTabChange = (tab: "timeline" | "gantt" | "finances") => {
+  const handleRightTabChange = (tab: RightTab) => {
     setActiveRightTab(tab);
     const hash = window.location.hash;
     const [base, query] = hash.split("?");
@@ -389,13 +399,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       // of the card only exist in edit mode, so that is where it starts.
       setIsEditing(isNew);
       setDynamicData(project.data || {});
+      setCustomFileFields(Array.isArray(project.customFileFields) ? project.customFileFields : []);
       setTimeline(project.timeline || []);
       setGantt(project.gantt || []);
 
       // Resolve right tab from URL or defaults
       const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
       const tabParam = params.get("tab");
-      if (tabParam === "finances" || tabParam === "gantt" || tabParam === "timeline") {
+      if (isRightTab(tabParam)) {
         setActiveRightTab(tabParam);
       } else if (projectType) {
         if (projectType.hasTimeline) setActiveRightTab("timeline");
@@ -594,12 +605,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
   if (!project || !projectType) return null;
 
-  const handleFileUpload = async (attrId: string, e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !canEdit) return;
-
-    setIsUploading(attrId);
-    const eventId = `proj-${project.id}-${attrId}`;
+  /** Sends one file to the server and returns it as a file slot stores it, or null when the upload failed. */
+  const uploadFile = async (slotId: string, file: File): Promise<ProjectUploadedFile | null> => {
+    setIsUploading(slotId);
+    const eventId = `proj-${project.id}-${slotId}`;
     const formData = new FormData();
     formData.append("file", file);
     formData.append("eventId", eventId);
@@ -610,32 +619,35 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
         body: formData
       });
       const resData = await res.json();
-      if (resData.success) {
-        const sizeStr = file.size > 1024 * 1024 
-          ? (file.size / (1024 * 1024)).toFixed(1) + " MB"
-          : (file.size / 1024).toFixed(0) + " KB";
-          
-        const uploadedFile = {
-          name: resData.fileName || file.name,
-          size: sizeStr,
-          path: `/uploads/${eventId}_${resData.fileName || file.name}`
-        };
-
-        const currentFiles = asList(dynamicData[attrId]);
-        const nextFiles = [...currentFiles, uploadedFile];
-
-        setDynamicData(prev => ({
-          ...prev,
-          [attrId]: nextFiles
-        }));
-      } else {
+      if (!resData.success) {
         alert(t("File upload failed", "Nahrávanie súboru zlyhalo", "Fájl feltöltés sikertelen"));
+        return null;
       }
+      const sizeStr = file.size > 1024 * 1024
+        ? (file.size / (1024 * 1024)).toFixed(1) + " MB"
+        : (file.size / 1024).toFixed(0) + " KB";
+      return {
+        name: resData.fileName || file.name,
+        size: sizeStr,
+        path: `/uploads/${eventId}_${resData.fileName || file.name}`
+      };
     } catch (err) {
       console.error(err);
+      return null;
     } finally {
       setIsUploading(null);
     }
+  };
+
+  const handleFileUpload = async (attrId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !canEdit) return;
+    const uploadedFile = await uploadFile(attrId, file);
+    if (!uploadedFile) return;
+    setDynamicData(prev => ({
+      ...prev,
+      [attrId]: [...asList(prev[attrId]), uploadedFile]
+    }));
   };
 
   const handleRemoveFile = (attrId: string, fileIndex: number) => {
@@ -700,6 +712,159 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     </div>
   );
 
+  /* ── Files tab ────────────────────────────────────────────────────────────
+     The type's default files (uploads in `data[slot.id]`) followed by the
+     slots added on this project alone (uploads inside each slot). None is
+     required; a slot with nothing uploaded is only counted as missing. */
+  type FileSlot = { id: string; name: string; custom: boolean; files: ProjectUploadedFile[] };
+  const fileSlots: FileSlot[] = [
+    ...(projectType.fileFields || []).map(f => ({ id: f.id, name: f.name, custom: false, files: asList(dynamicData[f.id]) })),
+    ...customFileFields.map(f => ({ id: f.id, name: f.name, custom: true, files: Array.isArray(f.files) ? f.files : [] })),
+  ];
+  const missingFileCount = fileSlots.filter(s => s.files.length === 0).length;
+  const missingFilesLabel = (n: number) =>
+    userLanguage === "sk"
+      ? n === 1 ? "1 súbor chýba" : n <= 4 ? `${n} súbory chýbajú` : `${n} súborov chýba`
+      : userLanguage === "hu"
+        ? `${n} fájl hiányzik`
+        : `${n} ${n === 1 ? "file" : "files"} missing`;
+  const newCustomFileTaken = fileSlots.some(s => s.name.toLowerCase() === newCustomFileName.trim().toLowerCase());
+  const canAddCustomFile = canEdit && newCustomFileName.trim() !== "" && !newCustomFileTaken;
+
+  /**
+   * Writes the file slots back. Outside edit mode each change is saved on the
+   * spot; in edit mode it waits for Save together with the rest of the card.
+   */
+  const commitFiles = (nextData: Record<string, any>, nextCustom: ProjectCustomFileField[]) => {
+    latestFilesRef.current = { data: nextData, custom: nextCustom };
+    setDynamicData(nextData);
+    setCustomFileFields(nextCustom);
+    if (!isEditing) handleSave({ data: nextData, customFileFields: nextCustom }, false);
+  };
+
+  const handleSlotUpload = async (slot: FileSlot, e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file || !canEdit) return;
+    const uploaded = await uploadFile(slot.id, file);
+    if (!uploaded) return;
+    const { data, custom } = latestFilesRef.current;
+    if (slot.custom) {
+      commitFiles(data, custom.map(f => f.id === slot.id ? { ...f, files: [...(f.files || []), uploaded] } : f));
+    } else {
+      commitFiles({ ...data, [slot.id]: [...asList(data[slot.id]), uploaded] }, custom);
+    }
+  };
+
+  const handleSlotRemoveFile = (slot: FileSlot, fileIndex: number) => {
+    if (!canDelete) return;
+    if (!window.confirm(t("Remove this file?", "Odstrániť tento súbor?", "Eltávolítja ezt a fájlt?"))) return;
+    const { data, custom } = latestFilesRef.current;
+    if (slot.custom) {
+      commitFiles(data, custom.map(f => f.id === slot.id ? { ...f, files: (f.files || []).filter((_, i) => i !== fileIndex) } : f));
+    } else {
+      commitFiles({ ...data, [slot.id]: asList(data[slot.id]).filter((_, i) => i !== fileIndex) }, custom);
+    }
+  };
+
+  const handleAddCustomFileField = () => {
+    if (!canAddCustomFile) return;
+    const { data, custom } = latestFilesRef.current;
+    const id = "pfile_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
+    commitFiles(data, [...custom, { id, name: newCustomFileName.trim(), files: [] }]);
+    setNewCustomFileName("");
+  };
+
+  const handleRemoveCustomFileField = (slot: FileSlot) => {
+    if (!canDelete) return;
+    if (slot.files.length > 0 && !window.confirm(t(
+      "Remove this custom file together with everything uploaded to it?",
+      "Odstrániť tento vlastný súbor spolu so všetkým, čo je k nemu nahrané?",
+      "Eltávolítja ezt az egyedi fájlt a hozzá feltöltött tartalommal együtt?",
+    ))) return;
+    const { data, custom } = latestFilesRef.current;
+    commitFiles(data, custom.filter(f => f.id !== slot.id));
+  };
+
+  /** One file slot on the Files tab: red while nothing is uploaded, green once something is. */
+  const renderFileSlot = (slot: FileSlot) => {
+    const uploaded = slot.files.length > 0;
+    const busy = isUploading === slot.id;
+    return (
+      <div
+        key={slot.id}
+        className={`p-3 rounded-2xl border transition-colors duration-200 animate-fade-in ${
+          uploaded ? "bg-emerald-50 border-emerald-200" : "bg-rose-50 border-rose-200"
+        }`}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            {uploaded
+              ? <CircleCheck className="h-4 w-4 shrink-0 text-emerald-600" />
+              : <CircleAlert className="h-4 w-4 shrink-0 text-rose-500" />}
+            <span className="text-xs font-black text-slate-800 truncate">{slot.name}</span>
+            <span className={`text-[10px] font-bold uppercase tracking-wider shrink-0 ${uploaded ? "text-emerald-700" : "text-rose-600"}`}>
+              {uploaded ? t("Uploaded", "Nahrané", "Feltöltve") : t("Missing", "Chýba", "Hiányzik")}
+            </span>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            {canEdit && (
+              <label
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white text-[11px] font-bold text-slate-600 transition-all duration-150 active:scale-95 ${
+                  busy ? "opacity-50 cursor-wait pointer-events-none" : "cursor-pointer hover:bg-slate-50 hover:border-slate-300"
+                }`}
+              >
+                <Upload className="h-3.5 w-3.5 text-slate-400" />
+                <span>{busy ? t("Uploading...", "Nahráva sa...", "Feltöltés...") : t("Upload", "Nahrať", "Feltöltés")}</span>
+                <input type="file" className="hidden" disabled={busy} onChange={e => handleSlotUpload(slot, e)} />
+              </label>
+            )}
+            {slot.custom && canDelete && (
+              <button
+                type="button"
+                onClick={() => handleRemoveCustomFileField(slot)}
+                className="p-1.5 rounded-lg hover:bg-white/70 text-rose-600 transition-all duration-150 active:scale-95 cursor-pointer"
+                title={t("Remove custom file", "Odstrániť vlastný súbor", "Egyedi fájl eltávolítása")}
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {uploaded && (
+          <div className="mt-2 flex flex-col gap-1.5">
+            {slot.files.map((f, fIdx) => (
+              <div key={fIdx} className="flex items-center justify-between gap-2 px-2.5 py-1.5 bg-white/80 border border-emerald-100 rounded-xl text-xs font-semibold">
+                <a
+                  href={f.path}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 min-w-0 text-indigo-600 hover:text-indigo-800 transition-colors duration-150"
+                >
+                  <FileText className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                  <span className="truncate">{f.name}</span>
+                  {f.size && <span className="text-[10px] text-slate-400 font-medium shrink-0">({f.size})</span>}
+                </a>
+                {canDelete && (
+                  <button
+                    type="button"
+                    onClick={() => handleSlotRemoveFile(slot, fIdx)}
+                    className="p-1 hover:bg-rose-50 rounded text-rose-600 shrink-0 transition-all duration-150 active:scale-95 cursor-pointer"
+                    title={t("Remove", "Odobrať", "Eltávolítás")}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   /**
    * Writes the project back. `overrides` lets a single control save straight
    * away without waiting for its own state to settle — the status dropdown
@@ -749,13 +914,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       }
     }
 
-    // Basic validations for required dynamic attributes, and for the document
-    // slots of the built-in Files attribute, which are stored like a files attribute.
-    const requiredChecks = [
-      ...(projectType.attributes || []),
-      ...(projectType.hasFiles ? (projectType.fileFields || []).map(f => ({ ...f, type: "files" as const })) : []),
-    ];
-    for (const attr of (validate ? requiredChecks : [])) {
+    // Basic validations for required dynamic attributes. File slots on the
+    // Files tab are never required — missing ones are only flagged there.
+    for (const attr of (validate ? (projectType.attributes || []) : [])) {
       if (attr.required) {
         const val = dynamicData[attr.id];
         // A file list comes back from the server as a JSON string, so "[]" is empty too.
@@ -789,6 +950,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       clientId: associatedClientId || null,
       managers: selectedManagers,
       data: dynamicData,
+      customFileFields,
       timeline,
       gantt,
       ...overrides
@@ -811,6 +973,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       setAssociatedClientId(project.clientId || "");
       setSelectedManagers(project.managers || []);
       setDynamicData(project.data || {});
+      setCustomFileFields(Array.isArray(project.customFileFields) ? project.customFileFields : []);
     }
     setPickingClient(false);
     setIsEditing(false);
@@ -1648,29 +1811,6 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
             <div className="border-t border-slate-200 my-4 shrink-0" />
 
-            {/* BUILT-IN FILES: the document slots the project type asks for
-                (contract, GDPR consent, ...). Hidden while the type's switch is off. */}
-            {projectType.hasFiles && (projectType.fileFields || []).length > 0 && (
-              <div className="mb-4 p-3 rounded-2xl bg-slate-50/60 border border-slate-200 space-y-3">
-                <div className="flex items-center gap-1.5 text-[10px] font-black text-slate-500 uppercase tracking-wider">
-                  <Icons.Paperclip className="h-3.5 w-3.5 text-slate-400" />
-                  {t("Files", "Súbory", "Fájlok")}
-                </div>
-                {(projectType.fileFields || []).map(field => (
-                  <div key={field.id}>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
-                      {field.name} {isEditing && field.required && <span className="text-red-500">*</span>}
-                    </label>
-                    {!isEditing ? (
-                      <div className="text-xs font-bold text-slate-800">{renderAttrValue({ type: "files" }, dynamicData[field.id])}</div>
-                    ) : (
-                      renderFilesInput(field.id, dynamicData[field.id])
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-
             {/* DYNAMIC CUSTOM ATTRIBUTES FIELDS */}
             <div className="space-y-4">
               {(projectType.attributes || []).map(attr => {
@@ -1915,6 +2055,22 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${revenueAnalysis.realProfit >= 0 ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400"}`}>
                   {money(revenueAnalysis.realProfit)}
                 </span>
+              </button>
+              <button
+                onClick={() => handleRightTabChange("files")}
+                className={`px-4 py-2 rounded-xl font-heading font-bold text-xs uppercase tracking-wider transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 ${
+                  activeRightTab === "files"
+                    ? "bg-slate-900 text-white shadow-sm"
+                    : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                }`}
+              >
+                <Paperclip className="h-3.5 w-3.5" />
+                <span>{t("Files", "Súbory", "Fájlok")}</span>
+                {missingFileCount > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-500">
+                    {missingFileCount}
+                  </span>
+                )}
               </button>
             </div>
           </div>
@@ -2727,6 +2883,95 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     {t("Close", "Zatvoriť", "Bezárás")}
                   </button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB CONTENT: Files — the type's default files, then this project's own */}
+          {activeRightTab === "files" && (
+            <div className="flex-1 overflow-y-auto space-y-5 scrollbar-thin pr-1 animate-in fade-in duration-150 text-left">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex flex-col min-w-0">
+                  <span className="font-heading font-bold text-sm text-slate-800 flex items-center gap-1.5">
+                    <Paperclip className="h-4 w-4 text-slate-400" />
+                    {t("Files", "Súbory", "Fájlok")}
+                  </span>
+                  <span className="text-[11px] font-medium text-slate-400 mt-0.5">
+                    {t(
+                      "Default files come from the project type. Custom files belong to this project only.",
+                      "Predvolené súbory určuje typ projektu. Vlastné súbory patria len tomuto projektu.",
+                      "Az alapértelmezett fájlokat a projekt típus adja. Az egyedi fájlok csak ehhez a projekthez tartoznak.",
+                    )}
+                  </span>
+                </div>
+                {fileSlots.length > 0 && (
+                  missingFileCount > 0 ? (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-rose-200 bg-rose-50 text-[10px] font-black uppercase tracking-wider text-rose-700 whitespace-nowrap">
+                      <CircleAlert className="h-3.5 w-3.5" />
+                      {missingFilesLabel(missingFileCount)}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-emerald-200 bg-emerald-50 text-[10px] font-black uppercase tracking-wider text-emerald-700 whitespace-nowrap">
+                      <CircleCheck className="h-3.5 w-3.5" />
+                      {t("All files uploaded", "Všetky súbory nahrané", "Minden fájl feltöltve")}
+                    </span>
+                  )
+                )}
+              </div>
+
+              {/* Default files */}
+              <div className="space-y-2">
+                <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  {t("Default files", "Predvolené súbory", "Alapértelmezett fájlok")}
+                </span>
+                {fileSlots.some(s => !s.custom) ? (
+                  fileSlots.filter(s => !s.custom).map(renderFileSlot)
+                ) : (
+                  <p className="p-3 border-2 border-dashed border-slate-200 rounded-2xl text-center text-slate-400 text-xs font-semibold">
+                    {t("This project type has no default files.", "Tento typ projektu nemá predvolené súbory.", "Ennek a projekt típusnak nincsenek alapértelmezett fájljai.")}
+                  </p>
+                )}
+              </div>
+
+              {/* Custom files — this project only */}
+              <div className="space-y-2">
+                <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  {t("Custom files", "Vlastné súbory", "Egyedi fájlok")}
+                </span>
+                {fileSlots.some(s => s.custom) ? (
+                  fileSlots.filter(s => s.custom).map(renderFileSlot)
+                ) : (
+                  <p className="text-[11px] font-semibold text-slate-400">
+                    {t("No custom files on this project.", "Tento projekt nemá vlastné súbory.", "Ennek a projektnek nincsenek egyedi fájljai.")}
+                  </p>
+                )}
+
+                {canEdit && (
+                  <div className="flex flex-wrap items-center gap-2 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                    <input
+                      value={newCustomFileName}
+                      onChange={e => setNewCustomFileName(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleAddCustomFileField();
+                        }
+                      }}
+                      placeholder={t("e.g. Building permit", "napr. Stavebné povolenie", "pl. Építési engedély")}
+                      className="flex-1 min-w-[8rem] px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddCustomFileField}
+                      disabled={!canAddCustomFile}
+                      title={newCustomFileTaken ? t("A file with this name already exists.", "Súbor s týmto názvom už existuje.", "Ilyen nevű fájl már létezik.") : undefined}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 transition-all duration-150 active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                    >
+                      <Plus className="h-4 w-4" />
+                      <span>{t("Add custom file", "Pridať vlastný súbor", "Egyedi fájl hozzáadása")}</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}
