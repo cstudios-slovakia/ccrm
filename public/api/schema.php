@@ -133,6 +133,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `owner` VARCHAR(100) NOT NULL COMMENT 'Primary assignee name; empty when unassigned',
               `created_by` VARCHAR(100) NULL COMMENT 'Immutable task creator name; NULL for legacy rows',
               `related_lead_id` VARCHAR(50) NULL,
+              `related_project_id` VARCHAR(50) NULL COMMENT 'Project the task belongs to; NULL when it has none',
               `workflow_id` VARCHAR(50) NULL COMMENT 'Automation that created this task; NULL for hand-made ones',
               `is_locking` TINYINT(1) NOT NULL DEFAULT 0,
               `archived` TINYINT(1) NOT NULL DEFAULT 0,
@@ -144,7 +145,8 @@ if (!function_exists('ccrm_schema_statements')) {
               PRIMARY KEY (`id`),
               FOREIGN KEY (`related_lead_id`) REFERENCES `leads` (`id`) ON DELETE SET NULL,
               INDEX idx_task_status (`status`),
-              INDEX idx_task_deadline (`deadline`)
+              INDEX idx_task_deadline (`deadline`),
+              INDEX idx_task_project (`related_project_id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
             // Task Assignees
@@ -323,6 +325,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `start_date` DATE NULL,
               `finished_at` DATE NULL,
               `budget` DECIMAL(14,2) NULL,
+              `custom_files_json` LONGTEXT NULL,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               FOREIGN KEY (`project_type_id`) REFERENCES `project_types` (`id`) ON DELETE CASCADE
@@ -779,6 +782,13 @@ if (!function_exists('ccrm_schema_statements')) {
         if (!ccrm_column_exists($pdo, 'tasks', 'workflow_id')) {
             $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `workflow_id` VARCHAR(50) NULL AFTER `related_lead_id`");
         }
+        // A task can belong to a project and show in that project's Tasks tab.
+        // No foreign key: deleting a project clears the link in sync.php
+        // instead, so the task itself survives on the Tasks board.
+        if (!ccrm_column_exists($pdo, 'tasks', 'related_project_id')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `related_project_id` VARCHAR(50) NULL AFTER `related_lead_id`");
+            $pdo->exec("ALTER TABLE `tasks` ADD INDEX idx_task_project (`related_project_id`)");
+        }
         if (!ccrm_column_exists($pdo, 'meeting_tasks', 'start_date')) {
             $pdo->exec("ALTER TABLE `meeting_tasks` ADD COLUMN `start_date` DATE NULL AFTER `description`");
         }
@@ -899,6 +909,11 @@ if (!function_exists('ccrm_schema_statements')) {
         // tab shows as a prompt to set one rather than as a zero ceiling.
         if (!ccrm_column_exists($pdo, 'projects', 'budget')) {
             $pdo->exec("ALTER TABLE `projects` ADD COLUMN `budget` DECIMAL(14,2) NULL AFTER `delay_reason`");
+        }
+        // File slots added on one project only, with their uploads, as one JSON
+        // list. The type's default slots keep their own columns in proj_data_*.
+        if (!ccrm_column_exists($pdo, 'projects', 'custom_files_json')) {
+            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `custom_files_json` LONGTEXT NULL AFTER `budget`");
         }
         if (!ccrm_column_exists($pdo, 'tasks', 'deadline_time')) {
             $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `deadline_time` VARCHAR(5) NULL AFTER `deadline`");

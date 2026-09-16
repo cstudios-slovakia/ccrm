@@ -68,11 +68,9 @@ test.describe('Licensing', () => {
 
     const notice = banner(page);
     await expect(notice).toBeVisible();
-    // The reassurance is not decoration: without it "licence" in a coloured box
-    // reads as "something is about to be taken away from me". Matched in all
-    // three languages, because whichever one is active is the one a customer
-    // will be reading it in.
-    await expect(notice).toContainText(/bez obmedzenia|working normally|változatlanul/i);
+    // Matched in all three languages, because whichever one is active is the
+    // one a customer will be reading it in.
+    await expect(notice).toContainText(/vyprší o 18 dní|expires in 18 days|18 nap múlva/i);
 
     await notice.getByRole('button', { name: /nezobrazovať|show again|jelenjen meg/i }).click();
     await expect(notice).toBeHidden();

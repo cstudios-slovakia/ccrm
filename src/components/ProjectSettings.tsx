@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import * as Icons from "lucide-react";
-import { Plus, Trash2, ArrowUp, ArrowDown, Save, X, Workflow, LayoutGrid, Rows3, CalendarClock, Paperclip, FileText } from "lucide-react";
+import { Plus, Trash2, ArrowUp, ArrowDown, Save, X, Workflow, LayoutGrid, Rows3, CalendarClock, Paperclip, FileText, SlidersHorizontal, History, ListChecks } from "lucide-react";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ColorPicker } from "./ui/ColorPicker";
 import type { ProjectAutoCreateSettings, ProjectType, ProjectAttribute, ProjectAttributeType, ProjectFileField, TimelineEventType } from "../types";
@@ -57,6 +57,9 @@ const ATTRIBUTE_TYPES: { id: ProjectAttributeType; label: [string, string, strin
   { id: "contact", label: ["Contact Picker", "Výber kontaktu", "Kapcsolatválasztó"] }
 ];
 
+/** The sections the project type editor is split into. */
+type EditSection = "general" | "timeline" | "attributes" | "files";
+
 /** The light switch that turns a built-in attribute on or off. */
 const Switch: React.FC<{ checked: boolean; onChange: (next: boolean) => void; disabled?: boolean; label: string }> = ({
   checked,
@@ -107,6 +110,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
 
   const [editingType, setEditingType] = useState<ProjectType | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [editSection, setEditSection] = useState<EditSection>("general");
 
   // Form states
   const [typeName, setTypeName] = useState("");
@@ -118,10 +122,8 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
   const [hasDeadline, setHasDeadline] = useState(false);
   const [deadlineWarningDays, setDeadlineWarningDays] = useState(DEFAULT_DEADLINE_WARNING_DAYS);
   const [deadlineRequired, setDeadlineRequired] = useState(false);
-  const [hasFiles, setHasFiles] = useState(false);
   const [fileFields, setFileFields] = useState<ProjectFileField[]>([]);
   const [newFileFieldName, setNewFileFieldName] = useState("");
-  const [newFileFieldRequired, setNewFileFieldRequired] = useState(false);
   const [attributes, setAttributes] = useState<ProjectAttribute[]>([]);
 
   // Timeline Custom Events states
@@ -170,13 +172,12 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     setHasDeadline(false);
     setDeadlineWarningDays(DEFAULT_DEADLINE_WARNING_DAYS);
     setDeadlineRequired(false);
-    setHasFiles(false);
     setFileFields([]);
     setNewFileFieldName("");
-    setNewFileFieldRequired(false);
     setAttributes([]);
     setTimelineEventTypes([]);
     setSelectedTeTypeId(null);
+    setEditSection("general");
     setIsCreating(true);
     setEditingType(null);
   };
@@ -206,10 +207,9 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
       type.hasDeadline ? normalizeDeadlineWarningDays(type.deadlineWarningDays) : DEFAULT_DEADLINE_WARNING_DAYS
     );
     setDeadlineRequired(!!type.deadlineRequired);
-    setHasFiles(!!type.hasFiles);
     setFileFields(type.fileFields || []);
     setNewFileFieldName("");
-    setNewFileFieldRequired(false);
+    setEditSection("general");
     setAttributes(type.attributes || []);
     setTimelineEventTypes(type.timelineEventTypes || []);
     setSelectedTeTypeId(type.timelineEventTypes && type.timelineEventTypes.length > 0 ? type.timelineEventTypes[0].id : null);
@@ -254,9 +254,8 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     if (fileFields.some(f => f.name.toLowerCase() === name.toLowerCase())) return;
     // The prefix keeps a slot's data column from ever colliding with an attribute's.
     const id = "file_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
-    setFileFields(prev => [...prev, { id, name, required: newFileFieldRequired }]);
+    setFileFields(prev => [...prev, { id, name }]);
     setNewFileFieldName("");
-    setNewFileFieldRequired(false);
   };
 
   const handleRemoveFileField = (fieldId: string) => {
@@ -363,6 +362,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
 
   const handleSaveType = () => {
     if (!typeName.trim()) {
+      setEditSection("general");
       alert(t("Name is required", "Názov je povinný", "Név megadása kötelező"));
       return;
     }
@@ -381,10 +381,10 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
       // off keeps the saved shape identical whichever way the switch was flipped.
       deadlineWarningDays: hasDeadline ? normalizeDeadlineWarningDays(deadlineWarningDays) : 0,
       deadlineRequired: hasDeadline && deadlineRequired,
-      // The slots are kept while the switch is off: turning it off hides the
-      // uploads, it does not delete them.
-      hasFiles,
-      fileFields,
+      // Default files have no on/off switch any more, and none is required.
+      // hasFiles stays true so the server keeps treating the slots as live.
+      hasFiles: true,
+      fileFields: fileFields.map(({ id, name }) => ({ id, name })),
       attributes,
       timelineEventTypes
     };
@@ -448,8 +448,42 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="space-y-4">
+        {/* Section tabs */}
+        <div role="tablist" className="flex flex-wrap items-center gap-1 p-1 rounded-2xl bg-slate-100 border border-slate-200 select-none w-fit max-w-full">
+          {([
+            { id: "general", Icon: SlidersHorizontal, label: t("General", "Všeobecné", "Általános"), count: null },
+            { id: "timeline", Icon: History, label: t("Timeline", "Časová os", "Idővonal"), count: hasTimeline ? timelineEventTypes.length : null },
+            { id: "attributes", Icon: ListChecks, label: t("Attributes", "Atribúty", "Attribútumok"), count: attributes.length + (hasDeadline ? 1 : 0) },
+            { id: "files", Icon: Paperclip, label: t("Files", "Súbory", "Fájlok"), count: fileFields.length },
+          ] as { id: EditSection; Icon: React.ElementType; label: string; count: number | null }[]).map(({ id, Icon, label, count }) => {
+            const active = editSection === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setEditSection(id)}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all duration-150 active:scale-95 cursor-pointer ${
+                  active ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700 hover:bg-white/60"
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5 shrink-0" />
+                <span>{label}</span>
+                {count !== null && count > 0 && (
+                  <span className={`min-w-[1.25rem] px-1.5 py-0.5 rounded-full text-[10px] leading-none text-center transition-colors duration-150 ${
+                    active ? "bg-indigo-50 text-indigo-600" : "bg-slate-200 text-slate-500"
+                  }`}>
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {editSection === "general" && (
+          <div className="space-y-4 max-w-2xl animate-fade-in">
             <div>
               <label className="block text-xs font-heading font-black text-slate-400 uppercase tracking-widest mb-1.5">
                 {t("Type Name", "Názov typu", "Típus neve")}
@@ -531,19 +565,6 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                 <input
                   type="checkbox"
                   disabled={!canEdit}
-                  checked={hasTimeline}
-                  onChange={e => setHasTimeline(e.target.checked)}
-                  className="h-4.5 w-4.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                />
-                <span className="text-sm font-semibold text-slate-700">
-                  {t("Enable Timeline (attached events)", "Povoliť časovú os", "Idővonal engedélyezése")}
-                </span>
-              </label>
-
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  disabled={!canEdit}
                   checked={hasGantt}
                   onChange={e => setHasGantt(e.target.checked)}
                   className="h-4.5 w-4.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
@@ -552,11 +573,41 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                   {t("Enable Gantt Chart (project roadmap)", "Povoliť Ganttov diagram", "Gantt diagram engedélyezése")}
                 </span>
               </label>
-
             </div>
+          </div>
+        )}
 
-            {/* Custom Event Types for Timeline */}
-            {hasTimeline && (
+        {editSection === "timeline" && (
+          <div className="space-y-4 max-w-3xl animate-fade-in">
+            <label className="flex items-start gap-3 cursor-pointer w-fit">
+              <input
+                type="checkbox"
+                disabled={!canEdit}
+                checked={hasTimeline}
+                onChange={e => setHasTimeline(e.target.checked)}
+                className="h-4.5 w-4.5 mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              <span className="flex flex-col">
+                <span className="text-sm font-semibold text-slate-700">
+                  {t("Allow timeline", "Povoliť časovú os", "Idővonal engedélyezése")}
+                </span>
+                <span className="text-[11px] font-medium text-slate-400">
+                  {t(
+                    "Projects of this type get a Timeline tab for logging events.",
+                    "Projekty tohto typu dostanú kartu Časová os na zaznamenávanie udalostí.",
+                    "Az ilyen típusú projektek Idővonal fület kapnak az események rögzítéséhez.",
+                  )}
+                </span>
+              </span>
+            </label>
+
+            {/* The rest of the timeline settings stay in view while it is off —
+                inactive, so what switching it on brings is never hidden. */}
+            <fieldset
+              disabled={!hasTimeline}
+              aria-disabled={!hasTimeline}
+              className={`min-w-0 transition-opacity duration-150 ${hasTimeline ? "" : "opacity-50 pointer-events-none select-none"}`}
+            >
               <div className="space-y-3 pt-4 border-t border-slate-200">
                 <label className="block text-xs font-heading font-black text-slate-400 uppercase tracking-widest">
                   {t("Timeline Event Types", "Typy udalostí časovej osi", "Idővonal eseménytípusok")}
@@ -850,14 +901,13 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                   </div>
                 )}
               </div>
-            )}
+            </fieldset>
           </div>
+        )}
 
-          {/* Attributes Schema Builder */}
-          <div className="space-y-4 border-l border-slate-200 pl-6">
-            <h4 className="font-heading font-bold text-sm text-slate-700">
-              {t("Project Attributes", "Atribúty projektu", "Projekt attribútumok")}
-            </h4>
+        {/* Attributes Schema Builder */}
+        {editSection === "attributes" && (
+          <div className="space-y-4 max-w-3xl animate-fade-in">
 
             {/* Built-in attributes. Every type has them; each is switched on or
                 off rather than added, and brings its own settings when on. */}
@@ -933,107 +983,6 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                 )}
               </div>
 
-              {/* Files — named document slots every project of this type carries */}
-              <div className={`bg-white border rounded-2xl shadow-sm transition-colors duration-150 ${hasFiles ? "border-indigo-200" : "border-slate-200"}`}>
-                <div className="flex items-center justify-between gap-3 p-3 text-xs font-semibold">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <span className={`flex items-center justify-center h-8 w-8 rounded-xl shrink-0 transition-colors duration-150 ${hasFiles ? "bg-indigo-50 text-indigo-600" : "bg-slate-100 text-slate-400"}`}>
-                      <Paperclip className="h-4 w-4" />
-                    </span>
-                    <div className="flex flex-col min-w-0">
-                      <span className="text-slate-800 text-[13px]">{t("Files", "Súbory", "Fájlok")}</span>
-                      <span className="text-slate-400 font-medium truncate">
-                        {hasFiles && fileFields.length > 0
-                          ? `${fileFields.length} ${t("fields", "polí", "mező")}` +
-                            (fileFields.some(f => f.required)
-                              ? ` • ${fileFields.filter(f => f.required).length} ${t("required", "povinných", "kötelező")}`
-                              : "")
-                          : t("Documents such as a contract or GDPR consent", "Dokumenty ako zmluva alebo súhlas GDPR", "Dokumentumok, pl. szerződés vagy GDPR hozzájárulás")}
-                      </span>
-                    </div>
-                  </div>
-                  <Switch
-                    checked={hasFiles}
-                    onChange={setHasFiles}
-                    disabled={!canEdit}
-                    label={t("Files", "Súbory", "Fájlok")}
-                  />
-                </div>
-
-                {hasFiles && (
-                  <div className="border-t border-slate-100 p-3 space-y-2 animate-fade-in">
-                    {fileFields.length === 0 ? (
-                      <div className="p-3 border-2 border-dashed border-slate-200 rounded-xl text-center text-slate-400 text-xs">
-                        {t("No file fields yet — add one below.", "Zatiaľ žiadne polia pre súbory — pridajte ich nižšie.", "Még nincsenek fájlmezők — adjon hozzá lent.")}
-                      </div>
-                    ) : (
-                      fileFields.map(field => (
-                        <div key={field.id} className="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold animate-fade-in">
-                          <FileText className="h-4 w-4 shrink-0 text-slate-400" />
-                          <span className="flex-1 min-w-0 truncate text-slate-800">{field.name}</span>
-                          <label className="flex items-center gap-1.5 cursor-pointer select-none shrink-0">
-                            <input
-                              type="checkbox"
-                              disabled={!canEdit}
-                              checked={field.required}
-                              onChange={e => {
-                                const required = e.target.checked;
-                                setFileFields(prev => prev.map(f => f.id === field.id ? { ...f, required } : f));
-                              }}
-                              className="h-4 w-4 rounded border-slate-300 text-indigo-600"
-                            />
-                            <span className="text-[11px] font-semibold text-slate-500">{t("Required", "Povinné", "Kötelező")}</span>
-                          </label>
-                          <button
-                            type="button"
-                            disabled={!canEdit}
-                            onClick={() => handleRemoveFileField(field.id)}
-                            className="p-1 hover:bg-rose-50 rounded text-rose-600 shrink-0 transition-colors duration-150 active:scale-95 cursor-pointer disabled:opacity-30"
-                            title={t("Remove", "Odobrať", "Eltávolítás")}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      ))
-                    )}
-
-                    {canEdit && (
-                      <div className="flex flex-wrap items-center gap-2 pt-1">
-                        <input
-                          value={newFileFieldName}
-                          onChange={e => setNewFileFieldName(e.target.value)}
-                          onKeyDown={e => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              handleAddFileField();
-                            }
-                          }}
-                          placeholder={t("e.g. Contract, GDPR consent", "napr. Zmluva, Súhlas GDPR", "pl. Szerződés, GDPR hozzájárulás")}
-                          className="flex-1 min-w-[8rem] px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                        />
-                        <label className="flex items-center gap-1.5 cursor-pointer select-none shrink-0">
-                          <input
-                            type="checkbox"
-                            checked={newFileFieldRequired}
-                            onChange={e => setNewFileFieldRequired(e.target.checked)}
-                            className="h-4 w-4 rounded border-slate-300 text-indigo-600"
-                          />
-                          <span className="text-[11px] font-semibold text-slate-500">{t("Required", "Povinné", "Kötelező")}</span>
-                        </label>
-                        <button
-                          type="button"
-                          onClick={handleAddFileField}
-                          disabled={!newFileFieldName.trim()}
-                          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 transition-all duration-150 active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
-                        >
-                          <Plus className="h-4 w-4" />
-                          <span>{t("Add", "Pridať", "Hozzáadás")}</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
             </div>
 
             <div className="flex items-center gap-3 pt-2">
@@ -1154,7 +1103,75 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
               </div>
             )}
           </div>
-        </div>
+        )}
+
+        {/* Default files — the slots every project of this type starts with */}
+        {editSection === "files" && (
+          <div className="space-y-4 max-w-3xl animate-fade-in">
+            <div className="flex flex-col">
+              <h4 className="font-heading font-bold text-sm text-slate-700">
+                {t("Default files", "Predvolené súbory", "Alapértelmezett fájlok")}
+              </h4>
+              <p className="text-[11px] font-medium text-slate-400 mt-0.5">
+                {t(
+                  "Every project of this type starts with these file slots, all optional. A project can add its own on its Files tab.",
+                  "Každý projekt tohto typu začína s týmito súbormi, všetky sú nepovinné. Projekt si môže pridať vlastné na karte Súbory.",
+                  "Minden ilyen típusú projekt ezekkel a fájlhelyekkel indul, mind opcionális. Egy projekt a Fájlok fülön sajátokat is hozzáadhat.",
+                )}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              {fileFields.length === 0 ? (
+                <div className="p-4 border-2 border-dashed border-slate-200 rounded-2xl text-center text-slate-400 text-xs">
+                  {t("No default files yet — add one below.", "Zatiaľ žiadne predvolené súbory — pridajte ich nižšie.", "Még nincsenek alapértelmezett fájlok — adjon hozzá lent.")}
+                </div>
+              ) : (
+                fileFields.map(field => (
+                  <div key={field.id} className="flex items-center gap-2 px-3 py-2.5 bg-white border border-slate-200 rounded-2xl shadow-sm text-xs font-semibold animate-fade-in">
+                    <FileText className="h-4 w-4 shrink-0 text-slate-400" />
+                    <span className="flex-1 min-w-0 truncate text-slate-800 text-[13px]">{field.name}</span>
+                    <button
+                      type="button"
+                      disabled={!canEdit}
+                      onClick={() => handleRemoveFileField(field.id)}
+                      className="p-1 hover:bg-rose-50 rounded text-rose-600 shrink-0 transition-colors duration-150 active:scale-95 cursor-pointer disabled:opacity-30"
+                      title={t("Remove", "Odobrať", "Eltávolítás")}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {canEdit && (
+              <div className="flex flex-wrap items-center gap-2 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                <input
+                  value={newFileFieldName}
+                  onChange={e => setNewFileFieldName(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddFileField();
+                    }
+                  }}
+                  placeholder={t("e.g. Contract, GDPR consent", "napr. Zmluva, Súhlas GDPR", "pl. Szerződés, GDPR hozzájárulás")}
+                  className="flex-1 min-w-[8rem] px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddFileField}
+                  disabled={!newFileFieldName.trim()}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 transition-all duration-150 active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>{t("Add file", "Pridať súbor", "Fájl hozzáadása")}</span>
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Footer Actions */}
         {canEdit && (
@@ -1335,7 +1352,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                         {t("Deadline", "Termín", "Határidő")}
                       </span>
                     )}
-                    {type.hasFiles && (type.fileFields?.length || 0) > 0 && (
+                    {(type.fileFields?.length || 0) > 0 && (
                       <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-[10px] font-bold text-emerald-600 border border-emerald-100">
                         {t("Files", "Súbory", "Fájlok")}
                       </span>

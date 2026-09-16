@@ -336,8 +336,37 @@ export const newWidgetId = (base: string) =>
 /** Instantiates a preset as a widget ready to be appended to a layout. */
 export const buildPresetWidget = (preset: WidgetPreset): Record<string, any> => ({
   id: newWidgetId(preset.id),
+  presetId: preset.id,
   ...preset.build()
 });
+
+/**
+ * The library preset a widget was made from, or null for an AI-generated one.
+ * The title is free to rename, so the editor needs this to keep telling the
+ * user what a card actually is. Widgets saved before `presetId` existed are
+ * recognised by their id prefix, and copies (which got a generic id) by the
+ * query they run — every named action and every SQL statement is unique to
+ * one preset.
+ */
+export const presetOfWidget = (widget: any): WidgetPreset | null => {
+  if (!widget) return null;
+  const byId = (id: string) => PRESETS.find((p) => p.id === id) || null;
+  if (typeof widget.presetId === "string") return byId(widget.presetId);
+
+  const rawId = String(widget.id ?? "").replace(/^default_/, "");
+  const byPrefix = PRESETS.find((p) => rawId === p.id || rawId.startsWith(`${p.id}_`));
+  if (byPrefix) return byPrefix;
+
+  const action = widget.query?.action;
+  if (!action) return null;
+  return (
+    PRESETS.find((p) => {
+      const query = p.build().query;
+      if (query?.action !== action) return false;
+      return action !== "sql" || query.params?.sql === widget.query?.params?.sql;
+    }) || null
+  );
+};
 
 /** The widgets a Dashboard that has never been edited shows. */
 const DEFAULT_PRESET_IDS = [
@@ -358,7 +387,7 @@ export const buildDefaultHomeWidgets = (): Record<string, any>[] =>
     // Deterministic ids: the starter layout is rebuilt on every render until the
     // user saves, and a fresh random id each time would remount every widget and
     // re-fire its query on each pass.
-    return { id: `default_${preset.id}`, ...preset.build() };
+    return { id: `default_${preset.id}`, presetId: preset.id, ...preset.build() };
   });
 
 /** The Dashboard panel used until the user saves one of their own. */

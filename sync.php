@@ -749,6 +749,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'owner' => $row['owner'],
             'createdBy' => $row['created_by'] ?? null,
             'relatedLeadId' => $row['related_lead_id'] ?? null,
+            'relatedProjectId' => $row['related_project_id'] ?? null,
             'isLocking' => intval($row['is_locking']) === 1,
             'archived' => intval($row['archived'] ?? 0) === 1,
             'completedBy' => $row['completed_by'] ?? null,
@@ -1075,6 +1076,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'finishedAt' => $pRow['finished_at'] ?? null,
                 'createdAt' => $pRow['created_at'] ?? null,
                 'budget' => isset($pRow['budget']) ? (float)$pRow['budget'] : null,
+                'customFileFields' => json_decode($pRow['custom_files_json'] ?? '[]', true) ?: [],
                 'managers' => $managersByProject[$projId] ?? [],
                 'data' => [],
                 'timeline' => [],
@@ -2382,7 +2384,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingProjIds = $pdo->query("SELECT `id` FROM `projects`")->fetchAll(PDO::FETCH_COLUMN);
             $processedProjIds = [];
 
-            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `deadline`, `delay_reason`, `start_date`, `finished_at`, `budget`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `deadline`=VALUES(`deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`), `budget`=VALUES(`budget`)");
+            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `deadline`, `delay_reason`, `start_date`, `finished_at`, `budget`, `custom_files_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `deadline`=VALUES(`deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`), `budget`=VALUES(`budget`), `custom_files_json`=COALESCE(VALUES(`custom_files_json`), `custom_files_json`)");
 
             // Manager assignments are replaced per project, never globally. The old
             // unconditional `DELETE FROM project_managers` assumed every push carried
@@ -2425,6 +2427,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ? round(min((float)$p['budget'], 999999999999.99), 2)
                     : null;
 
+                // File slots added on this project alone. A client that sends no
+                // list at all means "unchanged" — NULL, which the COALESCE above
+                // turns into keeping what is stored.
+                $projCustomFiles = null;
+                if (array_key_exists('customFileFields', $p) && is_array($p['customFileFields'])) {
+                    $cleanCustom = [];
+                    foreach ($p['customFileFields'] as $cf) {
+                        if (!is_array($cf) || empty($cf['id']) || trim((string)($cf['name'] ?? '')) === '') continue;
+                        $cleanCustom[] = [
+                            'id' => mb_substr((string)$cf['id'], 0, 100),
+                            'name' => mb_substr(trim((string)$cf['name']), 0, 200),
+                            'files' => is_array($cf['files'] ?? null) ? array_values($cf['files']) : [],
+                        ];
+                    }
+                    $projCustomFiles = json_encode($cleanCustom);
+                }
+
                 $insProj->execute([
                     $projId,
                     $p['projectTypeId'],
@@ -2436,7 +2455,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $projDelayReason,
                     $projStart,
                     $projFinished,
-                    $projBudget
+                    $projBudget,
+                    $projCustomFiles
                 ]);
 
                 // Only rewrite this project's managers when the payload actually carries
@@ -2547,8 +2567,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $projToDelete = ccrm_filter_mass_delete($pdo, 'projects', $projToDelete, false, $isDeltaSync);
             if (!empty($projToDelete) && !$ccrm_skip_deletes('projects', 'projects')) {
                 $delProj = $pdo->prepare("DELETE FROM `projects` WHERE `id` = ?");
+                // The project's tasks stay on the Tasks board; only the link to
+                // the project that no longer exists goes.
+                $unlinkProjTasks = $pdo->prepare("UPDATE `tasks` SET `related_project_id` = NULL WHERE `related_project_id` = ?");
                 foreach ($projToDelete as $pid) {
                     $delProj->execute([$pid]);
+                    $unlinkProjTasks->execute([$pid]);
                 }
             }
         }
@@ -2960,7 +2984,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // completed_by/completed_at are in the UPDATE list on purpose: reopening a
             // task ("Restore" in the archive) sends them back as null and must clear
             // the stored attribution, not keep the stale one.
-            $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `is_locking`, `archived`, `completed_by`, `completed_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`), `completed_by` = VALUES(`completed_by`), `completed_at` = VALUES(`completed_at`)");
+            $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `related_project_id`, `is_locking`, `archived`, `completed_by`, `completed_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `related_project_id` = VALUES(`related_project_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`), `completed_by` = VALUES(`completed_by`), `completed_at` = VALUES(`completed_at`)");
 
             foreach ($payload['tasks'] as $t) {
                 // Skip malformed items rather than aborting the whole sync.
@@ -2998,6 +3022,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $t['owner'],
                     $sessionUserName !== '' ? $sessionUserName : null,
                     $t['relatedLeadId'] ?? null,
+                    (isset($t['relatedProjectId']) && $t['relatedProjectId'] !== '') ? $t['relatedProjectId'] : null,
                     ($t['isLocking'] ?? false) ? 1 : 0,
                     ($t['archived'] ?? false) ? 1 : 0,
                     (isset($t['completedBy']) && $t['completedBy'] !== '') ? $t['completedBy'] : null,

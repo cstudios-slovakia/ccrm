@@ -602,6 +602,7 @@ const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
         F("$trigger.owner", t("Assignee", "Zodpovedný", "Felelős"), "select", users.map(u => u.name).filter(Boolean)),
         F("$trigger.deadline", t("Deadline", "Termín", "Határidő")),
         F("$trigger.relatedLeadId", t("Related lead ID", "ID súvisiaceho leadu", "Kapcsolt lead ID")),
+        F("$trigger.relatedProjectId", t("Related project ID", "ID súvisiaceho projektu", "Kapcsolt projekt ID")),
         F("$trigger.isLocking", t("Blocking task", "Blokujúca úloha", "Blokkoló feladat"), "bool"),
         F("$trigger.isAiGenerated", t("Created by AI", "Vytvorené AI", "AI által létrehozva"), "bool"),
       );

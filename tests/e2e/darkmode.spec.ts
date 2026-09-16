@@ -349,17 +349,27 @@ test.describe('Dark mode', () => {
     const measureAfter = async (label: string, open: () => Promise<void>) => {
       await open();
       await page.waitForTimeout(700);
-      const opened = await page.locator('[class*="z-[9999]"], dialog[open], [role="dialog"]').count();
+      const opened = await page
+        .locator('[class*="z-[9999]"], [class*="z-[100000]"], dialog[open], [role="dialog"]')
+        .count();
       expect(opened, `${label}: nothing opened, so nothing was audited`).toBeGreaterThan(0);
       findings.push(
         ...(await collectDarkRegressions(page, label)).map((f) => ({ ...f, text: `${label}: ${f.text}` })),
       );
     };
 
+    // The client profile now opens as a full in-page view rather than an
+    // overlay, so it does not satisfy measureAfter's "an overlay opened"
+    // guard — audit it directly instead.
     await gotoView(page, '#clients');
-    await measureAfter('client profile drawer', async () => {
-      await page.getByText(DRILLDOWN_CLIENT).first().click();
-    });
+    await page.getByText(DRILLDOWN_CLIENT).first().click();
+    await page.waitForTimeout(700);
+    findings.push(
+      ...(await collectDarkRegressions(page, 'client profile')).map((f) => ({
+        ...f,
+        text: `client profile: ${f.text}`,
+      })),
+    );
 
     await gotoView(page, '#leads');
     await measureAfter('new lead modal', async () => {
