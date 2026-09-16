@@ -536,6 +536,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
 
           <div className="relative w-full">
             <CustomSelect
+              searchable
               value={selectedClientFilter}
               onChange={(v) => setSelectedClientFilter(v)}
               options={[

@@ -260,7 +260,9 @@ const SearchableLeadSelect: React.FC<{
                     }
                 >
                     {selected
-                        ? `${selected.name} (${selected.city || "N/A"})`
+                        ? selected.city
+                          ? `${selected.name} (${selected.city})`
+                          : selected.name
                         : noneLabel}
                 </span>
                 <ChevronDown className="h-3.5 w-3.5 text-slate-400 shrink-0" />
@@ -298,10 +300,13 @@ const SearchableLeadSelect: React.FC<{
                             }}
                             className={`w-full text-left px-4 py-2 text-xs hover:bg-indigo-50 cursor-pointer ${l.id === value ? "bg-indigo-50 font-bold text-indigo-700" : "text-slate-700"}`}
                         >
-                            {l.name}{" "}
-                            <span className="text-slate-400">
-                                ({l.city || "N/A"})
-                            </span>
+                            {l.name}
+                            {l.city && (
+                                <span className="text-slate-400">
+                                    {" "}
+                                    ({l.city})
+                                </span>
+                            )}
                         </button>
                     ))}
                     {filtered.length === 0 && (
@@ -11039,6 +11044,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                                 {clientMode === "existing" ? (
                                     <CustomSelect
+                                        searchable
                                         value={selectedExistingClient}
                                         onChange={(v) =>
                                             handleSelectExistingClient(v)

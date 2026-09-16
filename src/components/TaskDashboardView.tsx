@@ -3096,6 +3096,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 {t("Project", "Projekt", "Projekt")}
                             </label>
                             <CustomSelect
+                                searchable
                                 value={newRelatedProjectId}
                                 onChange={setNewRelatedProjectId}
                                 options={taskProjectOptions(projects, leads, t)}
@@ -3111,6 +3112,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 )}
                             </label>
                             <CustomSelect
+                                searchable
                                 value={newRelatedLeadId}
                                 onChange={(v) => {
                                     setNewRelatedLeadId(v);

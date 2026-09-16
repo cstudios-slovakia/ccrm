@@ -1752,6 +1752,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-slate-600 uppercase tracking-wider">{systemLanguage === "sk" ? "Klient / Lead" : systemLanguage === "hu" ? "Kapcsolódó Lead" : "Associated Lead"}</label>
               <CustomSelect
+                searchable
                 value={selectedLeadFilter}
                 onChange={(v) => setSelectedLeadFilter(v)}
                 options={[

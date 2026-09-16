@@ -381,6 +381,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                 {t("Project", "Projekt", "Projekt")}
                             </label>
                             <CustomSelect
+                                searchable
                                 value={draft.relatedProjectId || ""}
                                 disabled={!canEdit}
                                 onChange={(v) => update({ relatedProjectId: v || undefined })}
@@ -393,6 +394,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                 {t("Link to Lead/Client", "Prepojiť so záujemcom", "Összekapcsolás ügyféllel")}
                             </label>
                             <CustomSelect
+                                searchable
                                 value={draft.relatedLeadId || ""}
                                 disabled={!canEdit}
                                 onChange={(v) => {

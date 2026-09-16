@@ -1500,6 +1500,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                     </div>
                     {leads.length > 0 ? (
                       <CustomSelect
+                        searchable
                         value={selectedLeadId}
                         onChange={handleSelectLead}
                         placeholder={t("Select a client…", "Vyberte klienta…", "Válasszon ügyfelet…")}

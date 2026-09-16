@@ -63,7 +63,7 @@ const SearchableClientSelect: React.FC<{
         className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 bg-white focus:outline-none flex items-center justify-between gap-2 cursor-pointer text-left"
       >
         <span className={selected ? "truncate" : "truncate text-slate-400 font-normal"}>
-          {selected ? `${selected.name} (${selected.city || "N/A"})` : selectLabel}
+          {selected ? (selected.city ? `${selected.name} (${selected.city})` : selected.name) : selectLabel}
         </span>
         <Icons.ChevronDown className="h-3.5 w-3.5 text-slate-400 shrink-0" />
       </button>
@@ -95,7 +95,7 @@ const SearchableClientSelect: React.FC<{
                 onClick={() => { onChange(l.id); setOpen(false); setQuery(""); }}
                 className={`w-full text-left px-4 py-2.5 text-xs hover:bg-indigo-50/50 cursor-pointer ${l.id === value ? "bg-indigo-50/50 font-bold text-indigo-700" : "text-slate-700"}`}
               >
-                {l.name} ({l.city || "N/A"})
+                {l.city ? `${l.name} (${l.city})` : l.name}
               </button>
             ))
           )}
@@ -2091,10 +2091,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     {attr.type === "contact" && (
                       <div className="space-y-2">
                         <CustomSelect
+                          searchable
                           value={val}
                           onChange={v => updateVal(v)}
                           placeholder={t("Select Contact...", "Vybrať kontakt...", "Kapcsolat választása...")}
-                          options={leads.map(l => ({ value: l.id, label: `${l.name} (${l.city})` }))}
+                          options={leads.map(l => ({ value: l.id, label: l.city ? `${l.name} (${l.city})` : l.name }))}
                         />
                         {val && (() => {
                           const contact = leads.find(l => l.id === val);
@@ -2377,6 +2378,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                           )}
                           {attr.type === "contact" && (
                             <CustomSelect
+                              searchable
                               value={val}
                               onChange={v => updateVal(v)}
                               placeholder={t("Select Contact...", "Vybrať kontakt...", "Kapcsolat választása...")}
@@ -2640,6 +2642,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     <label className="block text-[9px] text-slate-400 uppercase mb-1">{t("Assignee Contact", "Kontakt", "Kapcsolat")}</label>
                     <div className="min-w-[150px]">
                       <CustomSelect
+                        searchable
                         value={newGeContactId}
                         onChange={v => setNewGeContactId(v)}
                         placeholder={t("Select Contact...", "Vybrať kontakt...", "Kapcsolat választása...")}
@@ -2962,6 +2965,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   <div>
                     <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Assignee Contact", "Kontakt", "Kapcsolat")}</label>
                     <CustomSelect
+                      searchable
                       value={selectedGanttEdit.contactId}
                       onChange={v => {
                         setSelectedGanttEdit(prev => prev ? { ...prev, contactId: v } : null);

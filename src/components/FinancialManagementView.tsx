@@ -2902,6 +2902,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               {t("Select Associated Project *", "Vyberte projekt *", "Válasszon projektet *")}
             </label>
             <CustomSelect
+              searchable
               value={formProjectId}
               onChange={(val) => setFormProjectId(val)}
               placeholder={t("-- Select Project --", "-- Vyberte projekt --", "-- Válasszon --")}
@@ -2911,7 +2912,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   const lead = leads.find((l) => l.id === p.leadId || l.id === p.clientId);
                   return {
                     value: p.id,
-                    label: lead ? `${lead.name} (${lead.city || ""})` : p.id,
+                    label: lead ? (lead.city ? `${lead.name} (${lead.city})` : lead.name) : p.id,
                   };
                 }),
               ]}
@@ -2928,6 +2929,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               {t("Select Associated Client *", "Vyberte klienta *", "Válasszon ügyfelet *")}
             </label>
             <CustomSelect
+              searchable
               value={formClientId}
               onChange={(val) => setFormClientId(val)}
               placeholder={t("-- Select Client --", "-- Vyberte klienta --", "-- Válasszon ügyfelet --")}
@@ -2935,7 +2937,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 { value: "", label: t("-- Select Client --", "-- Vyberte klienta --", "-- Válasszon ügyfelet --") },
                 ...leads.map((l) => ({
                   value: l.id,
-                  label: `${l.name} (${l.city || "N/A"})`,
+                  label: l.city ? `${l.name} (${l.city})` : l.name,
                 })),
               ]}
               size="sm"

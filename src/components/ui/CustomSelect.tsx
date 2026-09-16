@@ -1,13 +1,16 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { motion } from "framer-motion";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, Search } from "lucide-react";
+import { getStoredLanguage } from "../../utils/translations";
 
 export interface DropdownOption {
   value: string;
   label: React.ReactNode;
   icon?: React.ReactNode;
   disabled?: boolean;
+  /** Text the search box matches against — needed when `label` is not a plain string. */
+  searchText?: string;
 }
 
 type RawOption = DropdownOption | string;
@@ -25,12 +28,27 @@ interface CustomSelectProps {
   align?: "left" | "right";
   /** Skip the default trigger styling (box/border/padding) and rely on `className` alone — for compact inline pill-style triggers. */
   unstyled?: boolean;
+  /** Search box at the top of the panel. Defaults to on once the list is long enough to be worth filtering. */
+  searchable?: boolean;
+  searchPlaceholder?: string;
   /** Inline style applied to the trigger button — for dynamic per-instance colors (e.g. status pipeline colors) that can't be expressed as Tailwind classes. */
   style?: React.CSSProperties;
 }
 
 function normalizeOptions(options: RawOption[]): DropdownOption[] {
   return options.map((o) => (typeof o === "string" ? { value: o, label: o } : o));
+}
+
+/** Lowercased and stripped of diacritics, so "mestanek" finds "Mešťánek". */
+function foldText(text: string): string {
+  return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function optionSearchText(o: DropdownOption): string {
+  if (o.searchText !== undefined) return o.searchText;
+  if (typeof o.label === "string") return o.label;
+  if (typeof o.label === "number") return String(o.label);
+  return o.value;
 }
 
 interface Coords {
@@ -43,8 +61,17 @@ interface Coords {
 }
 
 const PANEL_MAX_HEIGHT = 260;
+/** Below this many options, scanning the list beats typing. */
+const SEARCH_THRESHOLD = 8;
 /** Above drawers (`z-[100000]`) and modals (`z-[9999]`) so portaled options paint on top. */
 const PANEL_Z = 100001;
+
+/** The select is a leaf reused across trees that do not pass the language down. */
+const SEARCH_COPY = {
+  en: { search: "Search...", noMatches: "No matches", noOptions: "No options" },
+  sk: { search: "Hľadať...", noMatches: "Žiadne výsledky", noOptions: "Žiadne možnosti" },
+  hu: { search: "Keresés...", noMatches: "Nincs találat", noOptions: "Nincs lehetőség" },
+} as const;
 
 export const CustomSelect: React.FC<CustomSelectProps> = ({
   value,
@@ -58,16 +85,24 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   icon,
   align = "left",
   unstyled = false,
+  searchable,
+  searchPlaceholder,
   style,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(0);
   const [coords, setCoords] = useState<Coords | null>(null);
+  const [query, setQuery] = useState("");
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
-  const opts = normalizeOptions(options);
-  const selected = opts.find((o) => o.value === value);
+  const allOpts = normalizeOptions(options);
+  const selected = allOpts.find((o) => o.value === value);
+  const showSearch = searchable ?? allOpts.length >= SEARCH_THRESHOLD;
+  const copy = SEARCH_COPY[getStoredLanguage()];
+  const needle = showSearch ? foldText(query.trim()) : "";
+  const opts = needle ? allOpts.filter((o) => foldText(optionSearchText(o)).includes(needle)) : allOpts;
 
   const updatePosition = () => {
     const el = triggerRef.current;
@@ -139,20 +174,40 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      const idx = opts.findIndex((o) => o.value === value);
+      setQuery("");
+      const idx = allOpts.findIndex((o) => o.value === value);
       setHighlighted(idx >= 0 ? idx : 0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
+  useEffect(() => {
+    if (isOpen && showSearch) searchRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, showSearch]);
+
   const close = () => {
     setIsOpen(false);
+    setQuery("");
     triggerRef.current?.focus();
   };
 
   const open = () => {
     updatePosition();
     setIsOpen(true);
+  };
+
+  const pick = (opt: DropdownOption | undefined) => {
+    if (!opt || opt.disabled) return;
+    // Close synchronously before the parent re-renders (the task dashboard
+    // calendar is expensive). Otherwise the listbox stays in the DOM for
+    // hundreds of ms and looks like the choice did not take.
+    flushSync(() => {
+      setIsOpen(false);
+      setQuery("");
+    });
+    triggerRef.current?.focus();
+    onChange(opt.value);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -174,12 +229,25 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
       setHighlighted((h) => Math.max(h - 1, 0));
     } else if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
-      const opt = opts[highlighted];
-      if (opt && !opt.disabled) {
-        flushSync(() => setIsOpen(false));
-        triggerRef.current?.focus();
-        onChange(opt.value);
-      }
+      pick(opts[highlighted]);
+    }
+  };
+
+  // The search box takes focus when the panel opens, so it carries the same
+  // keyboard navigation the trigger does while the list is filtered.
+  const handleSearchKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      close();
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlighted((h) => Math.min(h + 1, opts.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlighted((h) => Math.max(h - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      pick(opts[highlighted]);
     }
   };
 
@@ -249,43 +317,62 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                   transformOrigin: coords?.openUp ? "bottom" : "top",
                   visibility: coords ? "visible" : "hidden",
                 }}
-                className={`overflow-y-auto rounded-2xl border border-slate-200 bg-white py-1.5 shadow-xl ring-4 ring-slate-900/[0.03] ${panelClassName}`}
+                className={`flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl ring-4 ring-slate-900/[0.03] ${panelClassName}`}
               >
-                {opts.length === 0 && <div className="px-3.5 py-2.5 text-sm text-slate-400 italic">No options</div>}
-                {opts.map((opt, i) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    role="option"
-                    aria-selected={opt.value === value}
-                    disabled={opt.disabled}
-                    onMouseEnter={() => setHighlighted(i)}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (opt.disabled) return;
-                      // Close synchronously before the parent re-renders (the
-                      // task dashboard calendar is expensive). Otherwise the
-                      // listbox stays in the DOM for hundreds of ms and looks
-                      // like the choice did not take.
-                      flushSync(() => setIsOpen(false));
-                      triggerRef.current?.focus();
-                      onChange(opt.value);
-                    }}
-                    className={`w-full flex items-center gap-2 px-3.5 py-2.5 text-left text-sm font-medium transition-colors cursor-pointer ${
-                      opt.disabled
-                        ? "opacity-40 cursor-not-allowed"
-                        : opt.value === value
-                        ? "bg-accent/10 text-accent"
-                        : i === highlighted
-                        ? "bg-slate-50 text-slate-800"
-                        : "text-slate-700"
-                    }`}
-                  >
-                    {opt.icon}
-                    <span className="flex-1 truncate">{opt.label}</span>
-                    {opt.value === value && <Check className="h-3.5 w-3.5 shrink-0 text-accent" />}
-                  </button>
-                ))}
+                {showSearch && (
+                  <div className="shrink-0 border-b border-slate-100 p-1.5">
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                      <input
+                        ref={searchRef}
+                        type="text"
+                        value={query}
+                        onChange={(e) => {
+                          setQuery(e.target.value);
+                          setHighlighted(0);
+                        }}
+                        onKeyDown={handleSearchKeyDown}
+                        onClick={(e) => e.stopPropagation()}
+                        placeholder={searchPlaceholder ?? copy.search}
+                        className="w-full rounded-lg border border-slate-200 bg-slate-50 py-1.5 pl-8 pr-2.5 text-sm font-medium text-slate-700 outline-none transition-colors placeholder:font-medium placeholder:text-slate-400 focus:border-accent focus:bg-white"
+                      />
+                    </div>
+                  </div>
+                )}
+                <div className="flex-1 overflow-y-auto py-1.5">
+                  {opts.length === 0 && (
+                    <div className="px-3.5 py-2.5 text-sm text-slate-400 italic">
+                      {needle ? copy.noMatches : copy.noOptions}
+                    </div>
+                  )}
+                  {opts.map((opt, i) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      role="option"
+                      aria-selected={opt.value === value}
+                      disabled={opt.disabled}
+                      onMouseEnter={() => setHighlighted(i)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        pick(opt);
+                      }}
+                      className={`w-full flex items-center gap-2 px-3.5 py-2.5 text-left text-sm font-medium transition-colors cursor-pointer ${
+                        opt.disabled
+                          ? "opacity-40 cursor-not-allowed"
+                          : opt.value === value
+                          ? "bg-accent/10 text-accent"
+                          : i === highlighted
+                          ? "bg-slate-50 text-slate-800"
+                          : "text-slate-700"
+                      }`}
+                    >
+                      {opt.icon}
+                      <span className="flex-1 truncate">{opt.label}</span>
+                      {opt.value === value && <Check className="h-3.5 w-3.5 shrink-0 text-accent" />}
+                    </button>
+                  ))}
+                </div>
               </motion.div>
           ) : null,
           document.body
