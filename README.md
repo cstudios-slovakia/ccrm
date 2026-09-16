@@ -149,11 +149,30 @@ plain `php ccrm update` silently reverts to the old branch. `git config` lives
 with the checkout and holds for every invocation. Undo it with
 `git config --unset ccrm.deployBranch`.
 
-`CCRM_DEPLOY_BRANCH=<branch>` still works and still wins, as a one-off override
+`CCRM_DEPLOY_BRANCH=<branch>` **outranks the git config**, as a one-off override
 for a single run:
 
 ```bash
 CCRM_DEPLOY_BRANCH=main php ccrm update
+```
+
+That precedence is also the one way `git config ccrm.deployBranch` appears not to
+work: if the variable is exported in the shell (a profile, a wrapper script, a
+leftover `export` from an earlier session) it wins on every run in that shell,
+and the echoed source line says so:
+
+```
+Deploy branch: 1.9-jackfruit (CCRM_DEPLOY_BRANCH)
+```
+
+If that source is `CCRM_DEPLOY_BRANCH` when you expected your git config, the
+update now prints a warning naming both values. Clear the variable and whatever
+exports it:
+
+```bash
+unset CCRM_DEPLOY_BRANCH
+grep -n CCRM_DEPLOY_BRANCH ~/.bashrc ~/.bash_profile ~/.profile ~/.zshrc
+php ccrm update      # -> Deploy branch: main (git config ccrm.deployBranch)
 ```
 
 The pull is **fast-forward only**. A deployment checkout has no history of its

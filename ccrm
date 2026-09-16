@@ -183,7 +183,11 @@ function ccrm_license_cli($sub, $value) {
  *
  * Most explicit source wins:
  *
- *   1. CCRM_DEPLOY_BRANCH=<branch> — a one-off override for this invocation.
+ *   1. CCRM_DEPLOY_BRANCH=<branch> — a one-off override for this invocation,
+ *      meant for `CCRM_DEPLOY_BRANCH=x php ccrm update` and nothing else. Left
+ *      exported in a shell profile it outranks the git config below on every
+ *      run in that shell, which looks exactly like `git config` being ignored
+ *      — so when the two disagree the update says so out loud.
  *   2. `git config ccrm.deployBranch <branch>` — persistent for this checkout,
  *      and the right way to pin a box that permanently follows something other
  *      than main. An env var in ~/.bashrc is not: it is invisible to cron, and
@@ -194,27 +198,44 @@ function ccrm_license_cli($sub, $value) {
  *      origin/X. Production sits on `main`, so nothing changes there.
  *   4. `main`, when HEAD is detached and git can tell us nothing.
  *
- * @return array{0: string, 1: string} [branch, human-readable source]
+ * @return array{0: string, 1: string, 2: string}
+ *         [branch, human-readable source, warning to print or '']
  */
 function ccrm_deploy_branch() {
-    $env = trim((string) getenv('CCRM_DEPLOY_BRANCH'));
-    if ($env !== '') {
-        return array($env, 'CCRM_DEPLOY_BRANCH');
-    }
-
     $out = array();
     exec("git config --get ccrm.deployBranch", $out, $status);
     $configured = $status === 0 ? trim((string) reset($out)) : '';
+
+    $env = trim((string) getenv('CCRM_DEPLOY_BRANCH'));
+    if ($env !== '') {
+        // A pinned checkout whose operator also has the variable exported sees
+        // the pin quietly ignored. The env var still wins — a one-off override a
+        // stale config could veto would be worse — but it no longer wins silently.
+        $warning = '';
+        if ($configured !== '' && $configured !== $env) {
+            $warning =
+                "\n"
+                . "Warning: CCRM_DEPLOY_BRANCH=$env is set in this environment and overrides\n"
+                . "         `git config ccrm.deployBranch` ($configured). Pulling '$env'.\n"
+                . "         To make the git config take effect, clear the variable and\n"
+                . "         whatever exports it:\n"
+                . "           unset CCRM_DEPLOY_BRANCH\n"
+                . "           grep -n CCRM_DEPLOY_BRANCH ~/.bashrc ~/.bash_profile ~/.profile ~/.zshrc\n"
+                . "\n";
+        }
+        return array($env, 'CCRM_DEPLOY_BRANCH', $warning);
+    }
+
     if ($configured !== '') {
-        return array($configured, 'git config ccrm.deployBranch');
+        return array($configured, 'git config ccrm.deployBranch', '');
     }
 
     $head = ccrm_current_branch();
     if ($head !== '') {
-        return array($head, 'checked-out branch');
+        return array($head, 'checked-out branch', '');
     }
 
-    return array('main', 'default');
+    return array('main', 'default', '');
 }
 
 /**
@@ -233,8 +254,11 @@ function ccrm_update() {
 
     // Which branch this install tracks. See ccrm_deploy_branch() for where the
     // answer comes from and why the checked-out branch is the sane default.
-    list($branch, $branchSource) = ccrm_deploy_branch();
+    list($branch, $branchSource, $branchWarning) = ccrm_deploy_branch();
     echo "Deploy branch: $branch ($branchSource)\n";
+    if ($branchWarning !== '') {
+        echo $branchWarning;
+    }
 
     // 0. Licence gate.
     //
