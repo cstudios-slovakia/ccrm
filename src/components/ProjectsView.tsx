@@ -3,6 +3,8 @@ import * as Icons from "lucide-react";
 import { Plus, Trash2, Settings, Search, Users, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, CalendarClock, Flag, ArrowUp, ArrowDown, ArrowUpDown, Lock } from "lucide-react";
 import type { Project, ProjectAutoCreateSettings, ProjectStatus, ProjectType, Lead, UserProfile, FinancialRecord, FinancialCategory } from "../types";
 import { ProjectDetailsView } from "./ProjectDetailsView";
+import type { Task } from "../types";
+import type { TaskAccess } from "../utils/taskSelectors";
 import { ProjectSettings } from "./ProjectSettings";
 import { CustomSelect } from "./ui/CustomSelect";
 import type { Language } from "../utils/translations";
@@ -113,6 +115,13 @@ interface ProjectsViewProps {
   financialCategories?: FinancialCategory[];
   setFinancialCategories?: React.Dispatch<React.SetStateAction<FinancialCategory[]>>;
   currencyCode?: string | null;
+  /** Every task; a project's Tasks tab lists and creates the ones linked to it. */
+  tasks?: Task[];
+  setTasks?: React.Dispatch<React.SetStateAction<Task[]>>;
+  taskStates?: string[];
+  taskStateColors?: Record<string, string>;
+  taskAccess?: TaskAccess;
+  currentUser?: UserProfile;
 }
 
 export const ProjectsView: React.FC<ProjectsViewProps> = ({
@@ -131,7 +140,13 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   setFinancialRecords,
   financialCategories = [],
   setFinancialCategories,
-  currencyCode
+  currencyCode,
+  tasks,
+  setTasks,
+  taskStates,
+  taskStateColors,
+  taskAccess,
+  currentUser
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
 
@@ -542,6 +557,13 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         currencyCode={currencyCode}
         canEdit={canEdit}
         canDelete={canDelete}
+        tasks={tasks}
+        setTasks={setTasks}
+        projects={projects}
+        taskStates={taskStates}
+        taskStateColors={taskStateColors}
+        taskAccess={taskAccess}
+        currentUser={currentUser}
         onClose={() => {
           setEditingProject(null);
           setEditingProjectType(null);

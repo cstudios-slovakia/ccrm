@@ -2572,6 +2572,12 @@ ${log.payload || ''}
             financialCategories={financialCategories}
             setFinancialCategories={updateFinancialCategoriesAndSync}
             currencyCode={currencyCode}
+            tasks={tasks}
+            setTasks={updateTasksAndSync}
+            taskStates={taskStates}
+            taskStateColors={taskStateColors}
+            taskAccess={taskAccess}
+            currentUser={activeUser}
           />
         );
       case "clients":
@@ -2805,6 +2811,7 @@ ${log.payload || ''}
             tasks={tasks}
             setTasks={updateTasksAndSync}
             leads={leads}
+            projects={projects}
             users={users}
             systemLanguage={userLanguage}
             currentUser={activeUser}

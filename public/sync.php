@@ -749,6 +749,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'owner' => $row['owner'],
             'createdBy' => $row['created_by'] ?? null,
             'relatedLeadId' => $row['related_lead_id'] ?? null,
+            'relatedProjectId' => $row['related_project_id'] ?? null,
             'isLocking' => intval($row['is_locking']) === 1,
             'archived' => intval($row['archived'] ?? 0) === 1,
             'completedBy' => $row['completed_by'] ?? null,
@@ -2566,8 +2567,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $projToDelete = ccrm_filter_mass_delete($pdo, 'projects', $projToDelete, false, $isDeltaSync);
             if (!empty($projToDelete) && !$ccrm_skip_deletes('projects', 'projects')) {
                 $delProj = $pdo->prepare("DELETE FROM `projects` WHERE `id` = ?");
+                // The project's tasks stay on the Tasks board; only the link to
+                // the project that no longer exists goes.
+                $unlinkProjTasks = $pdo->prepare("UPDATE `tasks` SET `related_project_id` = NULL WHERE `related_project_id` = ?");
                 foreach ($projToDelete as $pid) {
                     $delProj->execute([$pid]);
+                    $unlinkProjTasks->execute([$pid]);
                 }
             }
         }
@@ -2979,7 +2984,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // completed_by/completed_at are in the UPDATE list on purpose: reopening a
             // task ("Restore" in the archive) sends them back as null and must clear
             // the stored attribution, not keep the stale one.
-            $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `is_locking`, `archived`, `completed_by`, `completed_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`), `completed_by` = VALUES(`completed_by`), `completed_at` = VALUES(`completed_at`)");
+            $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `related_project_id`, `is_locking`, `archived`, `completed_by`, `completed_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `related_project_id` = VALUES(`related_project_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`), `completed_by` = VALUES(`completed_by`), `completed_at` = VALUES(`completed_at`)");
 
             foreach ($payload['tasks'] as $t) {
                 // Skip malformed items rather than aborting the whole sync.
@@ -3017,6 +3022,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $t['owner'],
                     $sessionUserName !== '' ? $sessionUserName : null,
                     $t['relatedLeadId'] ?? null,
+                    (isset($t['relatedProjectId']) && $t['relatedProjectId'] !== '') ? $t['relatedProjectId'] : null,
                     ($t['isLocking'] ?? false) ? 1 : 0,
                     ($t['archived'] ?? false) ? 1 : 0,
                     (isset($t['completedBy']) && $t['completedBy'] !== '') ? $t['completedBy'] : null,

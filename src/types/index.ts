@@ -280,6 +280,12 @@ export interface Task {
   createdBy?: string; // Immutable creator name; absent on legacy tasks
   assignedUsers: string[]; // names of assigned team members
   relatedLeadId?: string; // linked lead or client id (optional)
+  /**
+   * The project this task belongs to, if any. Such a task is an ordinary task —
+   * it lives on the Tasks board like any other — and is also listed in the
+   * project's own Tasks tab.
+   */
+  relatedProjectId?: string;
   isLocking?: boolean; // if true, it blocks related lead from transitioning stages until done
   completedBy?: string; // name of user who completed the task
   completedAt?: string; // timestamp (YYYY-MM-DD HH:MM) when completed

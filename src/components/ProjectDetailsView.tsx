@@ -22,6 +22,10 @@ import {
 import { evaluateProjectDeadline, finishedAtForStatus, projectDisplayName, projectMissedDeadline, projectPipelineSegments, projectStartDate, projectStatusBadgeClass, projectStatusDotClass, projectStatusOptions } from "../utils/projects";
 import { CustomSelect } from "./ui/CustomSelect";
 import { PipelineStrip } from "./ui/PipelineStrip";
+import { ProjectTasksPanel } from "./ProjectTasksPanel";
+import type { Task } from "../types";
+import { isDoneTaskState } from "../utils/projectTasks";
+import { isOnPersonalDashboard, type TaskAccess } from "../utils/taskSelectors";
 
 const SearchableClientSelect: React.FC<{
   leads: Lead[];
@@ -102,9 +106,9 @@ const SearchableClientSelect: React.FC<{
 };
 
 /** The tabs of the right-hand column, as they also appear in the URL's `tab` parameter. */
-type RightTab = "timeline" | "gantt" | "finances" | "files";
+type RightTab = "timeline" | "tasks" | "gantt" | "finances" | "files";
 const isRightTab = (value: string | null): value is RightTab =>
-  value === "timeline" || value === "gantt" || value === "finances" || value === "files";
+  value === "timeline" || value === "tasks" || value === "gantt" || value === "finances" || value === "files";
 
 interface ProjectDetailsViewProps {
   project: Project | null;
@@ -132,7 +136,23 @@ interface ProjectDetailsViewProps {
    * rows and finance rows. Never wider than `canEdit`. Defaults to true.
    */
   canDelete?: boolean;
+  /**
+   * Every task in the workspace; the Tasks tab lists the ones carrying this
+   * project's id. Without `setTasks` the tab is not offered.
+   */
+  tasks?: Task[];
+  setTasks?: React.Dispatch<React.SetStateAction<Task[]>>;
+  /** For the task drawer's "Project" field. */
+  projects?: Project[];
+  taskStates?: string[];
+  taskStateColors?: Record<string, string>;
+  /** Task permissions — separate from the project ones in `canEdit`/`canDelete`. */
+  taskAccess?: TaskAccess;
+  currentUser?: UserProfile;
 }
+
+const DEFAULT_TASK_STATES = ["New", "In progress", "Blocked", "Done"];
+const FULL_TASK_ACCESS: TaskAccess = { view: true, create: true, edit: true, delete: true, viewAll: true };
 
 export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   project,
@@ -148,7 +168,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   onSave,
   isNew = false,
   canEdit = true,
-  canDelete: canDeleteProp = true
+  canDelete: canDeleteProp = true,
+  tasks = [],
+  setTasks,
+  projects = [],
+  taskStates = DEFAULT_TASK_STATES,
+  taskStateColors,
+  taskAccess = FULL_TASK_ACCESS,
+  currentUser
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
   // Removing something is a change, so the delete flag never outranks edit.
@@ -2030,6 +2057,32 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   {t("Timeline", "Časová os", "Idővonal")}
                 </button>
               )}
+              {setTasks && taskAccess.view && (() => {
+                // Open tasks, counted by the same visibility rule the tab lists them with.
+                const openTaskCount = tasks.filter(tk =>
+                  tk.relatedProjectId === project.id &&
+                  !tk.archived &&
+                  !isDoneTaskState(tk.status, taskStates) &&
+                  (taskAccess.viewAll || isOnPersonalDashboard(tk, currentUser?.name || ""))
+                ).length;
+                return (
+                  <button
+                    onClick={() => handleRightTabChange("tasks")}
+                    className={`px-4 py-2 rounded-xl font-heading font-bold text-xs uppercase tracking-wider transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 ${
+                      activeRightTab === "tasks"
+                        ? "bg-slate-900 text-white shadow-sm"
+                        : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                    }`}
+                  >
+                    <span>{t("Tasks", "Úlohy", "Feladatok")}</span>
+                    {openTaskCount > 0 && (
+                      <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${activeRightTab === "tasks" ? "bg-white/20 text-white" : "bg-indigo-500/15 text-indigo-600"}`}>
+                        {openTaskCount}
+                      </span>
+                    )}
+                  </button>
+                );
+              })()}
               {projectType.hasGantt && (
                 <button
                   onClick={() => handleRightTabChange("gantt")}
@@ -2074,6 +2127,24 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               </button>
             </div>
           </div>
+
+          {/* TAB CONTENT: Tasks — ordinary tasks that carry this project's id */}
+          {activeRightTab === "tasks" && setTasks && (
+            <ProjectTasksPanel
+              project={project}
+              isNew={isNew}
+              tasks={tasks}
+              setTasks={setTasks}
+              projects={projects}
+              leads={leads}
+              users={users}
+              userLanguage={userLanguage}
+              taskStates={taskStates}
+              taskStateColors={taskStateColors}
+              taskAccess={taskAccess}
+              currentUser={currentUser}
+            />
+          )}
 
           {/* TAB CONTENT: Timeline */}
           {activeRightTab === "timeline" && projectType.hasTimeline && (

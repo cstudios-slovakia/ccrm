@@ -247,6 +247,7 @@ const TASKS = [
     createdBy: 'Erik',
     assignedUsers: ['Erik'],
     isLocking: true,
+    relatedProjectId: 'project-1',
   },
   {
     id: 'task-4',
@@ -261,6 +262,7 @@ const TASKS = [
     assignedUsers: ['Mária'],
     completedBy: 'Mária',
     completedAt: isoStamp(-1, '16:40'),
+    relatedProjectId: 'project-1',
   },
 ];
 
