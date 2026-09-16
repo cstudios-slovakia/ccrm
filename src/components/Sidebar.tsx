@@ -495,12 +495,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div className="h-screen w-20 shrink-0 select-none hidden lg:block" />
       
       {/* DESKTOP COLLAPSIBLE OVERLAY SIDEBAR */}
-      <aside 
+      <aside
         ref={sidebarRef}
+        onMouseEnter={() => { if (!isEditingNav) setIsCollapsed(false); }}
+        onMouseLeave={() => { if (!isEditingNav) setIsCollapsed(true); }}
         className={cn(
           "h-screen fixed left-0 top-0 bg-white border-r border-slate-200/80 flex flex-col transition-all duration-300 z-[1000] select-none shrink-0 hidden lg:flex",
-          isCollapsed 
-            ? "w-20 shadow-none border-r-slate-200/80" 
+          isCollapsed
+            ? "w-20 shadow-none border-r-slate-200/80"
             : "w-64 shadow-[10px_0_30px_rgba(0,0,0,0.06)] border-r-transparent"
         )}
       >
