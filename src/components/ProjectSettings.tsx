@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import * as Icons from "lucide-react";
-import { Plus, Trash2, ArrowUp, ArrowDown, Save, X, Workflow, LayoutGrid, Rows3, CalendarClock, Paperclip, FileText, SlidersHorizontal, History, ListChecks } from "lucide-react";
+import { Plus, Trash2, ArrowUp, ArrowDown, Save, X, Workflow, LayoutGrid, Rows3, CalendarClock, Paperclip, FileText, SlidersHorizontal, History, ListChecks, GripVertical } from "lucide-react";
 import { CustomSelect } from "./ui/CustomSelect";
+import { cn } from "../utils/cn";
 import { ColorPicker } from "./ui/ColorPicker";
 import type { ProjectAutoCreateSettings, ProjectType, ProjectAttribute, ProjectAttributeType, ProjectFileField, TimelineEventType } from "../types";
 import { DEFAULT_PROJECT_AUTO_CREATE, isProjectAutoCreateActive } from "../utils/projectAutoCreate";
@@ -270,6 +271,58 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
       if (!window.confirm(confirmMsg)) return;
     }
     setFileFields(prev => prev.filter(f => f.id !== fieldId));
+  };
+
+  /* Drag-and-drop reordering of the custom attributes. The dragged row is held
+     by id, and the drop marker by the row it points at plus which edge of it,
+     so the blue line sits exactly where the attribute will land. */
+  const [draggedAttrId, setDraggedAttrId] = useState<string | null>(null);
+  const [attrDropTarget, setAttrDropTarget] = useState<{ id: string; position: "before" | "after" } | null>(null);
+
+  const endAttrDrag = () => {
+    setDraggedAttrId(null);
+    setAttrDropTarget(null);
+  };
+
+  const handleAttrDragStart = (e: React.DragEvent<HTMLElement>, id: string) => {
+    if (!canEdit) {
+      e.preventDefault();
+      return;
+    }
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", id);
+    setDraggedAttrId(id);
+  };
+
+  const handleAttrDragOver = (e: React.DragEvent<HTMLElement>, targetId: string) => {
+    if (!draggedAttrId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    const rect = e.currentTarget.getBoundingClientRect();
+    const position: "before" | "after" =
+      rect.height && e.clientY - rect.top > rect.height / 2 ? "after" : "before";
+    if (attrDropTarget?.id !== targetId || attrDropTarget?.position !== position) {
+      setAttrDropTarget({ id: targetId, position });
+    }
+  };
+
+  const handleAttrDrop = (e: React.DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    const dragId = draggedAttrId;
+    const drop = attrDropTarget;
+    endAttrDrag();
+    if (!canEdit || !dragId || !drop) return;
+    setAttributes(prev => {
+      const from = prev.findIndex(a => a.id === dragId);
+      const onto = prev.findIndex(a => a.id === drop.id);
+      if (from === -1 || onto === -1) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      // The target index shifts by one once the dragged row is lifted out from above it.
+      const base = onto > from ? onto - 1 : onto;
+      next.splice(drop.position === "after" ? base + 1 : base, 0, moved);
+      return next;
+    });
   };
 
   const handleMoveAttribute = (index: number, direction: "up" | "down") => {
@@ -999,14 +1052,40 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                   {t("No attributes added yet. Use the form below to add attributes.", "Zatiaľ neboli pridané žiadne atribúty.", "Még nincsenek attribútumok hozzáadva.")}
                 </div>
               ) : (
-                attributes.map((attr, idx) => (
-                  <div key={attr.id} className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-2xl shadow-sm text-xs font-semibold">
-                    <div className="flex flex-col">
-                      <span className="text-slate-800 text-[13px]">{attr.name}</span>
-                      <span className="text-slate-400 font-medium">
-                        {attributeTypeLabel(attr.type)} 
-                        {attr.required && t(" • Required", " • Povinné", " • Kötelező")}
-                      </span>
+                attributes.map((attr, idx) => {
+                  const drop = draggedAttrId && attrDropTarget?.id === attr.id ? attrDropTarget.position : null;
+                  return (
+                  <div
+                    key={attr.id}
+                    draggable={canEdit}
+                    onDragStart={e => handleAttrDragStart(e, attr.id)}
+                    onDragEnd={endAttrDrag}
+                    onDragOver={e => handleAttrDragOver(e, attr.id)}
+                    onDrop={handleAttrDrop}
+                    title={canEdit ? t("Drag to reorder", "Potiahnutím zmeníte poradie", "Húzza az átrendezéshez") : undefined}
+                    className={cn(
+                      "group relative flex items-center justify-between p-3 bg-white border border-slate-200 rounded-2xl shadow-sm text-xs font-semibold transition-[opacity,box-shadow] duration-150",
+                      canEdit && "cursor-grab active:cursor-grabbing",
+                      draggedAttrId === attr.id && "opacity-40"
+                    )}
+                  >
+                    {drop === "before" && (
+                      <span className="pointer-events-none absolute inset-x-2 -top-1 h-0.5 rounded-full bg-indigo-500 animate-in fade-in duration-150" />
+                    )}
+                    {drop === "after" && (
+                      <span className="pointer-events-none absolute inset-x-2 -bottom-1 h-0.5 rounded-full bg-indigo-500 animate-in fade-in duration-150" />
+                    )}
+                    <div className="flex items-center gap-2 min-w-0">
+                      {canEdit && (
+                        <GripVertical className="h-4 w-4 shrink-0 text-slate-300 group-hover:text-indigo-500 transition-colors duration-150" />
+                      )}
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-slate-800 text-[13px]">{attr.name}</span>
+                        <span className="text-slate-400 font-medium">
+                          {attributeTypeLabel(attr.type)} 
+                          {attr.required && t(" • Required", " • Povinné", " • Kötelező")}
+                        </span>
+                      </div>
                     </div>
                     <div className="flex items-center gap-1">
                       <button
@@ -1035,7 +1114,8 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                       </button>
                     </div>
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
 
