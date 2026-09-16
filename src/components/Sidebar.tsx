@@ -648,7 +648,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 
                 {!isCollapsed && (
                   <span className={cn(
-                    "text-sm font-heading font-medium tracking-wide",
+                    "text-sm font-heading font-medium tracking-wide truncate min-w-0 flex-1",
                     isEditingNav
                       ? "text-slate-700 font-semibold"
                       : (item.isCustomUE || item.isCustomDash)
@@ -704,7 +704,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <ChevronLeft className="h-5 w-5 shrink-0 text-slate-400" />
               )}
               {!isCollapsed && (
-                <span className="text-sm font-heading font-medium tracking-wide">
+                <span className="text-sm font-heading font-medium tracking-wide truncate min-w-0 flex-1">
                   {getTranslation(systemLanguage, "sidebar.collapse")}
                 </span>
               )}
@@ -749,7 +749,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <Pencil className="h-5 w-5 shrink-0 transition-transform group-hover:scale-110" />
               )}
               {!isCollapsed && (
-                <span className="text-xs font-semibold tracking-wide">
+                <span className="text-xs font-semibold tracking-wide truncate min-w-0 flex-1">
                   {isEditingNav
                     ? (systemLanguage === "sk" ? "Uložiť rozloženie" : systemLanguage === "hu" ? "Elrendezés mentése" : "Save Layout")
                     : t("Edit Navigation", "Upraviť menu", "Navigáció szerkesztése")}
@@ -804,7 +804,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               )}
             >
               <Settings className={cn("h-5 w-5 shrink-0 transition-transform", activeTab.startsWith("settings") ? "text-white" : "text-slate-400 group-hover:rotate-45")} />
-              {!isCollapsed && <span className="text-xs font-semibold tracking-wide">{getTranslation(systemLanguage, "sidebar.settings")}</span>}
+              {!isCollapsed && <span className="text-xs font-semibold tracking-wide truncate min-w-0 flex-1">{getTranslation(systemLanguage, "sidebar.settings")}</span>}
             </button>
           )}
 
@@ -820,7 +820,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             className="w-full flex items-center gap-3.5 px-3 py-2.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50/50 transition-all duration-200 text-left group"
           >
             <LogOut className="h-5 w-5 shrink-0 text-slate-400 group-hover:text-rose-500 transition-colors" />
-            {!isCollapsed && <span className="text-xs font-semibold tracking-wide">{getTranslation(systemLanguage, "sidebar.logout")}</span>}
+            {!isCollapsed && <span className="text-xs font-semibold tracking-wide truncate min-w-0 flex-1">{getTranslation(systemLanguage, "sidebar.logout")}</span>}
           </button>
         </div>
       </aside>
