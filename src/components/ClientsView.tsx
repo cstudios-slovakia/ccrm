@@ -2237,7 +2237,16 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         newEvent.fileName = logFileName;
         newEvent.fileSize = logFileSize;
         newEvent.fileType = logFileType;
-        if (uploadedFilePath) newEvent.filePath = uploadedFilePath;
+        if (uploadedFilePath) {
+          newEvent.filePath = uploadedFilePath;
+          // `filePath` has no column of its own — only attachments_json
+          // survives a sync round trip. Without this the stored path is
+          // lost on the next reload and the preview has to guess the URL
+          // back from the event id and the file name.
+          newEvent.attachments = [
+            { name: logFileName, size: logFileSize, path: uploadedFilePath }
+          ];
+        }
       }
     } else if (logType === "appointment") {
       newEvent.extraTime = logTime;
@@ -2372,6 +2381,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       fileSize: uploadFileSize,
       fileType: uploadFileType,
       filePath: uploadedFilePath,
+      // `filePath` has no column of its own — only attachments_json
+      // survives a sync round trip. Without this the stored path is
+      // lost on the next reload and the preview has to guess the URL
+      // back from the event id and the file name.
+      attachments: uploadedFilePath
+        ? [{ name: uploadFileName, size: uploadFileSize, path: uploadedFilePath }]
+        : undefined,
       author: currentUser?.name || "",
     };
 
@@ -3695,7 +3711,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                         <span className="text-[9px] font-extrabold text-slate-400">({event.fileSize})</span>
                                       </div>
                                       <a 
-                                        href={event.filePath || `/uploads/${event.id}_${event.fileName}`}
+                                        href={event.attachments?.[0]?.path || event.filePath || `/uploads/${event.id}_${event.fileName}`}
                                         download={event.fileName}
                                         target="_blank"
                                         rel="noopener noreferrer"
@@ -3886,7 +3902,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                         <span className="text-[9px] font-extrabold text-slate-400">({event.fileSize})</span>
                                       </div>
                                       <a 
-                                        href={event.filePath || `/uploads/${event.id}_${event.fileName}`}
+                                        href={event.attachments?.[0]?.path || event.filePath || `/uploads/${event.id}_${event.fileName}`}
                                         download={event.fileName}
                                         target="_blank"
                                         rel="noopener noreferrer"
@@ -4067,7 +4083,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
                               <div className="flex items-center gap-1.5 shrink-0">
                                 <a
-                                  href={(file as any).filePath || `/uploads/${file.id}_${file.fileName}`}
+                                  href={file.attachments?.[0]?.path || (file as any).filePath || `/uploads/${file.id}_${file.fileName}`}
                                   download={file.fileName}
                                   target="_blank"
                                   rel="noopener noreferrer"

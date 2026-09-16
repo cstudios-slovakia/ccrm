@@ -545,6 +545,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $teContent
             ]);
 
+            // A child-table write must also bump the parent's updated_at, or the sync
+            // conflict guard (ccrm_write_would_clobber) never sees that anything changed
+            // and a concurrent lead edit can silently delete this note.
+            $pdo->prepare("UPDATE `leads` SET `updated_at` = CURRENT_TIMESTAMP(3) WHERE `id` = ?")->execute([$existingLeadId]);
+
             $pdo->commit();
 
             if ($idempotencyKey !== '') {

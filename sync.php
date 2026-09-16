@@ -194,6 +194,7 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
         'client_category_id' => $inc['clientCategoryId'] ?? null,
         'archived' => !empty($inc['archived']) ? 1 : 0,
         'follow_ups' => (isset($inc['followUps']) && !empty($inc['followUps'])) ? $inc['followUps'] : null,
+        'vat_validation_result' => isset($inc['vatValidationResult']) ? json_encode($inc['vatValidationResult']) : null,
         // 'financial_summary' is deliberately excluded: it is server-owned, so a
         // lead whose only difference is the server-generated report still counts
         // as identical and is skipped (no rewrite, no needless report re-spawn).
@@ -216,13 +217,19 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
             ksort($incMap);
             ksort($dbMap);
             if (json_encode($incMap) !== json_encode($dbMap)) return false;
+        } elseif ($col === 'vat_validation_result') {
+            $incDecoded = $val !== null ? json_decode($val, true) : null;
+            $dbDecoded = ($dbVal !== null && $dbVal !== '') ? json_decode($dbVal, true) : null;
+            if (is_array($incDecoded)) ksort($incDecoded);
+            if (is_array($dbDecoded)) ksort($dbDecoded);
+            if (json_encode($incDecoded) !== json_encode($dbDecoded)) return false;
         } else {
             $v1 = ($val === '') ? null : $val;
             $v2 = ($dbVal === '') ? null : $dbVal;
             if ($v1 !== $v2) return false;
         }
     }
-    
+
     // Compare categories
     $incCats = $inc['categories'] ?? [];
     $dbCats = $db['categories'] ?? [];
@@ -256,9 +263,11 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
             'attachments_json' => ccrm_encode_attachments($te['attachments'] ?? null),
             'extra_time' => $te['extraTime'] ?? $te['extra_time'] ?? null,
             'audio_file' => $te['audioFile'] ?? $te['audio_file'] ?? null,
-            'transcription' => $te['transcription'] ?? null
+            'transcription' => $te['transcription'] ?? null,
+            'timestamp' => $te['timestamp'] ?? null,
+            'author' => $te['author'] ?? null
         ];
-        
+
         foreach ($teFields as $col => $val) {
             $dbVal = $dbTe[$col] ?? null;
             if ($col === 'amount') {
@@ -267,6 +276,10 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
                 } elseif ($val !== $dbVal) {
                     return false;
                 }
+            } elseif ($col === 'timestamp') {
+                $v1 = $val ? date('Y-m-d H:i:s', strtotime($val)) : null;
+                $v2 = $dbVal ? date('Y-m-d H:i:s', strtotime($dbVal)) : null;
+                if ($v1 !== $v2) return false;
             } else {
                 $v1 = ($val === '') ? null : $val;
                 $v2 = ($dbVal === '') ? null : $dbVal;
@@ -2072,7 +2085,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'INTEGRATIONS_CONFIG' => $integrationsValue,
                 'COMPANY_BILLING_SETTINGS' => $billingValue,
                 'INVOICING_INTEGRATIONS' => $invIntValue,
-                'CUSTOM_LABELS' => json_encode($s['customLabels'] ?? (object)[])
+                // Same contract: omitted means unchanged. No UI currently sends
+                // `customLabels` at all, so without this an unrelated save (e.g.
+                // just the system name) would wipe it for every client by writing
+                // `{}` over whatever was stored. array_key_exists (not isset) so an
+                // intentionally-empty-but-present value still counts as "sent".
+                'CUSTOM_LABELS' => array_key_exists('customLabels', $s) ? json_encode($s['customLabels']) : null,
             ];
 
             $insSet = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
