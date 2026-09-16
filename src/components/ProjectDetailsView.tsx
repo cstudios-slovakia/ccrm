@@ -122,7 +122,9 @@ interface ProjectDetailsViewProps {
   setFinancialCategories?: React.Dispatch<React.SetStateAction<FinancialCategory[]>>;
   currencyCode?: string | null;
   onClose: () => void;
-  onSave: (updatedProject: Project) => void;
+  /** `close: false` saves in place and leaves the card open — used by the
+      controls that save without the Save button (status, budget, files). */
+  onSave: (updatedProject: Project, options?: { close?: boolean }) => void;
   /** A project that has never been saved: opens straight in edit mode, so it can be named. */
   isNew?: boolean;
   /**
@@ -401,6 +403,22 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
   // File Upload states
   const [isUploading, setIsUploading] = useState<string | null>(null); // tracks active attribute.id uploading
+  /* Which drop target the pointer is over, so only that one lights up. Paired
+     with a counter, not a flag: dragging across a child fires leave on the parent. */
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const dragDepth = React.useRef(0);
+
+  /* A file dropped beside a slot instead of on it would otherwise be opened by
+     the browser, which navigates away from the app and loses the project. */
+  useEffect(() => {
+    const swallow = (e: DragEvent) => e.preventDefault();
+    window.addEventListener("dragover", swallow);
+    window.addEventListener("drop", swallow);
+    return () => {
+      window.removeEventListener("dragover", swallow);
+      window.removeEventListener("drop", swallow);
+    };
+  }, []);
 
   useEffect(() => {
     if (projectType?.timelineEventTypes && projectType.timelineEventTypes.length > 0) {
@@ -536,7 +554,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     const value = raw === "" ? 0 : Number(raw);
     if (!Number.isFinite(value) || value < 0) return;
     // Saved straight away, like the status strip — no trip through edit mode.
-    handleSave({ budget: value > 0 ? Math.round(value * 100) / 100 : null }, false);
+    handleSave({ budget: value > 0 ? Math.round(value * 100) / 100 : null }, { validate: false, close: false });
     setBudgetDraft(null);
   };
 
@@ -666,14 +684,62 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     }
   };
 
+  /** Sends a whole selection one by one and keeps the ones that made it. */
+  const uploadFiles = async (slotId: string, files: File[]): Promise<ProjectUploadedFile[]> => {
+    const done: ProjectUploadedFile[] = [];
+    for (const file of files) {
+      const one = await uploadFile(slotId, file);
+      if (one) done.push(one);
+    }
+    return done;
+  };
+
+  /** The drag handlers every drop zone shares — highlight, and take the files. */
+  const dropZone = (id: string, onFiles: (files: File[]) => void) => ({
+    onDragEnter: (e: React.DragEvent) => {
+      if (!canEdit) return;
+      e.preventDefault();
+      dragDepth.current += 1;
+      setDropTarget(id);
+    },
+    onDragOver: (e: React.DragEvent) => {
+      if (!canEdit) return;
+      // Without this the browser keeps its "no drop" cursor and never fires onDrop.
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+    },
+    onDragLeave: (e: React.DragEvent) => {
+      if (!canEdit) return;
+      e.preventDefault();
+      dragDepth.current = Math.max(0, dragDepth.current - 1);
+      if (dragDepth.current === 0) setDropTarget(null);
+    },
+    onDrop: (e: React.DragEvent) => {
+      if (!canEdit) return;
+      e.preventDefault();
+      e.stopPropagation();
+      dragDepth.current = 0;
+      setDropTarget(null);
+      const files = Array.from(e.dataTransfer?.files || []);
+      if (files.length > 0) onFiles(files);
+    },
+  });
+
   const handleFileUpload = async (attrId: string, e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !canEdit) return;
-    const uploadedFile = await uploadFile(attrId, file);
-    if (!uploadedFile) return;
+    const input = e.target;
+    const files = Array.from(input.files || []);
+    input.value = "";
+    await addFilesToAttribute(attrId, files);
+  };
+
+  /** Appends dropped or picked files to a `files` attribute in edit mode. */
+  const addFilesToAttribute = async (attrId: string, files: File[]) => {
+    if (files.length === 0 || !canEdit) return;
+    const uploaded = await uploadFiles(attrId, files);
+    if (uploaded.length === 0) return;
     setDynamicData(prev => ({
       ...prev,
-      [attrId]: [...asList(prev[attrId]), uploadedFile]
+      [attrId]: [...asList(prev[attrId]), ...uploaded]
     }));
   };
 
@@ -689,7 +755,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
   /** The upload list and button for a files attribute or a document slot, in edit mode. */
   const renderFilesInput = (attrId: string, val: unknown) => (
-    <div className="space-y-2">
+    <div
+      className={`space-y-2 rounded-xl transition-colors duration-150 ${
+        dropTarget === attrId ? "ring-2 ring-indigo-400 bg-indigo-50/60" : ""
+      }`}
+      {...dropZone(attrId, files => { void addFilesToAttribute(attrId, files); })}
+    >
       <div className="flex flex-col gap-1.5">
         {asList(val).map((f, fIdx) => (
           <div key={fIdx} className="flex items-center justify-between p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold">
@@ -727,10 +798,15 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-dashed border-slate-300 text-xs font-semibold text-slate-500 hover:bg-slate-50 hover:border-slate-400 transition-all cursor-pointer disabled:opacity-50"
         >
           <Upload className="h-4 w-4 text-slate-400" />
-          <span>{isUploading === attrId ? t("Uploading...", "Nahráva sa...", "Feltöltés...") : t("Upload File", "Nahrať súbor", "Fájl feltöltése")}</span>
+          <span>
+            {isUploading === attrId
+              ? t("Uploading...", "Nahráva sa...", "Feltöltés...")
+              : t("Upload file or drop it here", "Nahrať súbor alebo ho sem pretiahnite", "Fájl feltöltése vagy húzza ide")}
+          </span>
         </button>
         <input
           type="file"
+          multiple
           id={`file-input-${attrId}`}
           onChange={e => handleFileUpload(attrId, e)}
           className="hidden"
@@ -766,22 +842,29 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     latestFilesRef.current = { data: nextData, custom: nextCustom };
     setDynamicData(nextData);
     setCustomFileFields(nextCustom);
-    if (!isEditing) handleSave({ data: nextData, customFileFields: nextCustom }, false);
+    if (!isEditing) handleSave({ data: nextData, customFileFields: nextCustom }, { validate: false, close: false });
+  };
+
+  /** Adds files to one slot — from its button, or dropped onto its card. */
+  const addFilesToSlot = async (slot: FileSlot, files: File[]) => {
+    if (files.length === 0 || !canEdit) return;
+    const uploaded = await uploadFiles(slot.id, files);
+    if (uploaded.length === 0) return;
+    // Read the slots back after the await: the render that started the upload
+    // is stale, and a second drop must not drop the first one's files.
+    const { data, custom } = latestFilesRef.current;
+    if (slot.custom) {
+      commitFiles(data, custom.map(f => f.id === slot.id ? { ...f, files: [...(f.files || []), ...uploaded] } : f));
+    } else {
+      commitFiles({ ...data, [slot.id]: [...asList(data[slot.id]), ...uploaded] }, custom);
+    }
   };
 
   const handleSlotUpload = async (slot: FileSlot, e: React.ChangeEvent<HTMLInputElement>) => {
     const input = e.target;
-    const file = input.files?.[0];
+    const files = Array.from(input.files || []);
     input.value = "";
-    if (!file || !canEdit) return;
-    const uploaded = await uploadFile(slot.id, file);
-    if (!uploaded) return;
-    const { data, custom } = latestFilesRef.current;
-    if (slot.custom) {
-      commitFiles(data, custom.map(f => f.id === slot.id ? { ...f, files: [...(f.files || []), uploaded] } : f));
-    } else {
-      commitFiles({ ...data, [slot.id]: [...asList(data[slot.id]), uploaded] }, custom);
-    }
+    await addFilesToSlot(slot, files);
   };
 
   const handleSlotRemoveFile = (slot: FileSlot, fileIndex: number) => {
@@ -818,11 +901,15 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const renderFileSlot = (slot: FileSlot) => {
     const uploaded = slot.files.length > 0;
     const busy = isUploading === slot.id;
+    const dropping = dropTarget === slot.id;
     return (
       <div
         key={slot.id}
+        {...dropZone(slot.id, files => { void addFilesToSlot(slot, files); })}
         className={`p-3 rounded-2xl border transition-colors duration-200 animate-fade-in ${
-          uploaded ? "bg-emerald-50 border-emerald-200" : "bg-rose-50 border-rose-200"
+          dropping
+            ? "bg-indigo-50 border-indigo-300 ring-2 ring-indigo-400"
+            : uploaded ? "bg-emerald-50 border-emerald-200" : "bg-rose-50 border-rose-200"
         }`}
       >
         <div className="flex items-center justify-between gap-3">
@@ -844,7 +931,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               >
                 <Upload className="h-3.5 w-3.5 text-slate-400" />
                 <span>{busy ? t("Uploading...", "Nahráva sa...", "Feltöltés...") : t("Upload", "Nahrať", "Feltöltés")}</span>
-                <input type="file" className="hidden" disabled={busy} onChange={e => handleSlotUpload(slot, e)} />
+                <input type="file" multiple className="hidden" disabled={busy} onChange={e => handleSlotUpload(slot, e)} />
               </label>
             )}
             {slot.custom && canDelete && (
@@ -859,6 +946,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             )}
           </div>
         </div>
+
+        {canEdit && (dropping || !uploaded) && (
+          <p className={`mt-2 px-2.5 py-1.5 rounded-xl border border-dashed text-center text-[10px] font-bold uppercase tracking-wider transition-colors duration-150 ${
+            dropping ? "border-indigo-400 text-indigo-600 bg-white/70" : "border-slate-300/70 text-slate-400"
+          }`}>
+            {t("Drop files here", "Pretiahnite súbory sem", "Húzza ide a fájlokat")}
+          </p>
+        )}
 
         {uploaded && (
           <div className="mt-2 flex flex-col gap-1.5">
@@ -898,7 +993,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
    * stays live outside edit mode and saves the value it was just given.
    * Returns false when a required attribute blocked the save.
    */
-  const handleSave = (overrides: Partial<Project> = {}, validate = true): boolean => {
+  const handleSave = (
+    overrides: Partial<Project> = {},
+    { validate = true, close = true }: { validate?: boolean; close?: boolean } = {},
+  ): boolean => {
     // Every write to the project funnels through here — the one place a
     // read-only role is refused, whichever control got as far as calling it.
     if (!canEdit) return false;
@@ -983,7 +1081,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       ...overrides
     };
 
-    onSave(updatedProject);
+    onSave(updatedProject, { close });
     return true;
   };
 
@@ -1513,7 +1611,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => { if (handleSave()) setIsEditing(false); }}
+                    onClick={() => { if (handleSave({}, { close: false })) setIsEditing(false); }}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black uppercase tracking-wider shadow-sm transition-all active:scale-95 cursor-pointer"
                   >
                     <Icons.Save className="h-3.5 w-3.5" />
@@ -1571,7 +1669,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   // it — see finishedAtForStatus. Only where the field is shown.
                   const nextFinished = projectType.hasDeadline ? finishedAtForStatus(v, finishedAt, todayLocal()) : finishedAt;
                   setFinishedAt(nextFinished);
-                  if (!isEditing) handleSave({ status: v, finishedAt: nextFinished || null }, false);
+                  if (!isEditing) handleSave({ status: v, finishedAt: nextFinished || null }, { validate: false, close: false });
                 }}
                 className={`!font-black ${projectStatusBadgeClass(status)}`}
                 icon={<span className={`h-2 w-2 rounded-full shrink-0 inline-block ${projectStatusDotClass(status)}`} />}

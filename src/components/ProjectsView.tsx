@@ -336,7 +336,12 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     setEditingProject(newProj);
   };
 
-  const handleSaveProject = (updatedProject: Project) => {
+  /**
+   * Writes the project back. `close` is what the Save button does — the
+   * controls that save on the spot (status, budget, a file upload) pass false,
+   * because throwing the reader back to the list mid-edit loses their place.
+   */
+  const handleSaveProject = (updatedProject: Project, { close = true }: { close?: boolean } = {}) => {
     // The details view hides its own save controls in read-only mode; this is
     // the backstop for any path that still reaches it.
     if (!canEdit) return;
@@ -349,8 +354,14 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       }
     });
 
-    setEditingProject(null);
-    setEditingProjectType(null);
+    if (close) {
+      setEditingProject(null);
+      setEditingProjectType(null);
+    } else {
+      // Staying open: hand the card what was just saved, or the next save
+      // builds on the version it was opened with and reverts this one.
+      setEditingProject(updatedProject);
+    }
     (window as any).showToast(t("Project saved successfully!", "Projekt bol úspešne uložený!", "Projekt sikeresen mentve!"));
   };
 
