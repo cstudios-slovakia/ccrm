@@ -1,5 +1,30 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { Sparkles, Save, Edit, RefreshCw, Send, AlertCircle, LayoutDashboard, FileText, HelpCircle, X, Info, Languages, Layers, Rows3, History, ChevronDown, ChevronUp, GripVertical, Trash2, Copy, Plus, LayoutGrid, RotateCcw, Wand2, Lock } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowDownRight,
+  ChevronDown,
+  Copy,
+  FileText,
+  History,
+  Info,
+  Languages,
+  Layers,
+  LayoutDashboard,
+  LayoutGrid,
+  Lock,
+  Grip,
+  Plus,
+  RefreshCw,
+  RotateCcw,
+  Rows3,
+  Save,
+  Send,
+  SlidersHorizontal,
+  Sparkles,
+  Trash2,
+  Check,
+  Pencil
+} from "lucide-react";
 import type { CustomDashboard } from "../types";
 import { cn } from "../utils/cn";
 import type { Language } from "../utils/translations";
@@ -9,14 +34,33 @@ import { chartTheme, useAppearance } from "../utils/theme";
 import { useDragAutoScroll } from "../hooks/useDragAutoScroll";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 import {
-  WIDGET_PRESETS,
   WIDGET_SIZES,
+  WIDGET_SIZE_LABELS,
+  applySettingsToQuery,
   buildPresetWidget,
   buildDefaultHomeWidgets,
   newWidgetId,
   presetOfWidget,
+  rendererOfWidget,
+  sectionOfWidget,
+  settingsOfWidget,
+  type WidgetPreset,
+  type WidgetSettings,
   type WidgetSize
 } from "../utils/dashboardWidgets";
+import { WidgetCard, type Translate } from "./dashboard/widgetKit";
+import {
+  LeadsTableWidget,
+  MetricWidget,
+  OpenTasksWidget,
+  SourceBarsWidget,
+  StageDonutWidget,
+  TaskStatusWidget,
+  TasksTableWidget,
+  type WidgetRenderContext
+} from "./dashboard/presetWidgets";
+import { AddWidgetDrawer } from "./dashboard/AddWidgetDrawer";
+import { WidgetSettingsDrawer } from "./dashboard/WidgetSettingsDrawer";
 
 interface DynamicDashboardViewProps {
   dashboard: CustomDashboard;
@@ -36,6 +80,17 @@ interface DynamicDashboardViewProps {
   pipelineStages?: string[];
   /** Role access for this dashboard. `edit: false` is view-only widgets. */
   access?: ModuleAccess;
+  /* --- What the designed cards paint with. All configured in Settings, so a
+     card never invents a colour: a phase badge here is the same blue as the
+     same phase on the sales board. --- */
+  leadStateColors?: Record<string, string> | null;
+  leadSourceColors?: Record<string, string> | null;
+  taskStates?: string[];
+  taskStateColors?: Record<string, string> | null;
+  /** Whose tasks the task table's "Mine" means. */
+  currentUserName?: string;
+  /** Opens another section — the "See all" links and the table rows. */
+  onNavigate?: (route: string) => void;
 }
 
 /** Where a `tabs` widget's per-tab query result is stored in the data/error maps. */
@@ -53,9 +108,10 @@ const WIDGET_ICONS: Record<string, React.ComponentType<{ className?: string }>> 
 const WIDGET_TYPES = ["metric", "chart", "table", "timeline", "accordion", "tabs"];
 
 /**
- * The types the widget editor offers. `tabs` is rendered but not offered: it
- * holds one query per tab rather than a query of its own, so switching an
- * existing widget to it by hand would produce a card with nothing to show.
+ * The types the settings drawer offers for an AI-generated widget. `tabs` is
+ * rendered but not offered: it holds one query per tab rather than a query of
+ * its own, so switching an existing widget to it by hand would produce a card
+ * with nothing to show.
  */
 const EDITABLE_WIDGET_TYPES = ["metric", "chart", "table", "timeline", "accordion"];
 
@@ -81,16 +137,8 @@ const CHART_TYPES = [...Object.keys(CHART_BASE_TYPES), "gauge"];
 
 const canonical = (value: any) => String(value ?? "").toLowerCase().replace(/[\s_-]/g, "");
 
-/**
- * The one query action whose result is a pipeline breakdown, and so the only
- * widget the editor offers a phase picker for. Its rows are
- * `{ status, count, total_value }` and it accepts a `statuses` param naming
- * which phases to report — including phases no lead sits in.
- */
+/** The one query action whose rows are a pipeline breakdown. */
 const STAGE_QUERY_ACTION = "leads_by_status";
-
-/** Phase names compare case- and separator-insensitively, like everywhere else. */
-const sameStage = (a: any, b: any) => canonical(a) === canonical(b);
 
 /** Solid accent for the widget palette names the AI is allowed to pick from. */
 const ACCENT_COLORS: Record<string, string> = {
@@ -105,6 +153,21 @@ const ACCENT_COLORS: Record<string, string> = {
 };
 
 const accentFor = (color: any) => ACCENT_COLORS[String(color || "indigo")] || ACCENT_COLORS.indigo;
+
+/** The twelve-column span each width takes, at the desktop breakpoint. */
+const SPAN_CLASS: Record<WidgetSize, string> = {
+  sm: "col-span-12 md:col-span-6 lg:col-span-3",
+  md: "col-span-12 md:col-span-6 lg:col-span-4",
+  lg: "col-span-12 lg:col-span-8",
+  full: "col-span-12"
+};
+
+const sizeOf = (widget: any): WidgetSize =>
+  (WIDGET_SIZES as string[]).includes(widget?.size) ? (widget.size as WidgetSize) : "full";
+
+/** Cycles S → M → L → XL → S; what the corner grip on a card does. */
+const nextSize = (size: WidgetSize): WidgetSize =>
+  WIDGET_SIZES[(WIDGET_SIZES.indexOf(size) + 1) % WIDGET_SIZES.length];
 
 /**
  * Decides which renderer a widget belongs to. The model is told to emit
@@ -232,11 +295,16 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   currencyCode,
   variant = "custom",
   pipelineStages = [],
-  access = FULL_MODULE_ACCESS
+  access = FULL_MODULE_ACCESS,
+  leadStateColors = null,
+  leadSourceColors = null,
+  taskStates = [],
+  taskStateColors = null,
+  currentUserName = "",
+  onNavigate
 }) => {
   const isHome = variant === "home";
-  const t = (en: string, sk: string, hu: string) =>
-    systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
+  const t: Translate = (en, sk, hu) => (systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en);
   const canEdit = access.edit;
   const canDelete = access.delete;
   const onSaveDashboard = (updated: CustomDashboard) => {
@@ -245,6 +313,10 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   };
   const money = (value: number, opts?: Intl.NumberFormatOptions) =>
     formatMoney(value, currencyCode, (systemLanguage as Language) || "en", opts);
+  const navigate = (route: string) => {
+    if (onNavigate) onNavigate(route);
+    else window.location.hash = route;
+  };
   // AI-generated widget titles/column labels come back either as a plain
   // string (legacy panels, or a model that ignored the schema) or as an
   // { en, sk, hu } object — pick the current app language, falling back
@@ -259,7 +331,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   /**
    * What a widget IS, independent of what it has been renamed to: the library
    * preset's name, the title the AI first gave it, or failing both the plain
-   * widget type. Shown on the card in edit mode and used as the title whenever
+   * widget type. Shown in the settings drawer and used as the title whenever
    * the user leaves their own name empty.
    */
   const typeTitleOf = (widget: any): any =>
@@ -297,7 +369,6 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   const [loadingWidgets, setLoadingWidgets] = useState<Record<string, boolean>>({});
   const [widgetErrors, setWidgetErrors] = useState<Record<string, string>>({});
   const [isSaved, setIsSaved] = useState(true);
-  const [isHelpOpen, setIsHelpOpen] = useState(false);
 
   const models = ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol"];
   const modelIndex = models.indexOf(selectedModel);
@@ -318,14 +389,23 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   const [tempLayout, setTempLayout] = useState(dashboard.layout);
   const [tempPrompts, setTempPrompts] = useState(dashboard.prompts || []);
 
-  // Manual widget editor: the "add widget" drawer, and the card being dragged.
+  // Manual widget editor: the "add widget" drawer, the settings drawer, and the
+  // card being dragged.
   const [isAddOpen, setIsAddOpen] = useState(false);
-  const [addTab, setAddTab] = useState<"library" | "ai">("library");
   const [widgetPrompt, setWidgetPrompt] = useState("");
   const [isGeneratingWidget, setIsGeneratingWidget] = useState(false);
   const [widgetPromptError, setWidgetPromptError] = useState<string | null>(null);
+  const [settingsWidgetId, setSettingsWidgetId] = useState<string | null>(null);
   const [draggedWidgetId, setDraggedWidgetId] = useState<string | null>(null);
   const [dragOverWidgetId, setDragOverWidgetId] = useState<string | null>(null);
+
+  /**
+   * The toggles on a card's own heading — "Newest / Highest value", "Mine /
+   * Whole team" — are a way of *looking* at the panel, not a change to it. They
+   * are held here instead of in the layout so using one re-runs the query
+   * without putting the dashboard into an unsaved state.
+   */
+  const [viewOverrides, setViewOverrides] = useState<Record<string, WidgetSettings>>({});
 
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -344,19 +424,37 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     if (switched || isSaved) {
       setTempLayout(dashboard.layout);
       setTempPrompts(dashboard.prompts || []);
-      if (switched) setIsEditMode(canEdit && dashboard.layout.widgets.length === 0);
+      if (switched) {
+        setIsEditMode(canEdit && dashboard.layout.widgets.length === 0);
+        setViewOverrides({});
+        setSettingsWidgetId(null);
+      }
       setIsSaved(true);
       prevDashIdRef.current = dashboard.id;
     }
   }, [dashboard, isSaved]);
 
+  /**
+   * What is actually on screen: the saved layout with any view-mode override
+   * folded into both the settings and the query. Everything downstream — the
+   * fetch, the renderers, the grid — reads this, and every *edit* still writes
+   * to `tempLayout` by widget id.
+   */
+  const widgets: any[] = useMemo(() => {
+    const list = tempLayout?.widgets || [];
+    return list.map((w: any) => {
+      const override = viewOverrides[w.id];
+      if (!override) return w;
+      return applySettingsToQuery(w, { ...settingsOfWidget(w), ...override }, currentUserName);
+    });
+  }, [tempLayout, viewOverrides, currentUserName]);
+
   // Load data for all widgets in the layout. A `tabs` widget holds one query per
   // tab rather than a single query of its own, so results are keyed by a data key
   // (the widget id, or `${widget.id}::tab${i}`) instead of plainly by widget id.
-  const fetchAllWidgetsData = async (layoutToLoad = tempLayout) => {
-    const widgets = layoutToLoad?.widgets || [];
+  const fetchAllWidgetsData = async (widgetsToLoad: any[]) => {
     const jobs: { key: string; query: any }[] = [];
-    widgets.forEach((w: any) => {
+    widgetsToLoad.forEach((w: any) => {
       if (w?.query?.action) jobs.push({ key: w.id, query: w.query });
       if (Array.isArray(w?.tabs)) {
         w.tabs.forEach((tab: any, i: number) => {
@@ -403,16 +501,16 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   // Only the queries decide whether data has to be re-fetched. Keying the effect
   // on the whole layout meant every editor action — resizing a card, dragging it
   // one place left, renaming it — re-ran every widget's query.
-  const layoutRef = useRef(tempLayout);
-  layoutRef.current = tempLayout;
+  const widgetsRef = useRef(widgets);
+  widgetsRef.current = widgets;
   const querySignature = useMemo(
-    () => JSON.stringify((tempLayout?.widgets || []).map((w: any) => [w?.id, w?.query, w?.tabs?.map((tb: any) => tb?.query)])),
-    [tempLayout]
+    () => JSON.stringify(widgets.map((w: any) => [w?.id, w?.query, w?.tabs?.map((tb: any) => tb?.query)])),
+    [widgets]
   );
 
   useEffect(() => {
-    if ((layoutRef.current?.widgets || []).length > 0) {
-      fetchAllWidgetsData(layoutRef.current);
+    if (widgetsRef.current.length > 0) {
+      fetchAllWidgetsData(widgetsRef.current);
     }
   }, [querySignature]);
 
@@ -498,6 +596,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     onSaveDashboard(updated);
     setIsSaved(true);
     setIsEditMode(false);
+    setSettingsWidgetId(null);
     if (typeof (window as any).showToast === "function") {
       (window as any).showToast(t("Dashboard saved successfully!", "Panel bol úspešne uložený!", "Irányítópult sikeresen mentve!"));
     }
@@ -527,6 +626,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   const removeWidget = (id: string) => {
     if (!canDelete) return;
     mutateWidgets(ws => ws.filter(w => w.id !== id));
+    if (settingsWidgetId === id) setSettingsWidgetId(null);
   };
 
   const duplicateWidget = (id: string) =>
@@ -535,17 +635,6 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
       if (index === -1) return ws;
       const copy = { ...ws[index], id: newWidgetId("widget") };
       return [...ws.slice(0, index + 1), copy, ...ws.slice(index + 1)];
-    });
-
-  /** Shifts a widget one place earlier (-1) or later (+1) in the grid flow. */
-  const moveWidget = (id: string, direction: -1 | 1) =>
-    mutateWidgets(ws => {
-      const index = ws.findIndex(w => w.id === id);
-      const target = index + direction;
-      if (index === -1 || target < 0 || target >= ws.length) return ws;
-      const next = [...ws];
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
     });
 
   /** Drop-to-reorder: the dragged widget takes the target's position. */
@@ -565,17 +654,18 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     mutateWidgets(ws => ws.map(w => (w.id === id ? adaptWidgetToType(w, nextType, sampleRowOf(id)) : w)));
 
   /**
-   * Phases a stage-breakdown widget can be narrowed to: everything Settings has
-   * configured, plus any phase the widget is already reporting or filtering on.
-   * The union matters after a phase is renamed or retired in Settings — the old
-   * name stays pickable for as long as leads still carry it, instead of the
-   * widget quietly filtering on a phase the editor no longer shows.
+   * Phases a widget can be narrowed to: everything Settings has configured, plus
+   * any phase the widget is already reporting or filtering on. The union matters
+   * after a phase is renamed or retired in Settings — the old name stays pickable
+   * for as long as leads still carry it.
    */
-  const stageOptionsFor = (widget: any): string[] => {
-    if (widget?.query?.action !== STAGE_QUERY_ACTION) return [];
+  const statusOptionsFor = (widget: any): string[] => {
+    const action = widget?.query?.action;
+    if (action === "recent_tasks") return taskStates;
+    if (action !== STAGE_QUERY_ACTION && action !== "recent_leads") return [];
     const data = widgetData[widget.id];
     const fromData = Array.isArray(data) ? data.map((row: any) => row?.status) : [];
-    const picked = widget?.query?.params?.statuses;
+    const picked = settingsOfWidget(widget).statuses;
     const seen = new Set<string>();
     return [...pipelineStages, ...fromData, ...(Array.isArray(picked) ? picked : [])]
       .map(stage => String(stage ?? "").trim())
@@ -587,28 +677,6 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
         return true;
       });
   };
-
-  /** Which phases a widget currently reports. Empty means "whatever has leads". */
-  const stageSelectionOf = (widget: any): string[] => {
-    const picked = widget?.query?.params?.statuses;
-    return Array.isArray(picked) ? picked.filter(Boolean) : [];
-  };
-
-  const setWidgetStages = (id: string, statuses: string[]) =>
-    mutateWidgets(ws =>
-      ws.map(w => {
-        if (w.id !== id) return w;
-        const query = { ...(w.query || {}) };
-        query.params = { ...(query.params || {}), statuses };
-        return { ...w, query };
-      })
-    );
-
-  /** Which column a metric card shows — `count` or `total_value` on a phase widget. */
-  const setWidgetMetricKey = (id: string, dataKey: string) =>
-    mutateWidgets(ws =>
-      ws.map(w => (w.id === id ? { ...w, mapping: { ...(w.mapping || {}), dataKey } } : w))
-    );
 
   /**
    * Widget titles are `{ en, sk, hu }`. A rename types one language, so the
@@ -626,9 +694,31 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
       })
     );
 
-  const addWidgets = (widgets: any[]) => {
-    if (widgets.length === 0) return;
-    mutateWidgets(ws => [...ws, ...widgets]);
+  /** A settings change is written to the widget and to the query it drives. */
+  const patchWidgetSettings = (id: string, patch: WidgetSettings) => {
+    mutateWidgets(ws =>
+      ws.map(w =>
+        w.id === id
+          ? applySettingsToQuery(
+              w,
+              { ...settingsOfWidget(w), ...(viewOverrides[id] || {}), ...patch },
+              currentUserName
+            )
+          : w
+      )
+    );
+    // A deliberate change supersedes whatever the card's own toggle was showing.
+    setViewOverrides(prev => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
+
+  const addWidgets = (toAdd: any[]) => {
+    if (toAdd.length === 0) return;
+    mutateWidgets(ws => [...ws, ...toAdd]);
   };
 
   const resetToDefaultWidgets = () => {
@@ -638,6 +728,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
       "Nahradiť aktuálne moduly predvolenou nástenkou?",
       "Lecseréli a jelenlegi modulokat az alapértelmezett irányítópultra?"
     ))) return;
+    setViewOverrides({});
     mutateWidgets(() => buildDefaultHomeWidgets());
   };
 
@@ -646,8 +737,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
    * History is deliberately not sent: the model would otherwise continue the
    * conversation and hand back a replacement for the entire dashboard.
    */
-  const handleGenerateWidget = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
+  const handleGenerateWidget = async () => {
     if (!canEdit) return;
     const request = widgetPrompt.trim();
     if (!request) return;
@@ -684,6 +774,31 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     } finally {
       setIsGeneratingWidget(false);
     }
+  };
+
+  /* ------------------------------------------------------------------ render */
+
+  const renderContext: WidgetRenderContext = {
+    t,
+    systemLanguage: (systemLanguage as Language) || "en",
+    money,
+    leadStates: pipelineStages,
+    leadStateColors,
+    leadSourceColors,
+    taskStates,
+    taskStateColors,
+    navigate,
+    currentUser: currentUserName
+  };
+
+  const PRESET_RENDERERS: Record<string, React.FC<any>> = {
+    metric: MetricWidget,
+    openTasks: OpenTasksWidget,
+    leadsTable: LeadsTableWidget,
+    tasksTable: TasksTableWidget,
+    stageDonut: StageDonutWidget,
+    sourceBars: SourceBarsWidget,
+    taskStatus: TaskStatusWidget
   };
 
   /**
@@ -748,76 +863,80 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     }
   };
 
-  const getGridSpan = (size: string) => {
-    switch (size) {
-      case "sm": return "col-span-12 md:col-span-6 lg:col-span-3";
-      case "md": return "col-span-12 md:col-span-6 lg:col-span-4";
-      case "lg": return "col-span-12 md:col-span-12 lg:col-span-6";
-      case "full":
-      default:
-        return "col-span-12";
+  /** The finished card: a designed one where there is one, the generic chrome otherwise. */
+  const renderWidgetCard = (w: any): React.ReactNode => {
+    const section = sectionOfWidget(w);
+    const title = displayTitleOf(w);
+    const renderer = widgetErrors[w.id] ? null : rendererOfWidget(w);
+    const Designed = renderer ? PRESET_RENDERERS[renderer] : undefined;
+
+    if (Designed) {
+      return (
+        <Designed
+          widget={w}
+          data={widgetData[w.id]}
+          title={title}
+          section={section}
+          ctx={renderContext}
+          settings={settingsOfWidget(w)}
+          onView={(patch: Record<string, any>) =>
+            setViewOverrides(prev => ({ ...prev, [w.id]: { ...(prev[w.id] || {}), ...patch } }))
+          }
+        />
+      );
     }
+
+    const GenericIcon = widgetErrors[w.id]
+      ? AlertCircle
+      : WIDGET_ICONS[resolveWidgetType(w).type] || FileText;
+    return (
+      <WidgetCard
+        icon={GenericIcon}
+        accent={widgetErrors[w.id] ? "#e11d48" : ACCENT_COLORS[w.color] || w.color || section.accent}
+        title={title}
+      >
+        <div className="flex-1 flex flex-col justify-center min-w-0">{renderWidgetBody(w, w.id)}</div>
+      </WidgetCard>
+    );
   };
+
+  const settingsWidget = widgets.find(w => w.id === settingsWidgetId) || null;
+  const presentPresetIds = widgets
+    .map(w => presetOfWidget(w)?.id)
+    .filter((id): id is string => !!id);
+
+  const headerButton =
+    "flex items-center gap-2 h-10 px-4 rounded-xl text-xs font-bold uppercase tracking-[0.06em] whitespace-nowrap transition-all cursor-pointer shrink-0";
 
   return (
     <div ref={rootRef} className="w-full space-y-6 animate-in fade-in slide-in-from-top-4 duration-300">
       {/* HEADER — same shape as every other module: title block on the left,
-          actions on the right, hairline rule underneath. This view used to paint
-          its own full-bleed background and padding on top of the app's own
-          <main> padding, which made it visibly narrower/differently inset than
-          every other section. */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-4">
-        <div className="flex flex-col">
-          <h1 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+          actions on the right, hairline rule underneath. */}
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 border-b border-slate-100 pb-6 pt-1">
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center gap-2.5">
             {isHome ? (
               <LayoutDashboard className="h-6 w-6" style={{ color: dashboard.color }} />
             ) : (
               <Sparkles className="h-6 w-6" style={{ color: dashboard.color }} />
             )}
-            {isHome ? t("Dashboard", "Nástenka", "Irányítópult") : dashboard.name}
-          </h1>
-          <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
+            <h1 className="m-0 text-[26px] font-heading font-bold text-slate-900 tracking-[-0.02em]">
+              {isHome ? t("Dashboard", "Nástenka", "Irányítópult") : dashboard.name}
+            </h1>
+          </div>
+          <p className="m-0 text-xs text-slate-500 uppercase font-bold tracking-[0.06em]">
             {isHome
               ? t("Your workspace at a glance", "Váš prehľad na jednom mieste", "A munkaterülete egy pillantásra")
               : t("Custom Dynamic AI Dashboard", "Vlastný dynamický AI panel", "Egyéni dinamikus AI irányítópult")}
           </p>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+        <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
           {!canEdit && (
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider">
               <Lock className="h-3.5 w-3.5" />
               {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
             </span>
-          )}
-          {canEdit && isEditMode && tempLayout.widgets.length > 0 && (
-            <button
-              onClick={() => { setAddTab("library"); setIsAddOpen(true); }}
-              className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20 transition-all text-xs font-heading font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shrink-0 hover:scale-[1.02] active:scale-95"
-            >
-              <Plus className="h-4 w-4" />
-              <span>{t("Add widget", "Pridať modul", "Modul hozzáadása")}</span>
-            </button>
-          )}
-
-          {isEditMode && isHome && tempLayout.widgets.length > 0 && (
-            <button
-              onClick={resetToDefaultWidgets}
-              className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors text-xs font-heading font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shrink-0"
-            >
-              <RotateCcw className="h-4 w-4" />
-              <span>{t("Reset", "Obnoviť", "Visszaállítás")}</span>
-            </button>
-          )}
-
-          {isEditMode && (
-            <button
-              onClick={() => setIsHelpOpen(true)}
-              className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors text-xs font-heading font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shrink-0"
-            >
-              <HelpCircle className="h-4 w-4" />
-              <span>{t("Help", "Pomoc", "Súgó")}</span>
-            </button>
           )}
 
           {isTranslating && (
@@ -833,44 +952,68 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
             </span>
           )}
 
-          {tempLayout.widgets.length > 0 && !isEditMode && canEdit && (
+          {isEditMode && isHome && widgets.length > 0 && (
             <button
-              onClick={() => setIsEditMode(true)}
-              className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors text-xs font-heading font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shrink-0"
+              type="button"
+              onClick={resetToDefaultWidgets}
+              className={cn(headerButton, "bg-white text-slate-700 border border-slate-200 shadow-sm hover:bg-slate-50")}
             >
-              <Edit className="h-4 w-4" />
-              <span>{t("Edit", "Upraviť", "Szerkesztés")}</span>
+              <RotateCcw className="h-4 w-4" strokeWidth={2.25} />
+              {t("Restore default", "Obnoviť predvolené", "Alapértelmezett")}
+            </button>
+          )}
+
+          {canEdit && isEditMode && widgets.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setIsAddOpen(true)}
+              className={cn(headerButton, "bg-indigo-600 text-white border border-indigo-600 shadow-md shadow-indigo-600/30 hover:bg-indigo-700")}
+            >
+              <Plus className="h-4 w-4" strokeWidth={2.25} />
+              {t("Add widget", "Pridať modul", "Modul hozzáadása")}
+            </button>
+          )}
+
+          {canEdit && !isEditMode && widgets.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setIsEditMode(true)}
+              className={cn(headerButton, "bg-white text-slate-700 border border-slate-200 shadow-sm hover:bg-slate-50")}
+            >
+              <Pencil className="h-4 w-4" strokeWidth={2.25} />
+              {t("Edit", "Upraviť", "Szerkesztés")}
             </button>
           )}
 
           {/* Leaves edit mode without discarding anything: unsaved changes stay
               on screen with the Save button next to it. */}
-          {isEditMode && tempLayout.widgets.length > 0 && (
+          {isEditMode && widgets.length > 0 && (
             <button
+              type="button"
               onClick={() => {
                 setIsEditMode(false);
-                setIsHelpOpen(false);
+                setSettingsWidgetId(null);
               }}
-              className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors text-xs font-heading font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shrink-0"
+              className={cn(headerButton, "bg-slate-900 text-white border border-slate-900 hover:bg-slate-800")}
             >
-              <X className="h-4 w-4" />
-              <span>{t("Close", "Zavrieť", "Bezárás")}</span>
+              <Check className="h-4 w-4" strokeWidth={2.25} />
+              {t("Done", "Hotovo", "Kész")}
             </button>
           )}
 
           {canEdit && !isSaved && (
             <button
+              type="button"
               onClick={handleSave}
-              className="px-5 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20 transition-all font-heading font-bold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95 shrink-0"
+              className={cn(headerButton, "bg-emerald-600 text-white border border-emerald-600 shadow-md shadow-emerald-600/30 hover:bg-emerald-700")}
             >
-              <Save className="h-4 w-4" />
-              <span>{t("Save", "Uložiť", "Mentés")}</span>
+              <Save className="h-4 w-4" strokeWidth={2.25} />
+              {t("Save", "Uložiť", "Mentés")}
             </button>
           )}
         </div>
       </div>
 
-      {/* Main Content Area */}
       <div>
         {errorMsg && (
           <div className="mb-6 p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-start gap-3 text-rose-800 text-sm animate-in fade-in duration-200">
@@ -882,7 +1025,23 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
           </div>
         )}
 
-        {tempLayout.widgets.length === 0 ? (
+        {isEditMode && widgets.length > 0 && (
+          <div className="mb-6 flex items-center justify-between gap-4 min-h-11 px-4 py-2 rounded-2xl bg-indigo-50 border border-indigo-100">
+            <span className="flex items-center gap-2.5 text-[13px] font-semibold text-indigo-900">
+              <Info className="h-4 w-4 text-indigo-600 shrink-0" strokeWidth={2.25} />
+              {t(
+                "Edit mode: drag a card by its handle, resize it from the corner, click it to open its settings.",
+                "Režim úprav: moduly presúvajte za úchyt, veľkosť meňte rohom, nastavenia otvoríte kliknutím na modul.",
+                "Szerkesztés: fogantyúval húzza, sarokból méretezze, kattintson a beállításokhoz."
+              )}
+            </span>
+            <span className="hidden lg:block text-xs font-bold text-indigo-700 shrink-0">
+              {t("12-column grid", "Mriežka 12 stĺpcov", "12 oszlopos rács")}
+            </span>
+          </div>
+        )}
+
+        {widgets.length === 0 ? (
           /* Empty Initial State: Large Center Prompt Input */
           <div className="max-w-2xl mx-auto flex flex-col items-center text-center p-8 mt-12">
             <div className="w-16 h-16 rounded-[24px] bg-indigo-50 flex items-center justify-center mb-6 shadow-inner">
@@ -914,7 +1073,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
             <div className="flex flex-wrap items-center justify-center gap-2 mt-6">
               <button
                 type="button"
-                onClick={() => { setAddTab("library"); setIsAddOpen(true); }}
+                onClick={() => setIsAddOpen(true)}
                 className="px-5 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all text-xs font-black uppercase tracking-wider flex items-center gap-2 cursor-pointer active:scale-95"
               >
                 <LayoutGrid className="h-4 w-4 text-indigo-600" />
@@ -1002,148 +1161,139 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
             )}
           </div>
         ) : (
-          /* Render Generated Layout Grid */
-          <div className="grid grid-cols-12 gap-6 text-left pb-2">
-            {tempLayout.widgets.map((w: any, index: number) => {
-              const WidgetIcon = WIDGET_ICONS[resolveWidgetType(w).type] || FileText;
-              return (
-                <div
-                  key={w.id}
-                  // Reordering is drag-and-drop on the card itself (the handle sets
-                  // `draggable`), matching how the sidebar's own layout editor works.
-                  onDragOver={(e) => {
-                    if (!isEditMode || !draggedWidgetId) return;
-                    e.preventDefault();
-                    if (dragOverWidgetId !== w.id) setDragOverWidgetId(w.id);
-                  }}
-                  onDrop={(e) => {
-                    if (!isEditMode || !draggedWidgetId) return;
-                    e.preventDefault();
-                    moveWidgetBefore(draggedWidgetId, w.id);
-                    setDraggedWidgetId(null);
-                    setDragOverWidgetId(null);
-                  }}
-                  className={cn(
-                    "bg-white rounded-3xl border border-slate-200/80 shadow-sm p-6 flex flex-col justify-between overflow-hidden min-h-[140px] relative animate-in fade-in duration-300",
-                    getGridSpan(w.size),
-                    isEditMode && "ring-1 ring-indigo-100 transition-all",
-                    isEditMode && draggedWidgetId === w.id && "opacity-40",
-                    isEditMode && dragOverWidgetId === w.id && draggedWidgetId !== w.id && "ring-2 ring-indigo-400 border-indigo-300"
-                  )}
-                >
-                  {/* Loader Overlay */}
-                  {loadingWidgets[w.id] && (
-                    <div className="absolute inset-0 bg-white/70 backdrop-blur-[0.5px] z-50 flex items-center justify-center">
-                      <RefreshCw className="h-5 w-5 text-indigo-600 animate-spin" />
-                    </div>
-                  )}
+          <div className="relative">
+            {/* The twelve columns, shown faintly while arranging so a width
+                picked in the drawer has something to line up against. */}
+            {isEditMode && (
+              <div
+                aria-hidden="true"
+                className="absolute -top-3 -bottom-3 left-0 right-0 hidden lg:grid grid-cols-12 gap-x-6 pointer-events-none"
+              >
+                {Array.from({ length: 12 }).map((_, index) => (
+                  <div key={index} className="rounded-xl bg-indigo-600/[0.035]" />
+                ))}
+              </div>
+            )}
 
-                  {isEditMode && (
-                    <WidgetEditBar
-                      widget={w}
-                      index={index}
-                      total={tempLayout.widgets.length}
-                      t={t}
-                      title={localize(w.title)}
-                      typeName={typeNameOf(w)}
-                      onResetTitle={() => updateWidget(w.id, { title: typeTitleOf(w) ?? "" })}
-                      isDragging={draggedWidgetId === w.id}
-                      canDelete={canDelete}
-                      onDragStart={() => setDraggedWidgetId(w.id)}
-                      onDragEnd={() => { setDraggedWidgetId(null); setDragOverWidgetId(null); }}
-                      onMove={(dir) => moveWidget(w.id, dir)}
-                      onSize={(size) => updateWidget(w.id, { size })}
-                      onType={(type) => changeWidgetType(w.id, type)}
-                      onChartType={(chartType) => updateWidget(w.id, { chartType })}
-                      stageOptions={stageOptionsFor(w)}
-                      stageSelection={stageSelectionOf(w)}
-                      onStages={(statuses) => setWidgetStages(w.id, statuses)}
-                      onMetricKey={(dataKey) => setWidgetMetricKey(w.id, dataKey)}
-                      onColor={(color) => updateWidget(w.id, { color })}
-                      onRename={(value) => renameWidget(w.id, value)}
-                      onDuplicate={() => duplicateWidget(w.id)}
-                      onRemove={() => removeWidget(w.id)}
-                    />
-                  )}
-
-                  <div className="w-full flex items-center justify-between pb-3 mb-3 border-b border-slate-100/50">
-                    {/* In edit mode the title is the editable field in the bar
-                        above, so it is not repeated here. */}
-                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                      {isEditMode ? null : displayTitleOf(w)}
-                    </span>
+            <div className="relative grid grid-cols-12 gap-6 items-stretch text-left pb-2">
+              {widgets.map((w: any) => {
+                const size = sizeOf(w);
+                const tall = Number(w?.rowSpan) === 2;
+                return (
+                  <div
+                    key={w.id}
+                    onDragOver={(e) => {
+                      if (!isEditMode || !draggedWidgetId) return;
+                      e.preventDefault();
+                      if (dragOverWidgetId !== w.id) setDragOverWidgetId(w.id);
+                    }}
+                    onDrop={(e) => {
+                      if (!isEditMode || !draggedWidgetId) return;
+                      e.preventDefault();
+                      moveWidgetBefore(draggedWidgetId, w.id);
+                      setDraggedWidgetId(null);
+                      setDragOverWidgetId(null);
+                    }}
+                    className={cn(
+                      "relative min-w-0 flex flex-col animate-in fade-in duration-300",
+                      SPAN_CLASS[size],
+                      tall && "lg:row-span-2"
+                    )}
+                  >
                     <div
-                      className="w-7 h-7 rounded-xl flex items-center justify-center text-white scale-90"
-                      // `w.color` is a palette NAME ("emerald", "rose", "amber"), which is
-                      // not valid CSS — those badges painted transparent and hid their white
-                      // icon. Resolve the name to its hex; anything else (a literal colour
-                      // from the dashboard) is still passed through untouched.
-                      style={widgetErrors[w.id] ? undefined : { backgroundColor: ACCENT_COLORS[w.color] || w.color || dashboard.color }}
+                      onClick={() => {
+                        if (isEditMode) setSettingsWidgetId(w.id);
+                      }}
+                      className={cn(
+                        "relative flex flex-col flex-1 min-h-[150px] rounded-3xl",
+                        isEditMode && "outline-2 outline-dashed outline-offset-4 cursor-pointer",
+                        isEditMode && dragOverWidgetId === w.id && draggedWidgetId !== w.id
+                          ? "outline-indigo-500"
+                          : isEditMode && "outline-slate-300",
+                        isEditMode && draggedWidgetId === w.id && "opacity-40"
+                      )}
                     >
-                      {widgetErrors[w.id] ? (
-                        <AlertCircle className="h-4 w-4 text-rose-500" />
-                      ) : (
-                        <WidgetIcon className="h-4 w-4" />
+                      {isEditMode && (
+                        <WidgetEditToolbar
+                          t={t}
+                          size={size}
+                          canDelete={canDelete}
+                          onDragStart={() => setDraggedWidgetId(w.id)}
+                          onDragEnd={() => { setDraggedWidgetId(null); setDragOverWidgetId(null); }}
+                          onSettings={() => setSettingsWidgetId(w.id)}
+                          onDuplicate={() => duplicateWidget(w.id)}
+                          onRemove={() => removeWidget(w.id)}
+                        />
+                      )}
+
+                      {loadingWidgets[w.id] && (
+                        <div className="absolute inset-0 bg-white/70 backdrop-blur-[0.5px] z-30 flex items-center justify-center rounded-3xl">
+                          <RefreshCw className="h-5 w-5 text-indigo-600 animate-spin" />
+                        </div>
+                      )}
+
+                      <div className={cn("flex flex-col flex-1 min-w-0", isEditMode && "pointer-events-none")}>
+                        {renderWidgetCard(w)}
+                      </div>
+
+                      {isEditMode && (
+                        <button
+                          type="button"
+                          aria-label={t("Change width", "Zmeniť veľkosť", "Méret módosítása")}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateWidget(w.id, { size: nextSize(size) });
+                          }}
+                          className="absolute -right-3 -bottom-3 w-[26px] h-[26px] rounded-lg bg-white border-[1.5px] border-slate-300 shadow-sm flex items-center justify-center z-20 cursor-pointer hover:border-indigo-400"
+                        >
+                          <ArrowDownRight className="h-3.5 w-3.5 text-slate-500" strokeWidth={2.5} />
+                        </button>
                       )}
                     </div>
                   </div>
+                );
+              })}
 
-                  <div className="flex-1 flex flex-col justify-center">
-                    {renderWidgetBody(w, w.id)}
-                  </div>
-                </div>
-              );
-            })}
-
-            {isEditMode && (
-              <button
-                type="button"
-                onClick={() => { setAddTab("library"); setIsAddOpen(true); }}
-                className="col-span-12 md:col-span-6 lg:col-span-3 min-h-[140px] rounded-3xl border-2 border-dashed border-slate-200 text-slate-400 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50/40 transition-all flex flex-col items-center justify-center gap-2 cursor-pointer active:scale-[0.98]"
-              >
-                <Plus className="h-6 w-6" />
-                <span className="text-[10px] font-black uppercase tracking-wider">
-                  {t("Add widget", "Pridať modul", "Modul hozzáadása")}
-                </span>
-              </button>
-            )}
+              {isEditMode && (
+                <button
+                  type="button"
+                  onClick={() => setIsAddOpen(true)}
+                  className="col-span-12 md:col-span-6 lg:col-span-3 min-h-[150px] rounded-3xl border-2 border-dashed border-slate-200 text-slate-400 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50/40 transition-all flex flex-col items-center justify-center gap-2 cursor-pointer active:scale-[0.98]"
+                >
+                  <Plus className="h-6 w-6" />
+                  <span className="text-[10px] font-black uppercase tracking-wider">
+                    {t("Add widget", "Pridať modul", "Modul hozzáadása")}
+                  </span>
+                </button>
+              )}
+            </div>
           </div>
         )}
 
-        {/* Prompt Bar docked at the bottom of the workspace in Edit Mode. Sticky
-            (not the old viewport-fixed overlay) so it stays anchored to this
-            view's own scroll flow like the rest of the app instead of floating
-            over — and clipping — the last row of widgets.
-
-            The sticky wrapper is full-width while the bar itself is only
-            max-w-3xl, so its transparent left/right margins used to swallow
-            every click on the widgets underneath. Only the bar takes pointer
-            events. */}
-        {isEditMode && tempLayout.widgets.length > 0 && (
+        {/* The AI refinement bar, docked at the bottom of the workspace in edit
+            mode. Sticky rather than viewport-fixed so it stays inside this
+            view's own scroll flow; only the bar itself takes pointer events, so
+            its transparent margins do not swallow clicks on the widgets. */}
+        {canEdit && isEditMode && widgets.length > 0 && (
           <div className="sticky bottom-6 z-40 mt-6 pointer-events-none animate-in slide-in-from-bottom-6 duration-300">
             <form
               onSubmit={handleRunPrompt}
-              className="pointer-events-auto max-w-3xl mx-auto bg-white/90 backdrop-blur-md border border-slate-200/80 rounded-[28px] shadow-2xl p-4 flex items-center gap-3.5"
+              className="pointer-events-auto max-w-3xl mx-auto bg-white/95 backdrop-blur-md border border-slate-200 rounded-[22px] shadow-2xl pl-[18px] pr-2.5 py-2.5 flex items-center gap-3"
             >
-              <textarea
-                rows={1}
+              <Sparkles className="h-[18px] w-[18px] text-purple-600 shrink-0" />
+              <input
+                type="text"
                 value={promptText}
                 onChange={(e) => setPromptText(e.target.value)}
+                aria-label={t("Refine the layout with AI", "Upraviť rozloženie s AI", "Elrendezés módosítása AI-val")}
                 placeholder={t(
-                  "Refine layout (e.g. change X chart to Y, add Z metric)...",
-                  "Upravte rozloženie (napr. zmeňte graf X na Y, pridajte metriku Z)...",
-                  "Módosítsa az elrendezést (pl. változtassa meg az X diagramot Y-ra)..."
+                  "Refine the layout with AI (e.g. change chart X to Y, add metric Z)…",
+                  "Upravte rozloženie s AI (napr. zmeňte graf X na Y, pridajte metriku Z)…",
+                  "Módosítsa az elrendezést AI-val (pl. az X diagramot Y-ra)…"
                 )}
-                className="flex-1 px-4 py-2.5 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-xs font-semibold bg-slate-50/50 resize-none"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleRunPrompt();
-                  }
-                }}
+                className="flex-1 min-w-0 h-10 border-0 outline-none bg-transparent text-[13px] font-semibold text-slate-700"
               />
-
-              <div className="flex flex-col gap-1 items-start w-[150px] shrink-0 justify-center">
+              <div className="hidden sm:flex flex-col gap-1 items-start w-[130px] shrink-0">
                 <div className="flex items-center justify-between w-full gap-2">
                   <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest shrink-0">
                     {t("Model", "Model", "Modell")}
@@ -1160,535 +1310,75 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                   onChange={(e) => handleModelSliderChange(Number(e.target.value))}
                   className="w-full accent-purple-600 h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer"
                 />
-                <span className="text-[8px] font-medium text-slate-400 tracking-tight normal-case">
-                  {selectedModel}
-                </span>
               </div>
-
               <button
                 type="submit"
                 disabled={isGenerating || !promptText.trim()}
-                className="flex items-center justify-center h-9 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white disabled:text-slate-400 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer shrink-0"
+                aria-label={t("Send", "Odoslať", "Küldés")}
+                className="w-10 h-10 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white disabled:text-slate-400 flex items-center justify-center transition-colors cursor-pointer shrink-0"
               >
-                {isGenerating ? (
-                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Send className="h-3.5 w-3.5" />
-                )}
+                {isGenerating ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               </button>
             </form>
           </div>
         )}
       </div>
 
-      {/* Add-widget drawer: ready-made widgets on one tab, a one-shot AI prompt
-          on the other. Both append to the working layout, so nothing is stored
-          until Save — exactly like a whole-panel generation. */}
       {canEdit && isAddOpen && (
-        <>
-          <div
-            className="fixed inset-0 bg-slate-900/30 backdrop-blur-[1px] z-[9998] animate-in fade-in duration-200"
-            onClick={() => setIsAddOpen(false)}
-          />
-          <div className="fixed right-0 top-0 h-screen w-full max-w-[460px] bg-white border-l border-slate-200 shadow-2xl z-[9999] flex flex-col animate-in slide-in-from-right duration-300">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-indigo-50 flex items-center justify-center">
-                  <Plus className="h-5 w-5 text-indigo-600" />
-                </div>
-                <div>
-                  <h3 className="text-base font-heading font-extrabold text-slate-900 tracking-tight">
-                    {t("Add widget", "Pridať modul", "Modul hozzáadása")}
-                  </h3>
-                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5 block">
-                    {t("Library or AI", "Knižnica alebo AI", "Könyvtár vagy AI")}
-                  </span>
-                </div>
-              </div>
-              <button
-                onClick={() => setIsAddOpen(false)}
-                className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
-                aria-label={t("Close", "Zavrieť", "Bezárás")}
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="px-6 pt-4 shrink-0">
-              <div className="flex items-center gap-1 p-1 rounded-2xl bg-slate-100">
-                {([
-                  { id: "library" as const, label: t("Library", "Knižnica", "Könyvtár"), icon: LayoutGrid },
-                  { id: "ai" as const, label: t("Generate with AI", "Vytvoriť s AI", "Létrehozás AI-val"), icon: Wand2 }
-                ]).map(tab => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setAddTab(tab.id)}
-                    className={cn(
-                      "flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer",
-                      addTab === tab.id
-                        ? "bg-white text-indigo-600 shadow-sm"
-                        : "text-slate-500 hover:text-slate-700"
-                    )}
-                  >
-                    <tab.icon className="h-3.5 w-3.5" />
-                    <span>{tab.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-6 space-y-5">
-              {addTab === "library" ? (
-                (["leads", "tasks", "activity"] as const).map(group => {
-                  const presets = WIDGET_PRESETS.filter(p => p.group === group);
-                  if (presets.length === 0) return null;
-                  const groupLabel =
-                    group === "leads"
-                      ? t("Leads & pipeline", "Leady a pipeline", "Leadek és pipeline")
-                      : group === "tasks"
-                        ? t("Tasks", "Úlohy", "Feladatok")
-                        : t("Activity", "Aktivita", "Tevékenység");
-                  return (
-                    <div key={group} className="space-y-2">
-                      <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400">{groupLabel}</h4>
-                      {presets.map(preset => (
-                        <button
-                          key={preset.id}
-                          onClick={() => addWidgets([buildPresetWidget(preset)])}
-                          className="w-full text-left p-3.5 rounded-2xl border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/40 transition-all cursor-pointer group flex items-start gap-3 active:scale-[0.99]"
-                        >
-                          <div className="w-8 h-8 rounded-xl bg-slate-100 group-hover:bg-white flex items-center justify-center shrink-0 transition-colors">
-                            {React.createElement(
-                              WIDGET_ICONS[resolveWidgetType(preset.build()).type] || FileText,
-                              { className: "h-4 w-4 text-slate-500 group-hover:text-indigo-600" }
-                            )}
-                          </div>
-                          <div className="min-w-0">
-                            <span className="block text-xs font-bold text-slate-800">{localize(preset.title)}</span>
-                            <span className="block text-[11px] text-slate-500 leading-snug mt-0.5">
-                              {localize(preset.description)}
-                            </span>
-                          </div>
-                          <Plus className="h-4 w-4 text-slate-300 group-hover:text-indigo-500 ml-auto shrink-0 mt-0.5" />
-                        </button>
-                      ))}
-                    </div>
-                  );
-                })
-              ) : (
-                <form onSubmit={handleGenerateWidget} className="space-y-4">
-                  <div className="p-3.5 rounded-2xl bg-indigo-50/50 border border-indigo-100 text-[11px] text-slate-600 leading-relaxed flex gap-2">
-                    <Info className="h-4 w-4 text-indigo-500 shrink-0 mt-0.5" />
-                    <span>
-                      {t(
-                        "Describe one widget. The AI writes the query against your live data and adds a single card to this dashboard.",
-                        "Opíšte jeden modul. AI napíše dopyt nad vašimi živými dátami a pridá na nástenku jednu kartu.",
-                        "Írjon le egy modult. Az AI lekérdezést ír az élő adataira, és egyetlen kártyát ad az irányítópulthoz."
-                      )}
-                    </span>
-                  </div>
-
-                  <textarea
-                    rows={4}
-                    value={widgetPrompt}
-                    onChange={(e) => setWidgetPrompt(e.target.value)}
-                    placeholder={t(
-                      "e.g. a bar chart of won deals per month this year",
-                      "napr. stĺpcový graf uzavretých obchodov po mesiacoch",
-                      "pl. oszlopdiagram a havi megnyert üzletekről"
-                    )}
-                    className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm bg-slate-50 transition-all font-semibold resize-none"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        handleGenerateWidget();
-                      }
-                    }}
-                  />
-
-                  <div className="flex flex-col gap-1.5">
-                    <div className="flex items-center justify-between w-full gap-3">
-                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">
-                        {t("Model Power", "Výkon modelu", "Modell Teljesítmény")}
-                      </span>
-                      <span className="text-[9px] font-black text-purple-600 uppercase tracking-wider whitespace-nowrap">
-                        {modelLevelLabel}
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="2"
-                      value={modelLevelIndex}
-                      onChange={(e) => handleModelSliderChange(Number(e.target.value))}
-                      className="w-full accent-purple-600 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer"
-                    />
-                  </div>
-
-                  {widgetPromptError && (
-                    <div className="p-3 rounded-2xl bg-rose-50 border border-rose-100 text-rose-700 text-xs font-semibold flex items-start gap-2">
-                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                      <span>{widgetPromptError}</span>
-                    </div>
-                  )}
-
-                  <button
-                    type="submit"
-                    disabled={isGeneratingWidget || !widgetPrompt.trim()}
-                    className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white disabled:text-slate-400 rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-indigo-600/10 cursor-pointer"
-                  >
-                    {isGeneratingWidget ? (
-                      <>
-                        <RefreshCw className="h-4 w-4 animate-spin" />
-                        <span>{t("Generating...", "Generujem...", "Generálás...")}</span>
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="h-4 w-4" />
-                        <span>{t("Generate widget", "Vytvoriť modul", "Modul létrehozása")}</span>
-                      </>
-                    )}
-                  </button>
-                </form>
-              )}
-            </div>
-
-            <div className="p-4 border-t border-slate-100 shrink-0">
-              <button
-                onClick={() => setIsAddOpen(false)}
-                className="w-full py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer"
-              >
-                {t("Done", "Hotovo", "Kész")}
-              </button>
-            </div>
-          </div>
-        </>
+        <AddWidgetDrawer
+          t={t}
+          localize={localize}
+          presentPresetIds={presentPresetIds}
+          onAdd={(preset: WidgetPreset) => addWidgets([buildPresetWidget(preset)])}
+          onClose={() => setIsAddOpen(false)}
+          prompt={widgetPrompt}
+          onPrompt={setWidgetPrompt}
+          onGenerate={handleGenerateWidget}
+          isGenerating={isGeneratingWidget}
+          error={widgetPromptError}
+          modelLabel={modelLevelLabel}
+          modelIndex={modelLevelIndex}
+          onModelIndex={handleModelSliderChange}
+        />
       )}
 
-      {/* UX Help Slideout Drawer */}
-      {isHelpOpen && (
-        <>
-          {/* Backdrop */}
-          <div 
-            className="fixed inset-0 bg-slate-900/30 backdrop-blur-[1px] z-[9998] animate-in fade-in duration-200"
-            onClick={() => setIsHelpOpen(false)}
-          />
-          {/* Drawer Panel */}
-          <div className="fixed right-0 top-0 h-screen w-full max-w-[440px] bg-white border-l border-slate-200 shadow-2xl z-[9999] flex flex-col animate-in slide-in-from-right duration-300">
-            {/* Header */}
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600">
-                  <Info className="h-5 w-5" />
-                </div>
-                <div className="text-left">
-                  <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider leading-none">
-                    {t("Dashboard Layout Guide", "Návod na tvorbu panela", "Irányítópult tervezési útmutató")}
-                  </h3>
-                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-1 block">
-                    {t("UX Helper for Non-Designers", "Dizajn pomocník", "UX Segédtervező")}
-                  </span>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsHelpOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-2 hover:bg-slate-100 rounded-xl transition-all cursor-pointer"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {/* Scrollable Content */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-thin">
-              {/* Introduction */}
-              <div className="p-4 rounded-2xl bg-indigo-50/50 border border-indigo-100 text-left">
-                <p className="text-xs font-semibold text-indigo-950 leading-relaxed">
-                  {t(
-                    "You don't need to be a designer! Our AI agent will build widgets based on your natural prompt. Read below to understand available widgets and how to arrange them for a premium display.",
-                    "Nem musíte byť dizajnér! Náš AI agent vytvorí moduly na základe vášho popisu. Prečítajte si, ako správne usporiadať komponenty.",
-                    "Nem kell dizájnernek lennie! Az AI agent az Ön leírása alapján építi fel a modulokat. Az alábbiakban megismerheti a diagramokat."
-                  )}
-                </p>
-              </div>
-
-              {/* Grid System Explanation */}
-              <div className="space-y-3 text-left">
-                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  {t("1. 12-Column Responsive Grid", "1. 12-Stĺpcový responsívny grid", "1. 12-Oszlopos rácsrendszer")}
-                </h4>
-                <p className="text-xs text-slate-500 leading-relaxed">
-                  {t(
-                    "Widgets automatically snap into a 12-column row layout. Combine widgets to sum up to exactly 12 in a row for clean visual alignment:",
-                    "Moduly sa automaticky usporiadajú do 12-stĺpcového riadku. Nakombinujte veľkosti tak, aby súčet v riadku dával presne 12:",
-                    "A modulok automatikusan egy 12 oszlopos sorba rendeződnek. Kombinálja a méreteket úgy, hogy a sor összege pontosan 12 legyen:"
-                  )}
-                </p>
-                <div className="grid grid-cols-12 gap-1.5 pt-2">
-                  <div className="col-span-3 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-[9px] font-black text-slate-500 border border-slate-200">sm (1/4)</div>
-                  <div className="col-span-3 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-[9px] font-black text-slate-500 border border-slate-200">sm (1/4)</div>
-                  <div className="col-span-3 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-[9px] font-black text-slate-500 border border-slate-200">sm (1/4)</div>
-                  <div className="col-span-3 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-[9px] font-black text-slate-500 border border-slate-200">sm (1/4)</div>
-
-                  <div className="col-span-4 h-8 rounded-lg bg-slate-100/70 flex items-center justify-center text-[9px] font-black text-slate-500 border border-slate-200">md (1/3)</div>
-                  <div className="col-span-4 h-8 rounded-lg bg-slate-100/70 flex items-center justify-center text-[9px] font-black text-slate-500 border border-slate-200">md (1/3)</div>
-                  <div className="col-span-4 h-8 rounded-lg bg-slate-100/70 flex items-center justify-center text-[9px] font-black text-slate-500 border border-slate-200">md (1/3)</div>
-
-                  <div className="col-span-6 h-8 rounded-lg bg-indigo-50/50 flex items-center justify-center text-[9px] font-black text-indigo-600 border border-indigo-100">lg (1/2)</div>
-                  <div className="col-span-6 h-8 rounded-lg bg-indigo-50/50 flex items-center justify-center text-[9px] font-black text-indigo-600 border border-indigo-100">lg (1/2)</div>
-
-                  <div className="col-span-12 h-8 rounded-lg bg-purple-50/50 flex items-center justify-center text-[9px] font-black text-purple-600 border border-purple-100">full (1/1)</div>
-                </div>
-              </div>
-
-              {/* Elements breakdowns */}
-              <div className="space-y-4 text-left">
-                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  {t("2. Interface Element Types", "2. Typy rozhraní a modulov", "2. Interfész elem típusok")}
-                </h4>
-
-                {/* Metric Card */}
-                <div className="p-4 border border-slate-100 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
-                  <div className="p-2.5 rounded-xl bg-white border border-slate-200 flex flex-col justify-between shrink-0 shadow-sm w-24 h-16">
-                    <span className="text-[7px] font-bold text-slate-400 uppercase tracking-wide truncate">{t("Total Leads", "Počet leadov", "Leadek száma")}</span>
-                    <span className="text-base font-black text-slate-800">142</span>
-                  </div>
-                  <div>
-                    <h5 className="text-xs font-bold text-slate-800">{t("KPI Metric Card", "Metrická karta (KPI)", "KPI Kártya")}</h5>
-                    <p className="text-[11px] text-slate-500 leading-normal mt-0.5">
-                      {t("Best for counts, single sums, or values. Uses sizes 'sm' (1/4 width) or 'md' (1/3 width).", "Ideálne pre počty, celkové sumy. Používa veľkosti 'sm' (1/4 šírky) alebo 'md' (1/3 šírky).", "Ideális összegekhez, darabszámokhoz.")}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Bar Chart */}
-                <div className="p-4 border border-slate-100 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
-                  <div className="w-24 h-16 rounded-xl bg-white border border-slate-200 p-2 flex items-end justify-around shrink-0 shadow-sm">
-                    <div className="w-2.5 h-6 bg-indigo-500 rounded-sm" />
-                    <div className="w-2.5 h-10 bg-indigo-500 rounded-sm" />
-                    <div className="w-2.5 h-7 bg-indigo-500 rounded-sm" />
-                  </div>
-                  <div>
-                    <h5 className="text-xs font-bold text-slate-800">{t("Bar Chart", "Stĺpcový graf", "Oszlopdiagram")}</h5>
-                    <p className="text-[11px] text-slate-500 leading-normal mt-0.5">
-                      {t("Compares quantities across different categories. Great for showing pipeline value per owner or count of leads per marketing source.", "Porovnáva hodnoty medzi kategóriami. Vhodné pre objem pipeline podľa správcov alebo počty leadov zo zdrojov.", "Kategóriák közötti értékek összehasonlítására szolgál.")}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Line Chart */}
-                <div className="p-4 border border-slate-100 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
-                  <div className="w-24 h-16 rounded-xl bg-white border border-slate-200 p-2 flex items-center justify-center shrink-0 shadow-sm">
-                    <svg className="w-16 h-8 text-purple-500" viewBox="0 0 100 50" fill="none">
-                      <path d="M5 45 L25 35 L45 40 L65 15 L85 20 L95 5" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h5 className="text-xs font-bold text-slate-800">{t("Line Chart", "Čiarový trendový graf", "Vonaldiagram")}</h5>
-                    <p className="text-[11px] text-slate-500 leading-normal mt-0.5">
-                      {t("Visualizes trends, increases, or cycles over time. Excellent for showing lead count by date/month created.", "Vizualizuje vývoj a trendy v čase. Ideálne pre počty vytvorených záujemcov podľa mesiacov.", "Időbeli trendek és folyamatok ábrázolására kiváló.")}</p>
-                  </div>
-                </div>
-
-                {/* Doughnut Chart */}
-                <div className="p-4 border border-slate-100 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
-                  <div className="w-24 h-16 rounded-xl bg-white border border-slate-200 flex items-center justify-center shrink-0 shadow-sm animate-pulse-slow">
-                    <div className="w-10 h-10 rounded-full border-4 border-emerald-500 border-r-indigo-500 border-t-purple-500" />
-                  </div>
-                  <div>
-                    <h5 className="text-xs font-bold text-slate-800">{t("Pie / Doughnut Chart", "Koláčový / Kruhový graf", "Kör / Fánk diagram")}</h5>
-                    <p className="text-[11px] text-slate-500 leading-normal mt-0.5">
-                      {t("Displays percentage shares of a total. Best for statuses, sources, or priorities (keep slices under 6 for legibility).", "Zobrazuje percentuálne podiely. Najvhodnejšie pre stavy, marketingové kanály alebo priority.", "Részarányok szemléltetésére a legalkalmasabb.")}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Data Table */}
-                <div className="p-4 border border-slate-100 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
-                  <div className="w-24 h-16 rounded-xl bg-white border border-slate-200 p-2 flex flex-col gap-1.5 shrink-0 shadow-sm justify-center">
-                    <div className="h-2 bg-slate-100 rounded w-full" />
-                    <div className="h-2 bg-slate-100 rounded w-4/5" />
-                    <div className="h-2 bg-slate-100 rounded w-5/6" />
-                  </div>
-                  <div>
-                    <h5 className="text-xs font-bold text-slate-800">{t("Data Table", "Dátová tabuľka", "Adattáblázat")}</h5>
-                    <p className="text-[11px] text-slate-500 leading-normal mt-0.5">
-                      {t("Lists records with details (names, dates, statuses, currencies). Uses sizes 'lg' or 'full'. Ideal for showing newest leads or pending deadlines.", "Zobrazuje detailné riadky (mená, dátumy, stavy, sumy). Využíva veľkosti 'lg' alebo 'full'.", "Részletes adatsorok listázására kiváló.")}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Accordion */}
-                <div className="p-4 border border-slate-100 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
-                  <div className="w-24 h-16 rounded-xl bg-white border border-slate-200 p-2 flex flex-col gap-1.5 shrink-0 shadow-sm justify-center">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-1">
-                      <div className="h-1.5 bg-indigo-500 rounded w-1/2" />
-                      <div className="w-1.5 h-1.5 border-r border-b border-slate-400 transform rotate-45" />
-                    </div>
-                    <div className="h-2 bg-slate-50 rounded w-full" />
-                  </div>
-                  <div>
-                    <h5 className="text-xs font-bold text-slate-800">{t("Collapsible Accordions", "Rozbaľovacia harmonika", "Harmonika (Accordion)")}</h5>
-                    <p className="text-[11px] text-slate-500 leading-normal mt-0.5">
-                      {t("Best for FAQs, logs, details, or lists of meeting notes where items should expand/collapse individually.", "Vhodné pre zoznamy úloh, poznámky zo stretnutí a detaily, ktoré sa majú jednotlivo rozbaliť.", "Kinyitható és összecsukható részletek megjelenítésére kiváló.")}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Tabs */}
-                <div className="p-4 border border-slate-100 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
-                  <div className="w-24 h-16 rounded-xl bg-white border border-slate-200 p-2 flex gap-1.5 items-start shrink-0 shadow-sm justify-center">
-                    <div className="px-1.5 py-0.5 rounded bg-indigo-600 text-[6px] font-bold text-white">Tab A</div>
-                    <div className="px-1.5 py-0.5 rounded bg-slate-50 text-[6px] font-bold text-slate-500">Tab B</div>
-                  </div>
-                  <div>
-                    <h5 className="text-xs font-bold text-slate-800">{t("Tabbed Views", "Záložkové prepínače (Tab-y)", "Fülek (Tabs)")}</h5>
-                    <p className="text-[11px] text-slate-500 leading-normal mt-0.5">
-                      {t("Allows users to toggle between different datasets or query filters within the same card/module.", "Umožňuje používateľom prepínať medzi rôznymi pohľadmi alebo filtrami v rámci jedného modulu.", "Lehetővé teszi a nézetek közötti váltást egyetlen modulon belül.")}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Progress & Goals */}
-                <div className="p-4 border border-slate-100 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
-                  <div className="w-24 h-16 rounded-xl bg-white border border-slate-200 p-2.5 flex flex-col justify-center shrink-0 shadow-sm gap-1.5">
-                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-emerald-500 w-3/4 rounded-full" />
-                    </div>
-                    <span className="text-[8px] font-black text-emerald-600 text-center">{t("75% Goal", "75 % cieľa", "75% cél")}</span>
-                  </div>
-                  <div>
-                    <h5 className="text-xs font-bold text-slate-800">{t("Progress & Goals", "Ukazovatele pokroku (Gauge)", "Célok és Folyamatjelzők")}</h5>
-                    <p className="text-[11px] text-slate-500 leading-normal mt-0.5">
-                      {t("Ideal for tracking target goals (e.g. sales targets, completed tasks, lead pipeline progression).", "Ideálne pre sledovanie finančných cieľov, splnených úloh alebo percentuálneho pokroku.", "Célértékek és elért haladás szemléltetésére tökéletes.")}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Timeline */}
-                <div className="p-4 border border-slate-100 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
-                  <div className="w-24 h-16 rounded-xl bg-white border border-slate-200 p-2 flex flex-col shrink-0 shadow-sm justify-center pl-4 relative">
-                    <div className="absolute left-2.5 top-2 bottom-2 w-px bg-slate-200" />
-                    <div className="absolute left-[7px] top-3.5 w-2.5 h-2.5 rounded-full bg-indigo-500" />
-                    <div className="absolute left-[7px] bottom-3.5 w-2.5 h-2.5 rounded-full bg-slate-300" />
-                    <div className="h-1 bg-slate-100 rounded w-4/5" />
-                    <div className="h-1 bg-slate-100 rounded w-1/2 mt-4" />
-                  </div>
-                  <div>
-                    <h5 className="text-xs font-bold text-slate-800">{t("Activity / Timeline", "Časová os a história", "Idővonal / Előzmények")}</h5>
-                    <p className="text-[11px] text-slate-500 leading-normal mt-0.5">
-                      {t("Visualizes chronological events, logs, meeting notes history, or audit logs.", "Chronologicky usporiada udalosti, históriu úloh alebo poznámky zo stretnutí.", "Kronologikus események és előzmények megjelenítésére.")}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Area Chart */}
-                <div className="p-4 border border-slate-100 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
-                  <div className="w-24 h-16 rounded-xl bg-white border border-slate-200 p-2 flex items-center justify-center shrink-0 shadow-sm">
-                    <svg className="w-16 h-8 text-indigo-500" viewBox="0 0 100 50">
-                      <path d="M 5 45 L 25 30 L 50 40 L 75 20 L 95 10 L 95 45 Z" fill="rgba(99, 102, 241, 0.15)" stroke="currentColor" strokeWidth="2.5" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h5 className="text-xs font-bold text-slate-800">{t("Area Chart", "Plošný graf", "Területdiagram")}</h5>
-                    <p className="text-[11px] text-slate-500 leading-normal mt-0.5">
-                      {t("Like a line chart, but fills the area beneath. Great for displaying cumulative volumes, growth, or revenue.", "Podobný ako čiarový, avšak vypĺňa spodnú plochu. Vhodný pre sledovanie celkového kumulatívneho rastu.", "A vonaldiagramhoz hasonló, de kitölti az alatta lévő területet.")}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Radar Chart */}
-                <div className="p-4 border border-slate-100 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
-                  <div className="w-24 h-16 rounded-xl bg-white border border-slate-200 p-2 flex items-center justify-center shrink-0 shadow-sm">
-                    <div className="w-8 h-8 border border-slate-200 rotate-45 relative flex items-center justify-center">
-                      <div className="absolute inset-1.5 border border-indigo-400 rotate-[22deg] bg-indigo-500/10" />
-                    </div>
-                  </div>
-                  <div>
-                    <h5 className="text-xs font-bold text-slate-800">{t("Radar / Spider Chart", "Radarový / Pavučinový graf", "Pókhálódiagram (Radar)")}</h5>
-                    <p className="text-[11px] text-slate-500 leading-normal mt-0.5">
-                      {t("Compares performance across multiple distinct variables (e.g. skills comparison, team strengths, multi-category balances).", "Porovnáva výkony a vyváženosť medzi viacerými vlastnosťami naraz.", "Több változó mentén történő teljesítmény-összehasonlításra.")}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Scatter Plot */}
-                <div className="p-4 border border-slate-100 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
-                  <div className="w-24 h-16 rounded-xl bg-white border border-slate-200 p-2.5 relative flex items-center justify-center shrink-0 shadow-sm">
-                    <div className="w-1 h-1 rounded-full bg-purple-500 absolute top-3 left-4" />
-                    <div className="w-1.5 h-1.5 rounded-full bg-purple-500 absolute top-7 left-6" />
-                    <div className="w-1 h-1 rounded-full bg-purple-500 absolute top-5 left-10" />
-                    <div className="w-1.5 h-1.5 rounded-full bg-purple-500 absolute top-10 left-12" />
-                    <div className="w-1 h-1 rounded-full bg-purple-500 absolute top-4 left-16" />
-                  </div>
-                  <div>
-                    <h5 className="text-xs font-bold text-slate-800">{t("Scatter / Bubble Plot", "Bodový / Korelačný graf", "Pontdiagram (Scatter)")}</h5>
-                    <p className="text-[11px] text-slate-500 leading-normal mt-0.5">
-                      {t("Displays relationship patterns and correlations between two variables (e.g. deal size vs. time to close).", "Ukazuje vzťahy, korelácie a zhluky medzi dvoma číselnými hodnotami.", "Két számszerű változó közötti korreláció ábrázolására.")}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Horizontal Bar */}
-                <div className="p-4 border border-slate-100 rounded-2xl flex gap-3.5 items-start bg-slate-50/50">
-                  <div className="w-24 h-16 rounded-xl bg-white border border-slate-200 p-2.5 flex flex-col gap-1.5 shrink-0 shadow-sm justify-center font-sans">
-                    <div className="h-2 bg-indigo-500 rounded-sm w-4/5" />
-                    <div className="h-2 bg-indigo-500 rounded-sm w-3/5" />
-                    <div className="h-2 bg-indigo-500 rounded-sm w-5/6" />
-                  </div>
-                  <div>
-                    <h5 className="text-xs font-bold text-slate-800">{t("Horizontal Bar Chart", "Horizontálny stĺpcový graf", "Vízszintes oszlopdiagram")}</h5>
-                    <p className="text-[11px] text-slate-500 leading-normal mt-0.5">
-                      {t("Best when category names are very long (like full names or long lead sources) to prevent overlapping labels.", "Najvhodnejšie pri dlhých názvoch kategórií, aby sa text neprekrýval a ostal čitateľný.", "Különösen alkalmas hosszú nevű kategóriák ábrázolására.")}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Color Coding Guideline */}
-              <div className="space-y-3 text-left">
-                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  {t("3. Color Coding Harmony", "3. Farebná symbolika a harmónia", "3. Színharmónia")}
-                </h4>
-                <p className="text-xs text-slate-500 leading-relaxed">
-                  {t("Match widget colors to the semantics of the data for quicker comprehension:", "Zlaďte farby modulu s významom údajov pre rýchlejšie pochopenie:", "Igazítsa a színeket az adatok jelentéséhez a gyorsabb megértésért:")}
-                </p>
-                <div className="grid grid-cols-2 gap-2 text-[10px] font-bold">
-                  <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-800 flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                    <span>{t("Emerald: Finance", "Smaragdová: Financie", "Smaragd: Pénzügy")}</span>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-100 text-rose-800 flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-rose-500" />
-                    <span>{t("Rose: Urgent", "Ružová: Súrne", "Rózsaszín: Sürgős")}</span>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-100 text-amber-800 flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-amber-500" />
-                    <span>{t("Amber: Warnings", "Jantárová: Varovania", "Borostyán: Figyelem")}</span>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-purple-50 border border-purple-100 text-purple-800 flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-purple-500" />
-                    <span>{t("Purple: AI / Notes", "Fialová: AI / Poznámky", "Ibolya: AI / Jegyzet")}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </>
+      {canEdit && settingsWidget && (
+        <WidgetSettingsDrawer
+          widget={settingsWidget}
+          preset={presetOfWidget(settingsWidget)}
+          section={sectionOfWidget(settingsWidget)}
+          title={localize(settingsWidget.title)}
+          subtitle={`${typeNameOf(settingsWidget)} · ${widgetTypeLabel(resolveWidgetType(settingsWidget).type, t)}`}
+          settings={settingsOfWidget(settingsWidget)}
+          columnCatalogue={presetOfWidget(settingsWidget)?.columnCatalogue ?? []}
+          statusOptions={statusOptionsFor(settingsWidget)}
+          statusColors={settingsWidget.query?.action === "recent_tasks" ? taskStateColors : leadStateColors}
+          canDelete={canDelete}
+          t={t}
+          typeOptions={EDITABLE_WIDGET_TYPES.map((type) => ({ value: type, label: widgetTypeLabel(type, t) }))}
+          currentType={resolveWidgetType(settingsWidget).type}
+          chartTypes={CHART_TYPES}
+          currentChartType={CHART_TYPES.includes(canonical(settingsWidget.chartType)) ? canonical(settingsWidget.chartType) : "bar"}
+          onType={(type) => changeWidgetType(settingsWidget.id, type)}
+          onChartType={(chartType) => updateWidget(settingsWidget.id, { chartType })}
+          onRename={(value) => renameWidget(settingsWidget.id, value)}
+          onSize={(size) => updateWidget(settingsWidget.id, { size })}
+          onSettings={(patch) => patchWidgetSettings(settingsWidget.id, patch)}
+          onDelete={() => removeWidget(settingsWidget.id)}
+          onClose={() => setSettingsWidgetId(null)}
+        />
       )}
     </div>
   );
 };
 
-/* Single-value KPI card. Extracted from the grid so a `tabs` widget can host one. */
 /* ---------------------------------------------------------------------------
-   Widget editor chrome. Rendered on top of each card in edit mode; every control
-   writes straight into the working layout, which is only persisted on Save.
+   Widget editor chrome. A floating bar over each card in edit mode, holding
+   only what you reach for while arranging a grid — move it, see how wide it is,
+   copy it, remove it. Everything else is one click away in the settings drawer.
 --------------------------------------------------------------------------- */
 
-const SIZE_LABELS: Record<WidgetSize, string> = { sm: "S", md: "M", lg: "L", full: "XL" };
-
-const widgetTypeLabel = (type: string, t: (en: string, sk: string, hu: string) => string) => {
+const widgetTypeLabel = (type: string, t: Translate) => {
   switch (type) {
     case "metric": return t("Metric", "Metrika", "Mérőszám");
     case "chart": return t("Chart", "Graf", "Diagram");
@@ -1700,281 +1390,67 @@ const widgetTypeLabel = (type: string, t: (en: string, sk: string, hu: string) =
   }
 };
 
-const WidgetEditBar: React.FC<{
-  widget: any;
-  index: number;
-  total: number;
-  title: string;
-  /** What the widget is (preset / original name); the title only overrides it. */
-  typeName: string;
-  onResetTitle: () => void;
-  isDragging: boolean;
-  t: (en: string, sk: string, hu: string) => string;
+const WidgetEditToolbar: React.FC<{
+  t: Translate;
+  size: WidgetSize;
+  canDelete: boolean;
   onDragStart: () => void;
   onDragEnd: () => void;
-  onMove: (direction: -1 | 1) => void;
-  onSize: (size: WidgetSize) => void;
-  onType: (type: string) => void;
-  onChartType: (chartType: string) => void;
-  onColor: (color: string) => void;
-  onRename: (value: string) => void;
+  onSettings: () => void;
   onDuplicate: () => void;
   onRemove: () => void;
-  canDelete?: boolean;
-  /** Every phase this widget could report on; empty for widgets that have none. */
-  stageOptions: string[];
-  /** The phases it reports now; empty means "whatever currently has leads". */
-  stageSelection: string[];
-  onStages: (statuses: string[]) => void;
-  onMetricKey: (dataKey: string) => void;
-}> = ({
-  widget, index, total, title, typeName, onResetTitle, isDragging, t,
-  onDragStart, onDragEnd, onMove, onSize, onType, onChartType, onColor, onRename, onDuplicate, onRemove,
-  stageOptions, stageSelection, onStages, onMetricKey, canDelete = true
-}) => {
-  const resolvedType = resolveWidgetType(widget).type;
-  const currentSize = (WIDGET_SIZES as string[]).includes(widget.size) ? (widget.size as WidgetSize) : "full";
-
-  const typeLabel = (type: string) => widgetTypeLabel(type, t);
-  const isRenamed = title.trim() !== "" && title.trim() !== typeName;
-
-  const selectClass =
-    "h-7 rounded-lg border border-slate-200 bg-white px-2 text-[10px] font-black uppercase tracking-wider text-slate-600 cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500";
-
-  const hasSelection = stageSelection.length > 0;
-
-  /**
-   * Plain click solos a phase — that is the whole point of the picker, and with
-   * a long pipeline toggling the other nine off would be absurd. Ctrl/Cmd/Shift
-   * adds and removes instead, starting from "everything" when nothing is picked
-   * yet. The last phase cannot be removed: a widget reporting no phase at all
-   * would fall back to reporting all of them, which is not what the click meant.
-   */
-  const toggleStage = (stage: string, additive: boolean): string[] => {
-    if (!additive) return [stage];
-    const base = hasSelection ? stageSelection : stageOptions;
-    const isOn = base.some(s => sameStage(s, stage));
-    if (!isOn) return [...base, stage];
-    const next = base.filter(s => !sameStage(s, stage));
-    return next.length > 0 ? next : base;
+}> = ({ t, size, canDelete, onDragStart, onDragEnd, onSettings, onDuplicate, onRemove }) => {
+  const button =
+    "w-7 h-7 rounded-lg border-0 bg-transparent flex items-center justify-center p-0 text-slate-600 hover:bg-slate-100 hover:text-indigo-600 transition-colors cursor-pointer";
+  const stop = (fn: () => void) => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    fn();
   };
 
   return (
-    <div className="-mt-2 mb-3 pb-3 border-b border-dashed border-indigo-100 space-y-2">
-      {/* The widget's type stays visible whatever it has been renamed to. */}
-      <div className="flex items-center gap-1.5 min-w-0">
-        <span
-          className="min-w-0 truncate px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-600 text-[9px] font-black uppercase tracking-widest"
-          title={t("Widget type", "Typ modulu", "Modul típusa")}
+    <div
+      onClick={(e) => e.stopPropagation()}
+      className="absolute -top-[18px] right-[18px] z-20 flex items-center gap-0.5 h-[34px] px-[3px] rounded-[11px] bg-white border border-slate-200 shadow-lg"
+    >
+      <span
+        draggable
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+        title={t("Drag to reorder", "Potiahnutím zmeníte poradie", "Húzza az átrendezéshez")}
+        className={cn(button, "cursor-grab active:cursor-grabbing")}
+      >
+        <Grip className="h-[15px] w-[15px]" strokeWidth={2.25} />
+      </span>
+      <span className="w-px h-4 bg-slate-200" />
+      <span
+        className="px-1.5 text-[11px] font-extrabold tracking-[0.06em] text-slate-600"
+        title={t("Widget width", "Šírka modulu", "Modul szélessége")}
+      >
+        {WIDGET_SIZE_LABELS[size]}
+      </span>
+      <span className="w-px h-4 bg-slate-200" />
+      <button type="button" onClick={stop(onSettings)} aria-label={t("Settings", "Nastavenia", "Beállítások")} className={button}>
+        <SlidersHorizontal className="h-[15px] w-[15px]" strokeWidth={2.25} />
+      </button>
+      <button type="button" onClick={stop(onDuplicate)} aria-label={t("Duplicate", "Duplikovať", "Másolás")} className={button}>
+        <Copy className="h-[15px] w-[15px]" strokeWidth={2.25} />
+      </button>
+      {canDelete && (
+        <button
+          type="button"
+          onClick={stop(onRemove)}
+          aria-label={t("Remove widget", "Odstrániť modul", "Modul eltávolítása")}
+          className={cn(button, "hover:bg-rose-50 hover:text-rose-600")}
         >
-          {typeName}
-        </span>
-        <span className="shrink-0 text-[9px] font-bold uppercase tracking-widest text-slate-400">
-          {typeLabel(resolvedType)}
-        </span>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <span
-          draggable
-          onDragStart={onDragStart}
-          onDragEnd={onDragEnd}
-          title={t("Drag to reorder", "Potiahnutím zmeníte poradie", "Húzza az átrendezéshez")}
-          className={cn(
-            "shrink-0 p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-grab active:cursor-grabbing",
-            isDragging && "text-indigo-600"
-          )}
-        >
-          <GripVertical className="h-4 w-4" />
-        </span>
-
-        <input
-          value={title}
-          onChange={(e) => onRename(e.target.value)}
-          placeholder={typeName}
-          title={t("Custom name — leave empty to use the type name", "Vlastný názov — nechajte prázdne pre názov typu", "Egyéni név — hagyja üresen a típusnévhez")}
-          className="flex-1 min-w-0 h-7 px-2 rounded-lg border border-transparent hover:border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 bg-transparent text-[11px] font-bold text-slate-700 placeholder:text-slate-400 focus:outline-none transition-colors"
-        />
-        {isRenamed && (
-          <button
-            type="button"
-            onClick={onResetTitle}
-            title={t("Restore the type name", "Obnoviť názov typu", "Típusnév visszaállítása")}
-            className="shrink-0 p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-          </button>
-        )}
-
-        <div className="flex items-center gap-0.5 shrink-0">
-          <button
-            type="button"
-            onClick={() => onMove(-1)}
-            disabled={index === 0}
-            title={t("Move earlier", "Posunúť dopredu", "Előrébb")}
-            className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 transition-colors cursor-pointer disabled:cursor-default"
-          >
-            <ChevronUp className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => onMove(1)}
-            disabled={index === total - 1}
-            title={t("Move later", "Posunúť dozadu", "Hátrébb")}
-            className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 transition-colors cursor-pointer disabled:cursor-default"
-          >
-            <ChevronDown className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={onDuplicate}
-            title={t("Duplicate", "Duplikovať", "Másolás")}
-            className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
-          >
-            <Copy className="h-3.5 w-3.5" />
-          </button>
-          {canDelete && (
-          <button
-            type="button"
-            onClick={onRemove}
-            title={t("Remove widget", "Odstrániť modul", "Modul eltávolítása")}
-            className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
-          )}
-        </div>
-      </div>
-
-      <div className="flex items-center gap-2 flex-wrap">
-        {/* Size: the four spans of the 12-column grid. */}
-        <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-slate-100">
-          {WIDGET_SIZES.map(size => (
-            <button
-              key={size}
-              type="button"
-              onClick={() => onSize(size)}
-              title={t("Widget width", "Šírka modulu", "Modul szélessége")}
-              className={cn(
-                "w-6 h-6 rounded-md text-[9px] font-black uppercase transition-all cursor-pointer",
-                currentSize === size ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
-              )}
-            >
-              {SIZE_LABELS[size]}
-            </button>
-          ))}
-        </div>
-
-        <select
-          value={EDITABLE_WIDGET_TYPES.includes(resolvedType) ? resolvedType : ""}
-          onChange={(e) => onType(e.target.value)}
-          className={selectClass}
-          title={t("Widget type", "Typ modulu", "Modul típusa")}
-        >
-          {!EDITABLE_WIDGET_TYPES.includes(resolvedType) && (
-            <option value="" disabled>{typeLabel(resolvedType)}</option>
-          )}
-          {EDITABLE_WIDGET_TYPES.map(type => (
-            <option key={type} value={type}>{typeLabel(type)}</option>
-          ))}
-        </select>
-
-        {resolvedType === "chart" && (
-          <select
-            value={CHART_TYPES.includes(canonical(widget.chartType)) ? canonical(widget.chartType) : "bar"}
-            onChange={(e) => onChartType(e.target.value)}
-            className={selectClass}
-            title={t("Chart type", "Typ grafu", "Diagram típusa")}
-          >
-            {CHART_TYPES.map(type => (
-              <option key={type} value={type}>{type}</option>
-            ))}
-          </select>
-        )}
-
-        <div className="flex items-center gap-1 ml-auto">
-          {Object.keys(ACCENT_COLORS).map(name => (
-            <button
-              key={name}
-              type="button"
-              onClick={() => onColor(name)}
-              title={name}
-              aria-label={name}
-              className={cn(
-                "w-3.5 h-3.5 rounded-full transition-transform cursor-pointer hover:scale-125",
-                widget.color === name ? "ring-2 ring-offset-1 ring-slate-400 scale-110" : ""
-              )}
-              style={{ backgroundColor: ACCENT_COLORS[name] }}
-            />
-          ))}
-        </div>
-      </div>
-
-      {stageOptions.length > 0 && (
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 shrink-0">
-            {t("Phases", "Fázy", "Fázisok")}
-          </span>
-
-          {stageOptions.map(stage => {
-            // No selection at all is the pre-picker default: the query reports
-            // every phase that has leads, so every chip is on.
-            const isOn = !hasSelection || stageSelection.some(s => sameStage(s, stage));
-            return (
-              <button
-                key={stage}
-                type="button"
-                onClick={(e) => onStages(toggleStage(stage, e.ctrlKey || e.metaKey || e.shiftKey))}
-                title={t(
-                  "Click for this phase only, Ctrl+click to add or remove one",
-                  "Kliknutím zobrazíte iba túto fázu, Ctrl+klik pridá alebo odoberie",
-                  "Kattintson csak ehhez a fázishoz, Ctrl+kattintás hozzáad vagy elvesz"
-                )}
-                className={cn(
-                  "h-6 px-2 rounded-lg text-[10px] font-bold capitalize transition-all cursor-pointer border",
-                  isOn
-                    ? "bg-indigo-50 border-indigo-200 text-indigo-700"
-                    : "bg-white border-slate-200 text-slate-400 hover:text-slate-600 hover:border-slate-300"
-                )}
-              >
-                {stage}
-              </button>
-            );
-          })}
-
-          <button
-            type="button"
-            onClick={() => onStages(stageOptions)}
-            title={t(
-              "Show every phase, including the empty ones",
-              "Zobraziť všetky fázy vrátane prázdnych",
-              "Minden fázis megjelenítése, az üreseket is"
-            )}
-            className="h-6 px-2 rounded-lg text-[10px] font-black uppercase tracking-wider text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
-          >
-            {t("All", "Všetky", "Mind")}
-          </button>
-
-          {/* One phase is a single figure, so the card can drop the breakdown and
-              just show the number — which of the two columns is the question the
-              chips cannot answer. */}
-          {resolvedType === "metric" && (
-            <select
-              value={canonical(widget.mapping?.dataKey) === "totalvalue" ? "total_value" : "count"}
-              onChange={(e) => onMetricKey(e.target.value)}
-              className={cn(selectClass, "ml-auto")}
-              title={t("Figure to show", "Zobrazené číslo", "Megjelenített szám")}
-            >
-              <option value="count">{t("Count", "Počet", "Darab")}</option>
-              <option value="total_value">{t("Value", "Hodnota", "Érték")}</option>
-            </select>
-          )}
-        </div>
+          <Trash2 className="h-[15px] w-[15px]" strokeWidth={2.25} />
+        </button>
       )}
     </div>
   );
 };
 
+/* Single-value KPI card, for AI-generated widgets and anything without a
+   dedicated renderer. */
 const DashboardMetric: React.FC<{
   widget: any;
   data: any;
@@ -2033,7 +1509,14 @@ const DashboardMetric: React.FC<{
     return String(data);
   })();
 
-  return <div className="text-3xl font-black text-slate-800 tracking-tight">{value}</div>;
+  return (
+    <div
+      className="text-[34px] font-bold text-slate-900 tracking-[-0.02em] leading-[1.05]"
+      style={{ fontVariantNumeric: "tabular-nums" }}
+    >
+      {value}
+    </div>
+  );
 };
 
 /* Widget Chart Element utilizing global Chart.js */
@@ -2259,7 +1742,7 @@ const DashboardChart: React.FC<DashboardChartProps> = ({ widget, data, localized
 interface DashboardTableProps {
   widget: any;
   data: any;
-  t: (en: string, sk: string, hu: string) => string;
+  t: Translate;
   formatCurrency?: (value: number) => string;
   systemLanguage: Language;
   localize: (value: any) => string;
@@ -2319,7 +1802,7 @@ const DashboardTable: React.FC<DashboardTableProps> = ({ widget, data, t, format
    arrange them, so no charting library is involved.
 --------------------------------------------------------------------------- */
 
-const EmptyRows: React.FC<{ t: (en: string, sk: string, hu: string) => string }> = ({ t }) => (
+const EmptyRows: React.FC<{ t: Translate }> = ({ t }) => (
   <div className="text-center py-6 text-xs text-slate-400 font-semibold uppercase tracking-wider">
     {t("No records found", "Žiadne záznamy", "Nincs találat")}
   </div>
@@ -2340,7 +1823,7 @@ const formatTimestamp = (val: any, lang: Language) => {
 const DashboardTimeline: React.FC<{
   widget: any;
   data: any;
-  t: (en: string, sk: string, hu: string) => string;
+  t: Translate;
   systemLanguage: Language;
   localize: (value: any) => string;
 }> = ({ widget, data, t, systemLanguage }) => {
@@ -2392,7 +1875,7 @@ const DashboardTimeline: React.FC<{
 const DashboardAccordion: React.FC<{
   widget: any;
   data: any;
-  t: (en: string, sk: string, hu: string) => string;
+  t: Translate;
   localize: (value: any) => string;
   systemLanguage: Language;
 }> = ({ widget, data, t, systemLanguage }) => {
@@ -2453,7 +1936,7 @@ const DashboardAccordion: React.FC<{
 const DashboardTabs: React.FC<{
   widget: any;
   localize: (value: any) => string;
-  t: (en: string, sk: string, hu: string) => string;
+  t: Translate;
   isTabLoading: (index: number) => boolean;
   renderTab: (tab: any, index: number) => React.ReactNode;
 }> = ({ widget, localize, t, isTabLoading, renderTab }) => {

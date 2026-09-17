@@ -2441,6 +2441,12 @@ ${log.payload || ''}
             systemLanguage={userLanguage}
             currencyCode={currencyCode}
             pipelineStages={orderedLeadStates}
+            leadStateColors={leadStateColors}
+            leadSourceColors={leadSourceColors}
+            taskStates={taskStates}
+            taskStateColors={taskStateColors}
+            currentUserName={currentUser?.name || ""}
+            onNavigate={(route) => { window.location.hash = route; }}
           />
         );
       }
@@ -2813,6 +2819,12 @@ ${log.payload || ''}
             systemLanguage={userLanguage}
             currencyCode={currencyCode}
             pipelineStages={orderedLeadStates}
+            leadStateColors={leadStateColors}
+            leadSourceColors={leadSourceColors}
+            taskStates={taskStates}
+            taskStateColors={taskStateColors}
+            currentUserName={currentUser?.name || ""}
+            onNavigate={(route) => { window.location.hash = route; }}
           />
         );
       case "overview":

@@ -952,14 +952,22 @@ export async function installBackendMocks(page: Page) {
     let action = '';
     let sql = '';
     let statuses: string[] = [];
+    let order = '';
+    let owner = '';
+    let limit = 5;
     try {
       const body = JSON.parse(route.request().postData() || '{}');
       action = (body.action as string) || '';
       sql = String(body?.params?.sql ?? body?.sql ?? '');
       statuses = Array.isArray(body?.params?.statuses) ? body.params.statuses.map(String) : [];
+      order = String(body?.params?.order ?? '');
+      owner = String(body?.params?.owner ?? '');
+      limit = Number(body?.params?.limit ?? 5) || 5;
     } catch {
       action = '';
     }
+    const inStatuses = (status: string) =>
+      statuses.length === 0 || statuses.some((s) => s.trim().toLowerCase() === status.toLowerCase());
 
     const data = (() => {
       switch (action) {
@@ -992,35 +1000,63 @@ export async function installBackendMocks(page: Page) {
             { source: 'referral', count: 3, total_value: 27000 },
             { source: 'campaign', count: 2, total_value: 11000 },
           ];
-        case 'tasks_summary':
-          return [
-            { status: 'todo', count: 5 },
-            { status: 'in_progress', count: 3 },
-            { status: 'done', count: 7 },
-          ];
+        case 'tasks_summary': {
+          // Grouped off the seeded tasks, using the app's own configured state
+          // names, so the Dashboard's open-tasks and status cards colour their
+          // segments the same way the task board does.
+          const counts = new Map<string, number>();
+          TASKS.forEach((task) => counts.set(task.status, (counts.get(task.status) ?? 0) + 1));
+          return [...counts.entries()].map(([status, count]) => ({ status, count }));
+        }
         case 'tasks_by_owner':
           return [
             { owner: 'Ada Admin', count: 6 },
             { owner: 'Sam Sales', count: 4 },
           ];
-        case 'recent_leads':
-          return LEADS.slice(0, 5).map((lead) => ({
+        case 'recent_leads': {
+          const matching = LEADS.filter((lead) => inStatuses(lead.status));
+          const sorted = [...matching].sort((a, b) =>
+            order === 'value'
+              ? Number(b.value) - Number(a.value)
+              : String(b.createdAt).localeCompare(String(a.createdAt)),
+          );
+          return sorted.slice(0, limit).map((lead) => ({
             id: lead.id,
             name: lead.name,
             status: lead.status,
             value: lead.value,
             owner: lead.owner,
+            source: lead.source,
+            city: lead.city,
+            client_type: lead.clientType,
+            category: lead.categories?.[0] ?? null,
             created_at: lead.createdAt,
+            total_count: matching.length,
           }));
-        case 'recent_tasks':
-          return TASKS.slice(0, 5).map((task) => ({
+        }
+        case 'recent_tasks': {
+          const matching = TASKS.filter(
+            (task) =>
+              inStatuses(task.status) &&
+              (owner === '' || task.owner === owner || (task.assignedUsers ?? []).includes(owner)),
+          );
+          const sorted = [...matching].sort((a, b) =>
+            order === 'deadline' ? String(a.deadline).localeCompare(String(b.deadline)) : 0,
+          );
+          return sorted.slice(0, limit).map((task) => ({
             id: task.id,
             title: task.title,
             status: task.status,
             priority: task.priority,
             owner: task.owner,
             deadline: task.deadline,
+            deadline_time: task.deadlineTime ?? null,
+            related_lead_id: task.relatedLeadId ?? null,
+            lead_name: LEADS.find((lead) => lead.id === task.relatedLeadId)?.name ?? null,
+            project_name: task.relatedProjectId ? 'QA project' : null,
+            total_count: matching.length,
           }));
+        }
         case 'recent_meetings':
           return [
             { id: 'm1', title: 'Kick-off — Nordic Retail', created_at: '2026-01-20' },
