@@ -527,3 +527,31 @@ Four of the six blockers are one mistake each, in one line:
 | The ledger reads `splitRecordAmounts()` | F4, F12, F22 |
 
 Root causes B and C (one "Real" rule, one date rule) are **not** one-line fixes and need an owner decision before any code changes — that is why this audit does not make them.
+
+---
+
+## Addendum — items from the 1.9.63 fix session, cross-referenced
+
+The session that shipped 1.9.63 (`c7095bf`) left five things unfixed on
+purpose. Four of them are already findings above; one is a product gap this
+audit's invariants do not reach, recorded here so it is not lost.
+
+| Left unfixed in 1.9.63 | Where it lives now |
+|---|---|
+| The three tabs date a movement differently (issue date first in the table, paid date first in the trend and the ledger) | **F3** (root cause C) |
+| A `cancelled` one-off movement is still counted as planned money in every tab | **F6** (root cause D) |
+| A recurring rule is counted once in the ledger totals but once per charge in the table and the trend | **F22** (root cause F) |
+| The project finance tab rewrites a paid record's `paidDate` to today on every edit | **F19** (root cause E) |
+| Invoices from the Invoicing module never reach any finance tab | **F27**, below |
+
+### F27. An invoice issued in the Invoicing module is in no finance tab at all
+Severity: medium (product gap, not a wrong number — nothing is double-counted or lost from `financialRecords`; the money simply is not there)
+Observed: `invoicesOffers` is its own collection in `App.tsx` and is never passed to `FinancialManagementView`. An invoice issued there with a due date next month is absent from the ledger, the overview table, the trend and the forecast overlay, so next month's expected income is understated by every open Invoicing invoice.
+Root cause: there is no bridge between `invoicesOffers` and `financialRecords`; item 34 above confirms `InvoicingView.tsx` writes neither. Raised by the session that built the forecast overlay (1.9.64).
+Also affects: any dashboard, project or client panel that sums `financialRecords` for "expected income".
+Invariant: none of 1–10 (they are scoped to `financialRecords`); this is a scope decision.
+Proposed fix: an owner decision first. Either (a) issuing an invoice creates a linked `pending` income movement (and paying it settles that movement), or (b) the finance tabs read `invoicesOffers` as a second source alongside `financialRecords`. (a) keeps one ledger and is the smaller change; it must guard against double entry when a user already records the same invoice by hand.
+Pinned by: not yet — needs the decision.
+
+### Note on F2 versus the 1.9.63 change
+1.9.63 introduced the `status === "cancelled"` short-circuit that F2 describes as retroactive. Before it, a paused rule kept charging every month in the table and the trend while the Recurring tab's totals excluded it, which was the worse inconsistency; F2's fix (pause = end date) is the right next step and supersedes the short-circuit.
