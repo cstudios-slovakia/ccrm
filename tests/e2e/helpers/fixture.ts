@@ -653,6 +653,24 @@ const FINANCIAL_RECORDS = [
     createdBy: 'Erik',
     createdAt: isoStamp(-15),
   },
+  {
+    // Paid, but never filed under a category — the overview table must still count it.
+    id: 'fr-5',
+    type: 'expense',
+    subtype: 'overhead',
+    title: 'Kancelárske potreby',
+    categoryId: null,
+    amountPlanned: 180,
+    amountReal: 180,
+    currency: 'EUR',
+    status: 'paid',
+    issueDate: isoDate(-10),
+    paidDate: isoDate(-10),
+    paymentMethod: 'card',
+    isRecurring: false,
+    createdBy: 'Mária',
+    createdAt: isoStamp(-10),
+  },
 ];
 
 const MEETING_NOTES = [

@@ -24,7 +24,7 @@ export const iconForCategoryLevel = (level: number): string =>
 const indexById = (cats: FinancialCategory[]) => new Map(cats.map((c) => [c.id, c]));
 
 /** A parent that no longer exists is treated as no parent, so the row stays visible at the root. */
-const effectiveParentId = (cat: FinancialCategory, byId: Map<string, FinancialCategory>): string | null =>
+export const effectiveParentId = (cat: FinancialCategory, byId: Map<string, FinancialCategory>): string | null =>
   cat.parentId && byId.has(cat.parentId) ? cat.parentId : null;
 
 /**

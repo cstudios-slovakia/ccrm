@@ -54,6 +54,11 @@ import {
   recurringOccurrences,
   shiftIsoDate
 } from "../utils/recurringExpenses";
+import {
+  UNCATEGORIZED_ROW_ID,
+  aggregateOverviewTable,
+  splitRecordAmounts
+} from "../utils/financialOverviewTable";
 
 // Trend graph forecast horizons. `futureWeeks` is the number of whole weeks the
 // projection runs past the current one — 13 weeks is the usual "3 months".
@@ -1806,25 +1811,19 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
       buckets.forEach((b) => {
         if (recDateStr >= b.startIso && recDateStr <= b.endIso) {
-          const amt = rec.amountReal > 0 ? rec.amountReal : (rec.amountPlanned || 0);
-          const plannedAmt = rec.amountPlanned || rec.amountReal || 0;
+          // Settled money is real, the rest of the plan is still expected — the
+          // same split the overview table uses, so a partial payment shows its
+          // paid part as real here too instead of as a plan.
+          const { real, estimated } = splitRecordAmounts(rec);
 
           if (rec.type === "income") {
-            if (rec.status === "paid") {
-              b.incomeReal += amt;
-            } else if (b.isFuture) {
-              b.incomeProjected += plannedAmt;
-            } else {
-              b.incomePlanned += plannedAmt;
-            }
+            b.incomeReal += real;
+            if (b.isFuture) b.incomeProjected += estimated;
+            else b.incomePlanned += estimated;
           } else {
-            if (rec.status === "paid") {
-              b.expenseReal += amt;
-            } else if (b.isFuture) {
-              b.expenseProjected += plannedAmt;
-            } else {
-              b.expensePlanned += plannedAmt;
-            }
+            b.expenseReal += real;
+            if (b.isFuture) b.expenseProjected += estimated;
+            else b.expensePlanned += estimated;
           }
 
           b.items.push({
@@ -1844,6 +1843,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     // us — see utils/recurringExpenses.ts.
     financialRecords.forEach((rec) => {
       if (!rec.isRecurring) return;
+      // A paused rule charges nothing, as the recurring tab's totals already assume.
+      if (rec.status === "cancelled") return;
 
       const freq = rec.recurringFrequency || "monthly";
 
@@ -2128,176 +2129,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       }));
     }
 
-    // 2. Aggregate Records into cellMap: cellMap[categoryId][colId] = { real, estimated, total }
-    type CellVal = { real: number; estimated: number; total: number };
-    const createEmptyCell = (): CellVal => ({ real: 0, estimated: 0, total: 0 });
-
-    const directCellMap: Record<string, Record<string, CellVal>> = {};
-
-    const addDirect = (catId: string, colId: string, amt: number, isReal: boolean) => {
-      if (!catId || !colId || amt <= 0) return;
-      if (!directCellMap[catId]) directCellMap[catId] = {};
-      if (!directCellMap[catId][colId]) directCellMap[catId][colId] = createEmptyCell();
-
-      if (isReal) {
-        directCellMap[catId][colId].real += amt;
-      } else {
-        directCellMap[catId][colId].estimated += amt;
-      }
-      directCellMap[catId][colId].total += amt;
-    };
-
-    // Distribute single records
-    financialRecords.forEach((rec) => {
-      if (rec.isRecurring) return;
-      const recDate = rec.issueDate || rec.paidDate || rec.dueDate || "";
-      if (!recDate || !rec.categoryId) return;
-
-      const amt = rec.amountReal && rec.amountReal > 0 ? rec.amountReal : rec.amountPlanned;
-      const isReal = rec.status === "paid";
-
-      columns.forEach((col) => {
-        if (recDate >= col.startIso && recDate <= col.endIso) {
-          addDirect(rec.categoryId!, col.id, amt, isReal);
-        }
-      });
-    });
-
-    // Distribute recurring records
-    //
-    // The charges are enumerated off the calendar instead of being estimated
-    // per granularity (a month is not always 4 weeks, and a yearly rule only
-    // lands in one of the quarters), and each one is priced at the amount that
-    // was in force on its date — a rule whose amount changed keeps the old
-    // figure in the columns it was already charged at.
-    financialRecords.forEach((rec) => {
-      if (!rec.isRecurring || !rec.categoryId) return;
-
-      columns.forEach((col) => {
-        const totalAmt = recurringCharges(rec, col.startIso, col.endIso)
-          .reduce((sum, charge) => sum + charge.amount, 0);
-        if (totalAmt <= 0) return;
-
-        const isReal = !col.isFuture && rec.status === "paid";
-        addDirect(rec.categoryId!, col.id, totalAmt, isReal);
-      });
-    });
-
-    // 3. Hierarchical Rollup:
-    const rolledUpCellMap: Record<string, Record<string, CellVal>> = {};
-
-    const getCell = (catId: string, colId: string): CellVal => {
-      if (!rolledUpCellMap[catId]) rolledUpCellMap[catId] = {};
-      if (!rolledUpCellMap[catId][colId]) {
-        rolledUpCellMap[catId][colId] = createEmptyCell();
-      }
-      return rolledUpCellMap[catId][colId];
-    };
-
-    // Copy direct sums
-    financialCategories.forEach((cat) => {
-      columns.forEach((col) => {
-        const direct = directCellMap[cat.id]?.[col.id] || createEmptyCell();
-        const target = getCell(cat.id, col.id);
-        target.real += direct.real;
-        target.estimated += direct.estimated;
-        target.total += direct.total;
-      });
-    });
-
-    // Add Level 3 to Level 2
-    financialCategories.filter((c) => c.level === 3 && c.parentId).forEach((l3) => {
-      columns.forEach((col) => {
-        const l3Val = getCell(l3.id, col.id);
-        const l2Val = getCell(l3.parentId!, col.id);
-        l2Val.real += l3Val.real;
-        l2Val.estimated += l3Val.estimated;
-        l2Val.total += l3Val.total;
-      });
-    });
-
-    // Add Level 2 to Level 1
-    financialCategories.filter((c) => c.level === 2 && c.parentId).forEach((l2) => {
-      columns.forEach((col) => {
-        const l2Val = getCell(l2.id, col.id);
-        const l1Val = getCell(l2.parentId!, col.id);
-        l1Val.real += l2Val.real;
-        l1Val.estimated += l2Val.estimated;
-        l1Val.total += l2Val.total;
-      });
-    });
-
-    // 4. Compute Totals across all periods for each category
-    const rowTotals: Record<string, CellVal> = {};
-    financialCategories.forEach((cat) => {
-      rowTotals[cat.id] = createEmptyCell();
-      columns.forEach((col) => {
-        const v = getCell(cat.id, col.id);
-        rowTotals[cat.id].real += v.real;
-        rowTotals[cat.id].estimated += v.estimated;
-        rowTotals[cat.id].total += v.total;
-      });
-    });
-
-    // 5. Compute Section Summary Totals for each Column
-    const totalExpensesByCol: Record<string, CellVal> = {};
-    const totalIncomesByCol: Record<string, CellVal> = {};
-    const netCashFlowByCol: Record<string, CellVal> = {};
-
-    const totalExpenseSummary: CellVal = createEmptyCell();
-    const totalIncomeSummary: CellVal = createEmptyCell();
-    const netSummary: CellVal = createEmptyCell();
-
-    const rootExpenses = financialCategories.filter((c) => c.type === "expense" && (!c.parentId || c.level === 1));
-    const rootIncomes = financialCategories.filter((c) => c.type === "income" && (!c.parentId || c.level === 1));
-
-    columns.forEach((col) => {
-      const expCell = createEmptyCell();
-      rootExpenses.forEach((root) => {
-        const v = getCell(root.id, col.id);
-        expCell.real += v.real;
-        expCell.estimated += v.estimated;
-        expCell.total += v.total;
-      });
-      totalExpensesByCol[col.id] = expCell;
-      totalExpenseSummary.real += expCell.real;
-      totalExpenseSummary.estimated += expCell.estimated;
-      totalExpenseSummary.total += expCell.total;
-
-      const incCell = createEmptyCell();
-      rootIncomes.forEach((root) => {
-        const v = getCell(root.id, col.id);
-        incCell.real += v.real;
-        incCell.estimated += v.estimated;
-        incCell.total += v.total;
-      });
-      totalIncomesByCol[col.id] = incCell;
-      totalIncomeSummary.real += incCell.real;
-      totalIncomeSummary.estimated += incCell.estimated;
-      totalIncomeSummary.total += incCell.total;
-
-      const netCell = {
-        real: incCell.real - expCell.real,
-        estimated: incCell.estimated - expCell.estimated,
-        total: incCell.total - expCell.total
-      };
-      netCashFlowByCol[col.id] = netCell;
-      netSummary.real += netCell.real;
-      netSummary.estimated += netCell.estimated;
-      netSummary.total += netCell.total;
-    });
-
-    return {
-      columns,
-      rolledUpCellMap,
-      rowTotals,
-      totalExpensesByCol,
-      totalIncomesByCol,
-      netCashFlowByCol,
-      totalExpenseSummary,
-      totalIncomeSummary,
-      netSummary
-    };
+    // 2. Aggregate every movement into the matrix — which row it lands on, how
+    // much of it is settled versus still expected, and how the category levels
+    // roll up — lives in utils/financialOverviewTable.ts so it can be unit-tested.
+    return { columns, ...aggregateOverviewTable(financialRecords, financialCategories, columns) };
   }, [financialCategories, financialRecords, tableGranularity, tableYear, weeklyTrendData]);
 
   // Helper to render a cell value formatted by tableValueMode with distinct colors (Expense = Red, Income = Green)
@@ -2451,7 +2286,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
           {/* Period Columns */}
           {overviewTableData.columns.map((col) => {
-            const cellVal = overviewTableData.rolledUpCellMap[cat.id]?.[col.id] || { real: 0, estimated: 0, total: 0 };
+            const cellVal = overviewTableData.cells[cat.id]?.[col.id] || { real: 0, estimated: 0, total: 0 };
             return (
               <td
                 key={cat.id + "-" + col.id}
@@ -2474,6 +2309,71 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         {hasChildren && isExpanded && cat.children.map((child: any) => renderCategoryMatrixRow(child, level + 1, type))}
       </React.Fragment>
     );
+  };
+
+  // The row for movements that have no usable category: none set, the category
+  // deleted, or a category from the other side of the ledger. It is a level-1
+  // row of its section, so what it holds is part of the section's totals and
+  // cannot go missing from "Skutočnosť" just because nobody filed it yet.
+  const renderUncategorizedMatrixRow = (type: "expense" | "income"): React.ReactNode => {
+    const rowId = UNCATEGORIZED_ROW_ID[type];
+    if (!overviewTableData.hasUncategorized[type]) return null;
+
+    const label = t("Uncategorized", "Bez kategórie", "Kategória nélkül");
+    const q = tableSearchQuery.trim().toLowerCase();
+    if (q && !label.toLowerCase().includes(q)) return null;
+
+    const rowTotal = overviewTableData.rowTotals[rowId] || { real: 0, estimated: 0, total: 0 };
+
+    return (
+      <tr
+        key={"cat-row-" + rowId}
+        data-uncategorized-row={type}
+        className="hover:bg-slate-50  transition-colors bg-slate-50/60  font-bold"
+      >
+        <td className="w-[320px] min-w-[320px] max-w-[320px] py-2 px-3 sticky left-0 z-20 border-r-2 border-slate-200  shadow-[2px_0_4px_rgba(0,0,0,0.04)] select-none bg-slate-50  font-bold text-xs text-slate-500  italic">
+          <div
+            className="flex items-center gap-1.5"
+            title={t(
+              "Movements without a category, or whose category no longer exists. Assign one in the Movements tab.",
+              "Pohyby bez kategórie alebo s kategóriou, ktorá už neexistuje. Kategóriu im priradíte v záložke Pohyby.",
+              "Kategória nélküli mozgások, vagy amelyek kategóriája már nem létezik. A Mozgások fülön rendelhet hozzájuk kategóriát."
+            )}
+          >
+            <span className="w-3.5 shrink-0" />
+            <span className="h-2.5 w-2.5 rounded-full shrink-0 border border-dashed border-slate-400" />
+            <span className="truncate max-w-[220px]">{label}</span>
+          </div>
+        </td>
+
+        {overviewTableData.columns.map((col) => {
+          const cellVal = overviewTableData.cells[rowId]?.[col.id] || { real: 0, estimated: 0, total: 0 };
+          return (
+            <td
+              key={rowId + "-" + col.id}
+              className={`py-1.5 px-3 text-right ${col.isCurrent ? "bg-indigo-50/20  border-x border-indigo-100 " : ""}`}
+            >
+              {renderTableCellValue(cellVal, type, 1)}
+            </td>
+          );
+        })}
+
+        <td className="py-1.5 px-4 text-right font-bold bg-slate-50  border-l border-slate-200  sticky right-0 z-20">
+          {renderTableCellValue(rowTotal, type, 1)}
+        </td>
+      </tr>
+    );
+  };
+
+  // Switching the side of the ledger drops a category from the other side. The
+  // picker only offers matching categories, but it kept whatever was already
+  // selected, so an income could be saved under an expense category.
+  const switchFormType = (type: FinancialType) => {
+    setFormType(type);
+    if (formCategoryId) {
+      const cat = financialCategories.find((c) => c.id === formCategoryId);
+      if (cat && cat.type !== type) setFormCategoryId("");
+    }
   };
 
   // Open Creation Modal with preset type & scope
@@ -2818,6 +2718,16 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       }
 
       setFinancialCategories((prev) => prev.filter((c) => !toDeleteIds.has(c.id)));
+      // The movements filed under them stay, now uncategorized, so every tab keeps counting them.
+      setFinancialRecords((prev) =>
+        prev.some((r) => r.categoryId && toDeleteIds.has(r.categoryId))
+          ? prev.map((r) =>
+              r.categoryId && toDeleteIds.has(r.categoryId)
+                ? { ...r, categoryId: null, categoryPath: null, updatedAt: new Date().toISOString() }
+                : r
+            )
+          : prev
+      );
       (window as any).showToast?.(t("Category removed", "Kategória odstránená", "Kategória eltávolítva"));
     }
   };
@@ -2987,7 +2897,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         <button
           type="button"
           onClick={() => {
-            setFormType("income");
+            switchFormType("income");
             if (!formInvoiceNumber) {
               setFormInvoiceNumber(`FA-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`);
             }
@@ -3001,7 +2911,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         </button>
         <button
           type="button"
-          onClick={() => setFormType("expense")}
+          onClick={() => switchFormType("expense")}
           className={`py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
             formType === "expense" ? "bg-rose-600 text-white shadow-sm" : "text-slate-600 "
           }`}
@@ -4618,6 +4528,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
                   {/* Render Expense Categories Recursively */}
                   {categoryTree.expenseTree.map((rootCat) => renderCategoryMatrixRow(rootCat, 1, "expense"))}
+                  {renderUncategorizedMatrixRow("expense")}
 
                   {/* SUB-TOTAL EXPENSES ROW */}
                   <tr className="bg-rose-100/60  font-black border-y-2 border-rose-300 ">
@@ -4666,6 +4577,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
                   {/* Render Income Categories Recursively */}
                   {categoryTree.incomeTree.map((rootCat) => renderCategoryMatrixRow(rootCat, 1, "income"))}
+                  {renderUncategorizedMatrixRow("income")}
 
                   {/* SUB-TOTAL INCOMES ROW */}
                   <tr className="bg-emerald-100/60  font-black border-y-2 border-emerald-300 ">
