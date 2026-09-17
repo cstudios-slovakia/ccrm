@@ -1089,7 +1089,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           const isOutgoing = mail.from?.address?.toLowerCase() === currentUser?.email?.toLowerCase();
           const folderPrefix = isOutgoing ? "sent" : "inbox";
           return {
-            id: `email-${folderPrefix}-${mail.uid}`,
+            // Server-issued id, so the merge below recognises the row it already
+            // stored for this message instead of rendering it a second time.
+            id: mail.event_id || `email-${folderPrefix}-${mail.uid}`,
             type: "email" as const,
             timestamp: mail.date.substring(0, 16),
             title: mail.subject || t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)"),
@@ -2226,7 +2228,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       content: contentString,
       // Whoever is logging it right now, not the client's owner: the two are
       // frequently different people and the timeline has to say which one acted.
-      author: currentUser?.name || ""
+      author: currentUser?.name || "",
+      // The only e-mail this form can log is one we sent, but the flag was never
+      // set, so a hand-logged mail rendered with the Incoming badge under an
+      // outgoing title.
+      ...(logType === "email" ? { isOutgoing: true } : {})
     };
 
     const offerAmt = parseFloat(logAmount);

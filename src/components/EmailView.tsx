@@ -425,7 +425,9 @@ export const EmailView: React.FC<EmailViewProps> = ({
           const isOutgoing = mail.from?.address?.toLowerCase() === currentUser?.email?.toLowerCase();
           const folderPrefix = isOutgoing ? "sent" : "inbox";
           return {
-            id: `email-${folderPrefix}-${mail.uid}`,
+            // Server-issued id, so the merge below recognises the row it already
+            // stored for this message instead of rendering it a second time.
+            id: mail.event_id || `email-${folderPrefix}-${mail.uid}`,
             type: "email",
             timestamp: mail.date.substring(0, 16),
             title: mail.subject || t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)"),
@@ -595,7 +597,21 @@ export const EmailView: React.FC<EmailViewProps> = ({
       });
       const data = await res.json();
       if (data.success) {
-        notify(t("Email sent successfully!", "E-mail bol úspešne odoslaný!", "Az e-mail sikeresen elküldve!"));
+        // The message is delivered either way. But a copy that could not be filed
+        // into Sent is invisible to the timeline importer, so the mail will never
+        // appear on the customer's history — say so rather than let it vanish.
+        if (data.filed_to_sent === false) {
+          notify(
+            t(
+              "Sent — but the copy could not be saved to your Sent folder, so it will not appear on the client's timeline.",
+              "Odoslané — kópiu sa však nepodarilo uložiť do priečinka Odoslané, takže sa nezobrazí v histórii klienta.",
+              "Elküldve — a másolatot azonban nem sikerült a Küldött elemek mappába menteni, így nem jelenik meg az ügyfél előzményei között.",
+            ),
+            "error",
+          );
+        } else {
+          notify(t("Email sent successfully!", "E-mail bol úspešne odoslaný!", "Az e-mail sikeresen elküldve!"));
+        }
         closeComposer(composer.id);
         loadEmails(1, filter);
       } else {

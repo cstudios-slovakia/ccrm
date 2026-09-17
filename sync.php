@@ -2868,11 +2868,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $delTimeline->execute([$leadId]);
 
                 if (isset($l['timeline']) && is_array($l['timeline'])) {
-                    $insTimeline = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`, `amount`, `file_name`, `file_size`, `file_type`, `attachments_json`, `extra_time`, `author`, `audio_file`, `transcription`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                    $insTimeline = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`, `amount`, `file_name`, `file_size`, `file_type`, `attachments_json`, `extra_time`, `is_outgoing`, `author`, `audio_file`, `transcription`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                    // Editing an entry the mail importer owns: only these columns
+                    // are the user's to change. Everything else belongs to the
+                    // message and is rewritten from IMAP on the next read.
+                    $updMailTe = $pdo->prepare("UPDATE `timeline_events` SET `timestamp` = ?, `title` = ?, `content` = ? WHERE `id` = ? AND `lead_id` = ?");
                     $allowedEventTypes = ['phone', 'email', 'note', 'offer', 'appointment', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note', 'status_change'];
                     foreach ($l['timeline'] as $te) {
                         $teId = $te['id'] ?? ('ev-' . uniqid());
                         if (strpos($teId, 'email-') === 0) {
+                            // Importer-owned. It is never INSERTed from here: the
+                            // client also carries live IMAP entries that have no row
+                            // yet, and writing those would duplicate whatever the
+                            // next mailbox read stores. But an edit to one that DOES
+                            // exist used to be dropped without a word — the date you
+                            // corrected simply reappeared wrong. Apply it.
+                            try {
+                                $updMailTe->execute([
+                                    isset($te['timestamp']) ? date('Y-m-d H:i:s', strtotime($te['timestamp'])) : date('Y-m-d H:i:s'),
+                                    mb_substr((string) ccrm_sanitize_db_text($te['title'] ?? '', 1020), 0, 255, 'UTF-8'),
+                                    ccrm_sanitize_db_text($te['content'] ?? null, 63000),
+                                    $teId,
+                                    $leadId
+                                ]);
+                            } catch (\PDOException $mailEx) {
+                                // Never let a mail entry abort the lead's own save.
+                                error_log('CCRM sync: could not update mail event ' . $teId . ': ' . $mailEx->getMessage());
+                            }
                             continue;
                         }
                         // If this id was already used by another lead in this same payload,
@@ -2931,6 +2953,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $te['fileType'] ?? null,
                             ccrm_encode_attachments($te['attachments'] ?? null),
                             $te['extraTime'] ?? $te['extra_time'] ?? null,
+                            // Direction of a mail event. The column was simply
+                            // absent from this statement, so every hand-logged
+                            // "Direct Email Sent" fell back to the DEFAULT 0 and
+                            // came back from the server marked as Incoming.
+                            !empty($te['isOutgoing']) ? 1 : 0,
                             $teAuthor,
                             $teAudioFile,
                             $teTranscription

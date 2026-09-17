@@ -53,6 +53,7 @@ import {
     Link2,
     Unlink,
     AlarmClock,
+    AlertTriangle,
 } from "lucide-react";
 import type {
     Lead,
@@ -2284,6 +2285,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     const [leadEmails, setLeadEmails] = useState<TimelineEvent[]>([]);
     const [isLoadingMails, setIsLoadingMails] = useState(false);
+    // Why the mail half of the timeline is empty, when it is empty for a reason.
+    const [leadMailError, setLeadMailError] = useState<string | null>(null);
 
     // // --- TIMELINE EMAIL VIEW DRAWER STATE ---
     // const [selectedTimelineEmail, setSelectedTimelineEmail] = useState<
@@ -2369,29 +2372,49 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             !userEmailSettings.isValidated
         ) {
             setLeadEmails([]);
+            setLeadMailError(null);
             return;
         }
 
         const fetchLeadMails = async () => {
             setIsLoadingMails(true);
-            try {
-                const inboxRes = await fetch(
-                    `/api/mail_broker.php?action=get_emails&folder=INBOX&email=${encodeURIComponent(activeLead.email || "")}`,
-                    { headers: { "X-User-Email": currentUser.email } },
-                );
-                const inboxData = await inboxRes.json();
-
-                let sentEmails: any[] = [];
+            // A mailbox that cannot be reached used to fail in total silence: the
+            // Sent request was wrapped in an empty catch and the INBOX one only
+            // reached the console. The timeline then rendered as "no history" and
+            // stayed that way for months while every sent mail went unrecorded.
+            // Whatever the server says now goes on screen.
+            let mailError: string | null = null;
+            const readMails = async (folder: string) => {
                 try {
-                    const sentRes = await fetch(
-                        `/api/mail_broker.php?action=get_emails&folder=Sent&email=${encodeURIComponent(activeLead.email || "")}`,
-                        { headers: { "X-User-Email": currentUser.email } },
+                    const res = await fetch(
+                        `/api/mail_broker.php?action=get_emails&folder=${encodeURIComponent(folder)}&email=${encodeURIComponent(activeLead.email || "")}`,
                     );
-                    const sentData = await sentRes.json();
-                    if (sentData.success && Array.isArray(sentData.emails)) {
-                        sentEmails = sentData.emails;
+                    const data = await res.json();
+                    if (data && data.success && Array.isArray(data.emails)) {
+                        return data.emails as any[];
                     }
-                } catch (e) {}
+                    mailError =
+                        (data && data.error) ||
+                        t(
+                            `Could not read the ${folder} folder.`,
+                            `Priečinok ${folder} sa nepodarilo načítať.`,
+                            `A(z) ${folder} mappát nem sikerült beolvasni.`,
+                        );
+                } catch (e) {
+                    mailError = t(
+                        "The mail server could not be reached.",
+                        "Poštový server je nedostupný.",
+                        "A levelezőszerver nem érhető el.",
+                    );
+                }
+                return [] as any[];
+            };
+
+            try {
+                const [inboxEmails, sentEmails] = await Promise.all([
+                    readMails("INBOX"),
+                    readMails("Sent"),
+                ]);
 
                 const combinedEmails: TimelineEvent[] = [];
 
@@ -2401,7 +2424,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         currentUser?.email?.toLowerCase();
                     const folderPrefix = isOutgoing ? "sent" : "inbox";
                     return {
-                        id: `email-${folderPrefix}-${mail.uid}`,
+                        // The server hands back the id it stores this message under.
+                        // Minting a different one here ("email-sent-<uid>") meant the
+                        // de-duplication below never matched the stored row, so every
+                        // imported mail rendered twice. Keep the old shape only as a
+                        // fallback for a backend that predates `event_id`.
+                        id:
+                            mail.event_id ||
+                            `email-${folderPrefix}-${mail.uid}`,
                         type: "email" as const,
                         timestamp: mail.date.substring(0, 16),
                         title:
@@ -2421,18 +2451,24 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     };
                 };
 
-                if (inboxData.success && Array.isArray(inboxData.emails)) {
-                    inboxData.emails.forEach((m: any) =>
-                        combinedEmails.push(processMail(m)),
-                    );
-                }
+                inboxEmails.forEach((m: any) =>
+                    combinedEmails.push(processMail(m)),
+                );
                 sentEmails.forEach((m: any) =>
                     combinedEmails.push(processMail(m)),
                 );
 
                 setLeadEmails(combinedEmails);
+                setLeadMailError(mailError);
             } catch (err) {
                 console.error("Failed to load timeline lead emails", err);
+                setLeadMailError(
+                    t(
+                        "The mail server could not be reached.",
+                        "Poštový server je nedostupný.",
+                        "A levelezőszerver nem érhető el.",
+                    ),
+                );
             } finally {
                 setIsLoadingMails(false);
             }
@@ -3131,6 +3167,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             // Whoever is logging it right now, not the lead's owner: the two are
             // frequently different people and the timeline has to say which one acted.
             author: currentUser?.name || "",
+            // The only e-mail this form can log is one we sent ("Direct Email
+            // Sent"), but the flag was never set, so every hand-logged mail
+            // rendered with the Incoming badge under an outgoing title.
+            isOutgoing: logType === "email" ? true : undefined,
         };
 
         setLeads((prev) =>
@@ -6758,6 +6798,28 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         </span>
                                     )}
                                 </h3>
+
+                                {/* An unreachable mailbox must not read as "this
+                                    customer was never written to". Say so, once,
+                                    above the entries that did load. */}
+                                {leadMailError && (
+                                    <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-800">
+                                        <AlertTriangle className="h-4 w-4 shrink-0 stroke-[2.5] mt-px" />
+                                        <span>
+                                            {t(
+                                                "E-mails are missing from this timeline: ",
+                                                "V tejto histórii chýbajú e-maily: ",
+                                                "Ebből az előzményből hiányoznak az e-mailek: ",
+                                            )}
+                                            {leadMailError}{" "}
+                                            {t(
+                                                "Check Personal Settings → E-mail.",
+                                                "Skontrolujte Osobné nastavenia → E-mail.",
+                                                "Ellenőrizze: Személyes beállítások → E-mail.",
+                                            )}
+                                        </span>
+                                    </div>
+                                )}
 
                                 {activeLeadTimeline.length === 0 ? (
                                     <div className="py-12 text-center text-slate-400">
