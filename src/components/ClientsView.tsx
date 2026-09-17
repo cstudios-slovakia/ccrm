@@ -7,7 +7,8 @@ import {
   Calendar, ArrowLeft, Plus, TrendingUp, PencilLine, FileText,
   X, FolderOpen, Download, Trash2, SlidersHorizontal,
   CornerDownLeft, CornerLeftDown, Loader2, Brain,
-  ChevronLeft, ChevronRight, Milestone, Coins, Archive, ArchiveRestore, Settings
+  ChevronLeft, ChevronRight, Milestone, Coins, Archive, ArchiveRestore, Settings,
+  AlertTriangle
 } from "lucide-react";
 import type { Lead, TimelineEvent, Task, FinancialRecord, FinancialCategory, FinancialStatus, ClientCategory } from "../types";
 import { FULL_MODULE_ACCESS } from "../utils/permissions";
@@ -1055,33 +1056,52 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
   const [clientEmails, setClientEmails] = useState<TimelineEvent[]>([]);
   const [isLoadingMails, setIsLoadingMails] = useState(false);
+  // Why the mail half of the timeline is empty, when it is empty for a reason.
+  const [clientMailError, setClientMailError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!activeClient || !activeClient.email || !userEmailSettings || !userEmailSettings.isValidated) {
       setClientEmails([]);
+      setClientMailError(null);
       return;
     }
 
     const fetchClientMails = async () => {
       setIsLoadingMails(true);
-      try {
-        const inboxRes = await fetch(
-          `/api/mail_broker.php?action=get_emails&folder=INBOX&email=${encodeURIComponent(activeClient.email)}`,
-          { headers: { "X-User-Email": currentUser.email } }
-        );
-        const inboxData = await inboxRes.json();
-        
-        let sentEmails: any[] = [];
+      // An unreachable mailbox used to fail in silence — the Sent request in an
+      // empty catch, the INBOX one only in the console — so a client nobody could
+      // read mail for looked exactly like a client nobody had written to.
+      let mailError: string | null = null;
+      const readMails = async (folder: string) => {
         try {
-          const sentRes = await fetch(
-            `/api/mail_broker.php?action=get_emails&folder=Sent&email=${encodeURIComponent(activeClient.email)}`,
-            { headers: { "X-User-Email": currentUser.email } }
+          const res = await fetch(
+            `/api/mail_broker.php?action=get_emails&folder=${encodeURIComponent(folder)}&email=${encodeURIComponent(activeClient.email!)}`
           );
-          const sentData = await sentRes.json();
-          if (sentData.success && Array.isArray(sentData.emails)) {
-            sentEmails = sentData.emails;
+          const data = await res.json();
+          if (data && data.success && Array.isArray(data.emails)) {
+            return data.emails as any[];
           }
-        } catch (e) {}
+          mailError = (data && data.error) || t(
+            `Could not read the ${folder} folder.`,
+            `Priečinok ${folder} sa nepodarilo načítať.`,
+            `A(z) ${folder} mappát nem sikerült beolvasni.`
+          );
+        } catch (e) {
+          mailError = t(
+            "The mail server could not be reached.",
+            "Poštový server je nedostupný.",
+            "A levelezőszerver nem érhető el."
+          );
+        }
+        return [] as any[];
+      };
+
+      try {
+        const [inboxMails, sentEmails] = await Promise.all([
+          readMails("INBOX"),
+          readMails("Sent"),
+        ]);
+        const inboxData = { success: true, emails: inboxMails };
 
         const combinedEmails: TimelineEvent[] = [];
         
@@ -1122,8 +1142,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         });
 
         setClientEmails(combinedEmails);
+        setClientMailError(mailError);
       } catch (err) {
         console.error("Failed to load timeline client emails", err);
+        setClientMailError(t(
+          "The mail server could not be reached.",
+          "Poštový server je nedostupný.",
+          "A levelezőszerver nem érhető el."
+        ));
       } finally {
         setIsLoadingMails(false);
       }
@@ -3568,6 +3594,27 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       <Clock className="h-4.5 w-4.5 text-emerald-600 animate-pulse stroke-[2.5]" /> {getTranslation(systemLanguage, "common.chronological_timeline")}
                       {isLoadingMails && <span className="ml-2 text-[9px] text-emerald-500 font-extrabold uppercase animate-pulse">{t("Syncing Mail...", "Synchronizujem poštu...", "Levelek szinkronizálása...")}</span>}
                     </h3>
+
+                    {/* An unreachable mailbox must not read as "this client was
+                        never written to". Say so, above whatever did load. */}
+                    {clientMailError && (
+                      <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-800">
+                        <AlertTriangle className="h-4 w-4 shrink-0 stroke-[2.5] mt-px" />
+                        <span>
+                          {t(
+                            "E-mails are missing from this timeline: ",
+                            "V tejto histórii chýbajú e-maily: ",
+                            "Ebből az előzményből hiányoznak az e-mailek: "
+                          )}
+                          {clientMailError}{" "}
+                          {t(
+                            "Check Personal Settings → E-mail.",
+                            "Skontrolujte Osobné nastavenia → E-mail.",
+                            "Ellenőrizze: Személyes beállítások → E-mail."
+                          )}
+                        </span>
+                      </div>
+                    )}
 
                     {activeClientTimeline.length === 0 ? (
                       <div className="py-12 text-center text-slate-400">
