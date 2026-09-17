@@ -1,1 +1,0 @@
-import{Ft as e,Nt as t,Pt as n,Xa as r,Ya as i}from"./index-CF_ATIBa.js";var a=r(i(),1);function o(){!n.current&&t();let[r]=(0,a.useState)(e.current);return r}export{o as t};

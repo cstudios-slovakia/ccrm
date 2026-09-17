@@ -1,0 +1,1 @@
+import{$a as e,Ft as t,Nt as n,Pt as r,Qa as i}from"./index-baapF8tO.js";var a=e(i(),1);function o(){!r.current&&n();let[e]=(0,a.useState)(t.current);return e}export{o as t};

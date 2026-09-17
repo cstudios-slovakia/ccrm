@@ -7,6 +7,7 @@ import {
   User, Briefcase, BarChart3,
   X, Globe,
   ChevronDown, ChevronUp, ChevronRight,
+  CalendarClock, Hourglass, Telescope,
   Landmark, Check, Pencil,
   CalendarDays, Target, Maximize2, Minimize2,
   ArrowUpRight, ArrowDownRight, ArrowUpDown,
@@ -59,6 +60,15 @@ import {
   aggregateOverviewTable,
   splitRecordAmounts
 } from "../utils/financialOverviewTable";
+import {
+  claimedRecordIds,
+  futureTotals,
+  futureWindow,
+  hasFutureBeyond,
+  projectFutureMovements,
+  type FutureMovement,
+  type FutureMovementSource
+} from "../utils/futureMovements";
 
 // Trend graph forecast horizons. `futureWeeks` is the number of whole weeks the
 // projection runs past the current one — 13 weeks is the usual "3 months".
@@ -100,6 +110,34 @@ const MOVEMENT_STATUS_DOT: Record<FinancialStatus, string> = {
   overdue: "bg-rose-500",
   cancelled: "bg-slate-300"
 };
+
+/**
+ * The forecast overlay in the movements ledger.
+ *
+ * A forecast row is money that has not moved: it has no record behind it, it
+ * cannot be edited or deleted, and it must never read as something that
+ * happened. Violet is the app's "projected" colour — the cash-flow chart
+ * already plots its forecast in it — and the dashed left rail plus the tinted,
+ * lighter amount carry that through to the row.
+ */
+const FORECAST_ROW_CLASS =
+  "bg-violet-50/70 hover:bg-violet-100/70 border-l-[3px] border-dashed border-l-violet-400 transition-colors group";
+
+/** What each forecast row is derived from, for its badge. */
+const FORECAST_SOURCE_ICON: Record<FutureMovementSource, typeof RefreshCw> = {
+  recurring: RefreshCw,
+  due: CalendarClock,
+  scheduled: Hourglass
+};
+
+/**
+ * One line of the movements ledger: a movement that happened, or one that is
+ * only expected to. Both are filed under a `date` so the two can be merged into
+ * a single chronology and grouped by month together.
+ */
+type MovementLedgerRow =
+  | { kind: "record"; key: string; date: string; record: FinancialRecord }
+  | { kind: "forecast"; key: string; date: string; forecast: FutureMovement };
 
 /**
  * Money only really moved for these two, so switching a row into them has to ask
@@ -969,6 +1007,12 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   const [movementsVisibleCount, setMovementsVisibleCount] = useState<number>(40);
   const [isMovementsAdvancedOpen, setIsMovementsAdvancedOpen] = useState<boolean>(false);
 
+  // Forecast overlay: expected movements drawn into the ledger alongside the
+  // real ones. A recurring rule charges forever, so the overlay only ever holds
+  // a bounded window — one month to start with, widened a month per click.
+  const [showFutureMovements, setShowFutureMovements] = useState<boolean>(false);
+  const [futureHorizonMonths, setFutureHorizonMonths] = useState<number>(1);
+
   // Sentinel ref for infinite scroll
   const movementsSentinelRef = useRef<HTMLDivElement | null>(null);
 
@@ -988,127 +1032,117 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     return path;
   };
 
-  // Movements Filter Hook
-  const filteredMovements = useMemo(() => {
-    let list = [...financialRecords];
+  // The day a real movement is filed under in the ledger.
+  const movementLedgerDate = (rec: FinancialRecord): string => rec.paidDate || rec.issueDate || "";
 
-    // 1. Search Query
-    if (movementsSearch.trim()) {
-      const q = movementsSearch.toLowerCase();
-      list = list.filter((r) => {
-        const project = projects.find((p) => p.id === r.projectId);
-        const projectLead = project ? leads.find((l) => l.id === project.clientId || l.id === project.leadId) : null;
-        const projectTitle = project ? (projectLead ? `${projectLead.name} (${project.id.slice(0, 8)})` : `Projekt ${project.id.slice(0, 8)}`) : "";
-        const client = leads.find((l) => l.id === r.clientId || l.id === project?.clientId || l.id === project?.leadId);
-        const catBreadcrumbs = getCategoryBreadcrumbs(r.categoryId).map((c) => c.name).join(" ");
-        return (
-          r.title.toLowerCase().includes(q) ||
-          (r.description && r.description.toLowerCase().includes(q)) ||
-          (r.invoiceNumber && r.invoiceNumber.toLowerCase().includes(q)) ||
-          (catBreadcrumbs && catBreadcrumbs.toLowerCase().includes(q)) ||
-          (projectTitle && projectTitle.toLowerCase().includes(q)) ||
-          (client && client.name.toLowerCase().includes(q))
-        );
-      });
-    }
+  /**
+   * Everything the filter bar asks of one ledger line, in one place.
+   *
+   * The real movements and the forecast overlay have to read the filters
+   * identically, or a movement would drop out of one and not the other. What
+   * differs between them is the date the line is filed under (the day it was
+   * entered versus the day the money is expected) and the figure the value
+   * range is measured against (the whole movement versus what is still
+   * outstanding), so both arrive as arguments instead of being read off the
+   * record.
+   */
+  const movementMatchesFilters = useMemo(() => {
+    const query = movementsSearch.trim().toLowerCase();
 
-    // 2. Type Filter (income vs expense)
-    if (movementsType !== "all") {
-      list = list.filter((r) => r.type === movementsType);
-    }
-
-    // 3. Category Filter (match self or any descendants)
+    // A category filter matches the category itself and everything under it.
+    // The set is also the guard against a cyclic `parentId`: a category that is
+    // already in it has been walked, and walking it again would recurse until
+    // the stack gave out and the ErrorBoundary replaced the finance section.
+    let categoryIds: Set<string> | null = null;
     if (movementsCategoryId !== "all") {
-      const descendantCatIds = new Set<string>([movementsCategoryId]);
+      const ids = new Set<string>([movementsCategoryId]);
       const addChildren = (parentId: string) => {
         financialCategories.filter((c) => c.parentId === parentId).forEach((child) => {
-          descendantCatIds.add(child.id);
+          if (ids.has(child.id)) return;
+          ids.add(child.id);
           addChildren(child.id);
         });
       };
       addChildren(movementsCategoryId);
-      list = list.filter((r) => r.categoryId && descendantCatIds.has(r.categoryId));
+      categoryIds = ids;
     }
 
-    // 4. Scope / Project / Client
-    if (movementsScope === "global") {
-      list = list.filter((r) => !r.projectId && !r.clientId);
-    } else if (movementsScope === "project") {
-      if (movementsProjectId !== "all") {
-        list = list.filter((r) => r.projectId === movementsProjectId);
-      } else {
-        list = list.filter((r) => !!r.projectId);
-      }
-    } else if (movementsScope === "client") {
-      if (movementsClientId !== "all") {
-        list = list.filter((r) => r.clientId === movementsClientId);
-      } else {
-        list = list.filter((r) => !!r.clientId);
-      }
-    }
-
-    // 5. Value Range
-    if (movementsMinAmount !== "") {
-      const min = parseFloat(movementsMinAmount);
-      if (!isNaN(min)) {
-        list = list.filter((r) => (r.amountReal > 0 ? r.amountReal : r.amountPlanned) >= min);
-      }
-    }
-    if (movementsMaxAmount !== "") {
-      const max = parseFloat(movementsMaxAmount);
-      if (!isNaN(max)) {
-        list = list.filter((r) => (r.amountReal > 0 ? r.amountReal : r.amountPlanned) <= max);
-      }
-    }
-
-    // 6. Date Range / Presets
-    if (movementsDatePreset === "this_month") {
-      const now = new Date();
-      const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-      list = list.filter((r) => (r.paidDate || r.issueDate || "").startsWith(ym));
-    } else if (movementsDatePreset === "last_month") {
-      const d = new Date();
-      d.setMonth(d.getMonth() - 1);
+    // Every preset is a plain inclusive range once resolved; `-31` as an end is
+    // safe because no date inside the month can sort past it.
+    const now = new Date();
+    const monthRange = (d: Date): { start: string; end: string } => {
       const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      list = list.filter((r) => (r.paidDate || r.issueDate || "").startsWith(ym));
+      return { start: `${ym}-01`, end: `${ym}-31` };
+    };
+    let range: { start: string | null; end: string | null } = { start: null, end: null };
+    if (movementsDatePreset === "this_month") {
+      range = monthRange(now);
+    } else if (movementsDatePreset === "last_month") {
+      // Anchored on the 1st: stepping the month on today's own date makes
+      // "31 February" on 31 March, which JS normalises to 3 March, and the
+      // preset would quietly show the current month instead of the previous one.
+      range = monthRange(new Date(now.getFullYear(), now.getMonth() - 1, 1));
     } else if (movementsDatePreset === "this_quarter") {
-      const now = new Date();
       const q = Math.floor(now.getMonth() / 3);
-      const startM = q * 3 + 1;
-      const endM = q * 3 + 3;
       const y = now.getFullYear();
-      const start = `${y}-${String(startM).padStart(2, "0")}-01`;
-      const end = `${y}-${String(endM).padStart(2, "0")}-31`;
-      list = list.filter((r) => {
-        const date = r.paidDate || r.issueDate || "";
-        return date >= start && date <= end;
-      });
+      range = {
+        start: `${y}-${String(q * 3 + 1).padStart(2, "0")}-01`,
+        end: `${y}-${String(q * 3 + 3).padStart(2, "0")}-31`
+      };
     } else if (movementsDatePreset === "this_year") {
-      const y = String(new Date().getFullYear());
-      list = list.filter((r) => (r.paidDate || r.issueDate || "").startsWith(y));
+      const y = now.getFullYear();
+      range = { start: `${y}-01-01`, end: `${y}-12-31` };
     } else if (movementsDatePreset === "custom") {
-      if (movementsStartDate) {
-        list = list.filter((r) => (r.paidDate || r.issueDate || "") >= movementsStartDate);
-      }
-      if (movementsEndDate) {
-        list = list.filter((r) => (r.paidDate || r.issueDate || "") <= movementsEndDate);
-      }
+      range = { start: movementsStartDate || null, end: movementsEndDate || null };
     }
 
-    // 7. Chronological Sorting
-    list.sort((a, b) => {
-      const dateA = a.paidDate || a.issueDate || "";
-      const dateB = b.paidDate || b.issueDate || "";
-      if (movementsSortOrder === "desc") {
-        return dateB.localeCompare(dateA);
-      } else {
-        return dateA.localeCompare(dateB);
-      }
-    });
+    const min = movementsMinAmount === "" ? null : parseFloat(movementsMinAmount);
+    const max = movementsMaxAmount === "" ? null : parseFloat(movementsMaxAmount);
 
-    return list;
+    return (rec: FinancialRecord, dateIso: string, amount: number): boolean => {
+      // 1. Search Query
+      if (query) {
+        const project = projects.find((p) => p.id === rec.projectId);
+        const projectLead = project ? leads.find((l) => l.id === project.clientId || l.id === project.leadId) : null;
+        const projectTitle = project ? (projectLead ? `${projectLead.name} (${project.id.slice(0, 8)})` : `Projekt ${project.id.slice(0, 8)}`) : "";
+        const client = leads.find((l) => l.id === rec.clientId || l.id === project?.clientId || l.id === project?.leadId);
+        const catBreadcrumbs = getCategoryBreadcrumbs(rec.categoryId).map((c) => c.name).join(" ");
+        const hit =
+          rec.title.toLowerCase().includes(query) ||
+          (!!rec.description && rec.description.toLowerCase().includes(query)) ||
+          (!!rec.invoiceNumber && rec.invoiceNumber.toLowerCase().includes(query)) ||
+          (!!catBreadcrumbs && catBreadcrumbs.toLowerCase().includes(query)) ||
+          (!!projectTitle && projectTitle.toLowerCase().includes(query)) ||
+          (!!client && client.name.toLowerCase().includes(query));
+        if (!hit) return false;
+      }
+
+      // 2. Type Filter (income vs expense)
+      if (movementsType !== "all" && rec.type !== movementsType) return false;
+
+      // 3. Category Filter (match self or any descendants)
+      if (categoryIds && !(rec.categoryId && categoryIds.has(rec.categoryId))) return false;
+
+      // 4. Scope / Project / Client
+      if (movementsScope === "global") {
+        if (rec.projectId || rec.clientId) return false;
+      } else if (movementsScope === "project") {
+        if (movementsProjectId !== "all" ? rec.projectId !== movementsProjectId : !rec.projectId) return false;
+      } else if (movementsScope === "client") {
+        if (movementsClientId !== "all" ? rec.clientId !== movementsClientId : !rec.clientId) return false;
+      }
+
+      // 5. Value Range
+      if (min !== null && !isNaN(min) && amount < min) return false;
+      if (max !== null && !isNaN(max) && amount > max) return false;
+
+      // 6. Date Range / Presets
+      if (range.start !== null && dateIso < range.start) return false;
+      if (range.end !== null && dateIso > range.end) return false;
+
+      return true;
+    };
   }, [
-    financialRecords,
     movementsSearch,
     movementsType,
     movementsCategoryId,
@@ -1120,28 +1154,133 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     movementsDatePreset,
     movementsStartDate,
     movementsEndDate,
-    movementsSortOrder,
     financialCategories,
     projects,
     leads
   ]);
 
+  // Movements Filter Hook
+  const filteredMovements = useMemo(() => {
+    const list = financialRecords.filter((rec) =>
+      movementMatchesFilters(rec, movementLedgerDate(rec), rec.amountReal > 0 ? rec.amountReal : rec.amountPlanned)
+    );
+
+    // 7. Chronological Sorting
+    list.sort((a, b) => {
+      const dateA = movementLedgerDate(a);
+      const dateB = movementLedgerDate(b);
+      return movementsSortOrder === "desc" ? dateB.localeCompare(dateA) : dateA.localeCompare(dateB);
+    });
+
+    return list;
+  }, [financialRecords, movementMatchesFilters, movementsSortOrder]);
+
+  // ==========================================
+  // 3b. FORECAST OVERLAY — movements that have not happened yet
+  // ==========================================
+
+  // Frozen for the render, so every figure on screen is cut off at the same day.
+  const forecastToday = todayLocal();
+
+  const forecastRange = useMemo(
+    () => futureWindow(forecastToday, futureHorizonMonths),
+    [forecastToday, futureHorizonMonths]
+  );
+
+  // Expected movements inside the loaded window, filtered exactly like the real
+  // ones. See utils/futureMovements.ts for where they come from.
+  const filteredFutureMovements = useMemo(() => {
+    if (!showFutureMovements) return [] as FutureMovement[];
+    return projectFutureMovements(financialRecords, forecastRange.startIso, forecastRange.endIso).filter((m) =>
+      movementMatchesFilters(m.record, m.date, m.amount)
+    );
+  }, [showFutureMovements, financialRecords, forecastRange, movementMatchesFilters]);
+
+  // Only offer another month when widening the window would actually draw
+  // something — an open-ended rule always would, a finished one never does.
+  const canLoadAnotherForecastMonth = useMemo(() => {
+    if (!showFutureMovements) return false;
+    return hasFutureBeyond(financialRecords, forecastToday, futureHorizonMonths, (m) =>
+      movementMatchesFilters(m.record, m.date, m.amount)
+    );
+  }, [showFutureMovements, financialRecords, forecastToday, futureHorizonMonths, movementMatchesFilters]);
+
+  const forecastSummary = useMemo(() => futureTotals(filteredFutureMovements), [filteredFutureMovements]);
+
+  /**
+   * Records the overlay has taken over.
+   *
+   * An invoice issued in August and payable in October is one movement, drawn
+   * on the day the money is expected — so the ledger has to stop drawing it in
+   * August, or the same invoice would be counted in both months. Claims follow
+   * what is actually on screen: a forecast row the filters hide leaves its
+   * record exactly where it was.
+   */
+  const forecastClaimedIds = useMemo(() => claimedRecordIds(filteredFutureMovements), [filteredFutureMovements]);
+
+  /** What a forecast row is derived from, in words, for its badge. */
+  const forecastSourceLabel = (source: FutureMovementSource): string =>
+    source === "recurring"
+      ? t("Recurring", "Pravidelné", "Ismétlődő")
+      : source === "due"
+      ? t("Due", "Splatné", "Esedékes")
+      : t("Scheduled", "Naplánované", "Ütemezett");
+
+  // Slovak numerals agree with their noun: 1 takes the singular, 2-4 the
+  // nominative plural, 5 and up the genitive.
+  const skExactMonths = (n: number) => (n === 1 ? "1 mesiac" : n < 5 ? `${n} mesiace` : `${n} mesiacov`);
+  const skExpected = (n: number) => (n === 1 ? "očakávaný" : n < 5 ? "očakávané" : "očakávaných");
+  const skMovements = (n: number) => (n === 1 ? "pohyb" : n < 5 ? "pohyby" : "pohybov");
+
+  /** "2 expected" / "2 očakávané" / "2 várható" — the count chip on a divider. */
+  const expectedCountLabel = (n: number): string =>
+    `${n} ${t("expected", skExpected(n), "várható")}`;
+
+  const forecastHorizonLabel = (n: number): string =>
+    t(`${n} month${n === 1 ? "" : "s"} ahead`, `na ${skExactMonths(n)} dopredu`, `${n} hónapra előre`);
+
+  /** How far off a forecast row is, so a date in the table reads as a distance. */
+  const daysAheadLabel = (dateIso: string): string => {
+    const days = isoDaysBetween(forecastToday, dateIso);
+    if (days <= 0) return t("today", "dnes", "ma");
+    if (days === 1) return t("tomorrow", "zajtra", "holnap");
+    return t(`in ${days} days`, `o ${days} ${days < 5 ? "dni" : "dní"}`, `${days} nap múlva`);
+  };
+
   // Group filtered movements by Month with summary subtotals
   const groupedMovementsByMonth = useMemo(() => {
-    const groups: Array<{
+    type Group = {
       monthKey: string; // e.g. "2026-08"
       monthLabel: string; // e.g. "August 2026"
       totalIncome: number;
       totalExpense: number;
       net: number;
-      records: FinancialRecord[];
-    }> = [];
+      /** The forecast half of the month, kept apart so it never reads as settled. */
+      expectedIncome: number;
+      expectedExpense: number;
+      expectedNet: number;
+      forecastCount: number;
+      rows: MovementLedgerRow[];
+    };
 
-    const map = new Map<string, (typeof groups)[0]>();
-
+    const rows: MovementLedgerRow[] = [];
     filteredMovements.forEach((rec) => {
-      const dateStr = rec.paidDate || rec.issueDate || "1970-01-01";
-      const monthKey = dateStr.slice(0, 7); // "YYYY-MM"
+      if (forecastClaimedIds.has(rec.id)) return;
+      rows.push({ kind: "record", key: rec.id, date: movementLedgerDate(rec) || "1970-01-01", record: rec });
+    });
+    filteredFutureMovements.forEach((forecast) => {
+      rows.push({ kind: "forecast", key: forecast.id, date: forecast.date, forecast });
+    });
+
+    rows.sort((a, b) =>
+      movementsSortOrder === "desc" ? b.date.localeCompare(a.date) : a.date.localeCompare(b.date)
+    );
+
+    const groups: Group[] = [];
+    const map = new Map<string, Group>();
+
+    rows.forEach((row) => {
+      const monthKey = row.date.slice(0, 7); // "YYYY-MM"
 
       let group = map.get(monthKey);
       if (!group) {
@@ -1164,36 +1303,59 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           totalIncome: 0,
           totalExpense: 0,
           net: 0,
-          records: []
+          expectedIncome: 0,
+          expectedExpense: 0,
+          expectedNet: 0,
+          forecastCount: 0,
+          rows: []
         };
         map.set(monthKey, group);
         groups.push(group);
       }
 
-      const amount = rec.amountReal > 0 ? rec.amountReal : rec.amountPlanned;
-      if (rec.type === "income") {
-        group.totalIncome += amount;
+      if (row.kind === "record") {
+        const rec = row.record;
+        const amount = rec.amountReal > 0 ? rec.amountReal : rec.amountPlanned;
+        if (rec.type === "income") group.totalIncome += amount;
+        else group.totalExpense += amount;
+        group.net = group.totalIncome - group.totalExpense;
       } else {
-        group.totalExpense += amount;
+        if (row.forecast.type === "income") group.expectedIncome += row.forecast.amount;
+        else group.expectedExpense += row.forecast.amount;
+        group.expectedNet = group.expectedIncome - group.expectedExpense;
+        group.forecastCount += 1;
       }
-      group.net = group.totalIncome - group.totalExpense;
-      group.records.push(rec);
+
+      group.rows.push(row);
     });
 
     return groups;
-  }, [filteredMovements, userLanguage]);
+  }, [filteredMovements, filteredFutureMovements, forecastClaimedIds, movementsSortOrder, userLanguage]);
 
-  // Total summary of all currently filtered movements
+  // Total summary of everything currently on the ledger, settled and expected
+  // kept apart — a forecast must never be added into a figure that reads as
+  // money already in the account.
   const movementsSummary = useMemo(() => {
     let income = 0;
     let expense = 0;
-    filteredMovements.forEach((r) => {
-      const val = r.amountReal > 0 ? r.amountReal : r.amountPlanned;
-      if (r.type === "income") income += val;
-      else expense += val;
+    let recordCount = 0;
+    groupedMovementsByMonth.forEach((group) => {
+      income += group.totalIncome;
+      expense += group.totalExpense;
+      recordCount += group.rows.length - group.forecastCount;
     });
-    return { income, expense, net: income - expense, count: filteredMovements.length };
-  }, [filteredMovements]);
+    return {
+      income,
+      expense,
+      net: income - expense,
+      count: recordCount,
+      expectedIncome: forecastSummary.income,
+      expectedExpense: forecastSummary.expense,
+      expectedNet: forecastSummary.net,
+      forecastCount: filteredFutureMovements.length,
+      rowCount: recordCount + filteredFutureMovements.length
+    };
+  }, [groupedMovementsByMonth, forecastSummary, filteredFutureMovements.length]);
 
   // Infinite Scroll IntersectionObserver
   useEffect(() => {
@@ -1203,7 +1365,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       (entries) => {
         if (entries[0].isIntersecting) {
           setMovementsVisibleCount((prev) => {
-            if (prev < filteredMovements.length) {
+            if (prev < movementsSummary.rowCount) {
               return prev + 40;
             }
             return prev;
@@ -1218,7 +1380,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     }
 
     return () => observer.disconnect();
-  }, [activeTab, filteredMovements.length]);
+  }, [activeTab, movementsSummary.rowCount]);
 
   // Reset visible count when filters change
   useEffect(() => {
@@ -1235,7 +1397,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     movementsDatePreset,
     movementsStartDate,
     movementsEndDate,
-    movementsSortOrder
+    movementsSortOrder,
+    showFutureMovements,
+    futureHorizonMonths
   ]);
 
   const hasActiveMovementsFilters =
@@ -4654,8 +4818,13 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                     {t("All Financial Movements", "Všetky finančné pohyby", "Összes pénzügyi mozgás")}
                   </h3>
                   <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100  text-slate-600 ">
-                    {filteredMovements.length}
+                    {movementsSummary.count}
                   </span>
+                  {movementsSummary.forecastCount > 0 && (
+                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-violet-100  text-violet-700  border border-violet-200 ">
+                      +{expectedCountLabel(movementsSummary.forecastCount)}
+                    </span>
+                  )}
                 </div>
 
                 {/* Live Total KPI Pills */}
@@ -4673,11 +4842,50 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   }`}>
                     {t("Net:", "Čistý rozdiel:", "Nettó:")} {movementsSummary.net >= 0 ? "+" : ""}{money(movementsSummary.net)}
                   </span>
+
+                  {/* The forecast is kept in its own pill: it is not money in the account. */}
+                  {movementsSummary.forecastCount > 0 && (
+                    <span
+                      className="px-2.5 py-1 rounded-xl bg-violet-50  text-violet-700  border border-dashed border-violet-300  flex items-center gap-1.5"
+                      title={t(
+                        "Expected, not settled — this is not counted in the totals on the left",
+                        "Očakávané, neuhradené — nie je započítané v sumách vľavo",
+                        "Várható, nem teljesült — a bal oldali összegek ezt nem tartalmazzák"
+                      )}
+                    >
+                      <Telescope className="h-3.5 w-3.5" />
+                      {t("Expected net:", "Očakávaný rozdiel:", "Várható nettó:")}{" "}
+                      {movementsSummary.expectedNet >= 0 ? "+" : ""}{money(movementsSummary.expectedNet)}
+                    </span>
+                  )}
                 </div>
               </div>
 
               {/* Actions: Sort order toggle & Quick Add Buttons */}
               <div className="flex flex-wrap items-center gap-2">
+                {/* Forecast overlay toggle */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowFutureMovements((prev) => !prev);
+                    setFutureHorizonMonths(1);
+                  }}
+                  aria-pressed={showFutureMovements}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition-colors border ${
+                    showFutureMovements
+                      ? "bg-violet-600 text-white border-violet-600 shadow-xs"
+                      : "bg-violet-50  text-violet-700  border-violet-200  hover:bg-violet-100"
+                  }`}
+                  title={t(
+                    "Draw the movements that have not happened yet into the ledger",
+                    "Zobraziť v knihe aj pohyby, ktoré sa ešte nestali",
+                    "A még meg nem történt tételek megjelenítése a listában"
+                  )}
+                >
+                  <Telescope className="h-3.5 w-3.5" />
+                  <span>{t("Future movements", "Budúce pohyby", "Várható tételek")}</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => setMovementsSortOrder(movementsSortOrder === "desc" ? "asc" : "desc")}
@@ -4709,6 +4917,83 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 )}
               </div>
             </div>
+
+            {/* FORECAST HORIZON STRIP — how far ahead the overlay reaches, and how to widen it */}
+            {showFutureMovements && (
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2 px-3 py-2.5 rounded-2xl bg-violet-50/70  border border-dashed border-violet-300  animate-in fade-in duration-150">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
+                  <span className="flex items-center gap-1.5 font-bold text-violet-900 ">
+                    <Telescope className="h-4 w-4 text-violet-600 shrink-0" />
+                    {t("Forecast", "Prognóza", "Előrejelzés")}
+                  </span>
+                  <span className="font-semibold text-violet-700 ">
+                    {forecastHorizonLabel(futureHorizonMonths)}
+                    <span className="font-medium text-violet-500">
+                      {" · "}
+                      {t("until", "do", "eddig")} {formatDateLocalized(forecastRange.endIso, userLanguage)}
+                    </span>
+                  </span>
+
+                  {movementsSummary.forecastCount > 0 ? (
+                    <span className="flex items-center gap-2 font-bold">
+                      {movementsSummary.expectedIncome > 0 && (
+                        <span className="text-emerald-600 ">+{money(movementsSummary.expectedIncome)}</span>
+                      )}
+                      {movementsSummary.expectedExpense > 0 && (
+                        <span className="text-rose-600 ">-{money(movementsSummary.expectedExpense)}</span>
+                      )}
+                      <span className="text-violet-500 font-semibold">
+                        {movementsSummary.forecastCount}{" "}
+                        {t(
+                          `expected movement${movementsSummary.forecastCount === 1 ? "" : "s"}`,
+                          `${skExpected(movementsSummary.forecastCount)} ${skMovements(movementsSummary.forecastCount)}`,
+                          "várható tétel"
+                        )}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="text-violet-500 font-medium">
+                      {t(
+                        "Nothing expected in this window.",
+                        "V tomto období sa nič neočakáva.",
+                        "Ebben az időszakban nincs várható tétel."
+                      )}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {futureHorizonMonths > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setFutureHorizonMonths(1)}
+                      className="px-2.5 py-1.5 text-[11px] font-bold rounded-xl text-violet-600  hover:bg-violet-100  transition-colors cursor-pointer"
+                    >
+                      {t("Back to one month", "Späť na jeden mesiac", "Vissza egy hónapra")}
+                    </button>
+                  )}
+
+                  {canLoadAnotherForecastMonth ? (
+                    <button
+                      type="button"
+                      onClick={() => setFutureHorizonMonths((prev) => prev + 1)}
+                      className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      <span>{t("Load another month", "Načítať ďalší mesiac", "Még egy hónap")}</span>
+                    </button>
+                  ) : (
+                    <span className="px-3 py-1.5 text-[11px] font-semibold text-violet-500 ">
+                      {t(
+                        "✓ Nothing further is expected",
+                        "✓ Ďalej sa už nič neočakáva",
+                        "✓ Ezután nincs több várható tétel"
+                      )}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Main Filter Bar Row: Search, Type Toggle, Date Preset, Value Range */}
             <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center text-xs">
@@ -4951,7 +5236,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 </thead>
 
                 <tbody className="divide-y divide-slate-100  font-medium">
-                  {filteredMovements.length === 0 ? (
+                  {movementsSummary.rowCount === 0 ? (
                     <tr>
                       <td colSpan={7} className="py-16 text-center text-slate-400 font-medium space-y-2">
                         <Coins className="h-10 w-10 text-slate-300  mx-auto" />
@@ -4972,47 +5257,260 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                         if (globalRenderCount >= movementsVisibleCount) return null;
 
                         const availableSlot = movementsVisibleCount - globalRenderCount;
-                        const visibleRecordsInGroup = group.records.slice(0, availableSlot);
-                        globalRenderCount += visibleRecordsInGroup.length;
+                        const visibleRows = group.rows.slice(0, availableSlot);
+                        globalRenderCount += visibleRows.length;
+
+                        // A month made up only of expected movements is a month
+                        // that has not happened — its divider says so, instead
+                        // of looking like any other month of history.
+                        const settledInGroup = group.rows.length - group.forecastCount;
+                        const isForecastOnlyMonth = settledInGroup === 0 && group.forecastCount > 0;
 
                         return (
                           <React.Fragment key={"month-grp-" + group.monthKey}>
                             {/* MONTH DIVIDER ROW WITH SUMMARY TOTALS */}
-                            <tr className="bg-slate-100/90  border-y-2 border-slate-300  sticky top-[37px] z-10 shadow-xs">
+                            <tr className={`border-y-2 sticky top-[37px] z-10 shadow-xs ${
+                              isForecastOnlyMonth
+                                ? "bg-violet-100/90  border-violet-300 "
+                                : "bg-slate-100/90  border-slate-300 "
+                            }`}>
                               <td colSpan={7} className="py-2.5 px-4">
                                 <div className="flex flex-wrap items-center justify-between gap-3">
                                   <div className="flex items-center gap-2">
-                                    <CalendarDays className="h-4 w-4 text-purple-600 " />
-                                    <span className="font-black text-xs uppercase tracking-wider text-slate-900 ">
+                                    {isForecastOnlyMonth ? (
+                                      <Telescope className="h-4 w-4 text-violet-600 " />
+                                    ) : (
+                                      <CalendarDays className="h-4 w-4 text-purple-600 " />
+                                    )}
+                                    <span className={`font-black text-xs uppercase tracking-wider ${
+                                      isForecastOnlyMonth ? "text-violet-900 " : "text-slate-900 "
+                                    }`}>
                                       {group.monthLabel}
                                     </span>
-                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white  text-slate-600  border border-slate-200 ">
-                                      {group.records.length} {t("movements", "pohybov", "tétel")}
-                                    </span>
+                                    {settledInGroup > 0 && (
+                                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white  text-slate-600  border border-slate-200 ">
+                                        {settledInGroup} {t("movements", "pohybov", "tétel")}
+                                      </span>
+                                    )}
+                                    {group.forecastCount > 0 && (
+                                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white  text-violet-700  border border-dashed border-violet-300 ">
+                                        {expectedCountLabel(group.forecastCount)}
+                                      </span>
+                                    )}
                                   </div>
 
-                                  {/* Monthly Subtotals */}
-                                  <div className="flex items-center gap-3 text-xs font-black">
-                                    <span className="text-emerald-700 ">
-                                      +{money(group.totalIncome)}
-                                    </span>
-                                    <span className="text-rose-700 ">
-                                      -{money(group.totalExpense)}
-                                    </span>
-                                    <span className={`px-2 py-0.5 rounded-lg border ${
-                                      group.net >= 0
-                                        ? "bg-emerald-50  text-emerald-700  border-emerald-300 "
-                                        : "bg-rose-50  text-rose-700  border-rose-300 "
-                                    }`}>
-                                      {t("Net:", "Čistý:", "Nettó:")} {group.net >= 0 ? "+" : ""}{money(group.net)}
-                                    </span>
+                                  {/* Monthly subtotals — settled first, expected kept apart from it */}
+                                  <div className="flex flex-wrap items-center gap-3 text-xs font-black">
+                                    {settledInGroup > 0 && (
+                                      <>
+                                        <span className="text-emerald-700 ">
+                                          +{money(group.totalIncome)}
+                                        </span>
+                                        <span className="text-rose-700 ">
+                                          -{money(group.totalExpense)}
+                                        </span>
+                                        <span className={`px-2 py-0.5 rounded-lg border ${
+                                          group.net >= 0
+                                            ? "bg-emerald-50  text-emerald-700  border-emerald-300 "
+                                            : "bg-rose-50  text-rose-700  border-rose-300 "
+                                        }`}>
+                                          {t("Net:", "Čistý:", "Nettó:")} {group.net >= 0 ? "+" : ""}{money(group.net)}
+                                        </span>
+                                      </>
+                                    )}
+                                    {group.forecastCount > 0 && (
+                                      <span className="px-2 py-0.5 rounded-lg border border-dashed border-violet-300  bg-violet-50  text-violet-700  flex items-center gap-2">
+                                        <Telescope className="h-3 w-3" />
+                                        <span>{t("Expected:", "Očakávané:", "Várható:")}</span>
+                                        {group.expectedIncome > 0 && <span>+{money(group.expectedIncome)}</span>}
+                                        {group.expectedExpense > 0 && <span>-{money(group.expectedExpense)}</span>}
+                                        {group.expectedIncome > 0 && group.expectedExpense > 0 && (
+                                          <span>
+                                            {t("net", "čistý", "nettó")}{" "}
+                                            {group.expectedNet >= 0 ? "+" : ""}{money(group.expectedNet)}
+                                          </span>
+                                        )}
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
                               </td>
                             </tr>
 
                             {/* MOVEMENT ROWS IN THIS MONTH */}
-                            {visibleRecordsInGroup.map((rec) => {
+                            {visibleRows.map((row) => {
+                              // A forecast row has no record of its own: nothing
+                              // of it is stored, so it cannot be given a status,
+                              // edited in place or deleted — only followed back
+                              // to the rule or invoice it was derived from.
+                              if (row.kind === "forecast") {
+                                const forecast = row.forecast;
+                                const source = forecast.record;
+                                const forecastProject = projects.find((p) => p.id === source.projectId);
+                                const forecastClient = leads.find(
+                                  (l) => l.id === source.clientId || l.id === forecastProject?.clientId || l.id === forecastProject?.leadId
+                                );
+                                const forecastCrumbs = getCategoryBreadcrumbs(source.categoryId);
+                                const forecastRootCat = forecastCrumbs[0];
+                                const forecastIsExpense = forecast.type === "expense";
+                                const SourceIcon = FORECAST_SOURCE_ICON[forecast.source];
+
+                                return (
+                                  <tr key={row.key} data-forecast="true" className={FORECAST_ROW_CLASS}>
+                                    {/* 1. The day the money is expected, and how far off that is */}
+                                    <td className="py-3 px-4 whitespace-nowrap">
+                                      <div className="font-bold text-violet-900 ">
+                                        {formatDateLocalized(forecast.date, userLanguage)}
+                                      </div>
+                                      <div className="text-[10px] font-medium text-violet-500 mt-0.5">
+                                        {daysAheadLabel(forecast.date)}
+                                      </div>
+                                    </td>
+
+                                    {/* 2. Title & reference, read off the source */}
+                                    <td className="py-3 px-4">
+                                      <div className="font-bold text-violet-900  flex items-center gap-1.5">
+                                        <span className="truncate max-w-[280px]" title={source.title}>
+                                          {source.title}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-2 mt-0.5">
+                                        {source.invoiceNumber && (
+                                          <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-violet-100/70  text-violet-700  font-semibold">
+                                            {source.invoiceNumber}
+                                          </span>
+                                        )}
+                                        {source.description && (
+                                          <span className="text-[11px] text-violet-400 truncate max-w-[220px]" title={source.description}>
+                                            {source.description}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </td>
+
+                                    {/* 3. Category breadcrumbs of the source */}
+                                    <td className="py-3 px-4">
+                                      {forecastCrumbs.length > 0 ? (
+                                        <div className="flex items-center gap-1.5 flex-wrap opacity-80">
+                                          <span
+                                            className="h-2 w-2 rounded-full shrink-0 shadow-2xs"
+                                            style={{ backgroundColor: forecastRootCat?.color || (forecastIsExpense ? "#f43f5e" : "#10b981") }}
+                                          />
+                                          {forecastCrumbs.map((c, idx) => (
+                                            <React.Fragment key={c.id}>
+                                              {idx > 0 && <span className="text-[10px] text-violet-400">›</span>}
+                                              <span
+                                                className={`text-[11px] ${
+                                                  idx === forecastCrumbs.length - 1
+                                                    ? "font-bold text-violet-800 "
+                                                    : "font-normal text-violet-500 "
+                                                }`}
+                                              >
+                                                {c.name}
+                                              </span>
+                                            </React.Fragment>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <span className="text-violet-400 italic text-[11px]">
+                                          {t("Uncategorized", "Bez kategórie", "Kategória nélkül")}
+                                        </span>
+                                      )}
+                                    </td>
+
+                                    {/* 4. Link / Scope of the source */}
+                                    <td className="py-3 px-4">
+                                      {source.projectId ? (
+                                        (() => {
+                                          const projectLead = forecastProject
+                                            ? leads.find((l) => l.id === forecastProject.leadId || l.id === forecastProject.clientId)
+                                            : null;
+                                          const pName = projectLead ? `${projectLead.name}` : `Projekt ${source.projectId!.slice(0, 8)}`;
+                                          return (
+                                            <button
+                                              type="button"
+                                              onClick={() => onOpenProject?.(source.projectId!)}
+                                              className="inline-flex items-center gap-1.5 px-2 py-1 bg-indigo-50/70  hover:bg-indigo-100 text-indigo-700  rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                                            >
+                                              <Briefcase className="h-3.5 w-3.5 shrink-0" />
+                                              <span className="truncate max-w-[140px]" title={pName}>
+                                                {pName}
+                                              </span>
+                                            </button>
+                                          );
+                                        })()
+                                      ) : source.clientId ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => onOpenClient?.(source.clientId!)}
+                                          className="inline-flex items-center gap-1.5 px-2 py-1 bg-emerald-50/70  hover:bg-emerald-100 text-emerald-700  rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                                        >
+                                          <User className="h-3.5 w-3.5 shrink-0" />
+                                          <span className="truncate max-w-[140px]" title={forecastClient?.name || source.clientId}>
+                                            {forecastClient?.name || source.clientId.slice(0, 8)}
+                                          </span>
+                                        </button>
+                                      ) : (
+                                        <span className="inline-flex items-center gap-1 text-[11px] text-violet-500 font-medium">
+                                          <Globe className="h-3 w-3 text-violet-400 shrink-0" />
+                                          <span>{t("Global Company", "Globálne firemné", "Globális vállalati")}</span>
+                                        </span>
+                                      )}
+                                    </td>
+
+                                    {/* 5. Where it came from, in place of a payment status it cannot have */}
+                                    <td className="py-3 px-4">
+                                      <span
+                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border border-dashed border-violet-300  bg-violet-50  text-violet-700 "
+                                        title={t(
+                                          "Expected, not recorded — nothing is stored for this day yet",
+                                          "Očakávané, nezaznamenané — pre tento deň zatiaľ nič nie je uložené",
+                                          "Várható, nem rögzített — erre a napra még nincs mentett tétel"
+                                        )}
+                                      >
+                                        <SourceIcon className="h-3 w-3 shrink-0" />
+                                        {forecastSourceLabel(forecast.source)}
+                                      </span>
+                                    </td>
+
+                                    {/* 6. Value — approximate, and visibly lighter than a settled one */}
+                                    <td className="py-3 px-4 text-right">
+                                      <div className="flex items-center justify-end gap-1.5">
+                                        <span
+                                          className={`font-black text-sm italic ${
+                                            forecastIsExpense ? "text-rose-400 " : "text-emerald-500 "
+                                          }`}
+                                        >
+                                          ≈ {forecastIsExpense ? "-" : "+"}{money(forecast.amount)}
+                                        </span>
+                                      </div>
+                                      <div className="text-[10px] text-violet-400 mt-0.5">
+                                        {t("expected", "očakávané", "várható")}
+                                      </div>
+                                    </td>
+
+                                    {/* 7. The only action there is: open what it was derived from */}
+                                    <td className="py-3 px-4 text-right">
+                                      <div className="flex items-center justify-end gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleOpenEditModal(source)}
+                                          className="p-1.5 hover:bg-violet-100  rounded-lg text-violet-500 hover:text-violet-900  transition-colors cursor-pointer"
+                                          title={t(
+                                            "Open the movement this is expected from",
+                                            "Otvoriť pohyb, z ktorého to vychádza",
+                                            "A várható tétel forrásának megnyitása"
+                                          )}
+                                        >
+                                          <Pencil className="h-3.5 w-3.5" />
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              }
+
+                              const rec = row.record;
                               const project = projects.find((p) => p.id === rec.projectId);
                               const client = leads.find((l) => l.id === rec.clientId || l.id === project?.clientId || l.id === project?.leadId);
                               const catBreadcrumbs = getCategoryBreadcrumbs(rec.categoryId);
@@ -5022,7 +5520,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
                               return (
                                 <tr
-                                  key={rec.id}
+                                  key={row.key}
                                   className="hover:bg-slate-50/80  transition-colors group"
                                 >
                                   {/* 1. Date (status lives in its own editable column) */}
@@ -5218,28 +5716,28 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             </div>
 
             {/* Infinite Scroll Loading Sentinel */}
-            {filteredMovements.length > 0 && (
+            {movementsSummary.rowCount > 0 && (
               <div
                 ref={movementsSentinelRef}
                 className="py-6 border-t border-slate-100  flex items-center justify-center text-xs text-slate-400 font-medium"
               >
-                {movementsVisibleCount < filteredMovements.length ? (
+                {movementsVisibleCount < movementsSummary.rowCount ? (
                   <div className="flex items-center gap-2">
                     <RefreshCw className="h-3.5 w-3.5 animate-spin text-purple-600" />
                     <span>
                       {t(
-                        `Loading more movements... (showing ${Math.min(movementsVisibleCount, filteredMovements.length)} of ${filteredMovements.length})`,
-                        `Načítavam ďalšie pohyby... (zobrazených ${Math.min(movementsVisibleCount, filteredMovements.length)} z ${filteredMovements.length})`,
-                        `További mozgások betöltése... (${Math.min(movementsVisibleCount, filteredMovements.length)} / ${filteredMovements.length})`
+                        `Loading more movements... (showing ${Math.min(movementsVisibleCount, movementsSummary.rowCount)} of ${movementsSummary.rowCount})`,
+                        `Načítavam ďalšie pohyby... (zobrazených ${Math.min(movementsVisibleCount, movementsSummary.rowCount)} z ${movementsSummary.rowCount})`,
+                        `További mozgások betöltése... (${Math.min(movementsVisibleCount, movementsSummary.rowCount)} / ${movementsSummary.rowCount})`
                       )}
                     </span>
                   </div>
                 ) : (
                   <span className="text-slate-400">
                     {t(
-                      `✓ All ${filteredMovements.length} movements loaded`,
-                      `✓ Všetkých ${filteredMovements.length} pohybov načítaných`,
-                      `✓ Mind a(z) ${filteredMovements.length} mozgás betöltve`
+                      `✓ All ${movementsSummary.rowCount} movements loaded`,
+                      `✓ Všetkých ${movementsSummary.rowCount} pohybov načítaných`,
+                      `✓ Mind a(z) ${movementsSummary.rowCount} mozgás betöltve`
                     )}
                   </span>
                 )}
