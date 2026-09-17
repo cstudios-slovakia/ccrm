@@ -2654,7 +2654,16 @@ ${log.payload || ''}
         );
       case "files":
         return (
-          <FilesView leads={leads} setLeads={updateLeadsAndSync} systemLanguage={userLanguage} currencyCode={currencyCode} access={access.module("files")} />
+          <FilesView
+            leads={leads}
+            setLeads={updateLeadsAndSync}
+            projects={projects}
+            setProjects={updateProjectsAndSync}
+            projectTypes={projectTypes}
+            systemLanguage={userLanguage}
+            currencyCode={currencyCode}
+            access={access.module("files")}
+          />
         );
       case "personal-settings":
         return (

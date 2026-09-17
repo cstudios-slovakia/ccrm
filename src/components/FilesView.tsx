@@ -1,9 +1,9 @@
 import React, { useState, useMemo } from "react";
 import { 
   FolderOpen, FileText, Search, Clock, User, Euro, 
-  ArrowRight, Download, Handshake, Receipt, Plus, X, UploadCloud, File, Trash, Loader2, Eye, Lock
+  ArrowRight, Download, Handshake, Receipt, Plus, X, UploadCloud, File, Trash, Loader2, Eye, Lock, Briefcase
 } from "lucide-react";
-import type { Lead } from "../types";
+import type { Lead, Project, ProjectType } from "../types";
 import { CustomSelect } from "./ui/CustomSelect";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
@@ -12,6 +12,12 @@ import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import { formatBytes } from "../utils/formatBytes";
 import { formatMoney } from "../utils/currency";
 import { nowLocalStamp, formatTimestampLocalized } from "../utils/localTime";
+import {
+  collectProjectRegistryFiles,
+  removeProjectUploadedFile,
+  uploadDiskName,
+  type RegistryFileType,
+} from "../utils/projectDocuments";
 
 interface QueuedFile {
   id: string;
@@ -25,13 +31,42 @@ interface QueuedFile {
 interface FilesViewProps {
   leads: Lead[];
   setLeads: (updater: Lead[] | ((prev: Lead[]) => Lead[])) => void;
+  projects?: Project[];
+  setProjects?: (updater: Project[] | ((prev: Project[]) => Project[])) => void;
+  projectTypes?: ProjectType[];
   systemLanguage: Language;
   currencyCode?: string | null;
   /** Role access for the files module. `edit: false` renders the cabinet read-only. */
   access?: ModuleAccess;
 }
 
-export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLanguage, currencyCode, access = FULL_MODULE_ACCESS }) => {
+type RegistryRow = {
+  id: string;
+  fileName: string;
+  fileSize: string;
+  fileType: RegistryFileType;
+  filePath: string;
+  clientName: string;
+  projectId: string | null;
+  projectName: string;
+  uploadedAt: string;
+  offerValue: number;
+  summary: string;
+  source: "lead" | "project";
+  slotId?: string;
+  slotCustom?: boolean;
+};
+
+export const FilesView: React.FC<FilesViewProps> = ({
+  leads,
+  setLeads,
+  projects = [],
+  setProjects,
+  projectTypes = [],
+  systemLanguage,
+  currencyCode,
+  access = FULL_MODULE_ACCESS,
+}) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
   const canEdit = access.edit;
   const canDelete = access.delete;
@@ -48,7 +83,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
       return null;
     }
   }, []);
-  const [selectedTypeFilter, setSelectedTypeFilter] = useState<"all" | "offer" | "contract" | "invoice">("all");
+  const [selectedTypeFilter, setSelectedTypeFilter] = useState<"all" | RegistryFileType>("all");
   const [selectedClientFilter, setSelectedClientFilter] = useState("all");
 
   const [isUploadDrawerOpen, setIsUploadDrawerOpen] = useState(false);
@@ -307,21 +342,31 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
     }
   };
 
-  const handleDeleteFile = async (eventId: string, fileName: string) => {
+  const registryHref = (file: RegistryRow) =>
+    file.filePath || `/uploads/${file.id}_${file.fileName}`;
+
+  const previewRegistryFile = (file: RegistryRow) => {
+    if ((window as any).previewFile) {
+      (window as any).previewFile(registryHref(file), file.fileName);
+    }
+  };
+
+  const handleDeleteFile = async (file: RegistryRow) => {
     if (!canDelete) return;
     const confirmMsg = systemLanguage === "sk"
-      ? `Naozaj chcete vymazať súbor "${fileName}"?`
+      ? `Naozaj chcete vymazať súbor "${file.fileName}"?`
       : systemLanguage === "hu"
-        ? `Biztosan törölni szeretné a(z) "${fileName}" fájlt?`
-        : `Are you sure you want to delete the file "${fileName}"?`;
+        ? `Biztosan törölni szeretné a(z) "${file.fileName}" fájlt?`
+        : `Are you sure you want to delete the file "${file.fileName}"?`;
         
     if (!window.confirm(confirmMsg)) return;
 
     try {
+      const diskName = uploadDiskName(file.filePath || `${file.id}_${file.fileName}`);
       const res = await fetch("/api/delete_file.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileName: `${eventId}_${fileName}` })
+        body: JSON.stringify({ fileName: diskName })
       });
       
       if (!res.ok) {
@@ -329,16 +374,29 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
         throw new Error(errData.message || "Failed to delete file from server");
       }
 
-      setLeads((prevLeads: Lead[]) => {
-        return prevLeads.map(lead => {
-          if (!lead.timeline) return lead;
-          const updatedTimeline = lead.timeline.filter(event => event.id !== eventId);
-          return {
-            ...lead,
-            timeline: updatedTimeline
-          };
+      if (file.source === "project" && file.projectId && file.slotId && setProjects) {
+        setProjects(prev => prev.map(project => {
+          if (project.id !== file.projectId) return project;
+          return removeProjectUploadedFile(
+            project,
+            file.slotId!,
+            Boolean(file.slotCustom),
+            file.filePath,
+            file.fileName,
+          );
+        }));
+      } else {
+        setLeads((prevLeads: Lead[]) => {
+          return prevLeads.map(lead => {
+            if (!lead.timeline) return lead;
+            const updatedTimeline = lead.timeline.filter(event => event.id !== file.id);
+            return {
+              ...lead,
+              timeline: updatedTimeline
+            };
+          });
         });
-      });
+      }
 
       if (typeof (window as any).showToast === "function") {
         (window as any).showToast(
@@ -357,18 +415,9 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
     }
   };
 
-  // Dynamic files aggregator: scan all client timelines for offer attachments
+  // Dynamic files aggregator: scan client timelines and every project file slot
   const filesList = useMemo(() => {
-    const files: Array<{
-      id: string;
-      fileName: string;
-      fileSize: string;
-      fileType: "offer" | "contract" | "invoice";
-      clientName: string;
-      uploadedAt: string;
-      offerValue: number;
-      summary: string;
-    }> = [];
+    const files: RegistryRow[] = [];
 
     leads.forEach(lead => {
       if (lead.timeline && lead.timeline.length > 0) {
@@ -379,33 +428,44 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
               fileName: event.fileName,
               fileType: event.fileType || "offer",
               fileSize: event.fileSize || t("Unknown size", "Neznáma veľkosť", "Ismeretlen méret"),
+              filePath: event.filePath || `/uploads/${event.id}_${event.fileName}`,
               clientName: lead.name,
+              projectId: null,
+              projectName: "",
               uploadedAt: event.timestamp,
               offerValue: event.amount || 0,
-              summary: event.content || ""
+              summary: event.content || "",
+              source: "lead",
             });
           }
         });
       }
     });
 
+    files.push(...collectProjectRegistryFiles(projects, projectTypes, leads, {
+      untitledProject: t("Untitled project", "Projekt bez názvu", "Névtelen projekt"),
+      unknownSize: t("Unknown size", "Neznáma veľkosť", "Ismeretlen méret"),
+    }));
+
     // Sort files by upload date (Newest First)
     return files.sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt));
-  }, [leads]);
+  }, [leads, projects, projectTypes, systemLanguage]);
 
   // Extract unique client names dynamically
   const clientNames = useMemo(() => {
-    const names = new Set(filesList.map(f => f.clientName));
+    const names = new Set(filesList.map(f => f.clientName).filter(Boolean));
     return Array.from(names).sort();
   }, [filesList]);
 
   // Filtered files for the datagrid
   const filteredFiles = useMemo(() => {
     return filesList.filter(file => {
+      const query = searchQuery.toLowerCase();
       const matchesSearch = 
-        file.fileName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        file.clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        file.uploadedAt.toLowerCase().includes(searchQuery.toLowerCase());
+        file.fileName.toLowerCase().includes(query) ||
+        file.clientName.toLowerCase().includes(query) ||
+        file.projectName.toLowerCase().includes(query) ||
+        file.uploadedAt.toLowerCase().includes(query);
 
       const matchesType = selectedTypeFilter === "all" || file.fileType === selectedTypeFilter;
       const matchesClient = selectedClientFilter === "all" || file.clientName === selectedClientFilter;
@@ -415,7 +475,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
   }, [filesList, searchQuery, selectedTypeFilter, selectedClientFilter]);
 
   // Helper to color-code files based on type
-  const getFileTypeProps = (type: "offer" | "contract" | "invoice") => {
+  const getFileTypeProps = (type: RegistryFileType) => {
     switch (type) {
       case "offer":
         return {
@@ -437,6 +497,13 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
           badgeClass: "bg-rose-50 text-rose-800 border-rose-200",
           iconContainer: "bg-rose-600 border-rose-700",
           textLabel: t("Invoice", "Faktúra", "Számla")
+        };
+      case "project":
+        return {
+          icon: <Briefcase className="h-3.5 w-3.5" />,
+          badgeClass: "bg-indigo-50 text-indigo-800 border-indigo-200",
+          iconContainer: "bg-indigo-600 border-indigo-700",
+          textLabel: getTranslation(systemLanguage, "files.type_project")
         };
     }
   };
@@ -486,13 +553,13 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
         {/* Always-visible file type pill selector */}
         <div className="space-y-1.5">
           <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">{getTranslation(systemLanguage, "files.filter_label")}</label>
-          <div className="grid grid-cols-4 gap-2 bg-slate-100 p-1.5 rounded-2xl border-2 border-slate-200">
-            {(["all", "offer", "contract", "invoice"] as const).map(type => (
+          <div className="flex flex-wrap gap-2 bg-slate-100 p-1.5 rounded-2xl border-2 border-slate-200">
+            {(["all", "offer", "contract", "invoice", "project"] as const).map(type => (
               <button
                 key={type}
                 type="button"
                 onClick={() => setSelectedTypeFilter(type)}
-                className={`py-2 rounded-xl font-black text-[9px] uppercase tracking-wider transition-all text-center flex items-center justify-center gap-1.5 ${
+                className={`flex-1 min-w-[8.5rem] py-2 px-2 rounded-xl font-black text-[9px] uppercase tracking-wider transition-all duration-150 text-center flex items-center justify-center gap-1.5 active:scale-[0.98] ${
                   selectedTypeFilter === type 
                     ? "bg-amber-700 text-white border border-amber-800 shadow-md shadow-amber-700/20" 
                     : "text-slate-500 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
@@ -510,11 +577,15 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
                 {type === "invoice" && (
                   <Receipt className={`h-3.5 w-3.5 ${selectedTypeFilter === type ? "text-white" : "text-rose-500"}`} />
                 )}
+                {type === "project" && (
+                  <Briefcase className={`h-3.5 w-3.5 ${selectedTypeFilter === type ? "text-white" : "text-indigo-500"}`} />
+                )}
                 <span>
                   {type === "all" && getTranslation(systemLanguage, "files.all")}
                   {type === "offer" && getTranslation(systemLanguage, "files.offers")}
                   {type === "contract" && getTranslation(systemLanguage, "files.contracts")}
                   {type === "invoice" && getTranslation(systemLanguage, "files.invoices")}
+                  {type === "project" && getTranslation(systemLanguage, "files.project_docs")}
                 </span>
               </button>
             ))}
@@ -560,6 +631,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
                 <th className="sticky top-0 bg-white z-10 py-4 px-6 rounded-tl-[24px] border-b-2 border-slate-100">{getTranslation(systemLanguage, "files.th_filename")}</th>
                 <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "files.th_type")}</th>
                 <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "files.th_client")}</th>
+                <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "files.th_project")}</th>
                 <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "files.th_date")}</th>
                 <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "files.th_size")}</th>
                 <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "files.th_value")}</th>
@@ -570,7 +642,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
             <tbody className="divide-y divide-amber-100 text-xs">
               {filteredFiles.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-16 px-6 text-center text-slate-400">
+                  <td colSpan={8} className="py-16 px-6 text-center text-slate-400">
                     <div className="text-2xl mb-2 animate-bounce">📁</div>
                     <div className="font-black text-slate-700 uppercase tracking-wider">{getTranslation(systemLanguage, "files.no_docs")}</div>
                     <div className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider mt-0.5">{getTranslation(systemLanguage, "files.no_docs_desc")}</div>
@@ -582,11 +654,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
                   return (
                     <tr 
                       key={file.id}
-                      onClick={() => {
-                        if ((window as any).previewFile) {
-                          (window as any).previewFile(`/uploads/${file.id}_${file.fileName}`, file.fileName);
-                        }
-                      }}
+                      onClick={() => previewRegistryFile(file)}
                       className="hover:bg-amber-50/20 transition-colors duration-150 border-b border-amber-50/60 group cursor-pointer"
                     >
                       
@@ -617,18 +685,43 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
 
                       {/* Associated Client */}
                       <td className="py-3.5 px-4 font-black text-slate-700">
-                        <div className="flex items-center gap-1.5">
-                          <User className="h-3.5 w-3.5 text-amber-700" />
-                          <span>{file.clientName}</span>
-                        </div>
+                        {file.clientName ? (
+                          <div className="flex items-center gap-1.5">
+                            <User className="h-3.5 w-3.5 text-amber-700" />
+                            <span>{file.clientName}</span>
+                          </div>
+                        ) : (
+                          <span className="text-slate-300 italic font-semibold">{t("None", "Žiadna", "Nincs")}</span>
+                        )}
+                      </td>
+
+                      {/* Assigned project */}
+                      <td className="py-3.5 px-4 font-black text-slate-700">
+                        {file.projectId ? (
+                          <a
+                            href={`#projects?edit=${encodeURIComponent(file.projectId)}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex items-center gap-1.5 text-indigo-700 hover:text-indigo-900 transition-colors duration-150"
+                            title={t("Open assigned project", "Otvoriť priradený projekt", "Hozzárendelt projekt megnyitása")}
+                          >
+                            <Briefcase className="h-3.5 w-3.5 shrink-0" />
+                            <span className="line-clamp-1">{file.projectName}</span>
+                          </a>
+                        ) : (
+                          <span className="text-slate-300 italic font-semibold">{t("None", "Žiadna", "Nincs")}</span>
+                        )}
                       </td>
 
                       {/* Uploaded date */}
                       <td className="py-3.5 px-4 text-slate-700 font-black">
-                        <div className="flex items-center gap-1">
-                          <Clock className="h-3.5 w-3.5 text-amber-700" />
-                          <span>{formatTimestampLocalized(file.uploadedAt, systemLanguage)}</span>
-                        </div>
+                        {file.uploadedAt ? (
+                          <div className="flex items-center gap-1">
+                            <Clock className="h-3.5 w-3.5 text-amber-700" />
+                            <span>{formatTimestampLocalized(file.uploadedAt, systemLanguage)}</span>
+                          </div>
+                        ) : (
+                          <span className="text-slate-300 italic font-semibold">{t("None", "Žiadna", "Nincs")}</span>
+                        )}
                       </td>
 
                       {/* File size */}
@@ -651,36 +744,43 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
                           {!(
                             file.clientName === "Unassigned Documents" ||
                             file.clientName === "Nepriradené dokumenty" ||
-                            file.clientName === "Nem társított dokumentumok"
+                            file.clientName === "Nem társított dokumentumok" ||
+                            !file.clientName
                           ) && (
                             <a 
                               href={`#client-${encodeURIComponent(file.clientName)}`}
-                              className="px-2.5 py-1.5 rounded-xl border border-slate-300 hover:border-amber-700 hover:text-amber-800 transition-all text-[8px] font-black uppercase text-slate-600 flex items-center gap-1 bg-white shadow-sm"
+                              className="px-2.5 py-1.5 rounded-xl border border-slate-300 hover:border-amber-700 hover:text-amber-800 transition-all duration-150 text-[8px] font-black uppercase text-slate-600 flex items-center gap-1 bg-white shadow-sm active:scale-[0.98]"
                               title={t("Open Client details sheet", "Otvoriť kartu klienta", "Ügyfél adatlap megnyitása")}
                             >
                               <span>{getTranslation(systemLanguage, "files.btn_client")}</span>
                               <ArrowRight className="h-3 w-3 stroke-[2.5]" />
                             </a>
                           )}
+                          {file.projectId && (
+                            <a
+                              href={`#projects?edit=${encodeURIComponent(file.projectId)}`}
+                              className="px-2.5 py-1.5 rounded-xl border border-indigo-200 hover:border-indigo-500 hover:text-indigo-800 transition-all duration-150 text-[8px] font-black uppercase text-indigo-700 flex items-center gap-1 bg-indigo-50 shadow-sm active:scale-[0.98]"
+                              title={t("Open assigned project", "Otvoriť priradený projekt", "Hozzárendelt projekt megnyitása")}
+                            >
+                              <span>{getTranslation(systemLanguage, "files.btn_project")}</span>
+                              <ArrowRight className="h-3 w-3 stroke-[2.5]" />
+                            </a>
+                          )}
                           <button
                             type="button"
-                            onClick={() => {
-                              if ((window as any).previewFile) {
-                                (window as any).previewFile(`/uploads/${file.id}_${file.fileName}`, file.fileName);
-                              }
-                            }}
-                            className="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100/80 border border-indigo-200 text-indigo-700 transition-all text-[8px] font-black uppercase flex items-center gap-1 shadow-sm cursor-pointer"
+                            onClick={() => previewRegistryFile(file)}
+                            className="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100/80 border border-indigo-200 text-indigo-700 transition-all duration-150 text-[8px] font-black uppercase flex items-center gap-1 shadow-sm cursor-pointer active:scale-[0.98]"
                             title={t("Preview file", "Náhľad súboru", "Fájl előnézete")}
                           >
                             <Eye className="h-3 w-3 stroke-[2.5]" />
                             <span>{getTranslation(systemLanguage, "files.btn_view")}</span>
                           </button>
                           <a 
-                            href={`/uploads/${file.id}_${file.fileName}`}
+                            href={registryHref(file)}
                             download={file.fileName}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="px-2.5 py-1.5 rounded-xl bg-amber-700 hover:bg-amber-600 border border-amber-800 text-white transition-all text-[8px] font-black uppercase flex items-center gap-1 shadow-sm inline-flex items-center cursor-pointer"
+                            className="px-2.5 py-1.5 rounded-xl bg-amber-700 hover:bg-amber-600 border border-amber-800 text-white transition-all duration-150 text-[8px] font-black uppercase flex items-center gap-1 shadow-sm inline-flex items-center cursor-pointer active:scale-[0.98]"
                             title={t("Download offer document", "Stiahnuť dokument ponuky", "Ajánlati dokumentum letöltése")}
                           >
                             <Download className="h-3 w-3 stroke-[2.5]" />
@@ -688,8 +788,8 @@ export const FilesView: React.FC<FilesViewProps> = ({ leads, setLeads, systemLan
                           </a>
                           {canDelete && (
                             <button
-                              onClick={() => handleDeleteFile(file.id, file.fileName)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50/50 transition-all cursor-pointer"
+                              onClick={() => handleDeleteFile(file)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50/50 transition-all duration-150 cursor-pointer active:scale-95"
                               title={t("Delete file permanently", "Natrvalo vymazať súbor", "Fájl végleges törlése")}
                             >
                               <Trash className="h-4 w-4 stroke-[2.2]" />

@@ -114,6 +114,19 @@ const LEADS = [
         extraTime: '12:00',
         author: 'Erik',
       },
+      {
+        id: 'ev-silvia-4',
+        type: 'offer',
+        timestamp: isoStamp(-15, '10:00'),
+        title: 'Zmluva podpísaná',
+        content: 'Podpísaná zmluva o dielo.',
+        fileName: 'zmluva-silvia.pdf',
+        fileSize: '245 KB',
+        fileType: 'contract',
+        filePath: '/uploads/zmluva-silvia.pdf',
+        attachments: [{ name: 'zmluva-silvia.pdf', size: '245 KB', path: '/uploads/zmluva-silvia.pdf' }],
+        author: 'Erik',
+      },
     ],
   },
   {
@@ -150,13 +163,14 @@ const LEADS = [
       },
       {
         id: 'ev-novak-2',
-        type: 'invoice',
+        type: 'offer',
         timestamp: isoStamp(-5, '16:20'),
         title: 'Faktúra FA-2026-014',
         content: 'Vystavená faktúra za prvú etapu.',
         amount: 9200,
         fileName: 'FA-2026-014.pdf',
         fileSize: '188 KB',
+        fileType: 'invoice',
         filePath: '/uploads/FA-2026-014.pdf',
         attachments: [{ name: 'FA-2026-014.pdf', size: '188 KB', path: '/uploads/FA-2026-014.pdf' }],
         author: 'Mária',
@@ -330,7 +344,17 @@ const PROJECTS = [
       'attr-note': 'Prístup z dvora.',
       'attr-variant': 'Premium',
       'attr-budget': { amount: 18400, currency: 'EUR' },
+      file_contract: [
+        { name: 'zmluva-strecha-silvia.pdf', size: '420 KB', path: '/uploads/zmluva-strecha-silvia.pdf' },
+      ],
     },
+    customFileFields: [
+      {
+        id: 'pfile_photos',
+        name: 'Fotodokumentácia',
+        files: [{ name: 'strecha-pred.jpg', size: '1.2 MB', path: '/uploads/strecha-pred.jpg' }],
+      },
+    ],
     timeline: [
       {
         id: 'pev-1',
