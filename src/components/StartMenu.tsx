@@ -10,6 +10,9 @@ import {
 import type { UserProfile, RolePermission, UnifiedEntryRegistry, CustomDashboard } from "../types";
 import type { Language } from "../utils/translations";
 import { getTranslation } from "../utils/translations";
+import { useUserPref } from "../utils/userPrefs";
+import type { StartMenuGroup } from "../utils/startMenuLayout";
+import { normalizeStartMenuLayout } from "../utils/startMenuLayout";
 import { SOCIAL_MEDIA_ENABLED } from "../utils/featureFlags";
 import { isHomeDashboard } from "../utils/dashboardWidgets";
 
@@ -35,13 +38,8 @@ interface StartMenuProps {
   onLogout?: () => void;
 }
 
-export interface MenuGroup {
-  id: string;
-  name: string;
-  iconName?: string;
-  color?: string;
-  isCustom?: boolean;
-}
+/** The stored group shape, defined next to the layout it is persisted in. */
+export type MenuGroup = StartMenuGroup;
 
 export interface NavMenuItem {
   id: string;
@@ -100,9 +98,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Storage key for user custom start menu layout
-  const storageKey = `ccrm_start_menu_groups_v2_${currentUser?.id || "guest"}`;
-
   // Default initial groups configuration
   const defaultGroups: MenuGroup[] = useMemo(() => [
     {
@@ -131,30 +126,22 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     }
   ], [systemLanguage, t]);
 
-  const [groups, setGroups] = useState<MenuGroup[]>(defaultGroups);
-  const [groupItemsMap, setGroupItemsMap] = useState<Record<string, string[]>>({});
-  const [unusedItemIds, setUnusedItemIds] = useState<string[]>([]);
+  // The layout is per user and follows the account to any browser: it lives in
+  // the user's row (metadata_json.preferences.startMenuLayout), the same home as
+  // the default landing page and the sidebar nav order this menu already saved
+  // there. On the login screen there is no row to write to, and useUserPref
+  // keeps the change in memory for the session rather than needing a "guest"
+  // branch of its own.
+  const [storedLayout, setStoredLayout] = useUserPref("startMenuLayout");
+  const layout = useMemo(() => normalizeStartMenuLayout(storedLayout), [storedLayout]);
 
-  // Load saved groups & layout from localStorage
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed.groups) && parsed.groups.length > 0) {
-          setGroups(parsed.groups);
-        }
-        if (parsed.groupItems) {
-          setGroupItemsMap(parsed.groupItems);
-        }
-        if (Array.isArray(parsed.unused)) {
-          setUnusedItemIds(parsed.unused);
-        }
-      }
-    } catch {
-      // ignore
-    }
-  }, [storageKey]);
+  // Derived, not mirrored into state: a layout saved on another device arrives
+  // through a sync and has to show up here, which a copy taken once on mount
+  // would not do. No stored groups means the built-in ones, in the interface
+  // language currently selected.
+  const groups: MenuGroup[] = layout && layout.groups.length > 0 ? layout.groups : defaultGroups;
+  const groupItemsMap = layout?.groupItems ?? {};
+  const unusedItemIds = layout?.unused ?? [];
 
   // Persist helper
   const persistLayout = (
@@ -162,31 +149,18 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     nextGroupItems: Record<string, string[]>,
     nextUnused: string[]
   ) => {
-    try {
-      localStorage.setItem(
-        storageKey,
-        JSON.stringify({
-          groups: nextGroups,
-          groupItems: nextGroupItems,
-          unused: nextUnused
-        })
-      );
-    } catch {
-      // ignore
-    }
+    setStoredLayout({
+      groups: nextGroups,
+      groupItems: nextGroupItems,
+      unused: nextUnused
+    });
   };
 
-  // Reset to default layout
+  // Reset to default layout: clear the preference rather than remove a key, so
+  // the reset reaches the other machines this account is signed in on too.
   const handleResetLayout = () => {
     if (window.confirm(t("Reset Start Menu to default groups and layout?", "Obnoviť predvolené skupiny a rozloženie Štart menu?", "Visszaállítja a Start menü alapértelmezett csoportjait és elrendezését?"))) {
-      setGroups(defaultGroups);
-      setGroupItemsMap({});
-      setUnusedItemIds([]);
-      try {
-        localStorage.removeItem(storageKey);
-      } catch {
-        // ignore
-      }
+      setStoredLayout(null);
     }
   };
 
@@ -549,7 +523,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       isCustom: true
     };
     const nextGroups = [...groups, newGroup];
-    setGroups(nextGroups);
     setEditingGroupId(newId);
     setEditingGroupName(newName);
     persistLayout(nextGroups, groupItemsMap, unusedItemIds);
@@ -563,7 +536,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     const nextGroups = groups.map((g) =>
       g.id === groupId ? { ...g, name: editingGroupName.trim() } : g
     );
-    setGroups(nextGroups);
     setEditingGroupId(null);
     persistLayout(nextGroups, groupItemsMap, unusedItemIds);
   };
@@ -578,9 +550,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       delete nextGroupItems[groupId];
       const nextUnused = Array.from(new Set([...unusedItemIds, ...itemsToMove]));
 
-      setGroups(nextGroups);
-      setGroupItemsMap(nextGroupItems);
-      setUnusedItemIds(nextUnused);
       persistLayout(nextGroups, nextGroupItems, nextUnused);
     }
   };
@@ -612,7 +581,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     const [moved] = nextGroups.splice(fromIdx, 1);
     nextGroups.splice(toIdx, 0, moved);
 
-    setGroups(nextGroups);
     setDraggedGroupId(null);
     setDragOverGroupId(null);
     persistLayout(nextGroups, groupItemsMap, unusedItemIds);
@@ -684,8 +652,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     const insertIdx = targetIndex !== undefined && targetIndex >= 0 ? targetIndex : targetList.length;
     targetList.splice(insertIdx, 0, draggedItemId);
 
-    setGroupItemsMap(nextGroupItems);
-    setUnusedItemIds(nextUnused);
     persistLayout(groups, nextGroupItems, nextUnused);
 
     setDraggedItemId(null);
@@ -718,8 +684,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
     const nextUnused = Array.from(new Set([...resolvedGroupsData.unused.map((i) => i.id), draggedItemId]));
 
-    setGroupItemsMap(nextGroupItems);
-    setUnusedItemIds(nextUnused);
     persistLayout(groups, nextGroupItems, nextUnused);
 
     setDraggedItemId(null);
@@ -738,8 +702,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     }
     const nextUnused = Array.from(new Set([...resolvedGroupsData.unused.map((i) => i.id), itemId]));
 
-    setGroupItemsMap(nextGroupItems);
-    setUnusedItemIds(nextUnused);
     persistLayout(groups, nextGroupItems, nextUnused);
   };
 
@@ -759,8 +721,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     }
     nextGroupItems[targetGroupId].push(item.id);
 
-    setGroupItemsMap(nextGroupItems);
-    setUnusedItemIds(nextUnused);
     persistLayout(groups, nextGroupItems, nextUnused);
   };
 

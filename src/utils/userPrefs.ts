@@ -1,4 +1,5 @@
 import { createContext, useContext } from "react";
+import type { StartMenuLayout } from "./startMenuLayout";
 
 /**
  * Per-user interface preferences.
@@ -71,6 +72,13 @@ export interface UserPrefs {
    * how someone likes to read the chart, not a fact about the workspace.
    */
   financialProjectionMonths: 3 | 6 | 12;
+  /**
+   * Start Menu launcher: the user's own groups, what sits in each and what
+   * they hid. `null` means "never customised", which is not the same as an
+   * empty layout — it is what makes the built-in groups follow the interface
+   * language. Validated by normalizeStartMenuLayout() in utils/startMenuLayout.ts.
+   */
+  startMenuLayout: StartMenuLayout | null;
   /** Id of the newest release note the user has already opened. */
   seenUpdateId: string | null;
   /**
@@ -102,6 +110,7 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   leadsVisibleStates: null,
   financialTrendMode: "relative",
   financialProjectionMonths: 3,
+  startMenuLayout: null,
   seenUpdateId: null,
   licenseNoticeSuppressed: null,
   aiKeyBannerDismissed: false,
@@ -164,6 +173,13 @@ export function useUserPref<K extends keyof UserPrefs>(
  * migrateLegacyPrefs usage in App.tsx.
  */
 const LEGACY_PREF_KEYS = [
+  // The Start Menu layout is deliberately not here, on two counts: its key is
+  // namespaced by user id, which this list cannot express, and the migration
+  // below only ever runs for a row that has no preferences blob at all — so an
+  // account migrated by an earlier release would have had its launcher layout
+  // dropped on the floor. It gets its own adoption pass in App.tsx instead; see
+  // utils/startMenuLayout.ts.
+  //
   // `crm_user_theme` is deliberately NOT wiped: since the theme switcher landed
   // it is no longer only a legacy copy, it is the mirror the pre-paint script in
   // index.html reads to pick the right palette before the bundle loads. Clearing

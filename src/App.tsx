@@ -38,6 +38,10 @@ import {
   readLegacyPrefs,
   readUserPrefs,
 } from "./utils/userPrefs";
+import {
+  clearLegacyStartMenuLayout,
+  readLegacyStartMenuLayout,
+} from "./utils/startMenuLayout";
 import type { FinancialTrendSettings } from "./utils/financialTrend";
 import {
   EMPTY_FINANCIAL_TREND,
@@ -1751,6 +1755,32 @@ ${log.payload || ''}
     }
     clearLegacyFinancialTrend();
   }, [currentUser, isInitialSyncResolved]);
+
+  // One-shot adoption of the Start Menu layout this browser still holds for the
+  // signed-in user, so moving it into the row does not throw away the launcher
+  // they arranged.
+  //
+  // It cannot ride along with readLegacyPrefs() above: that pass only runs for a
+  // row with no preferences blob at all, and everyone migrated by an earlier
+  // release already has one — their layout would have been dropped. So this
+  // waits for the blob to exist instead of racing the pass that writes it (the
+  // two would each overwrite the other's copy of `preferences`), and then adopts
+  // only when the row holds no layout, so a second browser's stale copy cannot
+  // replace what the account already saved elsewhere.
+  const legacyStartMenuMigratedForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!currentUser || !isInitialSyncResolved) return;
+    if (!users.some(u => u.email === currentUser.email)) return;
+    if (!hasStoredPrefs(currentUser)) return;
+    if (legacyStartMenuMigratedForRef.current === currentUser.email) return;
+    legacyStartMenuMigratedForRef.current = currentUser.email;
+
+    const legacy = readLegacyStartMenuLayout(currentUser.id);
+    if (legacy && !readUserPrefs(currentUser).startMenuLayout) {
+      setUserPref("startMenuLayout", legacy);
+    }
+    clearLegacyStartMenuLayout(currentUser.id);
+  }, [currentUser, users, isInitialSyncResolved]);
 
   const handleSaveUserLayout = (layout: string[], hidden?: string[]) => {
     if (!currentUser) return;
