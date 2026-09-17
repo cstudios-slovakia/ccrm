@@ -105,6 +105,19 @@ interface ProjectsViewProps {
    * access so a caller that has not wired permissions yet loses nothing.
    */
   access?: ModuleAccess;
+  /**
+   * What the server actually enforces on project types and auto-create rules
+   * (the `general_config` module) — not the same permission as `access` above.
+   * Gates the Settings tab and everything inside it, so an edit offered here
+   * can never be one `sync.php` silently drops.
+   */
+  settingsAccess?: ModuleAccess;
+  /**
+   * What the server enforces on `financialRecords` (the `financial` module).
+   * Gates the project finance tab, which writes into a collection this
+   * screen's own `access` does not cover.
+   */
+  financeAccess?: ModuleAccess;
   /** Rules for turning every incoming lead into a project (edited in the Settings tab). */
   projectAutoCreate?: ProjectAutoCreateSettings;
   setProjectAutoCreate?: React.Dispatch<React.SetStateAction<ProjectAutoCreateSettings>>;
@@ -133,6 +146,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   users,
   userLanguage,
   access = FULL_MODULE_ACCESS,
+  settingsAccess = FULL_MODULE_ACCESS,
+  financeAccess = FULL_MODULE_ACCESS,
   projectAutoCreate,
   setProjectAutoCreate,
   leadCategories = [],
@@ -568,6 +583,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         currencyCode={currencyCode}
         canEdit={canEdit}
         canDelete={canDelete}
+        financeAccess={financeAccess}
         tasks={tasks}
         setTasks={setTasks}
         projects={projects}
@@ -634,14 +650,16 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           ) : (
             <>
               {canEdit && createProjectControl}
-              <button
-                onClick={() => setActiveSubTab("settings")}
-                title={t("Project settings", "Nastavenia projektov", "Projekt beállítások")}
-                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-slate-400 font-heading font-bold text-xs uppercase tracking-wider hover:bg-slate-100 hover:text-slate-700 transition-all cursor-pointer"
-              >
-                <Settings className="h-4 w-4 shrink-0" />
-                <span className="hidden sm:inline">{t("Settings", "Nastavenia", "Beállítások")}</span>
-              </button>
+              {settingsAccess.view && (
+                <button
+                  onClick={() => setActiveSubTab("settings")}
+                  title={t("Project settings", "Nastavenia projektov", "Projekt beállítások")}
+                  className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-slate-400 font-heading font-bold text-xs uppercase tracking-wider hover:bg-slate-100 hover:text-slate-700 transition-all cursor-pointer"
+                >
+                  <Settings className="h-4 w-4 shrink-0" />
+                  <span className="hidden sm:inline">{t("Settings", "Nastavenia", "Beállítások")}</span>
+                </button>
+              )}
             </>
           )}
         </div>
@@ -653,7 +671,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             projectTypes={projectTypes}
             setProjectTypes={setProjectTypes}
             userLanguage={userLanguage}
-            canEdit={canEdit}
+            canEdit={settingsAccess.edit}
             projectAutoCreate={projectAutoCreate}
             setProjectAutoCreate={setProjectAutoCreate}
             leadCategories={leadCategories}

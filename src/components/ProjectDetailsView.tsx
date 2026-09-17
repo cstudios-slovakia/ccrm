@@ -26,6 +26,7 @@ import { ProjectTasksPanel } from "./ProjectTasksPanel";
 import type { Task } from "../types";
 import { isDoneTaskState } from "../utils/projectTasks";
 import { isOnPersonalDashboard, type TaskAccess } from "../utils/taskSelectors";
+import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 
 const SearchableClientSelect: React.FC<{
   leads: Lead[];
@@ -139,6 +140,14 @@ interface ProjectDetailsViewProps {
    */
   canDelete?: boolean;
   /**
+   * What the server actually enforces on `financialRecords` (the `financial`
+   * module) — separate from `canEdit`/`canDelete`, which are the *projects*
+   * module's answer. The finance tab writes into a collection this view's own
+   * permission does not cover, so it needs its own gate. Defaults to full
+   * access so a caller that has not wired it yet loses nothing.
+   */
+  financeAccess?: ModuleAccess;
+  /**
    * Every task in the workspace; the Tasks tab lists the ones carrying this
    * project's id. Without `setTasks` the tab is not offered.
    */
@@ -171,6 +180,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   isNew = false,
   canEdit = true,
   canDelete: canDeleteProp = true,
+  financeAccess = FULL_MODULE_ACCESS,
   tasks = [],
   setTasks,
   projects = [],
@@ -182,6 +192,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
   // Removing something is a change, so the delete flag never outranks edit.
   const canDelete = canEdit && canDeleteProp;
+  // The finance tab writes financialRecords, which the server gates on the
+  // `financial` module, not `projects` — so it needs its own edit/delete
+  // answer rather than inheriting canEdit/canDelete above.
+  const canEditFinance = financeAccess.edit;
+  const canDeleteFinance = financeAccess.edit && financeAccess.delete;
   const money = (v: number) => formatMoney(v, currencyCode, userLanguage);
   // What a money attribute starts on. Only the default: the currency is stored
   // with the value, so each record keeps whichever one it was actually filled in.
@@ -590,7 +605,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
   const handleSaveProjectFinancial = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canEdit || !finFormTitle.trim() || !project) return;
+    if (!canEditFinance || !finFormTitle.trim() || !project) return;
 
     let path = "";
     if (finFormCategoryId) {
@@ -640,7 +655,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   };
 
   const handleDeleteProjectFinancial = (id: string) => {
-    if (!canDelete) return;
+    if (!canDeleteFinance) return;
     if (confirm(t("Delete this financial record?", "Vymazať tento finančný záznam?", "Törli ezt a tételt?"))) {
       if (setFinancialRecords) {
         setFinancialRecords((prev) => prev.filter((r) => r.id !== id));
@@ -3315,14 +3330,16 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                       {t("Issued & Scheduled Invoices", "Faktúry a vystavené doklady", "Kimenő és tervezett számlák")} ({projectInvoices.length})
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => handleOpenProjectFinModal("income")}
-                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    {t("Issue / Plan Invoice", "Vystaviť / naplánovať faktúru", "Új számla kiállítása")}
-                  </button>
+                  {canEditFinance && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenProjectFinModal("income")}
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      {t("Issue / Plan Invoice", "Vystaviť / naplánovať faktúru", "Új számla kiállítása")}
+                    </button>
+                  )}
                 </div>
 
                 {projectInvoices.length === 0 ? (
@@ -3364,18 +3381,22 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                             </td>
                             <td className="py-2.5 px-3 text-right">
                               <div className="flex items-center justify-end gap-1">
-                                <button
-                                  onClick={() => handleOpenProjectFinModal("income", inv)}
-                                  className="p-1 text-slate-400 hover:text-indigo-600 rounded"
-                                >
-                                  <Edit3 className="h-3.5 w-3.5" />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteProjectFinancial(inv.id)}
-                                  className="p-1 text-slate-400 hover:text-rose-600 rounded"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
+                                {canEditFinance && (
+                                  <button
+                                    onClick={() => handleOpenProjectFinModal("income", inv)}
+                                    className="p-1 text-slate-400 hover:text-indigo-600 rounded"
+                                  >
+                                    <Edit3 className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
+                                {canDeleteFinance && (
+                                  <button
+                                    onClick={() => handleDeleteProjectFinancial(inv.id)}
+                                    className="p-1 text-slate-400 hover:text-rose-600 rounded"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -3395,14 +3416,16 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                       {t("Direct Project Costs & Materials", "Priame náklady a materiál projektu", "Közvetlen projektköltségek és anyagok")} ({projectExpenses.length})
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => handleOpenProjectFinModal("expense")}
-                    className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    {t("Add Project Expense", "Pridať výdavok k projektu", "Új kiadás rögzítése")}
-                  </button>
+                  {canEditFinance && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenProjectFinModal("expense")}
+                      className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      {t("Add Project Expense", "Pridať výdavok k projektu", "Új kiadás rögzítése")}
+                    </button>
+                  )}
                 </div>
 
                 {projectExpenses.length === 0 ? (
@@ -3443,18 +3466,22 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                             </td>
                             <td className="py-2.5 px-3 text-right">
                               <div className="flex items-center justify-end gap-1">
-                                <button
-                                  onClick={() => handleOpenProjectFinModal("expense", exp)}
-                                  className="p-1 text-slate-400 hover:text-indigo-600 rounded"
-                                >
-                                  <Edit3 className="h-3.5 w-3.5" />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteProjectFinancial(exp.id)}
-                                  className="p-1 text-slate-400 hover:text-rose-600 rounded"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
+                                {canEditFinance && (
+                                  <button
+                                    onClick={() => handleOpenProjectFinModal("expense", exp)}
+                                    className="p-1 text-slate-400 hover:text-indigo-600 rounded"
+                                  >
+                                    <Edit3 className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
+                                {canDeleteFinance && (
+                                  <button
+                                    onClick={() => handleDeleteProjectFinancial(exp.id)}
+                                    className="p-1 text-slate-400 hover:text-rose-600 rounded"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>

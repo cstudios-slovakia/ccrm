@@ -2640,6 +2640,7 @@ ${log.payload || ''}
             leadStateSla={leadStateSla}
             leadAssignment={leadAssignment}
             currencyCode={currencyCode}
+            taskAccess={taskAccess}
           />
         );
       case "projects":
@@ -2653,6 +2654,8 @@ ${log.payload || ''}
             users={users}
             userLanguage={userLanguage}
             access={access.module("projects")}
+            settingsAccess={access.module("general_config")}
+            financeAccess={access.module("financial")}
             projectAutoCreate={projectAutoCreate}
             setProjectAutoCreate={setProjectAutoCreate}
             leadCategories={leadCategories}
@@ -2671,9 +2674,11 @@ ${log.payload || ''}
         );
       case "clients":
         return (
-          <ClientsView 
+          <ClientsView
             leads={leads}
             access={access.module("clients")}
+            financeAccess={access.module("financial")}
+            taskAccess={taskAccess}
             setLeads={updateLeadsAndSync}
             projectManagers={projectManagers}
             projectManagerColors={projectManagerColors}

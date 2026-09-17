@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { useUserPref } from "../utils/userPrefs";
-import { canArchiveTask, resolveAssigneeName } from "../utils/taskSelectors";
+import { canArchiveTask, resolveAssigneeName, type TaskAccess } from "../utils/taskSelectors";
 import { liftAccent } from "../utils/accentColor";
 import { createPortal } from "react-dom";
 import {
@@ -959,6 +959,13 @@ interface LeadsDatagridProps {
      * access so the component keeps working where the caller passes nothing.
      */
     access?: ModuleAccess;
+    /**
+     * What the server enforces on `tasks` — separate from `access` above, which
+     * is the *leads* module's answer. Every task this screen creates as a side
+     * effect (a locking follow-up, a future-event reminder) writes into a
+     * collection this view's own permission does not cover.
+     */
+    taskAccess?: TaskAccess;
 }
 
 export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
@@ -997,6 +1004,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     leadAssignment = DEFAULT_LEAD_ASSIGNMENT,
     currencyCode,
     access = FULL_MODULE_ACCESS,
+    taskAccess,
 }) => {
     const t = (en: string, sk: string, hu: string) =>
         systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
@@ -1005,6 +1013,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     // shortcut, a context menu or a stale button can never write past them.
     const canEdit = access.edit;
     const canDelete = access.delete;
+    // A task created or changed here (a locking follow-up, a future-event
+    // reminder, its status, its assignee) writes `tasks`, which the server
+    // gates on the `tasks` module, not `leads` — so these need their own
+    // answer rather than inheriting canEdit.
+    const canCreateTask = taskAccess ? taskAccess.create : canEdit;
+    const canEditGateTask = taskAccess ? taskAccess.edit : canEdit;
 
     // Shown at the top of the list and of the detail when the role only reads.
     const readOnlyNotice = !canEdit ? (
@@ -3193,9 +3207,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             }),
         );
 
-        // Auto-create PM task if the event is in the future
+        // Auto-create PM task if the event is in the future. Gated on the tasks
+        // module, not leads — a role that can log the event but not create
+        // tasks must not have the write dropped silently by the server.
         const eventDateTime = new Date(`${logDate}T${logTimeOfEvent}:00`);
-        if (eventDateTime.getTime() > Date.now()) {
+        if (canCreateTask && eventDateTime.getTime() > Date.now()) {
             let deadlineVal = logDate;
 
             const taskTitle =
@@ -3456,7 +3472,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     const handleAddInlineLockingTask = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!canEdit || !activeLead) return;
+        if (!canEdit || !canCreateTask || !activeLead) return;
         if (!inlineTaskTitle.trim()) {
             (window as any).showToast(
                 systemLanguage === "sk"
@@ -5610,14 +5626,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                         <div className="relative shrink-0 select-none mt-0.5">
                                                             <CustomSelect
                                                                 size="sm"
-                                                                disabled={!canEdit}
+                                                                disabled={!canEditGateTask}
                                                                 value={
                                                                     task.status
                                                                 }
                                                                 onChange={(
                                                                     newStatus,
                                                                 ) => {
-                                                                    if (!canEdit)
+                                                                    if (!canEditGateTask)
                                                                         return;
                                                                     const now =
                                                                         new Date();
@@ -5811,7 +5827,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                         ];
                                                                     return (
                                                                         <CustomSelect
-                                                                            disabled={!canEdit}
+                                                                            disabled={!canEditGateTask}
                                                                             value={
                                                                                 assignees[0] ||
                                                                                 ""
@@ -5819,7 +5835,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                             onChange={(
                                                                                 next,
                                                                             ) => {
-                                                                                if (!canEdit)
+                                                                                if (!canEditGateTask)
                                                                                     return;
                                                                                 setTasks(
                                                                                     (

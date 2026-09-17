@@ -38,7 +38,7 @@ import {
   translateAiApiError,
 } from "../utils/aiConfig";
 import { resolveCurrencySymbol, formatMoney } from "../utils/currency";
-import { resolveAssigneeName } from "../utils/taskSelectors";
+import { resolveAssigneeName, type TaskAccess } from "../utils/taskSelectors";
 import { todayLocal, nowLocalStamp, formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
 import { chartTheme, useAppearance } from "../utils/theme";
 
@@ -71,6 +71,20 @@ interface ClientsViewProps {
    * predate the role matrix keep working unchanged.
    */
   access?: ModuleAccess;
+  /**
+   * What the server enforces on `financialRecords` (the `financial` module) —
+   * separate from `access` above, which is the *clients* module's answer. The
+   * client invoice panel writes into a collection this view's own permission
+   * does not cover, so it needs its own gate. Defaults to full access so a
+   * caller that has not wired it yet loses nothing.
+   */
+  financeAccess?: ModuleAccess;
+  /**
+   * What the server enforces on `tasks` — separate from `access`, which is the
+   * *clients* module's answer. The follow-up task logged against a future
+   * event writes into a collection this view's own permission does not cover.
+   */
+  taskAccess?: TaskAccess;
 }
 
 /** The "without a category" row of the category filter. Not a real category id. */
@@ -388,7 +402,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   financialCategories = [],
   clientCategories = [],
   setClientCategories,
-  access = FULL_MODULE_ACCESS
+  access = FULL_MODULE_ACCESS,
+  financeAccess = FULL_MODULE_ACCESS,
+  taskAccess
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
   // Role gates. `view` is what let the user in; read-only users still search,
@@ -396,6 +412,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   // open to a role that cannot edit, whatever the delete toggle says.
   const canEdit = access.edit;
   const canDelete = canEdit && access.delete;
+  // The invoice panel writes financialRecords, which the server gates on the
+  // `financial` module, not `clients` — so it needs its own edit/delete
+  // answer rather than inheriting canEdit/canDelete above.
+  const canEditFinance = financeAccess.edit;
+  const canDeleteFinance = financeAccess.edit && financeAccess.delete;
+  // The follow-up task logged against a future event writes `tasks`, which the
+  // server gates on the `tasks` module, not `clients`.
+  const canCreateTask = taskAccess ? taskAccess.create : canEdit;
   const currencySymbol = resolveCurrencySymbol(currencyCode, systemLanguage);
   const money = (value: number, opts?: Intl.NumberFormatOptions) => formatMoney(value, currencyCode, systemLanguage, opts);
   const [searchQuery, setSearchQuery] = useState("");
@@ -1393,7 +1417,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
   const handleSaveClientInvoice = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canEdit || !clientInvTitle.trim() || !activeClient) return;
+    if (!canEditFinance || !clientInvTitle.trim() || !activeClient) return;
 
     let path = "";
     if (clientInvCategoryId) {
@@ -1444,7 +1468,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   };
 
   const handleDeleteClientInvoice = (id: string) => {
-    if (!canDelete) return;
+    if (!canDeleteFinance) return;
     if (confirm(t("Delete this invoice?", "Vymazať túto faktúru?", "Törli ezt a számlát?"))) {
       if (setFinancialRecords) {
         setFinancialRecords((prev) => prev.filter((r) => r.id !== id));
@@ -2305,9 +2329,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       return lead;
     }));
 
-    // Auto-create PM task if the event is in the future
+    // Auto-create PM task if the event is in the future. Gated on the tasks
+    // module, not clients — the server drops this write on `tasks.edit`, and a
+    // role that can log the event but not create tasks must not lose it
+    // silently by seeing it appear and then vanish.
     const eventDateTime = new Date(`${logDate}T${logTimeOfEvent}:00`);
-    if (eventDateTime.getTime() > Date.now()) {
+    if (canCreateTask && eventDateTime.getTime() > Date.now()) {
       let deadlineVal = logDate;
 
       // Find original lead from activeClient
@@ -4395,14 +4422,16 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       </p>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => handleOpenClientInvoiceModal()}
-                      className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md shadow-emerald-500/20 active:scale-95 cursor-pointer shrink-0"
-                    >
-                      <Plus className="h-4 w-4" />
-                      <span>{t("New Invoice", "Nová faktúra", "Új számla")}</span>
-                    </button>
+                    {canEditFinance && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenClientInvoiceModal()}
+                        className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md shadow-emerald-500/20 active:scale-95 cursor-pointer shrink-0"
+                      >
+                        <Plus className="h-4 w-4" />
+                        <span>{t("New Invoice", "Nová faktúra", "Új számla")}</span>
+                      </button>
+                    )}
                   </div>
 
                   {/* Client Financial Summary Cards */}
@@ -4438,14 +4467,16 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     <div className="py-12 text-center text-slate-400 text-xs font-semibold flex flex-col items-center justify-center gap-3 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
                       <Coins className="h-8 w-8 text-slate-300 animate-bounce" />
                       <div>{t("No invoices created for this client yet.", "Pre tohto klienta zatiaľ neboli vystavené žiadne faktúry.", "Még nincsenek számlák rögzítve ehhez az ügyfélhez.")}</div>
-                      <button
-                        type="button"
-                        onClick={() => handleOpenClientInvoiceModal()}
-                        className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                        {t("Issue First Invoice", "Vystaviť prvú faktúru", "Első számla kiállítása")}
-                      </button>
+                      {canEditFinance && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenClientInvoiceModal()}
+                          className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          {t("Issue First Invoice", "Vystaviť prvú faktúru", "Első számla kiállítása")}
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <div className="overflow-x-auto border border-slate-200 rounded-2xl">
@@ -4494,22 +4525,26 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                               </td>
                               <td className="py-3 px-3 text-right">
                                 <div className="flex items-center justify-end gap-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleOpenClientInvoiceModal(inv)}
-                                    className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors cursor-pointer"
-                                    title={t("Edit invoice", "Upraviť faktúru", "Számla szerkesztése")}
-                                  >
-                                    <PencilLine className="h-3.5 w-3.5" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteClientInvoice(inv.id)}
-                                    className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
-                                    title={t("Delete invoice", "Vymazať faktúru", "Számla törlése")}
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </button>
+                                  {canEditFinance && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenClientInvoiceModal(inv)}
+                                      className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors cursor-pointer"
+                                      title={t("Edit invoice", "Upraviť faktúru", "Számla szerkesztése")}
+                                    >
+                                      <PencilLine className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
+                                  {canDeleteFinance && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteClientInvoice(inv.id)}
+                                      className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
+                                      title={t("Delete invoice", "Vymazať faktúru", "Számla törlése")}
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
                                 </div>
                               </td>
                             </tr>
