@@ -32,7 +32,20 @@ backend and is safe to run at any time.
 | Pure logic in `src/utils` | `npm run test:unit` |
 | One module's UI | `npm run test:qa:crawler` |
 | Sidebar, header or routing | `npm run test:qa:nav` |
-| The QA suite itself | `npm run test:qa:full` |
+| Anything else, finished | `npm run test:qa` — it scopes itself to what changed |
+
+`npm run test:qa` is **not** a full run by default: it diffs against
+`origin/<branch>`/`dev`/`main` and only runs the tests that cover what changed,
+usually seconds to a couple of minutes. It only escalates itself when the
+change touches real harness plumbing (`scripts/qa/`, `playwright.config.ts`,
+`tests/e2e/helpers/`, or the suite-wide `crawler`/`darkmode`/`navigation`
+specs) — adding an ordinary new journey spec for the feature you just built
+does not trigger that.
+
+**Never run `npm run test:qa:full` on your own initiative.** It's a ~30-minute
+run reserved for a human asking for it explicitly. If you think a change's
+blast radius genuinely needs more than the scoped run covers, say so and ask
+before running it.
 
 ## 3. It also runs without you
 

@@ -28,6 +28,7 @@
  * browser.
  */
 import { execFileSync, spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -63,13 +64,19 @@ const RULES = [
   [/^src\/components\/LeadsDatagrid\./, ['Leads / Pipeline']],
   [/^src\/components\/ClientsView\./, ['Clients Register']],
   [/^src\/components\/ProjectSettings\./, ['Projects', 'Project type attributes']],
-  [/^src\/components\/(ProjectsView|ProjectDetailsView)\./, ['Projects']],
+  /* The pinned project journeys are named after what they walk ("Project
+     files", "Project rating"), none of which the bare word "Projects" matches
+     as a regex — so they have to be listed, or editing the views they cover
+     would quietly run only the crawler. */
+  [/^src\/components\/(ProjectsView|ProjectDetailsView)\./, ['Projects', 'Project rating', 'Project files', 'Project tasks']],
   [/^src\/components\/WarehouseView\./, ['Warehouse']],
   [/^src\/components\/InvoicingView\./, ['Invoices & Price Offers', 'Financial Management']],
   [/^src\/components\/FinancialManagementView\./, ['Financial Management']],
   [/^src\/components\/MeetingRoomView\./, ['Meeting Room']],
   [/^src\/components\/(FilesView|FilePreviewPane)\./, ['Files Manager', 'Documents Registry']],
   [/^src\/utils\/projectDocuments\./, ['Files Manager', 'Documents Registry']],
+  /* The star rating's rules are shared by both lists that offer it. */
+  [/^src\/utils\/rating\./, ['Leads / Pipeline', 'Projects', 'Project rating']],
   [/^src\/components\/EmailView\./, ['Email Hub']],
   [/^src\/components\/(AutomationView|BlockEditor)\./, ['Automation']],
   [/^src\/components\/UpdateNotes(View|Modal)\./, ['Update Notes']],
@@ -91,11 +98,40 @@ const RULES = [
 ];
 
 /**
- * Editing the harness invalidates the reasoning behind any scoped run, so a
- * change under `tests/e2e/` forces the full suite rather than a subset chosen
- * by the very code that just changed.
+ * Editing the shared harness invalidates the reasoning behind any scoped run,
+ * so a change here forces the full suite rather than a subset chosen by the
+ * very code that just changed. This is deliberately narrower than "anything
+ * under tests/e2e/": the standalone journey specs (`projectRating.spec.ts`,
+ * `financialTrendShared.spec.ts`, ...) are ordinary feature tests, not
+ * harness - adding one when a feature ships must not cost a 30-minute full
+ * run. Only the shared plumbing and the suite-wide crawlers do that.
  */
-const FORCES_FULL = /^(tests\/e2e\/|playwright\.config\.ts$|scripts\/qa\/)/;
+const FORCES_FULL =
+  /^(playwright\.config\.ts$|scripts\/qa\/|tests\/e2e\/(helpers\/|globalSetup\.ts$|globalTeardown\.ts$|crawler\.spec\.ts$|darkmode\.spec\.ts$|navigation\.spec\.ts$))/;
+
+/**
+ * A standalone journey spec (added or edited) isn't in RULES - that table
+ * maps *source* files to titles, and a spec file is the test, not the thing
+ * under test. So pull its own titles straight out of its `test(...)` /
+ * `test.describe(...)` calls and scope to just those, instead of falling
+ * through to a full run.
+ */
+function titlesFromSpecFile(relPath) {
+  let text;
+  try {
+    text = readFileSync(path.join(ROOT, relPath), 'utf8');
+  } catch {
+    return [];
+  }
+  const titles = new Set();
+  const re = /\b(?:test|test\.describe|test\.step)\(\s*(['"`])((?:\\.|(?!\1).)*)\1/g;
+  let m;
+  while ((m = re.exec(text))) {
+    const title = m[2].replace(/\\(.)/g, '$1').trim();
+    if (title.length > 2) titles.add(title);
+  }
+  return [...titles];
+}
 
 /* ------------------------------------------------------------------- args */
 
@@ -192,9 +228,18 @@ function selectTitles() {
   const matched = [];
   for (const file of files) {
     const rule = RULES.find(([pattern]) => pattern.test(file));
-    if (!rule) continue;
-    matched.push(file);
-    rule[1].forEach((t) => titles.add(t));
+    if (rule) {
+      matched.push(file);
+      rule[1].forEach((t) => titles.add(t));
+      continue;
+    }
+    if (/^tests\/e2e\/.*\.spec\.ts$/.test(file)) {
+      const own = titlesFromSpecFile(file);
+      if (own.length > 0) {
+        matched.push(file);
+        own.forEach((t) => titles.add(t));
+      }
+    }
   }
 
   return {

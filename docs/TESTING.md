@@ -6,7 +6,7 @@ Start here. Two kinds of test live in this repo, and both run from `npm`.
 |---|---|---|
 | Command | `npm run test:unit` | `npm run test:qa` |
 | Runner | `node --test` (no dependencies) | Playwright + Chromium |
-| Takes | under a second | a few minutes |
+| Takes | under a second | seconds–minutes (scoped to what changed) |
 | Covers | pure logic in `src/**/*.test.ts` | the real app in a real browser |
 | Needs | nothing | `npm run test:qa:setup` once per machine |
 
@@ -57,7 +57,8 @@ found — not that nothing was checked.
 
 | Command | Scope | Roughly |
 |---|---|---|
-| `npm run test:qa` | Everything | minutes |
+| `npm run test:qa` | **Scoped** — only the tests covering what git says changed (see below) | seconds–minutes |
+| `npm run test:qa:full` | Everything, on purpose | ~30 min |
 | `npm run test:qa:nav` | Shell navigation and header controls | ~1 min |
 | `npm run test:qa:crawler` | Per-module deep audit | minutes |
 | `npm run test:qa:recorder` | Chrome Recorder replays | ~1 min |
@@ -68,6 +69,25 @@ found — not that nothing was checked.
 | `npm run test:qa:report -- --list` | List saved runs | — |
 | `npm run test:qa:report:html` | Playwright traces and video | — |
 | `npm run test:qa:typecheck` | Type-check the suite itself | seconds |
+
+**`npm run test:qa` is scoped, not full.** `scripts/qa/run-qa.mjs` diffs the
+working tree (and any unpushed commits) against `origin/<branch>` / `origin/dev`
+/ `origin/main`, maps changed files to the test titles that cover them, and runs
+only those. It prints the scope and the reason on every run. It escalates to a
+full run on its own only when the change touches real harness plumbing —
+`playwright.config.ts`, `scripts/qa/`, or the shared fixtures under
+`tests/e2e/helpers/` (plus `crawler.spec.ts` / `darkmode.spec.ts` /
+`navigation.spec.ts`, which are suite-wide by nature). Adding or editing an
+ordinary standalone journey spec (`projectRating.spec.ts`,
+`financialTrendShared.spec.ts`, ...) does **not** force a full run — it scopes
+to that spec's own tests instead.
+
+**Run `npm run test:qa:full` only when a human asks for it.** AI agents should
+default to plain `npm run test:qa` after finishing a change and never reach for
+`:full` on their own just to "be thorough" — that turns a routine change into a
+~30-minute run for no extra signal, since the scoped run already covers what
+changed. Ask the user first if you think a full run is warranted (e.g. a change
+whose blast radius the scoping table can't express).
 
 ### Environment switches
 
@@ -231,10 +251,10 @@ dismissal is keyed, the seat arithmetic — is in `src/utils/license.test.ts` an
 | Touched a specific module's UI | `npm run test:qa:crawler` |
 | Touched navigation, the sidebar or the header | `npm run test:qa:nav` |
 | Touched licensing (`api/license*.php`, the token format) | `php scripts/test/license-verification.php` |
-| **Finished a feature or a fix** | **`npm run test:qa`** |
-| Changed the QA suite itself | `npm run test:qa:full` |
-| About to deploy | automatic — `npm run deploy` gates on it |
-| Opened a PR / pushed a branch | automatic — GitHub Actions runs it |
+| **Finished a feature or a fix** | **`npm run test:qa`** (scoped automatically) |
+| You want everything run, on purpose | `npm run test:qa:full` — **ask the user first; don't default to this** |
+| About to deploy | automatic — `npm run deploy` gates on it (scoped) |
+| Opened a PR / pushed a branch | automatic — GitHub Actions runs it (scoped) |
 
 ---
 
