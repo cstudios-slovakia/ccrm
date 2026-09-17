@@ -67,6 +67,52 @@ function fetch_system_settings($pdo) {
     return $settings;
 }
 
+/**
+ * Normalize the finance trend anchors (system_settings.FINANCIAL_TREND).
+ *
+ * Shape: { weeklyBankBalances: { "2026-08-17": 123456.0, ... },
+ *          currentBankBalance: 48500.0 | null }
+ *
+ * Keys that are not a bare `Y-m-d` and values that are not finite numbers are
+ * dropped rather than stored: the client builds the whole projection curve by
+ * running cash flow forward from these anchors, so one NaN would blank every
+ * week after it. `currentBankBalance` stays null when nothing was ever set —
+ * which is NOT the same as an operator deliberately anchoring the account at 0.
+ *
+ * Accepts the raw JSON string from the settings table or an already-decoded
+ * array, so both the GET and POST paths can use it.
+ */
+function ccrm_normalize_financial_trend($raw) {
+    $data = is_string($raw) ? json_decode($raw, true) : $raw;
+    $balances = [];
+    $current = null;
+
+    if (is_array($data)) {
+        $inbound = $data['weeklyBankBalances'] ?? null;
+        if (is_array($inbound)) {
+            foreach ($inbound as $week => $amount) {
+                if (!is_string($week) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $week)) continue;
+                if (!is_numeric($amount)) continue;
+                $value = (float) $amount;
+                if (!is_finite($value)) continue;
+                $balances[$week] = $value;
+            }
+        }
+        if (array_key_exists('currentBankBalance', $data) && is_numeric($data['currentBankBalance'])) {
+            $value = (float) $data['currentBankBalance'];
+            if (is_finite($value)) $current = $value;
+        }
+    }
+
+    ksort($balances);
+    return [
+        // Empty has to travel as {} for the same reason leadStateSla does: an
+        // empty PHP array encodes as [], which the client would read as a list.
+        'weeklyBankBalances' => $balances ?: (object) [],
+        'currentBankBalance' => $current,
+    ];
+}
+
 // Compute a cheap content-derived version of the whole dataset. CHECKSUM TABLE
 // ... EXTENDED live-scans each table's rows (~8ms total here) and changes only
 // when real content changes — inserts, updates and deletes across every column.
@@ -1083,6 +1129,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'leadId' => $pRow['lead_id'] ?? null,
                 'clientId' => $pRow['client_id'] ?? null,
                 'status' => $pRow['status'],
+                // Star priority. NULL in the column means nobody ever rated this
+                // project; the client draws 0 and 'never rated' the same way, so
+                // both travel as 0 rather than as a null it would have to guard.
+                'rating' => isset($pRow['rating']) ? (int)$pRow['rating'] : 0,
                 'deadline' => $pRow['deadline'] ?? null,
                 'delayReason' => $pRow['delay_reason'] ?? null,
                 'startDate' => $pRow['start_date'] ?? null,
@@ -1562,6 +1612,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'financialRecords' => $financialRecords,
         'invoicesOffers' => $invoicesOffers,
         'aiCustomTemplates' => $aiCustomTemplates,
+        // Manual weekly bank-balance anchors behind the finance trend chart.
+        // Shared workspace data, not a per-user setting: these anchors define
+        // the shape of the projection curve, so everyone has to see the same
+        // ones. They used to live in each browser's localStorage, which meant
+        // the person who reconciled a week against the bank statement saw one
+        // projection and every colleague saw another.
+        'financialTrend' => ccrm_normalize_financial_trend($settings['FINANCIAL_TREND'] ?? null),
         'settings' => [
             'systemName' => $settings['SYSTEM_NAME'] ?? 'CCRM',
             'systemLanguage' => $settings['SYSTEM_LANGUAGE'] ?? 'sk',
@@ -2402,7 +2459,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingProjIds = $pdo->query("SELECT `id` FROM `projects`")->fetchAll(PDO::FETCH_COLUMN);
             $processedProjIds = [];
 
-            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `deadline`, `delay_reason`, `start_date`, `finished_at`, `budget`, `custom_files_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `deadline`=VALUES(`deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`), `budget`=VALUES(`budget`), `custom_files_json`=COALESCE(VALUES(`custom_files_json`), `custom_files_json`)");
+            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `rating`, `deadline`, `delay_reason`, `start_date`, `finished_at`, `budget`, `custom_files_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `rating`=COALESCE(VALUES(`rating`), `rating`), `deadline`=VALUES(`deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`), `budget`=VALUES(`budget`), `custom_files_json`=COALESCE(VALUES(`custom_files_json`), `custom_files_json`)");
 
             // Manager assignments are replaced per project, never globally. The old
             // unconditional `DELETE FROM project_managers` assumed every push carried
@@ -2445,6 +2502,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ? round(min((float)$p['budget'], 999999999999.99), 2)
                     : null;
 
+                // Star priority, 1-5, with 0 meaning "not rated". A client that
+                // does not carry the key at all means "unchanged" — NULL, which
+                // the COALESCE above turns into keeping what is stored, so a
+                // client older than this field cannot wipe a rating. 0 is a real
+                // value: it is how a rating is cleared again.
+                $projRating = null;
+                if (array_key_exists('rating', $p) && is_numeric($p['rating'])) {
+                    $projRating = max(0, min(5, (int)$p['rating']));
+                }
+
                 // File slots added on this project alone. A client that sends no
                 // list at all means "unchanged" — NULL, which the COALESCE above
                 // turns into keeping what is stored.
@@ -2469,6 +2536,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     empty($p['leadId']) ? null : $p['leadId'],
                     empty($p['clientId']) ? null : $p['clientId'],
                     $p['status'] ?? 'active',
+                    $projRating,
                     $projDeadline,
                     $projDelayReason,
                     $projStart,
@@ -3778,6 +3846,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!empty($frToDelete) && !$ccrm_skip_deletes('financial', 'financialRecords')) {
                 ccrm_delete_omitted($pdo, 'financial_records', $frToDelete, null, [], false, $isDeltaSync);
             }
+        }
+
+        // 4.14b. Manual weekly bank-balance anchors for the trend chart.
+        //
+        // Gated on the FINANCIAL module rather than on a settings permission:
+        // reconciling a week against the bank statement is finance work, and
+        // whoever may edit the movements may state the balance they produced.
+        //
+        // Omitted means unchanged, the same contract as the settings blobs
+        // below — a client that predates this key must not wipe the operator's
+        // anchors simply by saving a movement.
+        if (isset($payload['financialTrend']) && is_array($payload['financialTrend'])
+            && !$ccrm_skip_writes('financial', 'financialTrend')) {
+            $trend = ccrm_normalize_financial_trend($payload['financialTrend']);
+            $insTrend = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('FINANCIAL_TREND', ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
+            $insTrend->execute([json_encode($trend)]);
         }
 
         // 4.15. Synchronize Invoices & Price Offers

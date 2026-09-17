@@ -39,6 +39,33 @@ import {
 } from "../utils/financialCategoryTree";
 import { useDragAutoScroll } from "../hooks/useDragAutoScroll";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
+import { useUserPref } from "../utils/userPrefs";
+import {
+  DEFAULT_BANK_BALANCE,
+  EMPTY_FINANCIAL_TREND,
+  type FinancialTrendSettings
+} from "../utils/financialTrend";
+
+// Trend graph forecast horizons. `futureWeeks` is the number of whole weeks the
+// projection runs past the current one — 13 weeks is the usual "3 months".
+type ProjectionMonths = 3 | 6 | 12;
+
+const PROJECTION_HORIZONS: { months: ProjectionMonths; futureWeeks: number }[] = [
+  { months: 3, futureWeeks: 13 },
+  { months: 6, futureWeeks: 26 },
+  { months: 12, futureWeeks: 52 }
+];
+
+const TREND_PAST_WEEKS = 4;
+
+const futureWeeksFor = (months: ProjectionMonths) =>
+  PROJECTION_HORIZONS.find((h) => h.months === months)?.futureWeeks ?? 13;
+
+// Slovak numerals agree with their noun: 2-4 take the nominative plural
+// ("3 mesiace"), 5 and up the genitive ("6 mesiacov").
+const skMonths = (n: number) => (n < 5 ? `${n} mesiace` : `${n} mesiacov`);
+const skNextMonths = (n: number) =>
+  n < 5 ? `nasledujúce ${n} mesiace` : `nasledujúcich ${n} mesiacov`;
 
 interface SearchableCategorySelectProps {
   value: string;
@@ -627,6 +654,12 @@ interface FinancialManagementViewProps {
   setFinancialRecords: React.Dispatch<React.SetStateAction<FinancialRecord[]>>;
   financialCategories: FinancialCategory[];
   setFinancialCategories: React.Dispatch<React.SetStateAction<FinancialCategory[]>>;
+  /**
+   * Manual weekly bank-balance anchors for the trend chart. Shared workspace
+   * data, not a per-browser setting — see utils/financialTrend.ts.
+   */
+  financialTrend?: FinancialTrendSettings;
+  setFinancialTrend?: (next: FinancialTrendSettings) => void;
   projects: Project[];
   leads: Lead[];
   users: UserProfile[];
@@ -643,6 +676,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   setFinancialRecords: setFinancialRecordsRaw,
   financialCategories = [],
   setFinancialCategories: setFinancialCategoriesRaw,
+  financialTrend = EMPTY_FINANCIAL_TREND,
+  setFinancialTrend,
   projects = [],
   leads = [],
   userLanguage,
@@ -1516,26 +1551,34 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   const [hoveredWeekIdx, setHoveredWeekIdx] = useState<number | null>(null);
   const [isWeeklyTableOpen, setIsWeeklyTableOpen] = useState(false);
 
-  // Trend Graph Mode: "relative" (weekly net cash flow) vs "cumulative" (running bank account balance)
-  const [trendMode, setTrendMode] = useState<"relative" | "cumulative">(() => {
-    return (localStorage.getItem("crm_financial_trend_mode") as "relative" | "cumulative") || "relative";
-  });
+  // Trend Graph Mode: "relative" (weekly net cash flow) vs "cumulative" (running
+  // bank account balance).
+  //
+  // Which curve you are looking at is a per-user preference, so it lives in the
+  // user's DB row and follows the account to another browser rather than being
+  // stranded in this one's localStorage.
+  const [trendMode, setTrendMode] = useUserPref("financialTrendMode");
 
-  // User calibrated Bank Account Balances per week (independent key per week: startIso "2026-08-17")
-  const [weeklyBankBalances, setWeeklyBankBalances] = useState<Record<string, number>>(() => {
-    try {
-      const saved = localStorage.getItem("crm_financial_weekly_bank_balances");
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error("Error parsing weekly bank balances", e);
-    }
-    return {};
-  });
+  // How far forward the trend graph projects: 3, 6 or 12 months. Per user and
+  // DB-backed for the same reason as trendMode above.
+  const [projectionMonths, setProjectionMonths] = useUserPref("financialProjectionMonths");
 
-  const [defaultBankBalance] = useState<number>(() => {
-    const saved = localStorage.getItem("crm_financial_current_bank_balance");
-    return saved !== null ? parseFloat(saved) : 48500;
-  });
+  // Bank balances reconciled against the real statement, one per week, keyed by
+  // the week's Monday ("2026-08-17").
+  //
+  // Shared workspace data, not a browser setting: these anchors *define* the
+  // shape of the projection curve, so a balance one person verifies has to be
+  // the balance everyone sees. They used to live in localStorage, which gave
+  // every browser its own chart — whoever calibrated a week saw one projection
+  // and every colleague saw another, built from the default starting balance.
+  const weeklyBankBalances = financialTrend.weeklyBankBalances;
+  const defaultBankBalance = financialTrend.currentBankBalance ?? DEFAULT_BANK_BALANCE;
+
+  /** Write the anchors back to the shared dataset; a no-op without edit rights. */
+  const saveTrend = (weekly: Record<string, number>) => {
+    if (!canEdit || !setFinancialTrend) return;
+    setFinancialTrend({ ...financialTrend, weeklyBankBalances: weekly });
+  };
 
   // Modal / Popover state for calibrating any week
   const [calibratingWeek, setCalibratingWeek] = useState<{
@@ -1556,6 +1599,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     cumulativeBalance: number;
     isManuallyCalibrated: boolean;
   }) => {
+    // Anchors are shared data now, so the server enforces the financial edit
+    // permission on them. Opening the dialog for someone who cannot save would
+    // show a change that silently never reaches anyone else.
+    if (!canEdit || !setFinancialTrend) return;
     setCalibratingWeek({
       startIso: b.startIso,
       weekLabel: b.weekLabel,
@@ -1569,26 +1616,31 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
   const handleSaveWeeklyCalibration = (startIso: string, val: number) => {
     const sanitized = isNaN(val) ? 0 : val;
-    const updated = { ...weeklyBankBalances, [startIso]: sanitized };
-    setWeeklyBankBalances(updated);
-    localStorage.setItem("crm_financial_weekly_bank_balances", JSON.stringify(updated));
+    saveTrend({ ...weeklyBankBalances, [startIso]: sanitized });
     setCalibratingWeek(null);
   };
 
   const handleResetWeeklyCalibration = (startIso: string) => {
     const updated = { ...weeklyBankBalances };
     delete updated[startIso];
-    setWeeklyBankBalances(updated);
-    localStorage.setItem("crm_financial_weekly_bank_balances", JSON.stringify(updated));
+    saveTrend(updated);
     setCalibratingWeek(null);
   };
 
   const handleSetTrendMode = (mode: "relative" | "cumulative") => {
     setTrendMode(mode);
-    localStorage.setItem("crm_financial_trend_mode", mode);
   };
 
-  // 18-Week Dataset: 4 Past Weeks + Current Week + 13 Future Weeks (Next 3 Months)
+  const handleSetProjectionMonths = (months: ProjectionMonths) => {
+    setProjectionMonths(months);
+  };
+
+  // Weeks the forecast covers, and the width of the whole dataset:
+  // 4 past weeks + the current one + the horizon's future weeks.
+  const projectionFutureWeeks = futureWeeksFor(projectionMonths);
+  const projectionTotalWeeks = TREND_PAST_WEEKS + 1 + projectionFutureWeeks;
+
+  // Weekly dataset: 4 past weeks + current week + the selected forecast horizon
   const weeklyTrendData = useMemo(() => {
     const now = new Date();
 
@@ -1612,8 +1664,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     const mondayDiff = currentDay === 0 ? -6 : 1 - currentDay;
     const currentMonday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayDiff, 0, 0, 0, 0);
 
-    const totalPastWeeks = 4;
-    const totalFutureWeeks = 13; // 3 months = ~13 weeks
+    const totalPastWeeks = TREND_PAST_WEEKS;
+    const totalFutureWeeks = projectionFutureWeeks;
 
     const buckets: {
       index: number;
@@ -1865,7 +1917,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     }
 
     return buckets;
-  }, [financialRecords, weeklyBankBalances, defaultBankBalance]);
+  }, [financialRecords, weeklyBankBalances, defaultBankBalance, projectionFutureWeeks]);
 
   // Smooth Bezier path generator for SVG plotline
   const generateSmoothPath = (pts: { x: number; y: number }[]) => {
@@ -3320,10 +3372,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         ))}
       </div>
 
-      {/* 4. TAB CONTENT 1: GLOBAL OVERVIEW (FOCUSED HYBRID TREND & 3-MONTH PROJECTION) */}
+      {/* 4. TAB CONTENT 1: GLOBAL OVERVIEW (FOCUSED HYBRID TREND & FORWARD PROJECTION) */}
       {activeTab === "overview" && (
         <div className="space-y-6 animate-in fade-in duration-200">
-          {/* HYBRID WEEKLY TREND & 3-MONTH PROJECTION CHART */}
+          {/* HYBRID WEEKLY TREND & FORWARD PROJECTION CHART (3 / 6 / 12 months) */}
           <div className="bg-white  p-6 rounded-3xl border border-slate-200/80  shadow-sm space-y-6">
             {/* 1. Header with Mode Toggle & Bank Balance Calibrators */}
             <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 pb-4 border-b border-slate-100 ">
@@ -3332,8 +3384,16 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   <h3 className="text-base font-bold text-slate-900  flex items-center gap-2">
                     <BarChart3 className="h-5 w-5 text-emerald-500" />
                     {trendMode === "cumulative"
-                      ? t("Weekly Trend & 3-Month Projection (Cumulative Bank Balance)", "Týždenný vývoj a 3-mesačná prognóza (Kumulatívny stav na účte)", "Heti trend és 3 hónapos előrejelzés (Kumulált bankszámla egyenleg)")
-                      : t("Weekly Trend & 3-Month Projection (Relative Cash Flow)", "Týždenný vývoj a 3-mesačná prognóza (Relatívny cash flow)", "Heti trend és 3 hónapos előrejelzés (Relatív pénzáramlás)")}
+                      ? t(
+                          `Weekly Trend & ${projectionMonths}-Month Projection (Cumulative Bank Balance)`,
+                          `Týždenný vývoj a ${projectionMonths}-mesačná prognóza (Kumulatívny stav na účte)`,
+                          `Heti trend és ${projectionMonths} hónapos előrejelzés (Kumulált bankszámla egyenleg)`
+                        )
+                      : t(
+                          `Weekly Trend & ${projectionMonths}-Month Projection (Relative Cash Flow)`,
+                          `Týždenný vývoj a ${projectionMonths}-mesačná prognóza (Relatívny cash flow)`,
+                          `Heti trend és ${projectionMonths} hónapos előrejelzés (Relatív pénzáramlás)`
+                        )}
                   </h3>
                   <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
                     trendMode === "cumulative" 
@@ -3346,9 +3406,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 <p className="text-xs text-slate-500 ">
                   {trendMode === "cumulative"
                     ? t(
-                        "Bars display weekly income & expense. The continuous plotline projects running Bank Account Balance (cumulative cash reserves) forward for the next 3 months. Click any week to calibrate its balance independently.",
-                        "Stĺpce zobrazujú týždenné príjmy a výdavky. Spojitá krivka zobrazuje projektovaný stav na bankovom účte. Kliknutím na ľubovoľný týždeň môžete nezávisle nastaviť jeho zostatok.",
-                        "Az oszlopok a heti bevételeket és kiadásokat mutatják. A folytonos vonal a várható bankszámla egyenleget jelzi. Kattintson bármelyik hétre az egyenleg független beállításához."
+                        `Bars display weekly income & expense. The continuous plotline projects running Bank Account Balance (cumulative cash reserves) forward for the next ${projectionMonths} months. Click any week to calibrate its balance independently.`,
+                        `Stĺpce zobrazujú týždenné príjmy a výdavky. Spojitá krivka zobrazuje projektovaný stav na bankovom účte na ${skNextMonths(projectionMonths)}. Kliknutím na ľubovoľný týždeň môžete nezávisle nastaviť jeho zostatok.`,
+                        `Az oszlopok a heti bevételeket és kiadásokat mutatják. A folytonos vonal a következő ${projectionMonths} hónap várható bankszámla egyenlegét jelzi. Kattintson bármelyik hétre az egyenleg független beállításához.`
                       )
                     : t(
                         "Bars display cumulative weekly income & expense. The continuous plotline traces weekly net difference and future projected revenue (projected income − projected expense).",
@@ -3387,6 +3447,34 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                     <span>{t("Cumulative Balance", "Stav na účte (Kumulatívny)", "Bankszámla egyenleg")}</span>
                   </button>
                 </div>
+
+                {/* Forecast Horizon Pill: how far forward the projection runs */}
+                <div className="bg-slate-100  p-1 rounded-2xl flex items-center gap-1 border border-slate-200/80 ">
+                  <span className="pl-2 pr-1 text-[10px] font-black uppercase tracking-wider text-slate-400  flex items-center gap-1">
+                    <CalendarDays className="h-3.5 w-3.5" />
+                    {t("Horizon", "Horizont", "Időtáv")}
+                  </span>
+                  {PROJECTION_HORIZONS.map((h) => (
+                    <button
+                      key={h.months}
+                      type="button"
+                      onClick={() => handleSetProjectionMonths(h.months)}
+                      title={t(
+                        `Project ${h.months} months forward (${h.futureWeeks} future weeks)`,
+                        `Prognóza na ${skMonths(h.months)} dopredu (${h.futureWeeks} budúcich týždňov)`,
+                        `Előrejelzés ${h.months} hónapra előre (${h.futureWeeks} jövőbeli hét)`
+                      )}
+                      aria-pressed={projectionMonths === h.months}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        projectionMonths === h.months
+                          ? "bg-white  text-indigo-600  shadow-sm border border-slate-200/80 "
+                          : "text-slate-600  hover:text-slate-900 "
+                      }`}
+                    >
+                      {t(`${h.months}M`, `${h.months}M`, `${h.months}H`)}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -3418,7 +3506,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 </div>
                 <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-100  text-slate-600  rounded-lg border border-slate-200 ">
                   <span className="h-2.5 w-2.5 rounded-full bg-indigo-400 animate-ping" />
-                  <span>{t("Future 3-Mo Window", "3-Mesačné okno", "3 Hónapos ablak")}</span>
+                  <span>{t(`Future ${projectionMonths}-Mo Window`, `${projectionMonths}-Mesačné okno`, `${projectionMonths} Hónapos ablak`)}</span>
                 </div>
               </div>
 
@@ -3433,15 +3521,33 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               const N = weeklyTrendData.length;
               if (N === 0) return null;
 
-              const svgWidth = 1000;
               const svgHeight = 360;
               const startX = 65;
-              const graphWidth = 905;
               const topY = 45;
               const graphHeight = 245;
               const bottomY = topY + graphHeight;
-              const stepX = graphWidth / N;
-              const barWidth = Math.min(15, (stepX - 8) / 2);
+
+              // Every week gets a fixed slice of the drawing area, so bars and labels
+              // stay the same size whatever the horizon: a longer forecast widens the
+              // chart and scrolls rather than squeezing 57 weeks onto one screen.
+              // Past three months the slice narrows a little to keep that scrolling
+              // tolerable. (18 weeks x 50 reproduces the original 905-unit graph.)
+              const weekUnits = N <= 20 ? 50 : N <= 36 ? 34 : 26;
+              const graphWidth = N * weekUnits;
+              const svgWidth = startX + graphWidth + 30;
+              const stepX = weekUnits;
+              const barWidth = Math.max(3, Math.min(15, (stepX - 8) / 2));
+
+              // Never render a user unit below a pixel; anything wider than the card
+              // scrolls horizontally instead of shrinking.
+              const minChartWidth = svgWidth;
+
+              // At the narrowest slice the week labels would touch, so every other
+              // one is drawn -- counted out from the current week, so "today" is
+              // always labelled and never crowds its neighbour -- and the date line
+              // underneath is dropped.
+              const labelStride = weekUnits >= 34 ? 1 : 2;
+              const showDateSubLabel = weekUnits >= 34;
 
               // Target value based on active mode
               const getPlotTarget = (b: typeof weeklyTrendData[0]) => trendMode === "cumulative" ? b.cumulativeBalance : b.netDifference;
@@ -3474,7 +3580,11 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               return (
                 <div className="relative select-none">
                   <div className="w-full overflow-x-auto scrollbar-none">
-                    <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} className="w-full min-w-[800px] h-auto font-sans">
+                    <svg
+                      viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+                      style={{ minWidth: `${minChartWidth}px` }}
+                      className="w-full h-auto font-sans"
+                    >
                       <defs>
                         {/* Gradient for future projection window */}
                         <linearGradient id="futureZoneGrad" x1="0" y1="0" x2="1" y2="0">
@@ -3549,7 +3659,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                       <g transform={`translate(${futureStartX + 12}, ${topY - 8})`}>
                         <rect x="0" y="-14" width="200" height="22" rx="11" fill="#6366f1" fillOpacity="0.15" stroke="#6366f1" strokeWidth="1" />
                         <text x="100" y="1" textAnchor="middle" fill="#6366f1" fontSize="10" fontWeight="900" letterSpacing="0.05em">
-                          {t("🔮 3-MONTH FUTURE FORECAST", "🔮 3-MESAČNÁ PROGNÓZA", "🔮 3 HÓNAPOS ELŐREJELZÉS")}
+                          {t(`🔮 ${projectionMonths}-MONTH FUTURE FORECAST`, `🔮 ${projectionMonths}-MESAČNÁ PROGNÓZA`, `🔮 ${projectionMonths} HÓNAPOS ELŐREJELZÉS`)}
                         </text>
                       </g>
 
@@ -3662,30 +3772,36 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                             )}
 
                             {/* X-Axis Week Labels */}
-                            <text
-                              x={cx}
-                              y={bottomY + 15}
-                              textAnchor="middle"
-                              className={`text-[9px] font-black uppercase ${
-                                b.isCurrent
-                                  ? "fill-indigo-600  font-extrabold"
-                                  : b.isFuture
-                                  ? "fill-purple-600 "
-                                  : "fill-slate-600 "
-                              }`}
-                            >
-                              {b.weekLabel}
-                            </text>
-                            <text
-                              x={cx}
-                              y={bottomY + 27}
-                              textAnchor="middle"
-                              className={`text-[8px] font-medium ${
-                                b.isCurrent ? "fill-indigo-600 font-bold" : "fill-slate-400"
-                              }`}
-                            >
-                              {b.dateRangeLabel.split(" - ")[0]}
-                            </text>
+                            {(idx - currentWeekIdx) % labelStride === 0 && (
+                              <>
+                                <text
+                                  x={cx}
+                                  y={bottomY + 15}
+                                  textAnchor="middle"
+                                  className={`text-[9px] font-black uppercase ${
+                                    b.isCurrent
+                                      ? "fill-indigo-600  font-extrabold"
+                                      : b.isFuture
+                                      ? "fill-purple-600 "
+                                      : "fill-slate-600 "
+                                  }`}
+                                >
+                                  {b.weekLabel}
+                                </text>
+                                {showDateSubLabel && (
+                                  <text
+                                    x={cx}
+                                    y={bottomY + 27}
+                                    textAnchor="middle"
+                                    className={`text-[8px] font-medium ${
+                                      b.isCurrent ? "fill-indigo-600 font-bold" : "fill-slate-400"
+                                    }`}
+                                  >
+                                    {b.dateRangeLabel.split(" - ")[0]}
+                                  </text>
+                                )}
+                              </>
+                            )}
 
                             {/* Current week highlight badge pill */}
                             {b.isCurrent && (
@@ -3898,16 +4014,28 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                     >
                       <CalendarDays className="h-4 w-4" />
                       {isWeeklyTableOpen
-                        ? t("Hide 18-Week Projection Table", "Skryť 18-týždňovú tabuľku prognózy", "18 hetes előrejelzési táblázat elrejtése")
-                        : t("Inspect Full 18-Week Weekly Breakdown (4 Past + 13 Future Weeks)", "Zobraziť podrobnú 18-týždňovú tabuľku (4 minulé + 13 budúcich týždňov)", "Részletes 18 hetes lebontás megtekintése (4 múltbéli + 13 jövőbeli hét)")}
+                        ? t(
+                            `Hide ${projectionTotalWeeks}-Week Projection Table`,
+                            `Skryť ${projectionTotalWeeks}-týždňovú tabuľku prognózy`,
+                            `${projectionTotalWeeks} hetes előrejelzési táblázat elrejtése`
+                          )
+                        : t(
+                            `Inspect Full ${projectionTotalWeeks}-Week Weekly Breakdown (${TREND_PAST_WEEKS} Past + ${projectionFutureWeeks} Future Weeks)`,
+                            `Zobraziť podrobnú ${projectionTotalWeeks}-týždňovú tabuľku (${TREND_PAST_WEEKS} minulé + ${projectionFutureWeeks} budúcich týždňov)`,
+                            `Részletes ${projectionTotalWeeks} hetes lebontás megtekintése (${TREND_PAST_WEEKS} múltbéli + ${projectionFutureWeeks} jövőbeli hét)`
+                          )}
                       {isWeeklyTableOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                     </button>
                     <span className="text-[11px] text-slate-400">
-                      {t("Total Horizon: 18 Weeks (3 Months Forward)", "Časový horizont: 18 týždňov (3 mesiace dopredu)", "Teljes időtáv: 18 hét (3 hónap előre)")}
+                      {t(
+                        `Total Horizon: ${projectionTotalWeeks} Weeks (${projectionMonths} Months Forward)`,
+                        `Časový horizont: ${projectionTotalWeeks} týždňov (${skMonths(projectionMonths)} dopredu)`,
+                        `Teljes időtáv: ${projectionTotalWeeks} hét (${projectionMonths} hónap előre)`
+                      )}
                     </span>
                   </div>
 
-                  {/* 18-Week Data Table */}
+                  {/* Weekly Data Table (4 past weeks + the selected forecast horizon) */}
                   {isWeeklyTableOpen && (
                     <div className="mt-3 overflow-x-auto rounded-2xl border border-slate-200  animate-in fade-in duration-200">
                       <table className="w-full text-left text-xs">
@@ -3974,14 +4102,16 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                 </div>
                               </td>
                               <td className="py-2.5 px-4 text-center">
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenCalibrator(w)}
-                                  className="px-2 py-1 bg-slate-100  hover:bg-emerald-50  text-slate-600 hover:text-emerald-600 rounded-lg text-[10px] font-bold border border-slate-200  transition-colors inline-flex items-center gap-1 cursor-pointer"
-                                >
-                                  <Pencil className="h-3 w-3" />
-                                  <span>{w.isManuallyCalibrated ? t("Edit", "Upraviť", "Módosít") : t("Calibrate", "Nastaviť", "Beállít")}</span>
-                                </button>
+                                {canEdit && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenCalibrator(w)}
+                                    className="px-2 py-1 bg-slate-100  hover:bg-emerald-50  text-slate-600 hover:text-emerald-600 rounded-lg text-[10px] font-bold border border-slate-200  transition-colors inline-flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Pencil className="h-3 w-3" />
+                                    <span>{w.isManuallyCalibrated ? t("Edit", "Upraviť", "Módosít") : t("Calibrate", "Nastaviť", "Beállít")}</span>
+                                  </button>
+                                )}
                               </td>
                               <td className="py-2.5 px-4 text-center">
                                 <span className="px-2 py-0.5 rounded-full bg-slate-100  text-[10px] text-slate-600  font-bold">

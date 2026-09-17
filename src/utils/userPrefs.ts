@@ -57,6 +57,20 @@ export interface UserPrefs {
    * which is not the same as "none selected" — it falls back to every open state.
    */
   leadsVisibleStates: string[] | null;
+  /**
+   * Finance trend chart: weekly net cash flow, or the running bank balance.
+   *
+   * Only the *choice of curve* is per user. The manual weekly anchors the
+   * cumulative curve is built from are shared workspace data — see
+   * utils/financialTrend.ts.
+   */
+  financialTrendMode: "relative" | "cumulative";
+  /**
+   * Finance trend chart: how many months the forecast runs past the current
+   * week — 3, 6 or 12. Per user for the same reason as the curve choice: it is
+   * how someone likes to read the chart, not a fact about the workspace.
+   */
+  financialProjectionMonths: 3 | 6 | 12;
   /** Id of the newest release note the user has already opened. */
   seenUpdateId: string | null;
   /**
@@ -86,6 +100,8 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   leadsCompactMode: false,
   leadsOrderingMode: "state",
   leadsVisibleStates: null,
+  financialTrendMode: "relative",
+  financialProjectionMonths: 3,
   seenUpdateId: null,
   licenseNoticeSuppressed: null,
   aiKeyBannerDismissed: false,
@@ -156,6 +172,7 @@ const LEGACY_PREF_KEYS = [
   "crm_leads_visible_states",
   "ccrm_seen_update_id",
   "ccrm_custom_default_agent",
+  "crm_financial_trend_mode",
 ];
 
 export const readLegacyPrefs = (): Partial<UserPrefs> => {
@@ -181,6 +198,9 @@ export const readLegacyPrefs = (): Partial<UserPrefs> => {
       if (Array.isArray(parsed)) legacy.leadsVisibleStates = parsed;
     } catch (e) {}
   }
+
+  const trendMode = read("crm_financial_trend_mode");
+  if (trendMode === "relative" || trendMode === "cumulative") legacy.financialTrendMode = trendMode;
 
   const seenUpdateId = read("ccrm_seen_update_id");
   if (seenUpdateId) legacy.seenUpdateId = seenUpdateId;

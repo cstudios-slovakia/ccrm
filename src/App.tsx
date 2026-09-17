@@ -38,6 +38,14 @@ import {
   readLegacyPrefs,
   readUserPrefs,
 } from "./utils/userPrefs";
+import type { FinancialTrendSettings } from "./utils/financialTrend";
+import {
+  EMPTY_FINANCIAL_TREND,
+  clearLegacyFinancialTrend,
+  isFinancialTrendEmpty,
+  normalizeFinancialTrend,
+  readLegacyFinancialTrend,
+} from "./utils/financialTrend";
 
 /**
  * Routes whose whole purpose depends on OpenAI. Visiting one without a
@@ -274,6 +282,7 @@ function App() {
   const invoicesOffersRef = useRef<InvoiceOffer[]>([]);
   const aiCustomTemplatesRef = useRef<AiCustomTemplate[]>([]);
   const clientCategoriesRef = useRef<ClientCategory[]>([]);
+  const financialTrendRef = useRef<FinancialTrendSettings>(EMPTY_FINANCIAL_TREND);
   const companyBillingSettingsRef = useRef<CompanyBillingSettings | null>(null);
   const invoicingIntegrationsRef = useRef<ExternalInvoicingConfig | null>(null);
   // DB clock from the last GET/POST. Sent back as baseSyncedAt so the server can
@@ -474,6 +483,12 @@ function App() {
   const [invoicesOffers, setInvoicesOffers] = useState<InvoiceOffer[]>([]);
   const [aiCustomTemplates, setAiCustomTemplates] = useState<AiCustomTemplate[]>([]);
   const [clientCategories, setClientCategories] = useState<ClientCategory[]>([]);
+  /**
+   * Manual weekly bank-balance anchors behind the finance trend chart. Shared
+   * workspace data (stored in `system_settings.FINANCIAL_TREND`), not a browser
+   * setting — see utils/financialTrend.ts for why it moved out of localStorage.
+   */
+  const [financialTrend, setFinancialTrend] = useState<FinancialTrendSettings>(EMPTY_FINANCIAL_TREND);
   const [companyBillingSettings, setCompanyBillingSettings] = useState<CompanyBillingSettings | null>(null);
   const [invoicingIntegrations, setInvoicingIntegrations] = useState<ExternalInvoicingConfig | null>(null);
 
@@ -927,6 +942,7 @@ ${log.payload || ''}
   invoicesOffersRef.current = invoicesOffers;
   aiCustomTemplatesRef.current = aiCustomTemplates;
   clientCategoriesRef.current = clientCategories;
+  financialTrendRef.current = financialTrend;
   companyBillingSettingsRef.current = companyBillingSettings;
   invoicingIntegrationsRef.current = invoicingIntegrations;
 
@@ -1018,6 +1034,10 @@ ${log.payload || ''}
       invoicesOffers: liveInvoicesOffers,
       aiCustomTemplates: liveAiCustomTemplates,
       clientCategories: liveClientCategories,
+      // Always sent whole: it is one small blob, and the server's contract is
+      // "omitted means unchanged", so narrowing it would be indistinguishable
+      // from a client that predates the key.
+      financialTrend: financialTrendRef.current,
       settings: {
         systemName,
         systemLanguage,
@@ -1485,6 +1505,17 @@ ${log.payload || ''}
     });
   };
 
+  /**
+   * Save the trend anchors. The ref is set before pushing rather than passed as
+   * an argument: pushStateToServer reads this blob straight out of the ref, so
+   * there is no positional slot to thread it through.
+   */
+  const updateFinancialTrendAndSync = (next: FinancialTrendSettings) => {
+    financialTrendRef.current = next;
+    setFinancialTrend(next);
+    pushStateToServer();
+  };
+
   const updateInvoicesOffersAndSync = (newOffers: InvoiceOffer[] | ((prev: InvoiceOffer[]) => InvoiceOffer[])) => {
     setInvoicesOffers(prev => {
       const next = typeof newOffers === "function" ? newOffers(prev) : newOffers;
@@ -1700,6 +1731,26 @@ ${log.payload || ''}
     setCurrentUser(prev => prev ? { ...prev, metadata_json: nextMeta } : prev);
     clearLegacyPrefs();
   }, [currentUser, users, isInitialSyncResolved, themeMode, userTheme]);
+
+  // One-shot adoption of the finance trend anchors an existing install still has
+  // in this browser, so moving them into the database does not throw away the
+  // reconciliation someone already did.
+  //
+  // Only ever runs when the server holds NOTHING: once any anchor exists in the
+  // shared dataset, a second browser's stale local copy must not overwrite it.
+  // The local keys are cleared either way, so this cannot fire twice.
+  const legacyTrendMigratedRef = useRef(false);
+  useEffect(() => {
+    if (!currentUser || !isInitialSyncResolved) return;
+    if (legacyTrendMigratedRef.current) return;
+    legacyTrendMigratedRef.current = true;
+
+    const legacy = readLegacyFinancialTrend();
+    if (legacy && isFinancialTrendEmpty(financialTrendRef.current)) {
+      updateFinancialTrendAndSync(legacy);
+    }
+    clearLegacyFinancialTrend();
+  }, [currentUser, isInitialSyncResolved]);
 
   const handleSaveUserLayout = (layout: string[], hidden?: string[]) => {
     if (!currentUser) return;
@@ -1984,6 +2035,14 @@ ${log.payload || ''}
       }
       if (data.clientCategories && Array.isArray(data.clientCategories)) {
         setClientCategories(data.clientCategories);
+      }
+      // Absent key = a sync.php that predates the trend anchors. Keep whatever
+      // is in memory rather than blanking the chart back to the default curve.
+      if (data.financialTrend !== undefined) {
+        const incoming = normalizeFinancialTrend(data.financialTrend);
+        setFinancialTrend((prev) =>
+          JSON.stringify(incoming) !== JSON.stringify(prev) ? incoming : prev
+        );
       }
       if (data.settings) {
         const s = data.settings;
@@ -2613,6 +2672,8 @@ ${log.payload || ''}
             setFinancialRecords={updateFinancialRecordsAndSync}
             financialCategories={financialCategories}
             setFinancialCategories={updateFinancialCategoriesAndSync}
+            financialTrend={financialTrend}
+            setFinancialTrend={updateFinancialTrendAndSync}
             projects={projects}
             leads={leads}
             users={users}
