@@ -14,6 +14,7 @@ import type { Language } from "../utils/translations";
 import { DefaultOfferTemplate } from "./pdf/DefaultOfferTemplate";
 import { CustomAiOfferTemplate } from "./pdf/CustomAiOfferTemplate";
 import { CustomSelect } from "./ui/CustomSelect";
+import { ClientSelect } from "./ui/ClientSelect";
 import { CompanyLookupSpinner, CompanySuggestions } from "./ui/CompanySuggestions";
 import { useCompanyLookup } from "../utils/useCompanyLookup";
 import { applyCompanyDetailsToLead, registryCountryOf, EUROPEAN_COUNTRIES } from "../utils/companyRegistry";
@@ -1499,15 +1500,13 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                       </button>
                     </div>
                     {leads.length > 0 ? (
-                      <CustomSelect
-                        searchable
+                      <ClientSelect
+                        leads={leads}
                         value={selectedLeadId}
                         onChange={handleSelectLead}
                         placeholder={t("Select a client…", "Vyberte klienta…", "Válasszon ügyfelet…")}
-                        options={leads.map(l => ({
-                          value: l.id,
-                          label: `${l.name}${l.city ? ` (${l.city})` : ""}${l.companyId ? ` — IČO ${l.companyId}` : ""}`
-                        }))}
+                        renderLabel={l => `${l.name}${l.city ? ` (${l.city})` : ""}${l.companyId ? ` — IČO ${l.companyId}` : ""}`}
+                        onCreated={applyLeadToDraft}
                       />
                     ) : (
                       <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500">

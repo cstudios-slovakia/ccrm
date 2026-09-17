@@ -870,6 +870,15 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           window.location.hash = "projects";
         }}
         onSave={handleSaveProject}
+        onDelete={(id) => {
+          // The card asks for confirmation itself, so this only removes and closes.
+          if (!canDelete) return;
+          setProjects(prev => prev.filter(p => p.id !== id));
+          setEditingProject(null);
+          setEditingProjectType(null);
+          window.location.hash = "projects";
+          (window as any).showToast(t("Project deleted.", "Projekt bol vymazaný.", "Projekt törölve."));
+        }}
         isNew={!projects.some(p => p.id === editingProject.id)}
       />
     );

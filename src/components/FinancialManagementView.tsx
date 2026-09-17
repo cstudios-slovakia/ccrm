@@ -11,7 +11,7 @@ import {
   CalendarDays, Target, Maximize2, Minimize2,
   ArrowUpRight, ArrowDownRight, ArrowUpDown,
   SlidersHorizontal,
-  Copy, Sparkles, GripVertical
+  Copy, Sparkles, GripVertical, UserPlus
 } from "lucide-react";
 import type {
   FinancialRecord,
@@ -23,7 +23,9 @@ import type {
   Lead,
   UserProfile
 } from "../types";
-import { CustomSelect } from "./ui/CustomSelect";
+import { CustomSelect, DropdownSearchRow } from "./ui/CustomSelect";
+import { ClientSelect } from "./ui/ClientSelect";
+import { useQuickAddClient } from "./ui/QuickAddClient";
 import { ColorPicker } from "./ui/ColorPicker";
 import { inheritedColor, nextCategoryColor } from "../utils/color";
 import type { Language } from "../utils/translations";
@@ -66,6 +68,33 @@ const futureWeeksFor = (months: ProjectionMonths) =>
 const skMonths = (n: number) => (n < 5 ? `${n} mesiace` : `${n} mesiacov`);
 const skNextMonths = (n: number) =>
   n < 5 ? `nasledujúce ${n} mesiace` : `nasledujúcich ${n} mesiacov`;
+
+// Payment statuses offered by the inline picker in the movements ledger, in the
+// order a record usually travels through them.
+const MOVEMENT_STATUSES: FinancialStatus[] = [
+  "planned",
+  "pending",
+  "paid",
+  "partially_paid",
+  "overdue",
+  "cancelled"
+];
+
+const MOVEMENT_STATUS_DOT: Record<FinancialStatus, string> = {
+  planned: "bg-slate-400",
+  pending: "bg-amber-500",
+  paid: "bg-emerald-500",
+  partially_paid: "bg-sky-500",
+  overdue: "bg-rose-500",
+  cancelled: "bg-slate-300"
+};
+
+/**
+ * Money only really moved for these two, so switching a row into them has to ask
+ * for the amount that was actually settled instead of guessing it.
+ */
+const statusNeedsRealAmount = (status: FinancialStatus): status is "paid" | "partially_paid" =>
+  status === "paid" || status === "partially_paid";
 
 interface SearchableCategorySelectProps {
   value: string;
@@ -354,6 +383,7 @@ const SearchableScopeSelect: React.FC<SearchableScopeSelectProps> = ({
   const [search, setSearch] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const quickAdd = useQuickAddClient();
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -486,26 +516,22 @@ const SearchableScopeSelect: React.FC<SearchableScopeSelectProps> = ({
       {isOpen && (
         <div className="absolute top-full left-0 right-0 mt-1.5 z-[100] bg-white  border border-slate-200  rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150 flex flex-col min-w-[300px]">
           {/* Search Header */}
-          <div className="p-2 border-b border-slate-100  flex items-center gap-2 bg-slate-50/70 ">
-            <Search className="h-3.5 w-3.5 text-slate-400 shrink-0 ml-1" />
-            <input
-              ref={inputRef}
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t("Search projects or clients...", "Hľadať projekty alebo klientov...", "Keresés projekt vagy ügyfél szerint...")}
-              className="w-full bg-transparent text-xs text-slate-800  placeholder:text-slate-400 focus:outline-none"
-            />
-            {search && (
-              <button
-                type="button"
-                onClick={() => setSearch("")}
-                className="p-1 text-slate-400 hover:text-slate-600 "
-              >
-                <X className="h-3 w-3" />
-              </button>
-            )}
-          </div>
+          <DropdownSearchRow
+            inputRef={inputRef}
+            value={search}
+            onChange={setSearch}
+            placeholder={t("Search projects or clients...", "Hľadať projekty alebo klientov...", "Keresés projekt vagy ügyfél szerint...")}
+            addNewIcon={<UserPlus className="h-4 w-4" />}
+            addNewLabel={t("Add a new client", "Pridať nového klienta", "Új ügyfél hozzáadása")}
+            onAddNew={
+              quickAdd.enabled
+                ? () => {
+                    setIsOpen(false);
+                    quickAdd.open((lead) => onChange(`client:${lead.id}`));
+                  }
+                : undefined
+            }
+          />
 
           {/* List Options */}
           <div className="max-h-64 overflow-y-auto p-1.5 space-y-1 scrollbar-thin">
@@ -701,6 +727,44 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
   const money = (v: number) => formatMoney(v, currencyCode, userLanguage);
 
+  const movementStatusLabel = (status: FinancialStatus) => {
+    switch (status) {
+      case "planned": return t("Planned", "Plánované", "Tervezett");
+      case "pending": return t("Pending", "Čaká na úhradu", "Fizetésre vár");
+      case "paid": return t("Paid", "Uhradené", "Fizetve");
+      case "partially_paid": return t("Partially Paid", "Čiastočne uhradené", "Részben fizetve");
+      case "overdue": return t("Overdue", "Po splatnosti", "Lejárt");
+      case "cancelled": return t("Cancelled", "Zrušené", "Törölve");
+      default: return status;
+    }
+  };
+
+  const movementStatusBadgeClass = (status: FinancialStatus) =>
+    status === "paid"
+      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+      : status === "partially_paid"
+        ? "bg-sky-50 text-sky-700 border-sky-200"
+        : status === "pending"
+          ? "bg-amber-50 text-amber-700 border-amber-200"
+          : status === "overdue"
+            ? "bg-rose-50 text-rose-700 border-rose-200"
+            : "bg-slate-100 text-slate-600 border-slate-200";
+
+  const movementStatusOptions = useMemo(
+    () =>
+      MOVEMENT_STATUSES.map((s) => ({
+        value: s,
+        label: (
+          <span className="inline-flex items-center gap-1.5">
+            <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${MOVEMENT_STATUS_DOT[s]}`} />
+            <span>{movementStatusLabel(s)}</span>
+          </span>
+        ),
+        searchText: movementStatusLabel(s)
+      })),
+    [userLanguage]
+  );
+
   // Helper to parse subtab & query parameters from URL hash
   const parseFinancialUrlState = () => {
     const raw = window.location.hash.replace("#", "");
@@ -733,7 +797,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   const [activeTab, setActiveTab] = useState<"overview" | "table" | "movements" | "recurring" | "categories">(initialUrlState.tab);
 
   // Overview Matrix Table State
-  const [tableGranularity, setTableGranularity] = useState<"week" | "month" | "quarter" | "year">("month");
+  const [tableGranularity, setTableGranularity] = useState<"week" | "month" | "quarter" | "half" | "year">("month");
   const [tableYear, setTableYear] = useState<number>(new Date().getFullYear());
   const [tableValueMode, setTableValueMode] = useState<"both" | "real" | "estimated" | "total">("both");
   const [expandedCatIds, setExpandedCatIds] = useState<Set<string>>(() => new Set());
@@ -2052,6 +2116,28 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           isFuture
         };
       });
+    } else if (tableGranularity === "half") {
+      columns = [
+        { id: `${tableYear}-H1`, label: `H1`, subLabel: t("Jan - Jun", "Jan - Jún", "Jan - Jún"), startMonth: 0, endMonth: 5 },
+        { id: `${tableYear}-H2`, label: `H2`, subLabel: t("Jul - Dec", "Júl - Dec", "Júl - Dec"), startMonth: 6, endMonth: 11 }
+      ].map((h) => {
+        const startDate = new Date(tableYear, h.startMonth, 1, 0, 0, 0, 0);
+        const endDate = new Date(tableYear, h.endMonth + 1, 0, 23, 59, 59, 999);
+        const isCurrent = now >= startDate && now <= endDate;
+        const isFuture = startDate > now;
+
+        return {
+          id: h.id,
+          label: h.label,
+          subLabel: `${h.subLabel} ${tableYear}`,
+          startDate,
+          endDate,
+          startIso: toYMD(startDate),
+          endIso: toYMD(endDate),
+          isCurrent,
+          isFuture
+        };
+      });
     } else if (tableGranularity === "year") {
       const years = [tableYear - 2, tableYear - 1, tableYear, tableYear + 1, tableYear + 2];
       columns = years.map((y) => {
@@ -2143,6 +2229,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         } else if (tableGranularity === "quarter") {
           if (freq === "monthly") occurrences = 3;
           else if (freq === "weekly") occurrences = 13;
+          else if (freq === "yearly") occurrences = 1;
+        } else if (tableGranularity === "half") {
+          if (freq === "monthly") occurrences = 6;
+          else if (freq === "weekly") occurrences = 26;
           else if (freq === "yearly") occurrences = 1;
         } else if (tableGranularity === "year") {
           if (freq === "monthly") occurrences = 12;
@@ -2604,6 +2694,102 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     (window as any).showToast?.(t("Financial record saved!", "Finančný záznam bol uložený!", "Pénzügyi tétel mentve!"));
   };
 
+  // ==========================================
+  // INLINE PAYMENT STATUS EDITING (MOVEMENTS LEDGER)
+  // ==========================================
+
+  /**
+   * The row-level status picker waiting for the settled amount. `paid` and
+   * `partially_paid` both write `amountReal`, so the dropdown parks the intended
+   * status here and only commits once the user confirms a number.
+   */
+  const [statusPrompt, setStatusPrompt] = useState<{
+    record: FinancialRecord;
+    nextStatus: "paid" | "partially_paid";
+    amount: string;
+  } | null>(null);
+  const statusPromptInputRef = useRef<HTMLInputElement | null>(null);
+
+  const patchMovement = (id: string, patch: Partial<FinancialRecord>) => {
+    setFinancialRecords((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, ...patch, updatedAt: new Date().toISOString() } : r))
+    );
+  };
+
+  const handleInlineStatusChange = (rec: FinancialRecord, nextStatus: FinancialStatus) => {
+    if (!canEdit || nextStatus === rec.status) return;
+
+    if (statusNeedsRealAmount(nextStatus)) {
+      // Fully paid defaults to the planned figure; a partial payment has no
+      // sensible default, so it starts from whatever was already settled.
+      const suggested =
+        nextStatus === "paid"
+          ? rec.amountReal > 0
+            ? rec.amountReal
+            : rec.amountPlanned
+          : rec.amountReal > 0
+            ? rec.amountReal
+            : 0;
+      setStatusPrompt({
+        record: rec,
+        nextStatus,
+        amount: suggested > 0 ? String(suggested) : ""
+      });
+      return;
+    }
+
+    patchMovement(rec.id, { status: nextStatus });
+    (window as any).showToast?.(
+      t(
+        `Status changed to "${movementStatusLabel(nextStatus)}"`,
+        `Stav zmenený na „${movementStatusLabel(nextStatus)}“`,
+        `Állapot módosítva: „${movementStatusLabel(nextStatus)}”`
+      )
+    );
+  };
+
+  const handleConfirmStatusAmount = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!statusPrompt) return;
+
+    const { record, nextStatus, amount } = statusPrompt;
+    const parsed = parseFloat(amount.replace(",", "."));
+    if (!isFinite(parsed) || parsed <= 0) {
+      alert(
+        t(
+          "Enter the amount that was actually paid.",
+          "Zadajte sumu, ktorá bola skutočne uhradená.",
+          "Adja meg a tényleges fizetett összeget."
+        )
+      );
+      statusPromptInputRef.current?.focus();
+      return;
+    }
+
+    const amountReal = Math.round(parsed * 100) / 100;
+    patchMovement(record.id, {
+      status: nextStatus,
+      amountReal,
+      // A settlement without a date would drop out of every month bucket.
+      paidDate: record.paidDate || todayLocal()
+    });
+
+    setStatusPrompt(null);
+    (window as any).showToast?.(
+      nextStatus === "paid"
+        ? t(
+            `Marked as paid — ${money(amountReal)}`,
+            `Označené ako uhradené — ${money(amountReal)}`,
+            `Fizetettként jelölve — ${money(amountReal)}`
+          )
+        : t(
+            `Partial payment recorded — ${money(amountReal)}`,
+            `Čiastočná úhrada zaznamenaná — ${money(amountReal)}`,
+            `Részleges fizetés rögzítve — ${money(amountReal)}`
+          )
+    );
+  };
+
   // Delete Transaction
   const handleDeleteTransaction = (id: string) => {
     if (!canDelete) return;
@@ -2980,18 +3166,12 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             <label className="text-[11px] font-bold text-slate-500 block mb-1">
               {t("Select Associated Client *", "Vyberte klienta *", "Válasszon ügyfelet *")}
             </label>
-            <CustomSelect
-              searchable
+            <ClientSelect
+              leads={leads}
               value={formClientId}
               onChange={(val) => setFormClientId(val)}
               placeholder={t("-- Select Client --", "-- Vyberte klienta --", "-- Válasszon ügyfelet --")}
-              options={[
-                { value: "", label: t("-- Select Client --", "-- Vyberte klienta --", "-- Válasszon ügyfelet --") },
-                ...leads.map((l) => ({
-                  value: l.id,
-                  label: l.city ? `${l.name} (${l.city})` : l.name,
-                })),
-              ]}
+              noneLabel={t("-- Select Client --", "-- Vyberte klienta --", "-- Válasszon ügyfelet --")}
               size="sm"
               className="w-full text-xs font-semibold rounded-xl"
             />
@@ -4287,6 +4467,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                     { id: "week", label: t("Week", "Týždeň", "Hét") },
                     { id: "month", label: t("Month", "Mesiac", "Hónap") },
                     { id: "quarter", label: t("Quarter", "Kvartál", "Negyedév") },
+                    { id: "half", label: t("Half-year", "Polrok", "Félév") },
                     { id: "year", label: t("Year", "Rok", "Év") }
                   ].map((g) => (
                     <button
@@ -4305,7 +4486,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 </div>
 
                 {/* Year Navigator (for month, quarter, week) */}
-                {(tableGranularity === "month" || tableGranularity === "quarter" || tableGranularity === "week") && (
+                {(tableGranularity === "month" || tableGranularity === "quarter" || tableGranularity === "half" || tableGranularity === "week") && (
                   <div className="flex items-center bg-slate-100  px-1 py-0.5 rounded-xl border border-slate-200 ">
                     <button
                       type="button"
@@ -4849,6 +5030,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                     <th className="py-3 px-4 min-w-[220px]">{t("Title & Reference", "Názov & Referencia", "Megnevezés & Hivatkozás")}</th>
                     <th className="py-3 px-4 min-w-[220px]">{t("Category Hierarchy", "Hierarchia kategórie", "Kategória hierarchia")}</th>
                     <th className="py-3 px-4 min-w-[170px]">{t("Link / Scope", "Prepojenie / Rozsah", "Kapcsolat / Hatókör")}</th>
+                    <th className="py-3 px-4 w-[160px]">{t("Payment Status", "Stav úhrady", "Fizetési állapot")}</th>
                     <th className="py-3 px-4 w-[150px] text-right">{t("Value", "Suma / Hodnota", "Összeg / Érték")}</th>
                     <th className="py-3 px-4 w-[90px] text-right">{t("Actions", "Akcie", "Műveletek")}</th>
                   </tr>
@@ -4857,7 +5039,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 <tbody className="divide-y divide-slate-100  font-medium">
                   {filteredMovements.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-16 text-center text-slate-400 font-medium space-y-2">
+                      <td colSpan={7} className="py-16 text-center text-slate-400 font-medium space-y-2">
                         <Coins className="h-10 w-10 text-slate-300  mx-auto" />
                         <p className="text-sm font-bold text-slate-700 ">
                           {t("No financial movements found", "Neboli nájdené žiadne finančné pohyby", "Nincs találat a megadott szűrők alapján")}
@@ -4883,7 +5065,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                           <React.Fragment key={"month-grp-" + group.monthKey}>
                             {/* MONTH DIVIDER ROW WITH SUMMARY TOTALS */}
                             <tr className="bg-slate-100/90  border-y-2 border-slate-300  sticky top-[37px] z-10 shadow-xs">
-                              <td colSpan={6} className="py-2.5 px-4">
+                              <td colSpan={7} className="py-2.5 px-4">
                                 <div className="flex flex-wrap items-center justify-between gap-3">
                                   <div className="flex items-center gap-2">
                                     <CalendarDays className="h-4 w-4 text-purple-600 " />
@@ -4929,25 +5111,16 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                   key={rec.id}
                                   className="hover:bg-slate-50/80  transition-colors group"
                                 >
-                                  {/* 1. Date & Status */}
+                                  {/* 1. Date (status lives in its own editable column) */}
                                   <td className="py-3 px-4 whitespace-nowrap">
                                     <div className="font-bold text-slate-800 ">
                                       {formatDateLocalized(rec.paidDate || rec.issueDate, userLanguage)}
                                     </div>
-                                    <div className="flex items-center gap-1 mt-0.5">
-                                      <span className={`h-1.5 w-1.5 rounded-full ${
-                                        rec.status === "paid"
-                                          ? "bg-emerald-500"
-                                          : rec.status === "pending" || rec.status === "partially_paid"
-                                          ? "bg-amber-500"
-                                          : rec.status === "overdue"
-                                          ? "bg-rose-500"
-                                          : "bg-slate-400"
-                                      }`} />
-                                      <span className="text-[10px] font-medium uppercase text-slate-500 ">
-                                        {rec.status}
-                                      </span>
-                                    </div>
+                                    {rec.dueDate && !rec.paidDate && (
+                                      <div className="text-[10px] font-medium text-slate-400 mt-0.5">
+                                        {t("due", "splatnosť", "esedékes")} {formatDateLocalized(rec.dueDate, userLanguage)}
+                                      </div>
+                                    )}
                                   </td>
 
                                   {/* 2. Title & Reference & Recurring Badge */}
@@ -5039,7 +5212,28 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                     )}
                                   </td>
 
-                                  {/* 5. Value with Color Coding & Recurring Icon */}
+                                  {/* 5. Payment status — editable straight from the row */}
+                                  <td className="py-3 px-4">
+                                    {canEdit ? (
+                                      <CustomSelect
+                                        size="sm"
+                                        value={rec.status}
+                                        onChange={(next) => handleInlineStatusChange(rec, next as FinancialStatus)}
+                                        options={movementStatusOptions}
+                                        unstyled
+                                        className={`gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border cursor-pointer hover:brightness-95 ${movementStatusBadgeClass(rec.status)}`}
+                                      />
+                                    ) : (
+                                      <span
+                                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${movementStatusBadgeClass(rec.status)}`}
+                                      >
+                                        <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${MOVEMENT_STATUS_DOT[rec.status]}`} />
+                                        {movementStatusLabel(rec.status)}
+                                      </span>
+                                    )}
+                                  </td>
+
+                                  {/* 6. Value with Color Coding & Recurring Icon */}
                                   <td className="py-3 px-4 text-right">
                                     <div className="flex items-center justify-end gap-1.5">
                                       <span
@@ -5076,7 +5270,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                     )}
                                   </td>
 
-                                  {/* 6. Action buttons */}
+                                  {/* 7. Action buttons */}
                                   <td className="py-3 px-4 text-right">
                                     <div className="flex items-center justify-end gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
                                       <button
@@ -5930,6 +6124,148 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           </div>
         </div>
       )}
+
+      {/* 9b. SETTLED-AMOUNT PROMPT (inline status change in the movements ledger) */}
+      {statusPrompt && (() => {
+        const { record, nextStatus, amount } = statusPrompt;
+        const isExpense = record.type === "expense";
+        const parsed = parseFloat(amount.replace(",", "."));
+        const entered = isFinite(parsed) ? parsed : 0;
+        const remaining = Math.round((record.amountPlanned - entered) * 100) / 100;
+
+        return (
+          <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <form
+              onSubmit={handleConfirmStatusAmount}
+              className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in-50 zoom-in-95 duration-200"
+            >
+              {/* Header */}
+              <div className="px-6 pt-5 pb-4 flex items-start justify-between gap-3 border-b border-slate-100">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div
+                    className={`p-2.5 rounded-2xl shrink-0 ${
+                      nextStatus === "paid"
+                        ? "bg-emerald-500/10 text-emerald-600"
+                        : "bg-sky-500/10 text-sky-600"
+                    }`}
+                  >
+                    {nextStatus === "paid" ? <CheckCircle2 className="h-5 w-5" /> : <Clock className="h-5 w-5" />}
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-base font-bold text-slate-900">
+                      {nextStatus === "paid"
+                        ? t("Mark as paid", "Označiť ako uhradené", "Megjelölés fizetettként")
+                        : t("Record a partial payment", "Zaznamenať čiastočnú úhradu", "Részleges fizetés rögzítése")}
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5 truncate" title={record.title}>
+                      {record.title}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setStatusPrompt(null)}
+                  className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer shrink-0"
+                  title={t("Close panel", "Zatvoriť panel", "Bezárás")}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 space-y-4">
+                <div className="flex items-center justify-between px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200/80">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    {t("Planned amount", "Plánovaná suma", "Tervezett összeg")}
+                  </span>
+                  <span className={`text-sm font-black ${isExpense ? "text-rose-600" : "text-emerald-600"}`}>
+                    {isExpense ? "-" : "+"}{money(record.amountPlanned)}
+                  </span>
+                </div>
+
+                <div>
+                  <label htmlFor="status-prompt-amount" className="text-xs font-bold text-slate-700 block mb-1">
+                    {nextStatus === "paid"
+                      ? t("Amount actually paid", "Skutočne uhradená suma", "Tényleges fizetett összeg")
+                      : t("Amount paid so far", "Doteraz uhradená suma", "Eddig fizetett összeg")}
+                  </label>
+                  <input
+                    id="status-prompt-amount"
+                    ref={statusPromptInputRef}
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    autoFocus
+                    value={amount}
+                    onChange={(e) => setStatusPrompt({ ...statusPrompt, amount: e.target.value })}
+                    onFocus={(e) => e.currentTarget.select()}
+                    placeholder="0.00"
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-900 transition-all duration-150 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1.5">
+                    {t(
+                      "This is written to the movement as its real amount.",
+                      "Táto suma sa zapíše do pohybu ako reálna suma.",
+                      "Ez az összeg kerül a tételbe valós összegként."
+                    )}
+                  </p>
+                </div>
+
+                {nextStatus === "partially_paid" && entered > 0 && (
+                  <div
+                    className={`flex items-center justify-between px-3.5 py-2.5 rounded-2xl border text-xs font-bold ${
+                      remaining > 0
+                        ? "bg-amber-50 text-amber-700 border-amber-200"
+                        : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                    }`}
+                  >
+                    <span className="uppercase tracking-wider">
+                      {remaining > 0
+                        ? t("Still outstanding", "Zostáva doplatiť", "Még hátralévő")
+                        : t("Nothing outstanding", "Nezostáva nič doplatiť", "Nincs hátralék")}
+                    </span>
+                    <span className="font-black">{money(Math.max(remaining, 0))}</span>
+                  </div>
+                )}
+
+                {!record.paidDate && (
+                  <p className="text-[11px] text-slate-400">
+                    {t(
+                      `The payment date is set to today (${formatDateLocalized(todayLocal(), userLanguage)}) — edit the movement to change it.`,
+                      `Dátum úhrady sa nastaví na dnes (${formatDateLocalized(todayLocal(), userLanguage)}) — zmeníte ho v úprave pohybu.`,
+                      `A fizetés dátuma a mai nap lesz (${formatDateLocalized(todayLocal(), userLanguage)}) — a tétel szerkesztésével módosítható.`
+                    )}
+                  </p>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/80 flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => setStatusPrompt(null)}
+                  className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-200/70 rounded-xl transition-colors cursor-pointer active:scale-[0.98]"
+                >
+                  {t("Cancel", "Zrušiť", "Mégsem")}
+                </button>
+                <button
+                  type="submit"
+                  className={`px-6 py-2.5 text-white text-xs font-bold rounded-xl cursor-pointer shadow-md transition-all duration-150 active:scale-[0.98] ${
+                    nextStatus === "paid"
+                      ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20"
+                      : "bg-sky-600 hover:bg-sky-700 shadow-sky-600/20"
+                  }`}
+                >
+                  {nextStatus === "paid"
+                    ? t("Confirm payment", "Potvrdiť úhradu", "Fizetés megerősítése")
+                    : t("Save partial payment", "Uložiť čiastočnú úhradu", "Részleges fizetés mentése")}
+                </button>
+              </div>
+            </form>
+          </div>
+        );
+      })()}
 
       {/* 10. CATEGORY TREE MANAGEMENT MODAL */}
       {isCatModalOpen && (

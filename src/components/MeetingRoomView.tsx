@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { createPortal } from "react-dom";
-import { Search, Calendar, User, Users, Clock, CheckSquare, Plus, ArrowLeft, Filter, Sparkles, AlertCircle, ChevronDown, X, Archive, Settings, Mic, Play, Pause, Square, Volume2, Trash2, Lock } from "lucide-react";
+import { Search, Calendar, User, Users, Clock, CheckSquare, Plus, ArrowLeft, Filter, Sparkles, AlertCircle, ChevronDown, X, Archive, Settings, Mic, Play, Pause, Square, Volume2, Trash2, Lock, UserPlus } from "lucide-react";
 import type { Lead, UserProfile, Task } from "../types";
 import { cn } from "../utils/cn";
 import { BlockEditor } from "./BlockEditor";
@@ -9,7 +9,9 @@ import type { EditorBlock } from "./BlockEditor";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 import { Markdown } from "../utils/markdown";
 import { todayLocal, formatDateLocalized, localeCodeFor } from "../utils/localTime";
-import { CustomSelect } from "./ui/CustomSelect";
+import { CustomSelect, DropdownSearchRow } from "./ui/CustomSelect";
+import { ClientSelect } from "./ui/ClientSelect";
+import { useQuickAddClient } from "./ui/QuickAddClient";
 
 const parseNotesToBlocks = (notes: string): EditorBlock[] => {
   if (notes.trim().startsWith("[")) {
@@ -110,6 +112,9 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
   const [viewState, setViewState] = useState<"list" | "new" | "detail">(initialView === "new" && !canEdit ? "list" : initialView);
   const [selectedMeeting, setSelectedMeeting] = useState<MeetingNote | null>(null);
   
+  // The app-wide "new lead / client" form, reached from the attach dropdowns.
+  const quickAdd = useQuickAddClient();
+
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedLeadFilter, setSelectedLeadFilter] = useState("");
@@ -1751,14 +1756,13 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
             {/* Lead filter selection */}
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-slate-600 uppercase tracking-wider">{systemLanguage === "sk" ? "Klient / Lead" : systemLanguage === "hu" ? "Kapcsolódó Lead" : "Associated Lead"}</label>
-              <CustomSelect
-                searchable
+              <ClientSelect
+                leads={leads}
                 value={selectedLeadFilter}
                 onChange={(v) => setSelectedLeadFilter(v)}
-                options={[
-                  { value: "", label: systemLanguage === "sk" ? "Všetky kontakty" : systemLanguage === "hu" ? "Összes Ügyfél" : "All Associated Contacts" },
-                  ...leads.map((l) => ({ value: l.id, label: l.name })),
-                ]}
+                showCity={false}
+                allowAdd={false}
+                noneLabel={systemLanguage === "sk" ? "Všetky kontakty" : systemLanguage === "hu" ? "Összes Ügyfél" : "All Associated Contacts"}
               />
             </div>
 
@@ -2030,7 +2034,8 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
                       {t("Client", "Klient", "Ügyfél")}
                     </label>
-                    <CustomSelect
+                    <ClientSelect
+                      leads={leads}
                       value=""
                       onChange={(v) => {
                         const id = v;
@@ -2038,12 +2043,9 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                           applyUpdate({ attachedClients: [...assignedClients, id] });
                         }
                       }}
-                      options={[
-                        { value: "", label: t("Add client...", "Pridať klienta...", "Ügyfél hozzáadása...") },
-                        ...leads
-                          .filter((l) => !assignedClients.includes(String(l.id)))
-                          .map((l) => ({ value: String(l.id), label: l.name })),
-                      ]}
+                      showCity={false}
+                      excludeIds={assignedClients}
+                      noneLabel={t("Add client...", "Pridať klienta...", "Ügyfél hozzáadása...")}
                     />
                     {assignedClients.length > 0 && (
                       <div className="flex flex-wrap gap-1.5 pt-1">
@@ -2172,15 +2174,21 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                   <ChevronDown className="h-3 w-3 text-slate-400" />
                 </button>
                 {activeDropdown === "leads" && (
-                  <div className="absolute left-0 mt-1.5 w-64 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 p-2.5 flex flex-col gap-2">
-                    <input
-                      type="text"
+                  <div className="absolute left-0 mt-1.5 w-64 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 overflow-hidden flex flex-col">
+                    <DropdownSearchRow
+                      autoFocus
                       placeholder={t("Search leads...", "Hľadať leady...", "Leadek keresése...")}
                       value={leadSearch}
-                      onChange={(e) => setLeadSearch(e.target.value)}
-                      className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px] focus:outline-none focus:border-indigo-500"
+                      onChange={setLeadSearch}
+                      onAddNew={
+                        quickAdd.enabled
+                          ? () => quickAdd.open((lead) => setAttachedLeads((prev) => [...prev, lead.id]), "lead")
+                          : undefined
+                      }
+                      addNewIcon={<UserPlus className="h-4 w-4" />}
+                      addNewLabel={t("Add a new lead", "Pridať nový lead", "Új lead hozzáadása")}
                     />
-                    <div className="max-h-40 overflow-y-auto flex flex-col gap-0.5">
+                    <div className="max-h-40 overflow-y-auto flex flex-col gap-0.5 p-1.5">
                       {leadsList.filter(l => l.name.toLowerCase().includes(leadSearch.toLowerCase())).length === 0 ? (
                         <div className="text-[11px] text-slate-400 p-2 text-center">{t("No leads found", "Nenašli sa žiadne leady", "Nincs találat")}</div>
                       ) : (
@@ -2223,15 +2231,21 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                   <ChevronDown className="h-3 w-3 text-slate-400" />
                 </button>
                 {activeDropdown === "clients" && (
-                  <div className="absolute left-0 mt-1.5 w-64 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 p-2.5 flex flex-col gap-2">
-                    <input
-                      type="text"
+                  <div className="absolute left-0 mt-1.5 w-64 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 overflow-hidden flex flex-col">
+                    <DropdownSearchRow
+                      autoFocus
                       placeholder={t("Search clients...", "Hľadať klientov...", "Ügyfelek keresése...")}
                       value={clientSearch}
-                      onChange={(e) => setClientSearch(e.target.value)}
-                      className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px] focus:outline-none focus:border-indigo-500"
+                      onChange={setClientSearch}
+                      onAddNew={
+                        quickAdd.enabled
+                          ? () => quickAdd.open((lead) => setAttachedClients((prev) => [...prev, lead.id]))
+                          : undefined
+                      }
+                      addNewIcon={<UserPlus className="h-4 w-4" />}
+                      addNewLabel={t("Add a new client", "Pridať nového klienta", "Új ügyfél hozzáadása")}
                     />
-                    <div className="max-h-40 overflow-y-auto flex flex-col gap-0.5">
+                    <div className="max-h-40 overflow-y-auto flex flex-col gap-0.5 p-1.5">
                       {clientsList.filter(c => c.name.toLowerCase().includes(clientSearch.toLowerCase())).length === 0 ? (
                         <div className="text-[11px] text-slate-400 p-2 text-center">{t("No clients found", "Nenašli sa žiadni klienti", "Nincs találat")}</div>
                       ) : (
@@ -2274,15 +2288,14 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                   <ChevronDown className="h-3 w-3 text-slate-400" />
                 </button>
                 {activeDropdown === "users" && (
-                  <div className="absolute left-0 mt-1.5 w-64 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 p-2.5 flex flex-col gap-2">
-                    <input
-                      type="text"
+                  <div className="absolute left-0 mt-1.5 w-64 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 overflow-hidden flex flex-col">
+                    <DropdownSearchRow
+                      autoFocus
                       placeholder={t("Search users...", "Hľadať používateľov...", "Felhasználók keresése...")}
                       value={userSearch}
-                      onChange={(e) => setUserSearch(e.target.value)}
-                      className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px] focus:outline-none focus:border-indigo-500"
+                      onChange={setUserSearch}
                     />
-                    <div className="max-h-40 overflow-y-auto flex flex-col gap-0.5">
+                    <div className="max-h-40 overflow-y-auto flex flex-col gap-0.5 p-1.5">
                       {users.filter(u => u.name.toLowerCase().includes(userSearch.toLowerCase())).length === 0 ? (
                         <div className="text-[11px] text-slate-400 p-2 text-center">{t("No team members found", "Nenašli sa žiadni členovia tímu", "Nincs találat")}</div>
                       ) : (

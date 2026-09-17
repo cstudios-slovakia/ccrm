@@ -12,6 +12,7 @@ import {
 import type { Lead, Project, Task, UserProfile } from "../types";
 import type { Language } from "../utils/translations";
 import { CustomSelect, type DropdownOption } from "./ui/CustomSelect";
+import { ClientSelect } from "./ui/ClientSelect";
 import { projectDisplayName } from "../utils/projects";
 import { isDoneTaskState, localStampStr } from "../utils/projectTasks";
 import { taskPriorityLabel, taskStateLabel, type Translate } from "../utils/taskLabels";
@@ -393,8 +394,8 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                             <label className="text-[9px] font-black text-slate-500 uppercase">
                                 {t("Link to Lead/Client", "Prepojiť so záujemcom", "Összekapcsolás ügyféllel")}
                             </label>
-                            <CustomSelect
-                                searchable
+                            <ClientSelect
+                                leads={leads}
                                 value={draft.relatedLeadId || ""}
                                 disabled={!canEdit}
                                 onChange={(v) => {
@@ -405,10 +406,9 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                         isLocking: leadId ? prev.isLocking : false,
                                     }));
                                 }}
-                                options={[
-                                    { value: "", label: t("-- None --", "-- Žiadny --", "-- Nincs --") },
-                                    ...leads.map((l) => ({ value: l.id, label: l.name })),
-                                ]}
+                                showCity={false}
+                                addKind="lead"
+                                noneLabel={t("-- None --", "-- Žiadny --", "-- Nincs --")}
                             />
                         </div>
 

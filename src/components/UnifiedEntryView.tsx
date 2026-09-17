@@ -9,6 +9,7 @@ import type { UnifiedEntryRegistry, UnifiedEntryRow } from "../types";
 import { formatDateLocalized } from "../utils/localTime";
 import { CURRENCY_OPTIONS, currencyForRegion, formatMoney } from "../utils/currency";
 import { CustomSelect } from "./ui/CustomSelect";
+import { ClientSelect } from "./ui/ClientSelect";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 
 interface UnifiedEntryViewProps {
@@ -59,11 +60,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
   const [formDueDate, setFormDueDate] = useState("");
   const [formWarningDays, setFormWarningDays] = useState(0);
   const [formClientId, setFormClientId] = useState("");
-  const [clientSearchQuery, setClientSearchQuery] = useState("");
-  const [isClientDropdownOpen, setIsClientDropdownOpen] = useState(false);
   const [formLeadId, setFormLeadId] = useState("");
-  const [leadSearchQuery, setLeadSearchQuery] = useState("");
-  const [isLeadDropdownOpen, setIsLeadDropdownOpen] = useState(false);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
   const [formNumber, setFormNumber] = useState("");
   const [formMoneyAmount, setFormMoneyAmount] = useState("");
@@ -94,11 +91,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
         setFormDueDate(entryRow.dueDate || "");
         setFormWarningDays(entryRow.warningDays || 0);
         setFormClientId(entryRow.clientId || "");
-        const cl = entryRow.clientId ? leads.find(l => l.id === entryRow.clientId) : null;
-        setClientSearchQuery(cl ? cl.name : "");
         setFormLeadId(entryRow.leadId || "");
-        const ld = entryRow.leadId ? leads.find(l => l.id === entryRow.leadId) : null;
-        setLeadSearchQuery(ld ? ld.name : "");
         setFormNumber(entryRow.numberValue !== undefined && entryRow.numberValue !== null ? String(entryRow.numberValue) : "");
         setFormMoneyAmount(entryRow.moneyAmount !== undefined && entryRow.moneyAmount !== null ? String(entryRow.moneyAmount) : "");
         setFormMoneyCurrency(entryRow.moneyCurrency || defaultCurrency);
@@ -212,9 +205,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
     setFormDueDate("");
     setFormWarningDays(0);
     setFormClientId("");
-    setClientSearchQuery("");
     setFormLeadId("");
-    setLeadSearchQuery("");
     setFormNumber("");
     setFormMoneyAmount("");
     setFormMoneyCurrency(defaultCurrency);
@@ -230,9 +221,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
     setFormDueDate("");
     setFormWarningDays(0);
     setFormClientId("");
-    setClientSearchQuery("");
     setFormLeadId("");
-    setLeadSearchQuery("");
     setFormNumber("");
     setFormMoneyAmount("");
     setFormMoneyCurrency(defaultCurrency);
@@ -248,11 +237,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
     setFormDueDate(row.dueDate || "");
     setFormWarningDays(row.warningDays || 0);
     setFormClientId(row.clientId || "");
-    const cl = row.clientId ? leads.find(l => l.id === row.clientId) : null;
-    setClientSearchQuery(cl ? cl.name : "");
     setFormLeadId(row.leadId || "");
-    const ld = row.leadId ? leads.find(l => l.id === row.leadId) : null;
-    setLeadSearchQuery(ld ? ld.name : "");
     setFormNumber(row.numberValue !== undefined && row.numberValue !== null ? String(row.numberValue) : "");
     setFormMoneyAmount(row.moneyAmount !== undefined && row.moneyAmount !== null ? String(row.moneyAmount) : "");
     setFormMoneyCurrency(row.moneyCurrency || defaultCurrency);
@@ -366,90 +351,19 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
 
   const renderClientSelector = () => {
     const linkedClient = formClientId ? leads.find(l => l.id === formClientId) : null;
-    const filteredLeads = leads.filter(lead => {
-      if (lead.id === "unassigned-docs") return false;
-      const q = clientSearchQuery.toLowerCase().trim();
-      if (!q) return true;
-      return (lead.name && lead.name.toLowerCase().includes(q)) || 
-             (lead.phone && lead.phone.includes(q)) || 
-             (lead.email && lead.email.toLowerCase().includes(q)) ||
-             (lead.city && lead.city.toLowerCase().includes(q)) ||
-             (lead.companyId && lead.companyId.toLowerCase().includes(q)) ||
-             (lead.contactPerson && lead.contactPerson.toLowerCase().includes(q));
-    });
 
     return (
       <div className="flex flex-col gap-1.5 relative">
         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
           {t("Linked Client", "Priradený klient", "Hozzárendelt ügyfél")}
         </label>
-        
-        <div className="relative">
-          <div className="relative z-10">
-            <input
-              type="text"
-              value={clientSearchQuery}
-              onChange={(e) => {
-                setClientSearchQuery(e.target.value);
-                if (!e.target.value) {
-                  setFormClientId("");
-                }
-                setIsClientDropdownOpen(true);
-              }}
-              onFocus={() => setIsClientDropdownOpen(true)}
-              className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700"
-              placeholder={t("Search client...", "Vyhľadať klienta...", "Ügyfél keresése...")}
-            />
-            <Search className="h-4 w-4 text-slate-400 absolute left-3 top-3.5" />
-            {clientSearchQuery && (
-              <button
-                type="button"
-                onClick={() => {
-                  setClientSearchQuery("");
-                  setFormClientId("");
-                  setIsClientDropdownOpen(true);
-                }}
-                className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 cursor-pointer"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-
-          {isClientDropdownOpen && (
-            <>
-              <div 
-                className="fixed inset-0 z-[2999]" 
-                onClick={() => setIsClientDropdownOpen(false)}
-              />
-              <div className="absolute z-[3000] w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto divide-y divide-slate-100">
-                {filteredLeads.length === 0 ? (
-                  <div className="p-3 text-center text-slate-400 text-xs">
-                    {t("No clients found", "Žiadni klienti sa nenašli", "Nincs találat az ügyfelekre")}
-                  </div>
-                ) : (
-                  filteredLeads.map(lead => (
-                    <button
-                      key={lead.id}
-                      type="button"
-                      onClick={() => {
-                        setFormClientId(lead.id);
-                        setClientSearchQuery(lead.name);
-                        setIsClientDropdownOpen(false);
-                      }}
-                      className="w-full text-left px-3.5 py-2.5 hover:bg-slate-50 text-xs font-semibold text-slate-700 flex flex-col gap-0.5 cursor-pointer"
-                    >
-                      <span className="font-bold text-slate-800">{lead.name}</span>
-                      <span className="text-[10px] text-slate-400 truncate">
-                        {lead.city ? `${lead.city} • ` : ""}{lead.email || t("No email", "Žiadny e-mail", "Nincs e-mail")} • {lead.phone || t("No phone", "Žiadny telefón", "Nincs telefonszám")}
-                      </span>
-                    </button>
-                  ))
-                )}
-              </div>
-            </>
-          )}
-        </div>
+        <ClientSelect
+          leads={leads.filter(l => l.id !== "unassigned-docs")}
+          value={formClientId}
+          onChange={setFormClientId}
+          noneLabel={t("No linked client", "Bez priradeného klienta", "Nincs hozzárendelt ügyfél")}
+          placeholder={t("Search client...", "Vyhľadať klienta...", "Ügyfél keresése...")}
+        />
 
         {linkedClient && (
           <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 text-emerald-800 text-xs font-semibold space-y-2 relative shadow-sm animate-in fade-in slide-in-from-top-1 duration-150 mt-1.5">
@@ -493,90 +407,20 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
 
   const renderLeadSelector = () => {
     const linkedLead = formLeadId ? leads.find(l => l.id === formLeadId) : null;
-    const filteredLeads = leads.filter(lead => {
-      if (lead.id === "unassigned-docs") return false;
-      const q = leadSearchQuery.toLowerCase().trim();
-      if (!q) return true;
-      return (lead.name && lead.name.toLowerCase().includes(q)) || 
-             (lead.phone && lead.phone.includes(q)) || 
-             (lead.email && lead.email.toLowerCase().includes(q)) ||
-             (lead.city && lead.city.toLowerCase().includes(q)) ||
-             (lead.companyId && lead.companyId.toLowerCase().includes(q)) ||
-             (lead.contactPerson && lead.contactPerson.toLowerCase().includes(q));
-    });
 
     return (
       <div className="flex flex-col gap-1.5 relative">
         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
           {t("Linked Lead", "Priradený lead", "Hozzárendelt lead")}
         </label>
-        
-        <div className="relative">
-          <div className="relative z-10">
-            <input
-              type="text"
-              value={leadSearchQuery}
-              onChange={(e) => {
-                setLeadSearchQuery(e.target.value);
-                if (!e.target.value) {
-                  setFormLeadId("");
-                }
-                setIsLeadDropdownOpen(true);
-              }}
-              onFocus={() => setIsLeadDropdownOpen(true)}
-              className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700"
-              placeholder={t("Search lead...", "Vyhľadať lead...", "Lead keresése...")}
-            />
-            <Search className="h-4 w-4 text-slate-400 absolute left-3 top-3.5" />
-            {leadSearchQuery && (
-              <button
-                type="button"
-                onClick={() => {
-                  setLeadSearchQuery("");
-                  setFormLeadId("");
-                  setIsLeadDropdownOpen(true);
-                }}
-                className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 cursor-pointer"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-
-          {isLeadDropdownOpen && (
-            <>
-              <div 
-                className="fixed inset-0 z-[2999]" 
-                onClick={() => setIsLeadDropdownOpen(false)}
-              />
-              <div className="absolute z-[3000] w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto divide-y divide-slate-100">
-                {filteredLeads.length === 0 ? (
-                  <div className="p-3 text-center text-slate-400 text-xs">
-                    {t("No leads found", "Žiadne leady sa nenašli", "Nincs találat a leadekre")}
-                  </div>
-                ) : (
-                  filteredLeads.map(lead => (
-                    <button
-                      key={lead.id}
-                      type="button"
-                      onClick={() => {
-                        setFormLeadId(lead.id);
-                        setLeadSearchQuery(lead.name);
-                        setIsLeadDropdownOpen(false);
-                      }}
-                      className="w-full text-left px-3.5 py-2.5 hover:bg-slate-50 text-xs font-semibold text-slate-700 flex flex-col gap-0.5 cursor-pointer"
-                    >
-                      <span className="font-bold text-slate-800">{lead.name}</span>
-                      <span className="text-[10px] text-slate-400 truncate">
-                        {lead.city ? `${lead.city} • ` : ""}{lead.email || t("No email", "Žiadny e-mail", "Nincs e-mail")} • {lead.phone || t("No phone", "Žiadny telefón", "Nincs telefonszám")}
-                      </span>
-                    </button>
-                  ))
-                )}
-              </div>
-            </>
-          )}
-        </div>
+        <ClientSelect
+          leads={leads.filter(l => l.id !== "unassigned-docs")}
+          value={formLeadId}
+          onChange={setFormLeadId}
+          addKind="lead"
+          noneLabel={t("No linked lead", "Bez priradeného leadu", "Nincs hozzárendelt lead")}
+          placeholder={t("Search lead...", "Vyhľadať lead...", "Lead keresése...")}
+        />
 
         {linkedLead && (
           <div className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200 text-indigo-800 text-xs font-semibold space-y-2 relative shadow-sm animate-in fade-in slide-in-from-top-1 duration-150 mt-1.5">

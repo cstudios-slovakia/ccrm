@@ -20,6 +20,7 @@ import { AccessDeniedView } from "./components/AccessDeniedView";
 import { InstallerWizard } from "./components/InstallerWizard";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AiKeyBanner } from "./components/ui/AiKeyBanner";
+import { QuickAddClientProvider } from "./components/ui/QuickAddClient";
 import FilePreviewPane from "./components/FilePreviewPane";
 import { RefreshCw, AlertOctagon, Trash2, Copy } from "lucide-react";
 import { ShaderGradient, ShaderGradientCanvas } from "shadergradient";
@@ -3128,6 +3129,14 @@ ${log.payload || ''}
 
   return (
     <UserPrefsContext.Provider value={userPrefsApi}>
+    {/* One "new lead / client" form for every picker in the app — see QuickAddClient. */}
+    <QuickAddClientProvider
+      setLeads={updateLeadsAndSync}
+      currentUser={currentUser}
+      leadStates={orderedLeadStates}
+      leadSources={leadSources}
+      canCreate={access.canEdit("leads") || access.canEdit("clients")}
+    >
     <div className="flex h-screen overflow-hidden relative font-sans antialiased text-slate-800 bg-slate-50/50">
 
       {/* Blurred application background layout if not logged in */}
@@ -3509,6 +3518,7 @@ ${log.payload || ''}
         </div>
       )}
     </div>
+    </QuickAddClientProvider>
     </UserPrefsContext.Provider>
   );
 }

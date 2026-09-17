@@ -21,6 +21,7 @@ import {
 } from "../utils/currency";
 import { evaluateProjectDeadline, finishedAtForStatus, projectDisplayName, projectMissedDeadline, projectPipelineSegments, projectStartDate, projectStatusBadgeClass, projectStatusDotClass, projectStatusOptions } from "../utils/projects";
 import { CustomSelect } from "./ui/CustomSelect";
+import { ClientSelect } from "./ui/ClientSelect";
 import { PipelineStrip } from "./ui/PipelineStrip";
 import { StarRating } from "./ui/StarRating";
 import { ratingValue } from "../utils/rating";
@@ -29,84 +30,6 @@ import type { Task } from "../types";
 import { isDoneTaskState } from "../utils/projectTasks";
 import { isOnPersonalDashboard, type TaskAccess } from "../utils/taskSelectors";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
-
-const SearchableClientSelect: React.FC<{
-  leads: Lead[];
-  value: string;
-  onChange: (id: string) => void;
-  userLanguage: Language;
-}> = ({ leads, value, onChange, userLanguage }) => {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const ref = React.useRef<HTMLDivElement>(null);
-  
-  const noneLabel = userLanguage === "sk" ? "Žiadny klient" : userLanguage === "hu" ? "Nincs ügyfél" : "No associated client";
-  const searchLabel = userLanguage === "sk" ? "Hľadať..." : userLanguage === "hu" ? "Keresés..." : "Search...";
-  const selectLabel = userLanguage === "sk" ? "Vybrať klienta..." : userLanguage === "hu" ? "Ügyfél választása..." : "Select Client...";
-  const emptyLabel = userLanguage === "sk" ? "Žiadne výsledky" : userLanguage === "hu" ? "Nincs találat" : "No matches";
-
-  const filtered = query.trim()
-    ? leads.filter((l) => `${l.name} ${l.city || ""}`.toLowerCase().includes(query.trim().toLowerCase()))
-    : leads;
-  const selected = leads.find((l) => l.id === value);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    if (open) document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
-
-  return (
-    <div className="relative font-sans" ref={ref}>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 bg-white focus:outline-none flex items-center justify-between gap-2 cursor-pointer text-left"
-      >
-        <span className={selected ? "truncate" : "truncate text-slate-400 font-normal"}>
-          {selected ? (selected.city ? `${selected.name} (${selected.city})` : selected.name) : selectLabel}
-        </span>
-        <Icons.ChevronDown className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-      </button>
-      {open && (
-        <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-2xl border border-slate-200 shadow-xl max-h-64 overflow-y-auto z-[999] animate-in fade-in zoom-in-95 duration-150 scrollbar-thin">
-          <div className="p-2 sticky top-0 bg-white border-b border-slate-100 z-10">
-            <input
-              autoFocus
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={searchLabel}
-              className="w-full px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs focus:outline-none focus:border-indigo-400"
-            />
-          </div>
-          <button
-            type="button"
-            onClick={() => { onChange(""); setOpen(false); setQuery(""); }}
-            className="w-full text-left px-4 py-2.5 text-xs font-semibold text-slate-500 hover:bg-slate-50 cursor-pointer"
-          >
-            {noneLabel}
-          </button>
-          {filtered.length === 0 ? (
-            <div className="px-4 py-2.5 text-xs text-slate-400 text-center font-medium">{emptyLabel}</div>
-          ) : (
-            filtered.map((l) => (
-              <button
-                type="button"
-                key={l.id}
-                onClick={() => { onChange(l.id); setOpen(false); setQuery(""); }}
-                className={`w-full text-left px-4 py-2.5 text-xs hover:bg-indigo-50/50 cursor-pointer ${l.id === value ? "bg-indigo-50/50 font-bold text-indigo-700" : "text-slate-700"}`}
-              >
-                {l.city ? `${l.name} (${l.city})` : l.name}
-              </button>
-            ))
-          )}
-        </div>
-      )}
-    </div>
-  );
-};
 
 /** The tabs of the right-hand column, as they also appear in the URL's `tab` parameter. */
 type RightTab = "timeline" | "tasks" | "gantt" | "finances" | "files";
@@ -128,6 +51,12 @@ interface ProjectDetailsViewProps {
   /** `close: false` saves in place and leaves the card open — used by the
       controls that save without the Save button (status, budget, files). */
   onSave: (updatedProject: Project, options?: { close?: boolean }) => void;
+  /**
+   * Removes the project and closes the card. Without it the header's delete
+   * button is not offered — the same way the list hides its own without
+   * `canDelete`.
+   */
+  onDelete?: (projectId: string) => void;
   /** A project that has never been saved: opens straight in edit mode, so it can be named. */
   isNew?: boolean;
   /**
@@ -164,6 +93,17 @@ interface ProjectDetailsViewProps {
   currentUser?: UserProfile;
 }
 
+/**
+ * The right column's tabs all wear the same shape — an icon that takes the tab's
+ * own colour, a label, and an optional badge — so the row reads as one control
+ * rather than five differently-sized buttons. `shrink-0` + `whitespace-nowrap`
+ * keep each tab whole; the row scrolls sideways when the column is too narrow.
+ */
+const tabClass = "shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-heading font-bold text-[11px] uppercase tracking-wider whitespace-nowrap transition-all active:scale-95 cursor-pointer";
+const tabActiveClass = "bg-slate-900 text-white shadow-sm";
+const tabIdleClass = "text-slate-500 hover:bg-slate-100 hover:text-slate-800";
+const tabBadgeClass = "px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none";
+
 const DEFAULT_TASK_STATES = ["New", "In progress", "Blocked", "Done"];
 const FULL_TASK_ACCESS: TaskAccess = { view: true, create: true, edit: true, delete: true, viewAll: true };
 
@@ -179,6 +119,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   currencyCode,
   onClose,
   onSave,
+  onDelete,
   isNew = false,
   canEdit = true,
   canDelete: canDeleteProp = true,
@@ -1307,6 +1248,17 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     return { weekdays, weekGroups, totalTimelineWidth: currentOffset };
   };
 
+  /** Deletes the whole project, after the same confirmation the list asks for. */
+  const handleDeleteProject = () => {
+    if (!canDelete || !onDelete) return;
+    if (!window.confirm(t(
+      "Are you sure you want to delete this project?",
+      "Naozaj chcete vymazať tento projekt?",
+      "Biztosan törli ezt a projektet?",
+    ))) return;
+    onDelete(project.id);
+  };
+
   const renderIcon = (iconName: string, className?: string) => {
     const IconComponent = (Icons as any)[iconName];
     if (IconComponent) return <IconComponent className={className} />;
@@ -1366,6 +1318,18 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Deleting a project that has never been saved would delete nothing,
+              so the button only appears once the project exists. */}
+          {canDelete && !isNew && onDelete && (
+            <button
+              onClick={handleDeleteProject}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl border border-rose-200 bg-white hover:bg-rose-50 text-rose-600 font-black text-xs uppercase tracking-wider transition-all cursor-pointer"
+              title={t("Delete Project", "Vymazať projekt", "Projekt törlése")}
+            >
+              <Trash2 className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">{t("Delete", "Vymazať", "Törlés")}</span>
+            </button>
+          )}
           {canEdit ? (
             <button
               onClick={() => handleSave()}
@@ -1446,11 +1410,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               return (
                 <div className="shrink-0 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
                   <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Paired Lead / Client", "Spárovaný lead / klient", "Párosított lead / ügyfél")}</label>
-                  <SearchableClientSelect
+                  <ClientSelect
                     leads={leads}
                     value={associatedLeadId}
                     onChange={pairWith}
-                    userLanguage={userLanguage}
+                    noneLabel={t("No associated client", "Žiadny klient", "Nincs ügyfél")}
+                    placeholder={t("Select Client...", "Vybrať klienta...", "Ügyfél választása...")}
                   />
                   {pairedLead && (
                     <button
@@ -2139,12 +2104,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     {/* Contact Picker attribute type */}
                     {attr.type === "contact" && (
                       <div className="space-y-2">
-                        <CustomSelect
-                          searchable
+                        <ClientSelect
+                          leads={leads}
                           value={val}
                           onChange={v => updateVal(v)}
                           placeholder={t("Select Contact...", "Vybrať kontakt...", "Kapcsolat választása...")}
-                          options={leads.map(l => ({ value: l.id, label: l.city ? `${l.name} (${l.city})` : l.name }))}
                         />
                         {val && (() => {
                           const contact = leads.find(l => l.id === val);
@@ -2192,17 +2156,17 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
         <div className="lg:col-span-8 flex flex-col h-full overflow-hidden bg-white border border-slate-200 rounded-3xl p-5 shadow-sm text-left">
           {/* Tab Switched Header */}
           <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4 shrink-0">
-            <div className="flex items-center gap-2 select-none">
+            {/* One shape for every tab: icon, label, optional badge. The row
+                scrolls sideways rather than wrapping, so a narrow column keeps
+                the tabs on one line instead of breaking the header. */}
+            <div className="flex items-center gap-1 select-none overflow-x-auto scrollbar-none -mx-1 px-1 py-0.5">
               {projectType.hasTimeline && (
                 <button
                   onClick={() => handleRightTabChange("timeline")}
-                  className={`px-4 py-2 rounded-xl font-heading font-bold text-xs uppercase tracking-wider transition-all cursor-pointer ${
-                    activeRightTab === "timeline"
-                      ? "bg-slate-900 text-white"
-                      : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
-                  }`}
+                  className={`${tabClass} ${activeRightTab === "timeline" ? tabActiveClass : tabIdleClass}`}
                 >
-                  {t("Timeline", "Časová os", "Idővonal")}
+                  <Icons.Clock className="h-3.5 w-3.5 shrink-0" />
+                  <span>{t("Timeline", "Časová os", "Idővonal")}</span>
                 </button>
               )}
               {setTasks && taskAccess.view && (() => {
@@ -2216,15 +2180,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 return (
                   <button
                     onClick={() => handleRightTabChange("tasks")}
-                    className={`px-4 py-2 rounded-xl font-heading font-bold text-xs uppercase tracking-wider transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 ${
-                      activeRightTab === "tasks"
-                        ? "bg-slate-900 text-white shadow-sm"
-                        : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
-                    }`}
+                    className={`${tabClass} ${activeRightTab === "tasks" ? tabActiveClass : tabIdleClass}`}
                   >
+                    <Icons.ListChecks className="h-3.5 w-3.5 shrink-0" />
                     <span>{t("Tasks", "Úlohy", "Feladatok")}</span>
                     {openTaskCount > 0 && (
-                      <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${activeRightTab === "tasks" ? "bg-white/20 text-white" : "bg-indigo-500/15 text-indigo-600"}`}>
+                      <span className={`${tabBadgeClass} ${activeRightTab === "tasks" ? "bg-white/20 text-white" : "bg-indigo-500/15 text-indigo-600"}`}>
                         {openTaskCount}
                       </span>
                     )}
@@ -2234,41 +2195,35 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               {projectType.hasGantt && (
                 <button
                   onClick={() => handleRightTabChange("gantt")}
-                  className={`px-4 py-2 rounded-xl font-heading font-bold text-xs uppercase tracking-wider transition-all cursor-pointer ${
-                    activeRightTab === "gantt"
-                      ? "bg-slate-900 text-white"
-                      : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
-                  }`}
+                  className={`${tabClass} ${activeRightTab === "gantt" ? tabActiveClass : tabIdleClass}`}
                 >
-                  {t("Gantt Chart", "Ganttov diagram", "Gantt diagram")}
+                  <Icons.GanttChartSquare className="h-3.5 w-3.5 shrink-0" />
+                  <span>{t("Gantt Chart", "Ganttov diagram", "Gantt diagram")}</span>
                 </button>
               )}
               <button
                 onClick={() => handleRightTabChange("finances")}
-                className={`px-4 py-2 rounded-xl font-heading font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 ${
-                  activeRightTab === "finances"
-                    ? "bg-slate-900 text-white shadow-sm"
-                    : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
-                }`}
+                className={`${tabClass} ${activeRightTab === "finances" ? tabActiveClass : tabIdleClass}`}
+                title={t("Finances & Revenue", "Financie & Ziskovosť", "Pénzügyek & Jövedelmezőség")}
               >
-                <Coins className="h-3.5 w-3.5 text-emerald-400" />
-                <span>{t("Finances & Revenue", "Financie & Ziskovosť", "Pénzügyek & Jövedelmezőség")}</span>
-                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${revenueAnalysis.realProfit >= 0 ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400"}`}>
+                <Coins className="h-3.5 w-3.5 shrink-0" />
+                <span>{t("Finances", "Financie", "Pénzügyek")}</span>
+                <span className={`${tabBadgeClass} ${
+                  revenueAnalysis.realProfit >= 0
+                    ? activeRightTab === "finances" ? "bg-emerald-400/20 text-emerald-300" : "bg-emerald-500/15 text-emerald-600"
+                    : activeRightTab === "finances" ? "bg-rose-400/20 text-rose-300" : "bg-rose-500/15 text-rose-600"
+                }`}>
                   {money(revenueAnalysis.realProfit)}
                 </span>
               </button>
               <button
                 onClick={() => handleRightTabChange("files")}
-                className={`px-4 py-2 rounded-xl font-heading font-bold text-xs uppercase tracking-wider transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 ${
-                  activeRightTab === "files"
-                    ? "bg-slate-900 text-white shadow-sm"
-                    : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
-                }`}
+                className={`${tabClass} ${activeRightTab === "files" ? tabActiveClass : tabIdleClass}`}
               >
-                <Paperclip className="h-3.5 w-3.5" />
+                <Paperclip className="h-3.5 w-3.5 shrink-0" />
                 <span>{t("Files", "Súbory", "Fájlok")}</span>
                 {missingFileCount > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-500">
+                  <span className={`${tabBadgeClass} bg-rose-500/20 text-rose-500`}>
                     {missingFileCount}
                   </span>
                 )}
@@ -2426,12 +2381,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                             />
                           )}
                           {attr.type === "contact" && (
-                            <CustomSelect
-                              searchable
+                            <ClientSelect
+                              leads={leads}
                               value={val}
                               onChange={v => updateVal(v)}
                               placeholder={t("Select Contact...", "Vybrať kontakt...", "Kapcsolat választása...")}
-                              options={leads.map(l => ({ value: l.id, label: l.name }))}
                             />
                           )}
                           {attr.type === "checkbox" && (
@@ -2690,12 +2644,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   <div>
                     <label className="block text-[9px] text-slate-400 uppercase mb-1">{t("Assignee Contact", "Kontakt", "Kapcsolat")}</label>
                     <div className="min-w-[150px]">
-                      <CustomSelect
-                        searchable
+                      <ClientSelect
+                        leads={leads}
                         value={newGeContactId}
                         onChange={v => setNewGeContactId(v)}
                         placeholder={t("Select Contact...", "Vybrať kontakt...", "Kapcsolat választása...")}
-                        options={leads.map(l => ({ value: l.id, label: l.name }))}
                       />
                     </div>
                   </div>
@@ -3013,15 +2966,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
                   <div>
                     <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Assignee Contact", "Kontakt", "Kapcsolat")}</label>
-                    <CustomSelect
-                      searchable
+                    <ClientSelect
+                      leads={leads}
                       value={selectedGanttEdit.contactId}
                       onChange={v => {
                         setSelectedGanttEdit(prev => prev ? { ...prev, contactId: v } : null);
                         setGantt(prev => prev.map(r => r.id === selectedGanttEdit.id ? { ...r, contactId: v } : r));
                       }}
                       placeholder={t("Select Contact...", "Vybrať kontakt...", "Kapcsolat választása...")}
-                      options={leads.map(l => ({ value: l.id, label: l.name }))}
                     />
                   </div>
 

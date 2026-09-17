@@ -26,6 +26,7 @@ import type { Task, UserProfile, Lead, Project } from "../types";
 import type { Language } from "../utils/translations";
 import { CalendarPane } from "./Dashboard";
 import { CustomSelect } from "./ui/CustomSelect";
+import { ClientSelect } from "./ui/ClientSelect";
 import { DeadlineTimePicker, TaskEditDrawer, taskProjectOptions } from "./TaskEditDrawer";
 import { projectDisplayName } from "../utils/projects";
 import { taskPriorityLabel, taskStateLabel } from "../utils/taskLabels";
@@ -3111,20 +3112,16 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     "Összekapcsolás ügyféllel",
                                 )}
                             </label>
-                            <CustomSelect
-                                searchable
+                            <ClientSelect
+                                leads={leads}
                                 value={newRelatedLeadId}
                                 onChange={(v) => {
                                     setNewRelatedLeadId(v);
                                     if (!v) setNewIsLocking(false);
                                 }}
-                                options={[
-                                    {
-                                        value: "",
-                                        label: t("-- None --", "-- Žiadny --", "-- Nincs --"),
-                                    },
-                                    ...leads.map((l) => ({ value: l.id, label: l.name })),
-                                ]}
+                                showCity={false}
+                                addKind="lead"
+                                noneLabel={t("-- None --", "-- Žiadny --", "-- Nincs --")}
                             />
                         </div>
 

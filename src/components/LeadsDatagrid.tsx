@@ -199,128 +199,8 @@ const InlineDeadlineTimePicker: React.FC<{
     );
 };
 
-// Searchable lead/referral picker (item 6): a select whose options are filtered by a fulltext
-// search box at the top of the dropdown. Reused by the new-lead popup and the lead detail panel.
-const SearchableLeadSelect: React.FC<{
-    leads: Lead[];
-    value: string;
-    onChange: (id: string) => void;
-    excludeId?: string;
-    systemLanguage: Language;
-}> = ({ leads, value, onChange, excludeId, systemLanguage }) => {
-    const [open, setOpen] = useState(false);
-    const [query, setQuery] = useState("");
-    const ref = React.useRef<HTMLDivElement>(null);
-    const noneLabel =
-        systemLanguage === "sk"
-            ? "Žiadny referral"
-            : systemLanguage === "hu"
-              ? "Nincs ajánló"
-              : "No referral source";
-    const searchLabel =
-        systemLanguage === "sk"
-            ? "Hľadať..."
-            : systemLanguage === "hu"
-              ? "Keresés..."
-              : "Search...";
-    const emptyLabel =
-        systemLanguage === "sk"
-            ? "Žiadne výsledky"
-            : systemLanguage === "hu"
-              ? "Nincs találat"
-              : "No matches";
-    const options = leads.filter((l) => l.id !== excludeId);
-    const filtered = query.trim()
-        ? options.filter((l) =>
-              `${l.name} ${l.city || ""}`
-                  .toLowerCase()
-                  .includes(query.trim().toLowerCase()),
-          )
-        : options;
-    const selected = leads.find((l) => l.id === value);
-
-    useEffect(() => {
-        const handler = (e: MouseEvent) => {
-            if (ref.current && !ref.current.contains(e.target as Node))
-                setOpen(false);
-        };
-        if (open) document.addEventListener("mousedown", handler);
-        return () => document.removeEventListener("mousedown", handler);
-    }, [open]);
-
-    return (
-        <div className="relative" ref={ref}>
-            <button
-                type="button"
-                onClick={() => setOpen((o) => !o)}
-                className="w-full px-4 py-2.5 rounded-xl bg-blue-50/10 border border-blue-100 text-xs text-slate-800 focus:outline-none flex items-center justify-between gap-2 cursor-pointer text-left hover:border-blue-200 transition-colors"
-            >
-                <span
-                    className={
-                        selected ? "truncate" : "truncate text-slate-400"
-                    }
-                >
-                    {selected
-                        ? selected.city
-                          ? `${selected.name} (${selected.city})`
-                          : selected.name
-                        : noneLabel}
-                </span>
-                <ChevronDown className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-            </button>
-            {open && (
-                <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-2xl border border-slate-200 shadow-xl max-h-64 overflow-y-auto z-[999] animate-in fade-in zoom-in-95 duration-150">
-                    <div className="p-2 sticky top-0 bg-white border-b border-slate-100 z-10">
-                        <input
-                            autoFocus
-                            value={query}
-                            onChange={(e) => setQuery(e.target.value)}
-                            placeholder={searchLabel}
-                            className="w-full px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs focus:outline-none focus:border-indigo-400"
-                        />
-                    </div>
-                    <button
-                        type="button"
-                        onClick={() => {
-                            onChange("");
-                            setOpen(false);
-                            setQuery("");
-                        }}
-                        className="w-full text-left px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-50 cursor-pointer"
-                    >
-                        {noneLabel}
-                    </button>
-                    {filtered.map((l) => (
-                        <button
-                            type="button"
-                            key={l.id}
-                            onClick={() => {
-                                onChange(l.id);
-                                setOpen(false);
-                                setQuery("");
-                            }}
-                            className={`w-full text-left px-4 py-2 text-xs hover:bg-indigo-50 cursor-pointer ${l.id === value ? "bg-indigo-50 font-bold text-indigo-700" : "text-slate-700"}`}
-                        >
-                            {l.name}
-                            {l.city && (
-                                <span className="text-slate-400">
-                                    {" "}
-                                    ({l.city})
-                                </span>
-                            )}
-                        </button>
-                    ))}
-                    {filtered.length === 0 && (
-                        <div className="px-4 py-3 text-xs text-slate-400 text-center">
-                            {emptyLabel}
-                        </div>
-                    )}
-                </div>
-            )}
-        </div>
-    );
-};
 import { CustomSelect } from "./ui/CustomSelect";
+import { ClientSelect } from "./ui/ClientSelect";
 import { StarRating } from "./ui/StarRating";
 import { matchesRatingFilter, ratingFilterOptions } from "../utils/rating";
 import { TimelineAuthorBadge } from "./TimelineAuthorBadge";
@@ -5339,12 +5219,16 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                               : "Referred by client"}
                                     </label>
                                     {isEditingLead ? (
-                                        <SearchableLeadSelect
+                                        <ClientSelect
                                             leads={leads}
                                             value={leadReferralId}
                                             onChange={setLeadReferralId}
-                                            excludeId={activeLead.id}
-                                            systemLanguage={systemLanguage}
+                                            excludeIds={[activeLead.id]}
+                                            noneLabel={t(
+                                                "No referral source",
+                                                "Žiadny referral",
+                                                "Nincs ajánló",
+                                            )}
                                         />
                                     ) : (
                                         <div className="pt-1">
@@ -11436,11 +11320,15 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         "Lead ajánlás (Ügyfél által ajánlott)",
                                     )}
                                 </label>
-                                <SearchableLeadSelect
+                                <ClientSelect
                                     leads={leads}
                                     value={newLeadReferralId}
                                     onChange={setNewLeadReferralId}
-                                    systemLanguage={systemLanguage}
+                                    noneLabel={t(
+                                        "No referral source",
+                                        "Žiadny referral",
+                                        "Nincs ajánló",
+                                    )}
                                 />
                             </div>
 
