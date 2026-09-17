@@ -44,12 +44,17 @@ export function useDragAutoScroll(active: boolean, anchorRef: RefObject<HTMLElem
       }
     };
 
-    const onDragOver = (e: DragEvent) => { pointerY = e.clientY; };
-    window.addEventListener("dragover", onDragOver);
+    // Both kinds of drag this app uses: the native HTML5 one, which only ever
+    // reports through `dragover`, and the dashboard's pointer drag, which does
+    // not fire it at all.
+    const follow = (e: DragEvent | PointerEvent) => { pointerY = e.clientY; };
+    window.addEventListener("dragover", follow);
+    window.addEventListener("pointermove", follow);
     frame = requestAnimationFrame(step);
 
     return () => {
-      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("dragover", follow);
+      window.removeEventListener("pointermove", follow);
       cancelAnimationFrame(frame);
     };
   }, [active, anchorRef]);

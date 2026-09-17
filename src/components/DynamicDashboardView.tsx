@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useCallback, useLayoutEffect, useMemo, useRef } from "react";
 import {
   AlertCircle,
   ArrowDownRight,
@@ -32,6 +32,16 @@ import { formatMoney } from "../utils/currency";
 import { localeCodeFor } from "../utils/localTime";
 import { chartTheme, useAppearance } from "../utils/theme";
 import { useDragAutoScroll } from "../hooks/useDragAutoScroll";
+import { useGridFlip } from "../hooks/useGridFlip";
+import {
+  GRID_COLUMNS,
+  breakpointForWidth,
+  freeDropTargets,
+  insertAt,
+  planGrid,
+  rowCountOf,
+  type GridItem
+} from "../utils/dashboardGrid";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 import {
   WIDGET_SIZES,
@@ -153,6 +163,50 @@ const ACCENT_COLORS: Record<string, string> = {
 };
 
 const accentFor = (color: any) => ACCENT_COLORS[String(color || "indigo")] || ACCENT_COLORS.indigo;
+
+/** A rectangle inside the board, in pixels relative to the grid container. */
+interface BoardRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/** An empty run of cells the dragged card fits in, measured on screen. */
+interface DropZone extends BoardRect {
+  insertIndex: number;
+}
+
+/**
+ * Everything a drag needs to carry between pointer events. It lives in a ref
+ * rather than in state: the card follows the cursor by having its transform
+ * written directly, which must not cost a render per frame.
+ */
+interface DragSession {
+  id: string;
+  /** Where inside the card the pointer took hold of it. */
+  grabX: number;
+  grabY: number;
+  width: number;
+  height: number;
+  /** Current position of the card, in viewport pixels. */
+  x: number;
+  y: number;
+  /**
+   * Where the fixed card's own coordinate space begins, in viewport pixels.
+   * Normally the viewport itself, but any transformed or blurred ancestor
+   * becomes the containing block instead, so it is measured rather than
+   * assumed — getting it wrong offsets the card from the cursor.
+   */
+  originX: number;
+  originY: number;
+  zones: DropZone[];
+  cards: (BoardRect & { id: string })[];
+  measured: boolean;
+  /** The drop the pointer is currently over: empty cells, or another card. */
+  dropIndex: number | null;
+  dropCardId: string | null;
+}
 
 /** The twelve-column span each width takes, at the desktop breakpoint. */
 const SPAN_CLASS: Record<WidgetSize, string> = {
@@ -398,6 +452,8 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   const [settingsWidgetId, setSettingsWidgetId] = useState<string | null>(null);
   const [draggedWidgetId, setDraggedWidgetId] = useState<string | null>(null);
   const [dragOverWidgetId, setDragOverWidgetId] = useState<string | null>(null);
+  const [dropZones, setDropZones] = useState<DropZone[]>([]);
+  const [activeZone, setActiveZone] = useState<number | null>(null);
 
   /**
    * The toggles on a card's own heading — "Newest / Highest value", "Mine /
@@ -637,18 +693,291 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
       return [...ws.slice(0, index + 1), copy, ...ws.slice(index + 1)];
     });
 
-  /** Drop-to-reorder: the dragged widget takes the target's position. */
-  const moveWidgetBefore = (id: string, targetId: string) =>
-    mutateWidgets(ws => {
-      if (id === targetId) return ws;
-      const from = ws.findIndex(w => w.id === id);
-      const to = ws.findIndex(w => w.id === targetId);
-      if (from === -1 || to === -1) return ws;
-      const next = [...ws];
-      const [moved] = next.splice(from, 1);
-      next.splice(to, 0, moved);
-      return next;
+  /* ---------------------------------------------------------------------
+     Arranging the board by hand.
+
+     A card has no coordinates of its own — the grid lays the list out in
+     order — so dragging one is really a question of which *index* it should
+     take. The pointer answers it two ways: let go over another card and the
+     dragged one takes its place; let go over empty cells and it takes the
+     index that lands it exactly there. Empty cells are only offered when the
+     card actually fits in them, which is why a three-column card can be parked
+     in the unused half of the top row and an eight-column one cannot.
+
+     This is a pointer drag rather than an HTML5 one. The native kind cannot
+     animate the card under the cursor, and it refuses to drop anywhere that
+     did not opt in as a target — which is precisely what empty space is.
+  --------------------------------------------------------------------- */
+
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const cardNodes = useRef(new Map<string, HTMLDivElement>());
+  const dragRef = useRef<DragSession | null>(null);
+
+  const registerCard = useCallback((id: string, node: HTMLDivElement | null) => {
+    if (node) cardNodes.current.set(id, node);
+    else cardNodes.current.delete(id);
+  }, []);
+
+  const gridItemOf = (widget: any): GridItem => ({
+    id: widget.id,
+    size: sizeOf(widget),
+    rowSpan: Number(widget?.rowSpan) === 2 ? 2 : 1
+  });
+
+  /**
+   * Everything that can move a card: its order, its width, how many rows it
+   * claims, and whether one of them is currently in the air. A change to any of
+   * these is a layout the cards should glide into rather than jump to.
+   */
+  const layoutSignature = useMemo(
+    () =>
+      widgets.map((w: any) => `${w.id}/${sizeOf(w)}/${Number(w?.rowSpan) === 2 ? 2 : 1}`).join("|") +
+      `#${draggedWidgetId || ""}`,
+    [widgets, draggedWidgetId]
+  );
+
+  const { seed: seedFlip } = useGridFlip(gridRef, layoutSignature, isEditMode);
+
+  const beginWidgetDrag = (event: React.PointerEvent, id: string) => {
+    if (!isEditMode || !canEdit || event.button !== 0) return;
+    const node = cardNodes.current.get(id);
+    if (!node) return;
+
+    const rect = node.getBoundingClientRect();
+    event.preventDefault();
+    event.stopPropagation();
+
+    dragRef.current = {
+      id,
+      grabX: event.clientX - rect.left,
+      grabY: event.clientY - rect.top,
+      width: rect.width,
+      height: rect.height,
+      x: rect.left,
+      y: rect.top,
+      originX: 0,
+      originY: 0,
+      zones: [],
+      cards: [],
+      measured: false,
+      dropIndex: null,
+      dropCardId: null
+    };
+
+    setDropZones([]);
+    setActiveZone(null);
+    setDragOverWidgetId(null);
+    setDraggedWidgetId(id);
+  };
+
+  /**
+   * With the card lifted out of the flow the board has already closed up behind
+   * it, so this is the moment its empty cells are real and can be measured.
+   * Positions come from `offsetLeft`/`offsetTop`, which ignore any transform a
+   * layout animation still has running.
+   */
+  useLayoutEffect(() => {
+    const session = dragRef.current;
+    const grid = gridRef.current;
+    if (!draggedWidgetId || !session || !grid || session.measured) return;
+
+    const dragged = widgets.find((w: any) => w.id === draggedWidgetId);
+    if (!dragged) return;
+
+    // The card has just been rendered fixed at `x, y`; wherever it actually
+    // landed tells us what its coordinates are really measured from.
+    const lifted = cardNodes.current.get(draggedWidgetId);
+    if (lifted) {
+      const box = lifted.getBoundingClientRect();
+      session.originX = box.left - session.x;
+      session.originY = box.top - session.y;
+      lifted.style.transform =
+        `translate3d(${session.x - session.originX}px, ${session.y - session.originY}px, 0)`;
+    }
+
+    const breakpoint = breakpointForWidth(window.innerWidth);
+    const rest = widgets.filter((w: any) => w.id !== draggedWidgetId);
+    const restItems = rest.map(gridItemOf);
+    const plan = planGrid(restItems, breakpoint);
+
+    const gutter = parseFloat(getComputedStyle(grid).columnGap) || 24;
+    const columnWidth = (grid.clientWidth - gutter * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
+
+    // Where each row of the grid starts and ends, read off the cards
+    // themselves. A card that owns exactly one row settles that row outright; a
+    // card spanning two only gets a say, by even division, where nothing else
+    // speaks for the row.
+    const settled = new Map<number, { top: number; bottom: number }>();
+    const guessed = new Map<number, { top: number; bottom: number }>();
+    let heightSum = 0;
+    let heightCount = 0;
+
+    for (const placement of plan) {
+      const node = cardNodes.current.get(placement.id);
+      if (!node) continue;
+      const top = node.offsetTop;
+      const bottom = top + node.offsetHeight;
+
+      if (placement.rowSpan === 1) {
+        const band = settled.get(placement.row);
+        settled.set(
+          placement.row,
+          band ? { top: Math.min(band.top, top), bottom: Math.max(band.bottom, bottom) } : { top, bottom }
+        );
+        heightSum += node.offsetHeight;
+        heightCount++;
+      } else {
+        const each = (node.offsetHeight - gutter * (placement.rowSpan - 1)) / placement.rowSpan;
+        for (let r = 0; r < placement.rowSpan; r++) {
+          const rowTop = top + r * (each + gutter);
+          if (!guessed.has(placement.row + r)) {
+            guessed.set(placement.row + r, { top: rowTop, bottom: rowTop + each });
+          }
+        }
+      }
+    }
+
+    const fallbackHeight = heightCount ? heightSum / heightCount : 170;
+    const rows = rowCountOf(plan);
+    const bands: { top: number; bottom: number }[] = [];
+    let cursor = 0;
+    // One band past the last row: letting go below everything starts a new one.
+    for (let row = 0; row <= rows; row++) {
+      const band = settled.get(row) || guessed.get(row) || { top: cursor, bottom: cursor + fallbackHeight };
+      bands.push(band);
+      cursor = band.bottom + gutter;
+    }
+
+    const zones: DropZone[] = freeDropTargets(restItems, gridItemOf(dragged), breakpoint).map(target => {
+      const first = bands[target.row] || { top: cursor, bottom: cursor + fallbackHeight };
+      const last = bands[target.row + target.rowSpan - 1] || first;
+      return {
+        insertIndex: target.insertIndex,
+        left: target.col * (columnWidth + gutter),
+        top: first.top,
+        width: target.span * columnWidth + (target.span - 1) * gutter,
+        height: Math.max(last.bottom - first.top, 96)
+      };
     });
+
+    session.zones = zones;
+    session.cards = rest.flatMap((w: any) => {
+      const node = cardNodes.current.get(w.id);
+      if (!node) return [];
+      return [{
+        id: w.id,
+        left: node.offsetLeft,
+        top: node.offsetTop,
+        width: node.offsetWidth,
+        height: node.offsetHeight
+      }];
+    });
+    session.measured = true;
+    setDropZones(zones);
+  }, [draggedWidgetId, widgets]);
+
+  // The drag itself: carry the card, work out what is under the pointer, commit.
+  useEffect(() => {
+    if (!draggedWidgetId) return;
+
+    const grid = gridRef.current;
+    const node = cardNodes.current.get(draggedWidgetId) || null;
+
+    const covers = (zone: BoardRect, x: number, y: number) =>
+      x >= zone.left && x <= zone.left + zone.width && y >= zone.top && y <= zone.top + zone.height;
+
+    const onMove = (event: PointerEvent) => {
+      const session = dragRef.current;
+      if (!session) return;
+
+      session.x = event.clientX - session.grabX;
+      session.y = event.clientY - session.grabY;
+      if (node) {
+        node.style.transform =
+          `translate3d(${session.x - session.originX}px, ${session.y - session.originY}px, 0)`;
+      }
+      if (!grid) return;
+
+      const bounds = grid.getBoundingClientRect();
+      const x = event.clientX - bounds.left;
+      const y = event.clientY - bounds.top;
+
+      const zone = session.zones.findIndex(candidate => covers(candidate, x, y));
+      if (zone !== -1) {
+        session.dropIndex = session.zones[zone].insertIndex;
+        session.dropCardId = null;
+        setActiveZone(zone);
+        setDragOverWidgetId(null);
+        return;
+      }
+
+      const card = session.cards.find(candidate => covers(candidate, x, y));
+      session.dropIndex = null;
+      session.dropCardId = card ? card.id : null;
+      setActiveZone(null);
+      setDragOverWidgetId(card ? card.id : null);
+    };
+
+    const settle = (commit: boolean) => {
+      const session = dragRef.current;
+      dragRef.current = null;
+
+      if (session && grid) {
+        // Hand the card the place the pointer left it in, so the layout
+        // animation carries it from there into its slot instead of snapping.
+        const bounds = grid.getBoundingClientRect();
+        seedFlip(session.id, {
+          x: session.x - bounds.left,
+          y: session.y - bounds.top,
+          w: session.width,
+          h: session.height
+        });
+      }
+
+      if (session && commit) {
+        if (session.dropIndex !== null) {
+          const index = session.dropIndex;
+          mutateWidgets(ws => insertAt(ws, session.id, index));
+        } else if (session.dropCardId && session.dropCardId !== session.id) {
+          const targetId = session.dropCardId;
+          mutateWidgets(ws => {
+            const at = ws.filter(w => w.id !== session.id).findIndex(w => w.id === targetId);
+            return at === -1 ? ws : insertAt(ws, session.id, at);
+          });
+        }
+      }
+
+      setDraggedWidgetId(null);
+      setDragOverWidgetId(null);
+      setActiveZone(null);
+      setDropZones([]);
+    };
+
+    const onUp = () => settle(true);
+    const onCancel = () => settle(false);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") settle(false);
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    window.addEventListener("keydown", onKeyDown);
+    const previousCursor = document.body.style.cursor;
+    const previousSelect = document.body.style.userSelect;
+    document.body.style.cursor = "grabbing";
+    document.body.style.userSelect = "none";
+
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("keydown", onKeyDown);
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousSelect;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draggedWidgetId]);
 
   const changeWidgetType = (id: string, nextType: string) =>
     mutateWidgets(ws => ws.map(w => (w.id === id ? adaptWidgetToType(w, nextType, sampleRowOf(id)) : w)));
@@ -1175,30 +1504,59 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
               </div>
             )}
 
-            <div className="relative grid grid-cols-12 gap-6 items-stretch text-left pb-2">
+            <div ref={gridRef} className="relative grid grid-cols-12 gap-6 items-stretch text-left pb-2">
+              {/* Every run of empty cells the card in the air would fit in. The
+                  one under the pointer is the one it will drop into. */}
+              {dropZones.map((zone, index) => (
+                <div
+                  key={`${zone.insertIndex}-${zone.left}-${zone.top}`}
+                  aria-hidden="true"
+                  data-drop-zone={zone.insertIndex}
+                  {...(activeZone === index ? { "data-drop-active": "" } : {})}
+                  className={cn(
+                    "absolute rounded-3xl border-2 border-dashed pointer-events-none z-10",
+                    "transition-[background-color,border-color,transform] duration-150",
+                    activeZone === index
+                      ? "border-indigo-500 bg-indigo-500/10 scale-100"
+                      : "border-indigo-300 bg-indigo-500/[0.04] scale-[0.985]"
+                  )}
+                  style={{ left: zone.left, top: zone.top, width: zone.width, height: zone.height }}
+                />
+              ))}
+
               {widgets.map((w: any) => {
                 const size = sizeOf(w);
                 const tall = Number(w?.rowSpan) === 2;
+                const session = dragRef.current;
+                const isDragging = draggedWidgetId === w.id && session?.id === w.id;
                 return (
                   <div
                     key={w.id}
-                    onDragOver={(e) => {
-                      if (!isEditMode || !draggedWidgetId) return;
-                      e.preventDefault();
-                      if (dragOverWidgetId !== w.id) setDragOverWidgetId(w.id);
-                    }}
-                    onDrop={(e) => {
-                      if (!isEditMode || !draggedWidgetId) return;
-                      e.preventDefault();
-                      moveWidgetBefore(draggedWidgetId, w.id);
-                      setDraggedWidgetId(null);
-                      setDragOverWidgetId(null);
-                    }}
+                    ref={node => registerCard(w.id, node)}
+                    data-flip={w.id}
+                    {...(isDragging ? { "data-flip-skip": "" } : {})}
                     className={cn(
-                      "relative min-w-0 flex flex-col animate-in fade-in duration-300",
+                      "relative min-w-0 flex flex-col",
+                      !isEditMode && "animate-in fade-in duration-300",
                       SPAN_CLASS[size],
                       tall && "lg:row-span-2"
                     )}
+                    style={
+                      isDragging && session
+                        ? {
+                            position: "fixed",
+                            left: 0,
+                            top: 0,
+                            width: session.width,
+                            height: session.height,
+                            transform:
+                              `translate3d(${session.x - session.originX}px, ${session.y - session.originY}px, 0)`,
+                            transition: "none",
+                            pointerEvents: "none",
+                            zIndex: 60
+                          }
+                        : undefined
+                    }
                   >
                     <div
                       onClick={() => {
@@ -1210,7 +1568,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                         isEditMode && dragOverWidgetId === w.id && draggedWidgetId !== w.id
                           ? "outline-indigo-500"
                           : isEditMode && "outline-slate-300",
-                        isEditMode && draggedWidgetId === w.id && "opacity-40"
+                        isDragging && "shadow-2xl shadow-indigo-950/20 rotate-[0.6deg] scale-[1.015] outline-indigo-400"
                       )}
                     >
                       {isEditMode && (
@@ -1218,8 +1576,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                           t={t}
                           size={size}
                           canDelete={canDelete}
-                          onDragStart={() => setDraggedWidgetId(w.id)}
-                          onDragEnd={() => { setDraggedWidgetId(null); setDragOverWidgetId(null); }}
+                          onGrab={(e) => beginWidgetDrag(e, w.id)}
                           onSettings={() => setSettingsWidgetId(w.id)}
                           onDuplicate={() => duplicateWidget(w.id)}
                           onRemove={() => removeWidget(w.id)}
@@ -1254,7 +1611,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 );
               })}
 
-              {isEditMode && (
+              {isEditMode && !draggedWidgetId && (
                 <button
                   type="button"
                   onClick={() => setIsAddOpen(true)}
@@ -1394,12 +1751,11 @@ const WidgetEditToolbar: React.FC<{
   t: Translate;
   size: WidgetSize;
   canDelete: boolean;
-  onDragStart: () => void;
-  onDragEnd: () => void;
+  onGrab: (event: React.PointerEvent) => void;
   onSettings: () => void;
   onDuplicate: () => void;
   onRemove: () => void;
-}> = ({ t, size, canDelete, onDragStart, onDragEnd, onSettings, onDuplicate, onRemove }) => {
+}> = ({ t, size, canDelete, onGrab, onSettings, onDuplicate, onRemove }) => {
   const button =
     "w-7 h-7 rounded-lg border-0 bg-transparent flex items-center justify-center p-0 text-slate-600 hover:bg-slate-100 hover:text-indigo-600 transition-colors cursor-pointer";
   const stop = (fn: () => void) => (e: React.MouseEvent) => {
@@ -1413,10 +1769,13 @@ const WidgetEditToolbar: React.FC<{
       className="absolute -top-[18px] right-[18px] z-20 flex items-center gap-0.5 h-[34px] px-[3px] rounded-[11px] bg-white border border-slate-200 shadow-lg"
     >
       <span
-        draggable
-        onDragStart={onDragStart}
-        onDragEnd={onDragEnd}
-        title={t("Drag to reorder", "Potiahnutím zmeníte poradie", "Húzza az átrendezéshez")}
+        onPointerDown={onGrab}
+        style={{ touchAction: "none" }}
+        title={t(
+          "Drag to move \u2014 free space lights up where it fits",
+          "Potiahnutím presuniete \u2014 voľné miesto sa zvýrazní, kde sa zmestí",
+          "Húzással mozgatható \u2014 a szabad hely kiemelődik, ahová befér"
+        )}
         className={cn(button, "cursor-grab active:cursor-grabbing")}
       >
         <Grip className="h-[15px] w-[15px]" strokeWidth={2.25} />
