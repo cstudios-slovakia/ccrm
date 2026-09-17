@@ -8,7 +8,7 @@ import {
   Zap, Clock, UserPlus, Users, CheckSquare, ClipboardList,
   Bot, Calendar, User, Filter, Code, MapPin, Phone, Briefcase, Globe, FileText,
   ChevronDown, ChevronUp, Move, Sparkles, Send, Star, Bell, Flame, Heart, Shield, Wrench, Package, Award, Target, Lock, Search, Sliders, Tag, Gift, Compass, Paperclip, Printer, Headphones, Video, Radio, Megaphone, Bookmark, DollarSign, CreditCard, TrendingUp, BarChart2, HelpCircle, Info, Smile, ThumbsUp,
-  Minus, Maximize2
+  Minus, Maximize2, ArrowRightLeft
 } from "lucide-react";
 import type { Language } from "../utils/translations";
 import type { ProjectType } from "../types";
@@ -1435,6 +1435,19 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
           project_id: "",
           status: "active"
         };
+      } else if (subType === "convert_lead_to_project") {
+        name = t("Convert Lead to Project", "Konvertovať lead na projekt", "Lead konvertálása projektté");
+        // Seeded with the first configured project type so the node is usable
+        // the moment it is dropped; the rest matches what the "Convert to
+        // Project" button on a lead does — the lead's owner manages it, and a
+        // lead that already has such a project is left alone.
+        data = {
+          type: "convert_lead_to_project",
+          project_type_id: projectTypes[0]?.id || "",
+          status: "new",
+          manager: "",
+          skip_if_exists: true
+        };
       } else {
         name = t("Create Client", "Vytvoriť klienta", "Ügyfél létrehozása");
         data = { type: "create_client", name: "{{$trigger.name}}", client_type: "business", status: "new" };
@@ -2045,6 +2058,14 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                       >
                         <Briefcase className="h-4 w-4 text-purple-500" />
                         <span>{t("Change Project Status", "Zmeniť stav projektu", "Projekt állapota")}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => addNode("action", "convert_lead_to_project")}
+                        className="w-full flex items-center gap-2.5 px-3.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-purple-50 hover:text-purple-900 text-left transition-colors cursor-pointer"
+                      >
+                        <ArrowRightLeft className="h-4 w-4 text-purple-500" />
+                        <span>{t("Convert Lead to Project", "Lead na projekt", "Lead projektté")}</span>
                       </button>
 
                       {/* Email */}
@@ -3170,6 +3191,112 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                     "A lead with no project yet is skipped, not failed — the run carries on.",
                                     "Lead bez projektu sa preskočí, nejde o chybu — beh pokračuje ďalej.",
                                     "A projekt nélküli leadet kihagyja, nem hiba — a futás folytatódik.",
+                                  )}
+                                </p>
+                              </div>
+                            );
+                          })()}
+
+                          {node.data.type === "convert_lead_to_project" && (() => {
+                            /* A type deleted since the node was configured. Kept
+                               visible and flagged rather than silently swapped for
+                               another one — the workflow will say so when it runs. */
+                            const typeId: string = node.data.project_type_id || "";
+                            const typeOptions = projectTypes.map((pt) => ({ value: pt.id, label: pt.name }));
+                            if (typeId && !projectTypes.some((pt) => pt.id === typeId)) {
+                              typeOptions.push({ value: typeId, label: `⚠ ${typeId}` });
+                            }
+                            return (
+                              <div className="space-y-2">
+                                <div>
+                                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t("Project Type", "Typ projektu", "Projekt típusa")}</label>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    <div className="p-1.5 bg-slate-50 border border-slate-100 rounded-lg shrink-0 flex items-center justify-center">
+                                      <Briefcase className="h-3.5 w-3.5 text-slate-400" />
+                                    </div>
+                                    <CustomSelect
+                                      value={typeId}
+                                      onChange={(v) => updateActionField("project_type_id", v)}
+                                      placeholder={t("Choose a type…", "Vyberte typ…", "Válasszon típust…")}
+                                      options={typeOptions}
+                                    />
+                                  </div>
+                                  {!typeOptions.length && (
+                                    <p className="mt-1 text-[9px] font-semibold text-rose-500 leading-snug">
+                                      {t(
+                                        "No project types exist yet. Create one in Projects → Settings first.",
+                                        "Zatiaľ neexistuje žiadny typ projektu. Najprv ho vytvorte v Projekty → Nastavenia.",
+                                        "Még nincs projekttípus. Hozzon létre egyet a Projektek → Beállítások alatt.",
+                                      )}
+                                    </p>
+                                  )}
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-1.5">
+                                  <div>
+                                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t("Status", "Stav", "Állapot")}</label>
+                                    <div className="mt-0.5">
+                                      <CustomSelect
+                                        size="sm"
+                                        value={node.data.status || "new"}
+                                        onChange={(v) => updateActionField("status", v)}
+                                        options={PROJECT_STATUSES.map((s) => ({ value: s, label: projectStatusLabel(s, t) }))}
+                                      />
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <label className="flex items-center gap-1 text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                                      {t("If one exists", "Ak už existuje", "Ha már létezik")}
+                                      <span
+                                        className="inline-flex shrink-0 cursor-help"
+                                        title={t(
+                                          "A workflow on a lead fires again every time the lead changes. Skipping keeps it from creating the same project twice.",
+                                          "Workflow na leade sa spustí pri každej zmene leadu. Preskočenie zabráni vytvoreniu toho istého projektu dvakrát.",
+                                          "A leadhez kötött workflow minden változáskor újra lefut. A kihagyás megakadályozza, hogy ugyanaz a projekt kétszer jöjjön létre.",
+                                        )}
+                                      >
+                                        <Info className="h-2.5 w-2.5 text-slate-300" />
+                                      </span>
+                                    </label>
+                                    <div className="mt-0.5">
+                                      <CustomSelect
+                                        size="sm"
+                                        value={node.data.skip_if_exists === false ? "always" : "skip"}
+                                        onChange={(v) => updateActionField("skip_if_exists", v === "skip")}
+                                        options={[
+                                          { value: "skip", label: t("Skip the lead", "Preskočiť lead", "Kihagyás") },
+                                          { value: "always", label: t("Convert anyway", "Aj tak konvertovať", "Mindenképp") },
+                                        ]}
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div>
+                                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t("Project Manager", "Projektový manažér", "Projektmenedzser")}</label>
+                                  <div className="mt-0.5">
+                                    <CustomSelect
+                                      size="sm"
+                                      value={node.data.manager || ""}
+                                      onChange={(v) => updateActionField("manager", v)}
+                                      icon={<User className="h-3.5 w-3.5 text-slate-400 shrink-0" />}
+                                      options={[
+                                        { value: "", label: t("The lead's owner", "Zodpovedný za lead", "A lead felelőse") },
+                                        { value: "__none__", label: t("Unassigned", "Nepriradené", "Nincs felelős") },
+                                        ...(userNames.length
+                                          ? [{ value: "__users__", label: t("Users", "Používatelia", "Felhasználók"), disabled: true }]
+                                          : []),
+                                        ...userNames.map((name) => ({ value: name, label: name })),
+                                      ]}
+                                    />
+                                  </div>
+                                </div>
+
+                                <p className="text-[9px] font-semibold text-slate-400 leading-snug">
+                                  {t(
+                                    "The same conversion as the button on a lead: the new project is paired with the lead, and text fields it recognises are filled in from it. A branch with no lead is skipped, not failed.",
+                                    "Rovnaká konverzia ako tlačidlo na leade: nový projekt sa spáruje s leadom a rozpoznané textové polia sa z neho predvyplnia. Vetva bez leadu sa preskočí, nejde o chybu.",
+                                    "Ugyanaz a konverzió, mint a leaden lévő gomb: az új projekt a leadhez párosul, a felismert szöveges mezők pedig kitöltődnek belőle. A lead nélküli ág kimarad, nem hiba.",
                                   )}
                                 </p>
                               </div>
